@@ -1,0 +1,43 @@
+@import '~assets/styles/variables';
+
+.header {
+  width: 100%;
+  height: 72px;
+  background: $purple;
+  position: fixed;
+  align-items: center;
+  justify-content: flex-start;
+  display: flex;
+  top: 0px;
+  left: 0px;
+  right: 0px;
+
+  .title {
+    font-style: normal;
+    font-weight: $medium;
+    font-family: $quicksand;
+    font-size: 24px;
+    line-height: 24px;
+    color: $white;
+    text-align: center;
+    flex: 1;
+  }
+
+  .logo {
+    width: 50px;
+    margin: 0 16px;
+  }
+
+  .button {
+    color: $white;
+
+    &.back {
+      margin-left: 22px;
+      margin-right: 22px;
+    }
+
+    &.more {
+      margin-right: 22px;
+    }
+  }
+}

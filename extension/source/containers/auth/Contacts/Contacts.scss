@@ -1,0 +1,145 @@
+@import '~assets/styles/variables';
+
+.mask {
+  display: flex;
+  position: fixed;
+  top: 72px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba($gray-light, 0.3);
+  z-index: 1;
+  padding: 0px;
+  transition: all 0.5s;
+  opacity: 0;
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+
+  .modal {
+    width: 100vw;
+    height: 100vh;
+    background: $gray-light;
+    transition: all 0.5s;
+    padding: 0px;
+    transform: translateX(-10px);
+    box-sizing: border-box;
+    opacity: 0;
+
+    .heading {
+      display: flex;
+      width: 100%;
+      height: 60px;
+      box-sizing: border-box;
+      align-items: center;
+      border-bottom: 1px solid $gray-medium;
+      font-weight: 500;
+      font-size: 18px;
+      padding: 0 36px;
+      line-height: 24px;
+      color: $gray-dark;
+
+      span.title {
+        display: inline-block;
+        width: 100%;
+        white-space: nowrap;
+        margin-left: 3px;
+        text-align: center;
+        overflow: hidden;
+        transition: all 0.3s;
+        text-overflow: ellipsis;
+
+        &.account {
+          width: 228px;
+        }
+      }
+
+      .closeBtn {
+        right: 36px;
+        position: absolute;
+      }
+    }
+
+    .container {
+      ul.list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        width: 100%;
+
+        li {
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          justify-content: space-between;
+          cursor: pointer;
+          height: 84px;
+          transition: all 0.3s;
+          padding: 6px 36px;
+          box-sizing: border-box;
+
+          &:hover {
+            background: $gray-light-100;
+          }
+
+          .contact {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+
+            .info {
+              display: flex;
+              flex-direction: row;
+              align-items: center;
+              font-weight: 500;
+              font-size: 16px;
+              line-height: 24px;
+              color: $gray-dark;
+
+              div {
+                display: flex;
+                flex-direction: column;
+
+                small {
+                  font-weight: 500;
+                  font-size: 12px;
+                  line-height: 18px;
+                  color: $gray-100;
+                  margin-top: 4px;
+                  width: 264px;
+                  text-overflow: ellipsis;
+                  overflow: hidden;
+                }
+              }
+            }
+
+            .send {
+              width: 24px;
+              height: 24px;
+              font-size: 14px;
+              color: $white;
+              background: $gray-100;
+
+              svg {
+                width: 14px;
+                height: 14px;
+                margin-left: 2px;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  &.open {
+    opacity: 1;
+    pointer-events: initial;
+
+    .modal {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+}

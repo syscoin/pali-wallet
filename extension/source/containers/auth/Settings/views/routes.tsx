@@ -1,0 +1,14 @@
+export const MAIN_VIEW = '#';
+export const ACCOUNT_VIEW = '#account';
+export const GENERAL_VIEW = '#general';
+export const PHRASE_VIEW = '#phrase';
+export const DELETE_WALLET_VIEW = '#delete_wallet';
+export const NEW_ACCOUNT_VIEW = '#new_account';
+export const REMOVE_ACCOUNT_VIEW = '#remove_account';
+export const PRIV_KEY_VIEW = '#private_key';
+export const ABOUT_VIEW = '#about';
+export const CONTACTS_VIEW = '#contacts';
+export const CONTACT_VIEW = '#contact';
+export const ADD_CONTACT_VIEW = '#add_contact';
+export const EDIT_CONTACT_VIEW = '#edit_contact';
+export const IMPORT_ACCOUNT_VIEW = '#import_account';

@@ -1,0 +1,28 @@
+@import '~assets/styles/variables';
+
+.link {
+  text-decoration: none;
+  font-style: normal;
+  font-weight: $medium;
+  font-size: 16px;
+  font-family: $inter;
+  line-height: 18px;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &.noUnderline {
+    &:hover {
+      text-decoration: none;
+    }
+  }
+
+  &.primary {
+    color: $purple;
+  }
+
+  &.secondary {
+    color: $teal;
+  }
+}

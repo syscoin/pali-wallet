@@ -1,0 +1,20 @@
+@import '~assets/styles/variables';
+
+.icon {
+  width: 24px;
+  height: 24px;
+  background: $purple;
+  color: $white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &.spaced {
+    margin-right: 12px;
+  }
+
+  svg {
+    font-size: 16px;
+  }
+}

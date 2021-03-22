@@ -1,0 +1,77 @@
+@import '~assets/styles/variables';
+
+body {
+  .button {
+    padding: 8px 40px;
+    font-family: $inter;
+    font-weight: $medium;
+    font-size: 16px;
+    letter-spacing: 0.03em;
+    text-transform: none;
+    border-radius: 20px;
+    line-height: 20px;
+    box-shadow: $shadow-btn;
+
+    :global .MuiButton-label {
+      display: flex;
+      flex-direction: column;
+
+      & > img {
+        margin-bottom: 15px;
+      }
+    }
+
+    .spinner {
+      width: 20px !important;
+      height: 20px !important;
+      margin-right: 10px;
+      color: $purple;
+
+      svg {
+        width: 20px;
+        height: 20px;
+      }
+    }
+
+    &.loading {
+      color: $gray-100;
+      background: $purple;
+
+      :global .MuiButton-label {
+        display: flex;
+        flex-direction: row;
+      }
+    }
+
+    &.primary {
+      background: $purple;
+      color: $white;
+
+      &:hover {
+        background: $purple;
+        color: $white;
+      }
+    }
+
+    &.secondary {
+      background: $purple-light;
+      color: $purple;
+
+      &:hover {
+        background: $purple-light;
+        color: $purple;
+      }
+    }
+
+    &.block {
+      font-size: 20px;
+      line-height: 24px;
+      font-weight: $medium;
+    }
+
+    &.disabled {
+      color: $gray-100;
+      background: $gray-light;
+    }
+  }
+}

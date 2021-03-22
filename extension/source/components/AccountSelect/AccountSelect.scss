@@ -1,0 +1,85 @@
+@import '~assets/styles/variables';
+
+.accselect {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  text-align: center;
+  flex-direction: column;
+  height: 60px;
+  transition: all 300ms;
+  cursor: pointer;
+
+  .selected {
+    width: 100%;
+    display: flex;
+    height: 60px;
+    align-items: center;
+    justify-content: flex-start;
+    position: relative;
+    font-size: 16px;
+    font-weight: bold;
+    color: $gray-dark;
+    padding: 30px 36px;
+    box-sizing: border-box;
+
+    .arrow {
+      position: absolute;
+      right: 36px;
+      width: 24px;
+      transition: all 0.3s;
+      transform: rotateZ(0deg);
+      color: $gray-100;
+    }
+  }
+
+  ul.options {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    transition: all 300ms;
+    transform: scaleY(0);
+    transform-origin: top;
+    width: 100%;
+    top: 60px;
+    background: $gray-light;
+    backdrop-filter: blur(10px);
+    overflow: auto;
+    // max-height: 150px;
+    z-index: 1;
+
+    li {
+      width: 100%;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start !important;
+      transition: all 300ms;
+      font-size: 16px;
+      padding-left: 72px !important;
+      font-weight: 500;
+      color: $gray-dark;
+
+      &:hover {
+        background: $gray-light;
+      }
+
+      & > small {
+        margin-left: 4px;
+      }
+    }
+  }
+
+  &.expanded {
+    height: auto;
+
+    ul.options {
+      transform: scaleY(1);
+    }
+
+    .arrow {
+      transform: rotateZ(180deg);
+    }
+  }
+}

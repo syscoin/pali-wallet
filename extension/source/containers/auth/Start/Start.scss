@@ -1,0 +1,46 @@
+@import '~assets/styles/variables';
+
+.home {
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  right: 0px;
+  min-height: 100%;
+  background: $purple;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 36px;
+  box-sizing: border-box;
+
+  .logo {
+    margin-top: 36px;
+    margin-bottom: 48px;
+    width: 212px;
+  }
+
+  .error {
+    color: white;
+    font-size: 12px;
+    position: absolute;
+    width: calc(100% - 112px);
+    bottom: 132px;
+  }
+
+  form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+
+    .password {
+      margin-bottom: 36px;
+    }
+
+    .unlock {
+      margin-bottom: 30px;
+    }
+  }
+}

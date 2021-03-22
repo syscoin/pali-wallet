@@ -1,0 +1,13 @@
+@import '~assets/styles/variables';
+
+body {
+  .description {
+    margin-bottom: 30px;
+    white-space: pre-line;
+    color: $gray-dark;
+  }
+
+  .ready {
+    margin-bottom: 21px;
+  }
+}

@@ -1,0 +1,38 @@
+@import '~assets/styles/variables';
+
+.select {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+
+  .file {
+    display: none;
+  }
+
+  .button,
+  .button:hover {
+    width: 84px;
+    height: 24px !important;
+    border: 1px solid $gray-dark !important;
+    border-radius: 6px;
+    font-size: 10px;
+    line-height: 24px;
+    color: $gray-dark !important;
+    background: $gray-light-100 !important;
+    padding: 0;
+    box-sizing: border-box;
+    box-shadow: none;
+  }
+
+  .chosen {
+    color: $purple;
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 500;
+    margin-left: 12px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    max-width: 204px;
+  }
+}

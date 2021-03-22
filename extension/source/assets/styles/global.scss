@@ -1,0 +1,119 @@
+@import './variables';
+
+:global body {
+  margin: 0px;
+  padding: 0px;
+  font-family: $inter !important;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  user-select: none !important;
+
+  section#app {
+    min-height: 300px;
+    display: flex;
+    top: 0px;
+    left: 0px;
+    right: 0px;
+    bottom: 0px;
+    position: fixed;
+    align-items: center;
+    background: $white;
+    justify-content: center;
+  }
+
+  // Font styles
+  .heading-1 {
+    font-family: $inter;
+    font-weight: normal;
+    font-size: 30px;
+    line-height: 36px;
+    margin: 0px;
+  }
+
+  .body-caption {
+    font-family: $inter;
+    font-weight: $medium;
+    font-size: 16px;
+    line-height: 24px;
+    letter-spacing: 0.03em;
+  }
+
+  .body-description {
+    font-family: $inter;
+    font-weight: 500;
+    font-size: 16px;
+    line-height: 24px;
+    color: $gray-dark;
+  }
+
+  .body-comment {
+    font-family: $inter;
+    font-style: normal;
+    font-weight: 500;
+    font-size: 16px;
+    line-height: 24px;
+    color: $gray-dark;
+  }
+
+  // Font families
+  .t-quicksand {
+    font-family: $quicksand;
+  }
+  .t-inter {
+    font-family: $inter;
+  }
+
+  // Font Weights
+  .tw-medium {
+    font-weight: $medium;
+  }
+  .tw-regular {
+    font-weight: $regular;
+  }
+
+  // Text styles
+  .t-white {
+    color: $white;
+  }
+  .t-purple {
+    color: $purple;
+  }
+  .t-teal {
+    color: $teal;
+  }
+  .t-gray-dark {
+    color: $gray-dark;
+  }
+  .t-gray-medium {
+    color: $gray-100;
+  }
+
+  // Background styles
+  .b-white {
+    background: $white;
+  }
+  .b-purple {
+    background: $purple;
+  }
+  .b-teal {
+    background: $teal;
+  }
+
+  // Other styles
+  .full-width {
+    width: 100%;
+    display: block;
+  }
+  .mt-30 {
+    margin-top: 30px;
+  }
+  .mb-30 {
+    margin-bottom: 30px;
+  }
+  .ml-30 {
+    margin-left: 30px;
+  }
+  .mr-30 {
+    margin-right: 30px;
+  }
+}

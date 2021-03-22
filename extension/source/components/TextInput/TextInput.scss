@@ -1,0 +1,68 @@
+@import '~assets/styles/variables';
+
+body {
+  .textInput {
+    background: $white;
+    line-height: 18px;
+    padding: 15px 12px;
+    box-sizing: border-box;
+  }
+
+  .iconButton {
+    width: 30px;
+    height: 30px;
+    margin-right: -5px;
+
+    & svg {
+      font-size: 20px;
+    }
+  }
+}
+
+:global body {
+  .MuiOutlinedInput-notchedOutline {
+    border-width: 0px !important;
+    outline: 0px !important;
+  }
+
+  .MuiOutlinedInput-multiline {
+    height: 72px !important;
+    border-radius: 6px !important;
+    padding: 0 !important;
+  }
+
+  .MuiInputBase-inputMultiline {
+    overflow: auto !important;
+    height: 70px !important;
+    padding: 11px !important;
+    margin: 1px 0;
+    box-sizing: border-box;
+    color: $gray-dark;
+  }
+
+  .MuiInputBase-root {
+    font-family: $inter;
+    font-size: 12px;
+    height: 40px;
+    padding: 0 20px;
+    font-weight: $medium;
+    border: 1px solid $gray-200 !important;
+    outline: 0px !important;
+    border-radius: 20px;
+
+    & input {
+      padding: 0px;
+    }
+
+    & input::-webkit-outer-spin-button,
+    & input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    /* Firefox */
+    & input[type='number'] {
+      -moz-appearance: textfield;
+    }
+  }
+}

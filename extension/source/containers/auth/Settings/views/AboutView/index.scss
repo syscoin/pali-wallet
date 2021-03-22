@@ -1,0 +1,29 @@
+@import '~assets/styles/variables';
+
+.about {
+  padding: 24px 36px;
+  display: flex;
+  flex-direction: column;
+
+  & > span {
+    margin-bottom: 24px;
+    display: inline-block;
+    color: $gray-dark;
+    font-weight: 500;
+    font-size: 12px;
+  }
+
+  .link {
+    color: $purple;
+    text-decoration: none;
+
+    &.terms {
+      display: block;
+      margin-top: 12px;
+    }
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}

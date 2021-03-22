@@ -1,0 +1,8 @@
+@import '../../assets/styles/variables';
+
+@import '~webext-base-css/webext-base.css';
+
+body {
+  color: $black;
+  background-color: $white;
+}
