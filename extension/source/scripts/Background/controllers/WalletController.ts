@@ -13,7 +13,7 @@ import {
   removeSeedAccounts,
 } from 'state/wallet';
 import AccountController, { IAccountController } from './AccountController';
-import { DAG_NETWORK } from 'constants/index';
+import { SYS_NETWORK } from 'constants/index';
 import IWalletState, { SeedKeystore } from 'state/wallet/types';
 // const sjs = require('syscoinjs-lib')
 
@@ -148,13 +148,13 @@ const WalletController = (): IWalletController => {
   };
 
   const switchNetwork = (networkId: string) => {
-    if (DAG_NETWORK[networkId]!.id) {
+    if (SYS_NETWORK[networkId]!.id) {
       dag.network.setNetwork({
-        id: DAG_NETWORK[networkId].id,
-        beUrl: DAG_NETWORK[networkId].beUrl,
-        lbUrl: DAG_NETWORK[networkId].lbUrl,
+        id: SYS_NETWORK[networkId].id,
+        beUrl: SYS_NETWORK[networkId].beUrl,
+        lbUrl: SYS_NETWORK[networkId].lbUrl,
       });
-      store.dispatch(changeActiveNetwork(DAG_NETWORK[networkId]!.id));
+      store.dispatch(changeActiveNetwork(SYS_NETWORK[networkId]!.id));
       account.getLatestUpdate();
     }
   };

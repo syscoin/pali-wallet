@@ -2,7 +2,7 @@ import React, { FC, Fragment, useCallback, useState } from 'react';
 import clsx from 'clsx';
 import { v4 as uuid } from 'uuid';
 import { useFiat } from 'hooks/usePrice';
-import { Transaction } from '@stardust-collective/dag4-network';
+// import { Transaction } from '@stardust-collective/dag4-network'; ok
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
 import DownArrowIcon from '@material-ui/icons/ArrowDownward';
 import GoTopIcon from '@material-ui/icons/VerticalAlignTop';
@@ -12,7 +12,8 @@ import Spinner from '@material-ui/core/CircularProgress';
 import { useController } from 'hooks/index';
 import { formatDistanceDate } from '../helpers';
 import StargazerIcon from 'assets/images/svg/stargazer.svg';
-import { DAG_EXPLORER_SEARCH } from 'constants/index';
+import { SYS_EXPLORER_SEARCH } from 'constants/index';
+import { Transaction } from '../../../scripts/types';
 
 import styles from './Home.scss';
 
@@ -56,8 +57,9 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
     }
   }, []);
 
-  const handleOpenExplorer = (tx: string) => {
-    window.open(`${DAG_EXPLORER_SEARCH}${tx}`, '_blank');
+  const handleOpenExplorer = (/* tx: string */) => {
+    // window.open(`${SYS_EXPLORER_SEARCH}${tx}`, '_blank');
+    window.open(SYS_EXPLORER_SEARCH, '_blank');
   };
 
   const handleGoTop = () => {
@@ -91,7 +93,7 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
                       {formatDistanceDate(tx.timestamp)}
                     </li>
                   )}
-                  <li onClick={() => handleOpenExplorer(tx.hash)}>
+                  <li onClick={() => handleOpenExplorer(/* tx.hash */)}>
                     <div>
                       <div className={styles.iconWrapper}>
                         {tx.checkpointBlock ? (
@@ -116,7 +118,7 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
                     <div>
                       <span>
                         <span>
-                          {tx.amount / 1e8} <b>DAG</b>
+                          {tx.amount / 1e8} <b>SYS</b>
                         </span>
                         <small>{getFiatAmount(tx.amount / 1e8, 8)}</small>
                       </span>

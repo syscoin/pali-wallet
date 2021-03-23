@@ -52,7 +52,7 @@ const Home = () => {
           <section className={styles.center}>
             <h3>
               {formatNumber(accounts[activeAccountId].balance)}{' '}
-              <small>DAG</small>
+              <small>SYS</small>
             </h3>
             <small>≈ {getFiatAmount(accounts[activeAccountId].balance)}</small>
             <IconButton className={styles.refresh} onClick={handleRefresh}>

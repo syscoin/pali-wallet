@@ -1,7 +1,8 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { Transaction } from '@stardust-collective/dag4-network';
+// import { Transaction } from '@stardust-collective/dag4-network'; ok
+import { Transaction } from '../../scripts/types';
 
-import { DAG_NETWORK } from 'constants/index';
+import { SYS_NETWORK } from 'constants/index';
 import IWalletState, {
   IAccountUpdateState,
   IAccountState,
@@ -15,7 +16,7 @@ const initialState: IWalletState = {
   accounts: {},
   activeAccountId: '0',
   seedKeystoreId: '',
-  activeNetwork: DAG_NETWORK.main.id,
+  activeNetwork: SYS_NETWORK.main.id,
   index: 0
 };
 
@@ -81,7 +82,7 @@ const WalletState = createSlice({
       state.accounts = {};
       state.seedKeystoreId = '';
       state.activeAccountId = '0';
-      state.activeNetwork = DAG_NETWORK.main.id;
+      state.activeNetwork = SYS_NETWORK.main.id;
     },
     changeAccountActiveId(state: IWalletState, action: PayloadAction<string>) {
       state.activeAccountId = action.payload;

@@ -1,14 +1,15 @@
-import {
-  V3Keystore,
-  KDFParamsPhrase,
-  KDFParamsPrivateKey,
-} from '@stardust-collective/dag4-keystore/types/v3-keystore';
-import { Transaction } from '@stardust-collective/dag4-network';
+// import {
+//   V3Keystore,
+//   KDFParamsPhrase,
+//   KDFParamsPrivateKey,
+// } from '@stardust-collective/dag4-keystore/types/v3-keystore';
+// import { Transaction } from '@stardust-collective/dag4-network'; ok
+import { Transaction } from '../../scripts/types';
 
-export type SeedKeystore = V3Keystore<KDFParamsPhrase>;
-export type PrivKeystore = V3Keystore<KDFParamsPrivateKey>;
+export type SeedKeystore = /* V3Keystore<KDFParamsPhrase> */ any;
+export type PrivKeystore = /* V3Keystore<KDFParamsPrivateKey> */ any;
 
-export type Keystore = SeedKeystore | PrivKeystore;
+export type Keystore = /* SeedKeystore | PrivKeystore */ any;
 
 export enum AccountType {
   Seed,

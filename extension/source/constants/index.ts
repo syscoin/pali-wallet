@@ -1,6 +1,6 @@
-export const STORE_PORT = 'STARGAZER';
+export const STORE_PORT = 'SYSCOIN';
 
-export const DAG_NETWORK: {
+export const SYS_NETWORK: {
   [networkId: string]: {
     id: string;
     label: string;
@@ -23,9 +23,9 @@ export const DAG_NETWORK: {
 };
 
 export const ASSET_PRICE_API = 'https://api.coingecko.com/api/v3/simple/price';
-export const DAG_EXPLORER_SEARCH = 'https://www.dagexplorer.io/search?term=';
+export const SYS_EXPLORER_SEARCH = 'https://sys-explorer.tk/api/v2'; // ok
 
-export const PRICE_DAG_ID = 'constellation-labs';
+export const PRICE_SYS_ID = 'constellation-labs';
 export const PRICE_BTC_ID = 'bitcoin';
 export const PRICE_ETH_ID = 'ethereum';
 

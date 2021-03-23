@@ -1,5 +1,5 @@
 import { dag } from '@stardust-collective/dag4';
-import { Transaction, PendingTx } from '@stardust-collective/dag4-network';
+// import { Transaction, /* PendingTx */ } from '@stardust-collective/dag4-network';
 import { hdkey } from 'ethereumjs-wallet';
 
 import store from 'state/store';
@@ -18,7 +18,7 @@ import IWalletState, {
   PrivKeystore,
 } from 'state/wallet/types';
 
-import { IAccountInfo, ITransactionInfo } from '../../types';
+import { IAccountInfo, ITransactionInfo, PendingTx, Transaction } from '../../types';
 export interface IAccountController {
   getTempTx: () => ITransactionInfo | null;
   updateTempTx: (tx: ITransactionInfo) => void;
@@ -75,10 +75,11 @@ const AccountController = (actions: {
   const getAccountByPrivateKey = async (
     privateKey: string
   ): Promise<IAccountInfo> => {
+    console.log('private key', privateKey)
     dag.account.loginPrivateKey(privateKey);
     // const ethAddress = dag.keyStore.getEthAddressFromPrivateKey(privateKey);
-    const balance = await dag.account.getBalance();
-    const transactions = await dag.account.getTransactions(10);
+    const balance = /* await dag.account.getBalance() */ 1000;
+    const transactions: any[] = /* await dag.account.getTransactions(10) */ [];
     return {
       address: {
         constellation: dag.account.address,
@@ -344,6 +345,8 @@ const AccountController = (actions: {
       throw new Error(error);
     }
   };
+
+  console.log('dag account from account controller', dag.account)
 
   // Other
   const isValidDAGAddress = (address: string) => {

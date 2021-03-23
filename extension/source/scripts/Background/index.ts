@@ -1,11 +1,11 @@
 /* eslint-disable prettier/prettier */
 import 'emoji-log';
-import { STORE_PORT, DAG_NETWORK } from 'constants/index';
+import { STORE_PORT, /* SYS_NETWORK */ } from 'constants/index';
 
 import { browser } from 'webextension-polyfill-ts';
 import { wrapStore } from 'webext-redux';
 import store from 'state/store';
-import { dag } from '@stardust-collective/dag4';
+// import { dag } from '@stardust-collective/dag4';
 
 import MasterController, { IMasterController } from './controllers';
 import { Runtime } from 'webextension-polyfill-ts';
@@ -31,16 +31,19 @@ browser.runtime.onConnect.addListener((port: Runtime.Port) => {
     port.sender.url &&
     port.sender.url?.includes(browser.runtime.getURL('/app.html'))
   ) {
-    const networkId =
-      store.getState().wallet!.activeNetwork || DAG_NETWORK.main.id;
-    dag.di.useFetchHttpClient(window.fetch.bind(window));
-    dag.di.useLocalStorageClient(localStorage);
-    dag.network.config({
-      id: DAG_NETWORK[networkId].id,
-      beUrl: DAG_NETWORK[networkId].beUrl,
-      lbUrl: DAG_NETWORK[networkId].lbUrl,
-    });
-    dag.monitor.startMonitor();
+    // const networkId = store.getState().wallet!.activeNetwork ||  SYS_NETWORK.main.id;
+
+    // dag.di.useFetchHttpClient(window.fetch.bind(window));
+
+    // dag.di.useLocalStorageClient(localStorage);
+
+    // dag.network.config({
+    //   id: SYS_NETWORK[networkId].id,
+    //   beUrl: SYS_NETWORK[networkId].beUrl,
+    //   lbUrl: SYS_NETWORK[networkId].lbUrl,
+    // });
+
+    // dag.monitor.startMonitor();
     window.controller.wallet.account.watchMemPool();
   }
 });

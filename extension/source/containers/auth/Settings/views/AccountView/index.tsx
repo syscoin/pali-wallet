@@ -6,7 +6,7 @@ import DeleteIcon from '@material-ui/icons/Delete';
 import { useSettingsView } from 'hooks/index';
 
 import { PRIV_KEY_VIEW, REMOVE_ACCOUNT_VIEW } from '../routes';
-import { DAG_EXPLORER_SEARCH } from 'constants/index';
+import { SYS_EXPLORER_SEARCH } from 'constants/index';
 
 import styles from './index.scss';
 
@@ -20,7 +20,9 @@ const AccountView: FC<IAccountView> = ({ address }) => {
   const showView = useSettingsView();
 
   const handleOpenExplorer = () => {
-    window.open(`${DAG_EXPLORER_SEARCH}${address.constellation}`, '_blank');
+    // window.open(`${SYS_EXPLORER_SEARCH}${address.constellation}`, '_blank');
+    window.open(SYS_EXPLORER_SEARCH, '_blank');
+    console.log(address)
   };
 
   return (

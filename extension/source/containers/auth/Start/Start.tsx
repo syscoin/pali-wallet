@@ -18,7 +18,7 @@ const Starter = () => {
 
   const onSubmit = (data: any) => {
     controller.wallet.unLock(data.password).then((res) => {
-      console.log(res);
+      console.log('res start after password', res);
       setInvalid(!res);
     });
   };
@@ -28,7 +28,7 @@ const Starter = () => {
       <h1 className="heading-1 full-width t-white t-quicksand tw-medium">
         Welcome to
         <br />
-        Stargazer Wallet
+        Syscoin Wallet
       </h1>
       <img src={LogoImage} className={styles.logo} alt="Stargazer" />
       <form onSubmit={handleSubmit(onSubmit)}>
