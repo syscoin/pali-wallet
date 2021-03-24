@@ -59,9 +59,6 @@
   .t-roboto {
     font-family: $roboto;
   }
-  .t-roboto {
-    font-family: $roboto;
-  }
 
   // Font Weights
   .tw-medium {
@@ -75,11 +72,11 @@
   .t-white {
     color: $white;
   }
-  .t-purple {
-    color: $purple;
+  .t-navy {
+    color: $navy;
   }
-  .t-teal {
-    color: $teal;
+  .t-yellowGreen {
+    color: $yellowGreen;
   }
   .t-gray-dark {
     color: $gray-dark;
@@ -88,15 +85,19 @@
     color: $gray-100;
   }
 
+  .t-gold {
+    color: $gold;
+  }
+
   // Background styles
   .b-white {
     background: $white;
   }
-  .b-purple {
-    background: $purple;
+  .b-navy {
+    background: $navy;
   }
-  .b-teal {
-    background: $teal;
+  .b-yellowGreen {
+    background: $yellowGreen;
   }
 
   // Other styles

@@ -25,7 +25,7 @@ body {
       width: 20px !important;
       height: 20px !important;
       margin-right: 10px;
-      color: $purple;
+      color: $navy;
 
       svg {
         width: 20px;
@@ -35,7 +35,7 @@ body {
 
     &.loading {
       color: $gray-100;
-      background: $purple;
+      background: $navy;
 
       :global .MuiButton-label {
         display: flex;
@@ -44,22 +44,22 @@ body {
     }
 
     &.primary {
-      background: $purple;
+      background: $navy;
       color: $white;
 
       &:hover {
-        background: $purple;
+        background: $navy;
         color: $white;
       }
     }
 
     &.secondary {
-      background: $purple-light;
-      color: $purple;
+      background: $navy-light;
+      color: $navy;
 
       &:hover {
-        background: $purple-light;
-        color: $purple;
+        background: $navy-light;
+        color: $navy;
       }
     }
 

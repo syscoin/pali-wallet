@@ -18,7 +18,7 @@
 
       b {
         font-weight: 500;
-        color: $red-100;
+        color: $deepPink-100;
       }
     }
 
@@ -42,9 +42,9 @@
       transition: all 0.3s;
 
       &.copied {
-        background: $purple-medium;
-        color: $purple;
-        border: 1px solid $purple;
+        background: $navy-medium;
+        color: $navy;
+        border: 1px solid $navy;
       }
     }
 
@@ -57,7 +57,7 @@
   .warning {
     width: 100vw;
     height: 96px;
-    background: $purple-light;
+    background: $navy-light;
     display: block;
     padding: 24px 36px;
     font-weight: 500;
@@ -68,7 +68,7 @@
     word-wrap: break-word;
 
     small {
-      color: $purple;
+      color: $navy;
       font-weight: 500;
       line-height: 18px;
       font-size: 12px;

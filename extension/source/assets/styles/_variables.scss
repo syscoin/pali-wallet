@@ -1,17 +1,19 @@
 /**
  * Colors
- **/
+**/
 $black: #000;
 $white: #fff;
 
-$purple: #521e8a;
-$purple-medium: #c2a8de;
-$purple-light: #e0d3ee;
+$navy: #122036;
+$navy-medium: #1E365C;
+$navy-light: #233F6C;
 
-$red: #de0c00;
-$red-100: #ff3b30;
+$deepPink: #CB2C70;
+$deepPink-100: #FF3E91;
 
-$teal: #00f1b7;
+$yellowGreen: #7D992E;
+
+$gold: #FF9900;
 
 $gray: #808080;
 $gray-100: #888888;
@@ -31,7 +33,9 @@ $gray-disabled: #dadada;
 $shadow-btn: 0px 1px 5px rgba(0, 0, 0, 0.25);
 $shadow-tooltip: 0px 0px 5px rgba(0, 0, 0, 0.25);
 
-/* Fonts */
+/** 
+  * Fonts 
+**/
 $roboto:'Roboto', sans-serif;
 
 /**

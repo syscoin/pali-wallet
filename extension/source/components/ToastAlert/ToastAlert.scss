@@ -1,7 +1,7 @@
 @import '~assets/styles/variables';
 
 .toast {
-  background-color: $purple;
+  background-color: $navy;
   width: 365px;
   box-sizing: border-box;
   padding: 12px;
@@ -19,7 +19,7 @@
   letter-spacing: 0.35px;
 
   &.error {
-    background-color: $red-100;
+    background-color: $deepPink-100;
   }
 
   .icon {

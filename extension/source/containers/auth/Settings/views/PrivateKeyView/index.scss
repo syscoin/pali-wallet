@@ -43,9 +43,9 @@
       transition: all 0.3s;
 
       &.copied {
-        background: $purple-medium;
-        color: $purple;
-        border: 1px solid $purple;
+        background: $navy-medium;
+        color: $navy;
+        border: 1px solid $navy;
       }
     }
   }
@@ -93,9 +93,9 @@
 
       &.copied {
         cursor: initial;
-        background: $purple-medium;
-        color: $purple;
-        border: 1px solid $purple;
+        background: $navy-medium;
+        color: $navy;
+        border: 1px solid $navy;
       }
     }
 
