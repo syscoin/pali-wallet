@@ -13,11 +13,13 @@
   flex-direction: column;
   padding: 36px;
   box-sizing: border-box;
+  border: 3px solid $royalBlue;
+  border-radius: 64px;
 
   .logo {
     margin-top: 80px;
     margin-bottom: 80px;
-    width: 212px;
+    width: 170px;
   }
 
   .started {

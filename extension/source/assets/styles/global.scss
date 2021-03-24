@@ -7,6 +7,8 @@
   -webkit-font-smoothing: antialiased !important;
   -moz-osx-font-smoothing: grayscale !important;
   user-select: none !important;
+  border: 3px solid $royalBlue;
+  border-radius: 64px;
 
   section#app {
     min-height: 300px;
@@ -17,7 +19,7 @@
     bottom: 0px;
     position: fixed;
     align-items: center;
-    background: $white;
+    background: none;
     justify-content: center;
   }
 
