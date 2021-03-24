@@ -116,7 +116,7 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
                     <div>
                       <span>
                         <span>
-                          {tx.amount / 1e8} <b>DAG</b>
+                          {tx.amount / 1e8} <b>SYS</b>
                         </span>
                         <small>{getFiatAmount(tx.amount / 1e8, 8)}</small>
                       </span>

@@ -57,7 +57,7 @@ const SendConfirm = () => {
         <div className={styles.iconWrapper}>
           <UpArrowIcon />
         </div>
-        {Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0)} DAG
+        {Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0)} SYS
         <small>
           (≈
           {getFiatAmount(
@@ -82,7 +82,7 @@ const SendConfirm = () => {
         <div className={styles.row}>
           Transaction Fee
           <span>
-            {tempTx!.fee} DAG (≈ {getFiatAmount(tempTx?.fee || 0, 8)})
+            {tempTx!.fee} SYS (≈ {getFiatAmount(tempTx?.fee || 0, 8)})
           </span>
         </div>
       </section>

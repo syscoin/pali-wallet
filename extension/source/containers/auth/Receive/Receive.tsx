@@ -20,7 +20,7 @@ const WalletReceive = () => {
   return (
     <div className={styles.wrapper}>
       <Header backLink="/home" />
-      <section className={styles.subheading}>Receive DAG</section>
+      <section className={styles.subheading}>Receive SYS</section>
       <section className={styles.content}>
         <div className={styles.address}>
           <QRCode

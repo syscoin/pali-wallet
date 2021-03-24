@@ -32,8 +32,8 @@ interface IWalletSend {
 const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const { handleSubmit, register, errors } = useForm({
     validationSchema: yup.object().shape({
-      address: yup.string().required('Error: Invalid DAG address'),
-      amount: yup.number().moreThan(0).required('Error: Invalid DAG Amount'),
+      address: yup.string().required('Error: Invalid SYS address'),
+      amount: yup.number().moreThan(0).required('Error: Invalid SYS Amount'),
       fee: yup.string().required('Error: Invalid transaction fee'),
     }),
   });
