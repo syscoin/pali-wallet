@@ -3,7 +3,7 @@
 :global body {
   margin: 0px;
   padding: 0px;
-  font-family: $inter !important;
+  font-family: $roboto !important;
   -webkit-font-smoothing: antialiased !important;
   -moz-osx-font-smoothing: grayscale !important;
   user-select: none !important;
@@ -23,7 +23,7 @@
 
   // Font styles
   .heading-1 {
-    font-family: $inter;
+    font-family: $roboto;
     font-weight: normal;
     font-size: 30px;
     line-height: 36px;
@@ -31,7 +31,7 @@
   }
 
   .body-caption {
-    font-family: $inter;
+    font-family: $roboto;
     font-weight: $medium;
     font-size: 16px;
     line-height: 24px;
@@ -39,7 +39,7 @@
   }
 
   .body-description {
-    font-family: $inter;
+    font-family: $roboto;
     font-weight: 500;
     font-size: 16px;
     line-height: 24px;
@@ -47,7 +47,7 @@
   }
 
   .body-comment {
-    font-family: $inter;
+    font-family: $roboto;
     font-style: normal;
     font-weight: 500;
     font-size: 16px;
@@ -56,11 +56,11 @@
   }
 
   // Font families
-  .t-quicksand {
-    font-family: $quicksand;
+  .t-roboto {
+    font-family: $roboto;
   }
-  .t-inter {
-    font-family: $inter;
+  .t-roboto {
+    font-family: $roboto;
   }
 
   // Font Weights

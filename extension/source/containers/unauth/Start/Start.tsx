@@ -8,7 +8,7 @@ import styles from './Start.scss';
 const Start = () => {
   return (
     <div className={styles.home}>
-      <h1 className="heading-1 full-width t-quicksand t-white">
+      <h1 className="heading-1 full-width t-roboto t-white">
         Welcome to
         <br />
         Syscoin Wallet
