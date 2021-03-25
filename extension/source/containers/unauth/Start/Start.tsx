@@ -16,7 +16,7 @@ const Start = () => {
       <img src={`/${LogoImage}`} className={styles.logo} alt="Stargazer" />
       <Button
         type="submit"
-        theme="secondary"
+        theme="btn-outline-primary"
         variant={styles.started}
         linkTo="/create/pass"
       >

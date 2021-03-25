@@ -10,14 +10,15 @@
   width: 100%;
 
   .heading {
-    background: $gray-light;
+    background: $navy;
     width: 100%;
     display: flex;
     align-items: center;
     padding: 18px 34px;
     justify-content: flex-start;
     box-sizing: border-box;
-    color: $gray-dark;
+    color: $gold;
+    font-weight: bold;
 
     span {
       white-space: pre-wrap;
@@ -25,9 +26,6 @@
   }
 
   .content {
-    background: $white;
-    padding: 36px;
-    padding-bottom: 24px;
     width: 100%;
     height: 100%;
     display: flex;
@@ -36,5 +34,8 @@
     align-items: center;
     box-sizing: border-box;
     position: relative;
+    padding: 36px;
+    padding-bottom: 24px;
+    background: $navy;
   }
 }

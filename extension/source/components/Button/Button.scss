@@ -10,7 +10,7 @@ body {
     text-transform: none;
     border-radius: 20px;
     line-height: 20px;
-    box-shadow: $shadow-btn;
+    // box-shadow: $shadow-btn;
 
     :global .MuiButton-label {
       display: flex;
@@ -60,6 +60,17 @@ body {
       &:hover {
         background: $navy-light;
         color: $navy;
+      }
+    }
+
+    &.btn-outline-primary {
+      border: 1px solid $gold;
+      border-radius: 73px;
+      color: $gold;
+
+      &:hover {
+        background: $gold;
+        color: $white;
       }
     }
 
