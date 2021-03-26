@@ -1,13 +1,13 @@
 @import '~assets/styles/variables';
 
 .layout {
-  margin-top: 72px;
+  width: 100%;
   height: 528px;
+  margin-top: 72px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  width: 100%;
 
   .heading {
     background: $navy;

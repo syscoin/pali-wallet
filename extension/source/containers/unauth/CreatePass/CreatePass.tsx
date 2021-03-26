@@ -74,6 +74,7 @@ const CreatePass = () => {
         <span className={`body-comment ${styles.comment}`}>{comment}</span>
         <Button
           type={passed ? 'button' : 'submit'}
+          theme="btn-outline-primary"
           variant={styles.next}
           onClick={nextHandler}
         >

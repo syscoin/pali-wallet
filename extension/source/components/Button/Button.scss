@@ -10,7 +10,7 @@ body {
     text-transform: none;
     border-radius: 20px;
     line-height: 20px;
-    // box-shadow: $shadow-btn;
+    box-shadow: $shadow-btn;
 
     :global .MuiButton-label {
       display: flex;
