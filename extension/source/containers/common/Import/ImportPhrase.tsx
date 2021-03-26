@@ -40,12 +40,17 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           inputRef={register}
           variant={styles.input}
         />
+        
         <span>
           Importing your wallet seed will automatically import a wallet
           associated with this seed phrase.
         </span>
+        
         <div className={styles.actions}>
-          <Button type="submit" variant={styles.button}>
+          <Button 
+            type="submit" 
+            theme="btn-outline-primary"
+            variant={styles.button}>
             Import
           </Button>
         </div>
