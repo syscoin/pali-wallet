@@ -3,7 +3,7 @@
   "version": "1.2.1",
   "description": "Extension wallet for SYS tokens.",
   "private": true,
-  "repository": "https://github.com/StardustCollective/stargazer-wallet-ext.git",
+  "repository": "https://github.com/quan-digital/sys_new_wallet.git",
   "license": "MIT",
   "engines": {
     "node": ">=10.0.0",
