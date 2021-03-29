@@ -60,7 +60,7 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#' }) => {
 
       {/* <span className={styles.title}>Syscoin Wallet</span> */}
 
-      {keystores && seedKeystoreId && keystores[seedKeystoreId] ? (
+      {keystores && seedKeystoreId > -1 && keystores[seedKeystoreId] ? (
         <IconButton
           className={`${styles.button} ${styles.more}`}
           onClick={() =>

@@ -53,8 +53,8 @@
   "content_scripts": [
     {
       "matches": [
-        "http://*/*",
-        "https://*/*"
+        "http://localhost:3000/*",
+        "https://localhost:3000/*"
       ],
       "js": [
         "js/contentScript.bundle.js"
