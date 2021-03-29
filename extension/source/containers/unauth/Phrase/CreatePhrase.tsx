@@ -36,7 +36,7 @@ const CreatePhrase: FC = () => {
       {!passed && phrases && (
         <ul className={styles.generated}>
           {phrases.split(' ').map((phrase: string, index: number) => (
-            <li key={phrase}>
+            <li key={index}>
               <span className="t-gray-medium">
                 {String(index + 1).padStart(2, '0')}.
               </span>

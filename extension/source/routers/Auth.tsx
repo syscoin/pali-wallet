@@ -39,7 +39,9 @@ const Auth = () => {
       history.push('/home');
       return;
     }
-    if (redirectRoute !== '/app.html') history.push(redirectRoute);
+    if (redirectRoute !== '/app.html') {
+      history.push(redirectRoute);
+    }
   }, []);
 
   useEffect(() => {

@@ -13,7 +13,7 @@ const Start = () => {
         <br />
         Syscoin Wallet
       </h1>
-      <img src={`/${LogoImage}`} className={styles.logo} alt="Stargazer" />
+      <img src={`/${LogoImage}`} className={styles.logo} alt="syscoin" />
       <Button
         type="submit"
         theme="btn-outline-primary"

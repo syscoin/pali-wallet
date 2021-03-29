@@ -52,7 +52,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const [modalOpened, setModalOpen] = useState(false);
 
   const isValidAddress = useMemo(() => {
-    return controller.wallet.account.isValidDAGAddress(address);
+    return controller.wallet.account.isValidSYSAddress(address);
   }, [address]);
 
   const addressInputClass = clsx(styles.input, styles.address, {
@@ -69,7 +69,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       return;
     }
     controller.wallet.account.updateTempTx({
-      fromAddress: accounts[activeAccountId].address.constellation,
+      fromAddress: accounts[activeAccountId].address.main,
       toAddress: data.address,
       amount: data.amount,
       fee: data.fee,
@@ -99,10 +99,8 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   );
 
   const handleGetFee = () => {
-    controller.wallet.account.getRecommendFee().then((val) => {
-      setRecommend(val);
-      setFee(val.toString());
-    });
+    setRecommend(controller.wallet.account.getRecommendFee());
+    setFee((controller.wallet.account.getRecommendFee()).toString());
   };
 
   const handleSelectContact = (val: string) => {
@@ -121,11 +119,11 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
         onChange={handleSelectContact}
       />
       <form onSubmit={handleSubmit(onSubmit)}>
-        <section className={styles.subheading}>Send DAG</section>
+        <section className={styles.subheading}>Send SYS</section>
         <section className={styles.balance}>
           <div>
             Balance:{' '}
-            <span>{formatNumber(accounts[activeAccountId].balance)}</span> DAG
+            <span>{formatNumber(accounts[activeAccountId].balance)}</span> SYS
           </div>
         </section>
         <section className={styles.content}>
@@ -138,7 +136,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 className={statusIconClass}
               />
               <TextInput
-                placeholder="Enter a valid DAG address"
+                placeholder="Enter a valid SYS address"
                 fullWidth
                 value={address}
                 name="address"
@@ -155,7 +153,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               </Button>
             </li>
             <li>
-              <label>Dag Amount</label>
+              <label>SYS Amount</label>
               <TextInput
                 type="number"
                 placeholder="Enter amount to send"
@@ -208,7 +206,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             )}
           </div>
           <div className={styles.description}>
-            {`With current network conditions we recommend a fee of ${recommend} DAG.`}
+            {`With current network conditions we recommend a fee of ${recommend} SYS.`}
           </div>
           <div className={styles.actions}>
             <Button

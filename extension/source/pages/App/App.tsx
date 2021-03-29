@@ -19,7 +19,7 @@ const App: FC = () => {
     <section id="app" style={{ minHeight: '300px' }}>
       <Container>
         <Router>
-          {keystores && seedKeystoreId && keystores[seedKeystoreId] ? (
+          {keystores && seedKeystoreId > -1 && keystores[seedKeystoreId] ? (
             <AuthRouter />
           ) : (
             <UnAuthRouter />

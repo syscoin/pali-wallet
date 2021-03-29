@@ -1,14 +1,4 @@
-import {
-  V3Keystore,
-  KDFParamsPhrase,
-  KDFParamsPrivateKey,
-} from '@stardust-collective/dag4-keystore/types/v3-keystore';
-import { Transaction } from '@stardust-collective/dag4-network';
-
-export type SeedKeystore = V3Keystore<KDFParamsPhrase>;
-export type PrivKeystore = V3Keystore<KDFParamsPrivateKey>;
-
-export type Keystore = SeedKeystore | PrivKeystore;
+import { Transaction } from '../../scripts/types';
 
 export enum AccountType {
   Seed,
@@ -16,7 +6,7 @@ export enum AccountType {
 }
 
 export interface IAccountState {
-  id: string;
+  id: number;
   label: string;
   address: {
     [assetId: string]: string;
@@ -27,23 +17,23 @@ export interface IAccountState {
 }
 
 export interface IAccountUpdateState {
-  id: string;
+  id: number;
   balance: number;
   transactions: Transaction[];
 }
 
-interface IKeyStoreState {
-  [keystoreId: string]: Keystore;
+export interface Keystore {
+  id: number,
+  address: string,
+  phrase: string
 }
 
 export default interface IWalletState {
-  keystores: IKeyStoreState;
+  keystores: Keystore[];
   status: number;
-  accounts: {
-    [accountId: string]: IAccountState;
-  };
-  activeAccountId: string;
-  seedKeystoreId: string;
+  accounts: IAccountState[];
+  activeAccountId: number;
+  seedKeystoreId: number;
   activeNetwork: string;
   index: number;
 }

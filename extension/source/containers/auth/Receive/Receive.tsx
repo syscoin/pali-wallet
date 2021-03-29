@@ -24,18 +24,18 @@ const WalletReceive = () => {
       <section className={styles.content}>
         <div className={styles.address}>
           <QRCode
-            value={accounts[activeAccountId]!.address['constellation']}
+            value={accounts[activeAccountId]!.address['main']}
             bgColor="#fff"
             fgColor="#000"
             className={styles.qrcode}
             size={180}
           />
-          {accounts[activeAccountId]!.address['constellation']}
+          {accounts[activeAccountId]!.address['main']}
         </div>
         <IconButton
           className={clsx(styles.iconBtn, { [styles.active]: isCopied })}
           onClick={() =>
-            copyText(accounts[activeAccountId]!.address['constellation'])
+            copyText(accounts[activeAccountId]!.address['main'])
           }
         >
           <CopyIcon className={styles.icon} />

@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import React, { FC, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import * as yup from 'yup';
 
@@ -20,10 +20,13 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
       phrase: yup.string().required(),
     }),
   });
+  const [isValid, setIsValid] = useState(true);
 
   const onSubmit = (data: any) => {
     if (controller.wallet.importPhrase(data.phrase)) {
       onRegister();
+    } else {
+      setIsValid(false);
     }
   };
 

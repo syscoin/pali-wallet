@@ -3,7 +3,7 @@ import { updateFiatPrice } from 'state/price';
 import {
   ASSET_PRICE_API,
   DEFAULT_CURRENCY,
-  PRICE_DAG_ID,
+  PRICE_SYS_ID,
 } from 'constants/index';
 
 export interface IControllerUtils {
@@ -23,7 +23,7 @@ const ControllerUtils = (): IControllerUtils => {
 
   const updateFiat = async (
     currency = DEFAULT_CURRENCY.id,
-    assetId = PRICE_DAG_ID
+    assetId = PRICE_SYS_ID
   ) => {
     try {
       const data = await (

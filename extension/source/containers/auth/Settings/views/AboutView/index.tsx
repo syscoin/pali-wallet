@@ -6,26 +6,26 @@ import styles from './index.scss';
 const AboutView: FC = () => {
   return (
     <div className={styles.about}>
-      <span>Stargazer Wallet Chrome Extension v1.2</span>
+      <span>Syscoin Wallet Chrome Extension v1.2</span>
       <span>Version: 1.2.1</span>
       <span>
         Support:{' '}
         <a
           className={styles.link}
-          href="https://t.me/StardustSupport"
+          href="#"
           target="_blank"
         >
-          https://t.me/StardustSupport
+          support syscoin
         </a>
       </span>
       <span>
         Terms and Conditions:
         <a
           className={clsx(styles.link, styles.terms)}
-          href="https://www.stargazer.network/assets/static/terms.html"
+          href="#"
           target="_blank"
         >
-          https://www.stargazer.network/.../terms.html
+          syscoin terms
         </a>
       </span>
     </div>

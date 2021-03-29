@@ -2,7 +2,6 @@ import React, { FC, Fragment, useCallback, useState } from 'react';
 import clsx from 'clsx';
 import { v4 as uuid } from 'uuid';
 import { useFiat } from 'hooks/usePrice';
-import { Transaction } from '@stardust-collective/dag4-network';
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
 import DownArrowIcon from '@material-ui/icons/ArrowDownward';
 import GoTopIcon from '@material-ui/icons/VerticalAlignTop';
@@ -11,8 +10,9 @@ import Spinner from '@material-ui/core/CircularProgress';
 
 import { useController } from 'hooks/index';
 import { formatDistanceDate } from '../helpers';
-import StargazerIcon from 'assets/images/svg/stargazer.svg';
-import { DAG_EXPLORER_SEARCH } from 'constants/index';
+import SyscoinIcon from 'assets/images/logosys.svg';
+import { SYS_EXPLORER_SEARCH } from 'constants/index';
+import { Transaction } from '../../../scripts/types';
 
 import styles from './Home.scss';
 
@@ -41,13 +41,13 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
   const handleFetchMoreTxs = () => {
     if (transactions.length) {
       const lastTx = [...transactions].pop();
-      controller.wallet.account.updateTxs(10, lastTx?.timestamp);
+      console.log('last tx', lastTx);
+      controller.wallet.account.updateTxs();
     }
   };
 
   const handleScroll = useCallback((ev) => {
     ev.persist();
-    // setShowed(ev.target.scrollTop);
     if (ev.target.scrollTop) setShowed(true);
     setScrollArea(ev.target);
     const scrollOffset = ev.target.scrollHeight - ev.target.scrollTop;
@@ -56,8 +56,8 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
     }
   }, []);
 
-  const handleOpenExplorer = (tx: string) => {
-    window.open(`${DAG_EXPLORER_SEARCH}${tx}`, '_blank');
+  const handleOpenExplorer = (/* tx: string */) => {
+    window.open(SYS_EXPLORER_SEARCH, '_blank');
   };
 
   const handleGoTop = () => {
@@ -91,7 +91,7 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
                       {formatDistanceDate(tx.timestamp)}
                     </li>
                   )}
-                  <li onClick={() => handleOpenExplorer(tx.hash)}>
+                  <li onClick={() => handleOpenExplorer(/* tx.hash */)}>
                     <div>
                       <div className={styles.iconWrapper}>
                         {tx.checkpointBlock ? (
@@ -129,10 +129,10 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
               );
             })}
           </ul>
-          <div className={styles.stargazer}>
+          <div className={styles.syscoin}>
             <img
-              src={StargazerIcon}
-              alt="stargazer"
+              src={SyscoinIcon}
+              alt="syscoin"
               height="167"
               width="auto"
             />
@@ -141,13 +141,13 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
       ) : (
         <>
           <span className={styles.noTxComment}>
-            You have no transaction history, send or receive $DAG to register
+            You have no transaction history, send or receive SYS to register
             your first transaction.
           </span>
           <img
-            src={StargazerIcon}
-            className={styles.stargazer}
-            alt="stargazer"
+            src={SyscoinIcon}
+            className={styles.syscoin}
+            alt="syscoin"
             height="167"
             width="auto"
           />

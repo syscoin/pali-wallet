@@ -30,7 +30,7 @@ const CreatePass = () => {
     }
   };
 
-  const onSubmit = async (data: any) => {
+  const onSubmit = (data: any) => {
     controller.wallet.setWalletPassword(data.password);
     setPassed(true);
   };

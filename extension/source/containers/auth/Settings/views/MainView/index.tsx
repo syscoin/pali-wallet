@@ -57,7 +57,7 @@ const MainView: FC<IMainView> = ({ onChange }) => {
           }
           value={String(activeAccountId)}
           options={accounts}
-          onChange={async (val: string) => {
+          onChange={(val: string) => {
             handleSelectAccount(val);
           }}
         />
