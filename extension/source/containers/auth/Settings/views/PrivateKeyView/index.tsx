@@ -44,8 +44,8 @@ const PrivateKeyView: FC<IPrivateKeyView> = ({ id }) => {
     [styles.notAllowed]: !checked,
   });
 
-  const onSubmit = async (data: any) => {
-    const res = await controller.wallet.account.getPrivKey(id, data.password);
+  const onSubmit = (data: any) => {
+    const res = controller.wallet.account.getPrivKey(Number(id), data.password);
     if (res) {
       setPrivKey(res);
       setChecked(true);
@@ -63,18 +63,18 @@ const PrivateKeyView: FC<IPrivateKeyView> = ({ id }) => {
 
   return (
     <div className={styles.wrapper}>
-      {accounts[id] && (
+      {accounts[Number(id)] && (
         <>
           <div className={styles.heading}>
             <div>Click to copy your public key:</div>
             <span
               className={addressClass}
               onClick={() => {
-                copyText(accounts[id].address.constellation);
+                copyText(accounts[Number(id)].address.main);
                 copyAddress(true);
               }}
             >
-              {ellipsis(accounts[id].address.constellation)}
+              {ellipsis(accounts[Number(id)].address.main)}
             </span>
           </div>
           <div className={styles.content}>

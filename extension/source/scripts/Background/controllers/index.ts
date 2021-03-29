@@ -1,6 +1,6 @@
 import WalletController, { IWalletController } from './WalletController';
 import ControllerUtils from './ControllerUtils';
-import ContactsController, { IContactsController } from './ContactsController';
+import ContactsController,  { IContactsController } from './ContactsController';
 export interface IMasterController {
   wallet: Readonly<IWalletController>;
   contacts: Readonly<IContactsController>;

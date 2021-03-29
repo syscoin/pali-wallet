@@ -47,7 +47,7 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#' }) => {
     <div className={styles.header}>
       {showLogo ? (
         <Link to="/app.html" onClick={handleCloseSettings}>
-          <img src={`/${LogoImage}`} className={styles.logo} alt="Stargazer" />
+          <img src={`/${LogoImage}`} className={styles.logo} alt="Syscoin" />
         </Link>
       ) : (
         <IconButton
@@ -58,7 +58,7 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#' }) => {
         </IconButton>
       )}
       <span className={styles.title}>Syscoin Wallet</span>
-      {keystores && seedKeystoreId && keystores[seedKeystoreId] ? (
+      {keystores && seedKeystoreId > -1 && keystores[seedKeystoreId] ? (
         <IconButton
           className={`${styles.button} ${styles.more}`}
           onClick={() =>

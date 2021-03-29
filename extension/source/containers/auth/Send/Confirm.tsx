@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import clsx from 'clsx';
 import { useSelector } from 'react-redux';
-import { useAlert } from 'react-alert';
 
 import Header from 'containers/common/Header';
 import Layout from 'containers/common/Layout';
@@ -19,7 +18,6 @@ import styles from './Confirm.scss';
 const SendConfirm = () => {
   const controller = useController();
   const getFiatAmount = useFiat();
-  const alert = useAlert();
 
   const { accounts, activeAccountId }: IWalletState = useSelector(
     (state: RootState) => state.wallet
@@ -28,15 +26,8 @@ const SendConfirm = () => {
   const [confirmed, setConfirmed] = useState(false);
 
   const handleConfirm = () => {
-    controller.wallet.account
-      .confirmTempTx()
-      .then(() => {
-        setConfirmed(true);
-      })
-      .catch((error: Error) => {
-        alert.removeAll();
-        alert.error(error.message);
-      });
+    controller.wallet.account.confirmTempTx()
+    setConfirmed(true);
   };
 
   return confirmed ? (
@@ -57,7 +48,7 @@ const SendConfirm = () => {
         <div className={styles.iconWrapper}>
           <UpArrowIcon />
         </div>
-        {Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0)} DAG
+        {Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0)} SYS
         <small>
           (≈
           {getFiatAmount(

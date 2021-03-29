@@ -17,7 +17,7 @@ import styles from './index.scss';
 import { MAIN_VIEW } from '../routes';
 
 interface IRemoveAccountView {
-  id: string;
+  id: number;
 }
 
 const RemoveAccountView: FC<IRemoveAccountView> = ({ id }) => {
@@ -37,22 +37,21 @@ const RemoveAccountView: FC<IRemoveAccountView> = ({ id }) => {
 
   const onSubmit = (data: any) => {
     let isChecked;
+    
     if (accounts[id].type === AccountType.Seed) {
       isChecked = controller.wallet.account.unsubscribeAccount(
-        Number(id),
-        data.password
-      );
-    } else {
-      isChecked = controller.wallet.account.removePrivKeyAccount(
         id,
         data.password
       );
+    } else {
+      alert.error('Error: You cannot remove the main account.');
     }
+
     if (isChecked) {
       showView(MAIN_VIEW);
     } else {
       alert.removeAll();
-      alert.error('Error: Invalid password');
+      alert.error('Error: You cannot remove the main account.');
     }
   };
 
@@ -63,7 +62,7 @@ const RemoveAccountView: FC<IRemoveAccountView> = ({ id }) => {
           <div className={styles.subheading}>
             <div>{accounts[id].label}:</div>
             <span className={styles.address}>
-              {ellipsis(accounts[id].address.constellation)}
+              {ellipsis(accounts[id].address.main)}
             </span>
           </div>
         )}

@@ -1,3 +1,3 @@
-console.log('helloworld from content script');
+console.log('hello world from content script');
 
 export {};

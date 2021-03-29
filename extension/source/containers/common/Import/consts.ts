@@ -1,6 +1,6 @@
 import * as Yup from 'yup';
 
-export const CREATE_PASS_TITLE1 = `Let's create a \nStargazer password`;
+export const CREATE_PASS_TITLE1 = `Let's create a \nSyscoin password`;
 export const CREATE_PASS_TITLE2 = `Your Wallet is Ready`;
 
 export const CREATE_PASS_COMMENT1 = `Do not forget to save your password.\nYou will need this Password to unlock your wallet.`;

@@ -20,7 +20,6 @@ const AccountView: FC<IAccountView> = ({ address }) => {
   const showView = useSettingsView();
 
   const handleOpenExplorer = () => {
-    // window.open(`${SYS_EXPLORER_SEARCH}${address.constellation}`, '_blank');
     window.open(SYS_EXPLORER_SEARCH, '_blank');
     console.log(address)
   };

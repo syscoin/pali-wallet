@@ -17,10 +17,7 @@ const Starter = () => {
   const [isInvalid, setInvalid] = useState(false);
 
   const onSubmit = (data: any) => {
-    controller.wallet.unLock(data.password).then((res) => {
-      console.log('res start after password', res);
-      setInvalid(!res);
-    });
+    setInvalid(!controller.wallet.unLock(data.password));
   };
 
   return (
@@ -30,7 +27,7 @@ const Starter = () => {
         <br />
         Syscoin Wallet
       </h1>
-      <img src={LogoImage} className={styles.logo} alt="Stargazer" />
+      <img src={LogoImage} className={styles.logo} alt="syscoin" />
       <form onSubmit={handleSubmit(onSubmit)}>
         <TextInput
           type="password"

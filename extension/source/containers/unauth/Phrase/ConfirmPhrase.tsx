@@ -64,7 +64,7 @@ const ConfirmPhrase = () => {
           <section className={styles.topzone}>
             {newList.map((phrase, idx) => (
               <Button
-                key={phrase}
+                key={idx}
                 type="button"
                 variant={`${styles.phrase} ${styles.selected}`}
                 onClick={() => handleNewPhrase(idx)}
@@ -76,7 +76,7 @@ const ConfirmPhrase = () => {
           <section className={styles.bottomzone}>
             {orgList.map((phrase, idx) => (
               <Button
-                key={phrase}
+                key={idx}
                 type="button"
                 variant={styles.phrase}
                 onClick={() => handleOrgPhrase(idx)}

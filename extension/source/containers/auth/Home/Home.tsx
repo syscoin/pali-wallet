@@ -24,8 +24,8 @@ const Home = () => {
     (state: RootState) => state.wallet
   );
 
-  const handleRefresh = async () => {
-    await controller.wallet.account.getLatestUpdate();
+  const handleRefresh = () => {
+    controller.wallet.account.getLatestUpdate();
     controller.wallet.account.watchMemPool();
     controller.stateUpdater();
   };
@@ -36,12 +36,12 @@ const Home = () => {
         <>
           <Header showLogo />
           <section className={styles.account}>
-            {Object.keys(accounts).length > 1 ? (
+            {accounts.length > 1 ? (
               <FullSelect
-                value={activeAccountId}
+                value={String(activeAccountId)}
                 options={accounts}
-                onChange={async (val: string) => {
-                  await controller.wallet.switchWallet(val);
+                onChange={(val: string) => {
+                  controller.wallet.switchWallet(Number(val));
                   controller.wallet.account.watchMemPool();
                 }}
               />
@@ -78,7 +78,7 @@ const Home = () => {
             </div>
           </section>
           <TxsPanel
-            address={accounts[activeAccountId].address.constellation}
+            address={accounts[activeAccountId].address.main}
             transactions={accounts[activeAccountId].transactions}
           />
         </>
