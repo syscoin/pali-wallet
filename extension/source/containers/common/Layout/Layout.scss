@@ -20,6 +20,10 @@
     color: $gold;
     font-weight: bold;
 
+    border-style: solid;
+    border-width: 0 2px;
+    border-color: $gold;
+
     span {
       white-space: pre-wrap;
     }
@@ -37,5 +41,9 @@
     padding: 36px;
     padding-bottom: 24px;
     background: $navy;
+
+    border-style: solid;
+    border-width: 0 2px 2px 2px;
+    border-color: $gold;
   }
 }
