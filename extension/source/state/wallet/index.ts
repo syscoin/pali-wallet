@@ -16,7 +16,7 @@ const initialState: IWalletState = {
   activeAccountId: 0,
   seedKeystoreId: -1,
   activeNetwork: SYS_NETWORK.main.id,
-  index: 0
+  encriptedMnemonic: null
 };
 
 const WalletState = createSlice({
@@ -31,6 +31,9 @@ const WalletState = createSlice({
           action.payload
         ]
       };
+    },
+    setEncriptedMnemonic(state: IWalletState, action: PayloadAction<CryptoJS.lib.CipherParams>) {
+      state.encriptedMnemonic = action.payload.toString();
     },
     removeKeystoreInfo(state: IWalletState, action: PayloadAction<number>) {
       if (state.keystores[action.payload]) {
@@ -124,6 +127,7 @@ export const {
   updateAccount,
   updateTransactions,
   updateLabel,
+  setEncriptedMnemonic,
 } = WalletState.actions;
 
 export default WalletState.reducer;

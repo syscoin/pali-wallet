@@ -8,11 +8,15 @@ import {
   updateStatus,
   updateSeedKeystoreId,
   removeSeedAccounts,
+  setEncriptedMnemonic
 } from 'state/wallet';
 import AccountController, { IAccountController } from './AccountController';
 import IWalletState, { Keystore } from 'state/wallet/types';
 import { SYS_NETWORK } from 'constants/index';
-
+import CryptoJS from 'crypto-js';
+// import {SyscoinJSLib} from 'syscoinjs-lib';
+// import {HDSigner} from 'syscoinjs-lib/utils';
+const sys = require('syscoinjs-lib')
 export interface IWalletController {
   account: Readonly<IAccountController>;
   setWalletPassword: (pwd: string) => void;
@@ -31,32 +35,42 @@ export interface IWalletController {
 
 const WalletController = (): IWalletController => {
   let password = '';
-  let phrase = '';
+  let mnemonic = '';
+  let HDsigner: any = null;
+  let sjs: any = null;
+  let backendURl = 'https://sys-explorer.tk/' ;
 
   const setWalletPassword = (pwd: string) => {
     password = pwd;
   };
 
   const isLocked = () => {
-    return !password || !phrase;
+    return !password || !mnemonic;
   };
 
   const generatePhrase = () => {
-    if (seedWalletKeystore()) {
+    if (retrieveEncriptedMnemonic()) {
       return null;
     }
 
-    if (!phrase) phrase = generateMnemonic();
-
-    return phrase;
+    if (!mnemonic) mnemonic = generateMnemonic();
+    return mnemonic;
   };
 
   const createWallet = (isUpdated = false) => {
-    if (!isUpdated && seedWalletKeystore()) {
-      return;
+    // if (!isUpdated && seedWalletKeystore()) {
+    //   return;
+    // }
+    if(!isUpdated && sjs !== null){
+      return
     }
+    HDsigner = new sys.utils.HDSigner(mnemonic, password, true)
+    sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
+    // if(HDsigner){
 
+    // }
     if (isUpdated) {
+      //logic for import seed phrase
       const { seedKeystoreId, keystores } = store.getState().wallet;
 
       if (seedKeystoreId > -1 && keystores[seedKeystoreId]) {
@@ -64,14 +78,8 @@ const WalletController = (): IWalletController => {
       }
     }
 
-    const newKeystore: Keystore = {
-      id: 0,
-      address: 'address-newkeystore',
-      phrase
-    }
-
-    store.dispatch(setKeystoreInfo(newKeystore));
-    store.dispatch(updateSeedKeystoreId(newKeystore.id));
+    const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic,password)
+    store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
 
     account.subscribeAccount(0);
     account.getPrimaryAccount(password);
@@ -89,24 +97,43 @@ const WalletController = (): IWalletController => {
       : null;
   };
 
+  const retrieveEncriptedMnemonic = () => {
+    // not encrypted for now but we got to retrieve
+    const {encriptedMnemonic} : IWalletState  = store.getState().wallet 
+    // const { keystores, seedKeystoreId }: IWalletState = store.getState().wallet;
+
+    return encriptedMnemonic != ''
+      ? encriptedMnemonic
+      : null;
+  };
   const checkPassword = (pwd: string) => {
     return password === pwd;
   };
 
   const getPhrase = (pwd: string) => {
-    return checkPassword(pwd) ? phrase : null;
+    return checkPassword(pwd) ? mnemonic : null;
   };
 
   const unLock = (pwd: string): boolean => {
     try {
-      const keystore = seedWalletKeystore();
-
-      if (!keystore) {
-        throw new Error('keystore not set');
+      const encriptedMnemonic = retrieveEncriptedMnemonic();
+      //add unencript password 
+      console.log("The hash", encriptedMnemonic)
+      const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, pwd).toString(CryptoJS.enc.Utf8); //add unencript password 
+      if (!decriptedMnemonic) {
+        throw new Error('password wrong');
+      }
+      if(HDsigner != null){
+        console.log('well well well')
+      }
+      else{
+        HDsigner = new sys.utils.HDSigner(mnemonic, pwd, true)
+        console.log('HDsigner retrieved')
       }
 
+
       password = pwd;
-      phrase = keystore.phrase;
+      mnemonic = decriptedMnemonic;
 
       account.getPrimaryAccount(password);
       account.watchMemPool();
@@ -114,15 +141,14 @@ const WalletController = (): IWalletController => {
       return true;
     } catch (error) {
       console.log(error);
+      return false;
     }
-
-    return false;
   };
 
   const deleteWallet = (pwd: string) => {
     if (checkPassword(pwd)) {
       password = '';
-      phrase = '';
+      mnemonic = '';
 
       store.dispatch(deleteWalletState());
       store.dispatch(updateStatus());
@@ -146,7 +172,7 @@ const WalletController = (): IWalletController => {
 
   const logOut = () => {
     password = '';
-    phrase = '';
+    mnemonic = '';
     store.dispatch(updateStatus());
   };
 
@@ -160,7 +186,7 @@ const WalletController = (): IWalletController => {
     const newKeystoreImportAccount: Keystore = {
       id: 0,
       address: 'address-newkeystore-imported',
-      phrase
+      phrase: mnemonic
     }
 
     if (keystores.filter((keystore) => (keystore as Keystore).address === (newKeystoreImportAccount as Keystore).address).length) {

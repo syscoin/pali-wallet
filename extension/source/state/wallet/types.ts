@@ -35,5 +35,5 @@ export default interface IWalletState {
   activeAccountId: number;
   seedKeystoreId: number;
   activeNetwork: string;
-  index: number;
+  encriptedMnemonic: any;
 }
