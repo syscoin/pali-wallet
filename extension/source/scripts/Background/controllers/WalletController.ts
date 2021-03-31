@@ -6,7 +6,6 @@ import {
   changeAccountActiveId,
   changeActiveNetwork,
   updateStatus,
-  updateSeedKeystoreId,
   removeSeedAccounts,
   setEncriptedMnemonic
 } from 'state/wallet';
@@ -66,9 +65,9 @@ const WalletController = (): IWalletController => {
     }
     HDsigner = new sys.utils.HDSigner(mnemonic, password, true)
     sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
-    // if(HDsigner){
-
-    // }
+    if(HDsigner.accountIndex > 0){
+        throw new Error("account index is bigger then 0 logic inconsistency")
+    }
     if (isUpdated) {
       //logic for import seed phrase
       const { seedKeystoreId, keystores } = store.getState().wallet;
@@ -80,8 +79,8 @@ const WalletController = (): IWalletController => {
 
     const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic,password)
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
-
-    account.subscribeAccount(0);
+    console.log("The accounts on HDsigner:", HDsigner.accounts)
+    account.subscribeAccount(HDsigner.accountIndex);
     account.getPrimaryAccount(password);
 
     if (isUpdated) {
@@ -159,6 +158,7 @@ const WalletController = (): IWalletController => {
     const keystore = seedWalletKeystore();
 
     if (keystore) {
+
       return keystore.phrase == phr;
     }
 
