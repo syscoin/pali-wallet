@@ -6,16 +6,15 @@ import {
   changeAccountActiveId,
   changeActiveNetwork,
   updateStatus,
-  removeSeedAccounts,
   setEncriptedMnemonic
 } from 'state/wallet';
 import AccountController, { IAccountController } from './AccountController';
 import IWalletState, { Keystore } from 'state/wallet/types';
-import { SYS_NETWORK } from 'constants/index';
+import { sys,SYS_NETWORK } from 'constants/index';
 import CryptoJS from 'crypto-js';
+// import {sys, SYS_NETWORK} from '../../../constants'
 // import {SyscoinJSLib} from 'syscoinjs-lib';
 // import {HDSigner} from 'syscoinjs-lib/utils';
-const sys = require('syscoinjs-lib')
 export interface IWalletController {
   account: Readonly<IAccountController>;
   setWalletPassword: (pwd: string) => void;
@@ -37,7 +36,7 @@ const WalletController = (): IWalletController => {
   let mnemonic = '';
   let HDsigner: any = null;
   let sjs: any = null;
-  let backendURl = 'https://sys-explorer.tk/';
+  let backendURl = SYS_NETWORK.testnet.beUrl;
 
   const setWalletPassword = (pwd: string) => {
     password = pwd;
@@ -80,7 +79,7 @@ const WalletController = (): IWalletController => {
     const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic, password)
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
     console.log("The accounts on HDsigner:", HDsigner.accounts)
-    account.subscribeAccount(HDsigner.accountIndex);
+    account.subscribeAccount(HDsigner, backendURl);
     account.getPrimaryAccount(password);
 
     if (isUpdated) {
@@ -153,10 +152,10 @@ const WalletController = (): IWalletController => {
     }
   };
 
-  const importPhrase = (phr: string) => {
+  const importPhrase = (seedphrase: string) => {
 
-    if (validateMnemonic(phr)) {
-      mnemonic = phr
+    if (validateMnemonic(seedphrase)) {
+      mnemonic = seedphrase
       return true;
     }
 

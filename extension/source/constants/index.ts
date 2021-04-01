@@ -1,5 +1,7 @@
-export const STORE_PORT = 'SYSCOIN';
 
+export const sys = require('syscoinjs-lib');
+export const STORE_PORT = 'SYSCOIN';
+export const backendURl = 'https://sys-explorer.tk/';
 export const SYS_NETWORK: {
   [networkId: string]: {
     id: string;
@@ -20,6 +22,13 @@ export const SYS_NETWORK: {
     beUrl: 'https://api-be.exchanges.constellationnetwork.io',
     lbUrl: 'http://lb.exchanges.constellationnetwork.io:9000',
   },
+  testnet: {
+    id: 'testnet',
+    label: 'TestNet',
+    beUrl: 'https://sys-explorer.tk/',
+    lbUrl: 'nao tem :('
+  }
+  
 };
 
 export const ASSET_PRICE_API = 'https://api.coingecko.com/api/v3/simple/price';

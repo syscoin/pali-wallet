@@ -8,11 +8,16 @@ export enum AccountType {
 export interface IAccountState {
   id: number;
   label: string;
-  address: {
-    [assetId: string]: string;
+  xpub: string;
+  assets: {
+    [assetId: string]: {
+      name: string;
+      balance: number;
+    };
   };
-  balance: number;
+  address:{ [assetId: string]: string };
   type: AccountType;
+  balance: number;
   transactions: Transaction[];
 }
 

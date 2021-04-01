@@ -26,10 +26,10 @@ const NewAccountView = () => {
     [styles.copied]: isCopied && address,
   });
 
-  const onSubmit = (data: any) => {
-    const res = controller.wallet.account.addNewAccount(data.name);
+  const onSubmit = async (data: any) => {
+    const res =  await controller.wallet.account.addNewAccount(data.name);
     if (res) {
-      setAddress(res.main);
+      setAddress(res);
     }
   };
 
