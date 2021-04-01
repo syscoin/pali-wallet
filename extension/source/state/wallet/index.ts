@@ -66,17 +66,13 @@ const WalletState = createSlice({
       if (state.activeAccountId === action.payload) {
         state.activeAccountId = state.accounts[0].id;
       }
-      
+
       state.accounts.splice(action.payload, 1);
       state.activeAccountId = 0;
     },
-    removeSeedAccounts(state: IWalletState) {
-      state.accounts.forEach((account) => {
-        if (account.type === AccountType.Seed) {
-          state.accounts.splice(account.id, 1);
-        }
-      });
 
+    removeAccounts(state: IWalletState) {
+      state.accounts = [];
       state.activeAccountId = 0;
     },
     updateAccount(state: IWalletState, action: PayloadAction<IAccountUpdateState>) {
@@ -119,7 +115,7 @@ export const {
   updateStatus,
   createAccount,
   removeAccount,
-  removeSeedAccounts,
+  removeAccounts,
   deleteWallet,
   updateSeedKeystoreId,
   changeAccountActiveId,

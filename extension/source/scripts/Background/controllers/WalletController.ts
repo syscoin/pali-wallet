@@ -6,11 +6,12 @@ import {
   changeAccountActiveId,
   changeActiveNetwork,
   updateStatus,
-  setEncriptedMnemonic
+  setEncriptedMnemonic,
+  removeAccounts
 } from 'state/wallet';
 import AccountController, { IAccountController } from './AccountController';
 import IWalletState, { Keystore } from 'state/wallet/types';
-import { sys,SYS_NETWORK } from 'constants/index';
+import { sys, SYS_NETWORK } from 'constants/index';
 import CryptoJS from 'crypto-js';
 // import {sys, SYS_NETWORK} from '../../../constants'
 // import {SyscoinJSLib} from 'syscoinjs-lib';
@@ -62,19 +63,20 @@ const WalletController = (): IWalletController => {
     if (!isUpdated && sjs !== null) {
       return
     }
-    HDsigner = new sys.utils.HDSigner(mnemonic, password, true)
+    console.log("creating mnemonic", mnemonic)
+    console.log("creating password", password)
+    HDsigner = new sys.utils.HDSigner(mnemonic, null, true)
     sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
     if (HDsigner.accountIndex > 0) {
       throw new Error("account index is bigger then 0 logic inconsistency")
     }
-    // if (isUpdated) {
-    //   //logic for import seed phrase
-    //   const { seedKeystoreId, keystores } = store.getState().wallet;
+    if (isUpdated) {
+      const { accounts } = store.getState().wallet;
 
-    //   if (seedKeystoreId > -1 && keystores[seedKeystoreId]) {
-    //     store.dispatch(removeSeedAccounts());
-    //   }
-    // }
+      if (accounts) {
+        store.dispatch(removeAccounts());
+      }
+    }
 
     const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic, password)
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
@@ -121,11 +123,9 @@ const WalletController = (): IWalletController => {
       if (!decriptedMnemonic) {
         throw new Error('password wrong');
       }
-      if (HDsigner != null) {
-        console.log('well well well')
-      }
-      else {
-        HDsigner = new sys.utils.HDSigner(mnemonic, pwd, true)
+      if (HDsigner === null) {
+        HDsigner = new sys.utils.HDSigner(mnemonic, null, true)
+        //Restore logic/ function goes here 
         console.log('HDsigner retrieved')
       }
 
@@ -134,7 +134,7 @@ const WalletController = (): IWalletController => {
 
       account.getPrimaryAccount(password);
       account.watchMemPool();
-
+      console.log('unblock')
       return true;
     } catch (error) {
       console.log(error);
@@ -156,6 +156,7 @@ const WalletController = (): IWalletController => {
 
     if (validateMnemonic(seedphrase)) {
       mnemonic = seedphrase
+      console.log("mnemonic is set:", mnemonic)
       return true;
     }
 

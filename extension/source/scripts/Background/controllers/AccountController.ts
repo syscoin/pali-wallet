@@ -23,7 +23,7 @@ import { sys } from 'constants/index';
 
 
 export interface IAccountController {
-  subscribeAccount: (HDsigner: any, blockExplorer: string) => Promise< string | null>;
+  subscribeAccount: (HDsigner: any, blockExplorer: string) => Promise<string | null>;
   getPrimaryAccount: (pwd: string) => void;
   unsubscribeAccount: (index: number, pwd: string) => boolean;
   updateAccountLabel: (id: number, label: string) => void;
@@ -76,28 +76,32 @@ const AccountController = (actions: {
     return getAccountByPrivateKey();
   };
 
-  const subscribeAccount = async (HDsigner: any,blockExplorer: string, label?: string) => {
+  const subscribeAccount = async (HDsigner: any, blockExplorer: string, label?: string) => {
     // const { accounts }: IWalletState = store.getState().wallet;
+    // TODO: addapt this function to create new accounts as well check --> addNewAccount method in the class
     const account0 = HDsigner.accounts[0]
     backendUrl = blockExplorer;
-    if(!account0 && HDsigner.accountIndex != 0) throw new Error("Error: account not created properly on wallet creation HDsigner object")
-    let asset_information = await sys.utils.fetchBackendAccount(backendUrl, account0.getAccountPublicKey(), 'tokens=used',true, HDsigner);
-    console.log('syscoin backend output',asset_information )
+    if (!account0 && HDsigner.accountIndex != 0) throw new Error("Error: account not created properly on wallet creation HDsigner object")
+    console.log("The account xpub:", account0.getAccountPublicKey())
+    let asset_information = await sys.utils.fetchBackendAccount(backendUrl, account0.getAccountPublicKey(), 'tokens=used&details=txs', true, HDsigner);
+
+    console.log('syscoin backend output', asset_information)
     //TODO: get the 10 last transactions from the backend and pass to transaction buffer
-    //TODO: change transaction interface to get necessary information from backend
     //TODO: balance for each SPT token
     account = {
       id: HDsigner.accountIndex,
       label: label || `Account ${HDsigner.accountIndex + 1}`,
-      address: {'assetId': 'ihihih'},
+      address: { 'assetId': 'ihihih' },
       balance: asset_information.balance,
       transactions: [],
-      type:  AccountType.Seed,
-        xpub:  HDsigner.getAccountXpub(),
-        assets: {'lalala': {
+      type: AccountType.Seed,
+      xpub: HDsigner.getAccountXpub(),
+      assets: {
+        'lalala': {
           name: 'BagiImoveis',
           balance: 9999999
-        }},
+        }
+      },
     };
 
     store.dispatch(createAccount(account));
@@ -238,10 +242,12 @@ const AccountController = (actions: {
         ? AccountType.PrivKey
         : AccountType.Seed,
       xpub: "myxpubhot",
-      assets: {'lalala': {
-        name: 'BagiImoveis',
-        balance: 9999999
-      }},
+      assets: {
+        'lalala': {
+          name: 'BagiImoveis',
+          balance: 9999999
+        }
+      },
 
     };
 
