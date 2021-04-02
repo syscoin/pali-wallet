@@ -6,7 +6,7 @@ import styles from './Link.scss';
 
 interface ILink {
   children: ReactNode;
-  color?: 'primary' | 'secondary';
+  color?: 'primary' | 'secondary' | 'tertiary';
   noUnderline?: boolean;
   onClick?: () => void;
   to: string;

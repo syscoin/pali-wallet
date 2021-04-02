@@ -8,7 +8,7 @@ import styles from './Start.scss';
 const Start = () => {
   return (
     <div className={styles.home}>
-      <h1 className="heading-1 full-width t-roboto t-gold">
+      <h1 className="heading-1 full-width t-roboto t-navy-light">
         Welcome to
         <br />
         Syscoin Wallet
@@ -22,7 +22,7 @@ const Start = () => {
       >
         Get started
       </Button>
-      <Link color="secondary" to="/import">
+      <Link color="tertiary" to="/import">
         Import using wallet seed phrase
       </Link>
     </div>
