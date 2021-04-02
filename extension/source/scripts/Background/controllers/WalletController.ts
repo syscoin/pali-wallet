@@ -29,6 +29,7 @@ export interface IWalletController {
   importPhrase: (phr: string) => boolean;
   switchWallet: (id: number) => void;
   switchNetwork: (networkId: string) => void;
+  getNewAddress: () => boolean;
   logOut: () => void;
 }
 
@@ -203,6 +204,21 @@ const WalletController = (): IWalletController => {
     }
   };
 
+  const getNewAddress = () => {
+    const { accounts, activeAccountId } = store.getState().wallet;
+    console.log("Deriving new addres for Account: ", activeAccountId)
+    var activeAccount = HDsigner.accounts[activeAccountId]
+    console.log("just accounts:", accounts)
+    console.log("response from HDsigner", activeAccount.getAddress(0))
+    console.log("typeof", typeof (activeAccount.getAddress(0)))
+
+    // console.log("all addresses: ", accounts[activeAccountId].address)
+    // console.log("last one: ", accounts[activeAccountId].address.main)
+    // accounts[activeAccountId].address.main = activeAccount.getAddress(0)
+
+    return account.setNewAddress(activeAccount.getAddress(0))
+  }
+
   const account = AccountController({ checkPassword, importPrivKey });
 
   return {
@@ -218,6 +234,7 @@ const WalletController = (): IWalletController => {
     unLock,
     switchWallet,
     switchNetwork,
+    getNewAddress,
     logOut,
   };
 };

@@ -7,6 +7,7 @@ import {
   updateLabel,
   removeKeystoreInfo,
   updateTransactions,
+  updateAccountAddress
 } from 'state/wallet';
 import IWalletState, {
   AccountType,
@@ -39,6 +40,7 @@ export interface IAccountController {
   getTempTx: () => ITransactionInfo | null;
   updateTempTx: (tx: ITransactionInfo) => void;
   confirmTempTx: () => void;
+  setNewAddress: (addr: string) => boolean;
   transfer: (sender: string, receiver: string, amount: number, fee: number | undefined) => any | null;
 }
 
@@ -91,7 +93,7 @@ const AccountController = (actions: {
     account = {
       id: HDsigner.accountIndex,
       label: label || `Account ${HDsigner.accountIndex + 1}`,
-      address: { 'assetId': 'ihihih' },
+      address: { 'main': 'ihihih' },
       balance: asset_information.balance,
       transactions: [],
       type: AccountType.Seed,
@@ -335,7 +337,23 @@ const AccountController = (actions: {
       }
     }
   }
+  const setNewAddress = (addr: string) => {
+    const { accounts, activeAccountId } = store.getState().wallet;
+    console.log("all addresses: ", accounts[activeAccountId].address)
+    console.log("last one: ", accounts[activeAccountId].address.main)
+    store.dispatch(
+      updateAccountAddress({
+        id: activeAccountId,
+        address: { "main": addr },
+      })
+    );
+    console.log("updated one: ", accounts[activeAccountId].address.main)
 
+    return true;
+
+
+
+  }
   const confirmTempTx = () => {
     if (!account) {
       throw new Error("Error: Can't find active account info");
@@ -387,6 +405,7 @@ const AccountController = (actions: {
     isValidSYSAddress,
     updateTxs,
     getRecommendFee,
+    setNewAddress,
     transfer
   };
 };

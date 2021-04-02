@@ -15,7 +15,7 @@ export interface IAccountState {
       balance: number;
     };
   };
-  address:{ [assetId: string]: string };
+  address: { [assetId: string]: string };
   type: AccountType;
   balance: number;
   transactions: Transaction[];
@@ -25,6 +25,11 @@ export interface IAccountUpdateState {
   id: number;
   balance: number;
   transactions: Transaction[];
+}
+
+export interface IAccountUpdateAddress {
+  id: number;
+  address: { [assetId: string]: string };
 }
 
 export interface Keystore {

@@ -6,7 +6,7 @@ import IWalletState, {
   IAccountUpdateState,
   IAccountState,
   Keystore,
-  AccountType,
+  IAccountUpdateAddress,
 } from './types';
 
 const initialState: IWalletState = {
@@ -81,6 +81,12 @@ const WalletState = createSlice({
         ...action.payload,
       };
     },
+    updateAccountAddress(state: IWalletState, action: PayloadAction<IAccountUpdateAddress>) {
+      state.accounts[action.payload.id] = {
+        ...state.accounts[action.payload.id],
+        ...action.payload,
+      };
+    },
     deleteWallet(state: IWalletState) {
       state.keystores = [];
       state.accounts = [];
@@ -124,6 +130,7 @@ export const {
   updateTransactions,
   updateLabel,
   setEncriptedMnemonic,
+  updateAccountAddress
 } = WalletState.actions;
 
 export default WalletState.reducer;
