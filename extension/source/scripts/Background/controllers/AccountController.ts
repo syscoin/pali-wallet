@@ -25,7 +25,7 @@ import { sys } from 'constants/index';
 
 export interface IAccountController {
   subscribeAccount: (sjs: any, label?: string) => Promise<string | null>;
-  getPrimaryAccount: (pwd: string) => void;
+  getPrimaryAccount: (pwd: string, sjs: any) => void;
   unsubscribeAccount: (index: number, pwd: string) => boolean;
   updateAccountLabel: (id: number, label: string) => void;
   addNewAccount: (label: string) => Promise<string | null>;
@@ -52,11 +52,13 @@ const AccountController = (actions: {
   let account: IAccountState;
   let password: string;
   let tempTx: ITransactionInfo | null;
+  let sysjs: any;
 
 
-  const getAccountInfo = async (sjs: any): Promise<IAccountInfo> => {
+  const getAccountInfo = async (): Promise<IAccountInfo> => {
+    console.log("checking sys:", sysjs)
 
-    let res = await sys.utils.fetchBackendAccount(sjs.blockbookURL, sjs.HDSigner.getAccountXpub(), 'tokens=used&details=txs', true, sjs.HDSigner);
+    let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=used&details=txs', true, sysjs.HDSigner);
     const balance = res.balance;
     const assets = res.tokens;
     const transactions: Transaction[] = res.transactions.slice(0, 10);
@@ -79,23 +81,20 @@ const AccountController = (actions: {
   // };
 
   const subscribeAccount = async (sjs: any, label?: string) => {
-    // const { accounts }: IWalletState = store.getState().wallet;
-    // TODO: addapt this function to create new accounts as well check --> addNewAccount method in the class
-    // const account0 = sjs.HDsigner.accounts[0]
-    // if (!account0 && sjs.HDsigner.accountIndex != 0) throw new Error("Error: account not created properly on wallet creation HDsigner object")
-
-    const res: IAccountInfo | null = await getAccountInfo(sjs);
+    sysjs = sjs;
+    console.log("check sysjs lib", sysjs)
+    const res: IAccountInfo | null = await getAccountInfo();
     console.log('syscoin backend output', res)
     //TODO: get the 10 last transactions from the backend and pass to transaction buffer
     //TODO: balance for each SPT token
 
     account = {
-      id: sjs.HDSigner.accountIndex,
-      label: label || `Account ${sjs.HDSigner.accountIndex + 1}`,
+      id: sysjs.HDSigner.accountIndex,
+      label: label || `Account ${sysjs.HDSigner.accountIndex + 1}`,
       balance: res.balance / 10 ** 8,
       transactions: res.transactions,
-      xpub: sjs.HDSigner.getAccountXpub(),
-      address: { 'main': sjs.HDSigner.getNewReceivingAddress() },
+      xpub: sysjs.HDSigner.getAccountXpub(),
+      address: { 'main': sysjs.HDSigner.getNewReceivingAddress() },
       assets: res.assets
     };
     store.dispatch(createAccount(account));
@@ -145,14 +144,14 @@ const AccountController = (actions: {
   //   return true;
   // };
 
-  const getLatestUpdate = () => {
+  const getLatestUpdate = async () => {
     const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
 
     if (!accounts[activeAccountId]) {
       return;
     };
 
-    const accLatestInfo = getAccountInfo(sjs);
+    const accLatestInfo = await getAccountInfo();
 
     if (!accLatestInfo) return;
     account = accounts[activeAccountId];
@@ -183,9 +182,11 @@ const AccountController = (actions: {
     );
   };
 
-  const getPrimaryAccount = (pwd: string) => {
+  const getPrimaryAccount = (pwd: string, sjs: any) => {
     const { accounts, activeAccountId }: IWalletState = store.getState().wallet;
-
+    if (!sysjs) {
+      sysjs = sjs;
+    }
     if (!actions.checkPassword(pwd)) return;
     password = pwd;
 

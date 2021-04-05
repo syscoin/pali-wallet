@@ -83,7 +83,7 @@ const WalletController = (): IWalletController => {
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
     console.log("The accounts on HDsigner:", HDsigner.accounts)
     account.subscribeAccount(sjs);
-    account.getPrimaryAccount(password);
+    account.getPrimaryAccount(password, sjs);
 
     if (isUpdated) {
       account.getLatestUpdate();
@@ -127,6 +127,7 @@ const WalletController = (): IWalletController => {
       if (HDsigner === null || sjs === null) {
         HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, true)
         sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
+
         //Restore logic/ function goes here 
         console.log('HDsigner retrieved')
         console.log('XPUB retrieved', sjs.HDSigner.getAccountXpub())
@@ -135,7 +136,7 @@ const WalletController = (): IWalletController => {
       password = pwd;
       mnemonic = decriptedMnemonic;
 
-      account.getPrimaryAccount(password);
+      account.getPrimaryAccount(password, sjs);
       account.watchMemPool();
       console.log('unblock')
       return true;
