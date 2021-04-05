@@ -37,15 +37,15 @@ const RemoveAccountView: FC<IRemoveAccountView> = ({ id }) => {
 
   const onSubmit = (data: any) => {
     let isChecked;
-    
-    if (accounts[id].type === AccountType.Seed) {
-      isChecked = controller.wallet.account.unsubscribeAccount(
-        id,
-        data.password
-      );
-    } else {
-      alert.error('Error: You cannot remove the main account.');
-    }
+
+    // if (accounts[id].type === AccountType.Seed) {
+    //   isChecked = controller.wallet.account.unsubscribeAccount(
+    //     id,
+    //     data.password
+    //   );
+    // } else {
+    //   alert.error('Error: You cannot remove the main account.');
+    // }
 
     if (isChecked) {
       showView(MAIN_VIEW);

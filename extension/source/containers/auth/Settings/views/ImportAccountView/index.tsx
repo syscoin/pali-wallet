@@ -32,18 +32,18 @@ const ImportAccountView = () => {
     }),
   });
 
-  const handleImportPrivKey = (privKey: string, label: string) => {
-    controller.wallet.account.importPrivKeyAccount(privKey, label);
-    setAddress({
-      main: '0x01',
-    })
-    setLoading(false);
-  };
+  // const handleImportPrivKey = (privKey: string, label: string) => {
+  //   controller.wallet.account.importPrivKeyAccount(privKey, label);
+  //   setAddress({
+  //     main: '0x01',
+  //   })
+  //   setLoading(false);
+  // };
 
   const onSubmit = (data: any) => {
     if (importType === 'priv') {
       setLoading(true);
-      handleImportPrivKey('imported-private-key', data.label);
+      // handleImportPrivKey('imported-private-key', data.label);
     } else {
       alert.removeAll();
       alert.error('Error: A private key json file is not chosen');

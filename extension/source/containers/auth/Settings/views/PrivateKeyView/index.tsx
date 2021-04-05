@@ -45,14 +45,15 @@ const PrivateKeyView: FC<IPrivateKeyView> = ({ id }) => {
   });
 
   const onSubmit = (data: any) => {
-    const res = controller.wallet.account.getPrivKey(Number(id), data.password);
-    if (res) {
-      setPrivKey(res);
-      setChecked(true);
-    } else {
-      alert.removeAll();
-      alert.error('Error: Invalid password');
-    }
+    // const res = controller.wallet.account.getPrivKey(Number(id), data.password);
+    // if (res) {
+    //   setPrivKey(res);
+    //   setChecked(true);
+    // } else {
+    //   alert.removeAll();
+    //   alert.error('Error: Invalid password');
+    // }
+    console.log("disabled")
   };
 
   const handleCopyPrivKey = () => {

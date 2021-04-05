@@ -3,10 +3,10 @@ import clsx from 'clsx';
 import { v4 as uuid } from 'uuid';
 import { useFiat } from 'hooks/usePrice';
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
-import DownArrowIcon from '@material-ui/icons/ArrowDownward';
+// import DownArrowIcon from '@material-ui/icons/ArrowDownward';
 import GoTopIcon from '@material-ui/icons/VerticalAlignTop';
 import IconButton from '@material-ui/core/IconButton';
-import Spinner from '@material-ui/core/CircularProgress';
+// import Spinner from '@material-ui/core/CircularProgress';
 
 import { useController } from 'hooks/index';
 import { formatDistanceDate } from '../helpers';
@@ -17,11 +17,11 @@ import { Transaction } from '../../../scripts/types';
 import styles from './Home.scss';
 
 interface ITxsPanel {
-  address: string;
+  // address: string;
   transactions: Transaction[];
 }
 
-const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
+const TxsPanel: FC<ITxsPanel> = ({ transactions }) => {
   const getFiatAmount = useFiat();
   const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
@@ -31,8 +31,8 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
     (tx: Transaction, idx: number) => {
       return (
         idx === 0 ||
-        new Date(tx.timestamp).toDateString() !==
-          new Date(transactions[idx - 1].timestamp).toDateString()
+        new Date(tx.blockTime * 1000).toDateString() !==
+        new Date(transactions[idx - 1].blockTime * 1000).toDateString()
       );
     },
     [transactions]
@@ -56,8 +56,8 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
     }
   }, []);
 
-  const handleOpenExplorer = (/* tx: string */) => {
-    window.open(SYS_EXPLORER_SEARCH, '_blank');
+  const handleOpenExplorer = (txid: string) => {
+    window.open(SYS_EXPLORER_SEARCH + '/tx/' + txid);
   };
 
   const handleGoTop = () => {
@@ -82,17 +82,17 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
         <>
           <ul>
             {transactions.map((tx: Transaction, idx: number) => {
-              const isRecived = tx.receiver === address;
+              // const isRecived = tx.receiver === address;
 
               return (
                 <Fragment key={uuid()}>
                   {isShowedGroupBar(tx, idx) && (
                     <li className={styles.groupbar}>
-                      {formatDistanceDate(tx.timestamp)}
+                      {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}
                     </li>
                   )}
-                  <li onClick={() => handleOpenExplorer(/* tx.hash */)}>
-                    <div>
+                  <li onClick={() => handleOpenExplorer(tx.txid)}>
+                    {/* <div>
                       <div className={styles.iconWrapper}>
                         {tx.checkpointBlock ? (
                           isRecived ? (
@@ -112,13 +112,13 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
                             : `To: ${tx.receiver}`}
                         </small>
                       </span>
-                    </div>
+                    </div> */}
                     <div>
                       <span>
                         <span>
-                          {tx.amount / 1e8} <b>SYS</b>
+                          {tx.tokenType ? "SPT Transaction" : "SYS Transaction"}
                         </span>
-                        <small>{getFiatAmount(tx.amount / 1e8, 8)}</small>
+                        <small>{tx.txid}</small>
                       </span>
                       <div className={styles.linkIcon}>
                         <UpArrowIcon />
@@ -130,12 +130,12 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
             })}
           </ul>
           <div className={styles.syscoin}>
-            <img
+            {/* <img
               src={SyscoinIcon}
               alt="syscoin"
               height="167"
               width="auto"
-            />
+            /> */}
           </div>
         </>
       ) : (
@@ -144,13 +144,13 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
             You have no transaction history, send or receive SYS to register
             your first transaction.
           </span>
-          <img
+          {/* <img
             src={SyscoinIcon}
             className={styles.syscoin}
             alt="syscoin"
             height="167"
             width="auto"
-          />
+          /> */}
         </>
       )}
     </section>

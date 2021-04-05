@@ -10,13 +10,13 @@ export interface IAccountState {
   label: string;
   xpub: string;
   assets: {
-    [assetId: string]: {
+    [assetId: number]: {
       name: string;
       balance: number;
     };
   };
   address: { [assetId: string]: string };
-  type: AccountType;
+  // type: AccountType;
   balance: number;
   transactions: Transaction[];
 }

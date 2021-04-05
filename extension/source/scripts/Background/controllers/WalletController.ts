@@ -29,7 +29,7 @@ export interface IWalletController {
   importPhrase: (phr: string) => boolean;
   switchWallet: (id: number) => void;
   switchNetwork: (networkId: string) => void;
-  getNewAddress: () => boolean;
+  getNewAddress: () => Promise<boolean>;
   logOut: () => void;
 }
 
@@ -68,9 +68,9 @@ const WalletController = (): IWalletController => {
     console.log("creating password", password)
     HDsigner = new sys.utils.HDSigner(mnemonic, null, true)
     sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
-    if (HDsigner.accountIndex > 0) {
-      throw new Error("account index is bigger then 0 logic inconsistency")
-    }
+    // if (HDsigner.accountIndex > 0) {
+    //   throw new Error("account index is bigger then 0 logic inconsistency")
+    // }
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
 
@@ -82,7 +82,7 @@ const WalletController = (): IWalletController => {
     const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic, password)
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
     console.log("The accounts on HDsigner:", HDsigner.accounts)
-    account.subscribeAccount(HDsigner, backendURl);
+    account.subscribeAccount(sjs);
     account.getPrimaryAccount(password);
 
     if (isUpdated) {
@@ -124,10 +124,12 @@ const WalletController = (): IWalletController => {
       if (!decriptedMnemonic) {
         throw new Error('password wrong');
       }
-      if (HDsigner === null) {
-        HDsigner = new sys.utils.HDSigner(mnemonic, null, true)
+      if (HDsigner === null || sjs === null) {
+        HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, true)
+        sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
         //Restore logic/ function goes here 
         console.log('HDsigner retrieved')
+        console.log('XPUB retrieved', sjs.HDSigner.getAccountXpub())
       }
 
       password = pwd;
@@ -204,19 +206,11 @@ const WalletController = (): IWalletController => {
     }
   };
 
-  const getNewAddress = () => {
-    const { accounts, activeAccountId } = store.getState().wallet;
-    console.log("Deriving new addres for Account: ", activeAccountId)
-    var activeAccount = HDsigner.accounts[activeAccountId]
-    console.log("just accounts:", accounts)
-    console.log("response from HDsigner", activeAccount.getAddress(0))
-    console.log("typeof", typeof (activeAccount.getAddress(0)))
+  const getNewAddress = async () => {
 
-    // console.log("all addresses: ", accounts[activeAccountId].address)
-    // console.log("last one: ", accounts[activeAccountId].address.main)
-    // accounts[activeAccountId].address.main = activeAccount.getAddress(0)
-
-    return account.setNewAddress(activeAccount.getAddress(0))
+    sjs.HDSigner.receivingIndex = -1;
+    const address = await sjs.HDSigner.getNewReceivingAddress()
+    return account.setNewAddress(address)
   }
 
   const account = AccountController({ checkPassword, importPrivKey });

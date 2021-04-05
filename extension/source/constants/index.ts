@@ -28,11 +28,11 @@ export const SYS_NETWORK: {
     beUrl: 'https://sys-explorer.tk/',
     lbUrl: 'nao tem :('
   }
-  
+
 };
 
-export const ASSET_PRICE_API = 'https://api.coingecko.com/api/v3/simple/price';
-export const SYS_EXPLORER_SEARCH = 'https://sys-explorer.tk/api/v2'; // ok
+export const ASSET_PRICE_API = 'https://sys-explorer.tk/api/v2/tickers/';
+export const SYS_EXPLORER_SEARCH = 'https://sys-explorer.tk'; // ok
 
 export const PRICE_SYS_ID = 'syscoin';
 export const PRICE_BTC_ID = 'bitcoin';
