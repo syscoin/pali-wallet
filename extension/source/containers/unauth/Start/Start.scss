@@ -13,8 +13,15 @@
   flex-direction: column;
   padding: 36px;
   box-sizing: border-box;
-  border: 3px solid $royalBlue;
-
+  border-style: solid;
+  border-width: 3px 0;
+  border-image: 
+    linear-gradient(
+      to right, 
+      $navy 20%, 
+      $navy-light 50%, 
+      $navy 80%
+    ) 10;
 
   .logo {
     margin-top: 80px;
