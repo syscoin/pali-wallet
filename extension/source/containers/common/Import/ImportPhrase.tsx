@@ -56,7 +56,7 @@ const ImportPhrase: FC<IImportPhrase> = ({onRegister}) => {
         <div className={styles.actions}>
           <Button
             type="submit"
-            theme="btn-outline-primary"
+            theme="btn-gradient-primary"
             variant={styles.button}>
             Import
           </Button>

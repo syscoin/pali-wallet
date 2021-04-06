@@ -47,7 +47,7 @@ const CreatePhrase: FC = () => {
       )}
       <Button
         type="button"
-        theme="btn-outline-primary"
+        theme="btn-gradient-primary"
         onClick={nextHandler}
         variant={clsx(styles.written, { [styles.passed]: passed })}
       >

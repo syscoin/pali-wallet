@@ -8,7 +8,7 @@ import styles from './Start.scss';
 const Start = () => {
   return (
     <div className={styles.home}>
-      <h1 className="heading-1 full-width t-roboto t-navy-light">
+      <h1 className="heading-1 full-width t-roboto t-royalBlue">
         Welcome to
         <br />
         Syscoin Wallet
@@ -16,7 +16,7 @@ const Start = () => {
       <img src={`/${LogoImage}`} className={styles.logo} alt="syscoin" />
       <Button
         type="submit"
-        theme="btn-outline-primary"
+        theme="btn-gradient-primary"
         variant={styles.started}
         linkTo="/create/pass"
       >

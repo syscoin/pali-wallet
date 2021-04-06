@@ -64,7 +64,40 @@ body {
       }
     }
 
-    // Ajustar
+    &.btn-gradient-primary {
+      color: $royalBlue;
+      border: 1px solid;
+      border-radius: 73px;
+      border-image: 
+        linear-gradient(
+          30deg, 
+          $deepPink 20%, 
+          $royalBlue 50%
+        ) 10;
+      
+      &::after { 
+        background: linear-gradient(red, blue);
+        border-radius: 16px;
+      }
+
+      &:hover {
+        background: linear-gradient(
+          30deg, 
+          $deepPink 20%, 
+          $royalBlue 50%
+        ) 10;
+
+        /* change the direction of the change here */
+        // background-position: right center;
+        // color: #fff;
+        // text-decoration: none;
+      }
+
+      &:active {
+        transform: scale(0.95);
+      }
+    }
+
     &.btn-outline-primary {
       border: 1px solid $gold;
       border-radius: 73px;

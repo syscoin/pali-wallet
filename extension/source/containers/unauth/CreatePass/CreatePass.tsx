@@ -76,7 +76,7 @@ const CreatePass = () => {
         
         <Button
           type={passed ? 'button' : 'submit'}
-          theme="btn-outline-primary"
+          theme="btn-gradient-primary"
           variant={styles.next}
           onClick={nextHandler}
         >
