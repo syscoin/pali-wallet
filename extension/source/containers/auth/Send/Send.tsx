@@ -34,7 +34,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     validationSchema: yup.object().shape({
       address: yup.string().required('Error: Invalid SYS address'),
       amount: yup.number().moreThan(0).required('Error: Invalid SYS Amount'),
-      fee: yup.string().required('Error: Invalid transaction fee'),
+      fee: yup.number().required('Error: Invalid transaction fee'),
     }),
   });
   const history = useHistory();

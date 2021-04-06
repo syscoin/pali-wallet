@@ -1,12 +1,12 @@
 import React, { FC, Fragment, useCallback, useState } from 'react';
 import clsx from 'clsx';
 import { v4 as uuid } from 'uuid';
-import { useFiat } from 'hooks/usePrice';
+// import { useFiat } from 'hooks/usePrice';
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
 // import DownArrowIcon from '@material-ui/icons/ArrowDownward';
 import GoTopIcon from '@material-ui/icons/VerticalAlignTop';
 import IconButton from '@material-ui/core/IconButton';
-// import Spinner from '@material-ui/core/CircularProgress';
+import Spinner from '@material-ui/core/CircularProgress';
 
 import { useController } from 'hooks/index';
 import { formatDistanceDate } from '../helpers';
@@ -17,12 +17,12 @@ import { Transaction } from '../../../scripts/types';
 import styles from './Home.scss';
 
 interface ITxsPanel {
-  // address: string;
+  address: string;
   transactions: Transaction[];
 }
 
 const TxsPanel: FC<ITxsPanel> = ({ transactions }) => {
-  const getFiatAmount = useFiat();
+  // const getFiatAmount = useFiat();
   const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
@@ -31,8 +31,8 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions }) => {
     (tx: Transaction, idx: number) => {
       return (
         idx === 0 ||
-        new Date(tx.blockTime * 1000).toDateString() !==
-        new Date(transactions[idx - 1].blockTime * 1000).toDateString()
+        new Date(tx.blockTime * 1e3).toDateString() !==
+        new Date(transactions[idx - 1].blockTime * 1e3).toDateString()
       );
     },
     [transactions]
@@ -40,8 +40,6 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions }) => {
 
   const handleFetchMoreTxs = () => {
     if (transactions.length) {
-      const lastTx = [...transactions].pop();
-      console.log('last tx', lastTx);
       controller.wallet.account.updateTxs();
     }
   };
@@ -83,6 +81,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions }) => {
           <ul>
             {transactions.map((tx: Transaction, idx: number) => {
               // const isRecived = tx.receiver === address;
+              const isConfirmed = tx.confirmations > 0;
 
               return (
                 <Fragment key={uuid()}>
@@ -114,11 +113,15 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions }) => {
                       </span>
                     </div> */}
                     <div>
+                      {isConfirmed ? null : <Spinner size={25} className={styles.spinner} />}
+                    </div>
+                    <div>
                       <span>
                         <span>
-                          {tx.tokenType ? "SPT Transaction" : "SYS Transaction"}
+                          {"Transaction " + (transactions.indexOf(tx) + 1)}
                         </span>
                         <small>{tx.txid}</small>
+                        <small>{isConfirmed ? "Confirmed" : "Unconfirmed"}</small>
                       </span>
                       <div className={styles.linkIcon}>
                         <UpArrowIcon />
@@ -144,13 +147,13 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions }) => {
             You have no transaction history, send or receive SYS to register
             your first transaction.
           </span>
-          {/* <img
+          <img
             src={SyscoinIcon}
             className={styles.syscoin}
             alt="syscoin"
             height="167"
             width="auto"
-          /> */}
+          />
         </>
       )}
     </section>

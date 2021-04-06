@@ -17,10 +17,11 @@ import IWalletState, {
 import {
   IAccountInfo,
   ITransactionInfo,
-  PendingTx,
+  // PendingTx,
   Transaction
 } from '../../types';
 import { sys } from 'constants/index';
+// import { type } from 'os';
 
 
 export interface IAccountController {
@@ -41,7 +42,7 @@ export interface IAccountController {
   updateTempTx: (tx: ITransactionInfo) => void;
   confirmTempTx: () => void;
   setNewAddress: (addr: string) => boolean;
-  transfer: (sender: string, receiver: string, amount: number, fee: number | undefined) => any | null;
+  // transfer: (sender: string, receiver: string, amount: number, fee: number | undefined) => any | null;
 }
 
 const AccountController = (actions: {
@@ -50,7 +51,7 @@ const AccountController = (actions: {
 }): IAccountController => {
   let intervalId: any;
   let account: IAccountState;
-  let password: string;
+  // let password: string;
   let tempTx: ITransactionInfo | null;
   let sysjs: any;
 
@@ -59,10 +60,10 @@ const AccountController = (actions: {
     console.log("checking sys:", sysjs)
 
     let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=used&details=txs', true, sysjs.HDSigner);
-    const balance = res.balance;
+    const balance = res.balance / 1e8;
     const assets = res.tokens;
     const transactions: Transaction[] = res.transactions.slice(0, 10);
-    console.log(transactions)
+
     return {
       balance,
       assets,
@@ -91,10 +92,10 @@ const AccountController = (actions: {
     account = {
       id: sysjs.HDSigner.accountIndex,
       label: label || `Account ${sysjs.HDSigner.accountIndex + 1}`,
-      balance: res.balance / 10 ** 8,
+      balance: res.balance,
       transactions: res.transactions,
       xpub: sysjs.HDSigner.getAccountXpub(),
-      address: { 'main': sysjs.HDSigner.getNewReceivingAddress() },
+      address: { 'main': await sysjs.HDSigner.getNewReceivingAddress() },
       assets: res.assets
     };
     store.dispatch(createAccount(account));
@@ -156,22 +157,22 @@ const AccountController = (actions: {
     if (!accLatestInfo) return;
     account = accounts[activeAccountId];
 
-    const memPool = ''; // get pending txs from syscoin
-    if (memPool) {
-      const pendingTxs = JSON.parse(memPool);
-      pendingTxs.forEach((pTx: PendingTx) => {
-        // if (
-        //   !account ||
-        //   (account.address.main !== pTx.sender &&
-        //     account.address.main !== pTx.receiver) ||
-        //   accLatestInfo?.transactions.filter(
-        //     (tx: Transaction) => tx.txid === pTx.hash
-        //   ).length > 0
-        // )
-        //   return;
-        accLatestInfo!.transactions.unshift(_coventPendingType(pTx));
-      });
-    }
+    // const memPool = ''; // get pending txs from syscoin
+    // if (memPool) {
+    //   const pendingTxs = JSON.parse(memPool);
+    //   pendingTxs.forEach((pTx: PendingTx) => {
+    //     // if (
+    //     //   !account ||
+    //     //   (account.address.main !== pTx.sender &&
+    //     //     account.address.main !== pTx.receiver) ||
+    //     //   accLatestInfo?.transactions.filter(
+    //     //     (tx: Transaction) => tx.txid === pTx.hash
+    //     //   ).length > 0
+    //     // )
+    //     //   return;
+    //     accLatestInfo!.transactions.unshift(_coventPendingType(pTx));
+    //   });
+    // }
 
     store.dispatch(
       updateAccount({
@@ -188,7 +189,7 @@ const AccountController = (actions: {
       sysjs = sjs;
     }
     if (!actions.checkPassword(pwd)) return;
-    password = pwd;
+    // password = pwd;
 
     getLatestUpdate();
 
@@ -212,7 +213,7 @@ const AccountController = (actions: {
         !accounts[activeAccountId] ||
         !accounts[activeAccountId].transactions ||
         !accounts[activeAccountId].transactions.filter(
-          (tx: Transaction) => tx.fees === -1
+          (tx: Transaction) => tx.confirmations > 0
         ).length
       ) {
         clearInterval(intervalId);
@@ -270,16 +271,17 @@ const AccountController = (actions: {
   };
 
   const getRecommendFee = () => {
-    return 0.028;
+    return 0.0001;
   };
 
-  const _coventPendingType = (pending: PendingTx) => {
+  const _coventPendingType = (txid: string) => {
+
     return {
-      txid: pending.txid,
-      value: pending.value,
-      confirmations: pending.confirmations,
-      fees: pending.fees,
-      blockTime: pending.blockTime,
+      txid: txid,
+      value: 0,
+      confirmations: 0,
+      fees: 0,
+      blockTime: Date.now() / 1e3,
     } as Transaction;
   };
 
@@ -288,14 +290,14 @@ const AccountController = (actions: {
       return;
     }
 
-    const newTxs: Transaction[] = []; // get transactions request (syscoin)
+    getLatestUpdate();
 
-    store.dispatch(
-      updateTransactions({
-        id: account.id,
-        txs: [...account.transactions, ...newTxs],
-      })
-    );
+    // store.dispatch(
+    //   updateTransactions({
+    //     id: account.id,
+    //     txs: [...account.transactions, ...newTxs],
+    //   })
+    // );
   };
 
   const getTempTx = () => {
@@ -308,23 +310,23 @@ const AccountController = (actions: {
     tempTx.toAddress = tempTx.toAddress.trim();
   };
 
-  const transfer = (sender: string, receiver: string, amount: number, fee: number | undefined) => {
-    return {
-      pendingTx: {
-        timestamp: Date.now(),
-        hash: 'hashString',
-        amount,
-        receiver,
-        sender,
-      },
-      transactionInfo: {
-        fromAddress: sender,
-        toAddress: receiver,
-        amount: amount,
-        fee,
-      }
-    }
-  }
+  // const transfer = (sender: string, receiver: string, amount: number, fee: number | undefined) => {
+  //   return {
+  //     pendingTx: {
+  //       timestamp: Date.now(),
+  //       hash: 'hashString',
+  //       amount,
+  //       receiver,
+  //       sender,
+  //     },
+  //     transactionInfo: {
+  //       fromAddress: sender,
+  //       toAddress: receiver,
+  //       amount: amount,
+  //       fee,
+  //     }
+  //   }
+  // }
   const setNewAddress = (addr: string) => {
     const { accounts, activeAccountId } = store.getState().wallet;
     console.log("all addresses: ", accounts[activeAccountId].address)
@@ -342,34 +344,44 @@ const AccountController = (actions: {
 
 
   }
-  const confirmTempTx = () => {
+  const confirmTempTx = async () => {
+    if (!sysjs) {
+      throw new Error('Error: No signed account exists');
+    }
     if (!account) {
       throw new Error("Error: Can't find active account info");
     }
-
     if (!tempTx) {
       throw new Error("Error: Can't find transaction info");
     }
-
+    console.log("sys teste send syscoinjs", sysjs)
+    console.log(tempTx.amount / 1e8, tempTx.fee / 1e8, tempTx.toAddress)
     try {
-      const { pendingTx, transactionInfo } = transfer(
-        tempTx.fromAddress,
-        tempTx.toAddress,
-        tempTx.amount,
-        tempTx.fee
-      );
+      const _outputsArr = [
+        { address: tempTx.toAddress, value: new sys.utils.BN(tempTx.amount * 1e8) }
+      ]
+      const pendingTx = await sysjs.createTransaction({ rbf: false }, null, _outputsArr, new sys.utils.BN(tempTx.fee * 1e8));
 
-      console.log('pending transaction', pendingTx)
-      console.log('transaction info', transactionInfo)
+      // console.log("tempTx.amount", tempTx.amount);
+      // console.log("tempTx.amount BN", new sys.utils.BN(tempTx.amount * 1e8));
+      // console.log("tempTx.amount BN", new sys.utils.BN(tempTx.fee * 1e8));
+      // console.log("tempTx.amount BN", (tempTx.fee * 1e8));
 
+      // console.log("1 sys bn", new sys.utils.BN(100000000));
+
+      // const _outputsArr = [
+      //   { address: 'tsys1q2uqmjptmjf6ugt25yufq9xmawqmaws3upgl5y0', value: new sys.utils.BN(10054699544) }
+      // ]
+      // const pendingTx = await sysjs.createTransaction({ rbf: false }, null, _outputsArr, new sys.utils.BN(10))
+      const txInfo = pendingTx.extractTransaction().getId()
       store.dispatch(
         updateTransactions({
           id: account.id,
-          txs: [_coventPendingType(pendingTx), ...account.transactions],
+          txs: [_coventPendingType(txInfo), ...account.transactions],
         })
       );
-
       tempTx = null;
+
       watchMemPool();
     } catch (error) {
       throw new Error(error);
@@ -394,7 +406,7 @@ const AccountController = (actions: {
     updateTxs,
     getRecommendFee,
     setNewAddress,
-    transfer
+    // transfer
   };
 };
 

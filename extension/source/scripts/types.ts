@@ -22,7 +22,7 @@ export interface ITransactionInfo {
   fromAddress: string;
   toAddress: string;
   amount: number;
-  fee: number | undefined;
+  fee: number;
 }
 
 export type PendingTx = {
