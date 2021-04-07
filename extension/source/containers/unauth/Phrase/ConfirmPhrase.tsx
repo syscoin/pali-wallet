@@ -90,6 +90,7 @@ const ConfirmPhrase = () => {
       )}
       <Button
         type="button"
+        theme="btn-gradient-primary"
         variant={passed ? styles.start : styles.validate}
         // disabled={isNotEqualArrays}
         onClick={handleConfirm}

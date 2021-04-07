@@ -11,7 +11,6 @@ body {
 
     padding: .5rem 3rem;
     border-radius: 20px;
-    box-shadow: $shadow-btn;
     cursor: pointer;
 
     :global .MuiButton-label {
@@ -65,6 +64,7 @@ body {
       }
     }
 
+    // Primary button.
     &.btn-gradient-primary {
       color: $royalBlue;
       border: solid 3px transparent;
@@ -92,13 +92,29 @@ body {
       }
     }
     
+    // Outline buttons
     &.btn-outline-primary {
-      border: 1px solid $gold;
+      border: 1px solid $yellowGreen;
       border-radius: 73px;
-      color: $gold;
+      color: $yellowGreen;
 
       &:hover {
-        background: $gold;
+        background: $yellowGreen;
+        color: $white;
+      }
+
+      &:active {
+        transform: scale(0.95);
+      }
+    }
+
+    &.btn-outline-secondary {
+      border: 1px solid $deepPink;
+      border-radius: 73px;
+      color: $deepPink;
+
+      &:hover {
+        background: $deepPink;
         color: $white;
       }
 

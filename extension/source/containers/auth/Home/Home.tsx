@@ -61,7 +61,7 @@ const Home = () => {
             <div className={styles.actions}>
               <Button
                 type="button"
-                theme="primary"
+                theme="btn-outline-secondary"
                 variant={styles.button}
                 linkTo="/send"
               >
@@ -69,7 +69,7 @@ const Home = () => {
               </Button>
               <Button
                 type="button"
-                theme="primary"
+                theme="btn-outline-primary"
                 variant={styles.button}
                 linkTo="/receive"
               >

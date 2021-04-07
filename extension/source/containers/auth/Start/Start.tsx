@@ -45,7 +45,10 @@ const Starter = () => {
             <span className={styles.error}>Error: Invalid password</span>
           )
         )}
-        <Button type="submit" theme="btn-gradient-primary" variant={styles.unlock}>
+        <Button
+          type="submit"
+          theme="btn-gradient-primary"
+          variant={styles.unlock}>
           Unlock
         </Button>
       </form>
