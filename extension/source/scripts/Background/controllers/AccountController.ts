@@ -1,245 +1,180 @@
-import { dag } from '@stardust-collective/dag4';
-import { Transaction, PendingTx } from '@stardust-collective/dag4-network';
-import { hdkey } from 'ethereumjs-wallet';
-
 import store from 'state/store';
 import {
   createAccount,
   updateStatus,
   removeAccount,
   updateAccount,
-  updateTransactions,
   updateLabel,
-  removeKeystoreInfo,
+  // removeKeystoreInfo,
+  updateTransactions,
+  updateAccountAddress
 } from 'state/wallet';
 import IWalletState, {
-  AccountType,
+  // AccountType,
   IAccountState,
-  PrivKeystore,
+  Keystore
 } from 'state/wallet/types';
+import {
+  IAccountInfo,
+  ITransactionInfo,
+  // PendingTx,
+  Transaction
+} from '../../types';
+import { sys } from 'constants/index';
+// import { type } from 'os';
 
-import { IAccountInfo, ITransactionInfo } from '../../types';
+
 export interface IAccountController {
+  subscribeAccount: (sjs?: any, label?: string) => Promise<string | null>;
+  getPrimaryAccount: (pwd: string, sjs: any) => void;
+  unsubscribeAccount: (index: number, pwd: string) => boolean;
+  updateAccountLabel: (id: number, label: string) => void;
+  addNewAccount: (label: string) => Promise<string | null>;
+  // removePrivKeyAccount: (id: number, password: string) => boolean;
+  watchMemPool: () => void;
+  getLatestUpdate: () => void;
+  // importPrivKeyAccount: (privKey: string, label: string) => { [assetId: string]: string } | null;
+  isValidSYSAddress: (address: string) => boolean;
+  getRecommendFee: () => number;
+  // getPrivKey: (id: number, pwd: string) => string | null;
+  updateTxs: () => void;
   getTempTx: () => ITransactionInfo | null;
   updateTempTx: (tx: ITransactionInfo) => void;
-  confirmTempTx: () => Promise<void>;
-  getPrivKey: (id: string, pwd: string) => Promise<string | null>;
-  getPrimaryAccount: (pwd: string) => void;
-  isValidDAGAddress: (address: string) => boolean;
-  subscribeAccount: (
-    index: number
-  ) => Promise<{ [assetId: string]: string } | null>;
-  unsubscribeAccount: (index: number, pwd: string) => boolean;
-  addNewAccount: (
-    label: string
-  ) => Promise<{ [assetId: string]: string } | null>;
-  updateTxs: (limit?: number, searchAfter?: string) => Promise<void>;
-  updateAccountLabel: (id: string, label: string) => void;
-  importPrivKeyAccount: (
-    privKey: string,
-    label: string
-  ) => Promise<{ [assetId: string]: string } | null>;
-  removePrivKeyAccount: (id: string, password: string) => boolean;
-  getRecommendFee: () => Promise<number>;
-  watchMemPool: () => void;
-  getLatestUpdate: () => Promise<void>;
+  confirmTempTx: () => Promise<null | any>;
+  setNewAddress: (addr: string) => boolean;
+  // transfer: (sender: string, receiver: string, amount: number, fee: number | undefined) => any | null;
 }
 
 const AccountController = (actions: {
-  getMasterKey: () => hdkey | null;
   checkPassword: (pwd: string) => boolean;
-  importPrivKey: (privKey: string) => Promise<PrivKeystore | null>;
+  importPrivKey: (privKey: string) => Keystore | null;
 }): IAccountController => {
-  let privateKey: string;
-  let tempTx: ITransactionInfo | null;
-  let account: IAccountState | null;
   let intervalId: any;
-  let password: string;
+  let account: IAccountState;
+  // let password: string;
+  let tempTx: ITransactionInfo | null;
+  let sysjs: any;
 
-  const _coventPendingType = (pending: PendingTx) => {
-    return {
-      hash: pending.hash,
-      amount: pending.amount,
-      receiver: pending.receiver,
-      sender: pending.sender,
-      fee: -1,
-      isDummy: true,
-      timestamp: new Date(pending.timestamp).toISOString(),
-      lastTransactionRef: {},
-      snapshotHash: '',
-      checkpointBlock: '',
-    } as Transaction;
-  };
 
-  // Primary
-  const getAccountByPrivateKey = async (
-    privateKey: string
-  ): Promise<IAccountInfo> => {
-    dag.account.loginPrivateKey(privateKey);
-    // const ethAddress = dag.keyStore.getEthAddressFromPrivateKey(privateKey);
-    const balance = await dag.account.getBalance();
-    const transactions = await dag.account.getTransactions(10);
+  const getAccountInfo = async (): Promise<IAccountInfo> => {
+    let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=used&details=txs', true, sysjs.HDSigner);
+    const balance = res.balance / 1e8;
+    const assets = res.tokens;
+    let transactions: Transaction[] = []
+    if (res.transactions)
+      transactions = res.transactions.slice(0, 10);
+
     return {
-      address: {
-        constellation: dag.account.address,
-      },
       balance,
+      assets,
       transactions,
     };
   };
 
-  const getAccountByIndex = async (index: number) => {
-    const masterKey: hdkey | null = actions.getMasterKey();
-    if (!masterKey) return null;
-    privateKey = dag.keyStore.deriveAccountFromMaster(masterKey, index);
-    return await getAccountByPrivateKey(privateKey);
-  };
+  // const getAccountByPrivKeystore = (keystoreId: number) => {
+  //   const { keystores }: IWalletState = store.getState().wallet;
 
-  const getAccountByPrivKeystore = async (keystoreId: string) => {
-    const { keystores }: IWalletState = store.getState().wallet;
-    if (!password || !keystores[keystoreId]) return null;
-    privateKey = await dag.keyStore.decryptPrivateKey(
-      keystores[keystoreId] as PrivKeystore,
-      password
-    );
-    return await getAccountByPrivateKey(privateKey);
-  };
+  //   if (!password || !keystores[keystoreId]) {
+  //     return null;
+  //   }
 
-  const subscribeAccount = async (index: number, label?: string) => {
-    const { accounts }: IWalletState = store.getState().wallet;
-    const seedAccounts = Object.values(accounts).filter(
-      (account) => account.type === AccountType.Seed
-    );
-    if (seedAccounts && Object.keys(seedAccounts).includes(String(index)))
-      return null;
-    const res: IAccountInfo | null = await getAccountByIndex(index);
+  //   return getAccountByPrivateKey();
+  // };
 
-    account = {
-      id: String(index),
-      label: label || `Account ${index + 1}`,
-      address: res!.address,
-      balance: res!.balance,
-      transactions: res!.transactions,
-      type: AccountType.Seed,
-    };
-
-    store.dispatch(createAccount(account));
-    return account!.address;
-  };
-
-  const removePrivKeyAccount = (id: string, pwd: string) => {
-    if (!actions.checkPassword(pwd)) return false;
-    store.dispatch(removeKeystoreInfo(id));
-    store.dispatch(removeAccount(id));
-    store.dispatch(updateStatus());
-    return true;
-  };
-
-  const addNewAccount = async (label: string) => {
-    const { accounts }: IWalletState = store.getState().wallet;
-    const seedAccounts = Object.values(accounts).filter(
-      (account) => account.type === AccountType.Seed
-    );
-    let idx = -1;
-    Object.keys(seedAccounts).forEach((index, i) => {
-      if (index !== String(i)) {
-        idx = i;
-        return;
-      }
-    });
-    if (idx === -1) {
-      idx = Object.keys(seedAccounts).length;
+  const subscribeAccount = async (sjs?: any, label?: string) => {
+    console.log(sjs)
+    if (sjs) sysjs = sjs;
+    else {
+      // console.log("Checking the init funciton", sysjs.HDSigner.accountIndex)
+      // sysjs.HDSigner.accountIndex = idx
+      console.log("Checking the init funciton", sysjs.HDSigner.accounts);
+      sysjs.HDSigner.createAccount()
+      console.log("Checking the init funciton", sysjs.HDSigner.accounts)
+      console.log("INdex", sysjs.HDSigner.accountIndex)
     }
-    return await subscribeAccount(idx, label);
+    console.log("check sysjs lib", sysjs)
+    const res: IAccountInfo | null = await getAccountInfo();
+    console.log('syscoin backend output', res)
+    //TODO: get the 10 last transactions from the backend and pass to transaction buffer
+    //TODO: balance for each SPT token
+    console.log(sysjs.HDSigner)
+    account = {
+      id: sysjs.HDSigner.accountIndex,
+      label: label || `Account ${sysjs.HDSigner.accountIndex + 1}`,
+      balance: res.balance,
+      transactions: res.transactions,
+      xpub: sysjs.HDSigner.getAccountXpub(),
+      masterPrv: sysjs.HDSigner.accounts[sysjs.HDSigner.accountIndex].getAccountPrivateKey(),
+      address: { 'main': await sysjs.HDSigner.getNewReceivingAddress() },
+      assets: res.assets
+    };
+    store.dispatch(createAccount(account));
+
+    return account!.xpub;
   };
 
   const unsubscribeAccount = (index: number, pwd: string) => {
     if (actions.checkPassword(pwd)) {
-      store.dispatch(removeAccount(String(index)));
+      store.dispatch(removeAccount(index));
       store.dispatch(updateStatus());
+
       return true;
     }
+
     return false;
   };
 
-  const importPrivKeyAccount = async (privKey: string, label: string) => {
-    if (!label) return null;
-
-    const keystore = await actions.importPrivKey(privKey);
-    if (!keystore) return null;
-
-    const { accounts }: IWalletState = store.getState().wallet;
-    const res = await getAccountByPrivateKey(privKey);
-
-    // check if the same account exists
-    const isExisting =
-      Object.values(accounts).filter(
-        (acc) => acc.address.constellation === res.address.constellation
-      ).length > 0;
-    if (isExisting) {
-      store.dispatch(removeKeystoreInfo(keystore.id));
-      return null;
-    }
-
-    privateKey = privKey;
-    account = {
-      id: keystore.id,
-      label: label,
-      address: res!.address,
-      balance: res!.balance,
-      transactions: res!.transactions,
-      type: AccountType.PrivKey,
-    };
-
-    store.dispatch(createAccount(account));
-    return account!.address;
+  const updateAccountLabel = (id: number, label: string) => {
+    store.dispatch(updateLabel({ id, label }));
   };
 
-  const getPrimaryAccount = (pwd: string) => {
-    const { accounts, activeAccountId }: IWalletState = store.getState().wallet;
-    if (!actions.checkPassword(pwd)) return;
-    password = pwd;
-    getLatestUpdate();
-    if (!account && accounts && Object.keys(accounts).length) {
-      account = accounts[activeAccountId];
-      store.dispatch(updateStatus());
-    }
+  const addNewAccount = async (label: string) => {
+    return await subscribeAccount(null, label);
   };
+
+  // const removePrivKeyAccount = (id: number, pwd: string) => {
+  //   if (!actions.checkPassword(pwd)) {
+  //     return false;
+  //   }
+
+  //   store.dispatch(removeKeystoreInfo(id));
+  //   store.dispatch(removeAccount(id));
+  //   store.dispatch(updateStatus());
+
+  //   return true;
+  // };
 
   const getLatestUpdate = async () => {
     const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
-    if (
-      !accounts[activeAccountId] ||
-      accounts[activeAccountId].type === undefined
-    )
+    console.log("active account id", sysjs.HDSigner.accountIndex)
+    sysjs.HDSigner.accountIndex = activeAccountId
+    console.log("accounts", accounts)
+    console.log("active account id", sysjs.HDSigner)
+    if (!accounts[activeAccountId]) {
       return;
+    };
 
-    const accLatestInfo =
-      accounts[activeAccountId].type === AccountType.Seed
-        ? await getAccountByIndex(Number(activeAccountId))
-        : await getAccountByPrivKeystore(activeAccountId);
+    const accLatestInfo = await getAccountInfo();
 
     if (!accLatestInfo) return;
-
     account = accounts[activeAccountId];
-    // check pending txs
-    const memPool = window.localStorage.getItem('dag4-network-main-mempool');
-    if (memPool) {
-      const pendingTxs = JSON.parse(memPool);
-      console.log(pendingTxs);
-      pendingTxs.forEach((pTx: PendingTx) => {
-        if (
-          !account ||
-          (account.address.constellation !== pTx.sender &&
-            account.address.constellation !== pTx.receiver) ||
-          accLatestInfo?.transactions.filter(
-            (tx: Transaction) => tx.hash === pTx.hash
-          ).length > 0
-        )
-          return;
-        accLatestInfo!.transactions.unshift(_coventPendingType(pTx));
-      });
-    }
+
+    // const memPool = ''; // get pending txs from syscoin
+    // if (memPool) {
+    //   const pendingTxs = JSON.parse(memPool);
+    //   pendingTxs.forEach((pTx: PendingTx) => {
+    //     // if (
+    //     //   !account ||
+    //     //   (account.address.main !== pTx.sender &&
+    //     //     account.address.main !== pTx.receiver) ||
+    //     //   accLatestInfo?.transactions.filter(
+    //     //     (tx: Transaction) => tx.txid === pTx.hash
+    //     //   ).length > 0
+    //     // )
+    //     //   return;
+    //     accLatestInfo!.transactions.unshift(_coventPendingType(pTx));
+    //   });
+    // }
 
     store.dispatch(
       updateAccount({
@@ -250,63 +185,37 @@ const AccountController = (actions: {
     );
   };
 
-  const getPrivKey = async (id: string, pwd: string) => {
-    const { keystores, accounts }: IWalletState = store.getState().wallet;
-    if (!account || !actions.checkPassword(pwd)) return null;
-    if (accounts[id].type === AccountType.Seed) {
-      const masterKey: hdkey | null = actions.getMasterKey();
-      if (!masterKey) return null;
-      return dag.keyStore.deriveAccountFromMaster(masterKey, Number(id));
-    } else {
-      const privkey = await dag.keyStore.decryptPrivateKey(
-        keystores[id] as PrivKeystore,
-        pwd
-      );
-      return privkey;
+  const getPrimaryAccount = (pwd: string, sjs: any) => {
+    const { accounts, activeAccountId }: IWalletState = store.getState().wallet;
+    if (!sysjs) {
+      sysjs = sjs;
     }
-  };
+    if (!actions.checkPassword(pwd)) return;
+    // password = pwd;
 
-  const updateAccountLabel = (id: string, label: string) => {
-    store.dispatch(updateLabel({ id, label }));
-  };
+    getLatestUpdate();
 
-  // Tx-Related
-  const updateTempTx = (tx: ITransactionInfo) => {
-    if (dag.account.isActive()) {
-      tempTx = { ...tx };
-      tempTx.fromAddress = tempTx.fromAddress.trim();
-      tempTx.toAddress = tempTx.toAddress.trim();
+    if (!account && accounts) {
+      account = accounts[activeAccountId];
+      store.dispatch(updateStatus());
     }
-  };
-
-  const getTempTx = () => {
-    return dag.account.isActive() ? tempTx : null;
-  };
-
-  const updateTxs = async (limit = 10, searchAfter?: string) => {
-    if (!account) return;
-    const newTxs = await dag.account.getTransactions(limit, searchAfter);
-    store.dispatch(
-      updateTransactions({
-        id: account.id,
-        txs: [...account.transactions, ...newTxs],
-      })
-    );
   };
 
   const watchMemPool = () => {
-    if (intervalId) return;
-    intervalId = setInterval(async () => {
-      await getLatestUpdate();
-      const {
-        activeAccountId,
-        accounts,
-      }: IWalletState = store.getState().wallet;
+    if (intervalId) {
+      return;
+    }
+
+    intervalId = setInterval(() => {
+      getLatestUpdate();
+
+      const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
+
       if (
         !accounts[activeAccountId] ||
         !accounts[activeAccountId].transactions ||
         !accounts[activeAccountId].transactions.filter(
-          (tx: Transaction) => tx.fee === -1
+          (tx: Transaction) => tx.confirmations > 0
         ).length
       ) {
         clearInterval(intervalId);
@@ -314,63 +223,199 @@ const AccountController = (actions: {
     }, 30 * 1000);
   };
 
+  // const importPrivKeyAccount = (privKey: string, label: string) => {
+  //   const keystore = label && actions.importPrivKey(privKey);
+
+  //   if (!keystore) return null;
+
+  //   const res = getAccountByPrivateKey();
+
+  //   account = {
+  //     id: 10,
+  //     label: label,
+  //     address: res!.address,
+  //     balance: res!.balance,
+  //     transactions: res!.transactions,
+  //     type: privKey === 'private-key-account-priv'
+  //       ? AccountType.PrivKey
+  //       : AccountType.Seed,
+  //     xpub: "myxpubhot",
+  //     assets: {
+  //       'lalala': {
+  //         name: 'BagiImoveis',
+  //         balance: 9999999
+  //       }
+  //     },
+
+  //   };
+
+  //   store.dispatch(createAccount(account));
+  //   return account!.address;
+  // };
+
+  // const getPrivKey = (id: number, pwd: string) => {
+  //   const { accounts }: IWalletState = store.getState().wallet;
+
+  //   if (!account || !actions.checkPassword(pwd)) return null;
+
+  //   if (accounts[id].type === AccountType.Seed) {
+  //     return 'private-key-account-seed'; // generate private key using password and phrase
+  //   }
+
+  //   return 'private-key-account-priv'; // generate private key using password and phrase
+  // };
+
+  const isValidSYSAddress = (address: string) => {
+    if (address) { // validate sys address
+      return true;
+    }
+    return false;
+  };
+
+  const getRecommendFee = () => {
+    return 0.000001;
+  };
+
+  const _coventPendingType = (txid: string) => {
+
+    return {
+      txid: txid,
+      value: 0,
+      confirmations: 0,
+      fees: 0,
+      blockTime: Date.now() / 1e3,
+    } as Transaction;
+  };
+
+  const updateTxs = () => {
+    if (!account) {
+      return;
+    }
+
+    getLatestUpdate();
+
+    // store.dispatch(
+    //   updateTransactions({
+    //     id: account.id,
+    //     txs: [...account.transactions, ...newTxs],
+    //   })
+    // );
+  };
+
+  const getTempTx = () => {
+    return tempTx || null;
+  };
+
+  const updateTempTx = (tx: ITransactionInfo) => {
+    tempTx = { ...tx };
+    tempTx.fromAddress = tempTx.fromAddress.trim();
+    tempTx.toAddress = tempTx.toAddress.trim();
+  };
+
+  // const transfer = (sender: string, receiver: string, amount: number, fee: number | undefined) => {
+  //   return {
+  //     pendingTx: {
+  //       timestamp: Date.now(),
+  //       hash: 'hashString',
+  //       amount,
+  //       receiver,
+  //       sender,
+  //     },
+  //     transactionInfo: {
+  //       fromAddress: sender,
+  //       toAddress: receiver,
+  //       amount: amount,
+  //       fee,
+  //     }
+  //   }
+  // }
+  const setNewAddress = (addr: string) => {
+    const { accounts, activeAccountId } = store.getState().wallet;
+    console.log("all addresses: ", accounts[activeAccountId].address)
+    console.log("last one: ", accounts[activeAccountId].address.main)
+    store.dispatch(
+      updateAccountAddress({
+        id: activeAccountId,
+        address: { "main": addr },
+      })
+    );
+    console.log("updated one: ", accounts[activeAccountId].address.main)
+
+    return true;
+
+
+
+  }
   const confirmTempTx = async () => {
-    if (!dag.account.isActive) {
+    if (!sysjs) {
       throw new Error('Error: No signed account exists');
+      return (new Error('Error: No signed account exists'))
     }
     if (!account) {
       throw new Error("Error: Can't find active account info");
+      return (new Error("Error: Can't find active account info"))
     }
     if (!tempTx) {
       throw new Error("Error: Can't find transaction info");
+      return (new Error("Error: Can't find transaction info"))
     }
+    console.log("sys teste send syscoinjs", sysjs)
+    console.log(tempTx.amount / 1e8, tempTx.fee / 1e8, tempTx.toAddress)
     try {
-      console.log('from address:', dag.account.address, tempTx.fee);
-      const pendingTx = await dag.account.transferDag(
-        tempTx.toAddress,
-        tempTx.amount,
-        tempTx.fee
-      );
-      dag.monitor.addToMemPoolMonitor(pendingTx);
+      const _outputsArr = [
+        { address: tempTx.toAddress, value: new sys.utils.BN(tempTx.amount * 1e8) }
+      ]
+
+      const pendingTx = await sysjs.createTransaction({ rbf: false }, null, _outputsArr, new sys.utils.BN(tempTx.fee * 1e8));
+      console.log("lets see", pendingTx)
+      // console.log("tempTx.amount", tempTx.amount);
+      // console.log("tempTx.amount BN", new sys.utils.BN(tempTx.amount * 1e8));
+      // console.log("tempTx.amount BN", new sys.utils.BN(tempTx.fee * 1e8));
+      // console.log("tempTx.amount BN", (tempTx.fee * 1e8));
+
+      // console.log("1 sys bn", new sys.utils.BN(100000000));
+
+      // const _outputsArr = [
+      //   { address: 'tsys1q2uqmjptmjf6ugt25yufq9xmawqmaws3upgl5y0', value: new sys.utils.BN(10054699544) }
+      // ]
+      // const pendingTx = await sysjs.createTransaction({ rbf: false }, null, _outputsArr, new sys.utils.BN(10))
+      const txInfo = pendingTx.extractTransaction().getId()
       store.dispatch(
         updateTransactions({
           id: account.id,
-          txs: [_coventPendingType(pendingTx), ...account.transactions],
+          txs: [_coventPendingType(txInfo), ...account.transactions],
         })
       );
       tempTx = null;
+      return null;
+
       watchMemPool();
     } catch (error) {
+      console.log("erro ele", error)
+      return error;
       throw new Error(error);
     }
   };
 
-  // Other
-  const isValidDAGAddress = (address: string) => {
-    return dag.account.validateDagAddress(address);
-  };
-
-  const getRecommendFee = async () => {
-    return await dag.account.getFeeRecommendation();
-  };
-
   return {
+    subscribeAccount,
+    getPrimaryAccount,
+    unsubscribeAccount,
+    updateAccountLabel,
+    addNewAccount,
+    // removePrivKeyAccount,
+    getLatestUpdate,
+    watchMemPool,
+    // importPrivKeyAccount,
     getTempTx,
     updateTempTx,
     confirmTempTx,
-    getPrivKey,
-    importPrivKeyAccount,
-    getPrimaryAccount,
-    isValidDAGAddress,
-    subscribeAccount,
-    unsubscribeAccount,
-    removePrivKeyAccount,
-    addNewAccount,
-    getLatestUpdate,
-    watchMemPool,
+    // getPrivKey,
+    isValidSYSAddress,
     updateTxs,
-    updateAccountLabel,
     getRecommendFee,
+    setNewAddress,
+    // transfer
   };
 };
 

@@ -1,42 +1,48 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { Transaction } from '@stardust-collective/dag4-network';
+import { Transaction } from '../../scripts/types';
 
-import { DAG_NETWORK } from 'constants/index';
+import { SYS_NETWORK } from 'constants/index';
 import IWalletState, {
   IAccountUpdateState,
   IAccountState,
   Keystore,
-  AccountType,
+  IAccountUpdateAddress,
 } from './types';
 
 const initialState: IWalletState = {
-  keystores: {},
+  keystores: [],
   status: 0,
-  accounts: {},
-  activeAccountId: '0',
-  seedKeystoreId: '',
-  activeNetwork: DAG_NETWORK.main.id,
-  index: 0
+  accounts: [],
+  activeAccountId: 0,
+  seedKeystoreId: -1,
+  activeNetwork: SYS_NETWORK.main.id,
+  encriptedMnemonic: null
 };
 
-// createSlice comes with immer produce so we don't need to take care of immutational update
 const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
     setKeystoreInfo(state: IWalletState, action: PayloadAction<Keystore>) {
-      state.keystores = {
-        ...state.keystores,
-        [action.payload.id]: action.payload,
+      return {
+        ...state,
+        keystores: [
+          ...state.keystores,
+          action.payload
+        ]
       };
     },
-    removeKeystoreInfo(state: IWalletState, action: PayloadAction<string>) {
-      if (state.keystores[action.payload])
-        delete state.keystores[action.payload];
+    setEncriptedMnemonic(state: IWalletState, action: PayloadAction<CryptoJS.lib.CipherParams>) {
+      state.encriptedMnemonic = action.payload.toString();
     },
-    updateSeedKeystoreId(state: IWalletState, action: PayloadAction<string>) {
+    removeKeystoreInfo(state: IWalletState, action: PayloadAction<number>) {
+      if (state.keystores[action.payload]) {
+        state.keystores.splice(action.payload, 1);
+      }
+    },
+    updateSeedKeystoreId(state: IWalletState, action: PayloadAction<number>) {
       if (state.keystores && state.keystores[state.seedKeystoreId]) {
-        delete state.keystores[state.seedKeystoreId];
+        state.keystores.splice(state.seedKeystoreId, 1);
       }
       state.seedKeystoreId = action.payload;
     },
@@ -46,44 +52,50 @@ const WalletState = createSlice({
     createAccount(state: IWalletState, action: PayloadAction<IAccountState>) {
       return {
         ...state,
-        accounts: {
+        accounts: [
           ...state.accounts,
-          [action.payload.id]: action.payload,
-        },
-        activeAccountId: action.payload.id,
+          action.payload
+        ]
       };
     },
-    removeAccount(state: IWalletState, action: PayloadAction<string>) {
-      if (Object.keys(state.accounts).length <= 1) return;
-      if (state.activeAccountId === action.payload) {
-        state.activeAccountId = Object.values(state.accounts)[0].id;
+    removeAccount(state: IWalletState, action: PayloadAction<number>) {
+      if (state.accounts.length <= 1) {
+        return;
       }
-      delete state.accounts[action.payload];
+
+      if (state.activeAccountId === action.payload) {
+        state.activeAccountId = state.accounts[0].id;
+      }
+
+      state.accounts.splice(action.payload, 1);
+      state.activeAccountId = 0;
     },
-    removeSeedAccounts(state: IWalletState) {
-      Object.values(state.accounts).forEach((account) => {
-        if (account.type === AccountType.Seed)
-          delete state.accounts[account.id];
-      });
-      state.activeAccountId = '0';
+
+    removeAccounts(state: IWalletState) {
+      state.accounts = [];
+      state.activeAccountId = 0;
     },
-    updateAccount(
-      state: IWalletState,
-      action: PayloadAction<IAccountUpdateState>
-    ) {
+    updateAccount(state: IWalletState, action: PayloadAction<IAccountUpdateState>) {
+      state.accounts[action.payload.id] = {
+        ...state.accounts[action.payload.id],
+        ...action.payload,
+      };
+    },
+    updateAccountAddress(state: IWalletState, action: PayloadAction<IAccountUpdateAddress>) {
       state.accounts[action.payload.id] = {
         ...state.accounts[action.payload.id],
         ...action.payload,
       };
     },
     deleteWallet(state: IWalletState) {
-      state.keystores = {};
-      state.accounts = {};
-      state.seedKeystoreId = '';
-      state.activeAccountId = '0';
-      state.activeNetwork = DAG_NETWORK.main.id;
+      state.keystores = [];
+      state.accounts = [];
+      state.seedKeystoreId = -1;
+      state.activeAccountId = 0;
+      state.encriptedMnemonic = null;
+      state.activeNetwork = SYS_NETWORK.main.id;
     },
-    changeAccountActiveId(state: IWalletState, action: PayloadAction<string>) {
+    changeAccountActiveId(state: IWalletState, action: PayloadAction<number>) {
       state.activeAccountId = action.payload;
     },
     changeActiveNetwork(state: IWalletState, action: PayloadAction<string>) {
@@ -91,13 +103,13 @@ const WalletState = createSlice({
     },
     updateTransactions(
       state: IWalletState,
-      action: PayloadAction<{ id: string; txs: Transaction[] }>
+      action: PayloadAction<{ id: number; txs: Transaction[] }>
     ) {
       state.accounts[action.payload.id].transactions = action.payload.txs;
     },
     updateLabel(
       state: IWalletState,
-      action: PayloadAction<{ id: string; label: string }>
+      action: PayloadAction<{ id: number; label: string }>
     ) {
       state.accounts[action.payload.id].label = action.payload.label;
     },
@@ -110,7 +122,7 @@ export const {
   updateStatus,
   createAccount,
   removeAccount,
-  removeSeedAccounts,
+  removeAccounts,
   deleteWallet,
   updateSeedKeystoreId,
   changeAccountActiveId,
@@ -118,6 +130,8 @@ export const {
   updateAccount,
   updateTransactions,
   updateLabel,
+  setEncriptedMnemonic,
+  updateAccountAddress
 } = WalletState.actions;
 
 export default WalletState.reducer;

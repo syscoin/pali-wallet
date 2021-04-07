@@ -37,7 +37,7 @@ const ModifyContactView: FC<IModifyContactView> = ({ type, selected }) => {
   const [address, setAddress] = useState('');
 
   const isValidAddress = useMemo(() => {
-    return controller.wallet.account.isValidDAGAddress(address);
+    return controller.wallet.account.isValidSYSAddress(address);
   }, [address]);
 
   const statusIconClass = clsx(styles.statusIcon, {
@@ -58,7 +58,7 @@ const ModifyContactView: FC<IModifyContactView> = ({ type, selected }) => {
       return;
     }
 
-    if (!controller.wallet.account.isValidDAGAddress(data.address.trim()))
+    if (!controller.wallet.account.isValidSYSAddress(data.address.trim()))
       return;
     controller.contacts.modifyContact(
       type,
@@ -92,7 +92,6 @@ const ModifyContactView: FC<IModifyContactView> = ({ type, selected }) => {
           fullWidth
           value={address}
           variant={clsx(styles.input, { [styles.verfied]: isValidAddress })}
-          defaultValue={selected && contacts[selected].address}
           onChange={handleAddressChange}
           inputRef={register}
         />

@@ -17,10 +17,7 @@ const Starter = () => {
   const [isInvalid, setInvalid] = useState(false);
 
   const onSubmit = (data: any) => {
-    controller.wallet.unLock(data.password).then((res) => {
-      console.log(res);
-      setInvalid(!res);
-    });
+    setInvalid(!controller.wallet.unLock(data.password));
   };
 
   return (
@@ -28,9 +25,9 @@ const Starter = () => {
       <h1 className="heading-1 full-width t-white t-quicksand tw-medium">
         Welcome to
         <br />
-        Stargazer Wallet
+        Syscoin Wallet
       </h1>
-      <img src={LogoImage} className={styles.logo} alt="Stargazer" />
+      <img src={LogoImage} className={styles.logo} alt="syscoin" />
       <form onSubmit={handleSubmit(onSubmit)}>
         <TextInput
           type="password"

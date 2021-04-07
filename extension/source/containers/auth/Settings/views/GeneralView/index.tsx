@@ -9,7 +9,7 @@ import Select from 'components/Select';
 import Icon from 'components/Icon';
 import { useController, useSettingsView } from 'hooks/index';
 import { ABOUT_VIEW, DELETE_WALLET_VIEW, PHRASE_VIEW } from '../routes';
-import { DAG_NETWORK } from 'constants/index';
+import { SYS_NETWORK } from 'constants/index';
 import { RootState } from 'state/store';
 
 import styles from './index.scss';
@@ -38,12 +38,12 @@ const GeneralView = () => {
           <span>
             Network
             <Select
-              value={network || DAG_NETWORK.main.id}
+              value={network || SYS_NETWORK.main.id}
               fullWidth
               onChange={handleChangeNetwork}
               options={[
-                { [DAG_NETWORK.main.id]: DAG_NETWORK.main.label },
-                { [DAG_NETWORK.ceres.id]: DAG_NETWORK.ceres.label },
+                { [SYS_NETWORK.main.id]: SYS_NETWORK.main.label },
+                { [SYS_NETWORK.ceres.id]: SYS_NETWORK.ceres.label },
               ]}
             />
           </span>

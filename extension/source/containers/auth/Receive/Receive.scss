@@ -87,3 +87,14 @@
     }
   }
 }
+.spinner {
+  width: 20px !important;
+  height: 20px !important;
+  margin-right: 10px;
+  color: $purple;
+
+  svg {
+    width: 20px;
+    height: 20px;
+  }
+}

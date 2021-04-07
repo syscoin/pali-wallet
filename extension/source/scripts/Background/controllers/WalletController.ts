@@ -1,7 +1,5 @@
-import { dag } from '@stardust-collective/dag4';
-import { hdkey } from 'ethereumjs-wallet';
-import {generateMnemonic} from 'bip39'
-
+import { generateMnemonic, validateMnemonic } from 'bip39';
+import { fromZPrv } from 'bip84';
 import store from 'state/store';
 import {
   setKeystoreInfo,
@@ -9,103 +7,150 @@ import {
   changeAccountActiveId,
   changeActiveNetwork,
   updateStatus,
-  updateSeedKeystoreId,
-  removeSeedAccounts,
+  setEncriptedMnemonic,
+  removeAccounts
 } from 'state/wallet';
 import AccountController, { IAccountController } from './AccountController';
-import { DAG_NETWORK } from 'constants/index';
-import IWalletState, { SeedKeystore } from 'state/wallet/types';
-// const sjs = require('syscoinjs-lib')
-
+import IWalletState, { Keystore } from 'state/wallet/types';
+import { sys, SYS_NETWORK } from 'constants/index';
+import CryptoJS from 'crypto-js';
+// import {sys, SYS_NETWORK} from '../../../constants'
+// import {SyscoinJSLib} from 'syscoinjs-lib';
+// import {HDSigner} from 'syscoinjs-lib/utils';
 export interface IWalletController {
   account: Readonly<IAccountController>;
-  createWallet: (isUpdated?: boolean) => void;
-  deleteWallet: (pwd: string) => void;
-  switchWallet: (id: string) => Promise<void>;
-  switchNetwork: (networkId: string) => void;
-  generatePhrase: () => string | null;
   setWalletPassword: (pwd: string) => void;
-  importPhrase: (phr: string) => boolean;
   isLocked: () => boolean;
-  unLock: (pwd: string) => Promise<boolean>;
+  generatePhrase: () => string | null;
+  createWallet: (isUpdated?: boolean) => void;
+  unLock: (pwd: string) => boolean;
   checkPassword: (pwd: string) => boolean;
   getPhrase: (pwd: string) => string | null;
+  deleteWallet: (pwd: string) => void;
+  importPhrase: (phr: string) => boolean;
+  switchWallet: (id: number) => void;
+  switchNetwork: (networkId: string) => void;
+  getNewAddress: () => Promise<boolean>;
   logOut: () => void;
 }
 
 const WalletController = (): IWalletController => {
   let password = '';
-  let phrase = '';
-  let masterKey: hdkey;
+  let mnemonic = '';
+  let HDsigner: any = null;
+  let sjs: any = null;
+  let backendURl = SYS_NETWORK.testnet.beUrl;
 
-  const importPrivKey = async (privKey: string) => {
-    const { keystores }: IWalletState = store.getState().wallet;
-    if (isLocked() || !privKey) return null;
-    const v3Keystore = await dag.keyStore.generateEncryptedPrivateKey(
-      password,
-      privKey
-    );
-    if (
-      Object.values(keystores).filter(
-        (keystore) => (keystore as any).address === (v3Keystore as any).address
-      ).length
-    )
-      return null;
-    store.dispatch(setKeystoreInfo(v3Keystore));
-    return v3Keystore;
+  const setWalletPassword = (pwd: string) => {
+    password = pwd;
   };
 
+  const isLocked = () => {
+    return !password || !mnemonic;
+  };
+
+  const generatePhrase = () => {
+    if (retrieveEncriptedMnemonic()) {
+      return null;
+    }
+
+    if (!mnemonic) mnemonic = generateMnemonic();
+    return mnemonic;
+  };
+
+  const createWallet = (isUpdated = false) => {
+    // if (!isUpdated && seedWalletKeystore()) {
+    //   return;
+    // }
+    if (!isUpdated && sjs !== null) {
+      return
+    }
+    console.log("creating mnemonic", mnemonic)
+    console.log("creating password", password)
+    HDsigner = new sys.utils.HDSigner(mnemonic, null, true)
+    sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
+    // if (HDsigner.accountIndex > 0) {
+    //   throw new Error("account index is bigger then 0 logic inconsistency")
+    // }
+    if (isUpdated) {
+      const { accounts } = store.getState().wallet;
+
+      if (accounts) {
+        store.dispatch(removeAccounts());
+      }
+    }
+
+    const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic, password)
+    store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
+    console.log("The accounts on HDsigner:", HDsigner.accounts)
+    account.subscribeAccount(sjs);
+    account.getPrimaryAccount(password, sjs);
+
+    if (isUpdated) {
+      account.getLatestUpdate();
+    }
+  };
+
+  // const seedWalletKeystore = () => {
+  //   const { keystores, seedKeystoreId }: IWalletState = store.getState().wallet;
+
+  //   return keystores && seedKeystoreId > -1 && keystores[seedKeystoreId]
+  //     ? keystores[seedKeystoreId]
+  //     : null;
+  // };
+
+  const retrieveEncriptedMnemonic = () => {
+    // not encrypted for now but we got to retrieve
+    const { encriptedMnemonic }: IWalletState = store.getState().wallet
+    // const { keystores, seedKeystoreId }: IWalletState = store.getState().wallet;
+
+    return encriptedMnemonic != ''
+      ? encriptedMnemonic
+      : null;
+  };
   const checkPassword = (pwd: string) => {
     return password === pwd;
   };
 
-  const account = Object.freeze(
-    AccountController({
-      getMasterKey: () => {
-        return seedWalletKeystore() ? masterKey : null;
-      },
-      checkPassword,
-      importPrivKey,
-    })
-  );
-
-  const generatePhrase = () => {
-    if (seedWalletKeystore()) return null;
-    if (!phrase) phrase = generateMnemonic();
-    return phrase;
-  };
-
-  const importPhrase = (phr: string) => {
-    try {
-      if (dag.keyStore.getMasterKeyFromMnemonic(phr)) {
-        phrase = phr;
-        return true;
-      }
-      return false;
-    } catch (error) {
-      return false;
-    }
-  };
-
-  const isLocked = () => {
-    return !password || !phrase;
-  };
-
   const getPhrase = (pwd: string) => {
-    return checkPassword(pwd) ? phrase : null;
+    return checkPassword(pwd) ? mnemonic : null;
   };
 
-  const unLock = async (pwd: string): Promise<boolean> => {
-    const keystore = seedWalletKeystore();
-    console.log('The keyStore for DAF', keystore)
-    if (!keystore) return false;
-
+  const unLock = (pwd: string): boolean => {
     try {
-      phrase = await dag.keyStore.decryptPhrase(keystore as SeedKeystore, pwd);
+      const encriptedMnemonic = retrieveEncriptedMnemonic();
+      //add unencript password 
+      console.log("The hash", encriptedMnemonic)
+      const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, pwd).toString(CryptoJS.enc.Utf8); //add unencript password 
+      if (!decriptedMnemonic) {
+        throw new Error('password wrong');
+      }
+      console.log("starting process:", HDsigner, sjs)
+      if (HDsigner === null || sjs === null) {
+        HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, true)
+        sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
+        const { activeAccountId, accounts } = store.getState().wallet;
+        if (accounts.length > 1000) {
+          return false
+        }
+        for (let i = 1; i <= accounts.length - 1; i++) {
+          console.log(i)
+          const child = sjs.HDSigner.deriveAccount(i)
+          /* eslint new-cap: ["error", { "newIsCap": false }] */
+          sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks))
+          sjs.HDSigner.accountIndex = activeAccountId
+        }
+        //Restore logic/ function goes here 
+        console.log('HDsigner retrieved')
+        console.log('XPUB retrieved', sjs.HDSigner.getAccountXpub())
+      }
+
       password = pwd;
-      masterKey = dag.keyStore.getMasterKeyFromMnemonic(phrase);
-      await account.getPrimaryAccount(password);
+      mnemonic = decriptedMnemonic;
+
+      account.getPrimaryAccount(password, sjs);
       account.watchMemPool();
+      console.log('unblock')
       return true;
     } catch (error) {
       console.log(error);
@@ -113,82 +158,91 @@ const WalletController = (): IWalletController => {
     }
   };
 
-  const createWallet = async (isUpdated = false) => {
-    if (!isUpdated && seedWalletKeystore()) return;
-    if (isUpdated) {
-      const { seedKeystoreId, keystores } = store.getState().wallet;
-      if (seedKeystoreId && keystores[seedKeystoreId]) {
-        store.dispatch(removeSeedAccounts());
-      }
-    }
-    const v3Keystore = await dag.keyStore.encryptPhrase(phrase, password);
-    masterKey = dag.keyStore.getMasterKeyFromMnemonic(phrase);
-    store.dispatch(setKeystoreInfo(v3Keystore));
-    store.dispatch(updateSeedKeystoreId(v3Keystore.id));
-    await account.subscribeAccount(0);
-    await account.getPrimaryAccount(password);
-    if (isUpdated) {
-      account.getLatestUpdate();
-    }
-  };
-
   const deleteWallet = (pwd: string) => {
     if (checkPassword(pwd)) {
       password = '';
-      phrase = '';
+      mnemonic = '';
+      HDsigner = null;
+      sjs = null;
       store.dispatch(deleteWalletState());
       store.dispatch(updateStatus());
     }
   };
 
-  const switchWallet = async (id: string) => {
-    store.dispatch(changeAccountActiveId(id));
-    await account.getLatestUpdate();
-    dag.monitor.startMonitor();
-  };
+  const importPhrase = (seedphrase: string) => {
 
-  const switchNetwork = (networkId: string) => {
-    if (DAG_NETWORK[networkId]!.id) {
-      dag.network.setNetwork({
-        id: DAG_NETWORK[networkId].id,
-        beUrl: DAG_NETWORK[networkId].beUrl,
-        lbUrl: DAG_NETWORK[networkId].lbUrl,
-      });
-      store.dispatch(changeActiveNetwork(DAG_NETWORK[networkId]!.id));
-      account.getLatestUpdate();
+    if (validateMnemonic(seedphrase)) {
+      mnemonic = seedphrase
+      console.log("mnemonic is set:", mnemonic)
+      return true;
     }
+
+    return false;
   };
 
-  const setWalletPassword = (pwd: string) => {
-    password = pwd;
-  };
-
-  const seedWalletKeystore = () => {
-    const { keystores, seedKeystoreId }: IWalletState = store.getState().wallet;
-    return keystores && seedKeystoreId && keystores[seedKeystoreId]
-      ? keystores[seedKeystoreId]
-      : null;
+  const switchWallet = (id: number) => {
+    store.dispatch(changeAccountActiveId(id));
+    account.getLatestUpdate();
   };
 
   const logOut = () => {
     password = '';
-    phrase = '';
+    mnemonic = '';
     store.dispatch(updateStatus());
   };
 
+  const importPrivKey = (privKey: string) => {
+    const { keystores }: IWalletState = store.getState().wallet;
+
+    if (isLocked() || !privKey) {
+      return null;
+    }
+
+    const newKeystoreImportAccount: Keystore = {
+      id: 0,
+      address: 'address-newkeystore-imported',
+      phrase: mnemonic
+    }
+
+    if (keystores.filter((keystore) => (keystore as Keystore).address === (newKeystoreImportAccount as Keystore).address).length) {
+      return null;
+    }
+
+    store.dispatch(setKeystoreInfo(newKeystoreImportAccount));
+    return newKeystoreImportAccount;
+  };
+
+  const switchNetwork = (networkId: string) => {
+    if (SYS_NETWORK[networkId]!.id) {
+      // set network here (syscoin set network)
+      store.dispatch(changeActiveNetwork(SYS_NETWORK[networkId]!.id));
+      account.getLatestUpdate();
+    }
+  };
+
+  const getNewAddress = async () => {
+
+    sjs.HDSigner.receivingIndex = -1;
+    const address = await sjs.HDSigner.getNewReceivingAddress()
+    return account.setNewAddress(address)
+  }
+
+  const account = AccountController({ checkPassword, importPrivKey });
+
   return {
     account,
-    importPhrase,
-    generatePhrase,
-    setWalletPassword,
-    createWallet,
     isLocked,
-    unLock,
+    setWalletPassword,
+    generatePhrase,
+    createWallet,
     checkPassword,
     getPhrase,
     deleteWallet,
+    importPhrase,
+    unLock,
     switchWallet,
     switchNetwork,
+    getNewAddress,
     logOut,
   };
 };

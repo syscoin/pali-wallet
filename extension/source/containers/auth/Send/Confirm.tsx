@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import clsx from 'clsx';
 import { useSelector } from 'react-redux';
-import { useAlert } from 'react-alert';
 
 import Header from 'containers/common/Header';
 import Layout from 'containers/common/Layout';
@@ -13,30 +12,31 @@ import UpArrowIcon from '@material-ui/icons/ArrowUpward';
 import { RootState } from 'state/store';
 import { ellipsis } from '../helpers';
 import IWalletState from 'state/wallet/types';
+import { useAlert } from 'react-alert';
 
 import styles from './Confirm.scss';
 
 const SendConfirm = () => {
   const controller = useController();
   const getFiatAmount = useFiat();
-  const alert = useAlert();
 
   const { accounts, activeAccountId }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
   const tempTx = controller.wallet.account.getTempTx();
   const [confirmed, setConfirmed] = useState(false);
+  const alert = useAlert();
 
   const handleConfirm = () => {
-    controller.wallet.account
-      .confirmTempTx()
-      .then(() => {
-        setConfirmed(true);
-      })
-      .catch((error: Error) => {
+    controller.wallet.account.confirmTempTx().then(result => {
+      if (result) {
         alert.removeAll();
-        alert.error(error.message);
-      });
+        alert.error(result.message);
+      }
+      else {
+        setConfirmed(true);
+      }
+    })
   };
 
   return confirmed ? (
@@ -57,13 +57,13 @@ const SendConfirm = () => {
         <div className={styles.iconWrapper}>
           <UpArrowIcon />
         </div>
-        {Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0)} DAG
+        {Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0)} SYS
         <small>
           (≈
           {getFiatAmount(
-            Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0),
-            8
-          )}
+          Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0),
+          8
+        )}
           )
         </small>
       </section>
@@ -82,7 +82,7 @@ const SendConfirm = () => {
         <div className={styles.row}>
           Transaction Fee
           <span>
-            {tempTx!.fee} DAG (≈ {getFiatAmount(tempTx?.fee || 0, 8)})
+            {tempTx!.fee} SYS (≈ {getFiatAmount(tempTx?.fee || 0, 8)})
           </span>
         </div>
       </section>

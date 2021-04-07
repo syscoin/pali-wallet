@@ -25,7 +25,7 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#' }) => {
   const showView = useSettingsView();
   const isUnlocked = !controller.wallet.isLocked();
   const [showed, showSettings] = useState(false);
-  const { keystores, seedKeystoreId }: IWalletState = useSelector(
+  const { encriptedMnemonic }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -47,7 +47,7 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#' }) => {
     <div className={styles.header}>
       {showLogo ? (
         <Link to="/app.html" onClick={handleCloseSettings}>
-          <img src={`/${LogoImage}`} className={styles.logo} alt="Stargazer" />
+          <img src={`/${LogoImage}`} className={styles.logo} alt="Syscoin" />
         </Link>
       ) : (
         <IconButton
@@ -58,7 +58,7 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#' }) => {
         </IconButton>
       )}
       <span className={styles.title}>Syscoin Wallet</span>
-      {keystores && seedKeystoreId && keystores[seedKeystoreId] ? (
+      {encriptedMnemonic ? (
         <IconButton
           className={`${styles.button} ${styles.more}`}
           onClick={() =>

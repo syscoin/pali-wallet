@@ -3,13 +3,12 @@ import clsx from 'clsx';
 import { useAlert } from 'react-alert';
 import { useForm } from 'react-hook-form';
 import * as yup from 'yup';
-import { dag } from '@stardust-collective/dag4';
 
 import Button from 'components/Button';
 import Select from 'components/Select';
 import TextInput from 'components/TextInput';
-import FileSelect from 'components/FileSelect';
-import { useController, useCopyClipboard, useSettingsView } from 'hooks/index';
+// import FileSelect from 'components/FileSelect';
+import { useCopyClipboard, useSettingsView } from 'hooks/index';
 
 import styles from './index.scss';
 import { MAIN_VIEW } from '../routes';
@@ -17,13 +16,13 @@ import { ellipsis } from 'containers/auth/helpers';
 
 const ImportAccountView = () => {
   const alert = useAlert();
-  const controller = useController();
+  // const controller = useController();
   const showView = useSettingsView();
   const [isCopied, copyText] = useCopyClipboard();
   const [importType, setImportType] = useState('priv');
   const [loading, setLoading] = useState(false);
-  const [jsonFile, setJsonFile] = useState<File | null>(null);
-  const [address, setAddress] = useState<{ [assetId: string]: string }>();
+  // const [jsonFile, setJsonFile] = useState<File | null>(null);
+  const [address] = useState<{ [assetId: string]: string }>();
 
   const { handleSubmit, register } = useForm({
     validationSchema: yup.object().shape({
@@ -33,47 +32,18 @@ const ImportAccountView = () => {
     }),
   });
 
-  const handleImportPrivKey = async (privKey: string, label: string) => {
-    controller.wallet.account
-      .importPrivKeyAccount(privKey, label)
-      .then((addr) => {
-        setLoading(false);
-        if (addr) {
-          setAddress(addr);
-        }
-      })
-      .catch(() => {
-        alert.removeAll();
-        alert.error('Error: Invalid private key');
-        setLoading(false);
-      });
-  };
+  // const handleImportPrivKey = (privKey: string, label: string) => {
+  //   controller.wallet.account.importPrivKeyAccount(privKey, label);
+  //   setAddress({
+  //     main: '0x01',
+  //   })
+  //   setLoading(false);
+  // };
 
-  const onSubmit = async (data: any) => {
+  const onSubmit = () => {
     if (importType === 'priv') {
       setLoading(true);
-      handleImportPrivKey(data.privKey, data.label);
-    } else if (jsonFile) {
-      const fileReader = new FileReader();
-      fileReader.readAsText(jsonFile, 'UTF-8');
-      fileReader.onload = (ev: ProgressEvent<FileReader>) => {
-        if (ev.target) {
-          setLoading(true);
-          dag.keyStore
-            .decryptPrivateKey(
-              JSON.parse(ev.target.result as string),
-              data.password
-            )
-            .then((privKey: string) => {
-              handleImportPrivKey(privKey, data.label);
-            })
-            .catch(() => {
-              alert.removeAll();
-              alert.error('Error: Invalid password or private key json file');
-              setLoading(false);
-            });
-        }
-      };
+      // handleImportPrivKey('imported-private-key', data.label);
     } else {
       alert.removeAll();
       alert.error('Error: A private key json file is not chosen');
@@ -91,10 +61,10 @@ const ImportAccountView = () => {
               [styles.copied]: isCopied && address,
             })}
             onClick={() => {
-              copyText(address.constellation);
+              copyText(address.main);
             }}
           >
-            {ellipsis(address.constellation)}
+            {ellipsis(address.main)}
           </span>
           <div className={clsx(styles.actions, styles.centered)}>
             <Button
@@ -109,9 +79,7 @@ const ImportAccountView = () => {
       ) : (
         <>
           <section className={styles.warning}>
-            <small>Warning:</small> Imported accounts will not be associated
-            with your Stargazer account seedphrase. Please keep your private
-            keys stored in a safe place.
+
           </section>
           <section className={styles.content}>
             <div className={styles.select}>
@@ -140,10 +108,10 @@ const ImportAccountView = () => {
               </>
             ) : (
               <>
-                <FileSelect
+                {/* <FileSelect
                   onChange={(val) => setJsonFile(val)}
                   disabled={loading}
-                />
+                /> */}
                 <span>Please enter your JSON file password:</span>
                 <TextInput
                   fullWidth

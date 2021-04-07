@@ -44,12 +44,13 @@ const PrivateKeyView: FC<IPrivateKeyView> = ({ id }) => {
     [styles.notAllowed]: !checked,
   });
 
-  const onSubmit = async (data: any) => {
-    const res = await controller.wallet.account.getPrivKey(id, data.password);
-    if (res) {
-      setPrivKey(res);
-      setChecked(true);
-    } else {
+  const onSubmit = (data: any) => {
+
+    if (controller.wallet.checkPassword(data.password)) {
+      setPrivKey(accounts[Number(id)].masterPrv)
+      setChecked(true)
+    }
+    else {
       alert.removeAll();
       alert.error('Error: Invalid password');
     }
@@ -63,18 +64,18 @@ const PrivateKeyView: FC<IPrivateKeyView> = ({ id }) => {
 
   return (
     <div className={styles.wrapper}>
-      {accounts[id] && (
+      {accounts[Number(id)] && (
         <>
           <div className={styles.heading}>
-            <div>Click to copy your public key:</div>
+            <div>Click to copy your account xpub:</div>
             <span
               className={addressClass}
               onClick={() => {
-                copyText(accounts[id].address.constellation);
+                copyText(accounts[Number(id)].xpub);
                 copyAddress(true);
               }}
             >
-              {ellipsis(accounts[id].address.constellation)}
+              {ellipsis(accounts[Number(id)].xpub)}
             </span>
           </div>
           <div className={styles.content}>
@@ -91,7 +92,7 @@ const PrivateKeyView: FC<IPrivateKeyView> = ({ id }) => {
             </form>
             <span>Click to copy your private key:</span>
             <div className={privKeyClass} onClick={handleCopyPrivKey}>
-              {privKey}
+              <span>{ellipsis(privKey)}</span>
             </div>
             <span>
               Warning: Keep your keys secret! Anyone with your private keys can

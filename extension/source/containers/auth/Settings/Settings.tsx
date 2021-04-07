@@ -74,7 +74,7 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
             }}
           />
         ) : (
-          accounts[showedId].label
+          accounts[Number(showedId)].label
         );
       case routes.GENERAL_VIEW:
         return 'General Settings';
@@ -108,7 +108,7 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
   const renderView = (view: string) => {
     switch (view) {
       case routes.ACCOUNT_VIEW:
-        return <Views.AccountView address={accounts[showedId].address} />;
+        return <Views.AccountView id={Number(showedId)} />;
       case routes.GENERAL_VIEW:
         return <Views.GeneralView />;
       case routes.PHRASE_VIEW:
@@ -118,7 +118,7 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
       case routes.NEW_ACCOUNT_VIEW:
         return <Views.NewAccountView />;
       case routes.REMOVE_ACCOUNT_VIEW:
-        return <Views.RemoveAccountView id={showedId} />;
+        return <Views.RemoveAccountView id={Number(showedId)} />;
       case routes.PRIV_KEY_VIEW:
         return <Views.PrivateKeyView id={showedId} />;
       case routes.ABOUT_VIEW:
@@ -150,9 +150,9 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
 
   const handleChangeLabel = () => {
     if (!editable) {
-      setShowedLabel(accounts[showedId].label);
+      setShowedLabel(accounts[Number(showedId)].label);
     } else {
-      controller.wallet.account.updateAccountLabel(showedId, showedLabel);
+      controller.wallet.account.updateAccountLabel(Number(showedId), showedLabel);
     }
     setEditable(!editable);
   };

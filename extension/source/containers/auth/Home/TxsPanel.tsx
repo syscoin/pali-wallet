@@ -1,18 +1,18 @@
 import React, { FC, Fragment, useCallback, useState } from 'react';
 import clsx from 'clsx';
 import { v4 as uuid } from 'uuid';
-import { useFiat } from 'hooks/usePrice';
-import { Transaction } from '@stardust-collective/dag4-network';
+// import { useFiat } from 'hooks/usePrice';
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
-import DownArrowIcon from '@material-ui/icons/ArrowDownward';
+// import DownArrowIcon from '@material-ui/icons/ArrowDownward';
 import GoTopIcon from '@material-ui/icons/VerticalAlignTop';
 import IconButton from '@material-ui/core/IconButton';
 import Spinner from '@material-ui/core/CircularProgress';
 
 import { useController } from 'hooks/index';
 import { formatDistanceDate } from '../helpers';
-import StargazerIcon from 'assets/images/svg/stargazer.svg';
-import { DAG_EXPLORER_SEARCH } from 'constants/index';
+import SyscoinIcon from 'assets/images/logosys.svg';
+import { SYS_EXPLORER_SEARCH } from 'constants/index';
+import { Transaction } from '../../../scripts/types';
 
 import styles from './Home.scss';
 
@@ -21,8 +21,8 @@ interface ITxsPanel {
   transactions: Transaction[];
 }
 
-const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
-  const getFiatAmount = useFiat();
+const TxsPanel: FC<ITxsPanel> = ({ transactions }) => {
+  // const getFiatAmount = useFiat();
   const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
@@ -31,8 +31,8 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
     (tx: Transaction, idx: number) => {
       return (
         idx === 0 ||
-        new Date(tx.timestamp).toDateString() !==
-          new Date(transactions[idx - 1].timestamp).toDateString()
+        new Date(tx.blockTime * 1e3).toDateString() !==
+        new Date(transactions[idx - 1].blockTime * 1e3).toDateString()
       );
     },
     [transactions]
@@ -40,14 +40,12 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
 
   const handleFetchMoreTxs = () => {
     if (transactions.length) {
-      const lastTx = [...transactions].pop();
-      controller.wallet.account.updateTxs(10, lastTx?.timestamp);
+      controller.wallet.account.updateTxs();
     }
   };
 
   const handleScroll = useCallback((ev) => {
     ev.persist();
-    // setShowed(ev.target.scrollTop);
     if (ev.target.scrollTop) setShowed(true);
     setScrollArea(ev.target);
     const scrollOffset = ev.target.scrollHeight - ev.target.scrollTop;
@@ -56,8 +54,8 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
     }
   }, []);
 
-  const handleOpenExplorer = (tx: string) => {
-    window.open(`${DAG_EXPLORER_SEARCH}${tx}`, '_blank');
+  const handleOpenExplorer = (txid: string) => {
+    window.open(SYS_EXPLORER_SEARCH + '/tx/' + txid);
   };
 
   const handleGoTop = () => {
@@ -82,17 +80,18 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
         <>
           <ul>
             {transactions.map((tx: Transaction, idx: number) => {
-              const isRecived = tx.receiver === address;
+              // const isRecived = tx.receiver === address;
+              const isConfirmed = tx.confirmations > 0;
 
               return (
                 <Fragment key={uuid()}>
                   {isShowedGroupBar(tx, idx) && (
                     <li className={styles.groupbar}>
-                      {formatDistanceDate(tx.timestamp)}
+                      {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}
                     </li>
                   )}
-                  <li onClick={() => handleOpenExplorer(tx.hash)}>
-                    <div>
+                  <li onClick={() => handleOpenExplorer(tx.txid)}>
+                    {/* <div>
                       <div className={styles.iconWrapper}>
                         {tx.checkpointBlock ? (
                           isRecived ? (
@@ -112,13 +111,20 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
                             : `To: ${tx.receiver}`}
                         </small>
                       </span>
+                    </div> */}
+                    <div>
+                      {isConfirmed ? null : <Spinner size={25} className={styles.spinner} />}
                     </div>
                     <div>
                       <span>
                         <span>
-                          {tx.amount / 1e8} <b>DAG</b>
+                          {new Date(tx.blockTime * 1000).toLocaleTimeString(navigator.language, {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
                         </span>
-                        <small>{getFiatAmount(tx.amount / 1e8, 8)}</small>
+                        <small>{tx.txid}</small>
+                        <small>{isConfirmed ? "Confirmed" : "Unconfirmed"}</small>
                       </span>
                       <div className={styles.linkIcon}>
                         <UpArrowIcon />
@@ -129,25 +135,25 @@ const TxsPanel: FC<ITxsPanel> = ({ address, transactions }) => {
               );
             })}
           </ul>
-          <div className={styles.stargazer}>
-            <img
-              src={StargazerIcon}
-              alt="stargazer"
+          <div className={styles.syscoin}>
+            {/* <img
+              src={SyscoinIcon}
+              alt="syscoin"
               height="167"
               width="auto"
-            />
+            /> */}
           </div>
         </>
       ) : (
         <>
           <span className={styles.noTxComment}>
-            You have no transaction history, send or receive $DAG to register
+            You have no transaction history, send or receive SYS to register
             your first transaction.
           </span>
           <img
-            src={StargazerIcon}
-            className={styles.stargazer}
-            alt="stargazer"
+            src={SyscoinIcon}
+            className={styles.syscoin}
+            alt="syscoin"
             height="167"
             width="auto"
           />

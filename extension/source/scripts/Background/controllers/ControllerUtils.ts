@@ -3,7 +3,7 @@ import { updateFiatPrice } from 'state/price';
 import {
   ASSET_PRICE_API,
   DEFAULT_CURRENCY,
-  PRICE_DAG_ID,
+  PRICE_SYS_ID,
 } from 'constants/index';
 
 export interface IControllerUtils {
@@ -23,17 +23,17 @@ const ControllerUtils = (): IControllerUtils => {
 
   const updateFiat = async (
     currency = DEFAULT_CURRENCY.id,
-    assetId = PRICE_DAG_ID
+    assetId = PRICE_SYS_ID
   ) => {
     try {
       const data = await (
         await fetch(
-          `${ASSET_PRICE_API}?ids=${assetId}&vs_currencies=${currency}`
+          `${ASSET_PRICE_API}?currency=${currency}`
         )
       ).json();
       if (data) {
         store.dispatch(
-          updateFiatPrice({ assetId, price: data[assetId][currency] })
+          updateFiatPrice({ assetId, price: data['rates'][currency] })
         );
       }
     } catch (error) {
