@@ -8,7 +8,7 @@ import Button from 'components/Button';
 import Select from 'components/Select';
 import TextInput from 'components/TextInput';
 // import FileSelect from 'components/FileSelect';
-import { useController, useCopyClipboard, useSettingsView } from 'hooks/index';
+import { useCopyClipboard, useSettingsView } from 'hooks/index';
 
 import styles from './index.scss';
 import { MAIN_VIEW } from '../routes';
@@ -16,13 +16,13 @@ import { ellipsis } from 'containers/auth/helpers';
 
 const ImportAccountView = () => {
   const alert = useAlert();
-  const controller = useController();
+  // const controller = useController();
   const showView = useSettingsView();
   const [isCopied, copyText] = useCopyClipboard();
   const [importType, setImportType] = useState('priv');
   const [loading, setLoading] = useState(false);
   // const [jsonFile, setJsonFile] = useState<File | null>(null);
-  const [address, setAddress] = useState<{ [assetId: string]: string }>();
+  const [address] = useState<{ [assetId: string]: string }>();
 
   const { handleSubmit, register } = useForm({
     validationSchema: yup.object().shape({
@@ -40,7 +40,7 @@ const ImportAccountView = () => {
   //   setLoading(false);
   // };
 
-  const onSubmit = (data: any) => {
+  const onSubmit = () => {
     if (importType === 'priv') {
       setLoading(true);
       // handleImportPrivKey('imported-private-key', data.label);
@@ -79,9 +79,7 @@ const ImportAccountView = () => {
       ) : (
         <>
           <section className={styles.warning}>
-            <small>Warning:</small> Imported accounts will not be associated
-            with your Syscoin account seedphrase. Please keep your private
-            keys stored in a safe place.
+
           </section>
           <section className={styles.content}>
             <div className={styles.select}>

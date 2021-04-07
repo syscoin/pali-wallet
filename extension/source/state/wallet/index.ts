@@ -92,6 +92,7 @@ const WalletState = createSlice({
       state.accounts = [];
       state.seedKeystoreId = -1;
       state.activeAccountId = 0;
+      state.encriptedMnemonic = null;
       state.activeNetwork = SYS_NETWORK.main.id;
     },
     changeAccountActiveId(state: IWalletState, action: PayloadAction<number>) {

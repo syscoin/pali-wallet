@@ -9,6 +9,7 @@ export interface IAccountState {
   id: number;
   label: string;
   xpub: string;
+  masterPrv: string;
   assets: {
     [assetId: number]: {
       name: string;

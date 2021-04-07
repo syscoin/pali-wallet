@@ -1,4 +1,5 @@
 import { generateMnemonic, validateMnemonic } from 'bip39';
+import { fromZPrv } from 'bip84';
 import store from 'state/store';
 import {
   setKeystoreInfo,
@@ -124,10 +125,21 @@ const WalletController = (): IWalletController => {
       if (!decriptedMnemonic) {
         throw new Error('password wrong');
       }
+      console.log("starting process:", HDsigner, sjs)
       if (HDsigner === null || sjs === null) {
         HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, true)
         sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
-
+        const { activeAccountId, accounts } = store.getState().wallet;
+        if (accounts.length > 1000) {
+          return false
+        }
+        for (let i = 1; i <= accounts.length - 1; i++) {
+          console.log(i)
+          const child = sjs.HDSigner.deriveAccount(i)
+          /* eslint new-cap: ["error", { "newIsCap": false }] */
+          sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks))
+          sjs.HDSigner.accountIndex = activeAccountId
+        }
         //Restore logic/ function goes here 
         console.log('HDsigner retrieved')
         console.log('XPUB retrieved', sjs.HDSigner.getAccountXpub())
@@ -150,7 +162,8 @@ const WalletController = (): IWalletController => {
     if (checkPassword(pwd)) {
       password = '';
       mnemonic = '';
-
+      HDsigner = null;
+      sjs = null;
       store.dispatch(deleteWalletState());
       store.dispatch(updateStatus());
     }

@@ -118,7 +118,10 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions }) => {
                     <div>
                       <span>
                         <span>
-                          {"Transaction " + (transactions.indexOf(tx) + 1)}
+                          {new Date(tx.blockTime * 1000).toLocaleTimeString(navigator.language, {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
                         </span>
                         <small>{tx.txid}</small>
                         <small>{isConfirmed ? "Confirmed" : "Unconfirmed"}</small>

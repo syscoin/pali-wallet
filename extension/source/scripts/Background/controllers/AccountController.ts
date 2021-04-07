@@ -25,7 +25,7 @@ import { sys } from 'constants/index';
 
 
 export interface IAccountController {
-  subscribeAccount: (sjs: any, label?: string) => Promise<string | null>;
+  subscribeAccount: (sjs?: any, label?: string) => Promise<string | null>;
   getPrimaryAccount: (pwd: string, sjs: any) => void;
   unsubscribeAccount: (index: number, pwd: string) => boolean;
   updateAccountLabel: (id: number, label: string) => void;
@@ -40,7 +40,7 @@ export interface IAccountController {
   updateTxs: () => void;
   getTempTx: () => ITransactionInfo | null;
   updateTempTx: (tx: ITransactionInfo) => void;
-  confirmTempTx: () => void;
+  confirmTempTx: () => Promise<null | any>;
   setNewAddress: (addr: string) => boolean;
   // transfer: (sender: string, receiver: string, amount: number, fee: number | undefined) => any | null;
 }
@@ -57,12 +57,12 @@ const AccountController = (actions: {
 
 
   const getAccountInfo = async (): Promise<IAccountInfo> => {
-    console.log("checking sys:", sysjs)
-
     let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=used&details=txs', true, sysjs.HDSigner);
     const balance = res.balance / 1e8;
     const assets = res.tokens;
-    const transactions: Transaction[] = res.transactions.slice(0, 10);
+    let transactions: Transaction[] = []
+    if (res.transactions)
+      transactions = res.transactions.slice(0, 10);
 
     return {
       balance,
@@ -81,20 +81,30 @@ const AccountController = (actions: {
   //   return getAccountByPrivateKey();
   // };
 
-  const subscribeAccount = async (sjs: any, label?: string) => {
-    sysjs = sjs;
+  const subscribeAccount = async (sjs?: any, label?: string) => {
+    console.log(sjs)
+    if (sjs) sysjs = sjs;
+    else {
+      // console.log("Checking the init funciton", sysjs.HDSigner.accountIndex)
+      // sysjs.HDSigner.accountIndex = idx
+      console.log("Checking the init funciton", sysjs.HDSigner.accounts);
+      sysjs.HDSigner.createAccount()
+      console.log("Checking the init funciton", sysjs.HDSigner.accounts)
+      console.log("INdex", sysjs.HDSigner.accountIndex)
+    }
     console.log("check sysjs lib", sysjs)
     const res: IAccountInfo | null = await getAccountInfo();
     console.log('syscoin backend output', res)
     //TODO: get the 10 last transactions from the backend and pass to transaction buffer
     //TODO: balance for each SPT token
-
+    console.log(sysjs.HDSigner)
     account = {
       id: sysjs.HDSigner.accountIndex,
       label: label || `Account ${sysjs.HDSigner.accountIndex + 1}`,
       balance: res.balance,
       transactions: res.transactions,
       xpub: sysjs.HDSigner.getAccountXpub(),
+      masterPrv: sysjs.HDSigner.accounts[sysjs.HDSigner.accountIndex].getAccountPrivateKey(),
       address: { 'main': await sysjs.HDSigner.getNewReceivingAddress() },
       assets: res.assets
     };
@@ -119,18 +129,7 @@ const AccountController = (actions: {
   };
 
   const addNewAccount = async (label: string) => {
-    const { accounts }: IWalletState = store.getState().wallet;
-
-    // const seedAccounts = accounts.filter(
-    //   (account) => account.type === AccountType.Seed
-    // );
-
-    let idx = 1;
-    if (idx === 1) {
-      idx = accounts.length;
-    }
-
-    return await subscribeAccount(idx + 1, label);
+    return await subscribeAccount(null, label);
   };
 
   // const removePrivKeyAccount = (id: number, pwd: string) => {
@@ -147,7 +146,10 @@ const AccountController = (actions: {
 
   const getLatestUpdate = async () => {
     const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
-
+    console.log("active account id", sysjs.HDSigner.accountIndex)
+    sysjs.HDSigner.accountIndex = activeAccountId
+    console.log("accounts", accounts)
+    console.log("active account id", sysjs.HDSigner)
     if (!accounts[activeAccountId]) {
       return;
     };
@@ -271,7 +273,7 @@ const AccountController = (actions: {
   };
 
   const getRecommendFee = () => {
-    return 0.0001;
+    return 0.000001;
   };
 
   const _coventPendingType = (txid: string) => {
@@ -347,12 +349,15 @@ const AccountController = (actions: {
   const confirmTempTx = async () => {
     if (!sysjs) {
       throw new Error('Error: No signed account exists');
+      return (new Error('Error: No signed account exists'))
     }
     if (!account) {
       throw new Error("Error: Can't find active account info");
+      return (new Error("Error: Can't find active account info"))
     }
     if (!tempTx) {
       throw new Error("Error: Can't find transaction info");
+      return (new Error("Error: Can't find transaction info"))
     }
     console.log("sys teste send syscoinjs", sysjs)
     console.log(tempTx.amount / 1e8, tempTx.fee / 1e8, tempTx.toAddress)
@@ -360,8 +365,9 @@ const AccountController = (actions: {
       const _outputsArr = [
         { address: tempTx.toAddress, value: new sys.utils.BN(tempTx.amount * 1e8) }
       ]
-      const pendingTx = await sysjs.createTransaction({ rbf: false }, null, _outputsArr, new sys.utils.BN(tempTx.fee * 1e8));
 
+      const pendingTx = await sysjs.createTransaction({ rbf: false }, null, _outputsArr, new sys.utils.BN(tempTx.fee * 1e8));
+      console.log("lets see", pendingTx)
       // console.log("tempTx.amount", tempTx.amount);
       // console.log("tempTx.amount BN", new sys.utils.BN(tempTx.amount * 1e8));
       // console.log("tempTx.amount BN", new sys.utils.BN(tempTx.fee * 1e8));
@@ -381,9 +387,12 @@ const AccountController = (actions: {
         })
       );
       tempTx = null;
+      return null;
 
       watchMemPool();
     } catch (error) {
+      console.log("erro ele", error)
+      return error;
       throw new Error(error);
     }
   };
