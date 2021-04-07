@@ -20,7 +20,7 @@
     position: relative;
     font-size: 16px;
     font-weight: bold;
-    color: $gray-dark;
+    color: $white;
     padding: 30px 36px;
     box-sizing: border-box;
 
@@ -30,7 +30,7 @@
       width: 24px;
       transition: all 0.3s;
       transform: rotateZ(0deg);
-      color: $gray-100;
+      color: $white;
     }
   }
 
@@ -43,7 +43,7 @@
     transform-origin: top;
     width: 100%;
     top: 60px;
-    background: $gray-light;
+    background: $navy-border;
     backdrop-filter: blur(10px);
     overflow: auto;
     // max-height: 150px;
@@ -59,7 +59,7 @@
       font-size: 16px;
       padding-left: 72px !important;
       font-weight: 500;
-      color: $gray-dark;
+      color: $white;
 
       &:hover {
         background: $gray-light;
