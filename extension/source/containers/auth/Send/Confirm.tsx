@@ -45,7 +45,11 @@ const SendConfirm = () => {
       <div className="body-description">
         You can follow your transaction under activity on your account screen.
       </div>
-      <Button type="button" variant={styles.next} linkTo="/home">
+      <Button 
+        type="button" 
+        theme="btn-gradient-primary"
+        variant={styles.next} 
+        linkTo="/home">
         Next
       </Button>
     </Layout>
