@@ -94,13 +94,25 @@ body {
     
     // Outline buttons
     &.btn-outline-primary {
-      border: 1px solid $yellowGreen;
-      border-radius: 73px;
       color: $yellowGreen;
+      border: solid 1px transparent;
+      border-radius: 100rem;
+      background-image: 
+        linear-gradient(
+          rgba(255, 255, 255, 0), 
+          rgba(255, 255, 255, 0)), 
+          linear-gradient(
+            30deg, 
+            #49591B 10%,
+            $yellowGreen 50%
+          );
+      background-origin: border-box;
+      background-clip: content-box, border-box;
+      box-shadow: 2px 1000px 1px $navy inset;
 
       &:hover {
-        background: $yellowGreen;
-        color: $white;
+        box-shadow: none;
+        color: white;
       }
 
       &:active {
@@ -109,13 +121,25 @@ body {
     }
 
     &.btn-outline-secondary {
-      border: 1px solid $deepPink;
-      border-radius: 73px;
       color: $deepPink;
+      border: solid 1px transparent;
+      border-radius: 100rem;
+      background-image: 
+        linear-gradient(
+          rgba(255, 255, 255, 0), 
+          rgba(255, 255, 255, 0)), 
+          linear-gradient(
+            30deg, 
+            #8C1F4E 10%,
+            $deepPink-100 50%
+          );
+      background-origin: border-box;
+      background-clip: content-box, border-box;
+      box-shadow: 2px 1000px 1px $navy inset;
 
       &:hover {
-        background: $deepPink;
-        color: $white;
+        box-shadow: none;
+        color: white;
       }
 
       &:active {
