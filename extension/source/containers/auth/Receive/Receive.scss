@@ -64,7 +64,7 @@
       transition: all 0.3s;
 
       &.active {
-        background: $purple;
+        background: $navy;
       }
 
       .icon {
@@ -82,7 +82,7 @@
       transition: all 0.3s;
 
       &.active {
-        color: $purple;
+        color: $navy;
       }
     }
   }
@@ -91,7 +91,7 @@
   width: 20px !important;
   height: 20px !important;
   margin-right: 10px;
-  color: $purple;
+  color: $deepPink;
 
   svg {
     width: 20px;

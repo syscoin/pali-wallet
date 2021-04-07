@@ -24,7 +24,7 @@ body {
 
       b {
         font-weight: 500;
-        color: $red-100;
+        color: $deepPink-100;
       }
     }
 
@@ -48,9 +48,9 @@ body {
       transition: all 0.3s;
 
       &.copied {
-        background: $purple-medium;
-        color: $purple;
-        border: 1px solid $purple;
+        background: $navy-medium;
+        color: $navy;
+        border: 1px solid $navy;
       }
     }
 

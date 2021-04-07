@@ -3,22 +3,22 @@
 .header {
   width: 100%;
   height: 72px;
-  background: $purple;
   position: fixed;
+  display: flex;
   align-items: center;
   justify-content: flex-start;
-  display: flex;
   top: 0px;
   left: 0px;
   right: 0px;
+  background: $navy;
 
   .title {
     font-style: normal;
     font-weight: $medium;
-    font-family: $quicksand;
+    font-family: $roboto;
     font-size: 24px;
     line-height: 24px;
-    color: $white;
+    color: $navy-light;
     text-align: center;
     flex: 1;
   }
@@ -29,7 +29,7 @@
   }
 
   .button {
-    color: $white;
+    color: $deepPink;
 
     &.back {
       margin-left: 22px;

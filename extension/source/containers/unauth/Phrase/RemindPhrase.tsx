@@ -16,6 +16,7 @@ const RemindPhrase = () => {
 
       <Button
         type="button"
+        theme="btn-gradient-primary"
         variant={styles.start}
         linkTo="/create/phrase/generated"
       >

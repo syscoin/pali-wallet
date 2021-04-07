@@ -3,7 +3,7 @@
 :global body {
   margin: 0px;
   padding: 0px;
-  font-family: $inter !important;
+  font-family: $roboto !important;
   -webkit-font-smoothing: antialiased !important;
   -moz-osx-font-smoothing: grayscale !important;
   user-select: none !important;
@@ -17,13 +17,13 @@
     bottom: 0px;
     position: fixed;
     align-items: center;
-    background: $white;
+    background: none;
     justify-content: center;
   }
 
   // Font styles
   .heading-1 {
-    font-family: $inter;
+    font-family: $roboto;
     font-weight: normal;
     font-size: 30px;
     line-height: 36px;
@@ -31,7 +31,7 @@
   }
 
   .body-caption {
-    font-family: $inter;
+    font-family: $roboto;
     font-weight: $medium;
     font-size: 16px;
     line-height: 24px;
@@ -39,28 +39,27 @@
   }
 
   .body-description {
-    font-family: $inter;
-    font-weight: 500;
+    font-family: $roboto;
+    font-weight: $regular;
+    text-align: justify;
     font-size: 16px;
     line-height: 24px;
-    color: $gray-dark;
+    color: $white;
   }
 
   .body-comment {
-    font-family: $inter;
+    font-family: $roboto;
+    font-size: .8rem;
+    font-weight: $regular;
     font-style: normal;
-    font-weight: 500;
-    font-size: 16px;
+    text-align: justify;
     line-height: 24px;
-    color: $gray-dark;
+    color: $white;
   }
 
   // Font families
-  .t-quicksand {
-    font-family: $quicksand;
-  }
-  .t-inter {
-    font-family: $inter;
+  .t-roboto {
+    font-family: $roboto;
   }
 
   // Font Weights
@@ -75,11 +74,20 @@
   .t-white {
     color: $white;
   }
-  .t-purple {
-    color: $purple;
+  .t-navy {
+    color: $navy;
   }
-  .t-teal {
-    color: $teal;
+  .t-navy-medium {
+    color: $navy-medium;
+  }
+  .t-navy-light {
+    color: $navy-light;
+  }
+  .t-royalBlue {
+    color: $royalBlue;
+  }
+  .t-yellowGreen {
+    color: $yellowGreen;
   }
   .t-gray-dark {
     color: $gray-dark;
@@ -87,16 +95,19 @@
   .t-gray-medium {
     color: $gray-100;
   }
+  .t-gold {
+    color: $gold;
+  }
 
   // Background styles
   .b-white {
     background: $white;
   }
-  .b-purple {
-    background: $purple;
+  .b-navy {
+    background: $navy;
   }
-  .b-teal {
-    background: $teal;
+  .b-yellowGreen {
+    background: $yellowGreen;
   }
 
   // Other styles

@@ -15,7 +15,7 @@
     height: 100vh;
     align-items: center;
     justify-content: center;
-    background: $purple;
+    background: $navy;
     opacity: 1;
     backdrop-filter: blur(0px);
 
@@ -251,11 +251,11 @@
 
         &.groupbar {
           height: 24px;
-          background: $purple-medium;
+          background: $navy-medium;
           font-weight: 500;
           font-size: 12px;
           line-height: 18px;
-          color: $purple;
+          color: $navy;
         }
 
         & > div {
@@ -315,7 +315,7 @@
           height: 16px;
           width: auto;
           margin-right: 12px;
-          color: $purple;
+          color: $navy;
         }
 
         .angle {
@@ -327,7 +327,7 @@
         .iconWrapper {
           width: 24px;
           height: 24px;
-          background: $purple;
+          background: $navy;
           border-radius: 50%;
           color: $white;
           display: flex;

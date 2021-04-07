@@ -5,7 +5,7 @@
   font-style: normal;
   font-weight: $medium;
   font-size: 16px;
-  font-family: $inter;
+  font-family: $roboto;
   line-height: 18px;
 
   &:hover {
@@ -19,10 +19,14 @@
   }
 
   &.primary {
-    color: $purple;
+    color: $navy;
   }
 
   &.secondary {
-    color: $teal;
+    color: $yellowGreen;
+  }
+
+  &.tertiary {
+    color: $deepPink;
   }
 }
