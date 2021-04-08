@@ -94,7 +94,7 @@ body {
     
     // Outline buttons
     &.btn-outline-primary {
-      color: $yellowGreen;
+      color: $royalBlue;
       border: solid 1px transparent;
       border-radius: 100rem;
       background-image: 
@@ -103,8 +103,8 @@ body {
           rgba(255, 255, 255, 0)), 
           linear-gradient(
             30deg, 
-            #49591B 10%,
-            $yellowGreen 50%
+            $navy-border 10%,
+            $royalBlue 50%
           );
       background-origin: border-box;
       background-clip: content-box, border-box;

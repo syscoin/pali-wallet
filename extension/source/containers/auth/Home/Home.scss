@@ -277,7 +277,7 @@
             font-weight: 500;
             font-size: 18px;
             line-height: 24px;
-            color: $white;
+            color: $navy-light;
 
             & > span {
               display: flex;
@@ -296,7 +296,6 @@
               font-weight: 500;
               font-size: 12px;
               line-height: 18px;
-              color: $white;
               white-space: nowrap;
               text-overflow: ellipsis;
               overflow: auto;
@@ -304,12 +303,18 @@
               text-align: right;
               display: inline-block;
               overflow: hidden;
+              color: $white;
+            }
+
+            &:last-child > small {
+              color: tomato;
             }
           }
 
           &:last-child > span {
             align-items: flex-end;
             justify-content: end;
+            color: $white;
           }
         }
 
