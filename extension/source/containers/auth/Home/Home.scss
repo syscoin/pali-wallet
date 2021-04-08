@@ -217,6 +217,11 @@
         height: 26px;
         position: absolute;
         right: 36px;
+        color: $deepPink;
+
+        &:hover {
+          color: $deepPink-100;
+        }
       }
     }
 
@@ -247,7 +252,7 @@
           backdrop-filter: blur(10px);
 
           .linkIcon {
-            background: $gray-200;
+            background: $royalBlue;
           }
         }
 
@@ -305,10 +310,6 @@
               overflow: hidden;
               color: $white;
             }
-
-            &:last-child > small {
-              color: tomato;
-            }
           }
 
           &:last-child > span {
@@ -351,7 +352,7 @@
         .linkIcon {
           width: 24px;
           height: 24px;
-          background: $gray-100;
+          background: $navy-dark;
           border-radius: 50%;
           color: $white;
           display: flex;
