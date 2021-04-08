@@ -70,7 +70,7 @@ const NewAccountView = () => {
           <div className={styles.actions}>
             <Button
               type="button"
-              theme="secondary"
+              theme="btn-outline-secondary"
               variant={clsx(styles.button, styles.close)}
               onClick={() => showView(MAIN_VIEW)}
             >

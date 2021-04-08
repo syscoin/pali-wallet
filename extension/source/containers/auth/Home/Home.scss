@@ -185,6 +185,15 @@
     transition: all 0.3s;
     z-index: 2;
 
+    border-bottom: 5px solid;
+    border-image: 
+      linear-gradient(
+        to right, 
+        $navy 20%, 
+        $royalBlue 50%, 
+        $navy 80%
+      ) 10;
+
     .spinner {
       svg {
         color: $white;
@@ -242,6 +251,7 @@
 
         &:hover {
           color: $deepPink-100;
+          margin-top: 2px;
         }
       }
     }
@@ -264,12 +274,19 @@
         padding: 0 36px;
         align-items: center;
         justify-content: space-between;
-        border-bottom: 1px solid #162742;
+        border-bottom: 1px solid $navy;
         transition: all 0.3s;
         cursor: pointer;
 
         &:hover {
-          background: rgab($gray-light-100, 0.9);
+          border-left: 1px solid;
+          border-image: 
+            linear-gradient(
+              0deg,
+              $navy 20%, 
+              $royalBlue 50%, 
+              $navy 80%
+            ) 10;
           backdrop-filter: blur(10px);
 
           .linkIcon {
@@ -279,11 +296,15 @@
 
         &.groupbar {
           height: 24px;
-          background: $navy-medium;
+          background-image: linear-gradient(
+            to right, 
+            $navy-border 40%, 
+            $navy-medium 80%
+          );
           font-weight: 500;
           font-size: 12px;
           line-height: 18px;
-          color: $white;
+          color: $royalBlue;
         }
 
         & > div {
@@ -336,7 +357,7 @@
           &:last-child > span {
             align-items: flex-end;
             justify-content: end;
-            color: $white;
+            color: $royalBlue;
           }
         }
 
