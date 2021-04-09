@@ -1,12 +1,12 @@
-import React, {useState} from 'react';
-import {useHistory} from 'react-router-dom';
+import React, { useState } from 'react';
+import { useHistory } from 'react-router-dom';
 import Button from 'components/Button';
 import TextInput from 'components/TextInput';
 import CheckIcon from '@material-ui/icons/CheckCircle';
-import {useForm} from 'react-hook-form';
-import {useController} from 'hooks/index';
-import {useSelector} from 'react-redux';
-import {RootState} from 'state/store';
+import { useForm } from 'react-hook-form';
+import { useController } from 'hooks/index';
+import { useSelector } from 'react-redux';
+import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 
 import Layout from '../../common/Layout';

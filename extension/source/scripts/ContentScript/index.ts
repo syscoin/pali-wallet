@@ -1,13 +1,13 @@
-import {browser} from 'webextension-polyfill-ts';
+import { browser } from 'webextension-polyfill-ts';
 
 declare global {
-  interface Window { 
-    SyscoinWallet: any; 
+  interface Window {
+    SyscoinWallet: any;
   }
 }
 
 const doctypeCheck = () => {
-  const {doctype} = window.document;
+  const { doctype } = window.document;
 
   if (doctype) {
     return doctype.name === 'html';

@@ -29,11 +29,11 @@ browser.runtime.onInstalled.addListener((): void => {
     if (typeof request == 'object') {
       if (request.type == 'OPEN_WALLET_POPUP') {
         const URL = browser.runtime.getURL('app.html');
-  
+
         store.dispatch(setConnectionInfo(sender.url));
         store.dispatch(updateCanConnect(true));
-  
-        await browser.windows.create({url: URL, type: 'popup', width: 372, height: 600, left: 900, top: 90});
+
+        await browser.windows.create({ url: URL, type: 'popup', width: 372, height: 600, left: 900, top: 90 });
 
         return;
       }
@@ -42,7 +42,7 @@ browser.runtime.onInstalled.addListener((): void => {
         store.dispatch(setConnectionInfo(''));
         store.dispatch(updateConnection(false));
         store.dispatch(updateCanConnect(false));
-  
+
         return;
       }
 
@@ -51,14 +51,14 @@ browser.runtime.onInstalled.addListener((): void => {
           store.dispatch(updateConnection(true));
           store.dispatch(updateCanConnect(false));
         }
-      
+
         browser.tabs.query({ active: true }).then(async (tabs) => {
           // @ts-ignore
           await browser.tabs.sendMessage(tabs[0].id, { type: 'DISCONNECT' });
         }).then(response => {
           console.log('browser tabs finalized', response)
         });
-  
+
         return;
       }
 

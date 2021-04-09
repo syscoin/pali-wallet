@@ -17,8 +17,8 @@ import ConnectWallet from 'containers/auth/ConnectWallet';
 import ConfirmConnection from 'containers/auth/ConnectWallet/ConfirmConnection';
 import { useController } from 'hooks/index';
 import { SendMatchProps } from './types';
-import {useSelector} from 'react-redux';
-import {RootState} from 'state/store';
+import { useSelector } from 'react-redux';
+import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 
 const Auth = () => {

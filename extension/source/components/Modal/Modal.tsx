@@ -1,15 +1,15 @@
-import React, {FC} from "react";
-import {browser} from 'webextension-polyfill-ts';
+import React, { FC } from "react";
+import { browser } from 'webextension-polyfill-ts';
 
-import styles from './Popup.scss';
+import styles from './Modal.scss';
 
-interface IPopup {
+interface IModal {
   title: any,
   message?: any,
   connected?: boolean,
 }
 
-const Popup: FC<IPopup> = ({
+const Modal: FC<IModal> = ({
   title,
   message,
   connected,
@@ -19,7 +19,7 @@ const Popup: FC<IPopup> = ({
   }
 
   return (
-    <div className={styles.popup}>
+    <div className={styles.modal}>
       <div className={styles.title}>
         <small>{title}</small>
 
@@ -51,4 +51,4 @@ const Popup: FC<IPopup> = ({
   );
 };
 
-export default Popup;
+export default Modal;
