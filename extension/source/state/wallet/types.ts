@@ -20,12 +20,20 @@ export interface IAccountState {
   // type: AccountType;
   balance: number;
   transactions: Transaction[];
+  accountIsConnected: boolean;
+  connectedTo: string | undefined;
 }
 
 export interface IAccountUpdateState {
   id: number;
   balance: number;
   transactions: Transaction[];
+}
+
+export interface IAccountUpdateConnection {
+  id: number;
+  accountIsConnected: boolean;
+  connectedTo: string | undefined;
 }
 
 export interface IAccountUpdateAddress {
@@ -50,6 +58,6 @@ export default interface IWalletState {
   isConnected: boolean;
   connectedTo: string | undefined;
   currentURL: string | undefined;
-  accountConnected: number;
+  connectedAccountId: number;
   canConnect: boolean;
 }

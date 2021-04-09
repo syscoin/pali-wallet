@@ -11,7 +11,7 @@ import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 
 const ConfirmConnection = () => {
-  const { accounts, activeAccountId, connectedTo }: IWalletState = useSelector(
+  const { accounts, connectedAccountId, connectedTo }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -37,8 +37,8 @@ const ConfirmConnection = () => {
 
       <div className={styles.confirm}>
         <p>Site: {connectedTo}</p>
-        <p>Connect to account {accounts[activeAccountId].label}</p>
-        <p>{accounts[activeAccountId].address.main}</p>
+        <p>Connect to account {accounts[connectedAccountId].label}</p>
+        <p>{accounts[connectedAccountId].address.main}</p>
       </div>
 
       <small>Only connect with sites you trust. Learn more.</small>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 import CircularProgress from '@material-ui/core/CircularProgress';
@@ -21,17 +21,27 @@ import { formatNumber } from '../helpers';
 const Home = () => {
   const controller = useController();
   const getFiatAmount = useFiat();
-  const { accounts, activeAccountId, currentURL, connectedTo }: IWalletState = useSelector(
+  const { accounts, activeAccountId, currentURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
   const [isOpenModal, setIsOpenModal] = useState(false);
-  const isConnected = currentURL == connectedTo;
+  const [isConnected, setIsConnected] = useState(false);
 
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();
     controller.wallet.account.watchMemPool();
     controller.stateUpdater();
   };
+
+  useEffect(() => {
+    if (accounts[activeAccountId]) {
+      setIsConnected(currentURL == accounts[activeAccountId].connectedTo);
+    }
+  }, [
+    accounts,
+    activeAccountId,
+    currentURL
+  ]);
 
   return (
     <div className={styles.wrapper}>
@@ -57,11 +67,12 @@ const Home = () => {
             )}
           </section>
           <section className={styles.center}>
-            {(isConnected) 
+            {isConnected
               ? <small className={styles.connected} onClick={() => setIsOpenModal(!isOpenModal)}>Connected</small> 
-              : <small className={styles.connected} onClick={() => setIsOpenModal(!isOpenModal)}>Not connected</small>}
+              : <small className={styles.connected} onClick={() => setIsOpenModal(!isOpenModal)}>Not connected</small>
+            }
 
-            {isOpenModal && (isConnected) && (
+            {isOpenModal && isConnected && (
               <Modal title={currentURL} connected />
             )}
 

@@ -3,6 +3,10 @@ import { browser } from 'webextension-polyfill-ts';
 
 import styles from './Modal.scss';
 
+import { useSelector } from 'react-redux';
+import { RootState } from 'state/store';
+import IWalletState from 'state/wallet/types';
+
 interface IModal {
   title: any,
   message?: any,
@@ -14,9 +18,15 @@ const Modal: FC<IModal> = ({
   message,
   connected,
 }) => {
-  const handleDisconnect = () => {
-    browser.runtime.sendMessage({ type: 'RESET_CONNECTION_INFO' });
+  const { accounts }: IWalletState = useSelector(
+    (state: RootState) => state.wallet
+  );
+
+  const handleDisconnect = (id: number) => {
+    browser.runtime.sendMessage({ type: 'RESET_CONNECTION_INFO', id });
   }
+
+  const connectedAccounts = accounts.filter(account => account.connectedTo == title);
 
   return (
     <div className={styles.modal}>
@@ -28,25 +38,29 @@ const Modal: FC<IModal> = ({
         )}
       </div>
 
-      {message}
+      {message }
 
       {connected && (
         <div>
-          <div className={styles.account}>
-            <small>Account 1</small>
-            <small title="Disconnect account" onClick={handleDisconnect}>X</small>
-          </div>
+          {connectedAccounts.map((item, index) => {
+            return (
+              <div className={styles.account}>
+                <small key={index}>{item.label}</small>
+                <small title="Disconnect account" onClick={ () => handleDisconnect(item.id) }>X</small>
+              </div>
+            )
+          }) }
 
           <div className={styles.permissions}>
             <p>Permissions</p>
 
             <div>
-              <input disabled type="checkbox" name="permission" id="permission" checked/>
+              <input disabled type="checkbox" name="permission" id="permission" checked />
               <small>View the adresses of your permitted accounts.</small>
             </div>
           </div>
         </div>
-      )}
+      ) }
     </div>
   );
 };

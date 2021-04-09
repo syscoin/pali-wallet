@@ -7,6 +7,7 @@ import IWalletState, {
   IAccountState,
   Keystore,
   IAccountUpdateAddress,
+  IAccountUpdateConnection
 } from './types';
 
 const initialState: IWalletState = {
@@ -20,7 +21,7 @@ const initialState: IWalletState = {
   isConnected: false,
   connectedTo: '',
   currentURL: '',
-  accountConnected: 0,
+  connectedAccountId: 0,
   canConnect: false,
 };
 
@@ -34,10 +35,10 @@ const WalletState = createSlice({
         canConnect: action.payload,
       }
     },
-    updateAccountConnected(state: IWalletState, action: PayloadAction<number>) {
+    updateConnectedAccount(state: IWalletState, action: PayloadAction<number>) {
       return {
         ...state,
-        accountConnected: action.payload,
+        connectedAccountId: action.payload,
       }
     },
     updateCurrentURL(state: IWalletState, action: PayloadAction<string | undefined>) {
@@ -116,6 +117,12 @@ const WalletState = createSlice({
         ...action.payload,
       };
     },
+    updateAccountIsConnected(state: IWalletState, action: PayloadAction<IAccountUpdateConnection>) {
+      state.accounts[action.payload.id] = {
+        ...state.accounts[action.payload.id],
+        ...action.payload,
+      };
+    },
     updateAccountAddress(state: IWalletState, action: PayloadAction<IAccountUpdateAddress>) {
       state.accounts[action.payload.id] = {
         ...state.accounts[action.payload.id],
@@ -169,9 +176,10 @@ export const {
   updateAccountAddress,
   updateConnection,
   setConnectionInfo,
-  updateAccountConnected,
+  updateConnectedAccount,
   updateCurrentURL,
-  updateCanConnect
+  updateCanConnect,
+  updateAccountIsConnected
 } = WalletState.actions;
 
 export default WalletState.reducer;

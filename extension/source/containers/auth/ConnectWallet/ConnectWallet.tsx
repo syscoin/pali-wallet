@@ -15,10 +15,8 @@ const ConnectWallet = () => {
     (state: RootState) => state.wallet
   );
 
-  const handleSelectAccount = (id: string) => {
-    console.log('handle select active account', id);
-
-    // todo
+  const handleSelectAccount = (id: number) => {
+    browser.runtime.sendMessage({ type: 'SELECT_ACCOUNT', id });
   };
 
   const handleCancelConnection = () => {
@@ -42,9 +40,9 @@ const ConnectWallet = () => {
       <div className={styles.accounts}>
         <ul className={styles.options}>
           {accounts.map((acc: any, index: number) => (
-            <li key={index} onClick={() => handleSelectAccount(String(index))}>
+            <li key={index} onClick={() => handleSelectAccount(index)}>
               {acc.label}
-              {String(index) === String(activeAccountId) && <small>(active)</small>}
+              {index === activeAccountId && <small>(active)</small>}
             </li>
           ))}
         </ul>

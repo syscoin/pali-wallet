@@ -5,13 +5,14 @@ import { STORE_PORT } from 'constants/index';
 import { browser } from 'webextension-polyfill-ts';
 import { wrapStore } from 'webext-redux';
 import store from 'state/store';
-import { setConnectionInfo, updateCanConnect, updateConnection, updateCurrentURL } from 'state/wallet';
+import { setConnectionInfo, updateCanConnect, updateConnection, updateCurrentURL, updateConnectedAccount, updateAccountIsConnected } from 'state/wallet';
 
 import MasterController, { IMasterController } from './controllers';
 
 declare global {
   interface Window {
     controller: Readonly<IMasterController>;
+    senderURL: string | undefined;
   }
 }
 
@@ -35,6 +36,8 @@ browser.runtime.onInstalled.addListener((): void => {
 
         await browser.windows.create({ url: URL, type: 'popup', width: 372, height: 600, left: 900, top: 90 });
 
+        window.senderURL = sender.url;
+
         return;
       }
 
@@ -43,13 +46,24 @@ browser.runtime.onInstalled.addListener((): void => {
         store.dispatch(updateConnection(false));
         store.dispatch(updateCanConnect(false));
 
+        store.dispatch(updateAccountIsConnected({ id: request.id, accountIsConnected: false, connectedTo: '' }));
+
+        return;
+      }
+
+      if (request.type == 'SELECT_ACCOUNT') {
+        store.dispatch(updateConnectedAccount(request.id));
+        store.dispatch(updateAccountIsConnected({ id: request.id, accountIsConnected: true, connectedTo: window.senderURL }));
+        
         return;
       }
 
       if (request.type == 'CONFIRM_CONNECTION') {
-        if (store.getState().wallet.connectedTo == store.getState().wallet.currentURL) {
+        if (window.senderURL == store.getState().wallet.currentURL) {
           store.dispatch(updateConnection(true));
           store.dispatch(updateCanConnect(false));
+
+          // return;
         }
 
         browser.tabs.query({ active: true }).then(async (tabs) => {
