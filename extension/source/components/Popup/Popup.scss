@@ -1,0 +1,58 @@
+@import '~assets/styles/variables';
+
+.popup {
+  background-color: white;
+  position: absolute;
+  top: 50px;
+  z-index: 20;
+  width: 70%;
+  padding: 1rem 2rem;
+  border-radius: 1rem;
+  font-size: 15px;
+  box-shadow: 1px 1px 5px #8a8a8a;
+  transition: .3s all;
+
+  .title {
+    border-bottom: 2px solid rgb(202, 202, 202);
+    margin-bottom: 1rem;
+    padding: 1rem 0;
+    font-weight: bold;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .account {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem .5rem;
+    font-size: 1.2rem;
+    transition: .3s all;
+    cursor: pointer;
+    border-radius: .5rem;
+
+    & > small {
+      font-weight: bold;
+    }
+
+    &:hover {
+      background-color: rgb(250, 250, 250);
+    }
+  }
+
+  .permissions {
+    opacity: 70%;
+
+    & > p {
+      font-weight: bold;
+      margin-bottom: .3rem;
+      padding-bottom: .2rem;
+      border-bottom: 1px solid rgb(230, 230, 230);
+    }
+
+    & > div > small {
+      cursor: not-allowed;
+    }
+  }
+}

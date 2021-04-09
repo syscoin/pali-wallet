@@ -46,4 +46,9 @@ export default interface IWalletState {
   seedKeystoreId: number;
   activeNetwork: string;
   encriptedMnemonic: any;
+  isConnected: boolean;
+  connectedTo: string | undefined;
+  firstConnection: boolean;
+  currentURL: string | undefined;
+  accountConnected: number;
 }

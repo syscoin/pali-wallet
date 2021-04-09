@@ -16,13 +16,48 @@ const initialState: IWalletState = {
   activeAccountId: 0,
   seedKeystoreId: -1,
   activeNetwork: SYS_NETWORK.main.id,
-  encriptedMnemonic: null
+  encriptedMnemonic: null,
+  isConnected: false,
+  connectedTo: '',
+  firstConnection: false,
+  currentURL: '',
+  accountConnected: 0,
 };
 
 const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
+    updateAccountConnected(state: IWalletState, action: PayloadAction<number>) {
+      return {
+        ...state,
+        accountConnected: action.payload,
+      }
+    },
+    updateCurrentURL(state: IWalletState, action: PayloadAction<string | undefined>) {
+      return {
+        ...state,
+        currentURL: action.payload,
+      }
+    },
+    updateConnection(state: IWalletState, action: PayloadAction<boolean>) {
+      return {
+        ...state,
+        isConnected: action.payload,
+      }
+    },
+    setFirstConnectionStatus(state: IWalletState, action: PayloadAction<boolean>) {
+      return {
+        ...state,
+        firstConnection: action.payload,
+      }
+    },
+    setConnectionInfo(state: IWalletState, action: PayloadAction<string | undefined>) {
+      return {
+        ...state,
+        connectedTo: action.payload
+      }
+    },
     setKeystoreInfo(state: IWalletState, action: PayloadAction<Keystore>) {
       return {
         ...state,
@@ -130,7 +165,12 @@ export const {
   updateTransactions,
   updateLabel,
   setEncriptedMnemonic,
-  updateAccountAddress
+  updateAccountAddress,
+  updateConnection,
+  setConnectionInfo,
+  setFirstConnectionStatus,
+  updateAccountConnected,
+  updateCurrentURL
 } = WalletState.actions;
 
 export default WalletState.reducer;

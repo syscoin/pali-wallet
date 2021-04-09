@@ -12,7 +12,9 @@
   "short_name": "syscoin-wallet-ext",
   "permissions": [
     "http://*/*",
-    "https://*/*"
+    "https://*/*",
+    "tabs",
+    "activeTab"
   ],
   "content_security_policy": "script-src 'self'; object-src 'self'",
   "__chrome|firefox__author": "Quan Sys Teams",
@@ -56,9 +58,26 @@
         "http://*/*",
         "https://*/*"
       ],
+      "run_at": "document_start",
       "js": [
         "js/contentScript.bundle.js"
       ]
     }
-  ]
+  ],
+  "externally_connectable": {
+    "matches": [
+      "http://*/*",
+      "https://*/*"
+    ]
+  },
+  "web_accessible_resources": [
+    "app.html"
+  ],
+  "commands": {
+    "_execute_browser_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y"
+      }
+    }
+  }
 }
