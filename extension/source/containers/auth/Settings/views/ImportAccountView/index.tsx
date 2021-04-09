@@ -124,7 +124,9 @@ const ImportAccountView = () => {
                 />
               </>
             )}
+
             <span>Please name your new account:</span>
+            
             <TextInput
               fullWidth
               inputRef={register}
