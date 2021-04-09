@@ -23,7 +23,7 @@ const App = () => {
 
         setList(event.data.controller.wallet.accounts);
 
-        if (event.data.controller.wallet.firstConnection) {
+        if (event.data.controller.wallet.canConnect) {
           setCanConnect(true)
 
           return;

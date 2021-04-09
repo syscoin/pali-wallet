@@ -5,7 +5,7 @@ import { STORE_PORT } from 'constants/index';
 import { browser } from 'webextension-polyfill-ts';
 import { wrapStore } from 'webext-redux';
 import store from 'state/store';
-import { setConnectionInfo, setFirstConnectionStatus, updateConnection, updateCurrentURL } from 'state/wallet';
+import { setConnectionInfo, updateCanConnect, updateConnection, updateCurrentURL } from 'state/wallet';
 
 import MasterController, { IMasterController } from './controllers';
 
@@ -31,22 +31,27 @@ browser.runtime.onInstalled.addListener((): void => {
         const URL = browser.runtime.getURL('app.html');
   
         store.dispatch(setConnectionInfo(sender.url));
-        store.dispatch(setFirstConnectionStatus(!store.getState().wallet.isConnected));
+        store.dispatch(updateCanConnect(true));
   
         await browser.windows.create({url: URL, type: 'popup', width: 372, height: 600, left: 900, top: 90});
+
+        return;
       }
 
       if (request.type == 'RESET_CONNECTION_INFO') {
         store.dispatch(setConnectionInfo(''));
         store.dispatch(updateConnection(false));
-        store.dispatch(setFirstConnectionStatus(true));
+        store.dispatch(updateCanConnect(false));
   
         return;
       }
 
       if (request.type == 'CONFIRM_CONNECTION') {
-        store.dispatch(updateConnection(true));
-  
+        if (store.getState().wallet.connectedTo == store.getState().wallet.currentURL) {
+          store.dispatch(updateConnection(true));
+          store.dispatch(updateCanConnect(false));
+        }
+      
         browser.tabs.query({ active: true }).then(async (tabs) => {
           // @ts-ignore
           await browser.tabs.sendMessage(tabs[0].id, { type: 'DISCONNECT' });

@@ -34,7 +34,7 @@ const Auth = () => {
     leave: { opacity: 0 },
     config: { duration: 200 },
   });
-  const { firstConnection, isConnected }: IWalletState = useSelector(
+  const { isConnected, canConnect }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -47,7 +47,7 @@ const Auth = () => {
       return;
     }
 
-    if (firstConnection && isUnlocked && !isConnected) {
+    if (canConnect && isUnlocked && !isConnected) {
       history.push('/connect-wallet');
 
       return;
@@ -58,7 +58,7 @@ const Auth = () => {
     }
   }, [
     isConnected,
-    firstConnection,
+    canConnect,
     isUnlocked
   ]);
 
@@ -85,8 +85,8 @@ const Auth = () => {
             </Route>
             {!isUnlocked && <Route path="/import" component={Import} exact />}
             {isUnlocked && <Route path="/home" component={Home} exact />}
-            {isUnlocked && firstConnection && !isConnected && <Route path="/connect-wallet" component={ConnectWallet} exact />}
-            {isUnlocked && firstConnection && !isConnected && <Route path="/confirm-connection" component={ConfirmConnection} exact />}
+            {isUnlocked && canConnect && !isConnected && <Route path="/connect-wallet" component={ConnectWallet} exact />}
+            {isUnlocked && canConnect && !isConnected && <Route path="/confirm-connection" component={ConfirmConnection} exact />}
             {isUnlocked && (
               <Route path="/send/confirm" component={SendConfirm} exact />
             )}

@@ -49,7 +49,7 @@ export default interface IWalletState {
   encriptedMnemonic: any;
   isConnected: boolean;
   connectedTo: string | undefined;
-  firstConnection: boolean;
   currentURL: string | undefined;
   accountConnected: number;
+  canConnect: boolean;
 }

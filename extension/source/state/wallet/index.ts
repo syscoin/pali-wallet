@@ -19,15 +19,21 @@ const initialState: IWalletState = {
   encriptedMnemonic: null,
   isConnected: false,
   connectedTo: '',
-  firstConnection: false,
   currentURL: '',
   accountConnected: 0,
+  canConnect: false,
 };
 
 const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
+    updateCanConnect(state: IWalletState, action: PayloadAction<boolean>) {
+      return {
+        ...state,
+        canConnect: action.payload,
+      }
+    },
     updateAccountConnected(state: IWalletState, action: PayloadAction<number>) {
       return {
         ...state,
@@ -44,12 +50,6 @@ const WalletState = createSlice({
       return {
         ...state,
         isConnected: action.payload,
-      }
-    },
-    setFirstConnectionStatus(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        firstConnection: action.payload,
       }
     },
     setConnectionInfo(state: IWalletState, action: PayloadAction<string | undefined>) {
@@ -169,9 +169,9 @@ export const {
   updateAccountAddress,
   updateConnection,
   setConnectionInfo,
-  setFirstConnectionStatus,
   updateAccountConnected,
-  updateCurrentURL
+  updateCurrentURL,
+  updateCanConnect
 } = WalletState.actions;
 
 export default WalletState.reducer;
