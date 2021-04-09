@@ -46,6 +46,7 @@ const WalletController = (): IWalletController => {
   };
 
   const isLocked = () => {
+    console.log('is locked', !password || !mnemonic)
     return !password || !mnemonic;
   };
 
