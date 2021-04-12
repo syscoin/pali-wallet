@@ -28,12 +28,12 @@ const ControllerUtils = (): IControllerUtils => {
     try {
       const data = await (
         await fetch(
-          `${ASSET_PRICE_API}?ids=${assetId}&vs_currencies=${currency}`
+          `${ASSET_PRICE_API}?currency=${currency}`
         )
       ).json();
       if (data) {
         store.dispatch(
-          updateFiatPrice({ assetId, price: data[assetId][currency] })
+          updateFiatPrice({ assetId, price: data['rates'][currency] })
         );
       }
     } catch (error) {

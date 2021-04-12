@@ -47,6 +47,7 @@ const ConfirmPhrase = () => {
       setPassed(true);
     } else {
       controller.wallet.createWallet();
+      console.log('Checking variable',passed)
       history.push('/app.html');
     }
   };
@@ -89,6 +90,7 @@ const ConfirmPhrase = () => {
       )}
       <Button
         type="button"
+        theme="btn-gradient-primary"
         variant={passed ? styles.start : styles.validate}
         // disabled={isNotEqualArrays}
         onClick={handleConfirm}

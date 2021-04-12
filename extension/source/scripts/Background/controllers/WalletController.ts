@@ -1,4 +1,5 @@
-import { generateMnemonic } from 'bip39';
+import { generateMnemonic, validateMnemonic } from 'bip39';
+import { fromZPrv } from 'bip84';
 import store from 'state/store';
 import {
   setKeystoreInfo,
@@ -6,13 +7,16 @@ import {
   changeAccountActiveId,
   changeActiveNetwork,
   updateStatus,
-  updateSeedKeystoreId,
-  removeSeedAccounts,
+  setEncriptedMnemonic,
+  removeAccounts
 } from 'state/wallet';
 import AccountController, { IAccountController } from './AccountController';
 import IWalletState, { Keystore } from 'state/wallet/types';
-import { SYS_NETWORK } from 'constants/index';
-
+import { sys, SYS_NETWORK } from 'constants/index';
+import CryptoJS from 'crypto-js';
+// import {sys, SYS_NETWORK} from '../../../constants'
+// import {SyscoinJSLib} from 'syscoinjs-lib';
+// import {HDSigner} from 'syscoinjs-lib/utils';
 export interface IWalletController {
   account: Readonly<IAccountController>;
   setWalletPassword: (pwd: string) => void;
@@ -26,114 +30,151 @@ export interface IWalletController {
   importPhrase: (phr: string) => boolean;
   switchWallet: (id: number) => void;
   switchNetwork: (networkId: string) => void;
+  getNewAddress: () => Promise<boolean>;
   logOut: () => void;
 }
 
 const WalletController = (): IWalletController => {
   let password = '';
-  let phrase = '';
+  let mnemonic = '';
+  let HDsigner: any = null;
+  let sjs: any = null;
+  let backendURl = SYS_NETWORK.testnet.beUrl;
 
   const setWalletPassword = (pwd: string) => {
     password = pwd;
   };
 
   const isLocked = () => {
-    return !password || !phrase;
+    return !password || !mnemonic;
   };
 
   const generatePhrase = () => {
-    if (seedWalletKeystore()) {
+    if (retrieveEncriptedMnemonic()) {
       return null;
     }
 
-    if (!phrase) phrase = generateMnemonic();
-
-    return phrase;
+    if (!mnemonic) mnemonic = generateMnemonic();
+    return mnemonic;
   };
 
   const createWallet = (isUpdated = false) => {
-    if (!isUpdated && seedWalletKeystore()) {
-      return;
+    // if (!isUpdated && seedWalletKeystore()) {
+    //   return;
+    // }
+    if (!isUpdated && sjs !== null) {
+      return
     }
-
+    console.log("creating mnemonic", mnemonic)
+    console.log("creating password", password)
+    HDsigner = new sys.utils.HDSigner(mnemonic, null, true)
+    sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
+    // if (HDsigner.accountIndex > 0) {
+    //   throw new Error("account index is bigger then 0 logic inconsistency")
+    // }
     if (isUpdated) {
-      const { seedKeystoreId, keystores } = store.getState().wallet;
+      const { accounts } = store.getState().wallet;
 
-      if (seedKeystoreId > -1 && keystores[seedKeystoreId]) {
-        store.dispatch(removeSeedAccounts());
+      if (accounts) {
+        store.dispatch(removeAccounts());
       }
     }
 
-    const newKeystore: Keystore = {
-      id: 0,
-      address: 'address-newkeystore',
-      phrase
-    }
-
-    store.dispatch(setKeystoreInfo(newKeystore));
-    store.dispatch(updateSeedKeystoreId(newKeystore.id));
-
-    account.subscribeAccount(0);
-    account.getPrimaryAccount(password);
+    const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic, password)
+    store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
+    console.log("The accounts on HDsigner:", HDsigner.accounts)
+    account.subscribeAccount(sjs);
+    account.getPrimaryAccount(password, sjs);
 
     if (isUpdated) {
       account.getLatestUpdate();
     }
   };
 
-  const seedWalletKeystore = () => {
-    const { keystores, seedKeystoreId }: IWalletState = store.getState().wallet;
+  // const seedWalletKeystore = () => {
+  //   const { keystores, seedKeystoreId }: IWalletState = store.getState().wallet;
 
-    return keystores && seedKeystoreId > -1 && keystores[seedKeystoreId]
-      ? keystores[seedKeystoreId]
+  //   return keystores && seedKeystoreId > -1 && keystores[seedKeystoreId]
+  //     ? keystores[seedKeystoreId]
+  //     : null;
+  // };
+
+  const retrieveEncriptedMnemonic = () => {
+    // not encrypted for now but we got to retrieve
+    const { encriptedMnemonic }: IWalletState = store.getState().wallet
+    // const { keystores, seedKeystoreId }: IWalletState = store.getState().wallet;
+
+    return encriptedMnemonic != ''
+      ? encriptedMnemonic
       : null;
   };
-
   const checkPassword = (pwd: string) => {
     return password === pwd;
   };
 
   const getPhrase = (pwd: string) => {
-    return checkPassword(pwd) ? phrase : null;
+    return checkPassword(pwd) ? mnemonic : null;
   };
 
   const unLock = (pwd: string): boolean => {
     try {
-      const keystore = seedWalletKeystore();
-
-      if (!keystore) {
-        throw new Error('keystore not set');
+      const encriptedMnemonic = retrieveEncriptedMnemonic();
+      //add unencript password 
+      console.log("The hash", encriptedMnemonic)
+      const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, pwd).toString(CryptoJS.enc.Utf8); //add unencript password 
+      if (!decriptedMnemonic) {
+        throw new Error('password wrong');
+      }
+      console.log("starting process:", HDsigner, sjs)
+      if (HDsigner === null || sjs === null) {
+        HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, true)
+        sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
+        const { activeAccountId, accounts } = store.getState().wallet;
+        if (accounts.length > 1000) {
+          return false
+        }
+        for (let i = 1; i <= accounts.length - 1; i++) {
+          console.log(i)
+          const child = sjs.HDSigner.deriveAccount(i)
+          /* eslint new-cap: ["error", { "newIsCap": false }] */
+          sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks))
+          sjs.HDSigner.accountIndex = activeAccountId
+        }
+        //Restore logic/ function goes here 
+        console.log('HDsigner retrieved')
+        console.log('XPUB retrieved', sjs.HDSigner.getAccountXpub())
       }
 
       password = pwd;
-      phrase = keystore.phrase;
+      mnemonic = decriptedMnemonic;
 
-      account.getPrimaryAccount(password);
+      account.getPrimaryAccount(password, sjs);
       account.watchMemPool();
-
+      console.log('unblock')
       return true;
     } catch (error) {
       console.log(error);
+      return false;
     }
-
-    return false;
   };
 
   const deleteWallet = (pwd: string) => {
     if (checkPassword(pwd)) {
       password = '';
-      phrase = '';
-
+      mnemonic = '';
+      HDsigner = null;
+      sjs = null;
       store.dispatch(deleteWalletState());
       store.dispatch(updateStatus());
     }
   };
 
-  const importPhrase = (phr: string) => {
-    const keystore = seedWalletKeystore();
+  const importPhrase = (seedphrase: string) => {
 
-    if (keystore) {
-      return keystore.phrase == phr;
+    if (validateMnemonic(seedphrase)) {
+      mnemonic = seedphrase
+      console.log("mnemonic is set:", mnemonic)
+      return true;
     }
 
     return false;
@@ -146,7 +187,7 @@ const WalletController = (): IWalletController => {
 
   const logOut = () => {
     password = '';
-    phrase = '';
+    mnemonic = '';
     store.dispatch(updateStatus());
   };
 
@@ -160,7 +201,7 @@ const WalletController = (): IWalletController => {
     const newKeystoreImportAccount: Keystore = {
       id: 0,
       address: 'address-newkeystore-imported',
-      phrase
+      phrase: mnemonic
     }
 
     if (keystores.filter((keystore) => (keystore as Keystore).address === (newKeystoreImportAccount as Keystore).address).length) {
@@ -179,6 +220,13 @@ const WalletController = (): IWalletController => {
     }
   };
 
+  const getNewAddress = async () => {
+
+    sjs.HDSigner.receivingIndex = -1;
+    const address = await sjs.HDSigner.getNewReceivingAddress()
+    return account.setNewAddress(address)
+  }
+
   const account = AccountController({ checkPassword, importPrivKey });
 
   return {
@@ -194,6 +242,7 @@ const WalletController = (): IWalletController => {
     unLock,
     switchWallet,
     switchNetwork,
+    getNewAddress,
     logOut,
   };
 };

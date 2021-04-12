@@ -11,7 +11,6 @@ body {
 
     padding: .5rem 3rem;
     border-radius: 20px;
-    box-shadow: $shadow-btn;
     cursor: pointer;
 
     :global .MuiButton-label {
@@ -65,19 +64,7 @@ body {
       }
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+    // Primary button.
     &.btn-gradient-primary {
       color: $royalBlue;
       border: solid 3px transparent;
@@ -104,27 +91,55 @@ body {
         transform: scale(0.95);
       }
     }
-
-
-
-
-
-
-
     
-
-
-
-
-    
+    // Outline buttons
     &.btn-outline-primary {
-      border: 1px solid $gold;
-      border-radius: 73px;
-      color: $gold;
+      color: $royalBlue;
+      border: solid 1px transparent;
+      border-radius: 100rem;
+      background-image: 
+        linear-gradient(
+          rgba(255, 255, 255, 0), 
+          rgba(255, 255, 255, 0)), 
+          linear-gradient(
+            30deg, 
+            $navy-border 10%,
+            $royalBlue 50%
+          );
+      background-origin: border-box;
+      background-clip: content-box, border-box;
+      box-shadow: 2px 1000px 1px $navy inset;
 
       &:hover {
-        background: $gold;
-        color: $white;
+        box-shadow: none;
+        color: white;
+      }
+
+      &:active {
+        transform: scale(0.95);
+      }
+    }
+
+    &.btn-outline-secondary {
+      color: $deepPink;
+      border: solid 1px transparent;
+      border-radius: 100rem;
+      background-image: 
+        linear-gradient(
+          rgba(255, 255, 255, 0), 
+          rgba(255, 255, 255, 0)), 
+          linear-gradient(
+            30deg, 
+            #8C1F4E 10%,
+            $deepPink-100 50%
+          );
+      background-origin: border-box;
+      background-clip: content-box, border-box;
+      box-shadow: 2px 1000px 1px $navy inset;
+
+      &:hover {
+        box-shadow: none;
+        color: white;
       }
 
       &:active {

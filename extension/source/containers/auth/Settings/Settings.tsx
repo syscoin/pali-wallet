@@ -108,7 +108,7 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
   const renderView = (view: string) => {
     switch (view) {
       case routes.ACCOUNT_VIEW:
-        return <Views.AccountView address={accounts[Number(showedId)].address} />;
+        return <Views.AccountView id={Number(showedId)} />;
       case routes.GENERAL_VIEW:
         return <Views.GeneralView />;
       case routes.PHRASE_VIEW:

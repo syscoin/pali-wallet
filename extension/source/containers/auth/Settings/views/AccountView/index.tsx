@@ -2,26 +2,30 @@ import React, { FC } from 'react';
 import Icon from 'components/Icon';
 import ExportIcon from '@material-ui/icons/ImportExport';
 import LinkIcon from '@material-ui/icons/CallMissedOutgoing';
-import DeleteIcon from '@material-ui/icons/Delete';
+// import DeleteIcon from '@material-ui/icons/Delete';
 import { useSettingsView } from 'hooks/index';
+import { useSelector } from 'react-redux';
+import IWalletState from 'state/wallet/types';
+import { RootState } from 'state/store';
 
-import { PRIV_KEY_VIEW, REMOVE_ACCOUNT_VIEW } from '../routes';
+// import { PRIV_KEY_VIEW, REMOVE_ACCOUNT_VIEW } from '../routes';
+import { PRIV_KEY_VIEW } from '../routes';
 import { SYS_EXPLORER_SEARCH } from 'constants/index';
 
 import styles from './index.scss';
 
 interface IAccountView {
-  address: {
-    [assetId: string]: string;
-  };
+  id: number;
 }
 
-const AccountView: FC<IAccountView> = ({ address }) => {
+const AccountView: FC<IAccountView> = ({ id }) => {
   const showView = useSettingsView();
-
+  const { accounts }: IWalletState = useSelector(
+    (state: RootState) => state.wallet
+  );
   const handleOpenExplorer = () => {
-    window.open(SYS_EXPLORER_SEARCH, '_blank');
-    console.log(address)
+    window.open(SYS_EXPLORER_SEARCH + '/xpub/' + accounts[id].xpub);
+
   };
 
   return (
@@ -29,16 +33,16 @@ const AccountView: FC<IAccountView> = ({ address }) => {
       <ul>
         <li onClick={() => showView(PRIV_KEY_VIEW)}>
           <Icon Component={ExportIcon} />
-          Export private key
+          Export account keys
         </li>
         <li onClick={handleOpenExplorer}>
           <Icon Component={LinkIcon} />
           View on explorer
         </li>
-        <li onClick={() => showView(REMOVE_ACCOUNT_VIEW)}>
+        {/* <li onClick={() => showView(REMOVE_ACCOUNT_VIEW)}>
           <Icon Component={DeleteIcon} />
           Remove account
-        </li>
+        </li> */}
       </ul>
     </div>
   );

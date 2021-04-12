@@ -104,8 +104,8 @@
     & > span {
       margin: 18px 0px;
       font-size: 12px;
-      font-weight: 500;
-      color: $gray-dark;
+      font-weight: $regular;
+      color: $royalBlue;
       display: block;
     }
   }
@@ -124,7 +124,7 @@
     .cancel,
     .cancel:hover {
       background: $gray-light-100;
-      color: $gray-dark;
+      color: $royalBlue;
     }
 
     .button {

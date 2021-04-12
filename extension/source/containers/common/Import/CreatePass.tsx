@@ -5,6 +5,9 @@ import TextInput from 'components/TextInput';
 import CheckIcon from '@material-ui/icons/CheckCircle';
 import { useForm } from 'react-hook-form';
 import { useController } from 'hooks/index';
+import { useSelector } from 'react-redux';
+import { RootState } from 'state/store';
+import IWalletState from 'state/wallet/types';
 
 import Layout from '../../common/Layout';
 
@@ -15,7 +18,7 @@ const CreatePass = () => {
   const history = useHistory();
   const controller = useController();
   const [passed, setPassed] = useState(false);
-  const { handleSubmit, register, errors } = useForm({
+  const {handleSubmit, register, errors} = useForm({
     validationSchema: consts.schema,
   });
   const title = passed ? consts.CREATE_PASS_TITLE2 : consts.CREATE_PASS_TITLE1;
@@ -23,10 +26,19 @@ const CreatePass = () => {
     ? consts.CREATE_PASS_COMMENT2
     : consts.CREATE_PASS_COMMENT1;
 
+  const {canConnect, isConnected}: IWalletState = useSelector(
+    (state: RootState) => state.wallet
+  );
+
   const nextHandler = () => {
     if (passed) {
       controller.wallet.createWallet(true);
-      history.push('/home');
+
+      if (canConnect && !isConnected) {
+        history.push('/connect-wallet');
+      } else {
+        history.push('/home');
+      }
     }
   };
 
@@ -76,6 +88,7 @@ const CreatePass = () => {
         <span className={`body-comment ${styles.comment}`}>{comment}</span>
         <Button
           type={passed ? 'button' : 'submit'}
+          theme="btn-gradient-primary"
           variant={styles.next}
           onClick={nextHandler}
         >

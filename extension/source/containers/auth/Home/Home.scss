@@ -1,12 +1,25 @@
 @import '~assets/styles/variables';
 
 .wrapper {
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: start;
   width: 100%;
   height: 100%;
+  transition: .3s all;
+
+  .background {
+    z-index: 19;
+    background-color: rgba(0,0,0,0.6);
+    width: 100%;
+    position: absolute;
+    top: 0;
+    height: 100%;
+    transition: .3s all;
+  }
 
   .mask {
     transition: all 0.3s;
@@ -46,7 +59,7 @@
     height: 60px;
     width: 100%;
     margin-top: 72px;
-    border-bottom: 1px solid $gray-100;
+    border-bottom: 1px solid #162742;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -55,11 +68,12 @@
 
     font-weight: bold;
     font-size: 18px;
+    text-align: center;
     line-height: 24px;
     display: flex;
     align-items: center;
-    text-align: center;
-    color: $gray-dark;
+    color: $gold;
+    background: $navy;
 
     & > small {
       font-weight: 600;
@@ -68,7 +82,7 @@
       text-align: center;
       letter-spacing: 0.03em;
       line-height: 24px;
-      color: $gray;
+      color: $deepPink-100;
       position: relative;
 
       .copy {
@@ -89,26 +103,63 @@
   section.center {
     width: 100%;
     height: 180px;
-    border-bottom: 1px solid $gray-100;
+    border-bottom: 1px solid #162742;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-direction: column;
     position: relative;
+    background: $navy;
+    transition: .3s all;
+
+    .connected {
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 10px;
+      width: 50%;
+      text-align: center;
+      transition: .3s all;
+      border: 1px solid rgb(240, 240, 240);
+
+      &:hover {
+        background-color: rgb(242, 242, 242);
+      }
+    }
 
     .refresh {
       position: absolute;
       width: 32px;
       right: 30px;
       height: 32px;
-      color: $gray-100;
+      color: $white;
+
+      &:hover {
+        color: $deepPink;
+        animation-name: spin;
+        animation-duration: 3000ms;
+        animation-iteration-count: 1;
+        animation-timing-function: linear; 
+        transform: rotate(3deg);
+         /* transform: rotate(0.3rad);/ */
+         /* transform: rotate(3grad); */ 
+         /* transform: rotate(.03turn);  */
+      }
+      
+      @keyframes spin {
+          from {
+              transform:rotate(0deg);
+          }
+          to {
+              transform:rotate(360deg);
+          }
+      }
     }
 
     & > span {
       font-weight: 600;
       font-size: 18px;
       line-height: 36px;
-      color: $gray-dark;
+      color: $deepPink;
     }
 
     & > h3 {
@@ -116,7 +167,7 @@
       font-size: 33px;
       line-height: 48px;
       margin: 0px;
-      color: $gray-dark;
+      color: $deepPink;
 
       small {
         font-weight: 500;
@@ -129,7 +180,7 @@
       font-weight: 500;
       font-size: 16px;
       line-height: 24px;
-      color: $gray-100;
+      color: $white;
       margin-top: 8px;
     }
 
@@ -148,7 +199,7 @@
 
   .activity {
     height: 288px;
-    background: $gray-light;
+    background: $navy;
     width: 100%;
     padding: 0;
     box-sizing: border-box;
@@ -161,6 +212,15 @@
     align-items: center;
     transition: all 0.3s;
     z-index: 2;
+
+    border-bottom: 5px solid;
+    border-image: 
+      linear-gradient(
+        to right, 
+        $navy 20%, 
+        $royalBlue 50%, 
+        $navy 80%
+      ) 10;
 
     .spinner {
       svg {
@@ -189,14 +249,14 @@
       font-weight: 500;
       font-size: 12px;
       line-height: 18px;
-      color: $gray-dark;
+      color: $white;
     }
 
     .heading {
       box-sizing: border-box;
       display: flex;
-      background: $gray-light;
-      border-bottom: 1px solid $gray-100;
+      background: $navy;
+      border-bottom: 1px solid #162742;
       position: sticky;
       top: 0;
       justify-content: center;
@@ -206,7 +266,7 @@
       font-size: 18px;
       line-height: 60px;
       width: 100%;
-      color: $gray-dark;
+      color: $royalBlue;
       z-index: 2;
 
       .goTop {
@@ -215,6 +275,12 @@
         height: 26px;
         position: absolute;
         right: 36px;
+        color: $deepPink;
+
+        &:hover {
+          color: $deepPink-100;
+          margin-top: 2px;
+        }
       }
     }
 
@@ -236,26 +302,37 @@
         padding: 0 36px;
         align-items: center;
         justify-content: space-between;
-        border-bottom: 1px solid $white;
+        border-bottom: 1px solid $navy;
         transition: all 0.3s;
         cursor: pointer;
 
         &:hover {
-          background: rgab($gray-light-100, 0.9);
+          border-left: 1px solid;
+          border-image: 
+            linear-gradient(
+              0deg,
+              $navy 20%, 
+              $royalBlue 50%, 
+              $navy 80%
+            ) 10;
           backdrop-filter: blur(10px);
 
           .linkIcon {
-            background: $gray-200;
+            background: $royalBlue;
           }
         }
 
         &.groupbar {
           height: 24px;
-          background: $navy-medium;
+          background-image: linear-gradient(
+            to right, 
+            $navy-border 40%, 
+            $navy-medium 80%
+          );
           font-weight: 500;
           font-size: 12px;
           line-height: 18px;
-          color: $navy;
+          color: $royalBlue;
         }
 
         & > div {
@@ -275,7 +352,7 @@
             font-weight: 500;
             font-size: 18px;
             line-height: 24px;
-            color: $gray-dark;
+            color: $navy-light;
 
             & > span {
               display: flex;
@@ -294,7 +371,6 @@
               font-weight: 500;
               font-size: 12px;
               line-height: 18px;
-              color: $gray;
               white-space: nowrap;
               text-overflow: ellipsis;
               overflow: auto;
@@ -302,12 +378,14 @@
               text-align: right;
               display: inline-block;
               overflow: hidden;
+              color: $white;
             }
           }
 
           &:last-child > span {
             align-items: flex-end;
             justify-content: end;
+            color: $royalBlue;
           }
         }
 
@@ -344,7 +422,7 @@
         .linkIcon {
           width: 24px;
           height: 24px;
-          background: $gray-100;
+          background: $navy-dark;
           border-radius: 50%;
           color: $white;
           display: flex;

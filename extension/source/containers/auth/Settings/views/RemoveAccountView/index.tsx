@@ -7,10 +7,10 @@ import { useForm } from 'react-hook-form';
 import * as yup from 'yup';
 
 import { ellipsis } from 'containers/auth/helpers';
-import { useController, useSettingsView } from 'hooks/index';
+import { useSettingsView } from 'hooks/index';
 import TextInput from 'components/TextInput';
 import Button from 'components/Button';
-import IWalletState, { AccountType } from 'state/wallet/types';
+import IWalletState from 'state/wallet/types';
 import { RootState } from 'state/store';
 
 import styles from './index.scss';
@@ -21,7 +21,7 @@ interface IRemoveAccountView {
 }
 
 const RemoveAccountView: FC<IRemoveAccountView> = ({ id }) => {
-  const controller = useController();
+  // const controller = useController();
   const showView = useSettingsView();
   const alert = useAlert();
   const history = useHistory();
@@ -35,14 +35,16 @@ const RemoveAccountView: FC<IRemoveAccountView> = ({ id }) => {
     }),
   });
 
-  const onSubmit = (data: any) => {
+  // const onSubmit = (data: any) => {
+  const onSubmit = () => {
     let isChecked;
-    
-    if (accounts[id].type === AccountType.Seed) {
-      isChecked = controller.wallet.account.unsubscribeAccount(
-        id,
-        data.password
-      );
+
+    if (id !== 0) {
+      console.log("Removing tha account")
+      //   isChecked = controller.wallet.account.unsubscribeAccount(
+      //     id,
+      //     data.password
+      //   );
     } else {
       alert.error('Error: You cannot remove the main account.');
     }
@@ -79,7 +81,7 @@ const RemoveAccountView: FC<IRemoveAccountView> = ({ id }) => {
         <div className={styles.actions}>
           <Button
             type="button"
-            theme="secondary"
+            theme="btn-outline-secondary"
             variant={clsx(styles.button, styles.close)}
             onClick={() => history.goBack()}
           >

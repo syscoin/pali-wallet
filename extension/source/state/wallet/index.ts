@@ -6,7 +6,8 @@ import IWalletState, {
   IAccountUpdateState,
   IAccountState,
   Keystore,
-  AccountType,
+  IAccountUpdateAddress,
+  IAccountUpdateConnection
 } from './types';
 
 const initialState: IWalletState = {
@@ -16,13 +17,48 @@ const initialState: IWalletState = {
   activeAccountId: 0,
   seedKeystoreId: -1,
   activeNetwork: SYS_NETWORK.main.id,
-  index: 0
+  encriptedMnemonic: null,
+  isConnected: false,
+  connectedTo: '',
+  currentURL: '',
+  connectedAccountId: 0,
+  canConnect: false,
 };
 
 const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
+    updateCanConnect(state: IWalletState, action: PayloadAction<boolean>) {
+      return {
+        ...state,
+        canConnect: action.payload,
+      }
+    },
+    updateConnectedAccount(state: IWalletState, action: PayloadAction<number>) {
+      return {
+        ...state,
+        connectedAccountId: action.payload,
+      }
+    },
+    updateCurrentURL(state: IWalletState, action: PayloadAction<string | undefined>) {
+      return {
+        ...state,
+        currentURL: action.payload,
+      }
+    },
+    updateConnection(state: IWalletState, action: PayloadAction<boolean>) {
+      return {
+        ...state,
+        isConnected: action.payload,
+      }
+    },
+    setConnectionInfo(state: IWalletState, action: PayloadAction<string | undefined>) {
+      return {
+        ...state,
+        connectedTo: action.payload
+      }
+    },
     setKeystoreInfo(state: IWalletState, action: PayloadAction<Keystore>) {
       return {
         ...state,
@@ -31,6 +67,9 @@ const WalletState = createSlice({
           action.payload
         ]
       };
+    },
+    setEncriptedMnemonic(state: IWalletState, action: PayloadAction<CryptoJS.lib.CipherParams>) {
+      state.encriptedMnemonic = action.payload.toString();
     },
     removeKeystoreInfo(state: IWalletState, action: PayloadAction<number>) {
       if (state.keystores[action.payload]) {
@@ -63,20 +102,28 @@ const WalletState = createSlice({
       if (state.activeAccountId === action.payload) {
         state.activeAccountId = state.accounts[0].id;
       }
-      
+
       state.accounts.splice(action.payload, 1);
       state.activeAccountId = 0;
     },
-    removeSeedAccounts(state: IWalletState) {
-      state.accounts.forEach((account) => {
-        if (account.type === AccountType.Seed) {
-          state.accounts.splice(account.id, 1);
-        }
-      });
 
+    removeAccounts(state: IWalletState) {
+      state.accounts = [];
       state.activeAccountId = 0;
     },
     updateAccount(state: IWalletState, action: PayloadAction<IAccountUpdateState>) {
+      state.accounts[action.payload.id] = {
+        ...state.accounts[action.payload.id],
+        ...action.payload,
+      };
+    },
+    updateAccountIsConnected(state: IWalletState, action: PayloadAction<IAccountUpdateConnection>) {
+      state.accounts[action.payload.id] = {
+        ...state.accounts[action.payload.id],
+        ...action.payload,
+      };
+    },
+    updateAccountAddress(state: IWalletState, action: PayloadAction<IAccountUpdateAddress>) {
       state.accounts[action.payload.id] = {
         ...state.accounts[action.payload.id],
         ...action.payload,
@@ -87,6 +134,7 @@ const WalletState = createSlice({
       state.accounts = [];
       state.seedKeystoreId = -1;
       state.activeAccountId = 0;
+      state.encriptedMnemonic = null;
       state.activeNetwork = SYS_NETWORK.main.id;
     },
     changeAccountActiveId(state: IWalletState, action: PayloadAction<number>) {
@@ -116,7 +164,7 @@ export const {
   updateStatus,
   createAccount,
   removeAccount,
-  removeSeedAccounts,
+  removeAccounts,
   deleteWallet,
   updateSeedKeystoreId,
   changeAccountActiveId,
@@ -124,6 +172,14 @@ export const {
   updateAccount,
   updateTransactions,
   updateLabel,
+  setEncriptedMnemonic,
+  updateAccountAddress,
+  updateConnection,
+  setConnectionInfo,
+  updateConnectedAccount,
+  updateCurrentURL,
+  updateCanConnect,
+  updateAccountIsConnected
 } = WalletState.actions;
 
 export default WalletState.reducer;

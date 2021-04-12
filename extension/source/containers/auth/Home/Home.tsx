@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 import CircularProgress from '@material-ui/core/CircularProgress';
@@ -8,6 +8,7 @@ import RefreshIcon from '@material-ui/icons/Refresh';
 import Header from 'containers/common/Header';
 import Button from 'components/Button';
 import FullSelect from 'components/FullSelect';
+import Modal from 'components/Modal';
 import { useController } from 'hooks/index';
 import { useFiat } from 'hooks/usePrice';
 import { RootState } from 'state/store';
@@ -20,9 +21,11 @@ import { formatNumber } from '../helpers';
 const Home = () => {
   const controller = useController();
   const getFiatAmount = useFiat();
-  const { accounts, activeAccountId }: IWalletState = useSelector(
+  const { accounts, activeAccountId, currentURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
+  const [isOpenModal, setIsOpenModal] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
 
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();
@@ -30,8 +33,22 @@ const Home = () => {
     controller.stateUpdater();
   };
 
+  useEffect(() => {
+    if (accounts[activeAccountId]) {
+      setIsConnected(currentURL == accounts[activeAccountId].connectedTo);
+    }
+  }, [
+    accounts,
+    activeAccountId,
+    currentURL
+  ]);
+
   return (
     <div className={styles.wrapper}>
+      {isOpenModal && (
+        <div className={styles.background} onClick={() => setIsOpenModal(false)}></div>
+      )}
+
       {accounts[activeAccountId] ? (
         <>
           <Header showLogo />
@@ -50,6 +67,19 @@ const Home = () => {
             )}
           </section>
           <section className={styles.center}>
+            {isConnected
+              ? <small className={styles.connected} onClick={() => setIsOpenModal(!isOpenModal)}>Connected</small> 
+              : <small className={styles.connected} onClick={() => setIsOpenModal(!isOpenModal)}>Not connected</small>
+            }
+
+            {isOpenModal && isConnected && (
+              <Modal title={currentURL} connected />
+            )}
+
+            {isOpenModal && (!isConnected) && (
+              <Modal title={currentURL} message="Syscoin Wallet is not connected this site. To connect to a web3 site, find the connect button on their site." />
+            )}
+
             <h3>
               {formatNumber(accounts[activeAccountId].balance)}{' '}
               <small>SYS</small>
@@ -61,7 +91,7 @@ const Home = () => {
             <div className={styles.actions}>
               <Button
                 type="button"
-                theme="primary"
+                theme="btn-outline-secondary"
                 variant={styles.button}
                 linkTo="/send"
               >
@@ -69,7 +99,7 @@ const Home = () => {
               </Button>
               <Button
                 type="button"
-                theme="primary"
+                theme="btn-outline-primary"
                 variant={styles.button}
                 linkTo="/receive"
               >

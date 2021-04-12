@@ -8,18 +8,37 @@ export enum AccountType {
 export interface IAccountState {
   id: number;
   label: string;
-  address: {
-    [assetId: string]: string;
+  xpub: string;
+  masterPrv: string;
+  assets: {
+    [assetId: number]: {
+      name: string;
+      balance: number;
+    };
   };
+  address: { [assetId: string]: string };
+  // type: AccountType;
   balance: number;
-  type: AccountType;
   transactions: Transaction[];
+  accountIsConnected: boolean;
+  connectedTo: string | undefined;
 }
 
 export interface IAccountUpdateState {
   id: number;
   balance: number;
   transactions: Transaction[];
+}
+
+export interface IAccountUpdateConnection {
+  id: number;
+  accountIsConnected: boolean;
+  connectedTo: string | undefined;
+}
+
+export interface IAccountUpdateAddress {
+  id: number;
+  address: { [assetId: string]: string };
 }
 
 export interface Keystore {
@@ -35,5 +54,10 @@ export default interface IWalletState {
   activeAccountId: number;
   seedKeystoreId: number;
   activeNetwork: string;
-  index: number;
+  encriptedMnemonic: any;
+  isConnected: boolean;
+  connectedTo: string | undefined;
+  currentURL: string | undefined;
+  connectedAccountId: number;
+  canConnect: boolean;
 }

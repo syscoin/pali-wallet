@@ -1,27 +1,20 @@
 export type Transaction = {
-  hash : string;
-  amount : number;
-  receiver : string;
-  sender : string;
-  fee : number;
-  isDummy : true;
-  timeAgo?: string;
-  timestamp: string;
-  lastTransactionRef : {
-    prevHash : string;
-    ordinal : number
-  };
-  snapshotHash : string;
-  checkpointBlock : string;
-  pending?: boolean;
-  pendingMsg?: string;
+  txid: string;
+  value: number;
+  confirmations: number;
+  fees: number;
+  blockTime: number;
+  tokenType: string;
 }
 
 export interface IAccountInfo {
-  address: {
-    [assetId: string]: string;
-  };
   balance: number;
+  assets: {
+    [assetId: number]: {
+      name: string;
+      balance: number;
+    };
+  };
   transactions: Transaction[];
 }
 
@@ -29,13 +22,13 @@ export interface ITransactionInfo {
   fromAddress: string;
   toAddress: string;
   amount: number;
-  fee: number | undefined;
+  fee: number;
 }
 
 export type PendingTx = {
-  timestamp: number;
-  hash: string;
-  amount: number;
-  receiver: string;
-  sender: string;
+  txid: string;
+  value: number;
+  confirmations: number;
+  fees: number;
+  blockTime: number;
 }

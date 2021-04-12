@@ -26,10 +26,10 @@ const NewAccountView = () => {
     [styles.copied]: isCopied && address,
   });
 
-  const onSubmit = (data: any) => {
-    const res = controller.wallet.account.addNewAccount(data.name);
+  const onSubmit = async (data: any) => {
+    const res = await controller.wallet.account.addNewAccount(data.name);
     if (res) {
-      setAddress(res.main);
+      setAddress(res);
     }
   };
 
@@ -70,13 +70,16 @@ const NewAccountView = () => {
           <div className={styles.actions}>
             <Button
               type="button"
-              theme="secondary"
+              theme="btn-outline-secondary"
               variant={clsx(styles.button, styles.close)}
               onClick={() => showView(MAIN_VIEW)}
             >
               Close
             </Button>
-            <Button type="submit" variant={styles.button}>
+            <Button 
+              type="submit"
+              theme="btn-gradient-primary"
+              variant={styles.button}>
               Next
             </Button>
           </div>

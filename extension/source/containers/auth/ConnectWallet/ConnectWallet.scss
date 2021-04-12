@@ -1,0 +1,126 @@
+@import '~assets/styles/variables';
+
+.home {
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  right: 0px;
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  box-sizing: border-box;
+  text-align: center;
+  background: $navy;
+
+  .error {
+    color: white;
+    font-size: 12px;
+    position: absolute;
+    width: calc(100% - 112px);
+    bottom: 132px;
+  }
+
+  .accounts, .confirm {
+    width: 90%;
+    min-height: 200px;
+    max-height: 210px;
+    background-color: $gray-light;
+    border-radius: 6px;
+    text-align: center;
+
+    & > p {
+      color: $gray-dark;
+      font-size: 16px;
+      font-weight: bold;
+    }
+  }
+
+  .confirm {
+    min-height: 100px;
+    max-height: 210px;
+  }
+
+  .buttons {
+    position: absolute;
+    bottom: 35px;
+    right: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-evenly;
+  }
+
+  & > h1 {
+    color: white;
+    margin-top: -40px;
+  }
+
+  .cancel {
+    margin-right: 1rem;
+  }
+
+  .next {
+    background-color: green;
+  }
+
+  & > small {
+    position: absolute;
+    bottom: 80px;
+    color: $gray-light;
+    padding: 3px;
+    font-size: 14px;
+  }
+
+  & > p {
+    color: $gray-light;
+    font-size: 12px;
+  }
+
+  ul.options {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    backdrop-filter: blur(10px);
+    overflow: auto;
+    max-height: 200px;
+    z-index: 1;
+    margin: 20px 0 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  
+    li {
+      width: 90%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 300ms;
+      font-size: 18px;
+      font-weight: 500;
+      color: $gray-dark;
+      height: 40px;
+      border-radius: 6px;
+      margin: 2px 5px;
+      cursor: pointer;
+
+      &:active {
+        background: rgb(214, 214, 214);
+      }
+
+      &:hover {
+        background: rgb(214, 214, 214);
+      }
+
+      &:focus {
+        background: rgb(214, 214, 214);
+      }
+
+      & > small {
+        margin-left: 5px;
+      }
+    }
+  }
+}

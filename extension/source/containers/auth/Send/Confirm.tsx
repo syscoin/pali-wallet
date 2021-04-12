@@ -12,6 +12,7 @@ import UpArrowIcon from '@material-ui/icons/ArrowUpward';
 import { RootState } from 'state/store';
 import { ellipsis } from '../helpers';
 import IWalletState from 'state/wallet/types';
+import { useAlert } from 'react-alert';
 
 import styles from './Confirm.scss';
 
@@ -24,10 +25,18 @@ const SendConfirm = () => {
   );
   const tempTx = controller.wallet.account.getTempTx();
   const [confirmed, setConfirmed] = useState(false);
+  const alert = useAlert();
 
   const handleConfirm = () => {
-    controller.wallet.account.confirmTempTx()
-    setConfirmed(true);
+    controller.wallet.account.confirmTempTx().then(result => {
+      if (result) {
+        alert.removeAll();
+        alert.error(result.message);
+      }
+      else {
+        setConfirmed(true);
+      }
+    })
   };
 
   return confirmed ? (
@@ -36,7 +45,11 @@ const SendConfirm = () => {
       <div className="body-description">
         You can follow your transaction under activity on your account screen.
       </div>
-      <Button type="button" variant={styles.next} linkTo="/home">
+      <Button 
+        type="button" 
+        theme="btn-gradient-primary"
+        variant={styles.next} 
+        linkTo="/home">
         Next
       </Button>
     </Layout>
@@ -52,9 +65,9 @@ const SendConfirm = () => {
         <small>
           (≈
           {getFiatAmount(
-            Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0),
-            8
-          )}
+          Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0),
+          8
+        )}
           )
         </small>
       </section>
