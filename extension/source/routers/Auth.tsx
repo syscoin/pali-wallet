@@ -28,16 +28,24 @@ const Auth = () => {
   const history = useHistory();
   const controller = useController();
   const isUnlocked = !controller.wallet.isLocked();
+  
   const transitions = useTransition(location, (locat) => locat.pathname, {
-    initial: { opacity: 1 },
-    from: { opacity: 0 },
-    enter: { opacity: 1 },
-    leave: { opacity: 0 },
-    config: { duration: 200 },
+    initial: {opacity: 1},
+    from: {opacity: 0},
+    enter: {opacity: 1},
+    leave: {opacity: 0},
+    config: {duration: 200},
   });
-  const { isConnected, canConnect }: IWalletState = useSelector(
+
+  const { canConnect, accounts, currentSenderURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
+
+  const connectedAccounts = accounts.filter(account => {
+    return account.connectedTo.findIndex((url: any) => {
+      return url == currentSenderURL;
+    }) > -1;
+  });
 
   useEffect(() => {
     const redirectRoute = controller.appRoute();
@@ -48,23 +56,34 @@ const Auth = () => {
       return;
     }
 
-    if (canConnect && isUnlocked && !isConnected) {
-      history.push('/connect-wallet');
+    if (canConnect && isUnlocked) {
+      if (connectedAccounts.length <= 0) {
+        history.push('/connect-wallet');
+        
+        return;
+      }
+
+      history.push('/connected-accounts');
 
       return;
     }
 
-    // if (canConnect && isUnlocked && isConnected) {
-    //   history.push('/connected-accounts');
+    if (!canConnect && isUnlocked) {
+      if (connectedAccounts.length > 0) {
+        history.push('/home');
 
-    //   return;
-    // }
+        return;
+      }
+
+      history.push('/home');
+
+      return;
+    }
 
     if (redirectRoute !== '/app.html') {
       history.push(redirectRoute);
     }
   }, [
-    isConnected,
     canConnect,
     isUnlocked
   ]);
@@ -83,18 +102,18 @@ const Auth = () => {
             position: 'absolute',
             height: '100%',
             width: '100%',
-          }}
+          } }
           key={key}
         >
-          <Switch location={item}>
+          <Switch location={item }>
             <Route path="/app.html" component={Start} exact>
               {isUnlocked && <Redirect to="/home" />}
             </Route>
             {!isUnlocked && <Route path="/import" component={Import} exact />}
             {isUnlocked && <Route path="/home" component={Home} exact />}
-            {isUnlocked && canConnect && !isConnected && <Route path="/connect-wallet" component={ConnectWallet} exact />}
-            {isUnlocked && canConnect && !isConnected && <Route path="/confirm-connection" component={ConfirmConnection} exact />}
-            {isUnlocked && canConnect && isConnected && <Route path="/connected-accounts" component={ConnectedAccounts} exact />}
+            {isUnlocked && canConnect && <Route path="/connect-wallet" component={ConnectWallet} exact />}
+            {isUnlocked && canConnect && <Route path="/confirm-connection" component={ConfirmConnection} exact />}
+            {isUnlocked && canConnect && (connectedAccounts.length > 0) && <Route path="/connected-accounts" component={ConnectedAccounts} exact />}
             {isUnlocked && (
               <Route path="/send/confirm" component={SendConfirm} exact />
             )}
@@ -102,7 +121,7 @@ const Auth = () => {
             {isUnlocked && (
               <Route
                 path="/send/:address"
-                render={({ match }: SendMatchProps) => (
+                render={({match}: SendMatchProps) => (
                   <Send initAddress={match.params.address} />
                 )}
                 exact

@@ -1,26 +1,32 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { browser } from 'webextension-polyfill-ts';
-import Button from 'components/Button';
 import Header from 'containers/common/Header';
-import Link from 'components/Link';
+import Button from 'components/Button';
+import checkGreen from 'assets/images/svg/check-green.svg';
+import { ellipsis } from 'containers/auth/helpers';
+// import Spinner from '@material-ui/core/CircularProgress';
 
 import styles from './ConnectWallet.scss';
+import clsx from 'clsx';
 
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 
 const ConnectWallet = () => {
-  const { accounts, activeAccountId, connectedTo }: IWalletState = useSelector(
+  const { accounts, activeAccountId, currentSenderURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
+  const [accountId, setAccountId] = useState(-1);
 
   const handleSelectAccount = (id: number) => {
+    setAccountId(id);
     browser.runtime.sendMessage({ type: 'SELECT_ACCOUNT', id });
   };
 
   const handleCancelConnection = () => {
-    browser.runtime.sendMessage({ type: 'RESET_CONNECTION_INFO' });
+    browser.runtime.sendMessage({ type: 'RESET_CONNECTION_INFO', id: accountId, url: currentSenderURL });
+    browser.runtime.sendMessage({ type: 'CLOSE_POPUP' });
   }
 
   return (
@@ -34,34 +40,46 @@ const ConnectWallet = () => {
       </h1>
 
       <p>1/2</p>
-      <p>{connectedTo}</p>
-      <p>Choose account(s)</p>
+      <p>{currentSenderURL}</p>
+      <p>Choose account</p>
 
-      <div className={styles.accounts}>
-        <ul className={styles.options}>
-          {accounts.map((acc: any, index: number) => (
-            <li key={index} onClick={() => handleSelectAccount(index)}>
-              {acc.label}
-              {index === activeAccountId && <small>(active)</small>}
-            </li>
-          ))}
-        </ul>
-      </div>
+      <ul className={styles.list}>
+        {accounts.map((acc: any, index: number) => (
+          <li key={index} onClick={() => handleSelectAccount(index)} className={styles.account}>
+            <div className={styles.label}>
+              <p>{acc.label} {index === activeAccountId && <small>(active)</small>}</p>
+              <small>{ellipsis(acc.address.main)}</small>
+            </div>
+
+            {index === accountId && <img src={checkGreen} alt="check" />}
+
+          </li>
+        ))
+       }
+      </ul>
 
       <small>Only connect with sites you trust. Learn more.</small>
 
-      <div className={styles.buttons}>
-        <Link color="secondary" to="/app.html" onClick={handleCancelConnection}>
-          <Button type="submit" theme="secondary" variant={styles.cancel}>
-            Cancel
-          </Button>
-        </Link>
+      <div className={styles.actions}>
+        <Button
+          type="button"
+          theme="btn-outline-secondary"
+          variant={clsx(styles.button, styles.cancel)}
+          onClick={handleCancelConnection}
+          linkTo="/app.html"
+        >
+          Cancel
+        </Button>
 
-        <Link color="secondary" to="/confirm-connection">
-          <Button type="submit" theme="secondary" variant={styles.next}>
-            Next
-          </Button>
-        </Link>
+        <Button
+          type="button"
+          theme="btn-outline-secondary"
+          variant={styles.button}
+          disabled={accountId === -1}
+          linkTo="/confirm-connection"
+        >
+          Next
+        </Button>
       </div>
     </div>
   );

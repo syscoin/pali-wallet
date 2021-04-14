@@ -107,8 +107,7 @@ const AccountController = (actions: {
       masterPrv: sysjs.HDSigner.accounts[sysjs.HDSigner.accountIndex].getAccountPrivateKey(),
       address: { 'main': await sysjs.HDSigner.getNewReceivingAddress() },
       assets: res.assets,
-      accountIsConnected: false,
-      connectedTo: ''
+      connectedTo: []
     };
     store.dispatch(createAccount(account));
 

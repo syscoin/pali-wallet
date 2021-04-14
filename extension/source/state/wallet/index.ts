@@ -6,8 +6,7 @@ import IWalletState, {
   IAccountUpdateState,
   IAccountState,
   Keystore,
-  IAccountUpdateAddress,
-  IAccountUpdateConnection
+  IAccountUpdateAddress
 } from './types';
 
 const initialState: IWalletState = {
@@ -18,27 +17,57 @@ const initialState: IWalletState = {
   seedKeystoreId: -1,
   activeNetwork: SYS_NETWORK.main.id,
   encriptedMnemonic: null,
-  isConnected: false,
-  connectedTo: '',
+  currentSenderURL: '',
   currentURL: '',
-  connectedAccountId: 0,
   canConnect: false,
+  connections: []
 };
 
 const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
+    removeConnection(state: IWalletState, action: PayloadAction<any>) {
+      const connectionIndex: number = state.connections.findIndex(connection => connection.url === action.payload.url);
+
+      if (connectionIndex === -1) {
+        return;
+      }
+
+      state.connections.splice(connectionIndex, 1);
+
+      state.accounts[action.payload.accountId].connectedTo.splice(state.accounts[action.payload.accountId].connectedTo.indexOf(action.payload.url), 1);
+    },
+    updateConnectionsArray(state: IWalletState, action: PayloadAction<any>) {
+      const index: number = state.connections.findIndex(connection => connection.accountId !== action.payload.accountId && connection.url === action.payload.url);
+
+      if (state.connections[index]) {
+        state.accounts[state.connections[index].accountId].connectedTo.splice(state.connections.findIndex(url => url == state.connections[index].url), 1);
+
+        state.connections[index] = action.payload;
+        
+        state.accounts[state.connections[index].accountId].connectedTo.push(state.connections[index].url);
+
+        return;
+      }
+
+      const alreadyExistsIndex: number = state.connections.findIndex(connection => connection.accountId == action.payload.accountId && connection.url === action.payload.url);
+
+      if (state.connections[alreadyExistsIndex]) {
+        state.connections[alreadyExistsIndex] = action.payload;
+        state.accounts[alreadyExistsIndex].connectedTo[alreadyExistsIndex] = action.payload.url;
+
+        return;
+      }
+
+      state.connections.push(action.payload);
+
+      state.accounts[action.payload.accountId].connectedTo.push(action.payload.url);
+    },
     updateCanConnect(state: IWalletState, action: PayloadAction<boolean>) {
       return {
         ...state,
         canConnect: action.payload,
-      }
-    },
-    updateConnectedAccount(state: IWalletState, action: PayloadAction<number>) {
-      return {
-        ...state,
-        connectedAccountId: action.payload,
       }
     },
     updateCurrentURL(state: IWalletState, action: PayloadAction<string | undefined>) {
@@ -47,16 +76,10 @@ const WalletState = createSlice({
         currentURL: action.payload,
       }
     },
-    updateConnection(state: IWalletState, action: PayloadAction<boolean>) {
+    setSenderURL(state: IWalletState, action: PayloadAction<string | undefined>) {
       return {
         ...state,
-        isConnected: action.payload,
-      }
-    },
-    setConnectionInfo(state: IWalletState, action: PayloadAction<string | undefined>) {
-      return {
-        ...state,
-        connectedTo: action.payload
+        currentSenderURL: action.payload
       }
     },
     setKeystoreInfo(state: IWalletState, action: PayloadAction<Keystore>) {
@@ -117,12 +140,6 @@ const WalletState = createSlice({
         ...action.payload,
       };
     },
-    updateAccountIsConnected(state: IWalletState, action: PayloadAction<IAccountUpdateConnection>) {
-      state.accounts[action.payload.id] = {
-        ...state.accounts[action.payload.id],
-        ...action.payload,
-      };
-    },
     updateAccountAddress(state: IWalletState, action: PayloadAction<IAccountUpdateAddress>) {
       state.accounts[action.payload.id] = {
         ...state.accounts[action.payload.id],
@@ -174,12 +191,11 @@ export const {
   updateLabel,
   setEncriptedMnemonic,
   updateAccountAddress,
-  updateConnection,
-  setConnectionInfo,
-  updateConnectedAccount,
+  setSenderURL,
   updateCurrentURL,
   updateCanConnect,
-  updateAccountIsConnected
+  updateConnectionsArray,
+  removeConnection,
 } = WalletState.actions;
 
 export default WalletState.reducer;

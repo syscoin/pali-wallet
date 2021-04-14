@@ -22,13 +22,15 @@
     bottom: 132px;
   }
 
-  .accounts, .confirm {
-    width: 90%;
-    min-height: 200px;
+  .list {
+    width: 85%;
     max-height: 210px;
-    background-color: $gray-light;
+    background-color: #f5f5f5;
     border-radius: 6px;
     text-align: center;
+    overflow: auto;
+    margin-bottom: 2rem;
+    padding: 0;
 
     & > p {
       color: $gray-dark;
@@ -37,19 +39,22 @@
     }
   }
 
-  .confirm {
-    min-height: 100px;
-    max-height: 210px;
-  }
-
-  .buttons {
+  .actions {
     position: absolute;
-    bottom: 35px;
-    right: 0;
-    width: 100%;
+    bottom: 24px;
+    width: calc(100% - 72px);
     display: flex;
+    flex-direction: row;
     align-items: center;
-    justify-content: space-evenly;
+    justify-content: space-between;
+
+    &.centered {
+      justify-content: center;
+    }
+
+    .button {
+      width: 144px;
+    }
   }
 
   & > h1 {
@@ -76,51 +81,49 @@
   & > p {
     color: $gray-light;
     font-size: 12px;
+    margin: .3rem;
   }
 
-  ul.options {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    backdrop-filter: blur(10px);
-    overflow: auto;
-    max-height: 200px;
-    z-index: 1;
-    margin: 20px 0 20px;
+  .account {
     display: flex;
-    flex-direction: column;
+    justify-content: space-between;
     align-items: center;
-    justify-content: center;
-  
-    li {
-      width: 90%;
+    font-size: 17px;
+    border: 1px solid #e2e2e2;
+    cursor: pointer;
+    padding: .7rem 1.4rem;
+
+    &:hover {
+      background-color: #f0f0f0;
+    }
+
+    .label {
       display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 300ms;
-      font-size: 18px;
-      font-weight: 500;
-      color: $gray-dark;
-      height: 40px;
-      border-radius: 6px;
-      margin: 2px 5px;
-      cursor: pointer;
+      flex-direction: column;
+      text-align: left;
 
-      &:active {
-        background: rgb(214, 214, 214);
-      }
-
-      &:hover {
-        background: rgb(214, 214, 214);
-      }
-
-      &:focus {
-        background: rgb(214, 214, 214);
+      & > p {
+        margin: 0 0 .2rem 0;
       }
 
       & > small {
-        margin-left: 5px;
+        font-size: 12px;
       }
+    }
+  }
+
+  .connectedTitle {
+    color: white;
+    margin-top: -40px;
+    margin: 0 2rem 1rem;
+
+    & > p {
+      font-size: 1.4rem;
+      font-weight: bold;
+    }
+
+    & > small {
+      font-size: .8rem;
     }
   }
 }

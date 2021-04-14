@@ -35,7 +35,15 @@ const Home = () => {
 
   useEffect(() => {
     if (accounts[activeAccountId]) {
-      setIsConnected(currentURL == accounts[activeAccountId].connectedTo);
+      if (accounts[activeAccountId].connectedTo.length > 0) {
+        setIsConnected(accounts[activeAccountId].connectedTo.findIndex((url: any) => {
+          return url == currentURL;
+      }) > -1);
+
+        return;
+      }
+
+      setIsConnected(false);
     }
   }, [
     accounts,
@@ -68,16 +76,16 @@ const Home = () => {
           </section>
           <section className={styles.center}>
             {isConnected
-              ? <small className={styles.connected} onClick={() => setIsOpenModal(!isOpenModal)}>Connected</small> 
+              ? <small className={styles.connected} onClick={() => setIsOpenModal(!isOpenModal)}>Connected</small>
               : <small className={styles.connected} onClick={() => setIsOpenModal(!isOpenModal)}>Not connected</small>
-            }
+           }
 
             {isOpenModal && isConnected && (
               <Modal title={currentURL} connected />
             )}
 
             {isOpenModal && (!isConnected) && (
-              <Modal title={currentURL} message="Syscoin Wallet is not connected this site. To connect to a web3 site, find the connect button on their site." />
+              <Modal title={currentURL} message="This account is not connected this site. To connect to a web3 site, find the connect button on their site." />
             )}
 
             <h3>
@@ -116,11 +124,11 @@ const Home = () => {
         <section
           className={clsx(styles.mask, {
             [styles.hide]: accounts[activeAccountId],
-          })}
+         })}
         >
           <CircularProgress className={styles.loader} />
         </section>
-      )}
+      ) }
     </div>
   );
 };

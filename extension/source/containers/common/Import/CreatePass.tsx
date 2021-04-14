@@ -26,7 +26,7 @@ const CreatePass = () => {
     ? consts.CREATE_PASS_COMMENT2
     : consts.CREATE_PASS_COMMENT1;
 
-  const {canConnect, isConnected}: IWalletState = useSelector(
+  const { canConnect }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -34,7 +34,7 @@ const CreatePass = () => {
     if (passed) {
       controller.wallet.createWallet(true);
 
-      if (canConnect && !isConnected) {
+      if (canConnect) {
         history.push('/connect-wallet');
       } else {
         history.push('/home');

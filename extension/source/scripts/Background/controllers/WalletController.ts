@@ -32,6 +32,7 @@ export interface IWalletController {
   switchNetwork: (networkId: string) => void;
   getNewAddress: () => Promise<boolean>;
   logOut: () => void;
+  formatAddress: (address: string) => string;
 }
 
 const WalletController = (): IWalletController => {
@@ -227,6 +228,13 @@ const WalletController = (): IWalletController => {
     return account.setNewAddress(address)
   }
 
+  const formatAddress = (address: string) => {
+    const last4Characters = address.slice(-4);
+    const first4Characters = address.substring(0, 4);
+
+    return `${first4Characters}...${last4Characters}`;
+  }
+
   const account = AccountController({ checkPassword, importPrivKey });
 
   return {
@@ -244,6 +252,7 @@ const WalletController = (): IWalletController => {
     switchNetwork,
     getNewAddress,
     logOut,
+    formatAddress
   };
 };
 

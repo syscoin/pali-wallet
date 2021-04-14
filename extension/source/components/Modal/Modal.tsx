@@ -23,10 +23,12 @@ const Modal: FC<IModal> = ({
   );
 
   const handleDisconnect = (id: number) => {
-    browser.runtime.sendMessage({ type: 'RESET_CONNECTION_INFO', id });
+    browser.runtime.sendMessage({ type: 'RESET_CONNECTION_INFO', id, url: title });
   }
 
-  const connectedAccounts = accounts.filter(account => account.connectedTo == title);
+  const connectedAccounts = accounts.filter(account => {
+    return account.connectedTo.find((url: any) => url == title);
+  });
 
   return (
     <div className={styles.modal}>
@@ -34,22 +36,22 @@ const Modal: FC<IModal> = ({
         <small>{title}</small>
 
         {connected && (
-          <small>You have 1 account connected to this site</small>
+          <small>You have {connectedAccounts.length} account connected to this site</small>
         )}
       </div>
 
-      {message }
+      {message}
 
       {connected && (
         <div>
           {connectedAccounts.map((item, index) => {
             return (
-              <div className={styles.account}>
-                <small key={index}>{item.label}</small>
+              <div className={styles.account} key={index}>
+                <small>{item.label}</small>
                 <small title="Disconnect account" onClick={ () => handleDisconnect(item.id) }>X</small>
               </div>
             )
-          }) }
+          })}
 
           <div className={styles.permissions}>
             <p>Permissions</p>
@@ -60,7 +62,7 @@ const Modal: FC<IModal> = ({
             </div>
           </div>
         </div>
-      ) }
+      )}
     </div>
   );
 };

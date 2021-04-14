@@ -20,20 +20,13 @@ export interface IAccountState {
   // type: AccountType;
   balance: number;
   transactions: Transaction[];
-  accountIsConnected: boolean;
-  connectedTo: string | undefined;
+  connectedTo: any[];
 }
 
 export interface IAccountUpdateState {
   id: number;
   balance: number;
   transactions: Transaction[];
-}
-
-export interface IAccountUpdateConnection {
-  id: number;
-  accountIsConnected: boolean;
-  connectedTo: string | undefined;
 }
 
 export interface IAccountUpdateAddress {
@@ -55,9 +48,8 @@ export default interface IWalletState {
   seedKeystoreId: number;
   activeNetwork: string;
   encriptedMnemonic: any;
-  isConnected: boolean;
-  connectedTo: string | undefined;
+  currentSenderURL: string | undefined;
   currentURL: string | undefined;
-  connectedAccountId: number;
   canConnect: boolean;
+  connections: any[];
 }
