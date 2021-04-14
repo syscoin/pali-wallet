@@ -52,13 +52,16 @@ const DeleteWalletView = () => {
         <div className={styles.actions}>
           <Button
             type="button"
-            theme="btn-outline-secondary"
+            theme="btn-outline-primary"
             variant={clsx(styles.button, styles.close)}
             onClick={() => history.goBack()}
           >
             Close
           </Button>
-          <Button type="submit" variant={styles.button}>
+          <Button 
+            type="submit" 
+            theme="btn-outline-secondary"
+            variant={styles.button}>
             Delete
           </Button>
         </div>

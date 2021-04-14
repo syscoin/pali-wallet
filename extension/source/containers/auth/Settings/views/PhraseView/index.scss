@@ -16,6 +16,11 @@
 
   & > span {
     margin: 24px 0;
+
+    b {
+      font-weight: 500;
+      color: $deepPink;
+    }
   }
 
   .seed {
