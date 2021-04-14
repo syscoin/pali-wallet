@@ -1,3 +1,4 @@
+// Unauth / Phrase.
 @import '~assets/styles/variables';
 
 body {
@@ -76,12 +77,12 @@ body {
     justify-content: center;
     letter-spacing: 0.03em;
     background: $gray-dark !important;
-    color: $white;
     margin-bottom: 12px;
     margin-right: 12px;
     justify-content: center;
     box-shadow: none;
     border-radius: 3px;
+    color: $white;
 
     &.selected {
       background: $gray-light !important;
