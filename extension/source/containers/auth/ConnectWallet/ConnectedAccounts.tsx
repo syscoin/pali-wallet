@@ -101,6 +101,7 @@ const ConnectedAccounts = () => {
               type="button"
               theme="btn-outline-secondary"
               variant={styles.button}
+              disabled={accountId === -1}
               onClick={() => handleConfirm()}
             >
               Confirm

@@ -86,10 +86,7 @@ function injectScript(content: any) {
 }
 
 if (shouldInjectProvider()) {
-  // @ts-ignore
-  injectScript(
-    "window.SyscoinWallet = 'Syscoin Wallet is installed! :)'"
-  );
+  injectScript("window.SyscoinWallet = 'Syscoin Wallet is installed! :)'");
 }
 
 window.addEventListener("message", (event) => {
