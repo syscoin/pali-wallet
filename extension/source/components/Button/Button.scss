@@ -64,6 +64,24 @@ body {
       }
     }
 
+    // Button - Assets, Activity
+    &.btn-rectangle-primary {
+      color: $white;
+      border-radius: 0;
+      justify-content: space-evenly;
+      margin: 2rem .5rem .5rem .5rem;
+      background: $navy;
+
+      &:hover {
+        border-bottom: 1px solid $deepPink;
+        color: $white;
+      }
+
+      &:active {
+        transform: scale(0.95);
+      }
+    }
+
     // Primary button.
     &.btn-gradient-primary {
       color: #4CA1CF;

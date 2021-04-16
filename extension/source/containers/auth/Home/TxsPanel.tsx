@@ -7,6 +7,7 @@ import UpArrowIcon from '@material-ui/icons/ArrowUpward';
 import GoTopIcon from '@material-ui/icons/VerticalAlignTop';
 import IconButton from '@material-ui/core/IconButton';
 import Spinner from '@material-ui/core/CircularProgress';
+import Button from 'components/Button';
 
 import { useController } from 'hooks/index';
 import { formatDistanceDate } from '../helpers';
@@ -68,14 +69,36 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions }) => {
       className={clsx(styles.activity, { [styles.expanded]: isShowed })}
       onScroll={handleScroll}
     >
-      <div className={styles.heading}>
+      <div className={styles.wrapper}>
+        <div className={styles.center}>
+          <Button
+            type="button"
+            theme="btn-rectangle-primary"
+            variant={styles.button}
+            linkTo="/send"
+          >
+            Assets
+          </Button>
+
+          <Button
+            type="button"
+            theme="btn-rectangle-primary"
+            variant={styles.button}
+            linkTo="/receive"
+          >
+            Activity
+          </Button>
+        </div>
+      </div>
+
+      {/* <div className={styles.heading}>
         Activity
         {!!isShowed && (
           <IconButton className={styles.goTop} onClick={handleGoTop}>
             <GoTopIcon />
           </IconButton>
         )}
-      </div>
+      </div> */}
       {transactions.length ? (
         <>
           <ul>

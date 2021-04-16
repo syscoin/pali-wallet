@@ -199,19 +199,18 @@
 
   .activity {
     height: 288px;
-    background: $navy;
     width: 100%;
     padding: 0;
-    box-sizing: border-box;
-    display: flex;
-    position: absolute;
     bottom: -2px;
-    overflow: auto;
+    display: flex;
     flex-direction: column;
-    width: 100%;
     align-items: center;
+    box-sizing: border-box;
+    position: absolute;
+    overflow: auto;
     transition: all 0.3s;
     z-index: 2;
+    background: $navy;
 
     border-bottom: 5px solid;
     border-image: 
