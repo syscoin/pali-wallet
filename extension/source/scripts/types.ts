@@ -7,14 +7,16 @@ export type Transaction = {
   tokenType: string;
 }
 
+export type Assets = {
+  assetGuid: number;
+  symbol: string;
+  balance: number;
+  decimals: number
+}
+
 export interface IAccountInfo {
   balance: number;
-  assets: {
-    [assetId: number]: {
-      name: string;
-      balance: number;
-    };
-  };
+  assets: Assets[];
   transactions: Transaction[];
 }
 

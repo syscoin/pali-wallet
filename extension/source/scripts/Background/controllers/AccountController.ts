@@ -18,7 +18,8 @@ import {
   IAccountInfo,
   ITransactionInfo,
   // PendingTx,
-  Transaction
+  Transaction,
+  Assets
 } from '../../types';
 import { sys } from 'constants/index';
 // import { type } from 'os';
@@ -57,12 +58,15 @@ const AccountController = (actions: {
 
 
   const getAccountInfo = async (): Promise<IAccountInfo> => {
-    let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=used&details=txs', true, sysjs.HDSigner);
+    let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
     const balance = res.balance / 1e8;
-    const assets = res.tokens;
-    let transactions: Transaction[] = []
+    let transactions: Transaction[] = [];
+    let assets: Assets[] = [];
     if (res.transactions)
       transactions = res.transactions.slice(0, 10);
+    if (res.tokensAsset)
+      assets
+
 
     return {
       balance,

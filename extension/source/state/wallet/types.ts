@@ -1,4 +1,4 @@
-import { Transaction } from '../../scripts/types';
+import { Transaction, Assets } from '../../scripts/types';
 
 export enum AccountType {
   Seed,
@@ -10,12 +10,7 @@ export interface IAccountState {
   label: string;
   xpub: string;
   masterPrv: string;
-  assets: {
-    [assetId: number]: {
-      name: string;
-      balance: number;
-    };
-  };
+  assets: Assets[];
   address: { [assetId: string]: string };
   // type: AccountType;
   balance: number;
