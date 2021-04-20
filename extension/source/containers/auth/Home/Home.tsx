@@ -110,6 +110,7 @@ const Home = () => {
           <TxsPanel
             address={accounts[activeAccountId].address.main}
             transactions={accounts[activeAccountId].transactions}
+            assets={accounts[activeAccountId].assets} 
           />
         </>
       ) : (

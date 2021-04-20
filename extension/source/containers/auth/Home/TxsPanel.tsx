@@ -13,19 +13,21 @@ import { useController } from 'hooks/index';
 import { formatDistanceDate } from '../helpers';
 import SyscoinIcon from 'assets/images/logosys.svg';
 import { SYS_EXPLORER_SEARCH } from 'constants/index';
-import { Transaction } from '../../../scripts/types';
+import { Transaction,Assets } from '../../../scripts/types';
 
 import styles from './Home.scss';
 
 interface ITxsPanel {
   address: string;
   transactions: Transaction[];
+  assets: Assets[];
 }
 
-const TxsPanel: FC<ITxsPanel> = ({ transactions }) => {
+const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
   // const getFiatAmount = useFiat();
   const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
+  const [isActivity, setActivity] = useState<boolean>(true);
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
 
   const isShowedGroupBar = useCallback(
@@ -38,7 +40,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions }) => {
     },
     [transactions]
   );
-
+  
   const handleFetchMoreTxs = () => {
     if (transactions.length) {
       controller.wallet.account.updateTxs();
@@ -69,109 +71,112 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions }) => {
       className={clsx(styles.activity, { [styles.expanded]: isShowed })}
       onScroll={handleScroll}
     >
-      <div className={styles.wrapper}>
-        <div className={styles.center}>
-          <Button
-            type="button"
-            theme="btn-rectangle-primary"
-            variant={styles.button}
-            linkTo="/send"
-          >
-            Assets
+
+      {!!(!isShowed) ?
+        <div className={styles.wrapper}>
+          <div className={styles.center}>
+            <Button
+              type="button"
+              theme= {isActivity ? "btn-rectangle-primary" : "btn-rectangle-selected"}
+              variant={styles.button}
+              onClick={() => { setActivity(false) }}
+            >
+              Assets
           </Button>
 
-          <Button
-            type="button"
-            theme="btn-rectangle-primary"
-            variant={styles.button}
-            linkTo="/receive"
-          >
-            Activity
+            <Button
+              type="button"
+              theme= {isActivity ? "btn-rectangle-selected" : "btn-rectangle-primary"}
+              variant={styles.button}
+              onClick={() => { setActivity(true) }}
+            >
+              Activity
           </Button>
+          </div>
         </div>
-      </div>
-
-      {/* <div className={styles.heading}>
-        Activity
-        {!!isShowed && (
+        :
+        <div className={styles.heading}>
+          {isActivity ? "Activity" : "Assets"}
           <IconButton className={styles.goTop} onClick={handleGoTop}>
             <GoTopIcon />
           </IconButton>
-        )}
-      </div> */}
-      {transactions.length ? (
-        <>
-          <ul>
-            {transactions.map((tx: Transaction, idx: number) => {
-              // const isRecived = tx.receiver === address;
-              const isConfirmed = tx.confirmations > 0;
+        </div>
+      }
 
-              return (
-                <Fragment key={uuid()}>
-                  {isShowedGroupBar(tx, idx) && (
-                    <li className={styles.groupbar}>
-                      {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}
-                    </li>
-                  )}
-                  <li onClick={() => handleOpenExplorer(tx.txid)}>
-                    {/* <div>
-                      <div className={styles.iconWrapper}>
-                        {tx.checkpointBlock ? (
-                          isRecived ? (
-                            <DownArrowIcon />
-                          ) : (
+      {isActivity ?
+          transactions.length ? (
+            <>
+              <ul>
+                {transactions.map((tx: Transaction, idx: number) => {
+                  // const isRecived = tx.receiver === address;
+                  const isConfirmed = tx.confirmations > 0;
+
+                  return (
+                    <Fragment key={uuid()}>
+                      {isShowedGroupBar(tx, idx) && (
+                        <li className={styles.groupbar}>
+                          {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}
+                        </li>
+                      )}
+                      <li onClick={() => handleOpenExplorer(tx.txid)}>
+                        <div>
+                          {isConfirmed ? null : <Spinner size={25} className={styles.spinner} />}
+                        </div>
+                        <div>
+                          <span>
+                            <span>
+                              {new Date(tx.blockTime * 1000).toLocaleTimeString(navigator.language, {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                            <small>{tx.txid}</small>
+                            <small>{isConfirmed ? "Confirmed" : "Unconfirmed"}</small>
+                          </span>
+                          <div className={styles.linkIcon}>
                             <UpArrowIcon />
-                          )
-                        ) : (
-                          <Spinner size={16} className={styles.spinner} />
-                        )}
-                      </div>
-                      <span>
-                        {isRecived ? 'Received' : 'Sent'}
-                        <small>
-                          {isRecived
-                            ? `From: ${tx.sender}`
-                            : `To: ${tx.receiver}`}
-                        </small>
-                      </span>
-                    </div> */}
-                    <div>
-                      {isConfirmed ? null : <Spinner size={25} className={styles.spinner} />}
-                    </div>
-                    <div>
-                      <span>
-                        <span>
-                          {new Date(tx.blockTime * 1000).toLocaleTimeString(navigator.language, {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </span>
-                        <small>{tx.txid}</small>
-                        <small>{isConfirmed ? "Confirmed" : "Unconfirmed"}</small>
-                      </span>
-                      <div className={styles.linkIcon}>
-                        <UpArrowIcon />
-                      </div>
-                    </div>
-                  </li>
-                </Fragment>
-              );
-            })}
-          </ul>
-          <div className={styles.syscoin}>
-            {/* <img
+                          </div>
+                        </div>
+                      </li>
+                    </Fragment>
+                  );
+                })}
+              </ul>
+              <div className={styles.syscoin}>
+                {/* <img
               src={SyscoinIcon}
               alt="syscoin"
               height="167"
               width="auto"
             /> */}
-          </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <span className={styles.noTxComment}>
+                You have no transaction history, send or receive SYS to register
+                your first transaction.
+          </span>
+              <img
+                src={SyscoinIcon}
+                className={styles.syscoin}
+                alt="syscoin"
+                height="167"
+                width="auto"
+              />
+            </>
+          )
+        :
+        assets.length ? 
+        <>
+        <span className={styles.noTxComment}>
+            {assets}
+          </span>
         </>
-      ) : (
+        :
         <>
           <span className={styles.noTxComment}>
-            You have no transaction history, send or receive SYS to register
-            your first transaction.
+            You have no Assets history, jinkwink.
           </span>
           <img
             src={SyscoinIcon}
@@ -181,7 +186,8 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions }) => {
             width="auto"
           />
         </>
-      )}
+
+      }
     </section>
   );
 };
