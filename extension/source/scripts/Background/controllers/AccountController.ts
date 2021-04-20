@@ -36,7 +36,7 @@ export interface IAccountController {
   getLatestUpdate: () => void;
   // importPrivKeyAccount: (privKey: string, label: string) => { [assetId: string]: string } | null;
   isValidSYSAddress: (address: string) => boolean;
-  getRecommendFee: () => number;
+  getRecommendFee: () => Promise<number>;
   // getPrivKey: (id: number, pwd: string) => string | null;
   updateTxs: () => void;
   getTempTx: () => ITransactionInfo | null;
@@ -61,21 +61,43 @@ const AccountController = (actions: {
     let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
     const balance = res.balance / 1e8;
     let transactions: Transaction[] = [];
-    let assets: Assets[] = [];
+    let assets: any = [];
     console.log("Updating Account")
     console.log(" Account", res.tokensAsset)
 
-    if (res.transactions)
-      transactions = res.transactions.slice(0, 10);
-    if (res.tokensAsset)
-      assets = res.tokensAsset
-      console.log("Checking account assets")
+    if (res.transactions) {
+      transactions = res.transactions.map(transaction => {
+        return <Transaction>
+          {
+            txid: transaction.txid,
+            value: transaction.value,
+            confirmations: transaction.confirmations,
+            fees: transaction.fees,
+            blockTime: transaction.blockTime,
+            tokenType: transaction.tokenType,
+          }
+      }).slice(0, 10);
+    }
 
-    return {
-      balance,
-      assets,
-      transactions,
-    };
+    if (res.tokensAsset) {
+      assets = res.tokensAsset.map(tokenAsset => {
+        return <Assets>
+          {
+            type: tokenAsset.type,
+            assetGuid: tokenAsset.assetGuid,
+            symbol: tokenAsset.symbol,
+            balance: tokenAsset.balance,
+            decimals: tokenAsset.decimals,
+          }
+      })
+
+      console.log("assets", assets)
+      return {
+        balance,
+        assets,
+        transactions,
+      };
+    }
   };
 
   // const getAccountByPrivKeystore = (keystoreId: number) => {
@@ -282,8 +304,8 @@ const AccountController = (actions: {
     return false;
   };
 
-  const getRecommendFee = () => {
-    return 0.000001;
+  const getRecommendFee = async () => {
+    return await sys.utils.fetchEstimateFee(sysjs.blockbookURL, 1) / 10 ** 8;
   };
 
   const _coventPendingType = (txid: string) => {

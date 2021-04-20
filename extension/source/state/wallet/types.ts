@@ -23,6 +23,7 @@ export interface IAccountUpdateState {
   id: number;
   balance: number;
   transactions: Transaction[];
+  assets: Assets[]
 }
 
 export interface IAccountUpdateConnection {

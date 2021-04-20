@@ -8,6 +8,7 @@ export type Transaction = {
 }
 
 export type Assets = {
+  type: string;
   assetGuid: number;
   symbol: string;
   balance: number;

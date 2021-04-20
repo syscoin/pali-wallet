@@ -13,7 +13,7 @@ import { useController } from 'hooks/index';
 import { formatDistanceDate } from '../helpers';
 import SyscoinIcon from 'assets/images/logosys.svg';
 import { SYS_EXPLORER_SEARCH } from 'constants/index';
-import { Transaction,Assets } from '../../../scripts/types';
+import { Transaction, Assets } from '../../../scripts/types';
 
 import styles from './Home.scss';
 import { List } from 'lodash';
@@ -48,17 +48,17 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
       console.log("the type " + asset.type)
       console.log("the length " + assets.length)
       //Implement here a logic based on asset types to add and remove label as asset list goes changing
-      if(assets.length > 0){
+      if (assets.length > 0) {
         console.log("checking the asset we compare" + JSON.stringify(assets))
         console.log(idx)
         console.log(JSON.stringify(assets[idx]))
         //THe below return is just a work around so the front does not break we need to change it
         //For now is okay because the only asset is SPTALLOCATEDASSET
-      return (
-        idx === 0 ||
-        asset.type) !==
-        (assets[idx].type
-      );
+        return (
+          idx === 0 ||
+          asset.type) !==
+          (assets[idx].type
+          );
       }
       else {
         return (asset.type)
@@ -66,7 +66,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
     },
     [assets]
   );
-  
+
   const handleFetchMoreTxs = () => {
     if (transactions.length) {
       controller.wallet.account.updateTxs();
@@ -87,6 +87,10 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
     window.open(SYS_EXPLORER_SEARCH + '/tx/' + txid);
   };
 
+  const handleOpenAssetExplorer = (txid: number) => {
+    window.open(SYS_EXPLORER_SEARCH + '/asset/' + txid);
+  };
+
   const handleGoTop = () => {
     scrollArea!.scrollTo({ top: 0, behavior: 'smooth' });
     setShowed(false);
@@ -103,7 +107,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
           <div className={styles.center}>
             <Button
               type="button"
-              theme= {isActivity ? "btn-rectangle-primary" : "btn-rectangle-selected"}
+              theme={isActivity ? "btn-rectangle-primary" : "btn-rectangle-selected"}
               variant={styles.button}
               onClick={() => { setActivity(false) }}
             >
@@ -112,7 +116,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
 
             <Button
               type="button"
-              theme= {isActivity ? "btn-rectangle-selected" : "btn-rectangle-primary"}
+              theme={isActivity ? "btn-rectangle-selected" : "btn-rectangle-primary"}
               variant={styles.button}
               onClick={() => { setActivity(true) }}
             >
@@ -130,34 +134,80 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
       }
 
       {isActivity ?
-          transactions.length ? (
-            <>
-              <ul>
-                {transactions.map((tx: Transaction, idx: number) => {
-                  // const isRecived = tx.receiver === address;
-                  const isConfirmed = tx.confirmations > 0;
+        transactions.length ? (
+          <>
+            <ul>
+              {transactions.map((tx: Transaction, idx: number) => {
+                // const isRecived = tx.receiver === address;
+                const isConfirmed = tx.confirmations > 0;
 
+                return (
+                  <Fragment key={uuid()}>
+                    {isShowedGroupBar(tx, idx) && (
+                      <li className={styles.groupbar}>
+                        {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}
+                      </li>
+                    )}
+                    <li onClick={() => handleOpenExplorer(tx.txid)}>
+                      <div>
+                        {isConfirmed ? null : <Spinner size={25} className={styles.spinner} />}
+                      </div>
+                      <div>
+                        <span>
+                          <span>
+                            {new Date(tx.blockTime * 1000).toLocaleTimeString(navigator.language, {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                          <small>{tx.txid}</small>
+                          <small>{isConfirmed ? "Confirmed" : "Unconfirmed"}</small>
+                        </span>
+                        <div className={styles.linkIcon}>
+                          <UpArrowIcon />
+                        </div>
+                      </div>
+                    </li>
+                  </Fragment>
+                );
+              })}
+            </ul>
+          </>
+        ) : (
+          <>
+            <span className={styles.noTxComment}>
+              You have no transaction history, send or receive SYS to register
+              your first transaction.
+          </span>
+            <img
+              src={SyscoinIcon}
+              className={styles.syscoin}
+              alt="syscoin"
+              height="167"
+              width="auto"
+            />
+          </>
+        )
+        :
+        assets.length ?
+          <>
+            <ul>
+              {assets.map((asset: Assets, idx: number) => {
+                // const isRecived = tx.receiver === address;
+                console.log("idx increment" + idx)
+                if (asset !== undefined) {
                   return (
                     <Fragment key={uuid()}>
-                      {isShowedGroupBar(tx, idx) && (
+                      {TokenTypeGroupBar(asset, idx) && (
                         <li className={styles.groupbar}>
-                          {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}
+                          {asset.type}
                         </li>
                       )}
-                      <li onClick={() => handleOpenExplorer(tx.txid)}>
-                        <div>
-                          {isConfirmed ? null : <Spinner size={25} className={styles.spinner} />}
-                        </div>
+                      <li onClick={() => handleOpenAssetExplorer(asset.assetGuid)}>
                         <div>
                           <span>
-                            <span>
-                              {new Date(tx.blockTime * 1000).toLocaleTimeString(navigator.language, {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </span>
-                            <small>{tx.txid}</small>
-                            <small>{isConfirmed ? "Confirmed" : "Unconfirmed"}</small>
+                            <span>{(asset.balance / 10 ** asset.decimals).toFixed(8)}  {atob(asset.symbol)} </span>
+                            {/* <small> {(asset.balance / 10 ** asset.decimals).toFixed(8)}</small> */}
                           </span>
                           <div className={styles.linkIcon}>
                             <UpArrowIcon />
@@ -166,69 +216,23 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                       </li>
                     </Fragment>
                   );
-                })}
-              </ul>
-            </>
-          ) : (
-            <>
-              <span className={styles.noTxComment}>
-                You have no transaction history, send or receive SYS to register
-                your first transaction.
+                }
+              })}
+            </ul>
+          </>
+          :
+          <>
+            <span className={styles.noTxComment}>
+              You have no Assets, receive SPTs to register.
           </span>
-              <img
-                src={SyscoinIcon}
-                className={styles.syscoin}
-                alt="syscoin"
-                height="167"
-                width="auto"
-              />
-            </>
-          )
-        :
-        assets.length ? 
-        <>
-         <ul>
-                {assets.map((asset: Assets, idx: number) => {
-                  // const isRecived = tx.receiver === address;
-                  console.log("idx increment" + idx)
-                  if(asset !== undefined){
-                      return (
-                        <Fragment key={uuid()}>
-                          {TokenTypeGroupBar(asset, idx) && (
-                            <li className={styles.groupbar}>
-                              {asset.type}
-                            </li>
-                          )}
-                          <li >
-                            <div>
-                            <span>
-                              <span>{asset.symbol} </span>
-                              <small> {asset.balance}</small>
-                                </span>
-                                <div className={styles.linkIcon}>
-                                <UpArrowIcon />
-                              </div>
-                            </div>
-                          </li>
-                        </Fragment>
-                      );
-                    }
-                })}
-              </ul>
-        </>
-        :
-        <>
-          <span className={styles.noTxComment}>
-            You have no Assets history, jinkwink.
-          </span>
-          <img
-            src={SyscoinIcon}
-            className={styles.syscoin}
-            alt="syscoin"
-            height="167"
-            width="auto"
-          />
-        </>
+            <img
+              src={SyscoinIcon}
+              className={styles.syscoin}
+              alt="syscoin"
+              height="167"
+              width="auto"
+            />
+          </>
 
       }
     </section>

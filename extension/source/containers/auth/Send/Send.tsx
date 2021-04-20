@@ -99,8 +99,9 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   );
 
   const handleGetFee = () => {
-    setRecommend(controller.wallet.account.getRecommendFee());
-    setFee((controller.wallet.account.getRecommendFee()).toString());
+    controller.wallet.account.getRecommendFee().then(response => { setRecommend(response); setFee(response.toString()); })
+    // setRecommend(controller.wallet.account.getRecommendFee());
+    // setFee((controller.wallet.account.getRecommendFee()).toString());
   };
 
   const handleSelectContact = (val: string) => {
