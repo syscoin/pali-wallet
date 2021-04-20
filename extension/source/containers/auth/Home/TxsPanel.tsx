@@ -1,11 +1,11 @@
 import React, { FC, Fragment, useCallback, useState } from 'react';
 import clsx from 'clsx';
 import { v4 as uuid } from 'uuid';
-// import { useFiat } from 'hooks/usePrice';
+import { useFiat } from 'hooks/usePrice';
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
-// import DownArrowIcon from '@material-ui/icons/ArrowDownward';
-// import GoTopIcon from '@material-ui/icons/VerticalAlignTop';
-// import IconButton from '@material-ui/core/IconButton';
+import DownArrowIcon from '@material-ui/icons/ArrowDownward';
+import GoTopIcon from '@material-ui/icons/VerticalAlignTop';
+import IconButton from '@material-ui/core/IconButton';
 import Spinner from '@material-ui/core/CircularProgress';
 import Button from 'components/Button';
 
