@@ -16,6 +16,7 @@ import { SYS_EXPLORER_SEARCH } from 'constants/index';
 import { Transaction,Assets } from '../../../scripts/types';
 
 import styles from './Home.scss';
+import { List } from 'lodash';
 
 interface ITxsPanel {
   address: string;
@@ -29,7 +30,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
   const [isShowed, setShowed] = useState<boolean>(false);
   const [isActivity, setActivity] = useState<boolean>(true);
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
-
+  // const [assetsTypes, setAssets] = useState<Array<String>>([]);
   const isShowedGroupBar = useCallback(
     (tx: Transaction, idx: number) => {
       return (
@@ -39,6 +40,31 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
       );
     },
     [transactions]
+  );
+
+  const TokenTypeGroupBar = useCallback(
+    (asset: Assets, idx: number) => {
+      console.log("the asset " + JSON.stringify(asset))
+      console.log("the type " + asset.type)
+      console.log("the length " + assets.length)
+      //Implement here a logic based on asset types to add and remove label as asset list goes changing
+      if(assets.length > 0){
+        console.log("checking the asset we compare" + JSON.stringify(assets))
+        console.log(idx)
+        console.log(JSON.stringify(assets[idx]))
+        //THe below return is just a work around so the front does not break we need to change it
+        //For now is okay because the only asset is SPTALLOCATEDASSET
+      return (
+        idx === 0 ||
+        asset.type) !==
+        (assets[idx].type
+      );
+      }
+      else {
+        return (asset.type)
+      }
+    },
+    [assets]
   );
   
   const handleFetchMoreTxs = () => {
@@ -142,14 +168,6 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                   );
                 })}
               </ul>
-              <div className={styles.syscoin}>
-                {/* <img
-              src={SyscoinIcon}
-              alt="syscoin"
-              height="167"
-              width="auto"
-            /> */}
-              </div>
             </>
           ) : (
             <>
@@ -169,9 +187,34 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
         :
         assets.length ? 
         <>
-        <span className={styles.noTxComment}>
-            {assets}
-          </span>
+         <ul>
+                {assets.map((asset: Assets, idx: number) => {
+                  // const isRecived = tx.receiver === address;
+                  console.log("idx increment" + idx)
+                  if(asset !== undefined){
+                      return (
+                        <Fragment key={uuid()}>
+                          {TokenTypeGroupBar(asset, idx) && (
+                            <li className={styles.groupbar}>
+                              {asset.type}
+                            </li>
+                          )}
+                          <li >
+                            <div>
+                            <span>
+                              <span>{asset.symbol} </span>
+                              <small> {asset.balance}</small>
+                                </span>
+                                <div className={styles.linkIcon}>
+                                <UpArrowIcon />
+                              </div>
+                            </div>
+                          </li>
+                        </Fragment>
+                      );
+                    }
+                })}
+              </ul>
         </>
         :
         <>

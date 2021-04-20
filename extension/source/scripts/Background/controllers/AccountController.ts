@@ -62,11 +62,14 @@ const AccountController = (actions: {
     const balance = res.balance / 1e8;
     let transactions: Transaction[] = [];
     let assets: Assets[] = [];
+    console.log("Updating Account")
+    console.log(" Account", res.tokensAsset)
+
     if (res.transactions)
       transactions = res.transactions.slice(0, 10);
     if (res.tokensAsset)
-      assets
-
+      assets = res.tokensAsset
+      console.log("Checking account assets")
 
     return {
       balance,
@@ -187,6 +190,7 @@ const AccountController = (actions: {
         id: activeAccountId,
         balance: accLatestInfo.balance,
         transactions: accLatestInfo.transactions,
+        assets: accLatestInfo.assets
       })
     );
   };
