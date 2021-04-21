@@ -95,7 +95,7 @@ const PrivateKeyView: FC<IPrivateKeyView> = ({ id }) => {
               <span>{ellipsis(privKey)}</span>
             </div>
             <span>
-              Warning: Keep your keys secret! Anyone with your private keys can
+              <b>Warning:</b> Keep your keys secret! Anyone with your private keys can
               steal your assets .
             </span>
           </div>
