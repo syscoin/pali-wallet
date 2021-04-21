@@ -56,7 +56,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
     [assets]
   );
 
-  const isNFT = (guid) => {
+  const isNFT = (guid: Number) => {
     let assetGuid = BigInt.asUintN(64, BigInt(guid))
     return (assetGuid >> BigInt(32)) > 0
   }
@@ -189,7 +189,6 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
               {assets.map((asset: Assets, idx: number) => {
                 // const isRecived = tx.receiver === address;
                 console.log("idx increment " + idx)
-                if (asset !== undefined) {
                   return (
                     <Fragment key={uuid()}>
                       {TokenTypeGroupBar(asset, idx) && (
@@ -209,7 +208,6 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                       </li>
                     </Fragment>
                   );
-                }
               })}
             </ul>
           </>
