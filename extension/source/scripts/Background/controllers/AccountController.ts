@@ -80,18 +80,24 @@ const AccountController = (actions: {
     }
 
     if (res.tokensAsset) {
-      assets = res.tokensAsset.map(tokenAsset => {
-        return <Assets>
-          {
-            type: tokenAsset.type,
-            assetGuid: tokenAsset.assetGuid,
-            symbol: tokenAsset.symbol,
-            balance: tokenAsset.balance,
-            decimals: tokenAsset.decimals,
-          }
-      })
+      let transform = res.tokensAsset.reduce((res, val) => {
+        res[val.assetGuid] = <Assets>{
+            type: val.type,
+            assetGuid: val.assetGuid,
+            symbol: val.symbol,
+            balance: (res[val.assetGuid] ? res[val.assetGuid].balance : 0) + Number(val.balance),
+            decimals: val.decimals,
+        };
+        
+        return res;
+      }, {});
 
-      console.log("assets", assets)
+      for (var key in transform){
+        console.log()
+        assets.push(transform[key])
+      }
+      console.log("assets", transform)
+      console.log("terere", assets)
       return {
         balance,
         assets,
