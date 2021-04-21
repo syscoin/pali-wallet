@@ -84,7 +84,7 @@ const AccountController = (actions: {
         res[val.assetGuid] = <Assets>{
             type: val.type,
             assetGuid: val.assetGuid,
-            symbol: val.symbol,
+            symbol: atob(val.symbol),
             balance: (res[val.assetGuid] ? res[val.assetGuid].balance : 0) + Number(val.balance),
             decimals: val.decimals,
         };

@@ -205,7 +205,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                     <li onClick={() => handleOpenAssetExplorer(asset.assetGuid)}>
                       <div>
                         <span>
-                          <span>{(asset.balance / 10 ** asset.decimals).toFixed(8)}  {atob(asset.symbol)} </span>
+                          <span>{(asset.balance / 10 ** asset.decimals).toFixed(8)}  {asset.symbol} </span>
                           {/* <small> {(asset.balance / 10 ** asset.decimals).toFixed(8)}</small> */}
                         </span>
                         <div className={styles.linkIcon}>

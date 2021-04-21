@@ -1,4 +1,5 @@
-import React, { ChangeEvent } from 'react';
+import * as React from 'react';
+import { ChangeEvent } from 'react';
 import { useSelector } from 'react-redux';
 import NetworkIcon from '@material-ui/icons/Timeline';
 import ListIcon from '@material-ui/icons/ListAltRounded';
