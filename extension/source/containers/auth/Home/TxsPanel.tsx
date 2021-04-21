@@ -31,6 +31,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
   const [isActivity, setActivity] = useState<boolean>(true);
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
   // const [assetsTypes, setAssets] = useState<Array<String>>([]);
+
   const isShowedGroupBar = useCallback(
     (tx: Transaction, idx: number) => {
       return (
@@ -44,28 +45,20 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
 
   const TokenTypeGroupBar = useCallback(
     (asset: Assets, idx: number) => {
-      console.log("the asset " + JSON.stringify(asset))
-      console.log("the type " + asset.type)
-      console.log("the length " + assets.length)
-      //Implement here a logic based on asset types to add and remove label as asset list goes changing
-      if (assets.length > 0) {
-        console.log("checking the asset we compare" + JSON.stringify(assets))
-        console.log(idx)
-        console.log(JSON.stringify(assets[idx]))
-        //THe below return is just a work around so the front does not break we need to change it
-        //For now is okay because the only asset is SPTALLOCATEDASSET
-        return (
-          idx === 0 ||
-          asset.type) !==
-          (assets[idx].type
-          );
-      }
-      else {
-        return (asset.type)
-      }
+      console.log(assets)
+      console.log(idx)
+      return (
+        idx === 0 || isNFT(asset.assetGuid) !==
+        isNFT(assets[idx - 1].assetGuid)
+      );
     },
     [assets]
   );
+
+  const isNFT = (guid) => {
+    let assetGuid = BigInt.asUintN(64, BigInt(guid))
+    return (assetGuid >> BigInt(32)) > 0
+  }
 
   const handleFetchMoreTxs = () => {
     if (transactions.length) {
@@ -194,20 +187,19 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
             <ul>
               {assets.map((asset: Assets, idx: number) => {
                 // const isRecived = tx.receiver === address;
-                console.log("idx increment" + idx)
+                console.log("idx increment " + idx)
                 if (asset !== undefined) {
                   return (
                     <Fragment key={uuid()}>
                       {TokenTypeGroupBar(asset, idx) && (
                         <li className={styles.groupbar}>
-                          {asset.type}
+                          {isNFT(asset.assetGuid) ? "NFT" : "SPT"}
                         </li>
                       )}
                       <li onClick={() => handleOpenAssetExplorer(asset.assetGuid)}>
                         <div>
                           <span>
-                            <span>{(asset.balance / 10 ** asset.decimals).toFixed(8)}  {atob(asset.symbol)} </span>
-                            {/* <small> {(asset.balance / 10 ** asset.decimals).toFixed(8)}</small> */}
+                            <span>{isNFT(asset.assetGuid) ? asset.balance : (asset.balance / 10 ** asset.decimals).toFixed(8)}  {atob(asset.symbol)} </span>
                           </span>
                           <div className={styles.linkIcon}>
                             <UpArrowIcon />
