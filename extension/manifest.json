@@ -71,7 +71,9 @@
     ]
   },
   "web_accessible_resources": [
-    "app.html"
+    "app.html",
+    "inpage.ts",
+    "js/inpage.bundle.js"
   ],
   "commands": {
     "_execute_browser_action": {

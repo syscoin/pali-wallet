@@ -24,12 +24,24 @@ const ConnectedAccounts = () => {
   };
 
   const handleDisconnect = () => {
-    browser.runtime.sendMessage({ type: 'CLOSE_POPUP' });
+    browser.runtime.sendMessage({
+      type: "CLOSE_POPUP",
+      target: "background"
+    });
   }
 
   const handleConfirm = () => {
-    browser.runtime.sendMessage({ type: 'CHANGE_CONNECTED_ACCOUNT', id: accountId, url: currentSenderURL });
-    browser.runtime.sendMessage({ type: 'CLOSE_POPUP' });
+    browser.runtime.sendMessage({
+      type: "CHANGE_CONNECTED_ACCOUNT",
+      target: "background",
+      id: accountId,
+      url: currentSenderURL
+    });
+
+    browser.runtime.sendMessage({
+      type: "CLOSE_POPUP",
+      target: "background"
+    });
   }
 
   const connectedAccount = accounts.filter(account => {

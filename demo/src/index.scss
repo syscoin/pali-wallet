@@ -38,21 +38,60 @@ body {
     gap: 0.7rem;
   }
 
-  &__buttonConnect, &__balance {
-    border: 2px solid rgb(32, 60, 104);
-    background-color: rgba(0, 0, 0, 0);
-    transition: 0.3s all;
-    border-radius: 2.2rem;
-    padding: 0.8rem;
-    font-weight: bold;
-    cursor: pointer;
-    color: rgb(32, 60, 104);
-  }
-
   &__balance {
     font-weight: normal;
     padding: 0.5rem;
     font-size: 19px;
+    border: 2px solid rgb(32, 60, 104);
+    background-color: rgba(0, 0, 0, 0);
+    transition: 0.3s all;
+    border-radius: 1rem;
+    padding: 0.5rem;
+    font-weight: bold;
+    cursor: pointer;
+    color: rgb(32, 60, 104);
+  }
+}
+
+form {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  width: 100%;
+}
+
+input {
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 2px solid rgb(206, 206, 206);
+  margin: .5rem;
+  outline: none;
+
+  &:focus {
+    border: 2px solid gray;
+  }
+}
+
+.button {
+  border: 2px solid rgb(32, 60, 104);
+  background-color: rgba(0, 0, 0, 0);
+  transition: 0.3s all;
+  border-radius: 1rem;
+  padding: 0.8rem;
+  font-weight: bold;
+  cursor: pointer;
+  color: rgb(32, 60, 104);
+  margin: .5rem;
+
+  &:hover {
+    background-color: rgb(196, 211, 235);
+  }
+
+  &:disabled {
+    border: 2px solid rgb(140, 140, 140);
+    background-color: rgb(223, 223, 223);
+    color: rgb(140, 140, 140);
   }
 }
 

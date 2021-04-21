@@ -3,95 +3,201 @@ import logo from "./assets/images/logosys.svg";
 
 const App = () => {
   const [isInstalled, setIsInstalled] = useState(false);
-  const [list, setList] = useState([]);
   const [canConnect, setCanConnect] = useState(true);
-  const [address, setAddress] = useState('Connect to Syscoin Wallet');
   const [balance, setBalance] = useState(0);
+  const [controller, setController] = useState();
+  const [connectedAccount, setConnectedAccount] = useState({});
+  const [connectedAccountAddress, setConnectedAccountAddress] = useState('');
+  const [amount, setAmount] = useState(0);
+  const [fee, setFee] = useState(0.0000001);
+  const [toAddress, setToAddress] = useState('');
+  const [confirmedTransaction, setConfirmedTransaction] = useState(false);
 
   useEffect(() => {
-    if (!window.SyscoinWallet) {
-      setIsInstalled(false);
+    const callback = async (event) => {
+      if (event.detail.SyscoinInstalled) {
+        setIsInstalled(true);
 
-      return;
-    }
-
-    setIsInstalled(true);
-
-    window.addEventListener("message", (event) => {
-      if (event.data.type == 'RESPONSE_FROM_EXTENSION') {
-        setList(event.data.controller.wallet.accounts);
-
-        if (event.data.controller.wallet.canConnect) {
-          setCanConnect(true)
+        if (event.detail.ConnectionsController) {
+          setController(window.ConnectionsController);
 
           return;
         }
 
-        setCanConnect(false)
+        return;
       }
-    });
+
+      setIsInstalled(false);
+
+      window.removeEventListener('SyscoinStatus', callback);
+    }
+
+    window.addEventListener('SyscoinStatus', callback);
   }, []);
 
+  const setup = async () => {
+    const state = await controller.getWalletState();
+
+    if (state.accounts.length > 0) {
+      controller.getConnectedAccount()
+        .then((data) => {
+          if (data) {
+            setConnectedAccount(data);
+            setConnectedAccountAddress(data.address.main);
+            setBalance(data.balance);
+          } else {
+            setConnectedAccount({});
+            setConnectedAccountAddress('');
+            setBalance(0);
+          }
+      
+          return;
+        });
+    }
+  };
+
   useEffect(() => {
-    list.map((account) => {
-      setBalance(account.balance);
-      setAddress(account.address.main);
-    });
+    if (controller) {
+      setup();
+
+      controller.onWalletUpdate(setup);
+    }
   }, [
-    list,
+    controller,
   ]);
 
-  const handleMessageExtension = () => {
-    window.postMessage({ type: "FROM_PAGE" }, "*");
+  const handleMessageExtension = async () => {
+    await controller.connectWallet();
+    await setup();
   }
 
-  const RenderList = (props) => {
-    return props.list.map((item, index) => {
-      return (
-        <tr key={index}>
-          <td>{item.label}</td>
-          <td>{item.balance}</td>
-          {/* <td>No transactions</td> TODO */} 
-          <td>{item.address.main}</td>
-        </tr>
-      )
-    });
+  const handleGetWalletState = async () => {
+    return await controller.getWalletState();
+  }
+
+  const transferSYS = (sender, receiver, amount, fee) => {
+    controller.transferSYS(sender, receiver, amount, fee).then(res => {
+      console.log('res transfer', res)
+    })
+  }
+
+  const handleSendNFT= async () => {
+    return await controller.handleSendNFT();
+  }
+
+  const handleSendSPT= async () => {
+    return await controller.handleSendSPT();
   }
 
   return (
     <div className="app">
-      <header className="header">
-        <img src={logo} alt="logo" className="header__logo" />
-        
-        <div className="header__info">
-          <p className="header__balance">{balance}</p>
+      {controller ? (
+        <div>
+          <header className="header">
+            <img src={logo} alt="logo" className="header__logo" />
 
-          <button
-            className="header__buttonConnect"
-            onClick={canConnect ? handleMessageExtension : undefined}
-            disabled={!isInstalled}
-          >
-            {address}
-          </button>
+            <div className="header__info">
+              <p className="header__balance">{balance}</p>
+
+              <button
+                className="button"
+                onClick={canConnect ? handleMessageExtension : undefined}
+                disabled={!isInstalled}
+              >
+                {connectedAccountAddress === '' ? 'Connect to Syscoin Wallet' : connectedAccountAddress}
+              </button>
+            </div>
+          </header>
+
+          {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}
+
+          <table className="table">
+            <thead>
+              <tr>
+                <td>Accounts</td>
+                <td>Balance</td>
+                <td>Address</td>
+              </tr>
+            </thead>
+
+            <tbody id="tbody">
+              {connectedAccount.label && (
+                <tr>
+                  <td>{connectedAccount.label}</td>
+                  <td>{connectedAccount.balance}</td>
+                  <td>{connectedAccountAddress}</td>
+                </tr>                
+              )}
+            </tbody>
+          </table>
+
+          <form>
+            <input
+              placeholder="amount"
+              type="number"
+              onBlur={(event) => setAmount(event.target.value)}
+            />
+
+            <input
+              placeholder="fee"
+              type="number"
+              onBlur={(event) => setFee(event.target.value)}
+            />
+
+            <input
+              placeholder="to address"
+              type="text"
+              onBlur={(event) => setToAddress(event.target.value)}
+            />
+
+            <button
+              className="button"
+              disabled={
+                connectedAccount.balance === 0 ||
+                amount > connectedAccount.balance ||
+                !amount ||
+                !fee ||
+                !toAddress
+              }
+              onClick={() => transferSYS(connectedAccountAddress, toAddress, amount, fee)}
+            >
+              send sys
+            </button>
+          </form>
+
+          {connectedAccount.balance === 0 && (
+            <p>You don't have SYS available.</p>
+          )}
+
+          <div className="buttons">
+            <button
+              className="button"
+              onClick={handleGetWalletState}
+            >
+              console wallet state
+            </button>
+
+            <button
+              className="button"
+              onClick={handleSendNFT}
+            >
+              send NFT
+            </button>
+
+            <button
+              className="button"
+              onClick={handleSendSPT}
+            >
+              send SPT
+            </button>
+          </div>
         </div>
-      </header>
-
-      {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}
-
-      <table className="table">
-        <thead>
-          <tr>
-            <td>Accounts</td>
-            <td>Balance</td>
-            {/* <td>Transactions</td> TODO */}
-            <td>Address</td>
-          </tr>
-        </thead>
-
-        <tbody id="tbody">
-          {list.length > 0 && (<RenderList list={list} />)}
-        </tbody>
-      </table>
+      ) : (
+        <div>
+          <p>...</p>
+          <h1>You need to install Syscoin Wallet.</h1>
+        </div>
+      )}
     </div>
   );
 }

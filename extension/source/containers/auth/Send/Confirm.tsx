@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 
@@ -15,12 +15,13 @@ import IWalletState from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 
 import styles from './Confirm.scss';
+import { browser } from 'webextension-polyfill-ts';
 
 const SendConfirm = () => {
   const controller = useController();
   const getFiatAmount = useFiat();
 
-  const { accounts, activeAccountId }: IWalletState = useSelector(
+  const { accounts, activeAccountId, currentSenderURL, confirmingTransaction }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
   const tempTx = controller.wallet.account.getTempTx();
@@ -28,16 +29,42 @@ const SendConfirm = () => {
   const alert = useAlert();
 
   const handleConfirm = () => {
-    controller.wallet.account.confirmTempTx().then(result => {
-      if (result) {
-        alert.removeAll();
-        alert.error(result.message);
-      }
-      else {
+    if (accounts[activeAccountId].balance > 0) {
+      controller.wallet.account.confirmTempTx().then(result => {
+        if (result) {
+          alert.removeAll();
+          alert.error(result.message);
+  
+          return;
+        }
+        
         setConfirmed(true);
-      }
-    })
+      });
+
+      return;
+    }
+
+    return;
   };
+
+  const handleClosePopup = () => {
+    browser.runtime.sendMessage({
+      type: "CLOSE_POPUP",
+      target: "background"
+    });
+  }
+
+  const handleCancelConfirmOnSite = () => {
+    browser.runtime.sendMessage({
+      type: "CANCEL_TRANSACTION",
+      target: "background"
+    });
+
+    browser.runtime.sendMessage({
+      type: "CLOSE_POPUP",
+      target: "background"
+    });
+  }
 
   return confirmed ? (
     <Layout title="Your transaction is underway" linkTo="/remind" showLogo>
@@ -49,7 +76,9 @@ const SendConfirm = () => {
         type="button" 
         theme="btn-gradient-primary"
         variant={styles.next} 
-        linkTo="/home">
+        linkTo="/home"
+        onClick={confirmingTransaction ? handleClosePopup : undefined}
+      >
         Next
       </Button>
     </Layout>
@@ -101,15 +130,22 @@ const SendConfirm = () => {
           </span>
         </div>
 
+        {confirmingTransaction && (
+          <div className={styles.txAmount}>
+            <p>Confirm transaction on {currentSenderURL}?</p>
+          </div>
+        )}
+
         <div className={styles.actions}>
           <Button
             type="button"
             theme="secondary"
             variant={clsx(styles.button, styles.close)}
-            linkTo="/send"
+            onClick={confirmingTransaction ? handleCancelConfirmOnSite : undefined}
           >
             Cancel
           </Button>
+
           <Button type="submit" variant={styles.button} onClick={handleConfirm}>
             Confirm
           </Button>

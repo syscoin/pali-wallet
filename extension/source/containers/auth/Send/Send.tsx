@@ -68,12 +68,28 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       alert.error('Error: Invalid recipient address');
       return;
     }
+
+    if (data.amount > accounts[activeAccountId].balance) {
+      alert.removeAll();
+      alert.error('Error: Amount is greater than your available balance.');
+
+      return;
+    }
+
+    if (accounts[activeAccountId].balance === 0) {
+      alert.removeAll();
+      alert.error("Error: You don't have available SYS.");
+
+      return;
+    }
+
     controller.wallet.account.updateTempTx({
       fromAddress: accounts[activeAccountId].address.main,
       toAddress: data.address,
       amount: data.amount,
       fee: data.fee,
     });
+    
     history.push('/send/confirm');
   };
 
@@ -125,6 +141,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             Balance:{' '}
             <span>{formatNumber(accounts[activeAccountId].balance)}</span> SYS
           </div>
+          {accounts[activeAccountId].balance === 0 && <small>You don't have SYS available.</small>}
         </section>
         <section className={styles.content}>
           <ul className={styles.form}>
@@ -214,6 +231,8 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               type="submit"
               variant={styles.button}
               disabled={
+                accounts[activeAccountId].balance === 0 ||
+                accounts[activeAccountId].balance < Number(amount) ||
                 !isValidAddress ||
                 !amount ||
                 !fee ||

@@ -37,7 +37,7 @@ const Auth = () => {
     config: {duration: 200},
   });
 
-  const { canConnect, accounts, currentSenderURL }: IWalletState = useSelector(
+  const { canConnect, accounts, currentSenderURL, confirmingTransaction }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -52,6 +52,12 @@ const Auth = () => {
 
     if (redirectRoute == '/send/confirm' && !controller.wallet.account.getTempTx()) {
       history.push('/home');
+
+      return;
+    }
+
+    if (confirmingTransaction && controller.wallet.account.getTempTx() && isUnlocked) {
+      history.push('/send/confirm');
 
       return;
     }
@@ -80,12 +86,25 @@ const Auth = () => {
       return;
     }
 
+    if (!isUnlocked && accounts.length > 0) {
+      history.push('/app.html');
+
+      return;
+    }
+
+    if (confirmingTransaction && !canConnect && isUnlocked) {
+      history.push('/send/confirm');
+
+      return;
+    }
+
     if (redirectRoute !== '/app.html') {
       history.push(redirectRoute);
     }
   }, [
     canConnect,
-    isUnlocked
+    isUnlocked,
+    confirmingTransaction
   ]);
 
   useEffect(() => {

@@ -9,7 +9,7 @@ interface ILink {
   color?: 'primary' | 'secondary' | 'tertiary';
   noUnderline?: boolean;
   onClick?: () => void;
-  to: string | boolean;
+  to: string;
 }
 
 const Link: FC<ILink> = ({

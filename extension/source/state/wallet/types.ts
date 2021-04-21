@@ -52,4 +52,5 @@ export default interface IWalletState {
   currentURL: string | undefined;
   canConnect: boolean;
   connections: any[];
+  confirmingTransaction: boolean;
 }

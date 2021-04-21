@@ -20,13 +20,20 @@ const initialState: IWalletState = {
   currentSenderURL: '',
   currentURL: '',
   canConnect: false,
-  connections: []
+  connections: [],
+  confirmingTransaction: false,
 };
 
 const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
+    updateCanConfirmTransaction(state: IWalletState, action: PayloadAction<boolean>) {
+      return {
+        ...state,
+        confirmingTransaction: action.payload,
+      }
+    },
     removeConnection(state: IWalletState, action: PayloadAction<any>) {
       const connectionIndex: number = state.connections.findIndex(connection => connection.url === action.payload.url);
 
@@ -196,6 +203,7 @@ export const {
   updateCanConnect,
   updateConnectionsArray,
   removeConnection,
+  updateCanConfirmTransaction
 } = WalletState.actions;
 
 export default WalletState.reducer;

@@ -47,6 +47,7 @@ const WalletController = (): IWalletController => {
   };
 
   const isLocked = () => {
+    console.log('is locked', !password || !mnemonic)
     return !password || !mnemonic;
   };
 
@@ -149,6 +150,8 @@ const WalletController = (): IWalletController => {
       password = pwd;
       mnemonic = decriptedMnemonic;
 
+      console.log('password and mnemonic unlock', password, mnemonic);
+
       account.getPrimaryAccount(password, sjs);
       account.watchMemPool();
       console.log('unblock')
@@ -189,6 +192,7 @@ const WalletController = (): IWalletController => {
   const logOut = () => {
     password = '';
     mnemonic = '';
+    console.log('logout', password, mnemonic)
     store.dispatch(updateStatus());
   };
 

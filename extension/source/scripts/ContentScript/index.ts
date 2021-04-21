@@ -72,14 +72,34 @@ export const shouldInjectProvider = () => {
     !blockedDomainCheck()
   );
 }
+
 function injectScript(content: any) {
   try {
     const container = document.head || document.documentElement;
     const scriptTag = document.createElement('script');
-    scriptTag.setAttribute('async', 'false');
     scriptTag.textContent = content;
+
     container.insertBefore(scriptTag, container.children[0]);
-    container.removeChild(scriptTag);
+
+    scriptTag.onload = () => {
+      scriptTag.remove();
+    }
+  } catch (error) {
+    console.error('Syscoin Wallet: Provider injection failed.', error);
+  }
+}
+
+function injectScriptFile(file: string) {
+  try {
+    const container = document.head || document.documentElement;
+    const scriptTag = document.createElement('script');
+    scriptTag.src = browser.runtime.getURL(file);
+    
+    container.insertBefore(scriptTag, container.children[0]);
+
+    scriptTag.onload = () => {
+      scriptTag.remove();
+    }
   } catch (error) {
     console.error('Syscoin Wallet: Provider injection failed.', error);
   }
@@ -87,6 +107,10 @@ function injectScript(content: any) {
 
 if (shouldInjectProvider()) {
   injectScript("window.SyscoinWallet = 'Syscoin Wallet is installed! :)'");
+
+  window.dispatchEvent(new CustomEvent('SyscoinStatus', { detail: { SyscoinInstalled: true, ConnectionsController: false } }));
+
+  injectScriptFile('js/inpage.bundle.js');
 }
 
 window.addEventListener("message", (event) => {
@@ -94,20 +118,152 @@ window.addEventListener("message", (event) => {
     return;
   }
 
-  if (event.data.type == "FROM_PAGE") {
-    browser.runtime.sendMessage({ type: 'OPEN_WALLET_POPUP' });
+  if (event.data.type == "CONNECT_WALLET" && event.data.target == 'contentScript') {
+    console.log('event connect', event)
+    browser.runtime.sendMessage({
+      type: 'CONNECT_WALLET',
+      target: 'background'
+    });
+
+    return;
+  }
+
+  if (event.data.type == 'WALLET_UPDATED' && event.data.target == 'contentScript') {
+    window.postMessage({
+      type: 'WALLET_UPDATED',
+      target: 'background',
+    }, '*');
+
+    return;
+  }
+
+  if (event.data.type == 'SEND_STATE_TO_PAGE' && event.data.target == 'contentScript') {
+    browser.runtime.sendMessage({
+      type: 'SEND_STATE_TO_PAGE',
+      target: 'background'
+    });
+
+    return;
+  }
+
+  if (event.data.type == 'SEND_CONNECTED_ACCOUNT' && event.data.target == 'contentScript') {
+    browser.runtime.sendMessage({
+      type: 'SEND_CONNECTED_ACCOUNT',
+      target: 'background'
+    });
+
+    return;
+  }
+
+  if (event.data.type == 'TRANSFER_SYS' && event.data.target == 'contentScript') {
+    browser.runtime.sendMessage({
+      type: 'TRANSFER_SYS',
+      target: 'background',
+      fromActiveAccountId: event.data.fromActiveAccountId,
+      toAddress: event.data.toAddress,
+      amount: event.data.amount,
+      fee: event.data.fee
+    });
+
+    return;
+  }
+
+  if (event.data.type == 'SEND_NFT' && event.data.target == 'contentScript') {
+    browser.runtime.sendMessage({
+      type: 'SEND_NFT',
+      target: 'background',
+    });
+
+    return;
+  }
+
+  if (event.data.type == 'SEND_SPT' && event.data.target == 'contentScript') {
+    browser.runtime.sendMessage({
+      type: 'SEND_SPT',
+      target: 'background',
+    });
+
+    return;
   }
 }, false);
 
 browser.runtime.onMessage.addListener(request => {
-  if (typeof request == 'object' && request.type == 'DISCONNECT') {
+  if (request.type == 'DISCONNECT' && request.target == 'contentScript') {
     const id = browser.runtime.id;
     const port = browser.runtime.connect(id, { name: 'SYSCOIN' });
 
     port.disconnect();
+
+    return;
   }
 
-  if (typeof request == 'object' && request.type == 'SEND_DATA') {
-    window.postMessage({ type: 'RESPONSE_FROM_EXTENSION', controller: request.controller }, '*');
+  if (request.type == 'SEND_STATE_TO_PAGE' && request.target == 'contentScript') {
+    window.postMessage({
+      type: 'SEND_STATE_TO_PAGE',
+      target: 'connectionsController',
+      state: request.state
+    }, '*');
+
+    return;
+  }
+
+  if (request.type == 'SEND_CONNECTED_ACCOUNT' && request.target == 'contentScript') {
+    window.postMessage({
+      type: 'SEND_CONNECTED_ACCOUNT',
+      target: 'connectionsController',
+      connectedAccount: request.connectedAccount
+    }, '*');
+
+    return;
+  }
+
+  if (request.type == 'TRANSFER_SYS' && request.target == 'contentScript') {
+    window.postMessage({
+      type: 'TRANSFER_SYS',
+      target: 'connectionsController',
+      complete: request.complete
+    }, '*');
+
+    return;
+  }
+
+  if (request.type == 'SEND_NFT' && request.target == 'contentScript') {
+    window.postMessage({
+      type: 'SEND_NFT',
+      target: 'connectionsController',
+      responseSendNFT: request.responseSendNFT
+    }, '*');
+
+    return;
+  }
+
+  if (request.type == 'SEND_SPT' && request.target == 'contentScript') {
+    window.postMessage({
+      type: 'SEND_SPT',
+      target: 'connectionsController',
+      responseSendSPT: request.responseSendSPT
+    }, '*');
+
+    return;
+  }
+
+  if (request.type == 'CONNECT_WALLET' && request.target == 'contentScript') {
+    window.postMessage({
+      type: 'CONNECT_WALLET',
+      target: 'connectionsController',
+      connected: request.connected
+    }, '*');
+
+    return;
+  }
+
+  if (request.type == 'WALLET_UPDATED' && request.target == 'contentScript') {
+    window.postMessage({
+      type: 'WALLET_UPDATED',
+      target: 'connectionsController',
+      connected: request.connected
+    }, '*');
+
+    return;
   }
 });

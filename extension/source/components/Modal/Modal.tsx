@@ -23,7 +23,12 @@ const Modal: FC<IModal> = ({
   );
 
   const handleDisconnect = (id: number) => {
-    browser.runtime.sendMessage({ type: 'RESET_CONNECTION_INFO', id, url: title });
+    browser.runtime.sendMessage({
+      type: 'RESET_CONNECTION_INFO',
+      target: 'background',
+      id,
+      url: title
+    });
   }
 
   const connectedAccounts = accounts.filter(account => {

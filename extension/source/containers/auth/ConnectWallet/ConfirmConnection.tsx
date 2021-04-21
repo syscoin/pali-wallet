@@ -25,13 +25,30 @@ const ConfirmConnection = () => {
   });
 
   const handleCancelConnection = () => {
-    browser.runtime.sendMessage({ type: 'RESET_CONNECTION_INFO', id: connectedAccount[0].id, url: currentSenderURL });
-    browser.runtime.sendMessage({ type: 'CLOSE_POPUP' });
+    browser.runtime.sendMessage({
+      type: "RESET_CONNECTION_INFO",
+      target: "background",
+      id: connectedAccount[0].id,
+      url: currentSenderURL
+    });
+
+    browser.runtime.sendMessage({
+      type: "CLOSE_POPUP",
+      target: "background"
+    });
   }
 
   const handleConfirmConnection = () => {
-    browser.runtime.sendMessage({ type: 'CONFIRM_CONNECTION', id: connectedAccount[0].id });
-    browser.runtime.sendMessage({ type: 'CLOSE_POPUP' });
+    browser.runtime.sendMessage({ 
+      type: "CONFIRM_CONNECTION",
+      target: "background",
+      id: connectedAccount[0].id
+    });
+
+    browser.runtime.sendMessage({
+      type: "CLOSE_POPUP",
+      target: "background"
+    });
   }
 
   return (

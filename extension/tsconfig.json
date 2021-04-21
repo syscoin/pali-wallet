@@ -25,5 +25,5 @@
       "hooks/*": ["source/hooks/*"]
     }
   },
-  "include": ["source", "webpack.config.ts"]
+  "include": ["source", "webpack.config.ts", "source/scripts/ContentScript/inpage.js"]
 }

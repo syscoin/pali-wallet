@@ -21,12 +21,25 @@ const ConnectWallet = () => {
 
   const handleSelectAccount = (id: number) => {
     setAccountId(id);
-    browser.runtime.sendMessage({ type: 'SELECT_ACCOUNT', id });
+    browser.runtime.sendMessage({
+      type: "SELECT_ACCOUNT",
+      target: "background",
+      id
+    });
   };
 
   const handleCancelConnection = () => {
-    browser.runtime.sendMessage({ type: 'RESET_CONNECTION_INFO', id: accountId, url: currentSenderURL });
-    browser.runtime.sendMessage({ type: 'CLOSE_POPUP' });
+    browser.runtime.sendMessage({
+      type: "RESET_CONNECTION_INFO",
+      target: "background",
+      id: accountId,
+      url: currentSenderURL
+    });
+
+    browser.runtime.sendMessage({
+      type: "CLOSE_POPUP",
+      target: "background"
+    });
   }
 
   return (
