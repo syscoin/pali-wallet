@@ -27,6 +27,12 @@
     color: $gray-dark;
   }
 
+  .confirmTransactionOnSite {
+    text-align: center;
+    color: $gray-dark;
+    font-size: 20px;
+  }
+
   section.txAmount {
     display: flex;
     flex-direction: row;

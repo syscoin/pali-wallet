@@ -131,9 +131,7 @@ const SendConfirm = () => {
         </div>
 
         {confirmingTransaction && (
-          <div className={styles.txAmount}>
-            <p>Confirm transaction on {currentSenderURL}?</p>
-          </div>
+          <p className={styles.confirmTransactionOnSite}>Confirm transaction on {currentSenderURL}?</p>
         )}
 
         <div className={styles.actions}>

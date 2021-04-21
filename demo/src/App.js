@@ -153,6 +153,7 @@ const App = () => {
             <button
               className="button"
               disabled={
+                toAddress === connectedAccountAddress ||
                 connectedAccount.balance === 0 ||
                 amount > connectedAccount.balance ||
                 !amount ||
