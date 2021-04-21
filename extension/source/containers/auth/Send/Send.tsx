@@ -17,7 +17,10 @@ import { Assets } from '../../../scripts/types';
 import Header from 'containers/common/Header';
 import Contacts from '../Contacts';
 import Button from 'components/Button';
-import Select from 'components/Select';
+// import Sel ect from 'components/Select';
+import MUISelect from '@material-ui/core/Select';
+import {styled} from '@material-ui/styles'
+import Input from '@material-ui/core/Input';
 import TextInput from 'components/TextInput';
 import VerifiedIcon from 'assets/images/svg/check-green.svg';
 import { useController } from 'hooks/index';
@@ -30,7 +33,6 @@ import styles from './Send.scss';
 interface IWalletSend {
   initAddress?: string;
 }
-
 const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const { handleSubmit, register, errors } = useForm({
     validationSchema: yup.object().shape({
@@ -52,6 +54,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const [fee, setFee] = useState('0');
   const [recommend, setRecommend] = useState(0);
   const [modalOpened, setModalOpen] = useState(false);
+  const [selectedAsset,setSelectedAsset] = useState<Assets | null>(null);
 
   const isValidAddress = useMemo(() => {
     return controller.wallet.account.isValidSYSAddress(address);
@@ -111,8 +114,26 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     setModalOpen(false);
   };
 
+  const handleAssetSelected = (ev: ChangeEvent<{
+    name?: string | undefined;
+    value: unknown;
+   }>
+  ) => {
+    console.log("The asset" + ev.target.name + "value" + ev.target.value)
+    let selectedAsset = accounts[activeAccountId].assets.filter((asset:Assets) => asset.assetGuid == ev.target.value )
+    if(selectedAsset[0]){
+      setSelectedAsset(selectedAsset[0])
+    }
+    else {
+      setSelectedAsset(null)
+    }
+  };
 
   useEffect(handleGetFee, []);
+  const isNFT = (guid: Number) => {
+    let assetGuid = BigInt.asUintN(64, BigInt(guid))
+    return (assetGuid >> BigInt(32)) > 0
+  }
 
   return (
     <div className={styles.wrapper}>
@@ -123,11 +144,11 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
         onChange={handleSelectContact}
       />
       <form onSubmit={handleSubmit(onSubmit)}>
-        <section className={styles.subheading}>Send SYS</section>
+        <section className={styles.subheading}>Send {selectedAsset ? selectedAsset.symbol:"SYS"}</section>
         <section className={styles.balance}>
           <div>
             Balance:{' '}
-            <span>{formatNumber(accounts[activeAccountId].balance)}</span> SYS
+            <span>{selectedAsset ? formatNumber(selectedAsset.balance) : formatNumber(accounts[activeAccountId].balance)}</span> {selectedAsset ? selectedAsset.symbol:"SYS"}
           </div>
         </section>
         <section className={styles.content}>
@@ -140,7 +161,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 className={statusIconClass}
               />
               <TextInput
-                placeholder="Enter a valid SYS address"
+                placeholder="Enter a valid address"
                 fullWidth
                 value={address}
                 name="address"
@@ -149,10 +170,9 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 variant={addressInputClass}
               />
             </li>
-            <li className={styles.network}>
-            <span>
+            <li>
             <label>Choose Asset</label>
-            <Select
+            {/* <Select
               value={["1"]}
               // fullWidth
               // onChange={handleChangeNetwork}
@@ -160,10 +180,38 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 return ({[String(asset.assetGuid)] : String(asset.symbol)})
               }),].concat({["1"]: "SYS"}).reverse()}
             />
-            </span>
+             */}
+             <div className={styles.select}>
+          <MUISelect native defaultValue="SYS" 
+          input={<Input id="grouped-native-select"  />}
+          onChange={handleAssetSelected}
+          >
+            <optgroup label="Native">
+              <option value={1}>SYS</option>
+            </optgroup>
+            <optgroup label="SPT">
+              {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
+                if(!isNFT(asset.assetGuid)){
+                 return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+                }
+                return
+              })
+            }
+            </optgroup>
+            <optgroup label="NFT">
+               {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
+                  if(isNFT(asset.assetGuid)){
+                   return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+                  }
+                  return
+                })
+              }
+            </optgroup>
+        </MUISelect>
+        </div>
             </li>
             <li>
-              <label>SYS Amount</label>
+              <label> {selectedAsset ? selectedAsset.symbol:"SYS"} Amount</label>
               <TextInput
                 type="number"
                 placeholder="Enter amount to send"
@@ -178,7 +226,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 type="button"
                 variant={styles.textBtn}
                 onClick={() =>
-                  setAmount(String(accounts[activeAccountId].balance))
+                  setAmount(selectedAsset ?String(selectedAsset.balance) : String(accounts[activeAccountId].balance))
                 }
               >
                 Max
