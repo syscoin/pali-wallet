@@ -63,7 +63,11 @@ body {
         color: $navy;
       }
     }
+    &.selected{
+      background: $navy;
+      color: $white;
 
+    }
     // Button - Assets, Activity
     &.btn-rectangle-primary {
       color: $white;
@@ -89,10 +93,6 @@ body {
       background: $navy;
       border-bottom: 1px solid $deepPink;
       color: $white;
-      // &:hover {
-      //   border-bottom: 1px solid $deepPink;
-      //   color: $white;
-      // }
 
       // // &:active {
       // //   transform: scale(0.95);

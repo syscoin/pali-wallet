@@ -61,12 +61,12 @@ const AccountController = (actions: {
     let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
     const balance = res.balance / 1e8;
     let transactions: Transaction[] = [];
-    let assets: any = [];
+    let assets: Assets[] = [];
     console.log("Updating Account")
     console.log(" Account", res.tokensAsset)
 
     if (res.transactions) {
-      transactions = res.transactions.map(transaction => {
+      transactions = res.transactions.map((transaction : Transaction) => {
         return <Transaction>
           {
             txid: transaction.txid,
@@ -80,7 +80,7 @@ const AccountController = (actions: {
     }
 
     if (res.tokensAsset) {
-      let transform = res.tokensAsset.reduce((res, val) => {
+      let transform = res.tokensAsset.reduce((res : any, val : any) => {
         res[val.assetGuid] = <Assets>{
             type: val.type,
             assetGuid: val.assetGuid,
@@ -98,12 +98,13 @@ const AccountController = (actions: {
       }
       console.log("assets", transform)
       console.log("terere", assets)
+    }
       return {
         balance,
         assets,
         transactions,
       };
-    }
+    
   };
 
   // const getAccountByPrivKeystore = (keystoreId: number) => {

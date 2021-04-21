@@ -1,4 +1,5 @@
-import React, { FC, Fragment, useCallback, useState } from 'react';
+import * as React from 'react';
+import { FC, Fragment, useCallback, useState } from 'react';
 import clsx from 'clsx';
 import { v4 as uuid } from 'uuid';
 import { useFiat } from 'hooks/usePrice';
@@ -194,29 +195,26 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
             <ul>
               {assets.map((asset: Assets, idx: number) => {
                 // const isRecived = tx.receiver === address;
-                console.log("idx increment" + idx)
-                if (asset !== undefined) {
-                  return (
-                    <Fragment key={uuid()}>
-                      {TokenTypeGroupBar(asset, idx) && (
-                        <li className={styles.groupbar}>
-                          {asset.type}
-                        </li>
-                      )}
-                      <li onClick={() => handleOpenAssetExplorer(asset.assetGuid)}>
-                        <div>
-                          <span>
-                            <span>{(asset.balance / 10 ** asset.decimals).toFixed(8)}  {atob(asset.symbol)} </span>
-                            {/* <small> {(asset.balance / 10 ** asset.decimals).toFixed(8)}</small> */}
-                          </span>
-                          <div className={styles.linkIcon}>
-                            <UpArrowIcon />
-                          </div>
-                        </div>
+                return (
+                  <Fragment key={uuid()}>
+                    {TokenTypeGroupBar(asset, idx) && (
+                      <li className={styles.groupbar}>
+                        {asset.type}
                       </li>
-                    </Fragment>
-                  );
-                }
+                    )}
+                    <li onClick={() => handleOpenAssetExplorer(asset.assetGuid)}>
+                      <div>
+                        <span>
+                          <span>{(asset.balance / 10 ** asset.decimals).toFixed(8)}  {atob(asset.symbol)} </span>
+                          {/* <small> {(asset.balance / 10 ** asset.decimals).toFixed(8)}</small> */}
+                        </span>
+                        <div className={styles.linkIcon}>
+                          <UpArrowIcon />
+                        </div>
+                      </div>
+                    </li>
+                  </Fragment>
+                );
               })}
             </ul>
           </>
