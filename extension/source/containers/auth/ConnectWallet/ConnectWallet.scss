@@ -14,6 +14,10 @@
   text-align: center;
   background: $navy;
 
+  .loading {
+    margin-top: .5rem;
+  }
+
   .error {
     color: white;
     font-size: 12px;

@@ -4,7 +4,7 @@ import Header from 'containers/common/Header';
 import Button from 'components/Button';
 import checkGreen from 'assets/images/svg/check-green.svg';
 import { ellipsis } from 'containers/auth/helpers';
-// import Spinner from '@material-ui/core/CircularProgress';
+import Spinner from '@material-ui/core/CircularProgress';
 
 import styles from './ConnectWallet.scss';
 import clsx from 'clsx';
@@ -56,20 +56,25 @@ const ConnectWallet = () => {
       <p>{currentSenderURL}</p>
       <p>Choose account</p>
 
-      <ul className={styles.list}>
-        {accounts.map((acc: any, index: number) => (
-          <li key={index} onClick={() => handleSelectAccount(index)} className={styles.account}>
-            <div className={styles.label}>
-              <p>{acc.label} {index === activeAccountId && <small>(active)</small>}</p>
-              <small>{ellipsis(acc.address.main)}</small>
-            </div>
+      {accounts.length > 0 ? (
+        <ul className={styles.list}>
+          {accounts.map((acc: any, index: number) => (
+            <li key={index} onClick={() => handleSelectAccount(index)} className={styles.account}>
+              <div className={styles.label}>
+                <p>{acc.label} {index === activeAccountId && <small>(active)</small>}</p>
+                <small>{ellipsis(acc.address.main)}</small>
+              </div>
 
-            {index === accountId && <img src={checkGreen} alt="check" />}
+              {index === accountId && <img src={checkGreen} alt="check" />}
 
-          </li>
-        ))
-       }
-      </ul>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className={styles.loading}>
+          <Spinner />
+        </div>
+      )}
 
       <small>Only connect with sites you trust. Learn more.</small>
 
