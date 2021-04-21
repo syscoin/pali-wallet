@@ -1,4 +1,5 @@
-import React, {
+import * as React from 'react';
+import  {
   ChangeEvent,
   useState,
   useCallback,
@@ -12,10 +13,11 @@ import { useHistory } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { useSelector } from 'react-redux';
 import { useAlert } from 'react-alert';
-
+import { Assets } from '../../../scripts/types';
 import Header from 'containers/common/Header';
 import Contacts from '../Contacts';
 import Button from 'components/Button';
+import Select from 'components/Select';
 import TextInput from 'components/TextInput';
 import VerifiedIcon from 'assets/images/svg/check-green.svg';
 import { useController } from 'hooks/index';
@@ -44,7 +46,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const { accounts, activeAccountId }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
-
+  
   const [address, setAddress] = useState(initAddress);
   const [amount, setAmount] = useState('');
   const [fee, setFee] = useState('0');
@@ -109,6 +111,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     setModalOpen(false);
   };
 
+
   useEffect(handleGetFee, []);
 
   return (
@@ -145,6 +148,19 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 onChange={handleAddressChange}
                 variant={addressInputClass}
               />
+            </li>
+            <li className={styles.network}>
+            <span>
+            <label>Choose Asset</label>
+            <Select
+              value={["1"]}
+              // fullWidth
+              // onChange={handleChangeNetwork}
+              options={[...accounts[activeAccountId].assets.map((asset: Assets) => {
+                return ({[String(asset.assetGuid)] : String(asset.symbol)})
+              }),].concat({["1"]: "SYS"}).reverse()}
+            />
+            </span>
             </li>
             <li>
               <label>SYS Amount</label>

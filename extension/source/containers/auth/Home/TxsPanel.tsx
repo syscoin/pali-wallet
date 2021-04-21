@@ -1,4 +1,5 @@
-import React, { FC, Fragment, useCallback, useState } from 'react';
+import * as React from 'react';
+import { FC, Fragment, useCallback, useState } from 'react';
 import clsx from 'clsx';
 import { v4 as uuid } from 'uuid';
 import { useFiat } from 'hooks/usePrice';
@@ -199,7 +200,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                       <li onClick={() => handleOpenAssetExplorer(asset.assetGuid)}>
                         <div>
                           <span>
-                            <span>{isNFT(asset.assetGuid) ? asset.balance : (asset.balance / 10 ** asset.decimals).toFixed(8)}  {atob(asset.symbol)} </span>
+                            <span>{isNFT(asset.assetGuid) ? asset.balance : (asset.balance / 10 ** asset.decimals).toFixed(8)}  {asset.symbol} </span>
                           </span>
                           <div className={styles.linkIcon}>
                             <UpArrowIcon />
