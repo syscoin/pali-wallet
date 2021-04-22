@@ -8,13 +8,13 @@
   & > span {
     margin-bottom: 24px;
     display: inline-block;
-    color: $gray-dark;
+    color: $white;
     font-weight: 500;
     font-size: 12px;
   }
 
   .link {
-    color: $navy;
+    color: $royalBlue;
     text-decoration: none;
 
     &.terms {
@@ -23,6 +23,7 @@
     }
 
     &:hover {
+      color: $royalBlue-medium;
       text-decoration: underline;
     }
   }

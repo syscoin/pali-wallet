@@ -1,4 +1,5 @@
-import React, { FC, ReactElement, ReactNode, ChangeEvent } from 'react';
+import * as React from 'react';
+import { FC, ReactElement, ReactNode, ChangeEvent } from 'react';
 import MUISelect from '@material-ui/core/Select';
 import MUIMenuItem from '@material-ui/core/MenuItem';
 import ArrowDownIcon from '@material-ui/icons/KeyboardArrowDown';

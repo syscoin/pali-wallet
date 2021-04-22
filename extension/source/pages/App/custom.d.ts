@@ -14,3 +14,5 @@ declare module '*.svg' {
 }
 
 declare module 'react-alert';
+
+declare module 'bip84';

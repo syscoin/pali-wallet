@@ -7,14 +7,17 @@ export type Transaction = {
   tokenType: string;
 }
 
+export type Assets = {
+  type: string;
+  assetGuid: number;
+  symbol: string;
+  balance: number;
+  decimals: number
+}
+
 export interface IAccountInfo {
   balance: number;
-  assets: {
-    [assetId: number]: {
-      name: string;
-      balance: number;
-    };
-  };
+  assets: Assets[];
   transactions: Transaction[];
 }
 
@@ -23,6 +26,9 @@ export interface ITransactionInfo {
   toAddress: string;
   amount: number;
   fee: number;
+  token: Assets | null;
+  isToken: boolean;
+  rbf: boolean;
 }
 
 export type PendingTx = {

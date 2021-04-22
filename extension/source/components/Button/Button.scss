@@ -63,10 +63,45 @@ body {
         color: $navy;
       }
     }
+    &.selected{
+      background: $navy;
+      color: $white;
+
+    }
+    // Button - Assets, Activity
+    &.btn-rectangle-primary {
+      color: $white;
+      border-radius: 0;
+      justify-content: space-evenly;
+      margin: 2rem 0 .5rem 1.2rem;
+      background: $navy;
+
+      // &:hover {
+      //   border-bottom: 1px solid $deepPink;
+      //   color: $white;
+      // }
+
+      // &:active {
+      //   transform: scale(0.95);
+      // }
+    }
+    &.btn-rectangle-selected {
+      color: $white;
+      border-radius: 0;
+      justify-content: space-evenly;
+      margin: 2rem 0 .5rem 1.2rem;
+      background: $navy;
+      border-bottom: 1px solid $deepPink;
+      color: $white;
+
+      // // &:active {
+      // //   transform: scale(0.95);
+      // // }
+    }
 
     // Primary button.
     &.btn-gradient-primary {
-      color: $royalBlue;
+      color: #4CA1CF;
       border: solid 3px transparent;
       border-radius: 100rem;
       background-image: 
@@ -94,7 +129,7 @@ body {
     
     // Outline buttons
     &.btn-outline-primary {
-      color: $royalBlue;
+      color: #4CA1CF;
       border: solid 1px transparent;
       border-radius: 100rem;
       background-image: 

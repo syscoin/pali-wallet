@@ -1,3 +1,4 @@
+// General Settings
 @import '~assets/styles/variables';
 
 .general {
@@ -17,16 +18,16 @@
       font-size: 16px;
       line-height: 48px;
       padding: 0 36px;
-      color: $gray-dark;
+      color: $white;
       transition: all 0.3s;
 
       &.network {
         height: auto;
-
+        
         .icon {
           margin-bottom: 48px;
         }
-
+        
         span {
           display: flex;
           width: calc(100% - 144px);
@@ -40,7 +41,7 @@
       }
 
       &:hover {
-        background: $gray-light-100;
+        background: $navy-border;
         cursor: pointer;
       }
 

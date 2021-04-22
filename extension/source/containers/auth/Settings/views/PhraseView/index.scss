@@ -1,3 +1,4 @@
+// Auth / Phrase
 @import '~assets/styles/variables';
 
 .phrase {
@@ -11,31 +12,36 @@
   font-weight: 500;
   font-size: 12px;
   line-height: 18px;
-  color: $gray-dark;
+  color: $white;
 
   & > span {
     margin: 24px 0;
+
+    b {
+      font-weight: 500;
+      color: $deepPink;
+    }
   }
 
   .seed {
-    background: $white;
-    border: 1px solid $gray-200;
-    box-sizing: border-box;
-    border-radius: 6px;
     width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     height: 72px;
-    word-wrap: break-word;
-    padding: 0 20px;
-    text-align: center;
     font-weight: 500;
     font-size: 12px;
+    text-align: center;
     line-height: 24px;
+    justify-content: center;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    word-wrap: break-word;
     transition: all 0.3s;
     cursor: pointer;
     user-select: none;
+    box-sizing: border-box;
+    border-radius: 6px;
+    border: 1px solid $deepPink;
+    background: $navy-border;
 
     &.notAllowed {
       cursor: no-drop;

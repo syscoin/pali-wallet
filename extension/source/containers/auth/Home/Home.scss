@@ -59,7 +59,7 @@
     height: 60px;
     width: 100%;
     margin-top: 72px;
-    border-bottom: 1px solid #162742;
+    border-bottom: 1px solid $navy;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -72,7 +72,7 @@
     line-height: 24px;
     display: flex;
     align-items: center;
-    color: $gold;
+    color: $royalBlue-medium;
     background: $navy;
 
     & > small {
@@ -103,7 +103,7 @@
   section.center {
     width: 100%;
     height: 180px;
-    border-bottom: 1px solid #162742;
+    border-bottom: 1px solid $navy;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -199,19 +199,18 @@
 
   .activity {
     height: 288px;
-    background: $navy;
     width: 100%;
     padding: 0;
-    box-sizing: border-box;
-    display: flex;
-    position: absolute;
     bottom: -2px;
-    overflow: auto;
+    display: flex;
     flex-direction: column;
-    width: 100%;
     align-items: center;
+    box-sizing: border-box;
+    position: absolute;
+    overflow: auto;
     transition: all 0.3s;
     z-index: 2;
+    background: $navy;
 
     border-bottom: 5px solid;
     border-image: 

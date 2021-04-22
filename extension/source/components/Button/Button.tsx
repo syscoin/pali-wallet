@@ -14,7 +14,7 @@ interface IButton {
   fullWidth?: boolean;
   linkTo?: string;
   onClick?: () => void;
-  theme?: 'primary' | 'secondary' | 'btn-outline-primary' | 'btn-gradient-primary' | 'btn-outline-secondary';
+  theme?: 'primary' | 'secondary' | 'btn-outline-primary' | 'btn-gradient-primary' | 'btn-outline-secondary' | 'btn-rectangle-primary' | 'btn-rectangle-selected';
   type: 'button' | 'submit';
   variant?: string;
   loading?: boolean;

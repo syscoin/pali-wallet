@@ -191,6 +191,9 @@ browser.runtime.onInstalled.addListener((): void => {
           toAddress: request.toAddress,
           amount: request.amount,
           fee: request.fee,
+          token: null,
+          isToken: false,
+          rbf: true
         });
 
         store.dispatch(updateCanConfirmTransaction(true));

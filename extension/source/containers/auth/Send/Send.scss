@@ -212,4 +212,48 @@
       }
     }
   }
+
+.select {
+  :global(.MuiInputBase-root) {
+    transition: all 0.3s;
+    background: $white;
+    &::before,
+    &::after {
+      border-bottom: none !important;
+    }
+  }
+
+  :global(.MuiSelect-root){
+    transition: all 0.3s;
+    // background: $white;
+  }
+
+  :global .MuiSelect-icon {
+    transition: all 0.3s;
+  }
+
+  :global .MuiSelect-iconOpen {
+    transform: rotateZ(180deg);
+  }
+}
+
+:global(.MuiMenu-paper) {
+  background: $white;
+  box-shadow: none !important;
+}
+
+:global(.MuiMenu-list) {
+
+
+  :global(.MuiMenuItem-root) {
+    font-weight: 600;
+    font-size: 12px;
+    line-height: 24px;
+
+    &:hover {
+      background: $gray-light-100;
+    }
+  }
+}
+
 }
