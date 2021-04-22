@@ -1,5 +1,5 @@
 import * as React from 'react';
-import  {
+import {
   ChangeEvent,
   useState,
   useCallback,
@@ -39,8 +39,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     validationSchema: yup.object().shape({
       address: yup.string().required('Error: Invalid SYS address'),
       amount: yup.number().moreThan(0).required('Error: Invalid SYS Amount'),
-      fee: yup.number().required('Error: Invalid transaction fee'),
-      checked: yup.boolean().default(false)
+      fee: yup.number().required('Error: Invalid transaction fee')
     }),
   });
   const history = useHistory();
@@ -50,7 +49,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const { accounts, activeAccountId }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
-  
+
   const [address, setAddress] = useState(initAddress);
   const [amount, setAmount] = useState('');
   const [fee, setFee] = useState('0');
@@ -76,13 +75,29 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       alert.error('Error: Invalid recipient address');
       return;
     }
-    console.log("checking data element" + JSON.stringify(data))
-    controller.wallet.account.updateTempTx({
-      fromAddress: accounts[activeAccountId].address.main,
-      toAddress: data.address,
-      amount: data.amount,
-      fee: data.fee,
-    });
+    console.log("Checking form data "+ data)
+    if (selectedAsset) {
+      controller.wallet.account.updateTempTx({
+        fromAddress: accounts[activeAccountId].address.main,
+        toAddress: data.address,
+        amount: data.amount,
+        fee: data.fee,
+        token: selectedAsset,
+        isToken: true,
+        rbf: !checked,
+      });
+    }
+    else {
+      controller.wallet.account.updateTempTx({
+        fromAddress: accounts[activeAccountId].address.main,
+        toAddress: data.address,
+        amount: data.amount,
+        fee: data.fee,
+        token: null,
+        isToken: false,
+        rbf: !checked,
+      });
+    }
     history.push('/send/confirm');
   };
 
@@ -123,19 +138,14 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     // setFee((controller.wallet.account.getRecommendFee()).toString());
   };
 
-  const handleSelectContact = (val: string) => {
-    setAddress(val);
-    setModalOpen(false);
-  };
-
   const handleAssetSelected = (ev: ChangeEvent<{
     name?: string | undefined;
     value: unknown;
-   }>
+  }>
   ) => {
     console.log("The asset" + ev.target.name + "value" + ev.target.value)
-    let selectedAsset = accounts[activeAccountId].assets.filter((asset:Assets) => asset.assetGuid == ev.target.value )
-    if(selectedAsset[0]){
+    let selectedAsset = accounts[activeAccountId].assets.filter((asset: Assets) => asset.assetGuid == ev.target.value)
+    if (selectedAsset[0]) {
       setSelectedAsset(selectedAsset[0])
     }
     else {
@@ -144,25 +154,20 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   };
 
   useEffect(handleGetFee, []);
-  const isNFT = (guid: Number) => {
-    let assetGuid = BigInt.asUintN(64, BigInt(guid))
-    return (assetGuid >> BigInt(32)) > 0
-  }
+  // const isNFT = (guid: Number) => {
+  //   let assetGuid = BigInt.asUintN(64, BigInt(guid))
+  //   return (assetGuid >> BigInt(32)) > 0
+  // }
 
   return (
     <div className={styles.wrapper}>
       <Header backLink="/home" />
-      <Contacts
-        open={modalOpened}
-        onClose={() => setModalOpen(false)}
-        onChange={handleSelectContact}
-      />
       <form onSubmit={handleSubmit(onSubmit)}>
-        <section className={styles.subheading}>Send {selectedAsset ? selectedAsset.symbol:"SYS"}</section>
+        <section className={styles.subheading}>Send {selectedAsset ? selectedAsset.symbol : "SYS"}</section>
         <section className={styles.balance}>
           <div>
             Balance:{' '}
-            <span>{selectedAsset ? formatNumber(selectedAsset.balance) : formatNumber(accounts[activeAccountId].balance)}</span> {selectedAsset ? selectedAsset.symbol:"SYS"}
+            <span>{selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? selectedAsset.balance : (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) : accounts[activeAccountId].balance}</span> {selectedAsset ? selectedAsset.symbol : "SYS"}
           </div>
         </section>
         <section className={styles.content}>
@@ -189,15 +194,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               <div style={{width: "50%", float: "left"}}>
                 
             <label>Choose Asset</label>
-            {/* <Select
-              value={["1"]}
-              // fullWidth
-              // onChange={handleChangeNetwork}
-              options={[...accounts[activeAccountId].assets.map((asset: Assets) => {
-                return ({[String(asset.assetGuid)] : String(asset.symbol)})
-              }),].concat({["1"]: "SYS"}).reverse()}
-            />
-             */}
+
              <div className={styles.select}>
           <MUISelect native defaultValue="SYS" 
           input={<Input id="grouped-native-select"  />}
@@ -208,7 +205,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             </optgroup>
             <optgroup label="SPT">
               {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
-                if(!isNFT(asset.assetGuid)){
+                if(!controller.wallet.account.isNFT(asset.assetGuid)){
                  return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
                 }
                 return
@@ -217,7 +214,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             </optgroup>
             <optgroup label="NFT">
                {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
-                  if(isNFT(asset.assetGuid)){
+                  if(controller.wallet.account.isNFT(asset.assetGuid)){
                    return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
                   }
                   return
@@ -279,7 +276,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
         </div>
             </li>
             <li>
-              <label> {selectedAsset ? selectedAsset.symbol:"SYS"} Amount</label>
+              <label> {selectedAsset ? selectedAsset.symbol : "SYS"} Amount</label>
               <TextInput
                 type="number"
                 placeholder="Enter amount to send"
@@ -294,85 +291,13 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 type="button"
                 variant={styles.textBtn}
                 onClick={() =>
-                  setAmount(selectedAsset ?String(selectedAsset.balance) : String(accounts[activeAccountId].balance))
+                  setAmount(selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? String(selectedAsset.balance) : String((selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals)) : String(accounts[activeAccountId].balance))
                 }
               >
                 Max
               </Button>
             </li>
-            {/* <li>
-            <span>
-            <label> Z-DAG</label>
-            <HelpOutlineIcon
-                 data-tip data-for="zdag_info"
-              />
-              </span>
-              <ReactTooltip id="zdag_info"
-              getContent={(dataTip)=>
-                <ul>
-                <li>
-                Button: 
-                </li>
-                <li>
-                <span>
-                OFF for Replace-by-fee(RBF) 
-                ON for Z-DAG
-                </span>
-                </li>
-                <li>
-                <span>
-                Z-DAG, a exclusive syscoin feature,<br/>
-                is a blockchain scalability sulution
-                </span>
-                </li>
-                <li>
-                to know more: <br/>
-                <span onClick={() => {window.open("https://syscoin.org/news/what-is-z-dag");}}>
-                what is Z-DAG?
-             </span>
-             </li>
-             </ul>
-              }
-              effect='solid'
-              delayHide={1500}
-              delayShow={500}
-              delayUpdate={500}
-              place={'right'}
-              border={true}
-              type={'info'}
-              /> */}
-            {/* // <ReactTooltip id="zdag_info" place="right" type="info" effect="solid">
-            //   <ul>
-            //     <li>
-            //     Button: 
-            //     </li>
-            //     <li>
-            //     <span>
-            //     OFF for Replace-by-fee(RBF) 
-            //     ON for Z-DAG
-            //     </span>
-            //     </li>
-            //     <li>
-            //     <span>
-            //     Z-DAG, a exclusive syscoin feature,<br/>
-            //     is a blockchain scalability sulution
-            //     </span>
-            //     </li>
-            //     <li>
-            //     to know more: <br/>
-            //     <span onClick={() => {window.open("https://syscoin.org/news/what-is-z-dag");}}>
-            //     what is Z-DAG?
-            //  </span>
-            //  </li>
-            //  </ul>
             
-            // </ReactTooltip> */}
-
-            {/* <Switch 
-              checked={checked}
-              onChange={handleTypeChanged}
-            ></Switch>
-              </li> */}
             <li>
               <label>Transaction Fee</label>
               <TextInput

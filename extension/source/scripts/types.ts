@@ -26,6 +26,9 @@ export interface ITransactionInfo {
   toAddress: string;
   amount: number;
   fee: number;
+  token: Assets | null;
+  isToken: boolean;
+  rbf: boolean;
 }
 
 export type PendingTx = {

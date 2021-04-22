@@ -49,17 +49,12 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
       console.log(assets)
       console.log(idx)
       return (
-        idx === 0 || isNFT(asset.assetGuid) !==
-        isNFT(assets[idx - 1].assetGuid)
+        idx === 0 || controller.wallet.account.isNFT(asset.assetGuid) !==
+        controller.wallet.account.isNFT(assets[idx - 1].assetGuid)
       );
     },
     [assets]
   );
-
-  const isNFT = (guid: Number) => {
-    let assetGuid = BigInt.asUintN(64, BigInt(guid))
-    return (assetGuid >> BigInt(32)) > 0
-  }
 
   const handleFetchMoreTxs = () => {
     if (transactions.length) {
@@ -189,25 +184,25 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
               {assets.map((asset: Assets, idx: number) => {
                 // const isRecived = tx.receiver === address;
                 console.log("idx increment " + idx)
-                  return (
-                    <Fragment key={uuid()}>
-                      {TokenTypeGroupBar(asset, idx) && (
-                        <li className={styles.groupbar}>
-                          {isNFT(asset.assetGuid) ? "NFT" : "SPT"}
-                        </li>
-                      )}
-                      <li onClick={() => handleOpenAssetExplorer(asset.assetGuid)}>
-                        <div>
-                          <span>
-                            <span>{isNFT(asset.assetGuid) ? asset.balance : (asset.balance / 10 ** asset.decimals).toFixed(8)}  {asset.symbol} </span>
-                          </span>
-                          <div className={styles.linkIcon}>
-                            <UpArrowIcon />
-                          </div>
-                        </div>
+                return (
+                  <Fragment key={uuid()}>
+                    {TokenTypeGroupBar(asset, idx) && (
+                      <li className={styles.groupbar}>
+                        {controller.wallet.account.isNFT(asset.assetGuid) ? "NFT" : "SPT"}
                       </li>
-                    </Fragment>
-                  );
+                    )}
+                    <li onClick={() => handleOpenAssetExplorer(asset.assetGuid)}>
+                      <div>
+                        <span>
+                          <span>{controller.wallet.account.isNFT(asset.assetGuid) ? asset.balance : (asset.balance / 10 ** asset.decimals).toFixed(8)}  {asset.symbol} </span>
+                        </span>
+                        <div className={styles.linkIcon}>
+                          <UpArrowIcon />
+                        </div>
+                      </div>
+                    </li>
+                  </Fragment>
+                );
               })}
             </ul>
           </>

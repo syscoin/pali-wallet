@@ -34,6 +34,7 @@ export interface IAccountController {
   // removePrivKeyAccount: (id: number, password: string) => boolean;
   watchMemPool: () => void;
   getLatestUpdate: () => void;
+  isNFT: (guid: number) => boolean;
   // importPrivKeyAccount: (privKey: string, label: string) => { [assetId: string]: string } | null;
   isValidSYSAddress: (address: string) => boolean;
   getRecommendFee: () => Promise<number>;
@@ -66,7 +67,7 @@ const AccountController = (actions: {
     console.log(" Account", res.tokensAsset)
 
     if (res.transactions) {
-      transactions = res.transactions.map((transaction : Transaction) => {
+      transactions = res.transactions.map((transaction: Transaction) => {
         return <Transaction>
           {
             txid: transaction.txid,
@@ -80,31 +81,31 @@ const AccountController = (actions: {
     }
 
     if (res.tokensAsset) {
-      let transform = res.tokensAsset.reduce((res : any, val : any) => {
+      let transform = res.tokensAsset.reduce((res: any, val: any) => {
         res[val.assetGuid] = <Assets>{
-            type: val.type,
-            assetGuid: val.assetGuid,
-            symbol: atob(val.symbol),
-            balance: (res[val.assetGuid] ? res[val.assetGuid].balance : 0) + Number(val.balance),
-            decimals: val.decimals,
+          type: val.type,
+          assetGuid: val.assetGuid,
+          symbol: atob(val.symbol),
+          balance: (res[val.assetGuid] ? res[val.assetGuid].balance : 0) + Number(val.balance),
+          decimals: val.decimals,
         };
-        
+
         return res;
       }, {});
 
-      for (var key in transform){
+      for (var key in transform) {
         console.log()
         assets.push(transform[key])
       }
       console.log("assets", transform)
       console.log("terere", assets)
     }
-      return {
-        balance,
-        assets,
-        transactions,
-      };
-    
+    return {
+      balance,
+      assets,
+      transactions,
+    };
+
   };
 
   // const getAccountByPrivKeystore = (keystoreId: number) => {
@@ -311,6 +312,11 @@ const AccountController = (actions: {
     return false;
   };
 
+  const isNFT = (guid: number) => {
+    let assetGuid = BigInt.asUintN(64, BigInt(guid))
+    return (assetGuid >> BigInt(32)) > 0
+  }
+
   const getRecommendFee = async () => {
     return await sys.utils.fetchEstimateFee(sysjs.blockbookURL, 1) / 10 ** 8;
   };
@@ -381,10 +387,8 @@ const AccountController = (actions: {
     console.log("updated one: ", accounts[activeAccountId].address.main)
 
     return true;
-
-
-
   }
+
   const confirmTempTx = async () => {
     if (!sysjs) {
       throw new Error('Error: No signed account exists');
@@ -398,41 +402,45 @@ const AccountController = (actions: {
       throw new Error("Error: Can't find transaction info");
       return (new Error("Error: Can't find transaction info"))
     }
-    console.log("sys teste send syscoinjs", sysjs)
-    console.log(tempTx.amount / 1e8, tempTx.fee / 1e8, tempTx.toAddress)
+
     try {
-      const _outputsArr = [
-        { address: tempTx.toAddress, value: new sys.utils.BN(tempTx.amount * 1e8) }
-      ]
+      if (tempTx.isToken && tempTx.token) {
+        const txOpts = { rbf: tempTx.rbf }
+        const value = isNFT(tempTx.token.assetGuid) ? new sys.utils.BN(tempTx.amount) : new sys.utils.BN(tempTx.amount * 10 ** tempTx.token.decimals)
+        const assetMap = new Map([
+          [tempTx.token.assetGuid, { changeAddress: null, outputs: [{ value: value, address: tempTx.toAddress }] }]
+        ])
+        const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(tempTx.fee * 1e8))
+        const txInfo = pendingTx.extractTransaction().getId()
+        store.dispatch(
+          updateTransactions({
+            id: account.id,
+            txs: [_coventPendingType(txInfo), ...account.transactions],
+          })
+        );
+      } else {
+        const _outputsArr = [
+          { address: tempTx.toAddress, value: new sys.utils.BN(tempTx.amount * 1e8) }
+        ]
+        const txOpts = { rbf: tempTx.rbf }
+        const pendingTx = await sysjs.createTransaction(txOpts, null, _outputsArr, new sys.utils.BN(tempTx.fee * 1e8));
+        const txInfo = pendingTx.extractTransaction().getId()
+        store.dispatch(
+          updateTransactions({
+            id: account.id,
+            txs: [_coventPendingType(txInfo), ...account.transactions],
+          })
+        );
+      }
 
-      const pendingTx = await sysjs.createTransaction({ rbf: false }, null, _outputsArr, new sys.utils.BN(tempTx.fee * 1e8));
-      console.log("lets see", pendingTx)
-      // console.log("tempTx.amount", tempTx.amount);
-      // console.log("tempTx.amount BN", new sys.utils.BN(tempTx.amount * 1e8));
-      // console.log("tempTx.amount BN", new sys.utils.BN(tempTx.fee * 1e8));
-      // console.log("tempTx.amount BN", (tempTx.fee * 1e8));
-
-      // console.log("1 sys bn", new sys.utils.BN(100000000));
-
-      // const _outputsArr = [
-      //   { address: 'tsys1q2uqmjptmjf6ugt25yufq9xmawqmaws3upgl5y0', value: new sys.utils.BN(10054699544) }
-      // ]
-      // const pendingTx = await sysjs.createTransaction({ rbf: false }, null, _outputsArr, new sys.utils.BN(10))
-      const txInfo = pendingTx.extractTransaction().getId()
-      store.dispatch(
-        updateTransactions({
-          id: account.id,
-          txs: [_coventPendingType(txInfo), ...account.transactions],
-        })
-      );
       tempTx = null;
-      return null;
-
       watchMemPool();
+      return null;
     } catch (error) {
       console.log("erro ele", error)
-      return error;
       throw new Error(error);
+      return error;
+
     }
   };
 
@@ -454,6 +462,7 @@ const AccountController = (actions: {
     updateTxs,
     getRecommendFee,
     setNewAddress,
+    isNFT,
     // transfer
   };
 };
