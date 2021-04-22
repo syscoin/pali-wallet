@@ -17,9 +17,8 @@ import { Assets } from '../../../scripts/types';
 import Header from 'containers/common/Header';
 import Contacts from '../Contacts';
 import Button from 'components/Button';
-// import Sel ect from 'components/Select';
+import Switch from "react-switch";
 import MUISelect from '@material-ui/core/Select';
-import {styled} from '@material-ui/styles'
 import Input from '@material-ui/core/Input';
 import TextInput from 'components/TextInput';
 import VerifiedIcon from 'assets/images/svg/check-green.svg';
@@ -28,6 +27,8 @@ import { useFiat } from 'hooks/usePrice';
 import IWalletState from 'state/wallet/types';
 import { RootState } from 'state/store';
 import { formatNumber } from '../helpers';
+import ReactTooltip from 'react-tooltip';
+import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 
 import styles from './Send.scss';
 interface IWalletSend {
@@ -39,6 +40,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       address: yup.string().required('Error: Invalid SYS address'),
       amount: yup.number().moreThan(0).required('Error: Invalid SYS Amount'),
       fee: yup.number().required('Error: Invalid transaction fee'),
+      checked: yup.boolean().default(false)
     }),
   });
   const history = useHistory();
@@ -54,6 +56,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const [fee, setFee] = useState('0');
   const [recommend, setRecommend] = useState(0);
   const [modalOpened, setModalOpen] = useState(false);
+  const [checked, setChecked] = useState(false);
   const [selectedAsset,setSelectedAsset] = useState<Assets | null>(null);
 
   const isValidAddress = useMemo(() => {
@@ -73,6 +76,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       alert.error('Error: Invalid recipient address');
       return;
     }
+    console.log("checking data element" + JSON.stringify(data))
     controller.wallet.account.updateTempTx({
       fromAddress: accounts[activeAccountId].address.main,
       toAddress: data.address,
@@ -102,6 +106,16 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     },
     []
   );
+
+  const handleTypeChanged = useCallback(
+    ( 
+      checked: boolean
+  ) => {
+      console.log("Checking checked" + checked)
+      setChecked(checked)
+    },
+    []
+  )
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => { setRecommend(response); setFee(response.toString()); })
@@ -171,6 +185,9 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               />
             </li>
             <li>
+            <div style={{ display: "flex"}}>
+              <div style={{width: "50%", float: "left"}}>
+                
             <label>Choose Asset</label>
             {/* <Select
               value={["1"]}
@@ -209,6 +226,57 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             </optgroup>
         </MUISelect>
         </div>
+        </div>
+        <div style={{width: "50%", float: "left", paddingLeft: "120px"}}>
+          <div>
+        <span>
+            <label> Z-DAG</label>
+            <HelpOutlineIcon
+                 data-tip data-for="zdag_info"
+              />
+              
+              <ReactTooltip id="zdag_info"
+              getContent={()=>
+                <ul>
+                <li>
+                Button: 
+                </li>
+                <li>
+                <span>
+                OFF for Replace-by-fee(RBF) 
+                ON for Z-DAG
+                </span>
+                </li>
+                <li>
+                <span>
+                Z-DAG, a exclusive syscoin feature,<br/>
+                is a blockchain scalability sulution
+                </span>
+                </li>
+                <li>
+                to know more: <br/>
+                <span onClick={() => {window.open("https://syscoin.org/news/what-is-z-dag");}}>
+                what is Z-DAG?
+             </span>
+             </li>
+             </ul>
+              }
+              effect='solid'
+              delayHide={1500}
+              delayShow={500}
+              delayUpdate={500}
+              place={'left'}
+              border={true}
+              type={'info'}
+              />
+              </span>
+              </div>
+              <Switch 
+              checked={checked}
+              onChange={handleTypeChanged}
+            ></Switch>
+        </div>
+        </div>
             </li>
             <li>
               <label> {selectedAsset ? selectedAsset.symbol:"SYS"} Amount</label>
@@ -232,6 +300,79 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 Max
               </Button>
             </li>
+            {/* <li>
+            <span>
+            <label> Z-DAG</label>
+            <HelpOutlineIcon
+                 data-tip data-for="zdag_info"
+              />
+              </span>
+              <ReactTooltip id="zdag_info"
+              getContent={(dataTip)=>
+                <ul>
+                <li>
+                Button: 
+                </li>
+                <li>
+                <span>
+                OFF for Replace-by-fee(RBF) 
+                ON for Z-DAG
+                </span>
+                </li>
+                <li>
+                <span>
+                Z-DAG, a exclusive syscoin feature,<br/>
+                is a blockchain scalability sulution
+                </span>
+                </li>
+                <li>
+                to know more: <br/>
+                <span onClick={() => {window.open("https://syscoin.org/news/what-is-z-dag");}}>
+                what is Z-DAG?
+             </span>
+             </li>
+             </ul>
+              }
+              effect='solid'
+              delayHide={1500}
+              delayShow={500}
+              delayUpdate={500}
+              place={'right'}
+              border={true}
+              type={'info'}
+              /> */}
+            {/* // <ReactTooltip id="zdag_info" place="right" type="info" effect="solid">
+            //   <ul>
+            //     <li>
+            //     Button: 
+            //     </li>
+            //     <li>
+            //     <span>
+            //     OFF for Replace-by-fee(RBF) 
+            //     ON for Z-DAG
+            //     </span>
+            //     </li>
+            //     <li>
+            //     <span>
+            //     Z-DAG, a exclusive syscoin feature,<br/>
+            //     is a blockchain scalability sulution
+            //     </span>
+            //     </li>
+            //     <li>
+            //     to know more: <br/>
+            //     <span onClick={() => {window.open("https://syscoin.org/news/what-is-z-dag");}}>
+            //     what is Z-DAG?
+            //  </span>
+            //  </li>
+            //  </ul>
+            
+            // </ReactTooltip> */}
+
+            {/* <Switch 
+              checked={checked}
+              onChange={handleTypeChanged}
+            ></Switch>
+              </li> */}
             <li>
               <label>Transaction Fee</label>
               <TextInput
