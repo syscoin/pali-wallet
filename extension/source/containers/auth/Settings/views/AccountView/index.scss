@@ -17,11 +17,11 @@
       font-size: 16px;
       line-height: 48px;
       padding: 0 36px;
-      color: $gray-dark;
       transition: all 0.3s;
+      color: $white;
 
       &:hover {
-        background: $gray-light-100;
+        background: $navy-border;
         cursor: pointer;
       }
 
