@@ -26,7 +26,7 @@ export interface ITransactionInfo {
   toAddress: string;
   amount: number;
   fee: number;
-  token: Assets;
+  token: Assets | null;
   isToken: boolean;
   rbf: boolean;
 }

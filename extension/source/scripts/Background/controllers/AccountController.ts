@@ -34,6 +34,7 @@ export interface IAccountController {
   // removePrivKeyAccount: (id: number, password: string) => boolean;
   watchMemPool: () => void;
   getLatestUpdate: () => void;
+  isNFT: (guid: number) => boolean;
   // importPrivKeyAccount: (privKey: string, label: string) => { [assetId: string]: string } | null;
   isValidSYSAddress: (address: string) => boolean;
   getRecommendFee: () => Promise<number>;
@@ -311,6 +312,11 @@ const AccountController = (actions: {
     return false;
   };
 
+  const isNFT = (guid: number) => {
+    let assetGuid = BigInt.asUintN(64, BigInt(guid))
+    return (assetGuid >> BigInt(32)) > 0
+  }
+
   const getRecommendFee = async () => {
     return await sys.utils.fetchEstimateFee(sysjs.blockbookURL, 1) / 10 ** 8;
   };
@@ -396,13 +402,13 @@ const AccountController = (actions: {
       throw new Error("Error: Can't find transaction info");
       return (new Error("Error: Can't find transaction info"))
     }
-    console.log("sys teste send syscoinjs", sysjs)
-    console.log(tempTx.amount / 1e8, tempTx.fee / 1e8, tempTx.toAddress)
+
     try {
-      if (tempTx.isToken) {
+      if (tempTx.isToken && tempTx.token) {
         const txOpts = { rbf: tempTx.rbf }
+        const value = isNFT(tempTx.token.assetGuid) ? new sys.utils.BN(tempTx.amount) : new sys.utils.BN(tempTx.amount * 10 ** tempTx.token.decimals)
         const assetMap = new Map([
-          [tempTx.token.assetGuid, { changeAddress: null, outputs: [{ value: new sys.utils.BN(tempTx.amount * 10 ** tempTx.token.decimals), address: tempTx.toAddress }] }]
+          [tempTx.token.assetGuid, { changeAddress: null, outputs: [{ value: value, address: tempTx.toAddress }] }]
         ])
         const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(tempTx.fee * 1e8))
         const txInfo = pendingTx.extractTransaction().getId()
@@ -456,6 +462,7 @@ const AccountController = (actions: {
     updateTxs,
     getRecommendFee,
     setNewAddress,
+    isNFT,
     // transfer
   };
 };

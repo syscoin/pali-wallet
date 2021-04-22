@@ -45,10 +45,10 @@ const SendConfirm = () => {
       <div className="body-description">
         You can follow your transaction under activity on your account screen.
       </div>
-      <Button 
-        type="button" 
+      <Button
+        type="button"
         theme="btn-gradient-primary"
-        variant={styles.next} 
+        variant={styles.next}
         linkTo="/home">
         Next
       </Button>
@@ -61,15 +61,7 @@ const SendConfirm = () => {
         <div className={styles.iconWrapper}>
           <UpArrowIcon />
         </div>
-        {Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0)} SYS
-        <small>
-          (≈
-          {getFiatAmount(
-          Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0),
-          8
-        )}
-          )
-        </small>
+        {tempTx?.isToken ? String(tempTx.amount) + " " + String(tempTx.token?.symbol) : ((tempTx?.amount || 0) + (tempTx?.fee || 0)) + " SYS"}
       </section>
       <section className={styles.transaction}>
         <div className={styles.row}>
@@ -94,10 +86,10 @@ const SendConfirm = () => {
         <div className={styles.row}>
           Max Total
           <span>
-            {getFiatAmount(
+            {!tempTx?.isToken ? getFiatAmount(
               Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0),
               8
-            )}
+            ) : String(tempTx?.amount) + " " + String(tempTx?.token?.symbol)}
           </span>
         </div>
 

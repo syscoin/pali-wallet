@@ -1,5 +1,5 @@
 import * as React from 'react';
-import  {
+import {
   ChangeEvent,
   useState,
   useCallback,
@@ -19,7 +19,7 @@ import Contacts from '../Contacts';
 import Button from 'components/Button';
 // import Sel ect from 'components/Select';
 import MUISelect from '@material-ui/core/Select';
-import {styled} from '@material-ui/styles'
+import { styled } from '@material-ui/styles'
 import Input from '@material-ui/core/Input';
 import TextInput from 'components/TextInput';
 import VerifiedIcon from 'assets/images/svg/check-green.svg';
@@ -48,13 +48,13 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const { accounts, activeAccountId }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
-  
+
   const [address, setAddress] = useState(initAddress);
   const [amount, setAmount] = useState('');
   const [fee, setFee] = useState('0');
   const [recommend, setRecommend] = useState(0);
   const [modalOpened, setModalOpen] = useState(false);
-  const [selectedAsset,setSelectedAsset] = useState<Assets | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
 
   const isValidAddress = useMemo(() => {
     return controller.wallet.account.isValidSYSAddress(address);
@@ -73,12 +73,29 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       alert.error('Error: Invalid recipient address');
       return;
     }
-    controller.wallet.account.updateTempTx({
-      fromAddress: accounts[activeAccountId].address.main,
-      toAddress: data.address,
-      amount: data.amount,
-      fee: data.fee,
-    });
+    if (selectedAsset) {
+      controller.wallet.account.updateTempTx({
+        fromAddress: accounts[activeAccountId].address.main,
+        toAddress: data.address,
+        amount: data.amount,
+        fee: data.fee,
+        token: selectedAsset,
+        isToken: true,
+        rbf: data.rbf,
+      });
+    }
+    else {
+      controller.wallet.account.updateTempTx({
+        fromAddress: accounts[activeAccountId].address.main,
+        toAddress: data.address,
+        amount: data.amount,
+        fee: data.fee,
+        token: null,
+        isToken: false,
+        rbf: data.rbf,
+      });
+    }
+
     history.push('/send/confirm');
   };
 
@@ -109,19 +126,14 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     // setFee((controller.wallet.account.getRecommendFee()).toString());
   };
 
-  const handleSelectContact = (val: string) => {
-    setAddress(val);
-    setModalOpen(false);
-  };
-
   const handleAssetSelected = (ev: ChangeEvent<{
     name?: string | undefined;
     value: unknown;
-   }>
+  }>
   ) => {
     console.log("The asset" + ev.target.name + "value" + ev.target.value)
-    let selectedAsset = accounts[activeAccountId].assets.filter((asset:Assets) => asset.assetGuid == ev.target.value )
-    if(selectedAsset[0]){
+    let selectedAsset = accounts[activeAccountId].assets.filter((asset: Assets) => asset.assetGuid == ev.target.value)
+    if (selectedAsset[0]) {
       setSelectedAsset(selectedAsset[0])
     }
     else {
@@ -130,25 +142,20 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   };
 
   useEffect(handleGetFee, []);
-  const isNFT = (guid: Number) => {
-    let assetGuid = BigInt.asUintN(64, BigInt(guid))
-    return (assetGuid >> BigInt(32)) > 0
-  }
+  // const isNFT = (guid: Number) => {
+  //   let assetGuid = BigInt.asUintN(64, BigInt(guid))
+  //   return (assetGuid >> BigInt(32)) > 0
+  // }
 
   return (
     <div className={styles.wrapper}>
       <Header backLink="/home" />
-      <Contacts
-        open={modalOpened}
-        onClose={() => setModalOpen(false)}
-        onChange={handleSelectContact}
-      />
       <form onSubmit={handleSubmit(onSubmit)}>
-        <section className={styles.subheading}>Send {selectedAsset ? selectedAsset.symbol:"SYS"}</section>
+        <section className={styles.subheading}>Send {selectedAsset ? selectedAsset.symbol : "SYS"}</section>
         <section className={styles.balance}>
           <div>
             Balance:{' '}
-            <span>{selectedAsset ? formatNumber(selectedAsset.balance) : formatNumber(accounts[activeAccountId].balance)}</span> {selectedAsset ? selectedAsset.symbol:"SYS"}
+            <span>{selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? selectedAsset.balance : (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) : accounts[activeAccountId].balance}</span> {selectedAsset ? selectedAsset.symbol : "SYS"}
           </div>
         </section>
         <section className={styles.content}>
@@ -171,8 +178,8 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               />
             </li>
             <li>
-            <label>Choose Asset</label>
-            {/* <Select
+              <label>Choose Asset</label>
+              {/* <Select
               value={["1"]}
               // fullWidth
               // onChange={handleChangeNetwork}
@@ -181,37 +188,37 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               }),].concat({["1"]: "SYS"}).reverse()}
             />
              */}
-             <div className={styles.select}>
-          <MUISelect native defaultValue="SYS" 
-          input={<Input id="grouped-native-select"  />}
-          onChange={handleAssetSelected}
-          >
-            <optgroup label="Native">
-              <option value={1}>SYS</option>
-            </optgroup>
-            <optgroup label="SPT">
-              {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
-                if(!isNFT(asset.assetGuid)){
-                 return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
-                }
-                return
-              })
-            }
-            </optgroup>
-            <optgroup label="NFT">
-               {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
-                  if(isNFT(asset.assetGuid)){
-                   return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
-                  }
-                  return
-                })
-              }
-            </optgroup>
-        </MUISelect>
-        </div>
+              <div className={styles.select}>
+                <MUISelect native defaultValue="SYS"
+                  input={<Input id="grouped-native-select" />}
+                  onChange={handleAssetSelected}
+                >
+                  <optgroup label="Native">
+                    <option value={1}>SYS</option>
+                  </optgroup>
+                  <optgroup label="SPT">
+                    {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
+                      if (!controller.wallet.account.isNFT(asset.assetGuid)) {
+                        return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+                      }
+                      return
+                    })
+                    }
+                  </optgroup>
+                  <optgroup label="NFT">
+                    {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
+                      if (controller.wallet.account.isNFT(asset.assetGuid)) {
+                        return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+                      }
+                      return
+                    })
+                    }
+                  </optgroup>
+                </MUISelect>
+              </div>
             </li>
             <li>
-              <label> {selectedAsset ? selectedAsset.symbol:"SYS"} Amount</label>
+              <label> {selectedAsset ? selectedAsset.symbol : "SYS"} Amount</label>
               <TextInput
                 type="number"
                 placeholder="Enter amount to send"
@@ -226,7 +233,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 type="button"
                 variant={styles.textBtn}
                 onClick={() =>
-                  setAmount(selectedAsset ?String(selectedAsset.balance) : String(accounts[activeAccountId].balance))
+                  setAmount(selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? String(selectedAsset.balance) : String((selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals)) : String(accounts[activeAccountId].balance))
                 }
               >
                 Max
