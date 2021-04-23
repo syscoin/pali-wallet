@@ -17,6 +17,7 @@ import { useAlert } from 'react-alert';
 
 import styles from './Confirm.scss';
 import { browser } from 'webextension-polyfill-ts';
+import Spinner from '@material-ui/core/CircularProgress';
 
 const SendConfirm = () => {
   const controller = useController();
@@ -33,6 +34,7 @@ const SendConfirm = () => {
   });
   const tempTx = controller.wallet.account.getTempTx();
   const [confirmed, setConfirmed] = useState(false);
+  const [loading, setLoading] = useState(false);
   const alert = useAlert();
 
   const handleConfirm = () => {
@@ -47,13 +49,15 @@ const SendConfirm = () => {
           return;
         }
         
+        setLoading(false);
         setConfirmed(true);
       });
 
+      setLoading(true);
+      setConfirmed(false);
+
       return;
     }
-
-    return;
   };
 
   const handleClosePopup = () => {
@@ -150,7 +154,11 @@ const SendConfirm = () => {
           </Button>
 
           <Button type="submit" variant={styles.button} onClick={handleConfirm}>
-            Confirm
+            {loading ? (
+              <Spinner />
+            ) : (
+              <p>Confirm</p>
+            )}
           </Button>
         </div>
       </section>
