@@ -12,6 +12,7 @@ const App = () => {
   const [fee, setFee] = useState(0.0000001);
   const [toAddress, setToAddress] = useState('');
   const [confirmedTransaction, setConfirmedTransaction] = useState(false);
+  const [selectedAsset,setSelectedAsset] = useState(null);
 
   useEffect(() => {
     const callback = async (event) => {
@@ -66,6 +67,20 @@ const App = () => {
     controller,
   ]);
 
+  const handleAssetSelected = (ev) => {
+    if (connectedAccount) {
+      console.log("The asset" + ev.target.name + "value" + ev.target.value)
+      let selectedAsset = connectedAccount.assets.filter((asset) => asset.assetGuid == ev.target.value)
+      console.log('olsas', connectedAccount.assets)
+      if (selectedAsset[0]) {
+        setSelectedAsset(selectedAsset[0])
+      }
+      else {
+        setSelectedAsset(null)
+      }
+    }
+  };
+
   const handleMessageExtension = async () => {
     await controller.connectWallet();
     await setup();
@@ -75,18 +90,16 @@ const App = () => {
     return await controller.getWalletState();
   }
 
-  const transferSYS = (sender, receiver, amount, fee) => {
-    controller.transferSYS(sender, receiver, amount, fee).then(res => {
-      console.log('res transfer', res)
-    })
-  }
+  const handleSendToken = async (sender, receiver, amount, fee, token) => {
+    if (token !== null) {
+      await controller.handleSendToken(sender, receiver, amount, fee, token, true, true);
 
-  const handleSendNFT= async () => {
-    return await controller.handleSendNFT();
-  }
+      return;
+    }
 
-  const handleSendSPT= async () => {
-    return await controller.handleSendSPT();
+    await controller.handleSendToken(sender, receiver, amount, fee, null, false, true);
+
+    return;
   }
 
   return (
@@ -132,8 +145,35 @@ const App = () => {
           </table>
 
           <form>
+          <div>
+          <select
+            onChange={handleAssetSelected}
+          >
+            <optgroup label="Native">
+              <option value={1}>SYS</option>
+            </optgroup>
+            <optgroup label="SPT">
+              {connectedAccount.label && connectedAccount.assets.map((asset, idx) => {
+                if(!controller.isNFT(asset.assetGuid)){
+                 return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+                }
+                return
+              })
+            }
+            </optgroup>
+            <optgroup label="NFT">
+               {connectedAccount.label && connectedAccount.assets.map((asset, idx) => {
+                  if(controller.isNFT(asset.assetGuid)){
+                   return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+                  }
+                  return
+                })
+              }
+            </optgroup>
+        </select>
+        </div>
             <input
-              placeholder="amount"
+              placeholder={selectedAsset ? `${selectedAsset.symbol} amount` : "SYS amount"}
               type="number"
               onBlur={(event) => setAmount(event.target.value)}
             />
@@ -160,9 +200,9 @@ const App = () => {
                 !fee ||
                 !toAddress
               }
-              onClick={() => transferSYS(connectedAccountAddress, toAddress, amount, fee)}
+              onClick={() => handleSendToken(connectedAccountAddress, toAddress, amount, fee, selectedAsset)}
             >
-              send sys
+              send
             </button>
           </form>
 
@@ -176,20 +216,6 @@ const App = () => {
               onClick={handleGetWalletState}
             >
               console wallet state
-            </button>
-
-            <button
-              className="button"
-              onClick={handleSendNFT}
-            >
-              send NFT
-            </button>
-
-            <button
-              className="button"
-              onClick={handleSendSPT}
-            >
-              send SPT
             </button>
           </div>
         </div>

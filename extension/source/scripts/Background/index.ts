@@ -66,8 +66,8 @@ browser.runtime.onInstalled.addListener((): void => {
       }
 
       if (request.type == 'WALLET_UPDATED' && request.target == 'background') {
-        // @ts-ignore
-        browser.tabs.sendMessage(tabs[0].id, {
+  
+        browser.tabs.sendMessage(Number(tabs[0].id), {
           type: 'WALLET_UPDATED',
           target: 'contentScript',
           connected: false
@@ -85,8 +85,7 @@ browser.runtime.onInstalled.addListener((): void => {
           url: request.url 
         }));
 
-        // @ts-ignore
-        browser.tabs.sendMessage(tabs[0].id, {
+        browser.tabs.sendMessage(Number(tabs[0].id), {
           type: 'WALLET_UPDATED',
           target: 'contentScript',
           connected: false
@@ -108,10 +107,9 @@ browser.runtime.onInstalled.addListener((): void => {
         store.dispatch(updateConnectionsArray({
           accountId: request.id,
           url: window.senderURL 
-        }))
+        }));
 
-        // @ts-ignore
-        browser.tabs.sendMessage(tabs[0].id, {
+        browser.tabs.sendMessage(Number(tabs[0].id), {
           type: 'WALLET_UPDATED',
           target: 'contentScript',
           connected: false
@@ -124,8 +122,7 @@ browser.runtime.onInstalled.addListener((): void => {
         if (window.senderURL == store.getState().wallet.currentURL) {
           store.dispatch(updateCanConnect(false));
 
-          // @ts-ignore
-          browser.tabs.sendMessage(tabs[0].id, {
+          browser.tabs.sendMessage(Number(tabs[0].id), {
             type: 'WALLET_UPDATED',
             target: 'contentScript',
             connected: false
@@ -147,15 +144,13 @@ browser.runtime.onInstalled.addListener((): void => {
         store.dispatch(updateCanConnect(false));
         store.dispatch(updateCanConfirmTransaction(false));
 
-        // @ts-ignore
-        browser.tabs.sendMessage(tabs[0].id, {
+        browser.tabs.sendMessage(Number(tabs[0].id), {
           type: 'WALLET_UPDATED',
           target: 'contentScript',
           connected: false
         });
 
-        // @ts-ignore
-        browser.tabs.sendMessage(tabs[0].id, {
+        browser.tabs.sendMessage(Number(tabs[0].id), {
           type: 'DISCONNECT',
           target: 'contentScript'
         });
@@ -164,8 +159,7 @@ browser.runtime.onInstalled.addListener((): void => {
       }
 
       if (request.type == 'SEND_STATE_TO_PAGE' && request.target == 'background') {
-         //@ts-ignore
-        browser.tabs.sendMessage(tabs[0].id, {
+        browser.tabs.sendMessage(Number(tabs[0].id), {
           type: 'SEND_STATE_TO_PAGE',
           target: 'contentScript',
           state: store.getState().wallet
@@ -177,22 +171,21 @@ browser.runtime.onInstalled.addListener((): void => {
           return account.connectedTo.find((url) => url === store.getState().wallet.currentURL);
         });
 
-        //@ts-ignore
-        browser.tabs.sendMessage(tabs[0].id, {
+        browser.tabs.sendMessage(Number(tabs[0].id), {
           type: 'SEND_CONNECTED_ACCOUNT',
           target: 'contentScript',
           connectedAccount
         });
       }
 
-      if (request.type == 'TRANSFER_SYS' && request.target == 'background') {
+      if (request.type == 'SEND_TOKEN' && request.target == 'background') {
         window.controller.wallet.account.updateTempTx({
           fromAddress: request.fromActiveAccountId,
           toAddress: request.toAddress,
           amount: request.amount,
           fee: request.fee,
-          token: null,
-          isToken: false,
+          token: request.token,
+          isToken: request.isToken,
           rbf: true
         });
 
@@ -202,17 +195,31 @@ browser.runtime.onInstalled.addListener((): void => {
 
         await createPopup(URL);
 
-        //@ts-ignore
-        browser.tabs.sendMessage(tabs[0].id, {
-          type: 'TRANSFER_SYS',
+        browser.tabs.sendMessage(Number(tabs[0].id), {
+          type: 'SEND_TOKEN',
           target: 'contentScript',
           complete: true 
         });
       }
 
       if (request.type == 'SEND_NFT' && request.target == 'background') {
-       //@ts-ignore
-       browser.tabs.sendMessage(tabs[0].id, {
+        window.controller.wallet.account.updateTempTx({
+          fromAddress: request.fromActiveAccountId,
+          toAddress: request.toAddress,
+          amount: request.amount,
+          fee: request.fee,
+          token: request.token,
+          isToken: request.isToken,
+          rbf: request.rbf
+        });
+
+        store.dispatch(updateCanConfirmTransaction(true));
+
+        const URL = browser.runtime.getURL('app.html');
+
+        await createPopup(URL);
+
+       browser.tabs.sendMessage(Number(tabs[0].id), {
           type: 'SEND_NFT',
           target: 'contentScript',
           responseSendNFT: 'Send NFT ok'
@@ -220,8 +227,25 @@ browser.runtime.onInstalled.addListener((): void => {
       }
 
       if (request.type == 'SEND_SPT' && request.target == 'background') {
-        // @ts-ignore
-        browser.tabs.sendMessage(tabs[0].id, {
+        window.controller.wallet.account.updateTempTx({
+          fromAddress: request.fromActiveAccountId,
+          toAddress: request.toAddress,
+          amount: request.amount,
+          fee: request.fee,
+          token: request.token,
+          isToken: true,
+          rbf: true
+        });
+
+        console.log('temptx spt', window.controller.wallet.account.getTempTx())
+
+        store.dispatch(updateCanConfirmTransaction(true));
+
+        const URL = browser.runtime.getURL('app.html');
+
+        await createPopup(URL);
+
+        browser.tabs.sendMessage(Number(tabs[0].id), {
           type: 'SEND_SPT',
           target: 'contentScript',
           responseSendSPT: 'Send SPT ok'
@@ -243,8 +267,8 @@ browser.runtime.onInstalled.addListener((): void => {
       const all = await browser.windows.getAll();
 
       if (all.length > 1) {
-        const windowId = all[1].id;
-        // @ts-ignore
+        const windowId = Number(all[1].id);
+        
         await browser.windows.remove(windowId);
       }
     })

@@ -143,6 +143,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   ) => {
     console.log("The asset" + ev.target.name + "value" + ev.target.value)
     let selectedAsset = accounts[activeAccountId].assets.filter((asset: Assets) => asset.assetGuid == ev.target.value)
+    console.log('olsas', accounts[activeAccountId].assets)
     if (selectedAsset[0]) {
       setSelectedAsset(selectedAsset[0])
     }

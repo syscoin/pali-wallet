@@ -5,9 +5,16 @@ export interface IConnectionsController {
   onWalletUpdate: (callback: any) => any;
   getWalletState: () => any;
   getConnectedAccount: () => any;
-  transferSYS: (sender: string, receiver: string, amount: number, fee: number) => any;
-  handleSendNFT: () => any;
-  handleSendSPT: () => any;
+  handleSendToken: (sender: string, receiver: string, amount: number, fee: number, token: null, isToken: false, rbf: true) => any;
+  handleSendNFT: (sender: string, receiver: string, amount: number, fee: number, token: any, isToken: true, rbf: true) => any;
+  handleSendSPT: (sender: string, receiver: string, amount: number, fee: number, token: any, isToken: true, rbf: true) => any;
+  isNFT: (guid: number) => boolean;
+}
+
+const isNFT = (guid: number) => {
+  let assetGuid = BigInt.asUintN(64, BigInt(guid));
+
+  return (assetGuid >> BigInt(32)) > 0
 }
 
 const ConnectionsController = (): IConnectionsController => {
@@ -18,6 +25,7 @@ const ConnectionsController = (): IConnectionsController => {
       }
     });
   }
+
   const connectWallet = async () => {
     return await sendMessage({
       type: 'CONNECT_WALLET', 
@@ -54,23 +62,26 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const transferSYS = async (sender: string, receiver: string, amount: number, fee: number) => {
+  const handleSendToken = async (sender: string, receiver: string, amount: number, fee: number, token: any, isToken: boolean, rbf: boolean) => {
     return await sendMessage({
-      type: 'TRANSFER_SYS',
+      type: 'SEND_TOKEN',
       target: 'connectionsController',
       freeze: true,
       eventResult: 'complete'
     }, {
-      type: 'TRANSFER_SYS',
+      type: 'SEND_TOKEN',
       target: 'contentScript',
       fromActiveAccountId: sender,
       toAddress: receiver,
       amount,
-      fee
+      fee,
+      token,
+      isToken,
+      rbf
     });
   }
 
-  const handleSendNFT = async () => {
+  const handleSendNFT = async (sender: string, receiver: string, amount: number, fee: number, token: any, isToken: true, rbf: true) => {
     return await sendMessage({
       type: 'SEND_NFT',
       target: 'connectionsController',
@@ -79,10 +90,17 @@ const ConnectionsController = (): IConnectionsController => {
     }, {
       type: 'SEND_NFT',
       target: 'contentScript',
+      fromActiveAccountId: sender,
+      toAddress: receiver,
+      amount,
+      fee,
+      token,
+      isToken,
+      rbf
     });
   }
 
-  const handleSendSPT = async () => {
+  const handleSendSPT = async (sender: string, receiver: string, amount: number, fee: number, token: any, isToken: true, rbf: true) => {
     return await sendMessage({
       type: 'SEND_SPT',
       target: 'connectionsController',
@@ -91,15 +109,23 @@ const ConnectionsController = (): IConnectionsController => {
     }, {
       type: 'SEND_SPT',
       target: 'contentScript',
+      fromActiveAccountId: sender,
+      toAddress: receiver,
+      amount,
+      fee,
+      token,
+      isToken,
+      rbf
     });
   }
 
   return {
+    isNFT,
     connectWallet,
     onWalletUpdate,
     getWalletState,
     getConnectedAccount,
-    transferSYS,
+    handleSendToken,
     handleSendNFT,
     handleSendSPT
   }

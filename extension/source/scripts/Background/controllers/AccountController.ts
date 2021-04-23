@@ -403,7 +403,9 @@ const AccountController = (actions: {
     }
 
     try {
+      console.log('bfore temptx is token')
       if (tempTx.isToken && tempTx.token) {
+        console.log('inside temptx is token')
         const txOpts = { rbf: tempTx.rbf }
         const value = isNFT(tempTx.token.assetGuid) ? new sys.utils.BN(tempTx.amount) : new sys.utils.BN(tempTx.amount * 10 ** tempTx.token.decimals)
         const assetMap = new Map([
@@ -418,6 +420,7 @@ const AccountController = (actions: {
           })
         );
       } else {
+        console.log('else temptx is token')
         const _outputsArr = [
           { address: tempTx.toAddress, value: new sys.utils.BN(tempTx.amount * 1e8) }
         ]
@@ -431,6 +434,7 @@ const AccountController = (actions: {
           })
         );
       }
+      console.log('after temptx is token')
 
       tempTx = null;
       watchMemPool();

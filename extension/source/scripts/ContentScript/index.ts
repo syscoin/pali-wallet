@@ -155,14 +155,17 @@ window.addEventListener("message", (event) => {
     return;
   }
 
-  if (event.data.type == 'TRANSFER_SYS' && event.data.target == 'contentScript') {
+  if (event.data.type == 'SEND_TOKEN' && event.data.target == 'contentScript') {
     browser.runtime.sendMessage({
-      type: 'TRANSFER_SYS',
+      type: 'SEND_TOKEN',
       target: 'background',
       fromActiveAccountId: event.data.fromActiveAccountId,
       toAddress: event.data.toAddress,
       amount: event.data.amount,
-      fee: event.data.fee
+      fee: event.data.fee,
+      token: event.data.token,
+      isToken: event.data.isToken,
+      rbf: true
     });
 
     return;
@@ -172,15 +175,30 @@ window.addEventListener("message", (event) => {
     browser.runtime.sendMessage({
       type: 'SEND_NFT',
       target: 'background',
+      fromActiveAccountId: event.data.fromActiveAccountId,
+      toAddress: event.data.toAddress,
+      amount: event.data.amount,
+      fee: event.data.fee,
+      token: event.data.token,
+      isToken: event.data.isToken,
+      rbf: event.data.rbf
     });
 
     return;
   }
 
   if (event.data.type == 'SEND_SPT' && event.data.target == 'contentScript') {
+    console.log('send spt request', event.data)
     browser.runtime.sendMessage({
       type: 'SEND_SPT',
       target: 'background',
+      fromActiveAccountId: event.data.fromActiveAccountId,
+      toAddress: event.data.toAddress,
+      amount: event.data.amount,
+      fee: event.data.fee,
+      token: event.data.token,
+      isToken: event.data.isToken,
+      rbf: event.data.rbf
     });
 
     return;
@@ -217,9 +235,9 @@ browser.runtime.onMessage.addListener(request => {
     return;
   }
 
-  if (request.type == 'TRANSFER_SYS' && request.target == 'contentScript') {
+  if (request.type == 'SEND_TOKEN' && request.target == 'contentScript') {
     window.postMessage({
-      type: 'TRANSFER_SYS',
+      type: 'SEND_TOKEN',
       target: 'connectionsController',
       complete: request.complete
     }, '*');
