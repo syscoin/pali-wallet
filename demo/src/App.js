@@ -67,17 +67,17 @@ const App = () => {
     controller,
   ]);
 
-  const handleAssetSelected = (ev) => {
+  const handleAssetSelected = (event) => {
     if (connectedAccount) {
-      console.log("The asset" + ev.target.name + "value" + ev.target.value)
-      let selectedAsset = connectedAccount.assets.filter((asset) => asset.assetGuid == ev.target.value)
-      console.log('olsas', connectedAccount.assets)
+      const selectedAsset = connectedAccount.assets.filter((asset) => asset.assetGuid == event.target.value);
+
       if (selectedAsset[0]) {
-        setSelectedAsset(selectedAsset[0])
+        setSelectedAsset(selectedAsset[0]);
+
+        return;
       }
-      else {
-        setSelectedAsset(null)
-      }
+
+      setSelectedAsset(null);
     }
   };
 
@@ -152,21 +152,24 @@ const App = () => {
             <optgroup label="Native">
               <option value={1}>SYS</option>
             </optgroup>
+
             <optgroup label="SPT">
               {connectedAccount.label && connectedAccount.assets.map((asset, idx) => {
                 if(!controller.isNFT(asset.assetGuid)){
                  return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
                 }
                 return
-              })
-            }
+                })
+              }
             </optgroup>
+
             <optgroup label="NFT">
-               {connectedAccount.label && connectedAccount.assets.map((asset, idx) => {
-                  if(controller.isNFT(asset.assetGuid)){
-                   return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
-                  }
-                  return
+              {connectedAccount.label && connectedAccount.assets.map((asset, idx) => {
+                if(controller.isNFT(asset.assetGuid)){
+                 return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+                }
+
+                return;
                 })
               }
             </optgroup>

@@ -35,10 +35,17 @@ browser.runtime.onInstalled.addListener((): void => {
   window.controller.stateUpdater();
 
   browser.runtime.onMessage.addListener(async (request, sender) => {
+    const {
+      type,
+      target
+    } = request;
+
     const tabs = await browser.tabs.query({
       active: true,
       windowType: 'normal'
     });
+
+    const tabId = Number(tabs[0].id);
 
     const createPopup = async (url: string) => {
       return await browser.windows.create({
@@ -52,7 +59,7 @@ browser.runtime.onInstalled.addListener((): void => {
     }
 
     if (typeof request == 'object') {
-      if (request.type == 'CONNECT_WALLET' && request.target == 'background') {
+      if (type == 'CONNECT_WALLET' && target == 'background') {
         const URL = browser.runtime.getURL('app.html');
         
         store.dispatch(setSenderURL(sender.url));
@@ -65,9 +72,8 @@ browser.runtime.onInstalled.addListener((): void => {
         return;
       }
 
-      if (request.type == 'WALLET_UPDATED' && request.target == 'background') {
-  
-        browser.tabs.sendMessage(Number(tabs[0].id), {
+      if (type == 'WALLET_UPDATED' && target == 'background') {
+        browser.tabs.sendMessage(tabId, {
           type: 'WALLET_UPDATED',
           target: 'contentScript',
           connected: false
@@ -76,7 +82,7 @@ browser.runtime.onInstalled.addListener((): void => {
         return;
       }
 
-      if (request.type == 'RESET_CONNECTION_INFO' && request.target == 'background') {
+      if (type == 'RESET_CONNECTION_INFO' && target == 'background') {
         store.dispatch(setSenderURL(''));
         store.dispatch(updateCanConnect(false));
 
@@ -85,7 +91,7 @@ browser.runtime.onInstalled.addListener((): void => {
           url: request.url 
         }));
 
-        browser.tabs.sendMessage(Number(tabs[0].id), {
+        browser.tabs.sendMessage(tabId, {
           type: 'WALLET_UPDATED',
           target: 'contentScript',
           connected: false
@@ -94,7 +100,7 @@ browser.runtime.onInstalled.addListener((): void => {
         return;
       }
 
-      if (request.type == 'SELECT_ACCOUNT' && request.target == 'background') {
+      if (type == 'SELECT_ACCOUNT' && target == 'background') {
         store.dispatch(updateConnectionsArray({
           accountId: request.id,
           url: window.senderURL 
@@ -103,13 +109,13 @@ browser.runtime.onInstalled.addListener((): void => {
         return;
       }
 
-      if (request.type == 'CHANGE_CONNECTED_ACCOUNT' && request.target == 'background') {
+      if (type == 'CHANGE_CONNECTED_ACCOUNT' && target == 'background') {
         store.dispatch(updateConnectionsArray({
           accountId: request.id,
           url: window.senderURL 
         }));
 
-        browser.tabs.sendMessage(Number(tabs[0].id), {
+        browser.tabs.sendMessage(tabId, {
           type: 'WALLET_UPDATED',
           target: 'contentScript',
           connected: false
@@ -118,11 +124,11 @@ browser.runtime.onInstalled.addListener((): void => {
         return;
       }
 
-      if (request.type == 'CONFIRM_CONNECTION' && request.target == 'background') {
+      if (type == 'CONFIRM_CONNECTION' && target == 'background') {
         if (window.senderURL == store.getState().wallet.currentURL) {
           store.dispatch(updateCanConnect(false));
 
-          browser.tabs.sendMessage(Number(tabs[0].id), {
+          browser.tabs.sendMessage(tabId, {
             type: 'WALLET_UPDATED',
             target: 'contentScript',
             connected: false
@@ -134,23 +140,23 @@ browser.runtime.onInstalled.addListener((): void => {
         return;
       }
 
-      if (request.type == 'CANCEL_TRANSACTION' && request.target == 'background') {
+      if (type == 'CANCEL_TRANSACTION' && target == 'background') {
         store.dispatch(updateCanConfirmTransaction(false));
 
         return;
       }
 
-      if (request.type == 'CLOSE_POPUP' && request.target == 'background') {
+      if (type == 'CLOSE_POPUP' && target == 'background') {
         store.dispatch(updateCanConnect(false));
         store.dispatch(updateCanConfirmTransaction(false));
 
-        browser.tabs.sendMessage(Number(tabs[0].id), {
+        browser.tabs.sendMessage(tabId, {
           type: 'WALLET_UPDATED',
           target: 'contentScript',
           connected: false
         });
 
-        browser.tabs.sendMessage(Number(tabs[0].id), {
+        browser.tabs.sendMessage(tabId, {
           type: 'DISCONNECT',
           target: 'contentScript'
         });
@@ -158,34 +164,43 @@ browser.runtime.onInstalled.addListener((): void => {
         return;
       }
 
-      if (request.type == 'SEND_STATE_TO_PAGE' && request.target == 'background') {
-        browser.tabs.sendMessage(Number(tabs[0].id), {
+      if (type == 'SEND_STATE_TO_PAGE' && target == 'background') {
+        browser.tabs.sendMessage(tabId, {
           type: 'SEND_STATE_TO_PAGE',
           target: 'contentScript',
           state: store.getState().wallet
         });
       }
 
-      if (request.type == 'SEND_CONNECTED_ACCOUNT' && request.target == 'background') {
+      if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'background') {
         const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
           return account.connectedTo.find((url) => url === store.getState().wallet.currentURL);
         });
 
-        browser.tabs.sendMessage(Number(tabs[0].id), {
+        browser.tabs.sendMessage(tabId, {
           type: 'SEND_CONNECTED_ACCOUNT',
           target: 'contentScript',
           connectedAccount
         });
       }
 
-      if (request.type == 'SEND_TOKEN' && request.target == 'background') {
+      if (type == 'SEND_TOKEN' && target == 'background') {
+        const {
+          fromConnectedAccount,
+          toAddress,
+          amount,
+          fee,
+          token,
+          isToken
+        } = request;
+
         window.controller.wallet.account.updateTempTx({
-          fromAddress: request.fromActiveAccountId,
-          toAddress: request.toAddress,
-          amount: request.amount,
-          fee: request.fee,
-          token: request.token,
-          isToken: request.isToken,
+          fromAddress: fromConnectedAccount,
+          toAddress,
+          amount,
+          fee,
+          token,
+          isToken,
           rbf: true
         });
 
@@ -195,60 +210,10 @@ browser.runtime.onInstalled.addListener((): void => {
 
         await createPopup(URL);
 
-        browser.tabs.sendMessage(Number(tabs[0].id), {
+        browser.tabs.sendMessage(tabId, {
           type: 'SEND_TOKEN',
           target: 'contentScript',
           complete: true 
-        });
-      }
-
-      if (request.type == 'SEND_NFT' && request.target == 'background') {
-        window.controller.wallet.account.updateTempTx({
-          fromAddress: request.fromActiveAccountId,
-          toAddress: request.toAddress,
-          amount: request.amount,
-          fee: request.fee,
-          token: request.token,
-          isToken: request.isToken,
-          rbf: request.rbf
-        });
-
-        store.dispatch(updateCanConfirmTransaction(true));
-
-        const URL = browser.runtime.getURL('app.html');
-
-        await createPopup(URL);
-
-       browser.tabs.sendMessage(Number(tabs[0].id), {
-          type: 'SEND_NFT',
-          target: 'contentScript',
-          responseSendNFT: 'Send NFT ok'
-        });
-      }
-
-      if (request.type == 'SEND_SPT' && request.target == 'background') {
-        window.controller.wallet.account.updateTempTx({
-          fromAddress: request.fromActiveAccountId,
-          toAddress: request.toAddress,
-          amount: request.amount,
-          fee: request.fee,
-          token: request.token,
-          isToken: true,
-          rbf: true
-        });
-
-        console.log('temptx spt', window.controller.wallet.account.getTempTx())
-
-        store.dispatch(updateCanConfirmTransaction(true));
-
-        const URL = browser.runtime.getURL('app.html');
-
-        await createPopup(URL);
-
-        browser.tabs.sendMessage(Number(tabs[0].id), {
-          type: 'SEND_SPT',
-          target: 'contentScript',
-          responseSendSPT: 'Send SPT ok'
         });
       }
     }

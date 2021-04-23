@@ -51,96 +51,92 @@ const ConnectedAccounts = () => {
   });
 
   return (
-    <div className={styles.home}>
+    <div className={styles.wrapper}>
       <Header showLogo />
 
       {changeAccountIsOpen
         ? (
-          <p className={styles.connectedTitle}>
-            Choose your account
-          </p>
-        ) : (
-          <div className={styles.connectedTitle}>
-            <p>
-              This account is connected to
-              <br />
-              {currentSenderURL}
-            </p>
-            <small>To change your connected account you need to have more than one account.</small>
-          </div>
-        )
-      }
-
-      {changeAccountIsOpen
-        ? (
-          <ul className={styles.list}>
-            {accounts.map((account) => {
-              return (
-                <li key={account.id} className={styles.account} onClick={() => handleChangeAccount(account.id)}>
-                  <div className={styles.label}>
-                    <p>{account.label}</p>
-                    <p>{ellipsis(account.address.main)}</p>
-                  </div>
-                  {account.id === activeAccountId && <small>(active)</small>}
-                  {account.id === accountId && <img src={checkGreen} alt="check" />}
-                </li>
-              )
-            }) }
-          </ul>
-        )
-        : (
           <div className={styles.list}>
-            <div className={styles.account}>
-              <p>{connectedAccount[0].label}</p>
-              <small>{ellipsis(connectedAccount[0].address.main)}</small>
+            <p className={styles.connectedTitle}>
+              Choose your account
+            </p>
+
+            <ul className={styles.list}>
+              {accounts.map((account) => {
+                return (
+                  <li key={account.id} className={styles.account} onClick={() => handleChangeAccount(account.id)}>
+                    <div className={styles.label}>
+                      <p>{account.label}</p>
+                      <small>{ellipsis(account.address.main)}</small>
+                    </div>
+                    {account.id === activeAccountId && <small>(active)</small>}
+                    {account.id === accountId && <img src={checkGreen} alt="check" />}
+                  </li>
+                  )
+                })
+              }
+            </ul>
+
+            <div className={styles.actions}>
+              <Button
+                type="button"
+                theme="btn-outline-secondary"
+                variant={clsx(styles.button, styles.cancel)}
+                onClick={() => setChangeAccountIsOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                theme="btn-outline-secondary"
+                variant={styles.button}
+                disabled={accountId === -1}
+                onClick={() => handleConfirm()}
+              >
+                Confirm
+              </Button>
             </div>
           </div>
-        )
-      }
-
-      {changeAccountIsOpen
-        ? (
-          <div className={styles.actions}>
-            <Button
-              type="button"
-              theme="btn-outline-secondary"
-              variant={clsx(styles.button, styles.cancel)}
-              onClick={() => setChangeAccountIsOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              theme="btn-outline-secondary"
-              variant={styles.button}
-              disabled={accountId === -1}
-              onClick={() => handleConfirm()}
-            >
-              Confirm
-            </Button>
-          </div>
         ) : (
-          <div className={styles.actions}>
-            <Button
-              type="button"
-              theme="btn-outline-secondary"
-              variant={clsx(styles.button, styles.cancel)}
-              onClick={handleDisconnect}
-              fullWidth
-            >
-              Cancel
-            </Button>
+          <div className={styles.list}>
+            <div className={styles.connectedTitle}>
+              <p>
+                This account is connected to
+                <br />
+                {currentSenderURL}
+              </p>
+              <small>To change your connected account you need to have more than one account.</small>
+            </div>
 
-            <Button
-              type="button"
-              theme="btn-outline-secondary"
-              variant={styles.button}
-              disabled={accounts.length === 1}
-              onClick={() => setChangeAccountIsOpen(!changeAccountIsOpen)}
-              fullWidth
-            >
-              Change
-            </Button>
+            <div className={styles.account}>
+              <div className={styles.label}>
+                <p>{connectedAccount[0].label}</p>
+                <small>{ellipsis(connectedAccount[0].address.main)}</small>
+              </div>
+            </div>
+
+            <div className={styles.actions}>
+              <Button
+                type="button"
+                theme="btn-outline-secondary"
+                variant={clsx(styles.button, styles.cancel)}
+                onClick={handleDisconnect}
+                fullWidth
+              >
+                Cancel
+              </Button>
+
+              <Button
+                type="button"
+                theme="btn-outline-secondary"
+                variant={styles.button}
+                disabled={accounts.length === 1}
+                onClick={() => setChangeAccountIsOpen(!changeAccountIsOpen)}
+                fullWidth
+              >
+                Change
+              </Button>
+            </div>
           </div>
         )
       }

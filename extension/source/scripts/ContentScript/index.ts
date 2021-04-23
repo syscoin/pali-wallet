@@ -113,13 +113,17 @@ if (shouldInjectProvider()) {
   injectScriptFile('js/inpage.bundle.js');
 }
 
-window.addEventListener("message", (event) => {
+window.addEventListener('message', (event) => {
+  const {
+    type,
+    target
+  } = event.data;
+
   if (event.source != window) {
     return;
   }
 
-  if (event.data.type == "CONNECT_WALLET" && event.data.target == 'contentScript') {
-    console.log('event connect', event)
+  if (type == "CONNECT_WALLET" && target == 'contentScript') {
     browser.runtime.sendMessage({
       type: 'CONNECT_WALLET',
       target: 'background'
@@ -128,7 +132,7 @@ window.addEventListener("message", (event) => {
     return;
   }
 
-  if (event.data.type == 'WALLET_UPDATED' && event.data.target == 'contentScript') {
+  if (type == 'WALLET_UPDATED' && target == 'contentScript') {
     window.postMessage({
       type: 'WALLET_UPDATED',
       target: 'background',
@@ -137,7 +141,7 @@ window.addEventListener("message", (event) => {
     return;
   }
 
-  if (event.data.type == 'SEND_STATE_TO_PAGE' && event.data.target == 'contentScript') {
+  if (type == 'SEND_STATE_TO_PAGE' && target == 'contentScript') {
     browser.runtime.sendMessage({
       type: 'SEND_STATE_TO_PAGE',
       target: 'background'
@@ -146,7 +150,7 @@ window.addEventListener("message", (event) => {
     return;
   }
 
-  if (event.data.type == 'SEND_CONNECTED_ACCOUNT' && event.data.target == 'contentScript') {
+  if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'contentScript') {
     browser.runtime.sendMessage({
       type: 'SEND_CONNECTED_ACCOUNT',
       target: 'background'
@@ -155,58 +159,43 @@ window.addEventListener("message", (event) => {
     return;
   }
 
-  if (event.data.type == 'SEND_TOKEN' && event.data.target == 'contentScript') {
+  if (type == 'SEND_TOKEN' && target == 'contentScript') {
+    const {
+      fromConnectedAccount,
+      toAddress,
+      amount,
+      fee,
+      token,
+      isToken
+    } = event.data;
+
     browser.runtime.sendMessage({
       type: 'SEND_TOKEN',
       target: 'background',
-      fromActiveAccountId: event.data.fromActiveAccountId,
-      toAddress: event.data.toAddress,
-      amount: event.data.amount,
-      fee: event.data.fee,
-      token: event.data.token,
-      isToken: event.data.isToken,
+      fromConnectedAccount,
+      toAddress: toAddress,
+      amount: amount,
+      fee: fee,
+      token: token,
+      isToken: isToken,
       rbf: true
-    });
-
-    return;
-  }
-
-  if (event.data.type == 'SEND_NFT' && event.data.target == 'contentScript') {
-    browser.runtime.sendMessage({
-      type: 'SEND_NFT',
-      target: 'background',
-      fromActiveAccountId: event.data.fromActiveAccountId,
-      toAddress: event.data.toAddress,
-      amount: event.data.amount,
-      fee: event.data.fee,
-      token: event.data.token,
-      isToken: event.data.isToken,
-      rbf: event.data.rbf
-    });
-
-    return;
-  }
-
-  if (event.data.type == 'SEND_SPT' && event.data.target == 'contentScript') {
-    console.log('send spt request', event.data)
-    browser.runtime.sendMessage({
-      type: 'SEND_SPT',
-      target: 'background',
-      fromActiveAccountId: event.data.fromActiveAccountId,
-      toAddress: event.data.toAddress,
-      amount: event.data.amount,
-      fee: event.data.fee,
-      token: event.data.token,
-      isToken: event.data.isToken,
-      rbf: event.data.rbf
     });
 
     return;
   }
 }, false);
 
-browser.runtime.onMessage.addListener(request => {
-  if (request.type == 'DISCONNECT' && request.target == 'contentScript') {
+browser.runtime.onMessage.addListener((request) => {
+  const {
+    type,
+    target,
+    complete,
+    connected,
+    state,
+    connectedAccount
+  } = request;
+
+  if (type == 'DISCONNECT' && target == 'contentScript') {
     const id = browser.runtime.id;
     const port = browser.runtime.connect(id, { name: 'SYSCOIN' });
 
@@ -215,71 +204,51 @@ browser.runtime.onMessage.addListener(request => {
     return;
   }
 
-  if (request.type == 'SEND_STATE_TO_PAGE' && request.target == 'contentScript') {
+  if (type == 'SEND_STATE_TO_PAGE' && target == 'contentScript') {
     window.postMessage({
       type: 'SEND_STATE_TO_PAGE',
       target: 'connectionsController',
-      state: request.state
+      state
     }, '*');
 
     return;
   }
 
-  if (request.type == 'SEND_CONNECTED_ACCOUNT' && request.target == 'contentScript') {
+  if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'contentScript') {
     window.postMessage({
       type: 'SEND_CONNECTED_ACCOUNT',
       target: 'connectionsController',
-      connectedAccount: request.connectedAccount
+      connectedAccount
     }, '*');
 
     return;
   }
 
-  if (request.type == 'SEND_TOKEN' && request.target == 'contentScript') {
+  if (type == 'SEND_TOKEN' && target == 'contentScript') {
     window.postMessage({
       type: 'SEND_TOKEN',
       target: 'connectionsController',
-      complete: request.complete
+      complete
     }, '*');
 
     return;
   }
 
-  if (request.type == 'SEND_NFT' && request.target == 'contentScript') {
-    window.postMessage({
-      type: 'SEND_NFT',
-      target: 'connectionsController',
-      responseSendNFT: request.responseSendNFT
-    }, '*');
-
-    return;
-  }
-
-  if (request.type == 'SEND_SPT' && request.target == 'contentScript') {
-    window.postMessage({
-      type: 'SEND_SPT',
-      target: 'connectionsController',
-      responseSendSPT: request.responseSendSPT
-    }, '*');
-
-    return;
-  }
-
-  if (request.type == 'CONNECT_WALLET' && request.target == 'contentScript') {
+  if (type == 'CONNECT_WALLET' && target == 'contentScript') {
     window.postMessage({
       type: 'CONNECT_WALLET',
       target: 'connectionsController',
-      connected: request.connected
+      connected
     }, '*');
 
     return;
   }
 
-  if (request.type == 'WALLET_UPDATED' && request.target == 'contentScript') {
+  if (type == 'WALLET_UPDATED' && target == 'contentScript') {
     window.postMessage({
       type: 'WALLET_UPDATED',
       target: 'connectionsController',
-      connected: request.connected
+      connected
     }, '*');
 
     return;

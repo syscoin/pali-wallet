@@ -73,29 +73,35 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       return;
     }
 
+    const {
+      address,
+      amount,
+      fee
+    } = data;
+
     console.log("Checking form data "+ data)
     if (selectedAsset) {
       controller.wallet.account.updateTempTx({
         fromAddress: accounts[activeAccountId].address.main,
-        toAddress: data.address,
-        amount: data.amount,
-        fee: data.fee,
+        toAddress: address,
+        amount,
+        fee,
         token: selectedAsset,
         isToken: true,
         rbf: !checked,
       });
-    }
-    else {
+    } else {
       controller.wallet.account.updateTempTx({
         fromAddress: accounts[activeAccountId].address.main,
-        toAddress: data.address,
-        amount: data.amount,
-        fee: data.fee,
+        toAddress: address,
+        amount,
+        fee,
         token: null,
         isToken: false,
         rbf: !checked,
       });
     }
+
     history.push('/send/confirm');
   };
 

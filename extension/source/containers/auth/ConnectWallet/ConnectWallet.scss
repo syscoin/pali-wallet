@@ -1,6 +1,6 @@
 @import '~assets/styles/variables';
 
-.home {
+.wrapper {
   position: absolute;
   top: 0px;
   left: 0px;
@@ -27,14 +27,17 @@
   }
 
   .list {
-    width: 85%;
-    max-height: 210px;
-    background-color: #f5f5f5;
+    width: 100%;
     border-radius: 6px;
     text-align: center;
     overflow: auto;
+    margin: 0;
     margin-bottom: 2rem;
     padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
 
     & > p {
       color: $gray-dark;
@@ -51,6 +54,7 @@
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
+    font-size: 15px;
 
     &.centered {
       justify-content: center;
@@ -89,13 +93,17 @@
   }
 
   .account {
+    width: 75%;
+    margin: 15px 15px 0 15px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     font-size: 17px;
     border: 1px solid #e2e2e2;
     cursor: pointer;
-    padding: .7rem 1.4rem;
+    padding: .7rem 1rem;
+    background-color: #f5f5f5;
+    border-radius: 6px;
 
     &:hover {
       background-color: #f0f0f0;
