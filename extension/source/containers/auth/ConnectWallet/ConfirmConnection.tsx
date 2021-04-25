@@ -52,7 +52,7 @@ const ConfirmConnection = () => {
   }
 
   return (
-    <div className={styles.home}>
+    <div className={styles.wrapper}>
       <Header showLogo />
 
       <h1>

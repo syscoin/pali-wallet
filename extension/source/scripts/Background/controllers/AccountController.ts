@@ -405,13 +405,14 @@ const AccountController = (actions: {
     try {
       console.log('bfore temptx is token')
       if (tempTx.isToken && tempTx.token) {
-        console.log('inside temptx is token')
+        console.log('inside temptx is token', tempTx)
         const txOpts = { rbf: tempTx.rbf }
         const value = isNFT(tempTx.token.assetGuid) ? new sys.utils.BN(tempTx.amount) : new sys.utils.BN(tempTx.amount * 10 ** tempTx.token.decimals)
         const assetMap = new Map([
           [tempTx.token.assetGuid, { changeAddress: null, outputs: [{ value: value, address: tempTx.toAddress }] }]
         ])
         const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(tempTx.fee * 1e8))
+        console.log('inside temptx is token', tempTx)
         const txInfo = pendingTx.extractTransaction().getId()
         store.dispatch(
           updateTransactions({
@@ -419,6 +420,7 @@ const AccountController = (actions: {
             txs: [_coventPendingType(txInfo), ...account.transactions],
           })
         );
+        console.log('inside temptx is token', tempTx)
       } else {
         console.log('else temptx is token')
         const _outputsArr = [

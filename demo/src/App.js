@@ -9,7 +9,7 @@ const App = () => {
   const [connectedAccount, setConnectedAccount] = useState({});
   const [connectedAccountAddress, setConnectedAccountAddress] = useState('');
   const [amount, setAmount] = useState(0);
-  const [fee, setFee] = useState(0.0000001);
+  const [fee, setFee] = useState(0.00001);
   const [toAddress, setToAddress] = useState('');
   const [confirmedTransaction, setConfirmedTransaction] = useState(false);
   const [selectedAsset,setSelectedAsset] = useState(null);
@@ -90,17 +90,35 @@ const App = () => {
     return await controller.getWalletState();
   }
 
+  const clearData = (inputs) => {
+    for (let input of inputs) {
+      input.value = '';
+    }
+
+    setToAddress('');
+    setAmount(0);
+    setFee(0.00001);
+  }
+
   const handleSendToken = async (sender, receiver, amount, fee, token) => {
+    const inputs = document.querySelectorAll('input');
+
     if (token !== null) {
       await controller.handleSendToken(sender, receiver, amount, fee, token, true, true);
+
+      clearData(inputs);
 
       return;
     }
 
     await controller.handleSendToken(sender, receiver, amount, fee, null, false, true);
 
+    clearData(inputs);
+
     return;
   }
+
+  console.log('asd', toAddress, amount, fee)
 
   return (
     <div className="app">

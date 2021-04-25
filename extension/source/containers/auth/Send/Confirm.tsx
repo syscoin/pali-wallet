@@ -33,24 +33,30 @@ const SendConfirm = () => {
   });
   const tempTx = controller.wallet.account.getTempTx();
   const [confirmed, setConfirmed] = useState(false);
+  const [loading, setLoading] = useState(false);
   const alert = useAlert();
 
   const handleConfirm = () => {
     if (accounts[activeAccountId].balance > 0) {
-      controller.wallet.account.confirmTempTx().then(result => {
-        if (result) {
-          alert.removeAll();
-          alert.error(result.message);
-
-          console.log('result', result)
+      setLoading(true);
+      
+      try {
+        controller.wallet.account.confirmTempTx().then(result => {
+          if (result) {
+            alert.removeAll();
+            alert.error(result.message);
   
-          return;
-        }
-        
-        setConfirmed(true);
-      });
-
-      return;
+            return;
+          }
+          
+          setConfirmed(true);
+          setLoading(false);
+        });
+  
+        return;
+      } catch(error) {
+        console.log('error send', error)
+      }
     }
 
     return;
@@ -149,7 +155,12 @@ const SendConfirm = () => {
             Cancel
           </Button>
 
-          <Button type="submit" variant={styles.button} onClick={handleConfirm}>
+          <Button
+            type="submit"
+            variant={styles.button}
+            onClick={handleConfirm}
+            loading={loading}
+          >
             Confirm
           </Button>
         </div>
