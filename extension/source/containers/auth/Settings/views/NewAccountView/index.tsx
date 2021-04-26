@@ -10,6 +10,7 @@ import { useController, useCopyClipboard, useSettingsView } from 'hooks/index';
 import styles from './index.scss';
 import { ellipsis } from 'containers/auth/helpers';
 import { MAIN_VIEW } from '../routes';
+import Spinner from '@material-ui/core/CircularProgress';
 
 const NewAccountView = () => {
   const [address, setAddress] = useState<string | undefined>();
@@ -20,6 +21,7 @@ const NewAccountView = () => {
     }),
   });
   const [isCopied, copyText] = useCopyClipboard();
+  const [loading, setLoading] = useState(false);
   const showView = useSettingsView();
 
   const addressClass = clsx(styles.address, {
@@ -27,9 +29,11 @@ const NewAccountView = () => {
   });
 
   const onSubmit = async (data: any) => {
+    setLoading(true);
     const res = await controller.wallet.account.addNewAccount(data.name);
     if (res) {
       setAddress(res);
+      setLoading(false);
     }
   };
 
@@ -76,12 +80,20 @@ const NewAccountView = () => {
             >
               Close
             </Button>
-            <Button 
-              type="submit"
-              theme="btn-gradient-primary"
-              variant={styles.button}>
-              Next
-            </Button>
+            {loading ? (
+              <div className={styles.loading}>
+                <Spinner size={22} className={styles.spinner} />
+              </div>
+            ) : (
+              <Button 
+                type="submit"
+                theme="btn-gradient-primary"
+                variant={styles.button}
+                disabled={loading}
+              >
+                Next
+              </Button>
+            )}
           </div>
         </form>
       )}
