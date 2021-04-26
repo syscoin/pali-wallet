@@ -5,7 +5,7 @@ export interface IConnectionsController {
   onWalletUpdate: (callback: any) => any;
   getWalletState: () => any;
   getConnectedAccount: () => any;
-  handleSendToken: (sender: string, receiver: string, amount: number, fee: number, token: null, isToken: false, rbf: true) => any;
+  handleSendToken: (sender: string, receiver: string, amount: number, fee: number, token: any, isToken: boolean, rbf: boolean) => any;
   isNFT: (guid: number) => boolean;
 }
 

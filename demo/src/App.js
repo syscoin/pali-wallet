@@ -1,5 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import logo from "./assets/images/logosys.svg";
+import ReactTooltip from 'react-tooltip';
+import Switch from "react-switch";
+import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 
 const App = () => {
   const [isInstalled, setIsInstalled] = useState(false);
@@ -11,8 +14,8 @@ const App = () => {
   const [amount, setAmount] = useState(0);
   const [fee, setFee] = useState(0.00001);
   const [toAddress, setToAddress] = useState('');
-  const [confirmedTransaction, setConfirmedTransaction] = useState(false);
   const [selectedAsset,setSelectedAsset] = useState(null);
+  const [checked, setChecked] = useState(false);
 
   useEffect(() => {
     const callback = async (event) => {
@@ -34,6 +37,10 @@ const App = () => {
     }
 
     window.addEventListener('SyscoinStatus', callback);
+  }, []);
+
+  const handleTypeChanged = useCallback((checked) => {
+      setChecked(checked)
   }, []);
 
   const setup = async () => {
@@ -104,21 +111,19 @@ const App = () => {
     const inputs = document.querySelectorAll('input');
 
     if (token !== null) {
-      await controller.handleSendToken(sender, receiver, amount, fee, token, true, true);
+      await controller.handleSendToken(sender, receiver, amount, fee, token, true, !checked);
 
       clearData(inputs);
 
       return;
     }
 
-    await controller.handleSendToken(sender, receiver, amount, fee, null, false, true);
+    await controller.handleSendToken(sender, receiver, amount, fee, null, false, !checked);
 
     clearData(inputs);
 
     return;
   }
-
-  console.log('asd', toAddress, amount, fee)
 
   return (
     <div className="app">
@@ -163,36 +168,87 @@ const App = () => {
           </table>
 
           <form>
-          <div>
-          <select
-            onChange={handleAssetSelected}
-          >
-            <optgroup label="Native">
-              <option value={1}>SYS</option>
-            </optgroup>
+            <select
+              onChange={handleAssetSelected}
+            >
+              <optgroup label="Native">
+                <option value={1}>SYS</option>
+              </optgroup>
 
-            <optgroup label="SPT">
-              {connectedAccount.label && connectedAccount.assets.map((asset, idx) => {
-                if(!controller.isNFT(asset.assetGuid)){
-                 return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+              <optgroup label="SPT">
+                {connectedAccount.label && connectedAccount.assets.map((asset, idx) => {
+                  if(!controller.isNFT(asset.assetGuid)){
+                  return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+                  }
+                  return
+                  })
                 }
-                return
-                })
-              }
-            </optgroup>
+              </optgroup>
 
-            <optgroup label="NFT">
-              {connectedAccount.label && connectedAccount.assets.map((asset, idx) => {
-                if(controller.isNFT(asset.assetGuid)){
-                 return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+              <optgroup label="NFT">
+                {connectedAccount.label && connectedAccount.assets.map((asset, idx) => {
+                  if(controller.isNFT(asset.assetGuid)){
+                  return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+                  }
+
+                  return;
+                  })
                 }
+              </optgroup>
+            </select>
 
-                return;
-                })
-              }
-            </optgroup>
-        </select>
-        </div>
+            <div>
+              <div style={{ margin: "2rem 0" }}>
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  <label style={{ margin: "0", fontSize: '0.9rem' }}> Z-DAG</label>
+
+                  <HelpOutlineIcon
+                    style={{ width: "0.9rem", height: "0.9rem" }}
+                    data-tip data-for="zdag_info"
+                  />
+                </div>
+
+                <ReactTooltip
+                  id="zdag_info"
+                  getContent={()=>
+                    <ul style={{ listStyle: "none", margin: "0", padding: "0" }}>
+                      <li style={{ margin: "0.5rem" }}>
+                        <span>
+                          OFF for Replace-by-fee(RBF) <br/> ON for Z-DAG
+                        </span>
+                      </li>
+
+                      <li style={{ margin: "0.5rem" }}>
+                        <span>
+                          Z-DAG, a exclusive syscoin feature,<br/>
+                          is a blockchain scalability sulution
+                        </span>
+                      </li>
+                      
+                      <li style={{ margin: "0.5rem" }}>
+                        to know more: <br/>
+                        <a href="https://syscoin.org/news/what-is-z-dag" target="_blank">
+                          what is Z-DAG?
+                        </a>
+                      </li>
+                    </ul>
+                  }
+                  effect='solid'
+                  delayHide={100}
+                  delayShow={100}
+                  delayUpdate={500}
+                  place={'left'}
+                  border={true}
+                  type={'info'}
+                />
+              </div>
+
+              <Switch
+                checked={checked}
+                onChange={handleTypeChanged}
+              ></Switch>
+            </div>
+
             <input
               placeholder={selectedAsset ? `${selectedAsset.symbol} amount` : "SYS amount"}
               type="number"

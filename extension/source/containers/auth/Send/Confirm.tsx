@@ -17,7 +17,6 @@ import { useAlert } from 'react-alert';
 
 import styles from './Confirm.scss';
 import { browser } from 'webextension-polyfill-ts';
-import Spinner from '@material-ui/core/CircularProgress';
 
 const SendConfirm = () => {
   const controller = useController();

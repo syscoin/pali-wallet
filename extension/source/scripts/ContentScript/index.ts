@@ -166,19 +166,20 @@ window.addEventListener('message', (event) => {
       amount,
       fee,
       token,
-      isToken
+      isToken,
+      rbf
     } = event.data;
 
     browser.runtime.sendMessage({
       type: 'SEND_TOKEN',
       target: 'background',
       fromConnectedAccount,
-      toAddress: toAddress,
-      amount: amount,
-      fee: fee,
-      token: token,
-      isToken: isToken,
-      rbf: true
+      toAddress,
+      amount,
+      fee,
+      token,
+      isToken,
+      rbf
     });
 
     return;

@@ -191,7 +191,8 @@ browser.runtime.onInstalled.addListener((): void => {
           amount,
           fee,
           token,
-          isToken
+          isToken,
+          rbf
         } = request;
 
         window.controller.wallet.account.updateTempTx({
@@ -201,7 +202,7 @@ browser.runtime.onInstalled.addListener((): void => {
           fee,
           token,
           isToken,
-          rbf: true
+          rbf
         });
 
         store.dispatch(updateCanConfirmTransaction(true));
