@@ -50,7 +50,7 @@ const SendConfirm = () => {
         theme="btn-gradient-primary"
         variant={styles.next}
         linkTo="/home">
-        Next
+          Next
       </Button>
     </Layout>
   ) : (
@@ -96,14 +96,17 @@ const SendConfirm = () => {
         <div className={styles.actions}>
           <Button
             type="button"
-            theme="secondary"
+            theme="btn-outline-secondary"
             variant={clsx(styles.button, styles.close)}
-            linkTo="/send"
-          >
-            Cancel
+            linkTo="/send">
+              Cancel
           </Button>
-          <Button type="submit" variant={styles.button} onClick={handleConfirm}>
-            Confirm
+
+          <Button 
+            type="submit" 
+            variant={styles.button} 
+            onClick={handleConfirm}>
+              Confirm
           </Button>
         </div>
       </section>

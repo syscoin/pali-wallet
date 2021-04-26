@@ -51,15 +51,21 @@ const ConnectWallet = () => {
       <small>Only connect with sites you trust. Learn more.</small>
 
       <div className={styles.buttons}>
-        <Link color="secondary" to="/app.html" onClick={handleCancelConnection}>
-          <Button type="submit" theme="secondary" variant={styles.cancel}>
-            Cancel
+        <Link to="/app.html" onClick={handleCancelConnection}>
+          <Button 
+            type="submit" 
+            theme="btn-outline-secondary"
+            variant={styles.cancel}>
+              Cancel
           </Button>
         </Link>
 
-        <Link color="secondary" to="/confirm-connection">
-          <Button type="submit" theme="secondary" variant={styles.next}>
-            Next
+        <Link to="/confirm-connection">
+          <Button 
+            type="submit" 
+            theme="btn-gradient-primary" 
+            variant={styles.next}>
+              Next
           </Button>
         </Link>
       </div>

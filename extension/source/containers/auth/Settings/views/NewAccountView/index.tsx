@@ -81,7 +81,7 @@ const NewAccountView = () => {
               type="submit"
               theme="btn-gradient-primary"
               variant={styles.button}>
-              Next
+                Next
             </Button>
           </div>
         </form>

@@ -45,14 +45,20 @@ const ConfirmConnection = () => {
 
       <div className={styles.buttons}>
         <Link color="secondary" to="/app.html" onClick={handleCancelConnection}>
-          <Button type="submit" theme="secondary" variant={styles.cancel}>
-            Cancel
+          <Button 
+            type="submit" 
+            theme="btn-outline-secondary" 
+            variant={styles.cancel}>
+              Cancel
           </Button>
         </Link>
 
         <Link color="secondary" to="/home" onClick={handleConfirmConnection}>
-          <Button type="submit" theme="secondary" variant={styles.next}>
-            Confirm
+          <Button 
+            type="submit" 
+            theme="secondary" 
+            variant={styles.next}>
+              Confirm
           </Button>
         </Link>
       </div>

@@ -26,12 +26,12 @@
     width: 90%;
     min-height: 200px;
     max-height: 210px;
-    background-color: $gray-light;
     border-radius: 6px;
     text-align: center;
+    background-color: $navy-dark;
 
     & > p {
-      color: $gray-dark;
+      color: tomato;
       font-size: 16px;
       font-weight: bold;
     }
@@ -61,20 +61,16 @@
     margin-right: 1rem;
   }
 
-  .next {
-    background-color: green;
-  }
-
   & > small {
     position: absolute;
     bottom: 80px;
-    color: $gray-light;
+    color: $deepPink;
     padding: 3px;
     font-size: 14px;
   }
 
   & > p {
-    color: $gray-light;
+    color: tomato;
     font-size: 12px;
   }
 

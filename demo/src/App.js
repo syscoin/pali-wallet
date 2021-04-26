@@ -18,7 +18,7 @@ const App = () => {
     setIsInstalled(true);
 
     window.addEventListener("message", (event) => {
-      if (event.data.type == 'RESPONSE_FROM_EXTENSION') {
+      if (event.data.type === 'RESPONSE_FROM_EXTENSION') {
         setList(event.data.controller.wallet.accounts);
 
         if (event.data.controller.wallet.canConnect) {
