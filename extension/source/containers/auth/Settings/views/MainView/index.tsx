@@ -5,6 +5,7 @@ import AddIcon from '@material-ui/icons/Add';
 // import ImportIcon from '@material-ui/icons/ImportExport';
 import SettingsIcon from '@material-ui/icons/Settings';
 import LogOutIcon from '@material-ui/icons/ExitToApp';
+import SettingsInputHdmiIcon from '@material-ui/icons/SettingsInputHdmi';
 // import ContactsIcon from '@material-ui/icons/Group';
 import UserIcon from '@material-ui/icons/AccountCircleRounded';
 
@@ -15,6 +16,7 @@ import IWalletState from 'state/wallet/types';
 import AccountSelect from 'components/AccountSelect';
 import {
   ACCOUNT_VIEW,
+  CONNECT_HARDWARE_WALLET_VIEW,
   // CONTACTS_VIEW,
   GENERAL_VIEW,
   // IMPORT_ACCOUNT_VIEW,
@@ -69,6 +71,14 @@ const MainView: FC<IMainView> = ({ onChange }) => {
       >
         <Icon Component={AddIcon} />
         Derive account
+      </section>
+
+      <section
+        className={styles.new}
+        onClick={() => showView(CONNECT_HARDWARE_WALLET_VIEW)}
+      >
+        <Icon Component={SettingsInputHdmiIcon} />
+        Connect hardware wallet
       </section>
 
       <section

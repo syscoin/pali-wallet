@@ -95,11 +95,13 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
       case routes.CONTACT_VIEW:
         return 'Contact';
       case routes.ADD_CONTACT_VIEW:
-        return 'Add Contact';
+        return 'Add contact';
       case routes.EDIT_CONTACT_VIEW:
-        return 'Edit Contact';
+        return 'Edit contact';
       case routes.IMPORT_ACCOUNT_VIEW:
         return 'Import private key';
+      case routes.CONNECT_HARDWARE_WALLET_VIEW:
+        return 'Connect hardware wallet';
       default:
         return 'Settings';
     }
@@ -139,6 +141,8 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
         return <Views.ContactView selected={selectedContact} />;
       case routes.IMPORT_ACCOUNT_VIEW:
         return <Views.ImportAccountView />;
+      case routes.CONNECT_HARDWARE_WALLET_VIEW:
+        return <Views.ConnectHardwareWalletView />;
       default:
         return <Views.MainView onChange={(id: string) => setShowedId(id)} />;
     }

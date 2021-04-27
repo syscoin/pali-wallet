@@ -247,19 +247,19 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                         id="zdag_info"
                         getContent={()=>
                           <ul>
-                            <li>
+                            <li style={{ margin: "0.9rem 0" }}>
                               <span>
                                 OFF for Replace-by-fee(RBF) <br/>
                                 ON for Z-DAG
                               </span>
                             </li>
-                            <li>
+                            <li style={{ margin: "0.9rem 0" }}>
                               <span>
                                 Z-DAG, a exclusive syscoin feature,<br/>
                                 is a blockchain scalability sulution
                               </span>
                             </li>
-                            <li>
+                            <li style={{ margin: "0.9rem 0" }}>
                               to know more: <br/>
                               <span onClick={() => window.open("https://syscoin.org/news/what-is-z-dag")}>
                                 what is Z-DAG?

@@ -1,0 +1,37 @@
+@import '~assets/styles/variables';
+
+.centered {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  text-align: center;
+  margin-top: 3rem;
+  color: white;
+
+  .options {
+    display: flex;
+    align-items: center;
+    justify-content: space-evenly;
+    gap: 1rem;
+    margin: 2rem 0;
+
+    .option {
+      padding: 2rem;
+      border-radius: 4px;
+      background-color: white;
+      color: black;
+      cursor: pointer;
+      transition: all;
+      transition-duration: 300ms;
+
+      &:hover {
+        background-color: $gray-hover;
+      }
+    }
+  }
+
+  p {
+    margin: 1rem 2rem;
+  }
+}
