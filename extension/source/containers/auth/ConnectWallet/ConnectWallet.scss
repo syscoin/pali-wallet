@@ -22,7 +22,7 @@
         $royalBlue 50%, 
         $navy 80%
       ) 10;
-      
+
 
   // falta ajustar
   .error {
@@ -34,20 +34,23 @@
   }
 
   .accounts, .confirm {
-    width: 90%;
+    width: 100%;
     min-height: 200px;
     max-height: 210px;
-    border-radius: 6px;
+    border-style: solid;
+    border-width: 0 0 1px 0;
+    border-color: $navy-border;
+    // border-radius: 20px;
     text-align: center;
-    // background-image: 
-    //     linear-gradient(
-    //       rgba(255, 255, 255, 0), 
-    //       rgba(255, 255, 255, 0)), 
-    //       linear-gradient(
-    //         180deg, 
-    //         $navy 40%, 
-    //         $navy-border 50%
-    //       );
+    background-image: 
+        linear-gradient(
+          rgba(255, 255, 255, 0), 
+          rgba(255, 255, 255, 0)), 
+          linear-gradient(
+            180deg, 
+            $navy 90%, 
+            $navy-dark 30%
+          );
 
     & > p {
       color: $royalBlue;
@@ -111,7 +114,6 @@
     margin: 0;
     padding: 0;
     list-style: none;
-    backdrop-filter: blur(10px);
     overflow: auto;
     max-height: 170px;
     z-index: 1;
@@ -120,10 +122,9 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: $navy;
   
     li {
-      width: 90%;
+      width: 99%;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -136,17 +137,28 @@
       font-size: 1rem;
       color: $white;
 
-      &:active {
-        background: rgb(214, 214, 214);
-      }
-
+      
       &:hover {
-        background: $navy-dark;
-      }
+        color: $deepPink;
+        border-style: solid;
+        border-width: 0 1px 0 1px;
+        border-image: 
+        linear-gradient(
+          0deg,
+          $navy 20%, 
+          $deepPink 50%, 
+          $navy 80%
+          ) 10;
+        }
+        
+        &:focus {
+          background: rgb(214, 214, 214);
+        }
 
-      &:focus {
-        background: rgb(214, 214, 214);
-      }
+        &:active {
+          color: $deepPink-100;
+          transform: scale(0.95);
+        }
 
       & > small {
         margin-left: 5px;
