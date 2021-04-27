@@ -27,11 +27,7 @@ const ConfirmConnection = () => {
     <div className={styles.home}>
       <Header showLogo />
 
-      <h1>
-        Connect with Syscoin
-        <br />
-        Wallet
-      </h1>
+      <h1>Connect with <b>Syscoin Wallet</b></h1>
 
       <p>2/2</p>
 
@@ -41,7 +37,7 @@ const ConfirmConnection = () => {
         <p>{accounts[connectedAccountId].address.main}</p>
       </div>
 
-      <small>Only connect with sites you trust. Learn more.</small>
+      <small>Only connect with sites you trust. <a href="#">Learn more.</a></small>
 
       <div className={styles.buttons}>
         <Link color="secondary" to="/app.html" onClick={handleCancelConnection}>
