@@ -56,6 +56,12 @@ const Auth = () => {
       return;
     }
 
+    if (!isUnlocked && accounts.length > 0) {
+      history.push('/app.html');
+
+      return;
+    }
+
     if (confirmingTransaction && controller.wallet.account.getTempTx() && isUnlocked) {
       history.push('/send/confirm');
 
@@ -82,12 +88,6 @@ const Auth = () => {
       }
 
       history.push('/home');
-
-      return;
-    }
-
-    if (!isUnlocked && accounts.length > 0) {
-      history.push('/app.html');
 
       return;
     }

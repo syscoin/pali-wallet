@@ -1,7 +1,6 @@
-
 export const sys = require('syscoinjs-lib');
 export const STORE_PORT = 'SYSCOIN';
-export const backendURl = 'https://sys-explorer.tk/';
+export const backendURl = 'https://blockbook.elint.services/';
 export const SYS_NETWORK: {
   [networkId: string]: {
     id: string;
@@ -25,14 +24,14 @@ export const SYS_NETWORK: {
   testnet: {
     id: 'testnet',
     label: 'TestNet',
-    beUrl: 'https://sys-explorer.tk/',
+    beUrl: 'https://blockbook.elint.services/',
     lbUrl: 'nao tem :('
   }
 
 };
 
-export const ASSET_PRICE_API = 'https://sys-explorer.tk/api/v2/tickers/';
-export const SYS_EXPLORER_SEARCH = 'https://sys-explorer.tk'; // ok
+export const ASSET_PRICE_API = 'https://blockbook.elint.services//api/v2/tickers/';
+export const SYS_EXPLORER_SEARCH = 'https://blockbook.elint.services/'; // ok
 
 export const PRICE_SYS_ID = 'syscoin';
 export const PRICE_BTC_ID = 'bitcoin';
