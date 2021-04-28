@@ -343,6 +343,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             </Button>
             <Button
               type="submit"
+              theme="btn-outline-primary"
               variant={styles.button}
               disabled={
                 !isValidAddress ||
