@@ -50,8 +50,12 @@
 
     & > p {
       color: $royalBlue;
-      font-size: 1rem;
+      font-size: .8rem;
       font-weight: $regular;
+    
+        & ~ p {
+          color: $white;
+        }
     }
   }
 
@@ -68,6 +72,7 @@
     display: flex;
     align-items: center;
     justify-content: space-evenly;
+    text-decoration: none;
   }
 
   & > h1 {
@@ -106,9 +111,9 @@
     font-size: 1rem;
     color: $deepPink-100;
     
-    & ~ p {
-      color: $royalBlue;
-    }
+      & ~ p {
+        color: $royalBlue;
+      }
   }
 
 

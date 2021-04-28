@@ -52,7 +52,7 @@ const ConfirmConnection = () => {
         <Link color="secondary" to="/home" onClick={handleConfirmConnection}>
           <Button 
             type="submit" 
-            theme="secondary" 
+            theme="btn-outline-confirm" 
             variant={styles.next}>
               Confirm
           </Button>

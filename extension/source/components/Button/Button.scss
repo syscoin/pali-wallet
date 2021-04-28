@@ -182,6 +182,33 @@ body {
       }
     }
 
+    &.btn-outline-confirm {
+      color: $yellowGreen;
+      border: solid 1px transparent;
+      border-radius: 100rem;
+      background-image: 
+        linear-gradient(
+          rgba(255, 255, 255, 0), 
+          rgba(255, 255, 255, 0)), 
+          linear-gradient(
+            30deg, 
+            #49591B 10%,
+            $yellowGreen 50%
+          );
+      background-origin: border-box;
+      background-clip: content-box, border-box;
+      box-shadow: 2px 1000px 1px $navy inset;
+
+      &:hover {
+        box-shadow: none;
+        color: white;
+      }
+
+      &:active {
+        transform: scale(0.95);
+      }
+    }
+
     &.block {
       font-size: 20px;
       line-height: 24px;
