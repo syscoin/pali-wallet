@@ -37,25 +37,21 @@
     width: 100%;
     min-height: 200px;
     max-height: 210px;
-    border-style: solid;
-    border-width: 0 0 1px 0;
-    border-color: $navy-border;
-    // border-radius: 20px;
-    text-align: center;
+    text-align: center;    
     background-image: 
         linear-gradient(
           rgba(255, 255, 255, 0), 
           rgba(255, 255, 255, 0)), 
           linear-gradient(
-            180deg, 
-            $navy 90%, 
-            $navy-dark 30%
+            0deg, 
+            $navy-darker 40%, 
+            $navy 70%
           );
 
     & > p {
       color: $royalBlue;
       font-size: 1rem;
-      font-weight: bold;
+      font-weight: $regular;
     }
   }
 
@@ -96,10 +92,11 @@
     color: $royalBlue;
 
     a {
-      color: $deepPink-100;
+      color: $deepPink;
       text-decoration: none;
 
       &:hover {
+        color: $deepPink-100;
         text-decoration: underline;
       }
     }
@@ -107,8 +104,13 @@
 
   & > p {
     font-size: 1rem;
-    color: $royalBlue;
+    color: $deepPink-100;
+    
+    & ~ p {
+      color: $royalBlue;
+    }
   }
+
 
   ul.options {
     margin: 0;
@@ -117,7 +119,6 @@
     overflow: auto;
     max-height: 170px;
     z-index: 1;
-    margin: .5em 0 .5em;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -152,7 +153,7 @@
         }
         
         &:focus {
-          background: rgb(214, 214, 214);
+          background: $navy-dark;
         }
 
         &:active {
