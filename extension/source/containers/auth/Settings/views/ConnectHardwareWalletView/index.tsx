@@ -1,15 +1,15 @@
-import  React, { FC, useState } from 'react';
+import  React, { FC, useState, useCallback } from 'react';
 
 import styles from './index.scss';
 import Button from 'components/Button';
+import TutorialPanel from './TutorialPanel';
 
 const AccountView: FC = () => {
-  const [selected, setSelected] = useState(false);
+  const [toggle, setToggle] = useState<boolean>(false);
 
   return (
-    <div className={styles.centered}>
-      <h1>Connect a hardware wallet</h1>
-      <p>Select a hardware wallet you'd like to use with Syscoin Wallet</p>
+    <div className={styles.wrapper} style={{ color: "white", textAlign: "center" }}>
+      <p style={{ textAlign: "center" }}>Select a hardware wallet you'd like to use with Syscoin Wallet</p>
 
       <div className={styles.options}>
         <div className={styles.option}>
@@ -29,8 +29,10 @@ const AccountView: FC = () => {
         Connect
       </Button>
 
-      <p style={{ marginTop: "1rem" }}>Don't have a hardware wallet?</p>
-      <p style={{ margin: "0 1rem" }}>Order a Ledger or a Trezor wallet and keep your funds in cold storage. Learn more.</p>
+      <p style={{ marginTop: "1rem", textAlign: "center" }}>Don't have a hardware wallet?</p>
+      <p style={{ margin: "0 1rem", textAlign: "center" }}>Order a Ledger or a Trezor wallet and keep your funds in cold storage. Learn more.</p>
+
+     <TutorialPanel />
     </div>
   );
 };

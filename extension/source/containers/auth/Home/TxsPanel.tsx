@@ -98,7 +98,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
               onClick={() => { setActivity(false) }}
             >
               Assets
-          </Button>
+            </Button>
 
             <Button
               type="button"
@@ -107,7 +107,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
               onClick={() => { setActivity(true) }}
             >
               Activity
-          </Button>
+            </Button>
           </div>
         </div>
         :
@@ -210,7 +210,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
           <>
             <span className={styles.noTxComment}>
               You have no Assets, receive SPTs to register.
-          </span>
+            </span>
             <img
               src={SyscoinIcon}
               className={styles.syscoin}
