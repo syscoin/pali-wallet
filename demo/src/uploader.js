@@ -17,24 +17,14 @@ const handleChangeStatus = ({ meta, file, xhr }, status) => {
    document.getElementById('out').innerHTML+= `${JSON.stringify(
     `CID:${cid}`
   )}\n` 
-}
-}
-const handleSubmit = (files, allFiles) => {
-console.log(files.map(f => f.meta))
-allFiles.forEach(f => f.remove())
-
-}
-
+}}
 return (
 <Dropzone
 getUploadParams={getUploadParams}
 onChangeStatus={handleChangeStatus}
-onSubmit={handleSubmit}
 accept='image/*, image/gif, audio/*, video/*, gif/*, .gif, .pdf, .mp3'
 inputContent={() => ( 'Drag Files')}
 />
 )
 }
-
-
 export default MyUploader; 
