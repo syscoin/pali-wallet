@@ -2,7 +2,9 @@ import React, { Component, useEffect, useState, useCallback } from "react";
 import MyUploader from './uploader'
 import logo from "./assets/images/logosys.svg";
 import 'bootstrap/dist/css/bootstrap.min.css'
+
   const App = () => {
+
     const [isInstalled, setIsInstalled] = useState(false);
     const [canConnect, setCanConnect] = useState(true);
     const [balance, setBalance] = useState(0);
@@ -14,7 +16,7 @@ import 'bootstrap/dist/css/bootstrap.min.css'
     const [toAddress, setToAddress] = useState('');
     const [selectedAsset,setSelectedAsset] = useState(null);
     const [checked, setChecked] = useState(false);
-  
+
     useEffect(() => {
       const callback = async (event) => {
         if (event.detail.SyscoinInstalled) {
@@ -122,7 +124,7 @@ import 'bootstrap/dist/css/bootstrap.min.css'
   
       return;
     }
-  
+
     return (
  
              <div className="app">
@@ -149,12 +151,12 @@ import 'bootstrap/dist/css/bootstrap.min.css'
        </nav>  
             {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}
             <div >
-             <MyUploader /> <pre className="cid" id="out" ></pre>
+             <MyUploader /> 
+        
+             <pre className="cid" id="out" ></pre> 
+             <a class="button-2" href="/sysmint">Clear</a>
               </div>
 
-            {connectedAccount.balance === 0 && (
-              <p>You don't have SYS available.</p>
-            )}
           </div>
 
         ) : (
@@ -168,6 +170,7 @@ import 'bootstrap/dist/css/bootstrap.min.css'
   }
   
   export default App;
+  
   
   
   
