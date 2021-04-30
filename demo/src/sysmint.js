@@ -1,4 +1,3 @@
-import './App.css';
 import React, { Component, useEffect, useState, useCallback } from "react";
 import MyUploader from './uploader'
 import logo from "./assets/images/logosys.svg";
