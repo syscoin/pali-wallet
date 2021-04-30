@@ -1,13 +1,34 @@
+@import 'assets/styles/variables';
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans',
-    'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-family: 
+    -apple-system, 
+    BlinkMacSystemFont, 
+    'Segoe UI', 
+    'Roboto', 
+    'Oxygen', 
+    'Ubuntu', 
+    'Cantarell', 
+    'Fira Sans',
+    'Droid Sans', 
+    'Helvetica Neue', 
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #fff;
+  overflow: hidden;
   min-height: 100vh;
   font-size: calc(10px + 2vmin);
-  color: #282c34;
+  color: $navy;
+
+  border-bottom: 5px solid;
+    border-image: 
+      linear-gradient(
+        to right, 
+        #122036 20%, 
+        #4D76B8 50%, 
+        #122036 80%
+      ) 10;
 }
 
 .app {
@@ -24,6 +45,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 1rem 2rem;
+  background: $navy;
 
   &__logo {
     width: 5rem;
@@ -39,20 +61,41 @@ body {
   }
 
   &__buttonConnect, &__balance {
-    border: 2px solid rgb(32, 60, 104);
-    background-color: rgba(0, 0, 0, 0);
-    transition: 0.3s all;
-    border-radius: 2.2rem;
-    padding: 0.8rem;
-    font-weight: bold;
+    color: #4CA1CF;
+    border: solid 1px transparent;
+    border-radius: 100rem;
+    background-image: 
+      linear-gradient(
+        rgba(255, 255, 255, 0), 
+        rgba(255, 255, 255, 0)), 
+        linear-gradient(
+          30deg, 
+          $deepPink 20%, 
+          $royalBlue 50%
+        );
+      background-origin: border-box;
+      background-clip: content-box, border-box;
+      box-shadow: 2px 1000px 1px $navy inset;
+      padding: 1em;
+
+      &:hover {
+        box-shadow: none;
+        color: white;
+      }
+
+      &:active {
+        transform: scale(0.95);
+      }
+    
     cursor: pointer;
-    color: rgb(32, 60, 104);
+  
   }
 
   &__balance {
     font-weight: normal;
-    padding: 0.5rem;
-    font-size: 19px;
+    margin-right: 1.5em;
+    padding: .7em;
+    font-size: 1rem;
   }
 }
 
