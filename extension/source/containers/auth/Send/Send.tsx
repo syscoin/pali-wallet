@@ -193,7 +193,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             <div style={{ display: "flex"}}>
               <div style={{width: "50%", float: "left"}}>
                 
-            <label>Choose Asset</label>
+                <label>Choose Asset</label>
 
              <div className={styles.select}>
           <MUISelect native defaultValue="SYS" 
@@ -227,7 +227,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
         <div style={{width: "50%", float: "left", paddingLeft: "120px"}}>
           <div>
         <span>
-            <label> Z-DAG</label>
+            <label>Z-DAG</label>
             <HelpOutlineIcon
                  data-tip data-for="zdag_info"
               />
@@ -332,6 +332,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
           <div className={styles.description}>
             {`With current network conditions we recommend a fee of ${recommend} SYS.`}
           </div>
+
           <div className={styles.actions}>
             <Button
               type="button"
@@ -341,6 +342,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             >
               Close
             </Button>
+            
             <Button
               type="submit"
               theme="btn-outline-primary"

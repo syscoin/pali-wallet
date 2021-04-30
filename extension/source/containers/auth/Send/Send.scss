@@ -106,7 +106,7 @@
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
-        margin-bottom: 12px;
+        margin: .7rem 0 .5rem 0;
         align-items: flex-start;
 
         &:last-child {
@@ -115,36 +115,37 @@
         }
 
         label {
-          font-weight: 500;
-          font-size: 10px;
-          line-height: 12px;
-          margin-bottom: 8px;
-          margin-left: 16px;
-          text-transform: uppercase;
-          color: $gray-dark;
+          font-weight: $light;
+          font-size: .8rem;
+          line-height: 2;
+          text-indent: 1.5em;
+          color: $white;
         }
 
         .textBtn {
-          background: transparent;
           min-width: initial;
+          width: fit-content;
+          height: 1.7rem !important;
           position: absolute;
           box-shadow: none;
-          top: 26px;
-          right: 8px;
-          height: 22px !important;
-          font-weight: 500;
-          font-size: 10px;
-          color: #521e8a;
-          padding: 12px;
-          width: fit-content;
-          text-transform: uppercase;
+          // border-left: 2px solid $navy;
+          border-radius: 0 40px 40px 0;
+          padding: 1.2em;
+          bottom: .02em;
+          right: -1px;
+          font-weight: $semibold;
+          font-size: .8rem;
+          color: $navy-light;
+          background: transparent;
+
+          &:hover { color: $deepPink; }
         }
 
         .address {
           padding-right: 94px;
 
           &.verified {
-            color: $navy;
+            color: $navy-border;
 
             input {
               padding-left: 15px;
@@ -173,19 +174,19 @@
       display: flex;
       flex-direction: row;
       align-items: center;
-      padding-top: 24px;
+      margin-top: .5em;
       justify-content: space-between;
 
       .equalAmount {
-        font-weight: 500;
-        font-size: 10px;
-        line-height: 12px;
-        color: $gray-100;
+        max-width: 300px;
         white-space: nowrap;
         overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 300px;
         display: block;
+        text-overflow: ellipsis;
+        text-indent: 1em;
+        font-size: 1.2rem;
+        font-weight: $regular;
+        color: $royalBlue-medium;
       }
 
       .error {
@@ -197,11 +198,11 @@
     }
 
     .description {
-      font-weight: 500;
-      font-size: 12px;
-      line-height: 18px;
-      color: $gray-dark;
-      margin-top: 24px;
+      margin-top: .5em;
+      font-weight: $light;
+      font-size: .58rem;
+      text-indent: 1em;
+      color: $royalBlue;
     }
 
     .actions {
@@ -219,6 +220,7 @@
 
 .select {
   :global(.MuiInputBase-root) {
+    width: 6rem;
     transition: all 0.3s;
     background: $white;
     &::before,
@@ -229,7 +231,9 @@
 
   :global(.MuiSelect-root){
     transition: all 0.3s;
-    // background: $white;
+    font-size: .8rem;
+    background: $white;
+    color: $navy-dark
   }
 
   :global .MuiSelect-icon {
@@ -242,7 +246,7 @@
 }
 
 :global(.MuiMenu-paper) {
-  background: $white;
+  background: $gold;
   box-shadow: none !important;
 }
 
@@ -253,9 +257,10 @@
     font-weight: 600;
     font-size: 12px;
     line-height: 24px;
+    background: magenta;
 
     &:hover {
-      background: $gray-light-100;
+      background: magenta;
     }
   }
 }
