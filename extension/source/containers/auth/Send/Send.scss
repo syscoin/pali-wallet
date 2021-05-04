@@ -109,6 +109,12 @@
         margin: .7rem 0 .5rem 0;
         align-items: flex-start;
 
+        & svg {
+          color: $royalBlue;
+
+          &:hover { color: $deepPink; }
+        }
+
         &:last-child {
           border-bottom: none;
           margin-bottom: 0;

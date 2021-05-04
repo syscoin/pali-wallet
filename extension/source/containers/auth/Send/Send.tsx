@@ -162,6 +162,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   return (
     <div className={styles.wrapper}>
       <Header backLink="/home" />
+
       <form onSubmit={handleSubmit(onSubmit)}>
         <section className={styles.subheading}>Send {selectedAsset ? selectedAsset.symbol : "SYS"}</section>
         <section className={styles.balance}>
@@ -170,6 +171,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             <span>{selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? selectedAsset.balance : (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) : accounts[activeAccountId].balance}</span> {selectedAsset ? selectedAsset.symbol : "SYS"}
           </div>
         </section>
+
         <section className={styles.content}>
           <ul className={styles.form}>
             <li>
@@ -189,92 +191,99 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 variant={addressInputClass}
               />
             </li>
-            <li>
-            <div style={{ display: "flex"}}>
-              <div style={{width: "50%", float: "left"}}>
-                
-                <label>Choose Asset</label>
 
-             <div className={styles.select}>
-          <MUISelect native defaultValue="SYS" 
-          input={<Input id="grouped-native-select"  />}
-          onChange={handleAssetSelected}
-          >
-            <optgroup label="Native">
-              <option value={1}>SYS</option>
-            </optgroup>
-            <optgroup label="SPT">
-              {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
-                if(!controller.wallet.account.isNFT(asset.assetGuid)){
-                 return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
-                }
-                return
-              })
-            }
-            </optgroup>
-            <optgroup label="NFT">
-               {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
-                  if(controller.wallet.account.isNFT(asset.assetGuid)){
-                   return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+            <li>
+              <div style={{ display: "flex"}}>
+                <div style={{width: "50%", float: "left"}}>
+                  <label>Choose Asset</label>
+                      
+                <div className={styles.select}>
+                  <MUISelect native defaultValue="SYS" 
+                  input={<Input id="grouped-native-select"  />}
+                  onChange={handleAssetSelected}
+                  >
+                  <optgroup label="Native">
+                    <option value={1}>SYS</option>
+                  </optgroup>
+
+                  <optgroup label="SPT">
+                    {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
+                      if(!controller.wallet.account.isNFT(asset.assetGuid)){
+                      return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+                      }
+                      return
+                    })
                   }
-                  return
-                })
-              }
-            </optgroup>
-        </MUISelect>
-        </div>
-        </div>
-        <div style={{width: "50%", float: "left", paddingLeft: "120px"}}>
-          <div>
-        <span>
-            <label>Z-DAG</label>
-            <HelpOutlineIcon
-                 data-tip data-for="zdag_info"
-              />
-              
-              <ReactTooltip id="zdag_info"
-              getContent={()=>
-                <ul>
-                <li>
-                Button: 
-                </li>
-                <li>
-                <span>
-                OFF for Replace-by-fee(RBF) 
-                ON for Z-DAG
-                </span>
-                </li>
-                <li>
-                <span>
-                Z-DAG, a exclusive syscoin feature,<br/>
-                is a blockchain scalability sulution
-                </span>
-                </li>
-                <li>
-                to know more: <br/>
-                <span onClick={() => {window.open("https://syscoin.org/news/what-is-z-dag");}}>
-                what is Z-DAG?
-             </span>
-             </li>
-             </ul>
-              }
-              effect='solid'
-              delayHide={1500}
-              delayShow={500}
-              delayUpdate={500}
-              place={'left'}
-              border={true}
-              type={'info'}
-              />
-              </span>
+                  </optgroup>
+
+                  <optgroup label="NFT">
+                    {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
+                        if(controller.wallet.account.isNFT(asset.assetGuid)){
+                        return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+                        }
+                        return
+                      })
+                    }
+                  </optgroup>
+
+                  </MUISelect>
+                </div>
               </div>
-              <Switch 
-              checked={checked}
-              onChange={handleTypeChanged}
-            ></Switch>
-        </div>
-        </div>
+
+              <div style={{width: "50%", float: "left", paddingLeft: "120px"}}>
+                <div>
+                  <span>
+                    <label>Z-DAG</label>
+                    <HelpOutlineIcon
+                        data-tip data-for="zdag_info"
+                      />
+                    
+                    <ReactTooltip id="zdag_info"
+                    getContent={()=>
+                      <ul>
+                        <li>Button:</li>
+                        <li>
+                          <span>
+                            OFF for Replace-by-fee(RBF) 
+                            ON for Z-DAG
+                          </span>
+                        </li>
+
+                        <li>
+                          <span>
+                          Z-DAG, a exclusive syscoin feature,<br/>
+                          is a blockchain scalability sulution
+                          </span>
+                        </li>
+
+                        <li>
+                          to know more: <br/>
+                          <span onClick={() => {window.open("https://syscoin.org/news/what-is-z-dag");}}>
+                            what is Z-DAG?
+                          </span>
+                        </li>
+                      </ul>
+                    }
+                    effect='solid'
+                    delayHide={1500}
+                    delayShow={500}
+                    delayUpdate={500}
+                    place={'left'}
+                    border={true}
+                    type={'info'}
+                    />
+                  </span>
+                </div>
+
+                    <Switch 
+                    checked={checked}
+                    onChange={handleTypeChanged}
+                  ></Switch>
+
+                </div>
+              </div>
             </li>
+
             <li>
               <label> {selectedAsset ? selectedAsset.symbol : "SYS"} Amount</label>
               <TextInput
@@ -319,6 +328,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               </Button>
             </li>
           </ul>
+          
           <div className={styles.status}>
             <span className={styles.equalAmount}>
               ≈ {getFiatAmount(Number(amount) + Number(fee), 6)}
