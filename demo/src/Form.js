@@ -1,4 +1,7 @@
 import React, { useState } from "react";
+import ReactTooltip from 'react-tooltip';
+import Switch from "react-switch";
+import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 
  function Formi(props) {
  const [nftName, setNftName] = useState("");
@@ -38,6 +41,46 @@ import React, { useState } from "react";
   <label>Chose collection:
   <a class="button" >Create</a>
   <a class="button" onClick={console.log(nftName)} >SYS</a>
+  <div className="info_property">
+              <div className="info_property" style={{ margin: "2rem 0" }}>
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  <label style={{ margin: "0", fontSize: '0.9rem' }}> Info Property</label>
+
+                  <HelpOutlineIcon
+                    style={{ width: "0.9rem", height: "0.9rem" }}
+                    data-tip data-for="prop_info"
+                  />
+                </div>
+
+                <ReactTooltip
+                  id="prop_info"
+                  getContent={()=>
+                    <ul style={{ listStyle: "none", margin: "0", padding: "0" }}>
+                      <li style={{ margin: "0.5rem" }}>
+                        <span>
+                          You can create properties and fill each property with an atribute <br/> this is optional
+                        </span>
+                      </li>
+
+                      {/* <li style={{ margin: "0.5rem" }}>
+                        to know more: <br/>
+                        <a href="https://syscoin.org/news/what-is-z-dag" target="_blank">
+                          what is Z-DAG?
+                        </a>
+                      </li> */}
+                    </ul>
+                  }
+                  effect='solid'
+                  delayHide={100}
+                  delayShow={100}
+                  delayUpdate={500}
+                  place={'right'}
+                  border={true}
+                  type={'info'}
+                />
+              </div>
+             
+            </div>
   </label>
   </div>
   <div className="property">
@@ -54,6 +97,7 @@ import React, { useState } from "react";
           <input type="text" id="lname" name="lname" placeholder="Atributte 3" value={propertyAtributte3}
           onChange={e =>  setAtributte3(e.target.value)}></input>
           </div> <input className="button" type="submit" value="Submit"/>
+           
     </form>
   );
 }

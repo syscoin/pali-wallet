@@ -186,18 +186,17 @@ onChangeStatus={handleChangeStatus}
 accept='image/*, image/gif, audio/*, video/*, gif/*, .gif, .pdf, .mp3'
 inputContent={() => ( 'Drag Files')}
 />
-        
              <pre className="cid" id="out" ></pre> 
-             <a class="button-2" href="/sysmint">Clear</a>
-              </div>
-              <div className="form">
-
+    
+              </div> 
+              
+              <iframe className="iframe" src={preview} href={preview}></iframe>
+              <div>
+          <a class="button-2" href="/sysmint">Clear</a>
+ </div>
+ <div className="form"> 
   <Formi></Formi>           
-<div className="tree">
-  <iframe className="iframe" src={preview} href={preview}></iframe>
- </div>
-
- </div>
+  </div>
           </div>
         ) : (
           <div>
