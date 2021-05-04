@@ -9,7 +9,6 @@ import styles from './index.scss';
 const TutorialPanel: FC = () => {
   // const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
-  const [scrollArea, setScrollArea] = useState<HTMLElement>();
   const [learnMore, setLearnMore] = useState<boolean>(false)
  
   const handleScroll = useCallback((event) => {
@@ -18,13 +17,10 @@ const TutorialPanel: FC = () => {
       setShowed(true);
       setLearnMore(true);
     }
-    setScrollArea(event.target);
-    // const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
   }, []);
 
   const handleGoTop = () => {
     setShowed(false);
-    scrollArea!.scrollTo({ top: 0, behavior: 'smooth' });
     setLearnMore(false);
   };
 
