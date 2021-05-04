@@ -24,8 +24,8 @@ const Home = () => {
   const { accounts, activeAccountId, currentURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
-  const [isOpenModal, setIsOpenModal] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
+  const [isConnected, setIsConnected] = useState<boolean>(false);
 
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();

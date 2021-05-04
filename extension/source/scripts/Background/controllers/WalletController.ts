@@ -32,7 +32,6 @@ export interface IWalletController {
   switchNetwork: (networkId: string) => void;
   getNewAddress: () => Promise<boolean>;
   logOut: () => void;
-  formatAddress: (address: string) => string;
 }
 
 const WalletController = (): IWalletController => {
@@ -47,7 +46,6 @@ const WalletController = (): IWalletController => {
   };
 
   const isLocked = () => {
-    console.log('is locked', !password || !mnemonic)
     return !password || !mnemonic;
   };
 
@@ -174,7 +172,6 @@ const WalletController = (): IWalletController => {
   };
 
   const importPhrase = (seedphrase: string) => {
-
     if (validateMnemonic(seedphrase)) {
       mnemonic = seedphrase
       console.log("mnemonic is set:", mnemonic)
@@ -192,7 +189,6 @@ const WalletController = (): IWalletController => {
   const logOut = () => {
     password = '';
     mnemonic = '';
-    console.log('logout', password, mnemonic)
     store.dispatch(updateStatus());
   };
 
@@ -226,17 +222,10 @@ const WalletController = (): IWalletController => {
   };
 
   const getNewAddress = async () => {
-
     sjs.HDSigner.receivingIndex = -1;
     const address = await sjs.HDSigner.getNewReceivingAddress()
+    console.log('new address', address)
     return account.setNewAddress(address)
-  }
-
-  const formatAddress = (address: string) => {
-    const last4Characters = address.slice(-4);
-    const first4Characters = address.substring(0, 4);
-
-    return `${first4Characters}...${last4Characters}`;
   }
 
   const account = AccountController({ checkPassword, importPrivKey });
@@ -255,8 +244,7 @@ const WalletController = (): IWalletController => {
     switchWallet,
     switchNetwork,
     getNewAddress,
-    logOut,
-    formatAddress
+    logOut
   };
 };
 

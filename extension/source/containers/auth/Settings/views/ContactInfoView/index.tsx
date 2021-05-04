@@ -23,7 +23,7 @@ interface IContactInfoView {
 const ContactInfoView: FC<IContactInfoView> = ({ selected }) => {
   const controller = useController();
   const showView = useSettingsView();
-  const [codeOpened, setCodeOpened] = useState(false);
+  const [codeOpened, setCodeOpened] = useState<boolean>(false);
   const [isCopied, copyText] = useCopyClipboard();
   const contacts: IContactBookState = useSelector(
     (state: RootState) => state.contacts

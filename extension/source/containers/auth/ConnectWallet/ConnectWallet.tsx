@@ -17,7 +17,7 @@ const ConnectWallet = () => {
   const { accounts, activeAccountId, currentSenderURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
-  const [accountId, setAccountId] = useState(-1);
+  const [accountId, setAccountId] = useState<number>(-1);
 
   const handleSelectAccount = (id: number) => {
     setAccountId(id);

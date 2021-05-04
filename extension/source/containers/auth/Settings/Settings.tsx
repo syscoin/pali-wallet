@@ -47,8 +47,8 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
   );
   const [showedId, setShowedId] = useState<string>('0');
   const [selectedContact, setSelectedContact] = useState<string>('');
-  const [editable, setEditable] = useState(false);
-  const [showedLabel, setShowedLabel] = useState('');
+  const [editable, setEditable] = useState<boolean>(false);
+  const [showedLabel, setShowedLabel] = useState<string>('');
 
   useEffect(() => {
     if (location.hash !== routes.ACCOUNT_VIEW && editable) {

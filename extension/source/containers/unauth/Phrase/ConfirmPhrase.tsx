@@ -18,7 +18,7 @@ const ConfirmPhrase = () => {
     shuffle((phrases || '').split(' '))
   );
   const [newList, setNewList] = useState<Array<string>>([]);
-  const [passed, setPassed] = useState(false);
+  const [passed, setPassed] = useState<boolean>(false);
   const title = passed
     ? `Your Wallet is ready`
     : `Verify your recovery\nphrase`;

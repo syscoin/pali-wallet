@@ -19,17 +19,19 @@ const TutorialPanel: FC = () => {
       setLearnMore(true);
     }
     setScrollArea(event.target);
-    const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
-    if (scrollOffset === event.target.clientHeight) {
-      console.log('ola')
-    }
+    // const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
   }, []);
 
   const handleGoTop = () => {
-    scrollArea!.scrollTo({ top: 0, behavior: 'smooth' });
-    setLearnMore(false)
     setShowed(false);
+    scrollArea!.scrollTo({ top: 0, behavior: 'smooth' });
+    setLearnMore(false);
   };
+
+  const handleGoBottom = () => {
+    setLearnMore(true);
+    setShowed(true)
+  }
 
   return (
     <section
@@ -39,7 +41,7 @@ const TutorialPanel: FC = () => {
       {!!(!isShowed) ?
         <div className={styles.wrapper}>
           <div className={styles.heading}>
-            <p style={{ cursor: "pointer" }} onClick={() => setLearnMore(!learnMore)}>Learn more</p>
+            <p style={{ cursor: "pointer" }} onClick={handleGoBottom}>Learn more</p>
           </div>
         </div>
         :
@@ -55,7 +57,7 @@ const TutorialPanel: FC = () => {
         <div>
           <ol>
             <li>
-              <h2>Connect hardware wallet</h2>
+              <h2>Connect a hardware wallet</h2>
               <small>Connect your hardware wallet directly to your computer.</small>
             </li>
 

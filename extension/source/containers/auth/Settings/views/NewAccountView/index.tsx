@@ -21,7 +21,7 @@ const NewAccountView = () => {
     }),
   });
   const [isCopied, copyText] = useCopyClipboard();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<boolean>(false);
   const showView = useSettingsView();
 
   const addressClass = clsx(styles.address, {

@@ -24,7 +24,7 @@ const TextInput: FC<ITextInput> = ({
   endAdornment,
   ...otherProps
 }) => {
-  const [showed, setShowed] = useState(false);
+  const [showed, setShowed] = useState<boolean>(false);
   const inputType = showed && type === 'password' ? 'text' : type;
 
   const handleClickShowPassword = () => {

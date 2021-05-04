@@ -12,7 +12,7 @@ import { useController } from 'hooks/index';
 const CreatePhrase: FC = () => {
   const history = useHistory();
   const controller = useController();
-  const [passed, setPassed] = useState(false);
+  const [passed, setPassed] = useState<boolean>(false);
   const title = passed
     ? consts.CREATE_PHRASE_TITLE2
     : consts.CREATE_PHRASE_TITLE1;

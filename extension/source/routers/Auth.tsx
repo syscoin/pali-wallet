@@ -68,6 +68,12 @@ const Auth = () => {
       return;
     }
 
+    if (!confirmingTransaction && controller.wallet.account.getTempTx()) {
+      history.push('/home');
+      
+      return;
+    }
+
     if (canConnect && isUnlocked) {
       if (connectedAccounts.length <= 0) {
         history.push('/connect-wallet');

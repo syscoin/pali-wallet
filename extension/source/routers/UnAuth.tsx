@@ -33,10 +33,6 @@ const UnAuth = () => {
     controller.appRoute(location.pathname);
   }, [location]);
 
-  /**
-   * --- Create Account Flow ---
-   * Start => Remind => CreatePass => RemindPhrase => CreatePhrase => ConfirmPhrase
-   */
   return (
     <>
       {transitions.map(({ item, props, key }) => (

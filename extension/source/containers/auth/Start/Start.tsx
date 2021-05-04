@@ -14,7 +14,7 @@ const Starter = () => {
   const { handleSubmit, register, errors } = useForm({
     validationSchema: schema,
   });
-  const [isInvalid, setInvalid] = useState(false);
+  const [isInvalid, setInvalid] = useState<boolean>(false);
 
   const onSubmit = (data: any) => {
     setInvalid(!controller.wallet.unLock(data.password));

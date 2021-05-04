@@ -20,7 +20,7 @@ const ImportPhrase: FC<IImportPhrase> = ({onRegister}) => {
       phrase: yup.string().required(),
     }),
   });
-  const [isValid, setIsValid] = useState(true);
+  const [isValid, setIsValid] = useState<boolean>(true);
 
   const onSubmit = (data: any) => {
     if (controller.wallet.importPhrase(data.phrase)) {

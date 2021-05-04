@@ -27,10 +27,9 @@ export const SYS_NETWORK: {
     beUrl: 'https://blockbook.elint.services/',
     lbUrl: 'nao tem :('
   }
-
 };
 
-export const ASSET_PRICE_API = 'https://blockbook.elint.services//api/v2/tickers/';
+export const ASSET_PRICE_API = 'https://blockbook.elint.services/api/v2/tickers/';
 export const SYS_EXPLORER_SEARCH = 'https://blockbook.elint.services/'; // ok
 
 export const PRICE_SYS_ID = 'syscoin';

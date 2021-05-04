@@ -17,7 +17,7 @@ interface IFullSelect {
 }
 
 const FullSelect: FC<IFullSelect> = ({ options, value, onChange }) => {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState<boolean>(false);
 
   return (
     <div

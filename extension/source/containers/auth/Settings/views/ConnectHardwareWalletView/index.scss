@@ -9,38 +9,33 @@
   justify-content: flex-start;
   transition: 0.3s all;
   color: $white;
+  margin: 2rem 0;
 
   .options {
     display: flex;
     align-items: center;
     justify-content: space-evenly;
     gap: 1rem;
-    margin: 2rem 0;
+    margin: 1rem 0;
+    width: 100%;
 
-    .option {
-      padding: 2rem;
-      border-radius: 4px;
-      background-color: white;
-      color: black;
+    .option, .optionSelected {
+      padding: .9rem;
+      border-radius: 11px;
+      color: white;
+      font-weight: bold;
       cursor: pointer;
       transition: all;
       transition-duration: 300ms;
-      border: 1px solid transparent;
+      width: 20%;
+    }
 
-      &:hover {
-        background-color: $gray-hover;
-      }
+    .option {
+      border: 2px solid white;
     }
 
     .optionSelected {
-      padding: 2rem;
-      border-radius: 4px;
-      background-color: white;
-      color: black;
-      cursor: pointer;
-      transition: all;
-      transition-duration: 300ms;
-      border: 1px solid $deepPink;
+      border: 2px solid $deepPink
     }
   }
 
@@ -75,13 +70,12 @@
     height: 288px;
     width: 100%;
     padding: 0;
-    bottom: -10px;
+    bottom: -50px;
     display: flex;
     flex-direction: column;
     align-items: center;
     box-sizing: border-box;
     position: absolute;
-    overflow: auto;
     transition: all 0.3s;
     z-index: 2;
     background: $navy;
@@ -132,17 +126,20 @@
       display: flex;
       background: $navy;
       border-bottom: 1px solid #162742;
-      position: sticky;
       top: 0;
       justify-content: center;
       align-items: center;
       flex-direction: row;
       font-weight: bold;
       font-size: 18px;
-      line-height: 40px;
+      line-height: 10px;
       width: 100%;
       color: $royalBlue;
       z-index: 2;
+
+      p {
+        font-size: 14px;
+      }
 
       .goTop {
         width: 26px;

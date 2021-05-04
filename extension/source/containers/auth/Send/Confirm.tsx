@@ -32,31 +32,30 @@ const SendConfirm = () => {
     });
   });
   const tempTx = controller.wallet.account.getTempTx();
-  const [confirmed, setConfirmed] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [confirmed, setConfirmed] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
   const alert = useAlert();
 
   const handleConfirm = () => {
     if (accounts[activeAccountId].balance > 0) {
       setLoading(true);
-      
-      try {
-        controller.wallet.account.confirmTempTx().then(result => {
-          if (result) {
-            alert.removeAll();
-            alert.error(result.message);
-  
-            return;
-          }
-          
-          setConfirmed(true);
-          setLoading(false);
-        });
-  
-        return;
-      } catch(error) {
-        console.log('error send', error)
-      }
+
+      controller.wallet.account.confirmTempTx().then(result => {
+        if (result) {
+          alert.removeAll();
+          alert.error(result.message);
+
+          return;
+        }
+        
+        setConfirmed(true);
+        setLoading(false);
+      });
+
+      browser.runtime.sendMessage({
+        type: 'WALLET_UPDATED',
+        target: 'background'
+      });
     }
   };
 
@@ -67,7 +66,7 @@ const SendConfirm = () => {
     });
   }
 
-  const handleCancelConfirmOnSite = () => {
+  const handleCancelTransactionOnSite = () => {
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
       target: "background"
@@ -148,7 +147,7 @@ const SendConfirm = () => {
             type="button"
             theme="secondary"
             variant={clsx(styles.button, styles.close)}
-            onClick={confirmingTransaction ? handleCancelConfirmOnSite : undefined}
+            onClick={confirmingTransaction ? handleCancelTransactionOnSite : undefined}
           >
             Cancel
           </Button>

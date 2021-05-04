@@ -34,7 +34,7 @@ const ModifyContactView: FC<IModifyContactView> = ({ type, selected }) => {
       memo: yup.string(),
     }),
   });
-  const [address, setAddress] = useState('');
+  const [address, setAddress] = useState<string>('');
 
   const isValidAddress = useMemo(() => {
     return controller.wallet.account.isValidSYSAddress(address);

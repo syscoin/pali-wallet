@@ -9,7 +9,7 @@ import { useCopyClipboard, useController } from 'hooks/index';
 import styles from './index.scss';
 
 const PhraseView = () => {
-  const [checked, setChecked] = useState(false);
+  const [checked, setChecked] = useState<boolean>(false);
   const [phrase, setPhrase] = useState<string>(
     '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****'
   );

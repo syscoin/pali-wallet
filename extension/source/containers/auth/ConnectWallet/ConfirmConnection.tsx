@@ -9,11 +9,9 @@ import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
-import { useController } from 'hooks/index';
+import { ellipsis } from '../helpers';
 
 const ConfirmConnection = () => {
-  const controller = useController();
-  
   const { accounts, currentSenderURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
@@ -66,7 +64,7 @@ const ConfirmConnection = () => {
       <div className={styles.list}>
         <p>Site: {currentSenderURL}</p>
         <p>Connect to account {connectedAccount[0].label}</p>
-        <p>{controller.wallet.formatAddress(connectedAccount[0].address.main)}</p>
+        <p>{ellipsis(connectedAccount[0].address.main)}</p>
       </div>
 
       <small>Only connect with sites you trust. Learn more.</small>

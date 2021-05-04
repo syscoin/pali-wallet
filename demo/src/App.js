@@ -53,12 +53,14 @@ const App = () => {
             setConnectedAccount(data);
             setConnectedAccountAddress(data.address.main);
             setBalance(data.balance);
-          } else {
-            setConnectedAccount({});
-            setConnectedAccountAddress('');
-            setBalance(0);
+
+            return;
           }
-      
+          
+          setConnectedAccount({});
+          setConnectedAccountAddress('');
+          setBalance(0);
+
           return;
         });
     }

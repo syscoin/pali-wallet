@@ -16,8 +16,8 @@ const ConnectedAccounts = () => {
   const { accounts, currentSenderURL, activeAccountId }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
-  const [changeAccountIsOpen, setChangeAccountIsOpen] = useState(false);
-  const [accountId, setAccountId] = useState(-1);
+  const [changeAccountIsOpen, setChangeAccountIsOpen] = useState<boolean>(false);
+  const [accountId, setAccountId] = useState<number>(-1);
 
   const handleChangeAccount = (id: number) => {
     setAccountId(id);

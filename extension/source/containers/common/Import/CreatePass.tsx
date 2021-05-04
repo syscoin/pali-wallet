@@ -17,7 +17,7 @@ import styles from './CreatePass.scss';
 const CreatePass = () => {
   const history = useHistory();
   const controller = useController();
-  const [passed, setPassed] = useState(false);
+  const [passed, setPassed] = useState<boolean>(false);
   const {handleSubmit, register, errors} = useForm({
     validationSchema: consts.schema,
   });

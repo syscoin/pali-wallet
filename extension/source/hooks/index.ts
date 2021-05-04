@@ -17,7 +17,7 @@ export function useSettingsView() {
 export function useCopyClipboard(
   timeout = 1000
 ): [boolean, (toCopy: string) => void] {
-  const [isCopied, setIsCopied] = useState(false);
+  const [isCopied, setIsCopied] = useState<boolean>(false);
 
   const staticCopy = useCallback(async (text) => {
     await navigator.clipboard.writeText(text);

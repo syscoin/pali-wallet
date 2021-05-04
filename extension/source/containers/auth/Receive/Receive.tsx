@@ -11,19 +11,27 @@ import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import Spinner from '@material-ui/core/CircularProgress';
 
-
 import styles from './Receive.scss';
+import { browser } from 'webextension-polyfill-ts';
 
 const WalletReceive = () => {
   const [isCopied, copyText] = useCopyClipboard();
   const controller = useController();
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState<boolean>(false);
   const { accounts, activeAccountId }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
   useEffect(() => {
-    if (controller.wallet.getNewAddress())
-      setLoaded(true)
+    if (controller.wallet.getNewAddress()) {
+      browser.runtime.sendMessage({
+        type: 'WALLET_UPDATED',
+        target: 'background'
+      });
+
+      console.log('ok')
+
+      setLoaded(true);
+    }
   }, [])
   return (
     <div className={styles.wrapper}>
@@ -33,7 +41,6 @@ const WalletReceive = () => {
         {loaded ? (
           <div>
             <div className={styles.address}>
-
               <QRCode
                 value={accounts[activeAccountId]!.address['main']}
                 bgColor="#fff"

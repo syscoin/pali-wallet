@@ -347,10 +347,12 @@ const AccountController = (actions: {
   };
 
   const getTempTx = () => {
+    console.log('tempx get temptx', tempTx)
     return tempTx || null;
   };
 
   const updateTempTx = (tx: ITransactionInfo) => {
+    console.log('tx update tx', tx)
     tempTx = { ...tx };
     tempTx.fromAddress = tempTx.fromAddress.trim();
     tempTx.toAddress = tempTx.toAddress.trim();
@@ -391,15 +393,12 @@ const AccountController = (actions: {
   const confirmTempTx = async () => {
     if (!sysjs) {
       throw new Error('Error: No signed account exists');
-      return (new Error('Error: No signed account exists'))
     }
     if (!account) {
       throw new Error("Error: Can't find active account info");
-      return (new Error("Error: Can't find active account info"))
     }
     if (!tempTx) {
       throw new Error("Error: Can't find transaction info");
-      return (new Error("Error: Can't find transaction info"))
     }
 
     try {
@@ -412,8 +411,9 @@ const AccountController = (actions: {
           [tempTx.token.assetGuid, { changeAddress: null, outputs: [{ value: value, address: tempTx.toAddress }] }]
         ])
         const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(tempTx.fee * 1e8))
-        console.log('inside temptx is token', tempTx)
+        console.log('pending tx', pendingTx)
         const txInfo = pendingTx.extractTransaction().getId()
+        console.log('tx info', txInfo)
         store.dispatch(
           updateTransactions({
             id: account.id,
@@ -427,7 +427,9 @@ const AccountController = (actions: {
           { address: tempTx.toAddress, value: new sys.utils.BN(tempTx.amount * 1e8) }
         ]
         const txOpts = { rbf: tempTx.rbf }
+        console.log('txopts', txOpts)
         const pendingTx = await sysjs.createTransaction(txOpts, null, _outputsArr, new sys.utils.BN(tempTx.fee * 1e8));
+        console.log('pnding tx', pendingTx)
         const txInfo = pendingTx.extractTransaction().getId()
         store.dispatch(
           updateTransactions({
@@ -442,10 +444,9 @@ const AccountController = (actions: {
       watchMemPool();
       return null;
     } catch (error) {
+      debugger
       console.log("erro ele", error)
       throw new Error(error);
-      return error;
-
     }
   };
 

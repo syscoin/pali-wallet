@@ -23,12 +23,10 @@ interface ITxsPanel {
 }
 
 const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
-  // const getFiatAmount = useFiat();
   const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
   const [isActivity, setActivity] = useState<boolean>(true);
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
-  // const [assetsTypes, setAssets] = useState<Array<String>>([]);
 
   const isShowedGroupBar = useCallback(
     (tx: Transaction, idx: number) => {

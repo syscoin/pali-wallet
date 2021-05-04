@@ -47,11 +47,11 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const { accounts, activeAccountId }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
-  const [address, setAddress] = useState(initAddress);
-  const [amount, setAmount] = useState('');
-  const [fee, setFee] = useState('0');
-  const [recommend, setRecommend] = useState(0);
-  const [checked, setChecked] = useState(false);
+  const [address, setAddress] = useState<string>(initAddress);
+  const [amount, setAmount] = useState<string>('');
+  const [fee, setFee] = useState<string>('0');
+  const [recommend, setRecommend] = useState<number>(0);
+  const [checked, setChecked] = useState<boolean>(false);
   const [selectedAsset,setSelectedAsset] = useState<Assets | null>(null);
 
   const isValidAddress = useMemo(() => {

@@ -19,8 +19,8 @@ const ImportAccountView = () => {
   // const controller = useController();
   const showView = useSettingsView();
   const [isCopied, copyText] = useCopyClipboard();
-  const [importType, setImportType] = useState('priv');
-  const [loading, setLoading] = useState(false);
+  const [importType, setImportType] = useState<string>('priv');
+  const [loading, setLoading] = useState<boolean>(false);
   // const [jsonFile, setJsonFile] = useState<File | null>(null);
   const [address] = useState<{ [assetId: string]: string }>();
 

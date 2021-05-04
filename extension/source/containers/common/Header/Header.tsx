@@ -24,7 +24,7 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#' }) => {
   const controller = useController();
   const showView = useSettingsView();
   const isUnlocked = !controller.wallet.isLocked();
-  const [showed, showSettings] = useState(false);
+  const [showed, showSettings] = useState<boolean>(false);
   const { encriptedMnemonic }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );

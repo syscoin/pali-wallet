@@ -73,6 +73,7 @@ browser.runtime.onInstalled.addListener((): void => {
       }
 
       if (type == 'WALLET_UPDATED' && target == 'background') {
+        console.log('wallet updated background')
         browser.tabs.sendMessage(tabId, {
           type: 'WALLET_UPDATED',
           target: 'contentScript',
@@ -215,6 +216,12 @@ browser.runtime.onInstalled.addListener((): void => {
           type: 'SEND_TOKEN',
           target: 'contentScript',
           complete: true 
+        });
+
+        browser.tabs.sendMessage(tabId, {
+          type: 'WALLET_UPDATED',
+          target: 'contentScript',
+          connected: false
         });
       }
     }
