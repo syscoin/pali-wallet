@@ -193,9 +193,9 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             </li>
 
             <li>
-              <div style={{ display: "flex"}}>
-                <div style={{width: "50%", float: "left"}}>
-                  <label>Choose Asset</label>
+              
+              <label>Choose Asset</label>
+              <div style={{ display: "flex", justifyContent: "space-between", width: "100%"}}>
                       
                 <div className={styles.select}>
                   <MUISelect native defaultValue="SYS" 
@@ -227,60 +227,58 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                   </optgroup>
 
                   </MUISelect>
-                </div>
+                
               </div>
 
-              <div style={{width: "50%", float: "left", paddingLeft: "120px"}}>
-                <div>
-                  <span>
-                    <label>Z-DAG</label>
-                    <HelpOutlineIcon
-                        data-tip data-for="zdag_info"
+              <div>
+                <span>
+                  <label>Z-DAG</label>
+                  <HelpOutlineIcon
+                      data-tip data-for="zdag_info"
                       />
-                    
-                    <ReactTooltip id="zdag_info"
-                    getContent={()=>
-                      <ul>
-                        <li>Button:</li>
-                        <li>
-                          <span>
-                            OFF for Replace-by-fee(RBF) 
-                            ON for Z-DAG
-                          </span>
-                        </li>
+                  
+                  <ReactTooltip id="zdag_info"
+                  getContent={()=>
+                    <ul>
+                      <li>Button:</li>
+                      <li>
+                        <span>
+                          OFF for Replace-by-fee(RBF) 
+                          ON for Z-DAG
+                        </span>
+                      </li>
 
-                        <li>
-                          <span>
-                          Z-DAG, a exclusive syscoin feature,<br/>
-                          is a blockchain scalability sulution
-                          </span>
-                        </li>
+                      <li>
+                        <span>
+                        Z-DAG, a exclusive syscoin feature,<br/>
+                        is a blockchain scalability sulution
+                        </span>
+                      </li>
 
-                        <li>
-                          to know more: <br/>
-                          <span onClick={() => {window.open("https://syscoin.org/news/what-is-z-dag");}}>
-                            what is Z-DAG?
-                          </span>
-                        </li>
-                      </ul>
-                    }
-                    effect='solid'
-                    delayHide={1500}
-                    delayShow={500}
-                    delayUpdate={500}
-                    place={'left'}
-                    border={true}
-                    type={'info'}
-                    />
-                  </span>
-                </div>
+                      <li>
+                        to know more: <br/>
+                        <span onClick={() => {window.open("https://syscoin.org/news/what-is-z-dag");}}>
+                          what is Z-DAG?
+                        </span>
+                      </li>
+                    </ul>
+                  }
+                  effect='solid'
+                  delayHide={1500}
+                  delayShow={500}
+                  delayUpdate={500}
+                  place={'left'}
+                  border={true}
+                  type={'info'}
+                  />
+                </span>
+              </div>
 
-                    <Switch 
-                    checked={checked}
-                    onChange={handleTypeChanged}
-                  ></Switch>
+                  <Switch 
+                  checked={checked}
+                  onChange={handleTypeChanged}
+                ></Switch>
 
-                </div>
               </div>
             </li>
 
@@ -328,6 +326,10 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               </Button>
             </li>
           </ul>
+
+          <div className={styles.description}>
+            {`With current network conditions we recommend a fee of ${recommend} SYS.`}
+          </div>
           
           <div className={styles.status}>
             <span className={styles.equalAmount}>
@@ -338,9 +340,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 {Object.values(errors)[0].message}
               </span>
             )}
-          </div>
-          <div className={styles.description}>
-            {`With current network conditions we recommend a fee of ${recommend} SYS.`}
           </div>
 
           <div className={styles.actions}>

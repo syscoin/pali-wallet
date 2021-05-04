@@ -12,7 +12,7 @@
   section.subheading {
     height: 60px;
     width: 100%;
-    margin-top: 72px;
+    margin-top: 60px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -43,6 +43,15 @@
       font-size: 1.5rem;
       color: $white;
     }
+
+    border-bottom: 3px solid;
+    border-image: 
+      linear-gradient(
+        to right, 
+        $navy 20%, 
+        $royalBlue 50%, 
+        $navy 80%
+      ) 10;
   }
 
   .input {
@@ -84,18 +93,9 @@
     padding-bottom: 24px;
     position: relative;
 
-    border-bottom: 3px solid;
-    border-image: 
-      linear-gradient(
-        to right, 
-        $navy 20%, 
-        $royalBlue 50%, 
-        $navy 80%
-      ) 10;
-
     ul.form {
       list-style: none;
-      margin: -12px;
+      margin: 0 0 12px 0;
       padding: 12px;
       border-radius: 10px;
       background: $navy;
@@ -106,8 +106,13 @@
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
-        margin: .7rem 0 .5rem 0;
+        margin: 0 0 .5rem 0;
         align-items: flex-start;
+
+        &:last-child {
+          border-bottom: none;
+          margin-bottom: 0;
+        }
 
         & svg {
           color: $royalBlue;
@@ -115,10 +120,6 @@
           &:hover { color: $deepPink; }
         }
 
-        &:last-child {
-          border-bottom: none;
-          margin-bottom: 0;
-        }
 
         label {
           font-weight: $light;
@@ -179,17 +180,17 @@
       display: flex;
       flex-direction: row;
       align-items: center;
-      margin-top: .5em;
       justify-content: space-between;
 
       .equalAmount {
         max-width: 300px;
+        margin-bottom: 1em;
         white-space: nowrap;
         overflow: hidden;
         display: block;
         text-overflow: ellipsis;
-        text-indent: 1em;
-        font-size: 1.2rem;
+        text-indent: 2em;
+        font-size: 1.5rem;
         font-weight: $regular;
         color: $royalBlue-medium;
       }
@@ -203,11 +204,10 @@
     }
 
     .description {
-      margin-top: .5em;
       font-weight: $light;
       font-size: .58rem;
       text-indent: 1em;
-      color: $royalBlue;
+      color: $deepPink;
     }
 
     .actions {
@@ -271,5 +271,4 @@
     }
   }
 }
-
 }
