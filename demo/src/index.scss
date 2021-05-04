@@ -101,3 +101,45 @@ input {
   text-align: center;
   margin: 2rem auto;
 }
+.button-2 {
+  border: 2px solid rgb(32, 60, 104);
+  background-color: rgba(0, 0, 0, 0);
+  transition: 0.3s all;
+  border-radius: 1rem;
+  padding: 0.44rem;
+  font-weight: bold;
+  cursor: pointer;
+  color: rgb(32, 60, 104);
+  margin: .5rem;
+  width: 22%;
+  position:relative;
+  left: -5px;
+    top: 20px;
+}
+.form {
+  position:relative;
+  left: -5px;
+    top: 60px;
+}
+.collection {
+  position:relative;
+  top: 5px;
+}
+.property {
+  position:relative;
+  top: 7px;
+}
+.tres {
+  position:relative;
+  top: 7px;
+  width:800px;
+  height:800px;
+  border: 25px solid; /* As 4 bordas sólidas com 25px de espessura */
+  border-color: rgb(32, 60, 104);
+  }
+  .iframe {
+ position: relative;
+ width: 560px;
+ height: 370px;
+  } 
+  

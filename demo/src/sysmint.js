@@ -1,9 +1,13 @@
-import './App.css';
 import React, { Component, useEffect, useState, useCallback } from "react";
-import MyUploader from './uploader'
 import logo from "./assets/images/logosys.svg";
-import 'bootstrap/dist/css/bootstrap.min.css'
+import 'bootstrap/dist/css/bootstrap.min.css';
+import 'react-dropzone-uploader/dist/styles.css'
+import Dropzone from 'react-dropzone-uploader'
+import Formi from "./Form.js"
   const App = () => {
+
+
+    const [preview, setPreview] = useState("");
     const [isInstalled, setIsInstalled] = useState(false);
     const [canConnect, setCanConnect] = useState(true);
     const [balance, setBalance] = useState(0);
@@ -15,7 +19,7 @@ import 'bootstrap/dist/css/bootstrap.min.css'
     const [toAddress, setToAddress] = useState('');
     const [selectedAsset,setSelectedAsset] = useState(null);
     const [checked, setChecked] = useState(false);
-  
+
     useEffect(() => {
       const callback = async (event) => {
         if (event.detail.SyscoinInstalled) {
@@ -37,7 +41,7 @@ import 'bootstrap/dist/css/bootstrap.min.css'
   
       window.addEventListener('SyscoinStatus', callback);
     }, []);
-  
+
     const handleTypeChanged = useCallback((checked) => {
         setChecked(checked)
     }, []);
@@ -63,6 +67,11 @@ import 'bootstrap/dist/css/bootstrap.min.css'
       }
     };
   
+    useEffect(() => {
+      if (controller){
+        
+      }
+    })
     useEffect(() => {
       if (controller) {
         setup();
@@ -105,7 +114,8 @@ import 'bootstrap/dist/css/bootstrap.min.css'
       setAmount(0);
       setFee(0.00001);
     }
-  
+
+
     const handleSendToken = async (sender, receiver, amount, fee, token) => {
       const inputs = document.querySelectorAll('input');
   
@@ -123,9 +133,29 @@ import 'bootstrap/dist/css/bootstrap.min.css'
   
       return;
     }
-  
-    return (
+    const getUploadParams = () => ({ url: 'https://api.nft.storage/upload',  
+headers: { "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaWQ6ZXRocjoweGJiNUM1NzJkYmFlNDQ1MkFDOGFiZWZlMjk3ZTljREIyRmEzRjRlNzIiLCJpc3MiOiJuZnQtc3RvcmFnZSIsImlhdCI6MTYxOTcxMjM0MTgzNCwibmFtZSI6InN5cyJ9.KmVoWH8Sa0FNsPyWrPYEr1zCAdFw8bJwVnmzPsp_fg4"
+ }})
+;//"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5ASDASDAXCZg0NTY5MDEiLCJpc3MiOiJuZnQtc3RvcmFnZSIsImlhdCI6MTYxODU5NzczODM5NCwibmFtZSI6ImtleTEifQ.uNeFoDDU_M8uzTNTVQ3uYnxejjVNldno5nFuxzoOWMk"
+const handleChangeStatus = ({ meta, file, xhr }, status) => {
+ if (xhr?.response){
+  const {value: {cid}} = JSON.parse(xhr.response)
+  setPreview(`https://ipfs.io/ipfs/${cid}/${file.name}`)
+
+  console.log(`CID:${cid}`)
+  console.log('meta: ', meta)
+  console.log('file', file)
+  console.log(`other information: `, JSON.parse(xhr.response));
+   document.getElementById('out').innerHTML+= `${JSON.stringify(
+    `CID:${cid}`
+  )}\n` 
  
+}; 
+};  
+
+
+    return (
+      
              <div className="app">
      
              {controller ? (  
@@ -150,14 +180,25 @@ import 'bootstrap/dist/css/bootstrap.min.css'
        </nav>  
             {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}
             <div >
-             <MyUploader /> <pre className="cid" id="out" ></pre>
+            <Dropzone
+getUploadParams={getUploadParams}
+onChangeStatus={handleChangeStatus}
+accept='image/*, image/gif, audio/*, video/*, gif/*, .gif, .pdf, .mp3'
+inputContent={() => ( 'Drag Files')}
+/>
+        
+             <pre className="cid" id="out" ></pre> 
+             <a class="button-2" href="/sysmint">Clear</a>
               </div>
+              <div className="form">
 
-            {connectedAccount.balance === 0 && (
-              <p>You don't have SYS available.</p>
-            )}
+  <Formi></Formi>           
+<div className="tree">
+  <iframe className="iframe" src={preview} href={preview}></iframe>
+ </div>
+
+ </div>
           </div>
-
         ) : (
           <div>
             <p>...</p>
