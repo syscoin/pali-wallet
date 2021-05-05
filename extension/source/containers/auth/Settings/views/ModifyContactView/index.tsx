@@ -96,7 +96,9 @@ const ModifyContactView: FC<IModifyContactView> = ({ type, selected }) => {
           inputRef={register}
         />
       </div>
+
       <span>Memo</span>
+      
       <TextInput
         name="memo"
         fullWidth
@@ -105,20 +107,21 @@ const ModifyContactView: FC<IModifyContactView> = ({ type, selected }) => {
         defaultValue={selected && contacts[selected].memo}
         inputRef={register}
       />
+
       <div className={styles.actions}>
         <Button
           type="button"
+          theme="btn-outline-secondary"
           variant={styles.cancel}
-          onClick={() => history.goBack()}
-        >
-          Cancel
+          onClick={() => history.goBack()}>
+            Cancel
         </Button>
+
         <Button
           type="submit"
           variant={styles.save}
-          disabled={!address || !isValidAddress}
-        >
-          Save
+          disabled={!address || !isValidAddress}>
+            Save
         </Button>
       </div>
     </form>

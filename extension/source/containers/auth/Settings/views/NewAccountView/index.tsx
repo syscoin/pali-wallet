@@ -54,6 +54,7 @@ const NewAccountView = () => {
           <div className={clsx(styles.actions, styles.centered)}>
             <Button
               type="button"
+              theme="btn-gradient-primary"
               variant={styles.button}
               onClick={() => showView(MAIN_VIEW)}
             >
@@ -85,7 +86,7 @@ const NewAccountView = () => {
                 <Spinner size={22} className={styles.spinner} />
               </div>
             ) : (
-              <Button 
+              <Button
                 type="submit"
                 theme="btn-gradient-primary"
                 variant={styles.button}

@@ -37,7 +37,7 @@ const ConfirmConnection = () => {
   }
 
   const handleConfirmConnection = () => {
-    browser.runtime.sendMessage({ 
+    browser.runtime.sendMessage({
       type: "CONFIRM_CONNECTION",
       target: "background",
       id: connectedAccount[0].id
@@ -53,11 +53,7 @@ const ConfirmConnection = () => {
     <div className={styles.wrapper}>
       <Header showLogo />
 
-      <h1>
-        Connect with Syscoin
-        <br />
-        Wallet
-      </h1>
+      <h1>Connect with <b>Syscoin Wallet</b></h1>
 
       <p>2/2</p>
 
@@ -67,7 +63,7 @@ const ConfirmConnection = () => {
         <p>{ellipsis(connectedAccount[0].address.main)}</p>
       </div>
 
-      <small>Only connect with sites you trust. Learn more.</small>
+      <small>Only connect with sites you trust. <a href="#">Learn more.</a></small>
 
       <div className={styles.actions}>
         <Button

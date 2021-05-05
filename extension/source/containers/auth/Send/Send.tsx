@@ -52,7 +52,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const [fee, setFee] = useState<string>('0');
   const [recommend, setRecommend] = useState<number>(0);
   const [checked, setChecked] = useState<boolean>(false);
-  const [selectedAsset,setSelectedAsset] = useState<Assets | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
 
   const isValidAddress = useMemo(() => {
     return controller.wallet.account.isValidSYSAddress(address);
@@ -78,7 +78,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       fee
     } = data;
 
-    console.log("Checking form data "+ data)
+    console.log("Checking form data " + data)
     if (selectedAsset) {
       controller.wallet.account.updateTempTx({
         fromAddress: accounts[activeAccountId].address.main,
@@ -126,9 +126,9 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   );
 
   const handleTypeChanged = useCallback(
-    ( 
+    (
       checked: boolean
-  ) => {
+    ) => {
       console.log("Checking checked" + checked)
       setChecked(checked)
     },
@@ -166,6 +166,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   return (
     <div className={styles.wrapper}>
       <Header backLink="/home" />
+
       <form onSubmit={handleSubmit(onSubmit)}>
         <section className={styles.subheading}>Send {selectedAsset ? selectedAsset.symbol : "SYS"}</section>
         <section className={styles.balance}>
@@ -175,6 +176,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
           </div>
           {accounts[activeAccountId].balance === 0 && <small>You don't have SYS available.</small>}
         </section>
+
         <section className={styles.content}>
           <ul className={styles.form}>
             <li>
@@ -194,96 +196,97 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 variant={addressInputClass}
               />
             </li>
+
             <li>
-              <div style={{ display: "flex"}}>
-                <div style={{width: "50%", float: "left"}}>
-                  <label>Choose Asset</label>
 
-                  <div className={styles.select}>
-                    <MUISelect native defaultValue="SYS" 
-                      input={<Input id="grouped-native-select"  />}
-                      onChange={handleAssetSelected}
-                    >
-                      <optgroup label="Native">
-                        <option value={1}>SYS</option>
-                      </optgroup>
+              <label>Choose Asset</label>
+              <div style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
 
-                      <optgroup label="SPT">
-                        {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
-                          if(!controller.wallet.account.isNFT(asset.assetGuid)){
+                <div className={styles.select}>
+                  <MUISelect native defaultValue="SYS"
+                    input={<Input id="grouped-native-select" />}
+                    onChange={handleAssetSelected}
+                  >
+                    <optgroup label="Native">
+                      <option value={1}>SYS</option>
+                    </optgroup>
+
+                    <optgroup label="SPT">
+                      {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
+                        if (!controller.wallet.account.isNFT(asset.assetGuid)) {
                           return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
-                          }
-                          return
-                        })
-                      }
-                      </optgroup>
-
-                      <optgroup label="NFT">
-                        {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
-                            if(controller.wallet.account.isNFT(asset.assetGuid)){
-                            return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
-                            }
-                            return
-                          })
                         }
-                      </optgroup>
-                    </MUISelect>
-                  </div>
+                        return
+                      })
+                      }
+                    </optgroup>
+
+                    <optgroup label="NFT">
+                      {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
+                        if (controller.wallet.account.isNFT(asset.assetGuid)) {
+                          return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+                        }
+                        return
+                      })
+                      }
+                    </optgroup>
+
+                  </MUISelect>
+
                 </div>
 
-                <div style={{width: "50%", float: "left", paddingLeft: "120px"}}>
-                  <div>
-                    <span>
-                      <div style={{ display: "flex", alignItems: "center" }}>
-                        <label style={{ margin: "0" }}> Z-DAG</label>
+                <div>
+                  <span>
+                    <label>Z-DAG</label>
+                    <HelpOutlineIcon
+                      data-tip data-for="zdag_info"
+                    />
 
-                        <HelpOutlineIcon
-                          style={{ width: "0.9rem", height: "0.9rem" }}
-                          data-tip data-for="zdag_info"
-                        />
-                      </div>
-                        
-                      <ReactTooltip
-                        id="zdag_info"
-                        getContent={()=>
-                          <ul>
-                            <li style={{ margin: "0.9rem 0" }}>
-                              <span>
-                                OFF for Replace-by-fee(RBF) <br/>
-                                ON for Z-DAG
-                              </span>
-                            </li>
-                            <li style={{ margin: "0.9rem 0" }}>
-                              <span>
-                                Z-DAG, a exclusive syscoin feature,<br/>
-                                is a blockchain scalability sulution
-                              </span>
-                            </li>
-                            <li style={{ margin: "0.9rem 0" }}>
-                              to know more: <br/>
-                              <span onClick={() => window.open("https://syscoin.org/news/what-is-z-dag")}>
-                                what is Z-DAG?
-                              </span>
-                            </li>
-                          </ul>}
-                        effect='solid'
-                        delayHide={100}
-                        delayShow={100}
-                        delayUpdate={500}
-                        place={'left'}
-                        border={true}
-                        type={'info'}
-                      />
-                    </span>
-                  </div>
+                    <ReactTooltip id="zdag_info"
+                      getContent={() =>
+                        <ul>
+                          <li>Button:</li>
+                          <li>
+                            <span>
+                              OFF for Replace-by-fee(RBF)
+                              ON for Z-DAG
+                        </span>
+                          </li>
 
-                  <Switch 
-                    checked={checked}
-                    onChange={handleTypeChanged}
-                  ></Switch>
-                  </div>
+                          <li>
+                            <span>
+                              Z-DAG, a exclusive syscoin feature,<br />
+                        is a blockchain scalability sulution
+                        </span>
+                          </li>
+
+                          <li>
+                            to know more: <br />
+                            <span onClick={() => { window.open("https://syscoin.org/news/what-is-z-dag"); }}>
+                              what is Z-DAG?
+                        </span>
+                          </li>
+                        </ul>
+                      }
+                      effect='solid'
+                      delayHide={1500}
+                      delayShow={500}
+                      delayUpdate={500}
+                      place={'left'}
+                      border={true}
+                      type={'info'}
+                    />
+                  </span>
                 </div>
+
+                <Switch
+                  checked={checked}
+                  onChange={handleTypeChanged}
+                ></Switch>
+
+              </div>
             </li>
+
             <li>
               <label> {selectedAsset ? selectedAsset.symbol : "SYS"} Amount</label>
               <TextInput
@@ -306,7 +309,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 Max
               </Button>
             </li>
-            
+
             <li>
               <label>Transaction Fee</label>
               <TextInput
@@ -328,6 +331,11 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               </Button>
             </li>
           </ul>
+
+          <div className={styles.description}>
+            {`With current network conditions we recommend a fee of ${recommend} SYS.`}
+          </div>
+
           <div className={styles.status}>
             <span className={styles.equalAmount}>
               ≈ {getFiatAmount(Number(amount) + Number(fee), 6)}
@@ -338,9 +346,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               </span>
             )}
           </div>
-          <div className={styles.description}>
-            {`With current network conditions we recommend a fee of ${recommend} SYS.`}
-          </div>
+
           <div className={styles.actions}>
             <Button
               type="button"
@@ -350,8 +356,10 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             >
               Close
             </Button>
+
             <Button
               type="submit"
+              theme="btn-outline-primary"
               variant={styles.button}
               disabled={
                 accounts[activeAccountId].balance === 0 ||

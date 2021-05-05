@@ -46,11 +46,7 @@ const ConnectWallet = () => {
     <div className={styles.wrapper}>
       <Header showLogo />
 
-      <h1>
-        Connect with Syscoin
-        <br />
-        Wallet
-      </h1>
+      <h1>Connect with <b>Syscoin Wallet</b></h1>
 
       <p>1/2</p>
       <p>{currentSenderURL}</p>
@@ -76,7 +72,7 @@ const ConnectWallet = () => {
         </div>
       )}
 
-      <small>Only connect with sites you trust. Learn more.</small>
+      <small>Only connect with sites you trust. <a href="#">Learn more.</a></small>
 
       <div className={styles.actions}>
         <Button

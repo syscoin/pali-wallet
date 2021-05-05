@@ -89,6 +89,7 @@ const RemoveAccountView: FC<IRemoveAccountView> = ({ id }) => {
           </Button>
           <Button
             type="submit"
+            theme="btn-outline-primary"
             variant={styles.button}
             disabled={Object.keys(accounts).length <= 1}
           >

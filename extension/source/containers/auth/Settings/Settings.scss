@@ -68,7 +68,11 @@
 
         .icon {
           font-size: 18px;
-          color: $white;
+          color: $royalBlue-medium;
+          
+          &:hover {
+            color: $yellowGreen;
+          }
         }
       }
 

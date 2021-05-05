@@ -7,42 +7,52 @@
   justify-content: start;
   width: 100%;
   height: 100%;
+  background: $navy;
 
   section.subheading {
     height: 60px;
     width: 100%;
-    margin-top: 72px;
-    border-bottom: 1px solid $gray-100;
+    margin-top: 60px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
 
     font-weight: 600;
-    font-size: 18px;
+    font-size: 1.3rem;
     line-height: 24px;
     display: flex;
     align-items: center;
     text-align: center;
-    color: $gray-dark;
+    color: $royalBlue-medium;
   }
 
   section.balance {
     width: 100%;
-    font-weight: 500;
-    font-size: 12px;
-    margin-bottom: 12px;
     height: 60px;
+    margin-bottom: 12px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    line-height: 18px;
-    color: $gray-dark;
+    // line-height: 18px;
+    font-weight: 500;
+    font-size: 1rem;
+    color: $royalBlue;
 
     span {
-      font-size: 16px;
+      font-size: 1.5rem;
+      color: $white;
     }
+
+    border-bottom: 3px solid;
+    border-image: 
+      linear-gradient(
+        to right, 
+        $navy 20%, 
+        $royalBlue 50%, 
+        $navy 80%
+      ) 10;
   }
 
   .input {
@@ -86,10 +96,10 @@
 
     ul.form {
       list-style: none;
-      margin: -12px;
+      margin: 0 0 12px 0;
       padding: 12px;
       border-radius: 10px;
-      background: $gray-light;
+      background: $navy;
 
       li {
         height: 56px;
@@ -97,7 +107,7 @@
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
-        margin-bottom: 12px;
+        margin: 0 0 .5rem 0;
         align-items: flex-start;
 
         &:last-child {
@@ -105,37 +115,44 @@
           margin-bottom: 0;
         }
 
+        & svg {
+          color: $royalBlue;
+
+          &:hover { color: $deepPink; }
+        }
+
+
         label {
-          font-weight: 500;
-          font-size: 10px;
-          line-height: 12px;
-          margin-bottom: 8px;
-          margin-left: 16px;
-          text-transform: uppercase;
-          color: $gray-dark;
+          font-weight: $light;
+          font-size: .8rem;
+          line-height: 2;
+          text-indent: 1.5em;
+          color: $white;
         }
 
         .textBtn {
-          background: transparent;
           min-width: initial;
+          width: fit-content;
+          height: 1.7rem !important;
           position: absolute;
           box-shadow: none;
-          top: 26px;
-          right: 8px;
-          height: 22px !important;
-          font-weight: 500;
-          font-size: 10px;
-          color: #521e8a;
-          padding: 12px;
-          width: fit-content;
-          text-transform: uppercase;
+          border-radius: 0 40px 40px 0;
+          padding: 1.2em;
+          bottom: .02em;
+          right: -1px;
+          font-weight: $semibold;
+          font-size: .8rem;
+          color: $navy-light;
+          background: transparent;
+
+          &:hover { color: $deepPink; }
         }
 
         .address {
           padding-right: 94px;
 
           &.verified {
-            color: $navy;
+            color: $navy-border;
 
             input {
               padding-left: 15px;
@@ -164,19 +181,19 @@
       display: flex;
       flex-direction: row;
       align-items: center;
-      padding-top: 24px;
       justify-content: space-between;
 
       .equalAmount {
-        font-weight: 500;
-        font-size: 10px;
-        line-height: 12px;
-        color: $gray-100;
+        max-width: 300px;
+        margin-bottom: 1em;
         white-space: nowrap;
         overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 300px;
         display: block;
+        text-overflow: ellipsis;
+        text-indent: 2em;
+        font-size: 1.5rem;
+        font-weight: $regular;
+        color: $royalBlue-medium;
       }
 
       .error {
@@ -188,11 +205,10 @@
     }
 
     .description {
-      font-weight: 500;
-      font-size: 12px;
-      line-height: 18px;
-      color: $gray-dark;
-      margin-top: 24px;
+      font-weight: $light;
+      font-size: .58rem;
+      text-indent: 1em;
+      color: $deepPink;
     }
 
     .actions {
@@ -202,11 +218,6 @@
       bottom: 24px;
       justify-content: space-between;
 
-      .close {
-        background: $gray-light;
-        color: $gray-dark;
-      }
-
       .button {
         width: 144px;
       }
@@ -215,6 +226,7 @@
 
 .select {
   :global(.MuiInputBase-root) {
+    width: 6rem;
     transition: all 0.3s;
     background: $white;
     &::before,
@@ -225,11 +237,15 @@
 
   :global(.MuiSelect-root){
     transition: all 0.3s;
-    // background: $white;
+    font-size: .8rem;
+    background: $white;
+    color: $navy-dark
   }
 
   :global .MuiSelect-icon {
     transition: all 0.3s;
+    color: $royalBlue;
+
   }
 
   :global .MuiSelect-iconOpen {
@@ -238,7 +254,7 @@
 }
 
 :global(.MuiMenu-paper) {
-  background: $white;
+  background: $gold;
   box-shadow: none !important;
 }
 
@@ -249,11 +265,11 @@
     font-weight: 600;
     font-size: 12px;
     line-height: 24px;
+    background: magenta;
 
     &:hover {
-      background: $gray-light-100;
+      background: magenta;
     }
   }
 }
-
 }

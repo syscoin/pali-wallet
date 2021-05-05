@@ -47,7 +47,7 @@ const SendConfirm = () => {
 
           return;
         }
-        
+
         setConfirmed(true);
         setLoading(false);
       });
@@ -91,7 +91,7 @@ const SendConfirm = () => {
       <Button
         type="button"
         theme="btn-gradient-primary"
-        variant={styles.next} 
+        variant={styles.next}
         linkTo="/home"
         onClick={confirmingTransaction ? handleClosePopup : goHome}
       >
@@ -145,7 +145,7 @@ const SendConfirm = () => {
         <div className={styles.actions}>
           <Button
             type="button"
-            theme="secondary"
+            theme="btn-outline-secondary"
             variant={clsx(styles.button, styles.close)}
             onClick={confirmingTransaction ? handleCancelTransactionOnSite : undefined}
           >
@@ -154,6 +154,7 @@ const SendConfirm = () => {
 
           <Button
             type="submit"
+            theme="btn-outline-confirm"
             variant={styles.button}
             onClick={handleConfirm}
             loading={loading}

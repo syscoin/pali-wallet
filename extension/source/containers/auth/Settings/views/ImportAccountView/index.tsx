@@ -134,17 +134,21 @@ const ImportAccountView = () => {
               disabled={loading}
             />
           </section>
+
           <section className={styles.actions}>
             <Button
               type="button"
               theme="btn-outline-secondary"
               variant={clsx(styles.button, styles.cancel)}
-              onClick={() => showView(MAIN_VIEW)}
-            >
-              Cancel
+              onClick={() => showView(MAIN_VIEW)}>
+                Cancel
             </Button>
-            <Button type="submit" variant={styles.button} loading={loading}>
-              Import
+
+            <Button 
+              type="submit" 
+              variant={styles.button} 
+              loading={loading}>
+                Import
             </Button>
           </section>
         </>

@@ -12,19 +12,19 @@
     height: 60px;
     width: 100%;
     margin-top: 72px;
-    border-bottom: 1px solid $gray-100;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
 
     font-weight: 600;
-    font-size: 18px;
+    font-size: 1.3rem;
     line-height: 24px;
     display: flex;
     align-items: center;
     text-align: center;
-    color: $gray-dark;
+    background: $navy;
+    color: $royalBlue;
   }
 
   .confirmTransactionOnSite {
@@ -34,28 +34,29 @@
   }
 
   section.txAmount {
+    height: 60px;
+    width: 100%;
     display: flex;
     flex-direction: row;
     align-items: center;
     justify-content: center;
-    height: 60px;
-    width: 100%;
     font-weight: 500;
-    font-size: 16px;
+    font-size: 1.5rem;
     line-height: 24px;
-    color: $gray-dark;
+    background: $navy;
+    color: $white;
 
     small {
       font-size: 10px;
       line-height: 10px;
       margin-top: 2px;
       margin-left: 4px;
+      background: green;
     }
 
     .iconWrapper {
       width: 24px;
       height: 24px;
-      background: $navy;
       border-radius: 50%;
       color: $white;
       display: flex;
@@ -63,6 +64,8 @@
       justify-content: center;
       box-sizing: border-box;
       margin-right: 12px;
+      background: $royalBlue;
+      color: $white;
 
       svg {
         font-size: 16px;
@@ -80,15 +83,24 @@
     line-height: 24px;
     box-sizing: border-box;
     padding: 0 36px;
-    color: $gray-dark;
-    height: 60px;
+    height: 70px;
     width: 100%;
-    border-top: 1px solid $gray-light;
+    color: $royalBlue;
 
+    border-left: 1px solid;
+          border-image: 
+            linear-gradient(
+              0deg,
+              $navy 20%, 
+              $deepPink 50%, 
+              $navy 80%
+            ) 10;
+
+          
     span {
       font-size: 12px;
       line-height: 18px;
-      color: $gray-100;
+      color: $white;
     }
 
     &:nth-last-child(1) {
@@ -103,17 +115,26 @@
     height: 192px;
     box-sizing: border-box;
     padding: 0;
+    background: $navy;
   }
 
   .confirm {
     width: 100%;
-    height: 264px;
-    background: $gray-light;
+    height: 20em;
     box-sizing: border-box;
     padding: 0;
+    background: $navy;
+
+    border-bottom: 3px solid;
+    border-image: 
+      linear-gradient(
+        to right, 
+        $navy 20%, 
+        $royalBlue 50%, 
+        $navy 80%
+      ) 10;
 
     & > .row {
-      border-bottom: 1px solid $white;
       flex-direction: row;
       align-items: center;
       justify-content: space-between;
@@ -130,11 +151,6 @@
       bottom: 24px;
       padding: 0 36px;
       justify-content: space-between;
-
-      .close {
-        background: $gray-light;
-        color: $gray-dark;
-      }
 
       .button {
         width: 144px;

@@ -30,11 +30,16 @@
   }
 
   .error {
-    color: white;
-    font-size: 12px;
+    width: 100%;
+    padding: .5rem 0;
+    bottom: 230px;
     position: absolute;
-    width: calc(100% - 112px);
-    bottom: 132px;
+    font-size: .8rem;
+    font-weight: $regular;
+    text-align: center;
+    // width: calc(100% - 112px);
+    color: $white;
+    background: $deepPink;
   }
 
   form {

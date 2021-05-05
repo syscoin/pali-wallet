@@ -90,9 +90,8 @@ const CreatePass = () => {
           type={passed ? 'button' : 'submit'}
           theme="btn-gradient-primary"
           variant={styles.next}
-          onClick={nextHandler}
-        >
-          Next
+          onClick={nextHandler}>
+            Next
         </Button>
       </form>
     </Layout>
