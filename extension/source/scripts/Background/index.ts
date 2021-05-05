@@ -12,6 +12,7 @@ import {
   updateConnectionsArray,
   removeConnection,
   updateCanConfirmTransaction,
+  createAsset
 } from 'state/wallet';
 
 import MasterController, { IMasterController } from './controllers';
@@ -142,6 +143,7 @@ browser.runtime.onInstalled.addListener((): void => {
 
       if (type == 'CANCEL_TRANSACTION' && target == 'background') {
         store.dispatch(updateCanConfirmTransaction(false));
+        store.dispatch(createAsset(false));
 
         return;
       }
@@ -149,6 +151,7 @@ browser.runtime.onInstalled.addListener((): void => {
       if (type == 'CLOSE_POPUP' && target == 'background') {
         store.dispatch(updateCanConnect(false));
         store.dispatch(updateCanConfirmTransaction(false));
+        store.dispatch(createAsset(false));
 
         browser.tabs.sendMessage(tabId, {
           type: 'WALLET_UPDATED',
@@ -226,16 +229,27 @@ browser.runtime.onInstalled.addListener((): void => {
 
 
       if (type == 'CREATE_TOKEN' && target == 'background') {
-        // const {
-        //   fromConnectedAccount,
-        //   toAddress,
-        //   amount,
-        //   fee,
-        //   token,
-        //   isToken,
-        //   rbf
-        // } = request;
-        console.log("Why magic not happening?");
+        const {
+          precision,
+          symbol,
+          maxsupply,
+          fee,
+          description,
+          receiver,
+          rbf
+        } = request;
+
+        window.controller.wallet.account.createSPT({
+          precision,
+          symbol,
+          maxsupply,
+          fee,
+          description,
+          receiver,
+          rbf
+        });
+        store.dispatch(createAsset(true));
+
         const URL = browser.runtime.getURL('app.html');
 
         await createPopup(URL);
@@ -265,6 +279,7 @@ browser.runtime.onInstalled.addListener((): void => {
     port.onDisconnect.addListener(async () => {
       store.dispatch(updateCanConnect(false));
       store.dispatch(updateCanConfirmTransaction(false));
+      store.dispatch(createAsset(false));
 
       const all = await browser.windows.getAll();
 

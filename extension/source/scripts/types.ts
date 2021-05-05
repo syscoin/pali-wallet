@@ -31,6 +31,16 @@ export interface ITransactionInfo {
   rbf: boolean;
 }
 
+export interface ISPTInfo {
+  precision: number,
+  symbol: string,
+  maxsupply: number,
+  fee: number,
+  description: string,
+  receiver: string,
+  rbf: number
+}
+
 export type PendingTx = {
   txid: string;
   value: number;

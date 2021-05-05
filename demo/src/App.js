@@ -99,7 +99,13 @@ const App = () => {
 
   const handleGetWalletState = async () => {
     console.log("Sending tokens");
-    await controller.handleCreateToken();
+    await controller.handleCreateToken(8,
+      'NikBar',
+      1000,
+       0.00001,
+      'larara lelere lololo lululu',
+      'tsys1qvaf78steqrvsljch9mn6n559ljj5g2xs7gvepq',
+      false);
     return await controller.getWalletState();
   }
 

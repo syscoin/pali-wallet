@@ -11,6 +11,7 @@ import { useTransition, animated } from 'react-spring';
 import Start from 'containers/auth/Start';
 import Home from 'containers/auth/Home';
 import Send, { SendConfirm } from 'containers/auth/Send';
+import Create from 'containers/auth/Create';
 import Receive from 'containers/auth/Receive';
 import Import from 'containers/common/Import';
 import ConnectWallet from 'containers/auth/ConnectWallet';
@@ -28,16 +29,16 @@ const Auth = () => {
   const history = useHistory();
   const controller = useController();
   const isUnlocked = !controller.wallet.isLocked();
-  
+
   const transitions = useTransition(location, (locat) => locat.pathname, {
-    initial: {opacity: 1},
-    from: {opacity: 0},
-    enter: {opacity: 1},
-    leave: {opacity: 0},
-    config: {duration: 200},
+    initial: { opacity: 1 },
+    from: { opacity: 0 },
+    enter: { opacity: 1 },
+    leave: { opacity: 0 },
+    config: { duration: 200 },
   });
 
-  const { canConnect, accounts, currentSenderURL, confirmingTransaction }: IWalletState = useSelector(
+  const { canConnect, accounts, currentSenderURL, confirmingTransaction, creatingAsset }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -68,16 +69,21 @@ const Auth = () => {
       return;
     }
 
+    if (creatingAsset && isUnlocked) {
+      history.push('/create');
+      return;
+    }
+
     if (!confirmingTransaction && controller.wallet.account.getTempTx()) {
       history.push('/home');
-      
+
       return;
     }
 
     if (canConnect && isUnlocked) {
       if (connectedAccounts.length <= 0) {
         history.push('/connect-wallet');
-        
+
         return;
       }
 
@@ -127,10 +133,10 @@ const Auth = () => {
             position: 'absolute',
             height: '100%',
             width: '100%',
-          } }
+          }}
           key={key}
         >
-          <Switch location={item }>
+          <Switch location={item}>
             <Route path="/app.html" component={Start} exact>
               {isUnlocked && <Redirect to="/home" />}
             </Route>
@@ -142,11 +148,12 @@ const Auth = () => {
             {isUnlocked && (
               <Route path="/send/confirm" component={SendConfirm} exact />
             )}
+            {isUnlocked && <Route path="/create" component={Create} exact />}
             {isUnlocked && <Route path="/send" component={Send} exact />}
             {isUnlocked && (
               <Route
                 path="/send/:address"
-                render={({match}: SendMatchProps) => (
+                render={({ match }: SendMatchProps) => (
                   <Send initAddress={match.params.address} />
                 )}
                 exact

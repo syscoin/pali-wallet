@@ -80,8 +80,8 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  // const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, fee: number, description: string, receiver: string, rbf: boolean) => {
-  const handleCreateToken = async () => {
+  const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, fee: number, description: string, receiver: string, rbf: boolean) => {
+    // const handleCreateToken = async () => {
     console.log("Creating token")
     return await sendMessage({
       type: 'CREATE_TOKEN',
@@ -90,14 +90,14 @@ const ConnectionsController = (): IConnectionsController => {
       eventResult: 'complete'
     }, {
       type: 'CREATE_TOKEN',
-      target: 'contentScript'
-      // precision,
-      // symbol,
-      // maxsupply,
-      // fee,
-      // description,
-      // receiver,
-      // rbf
+      target: 'contentScript',
+      precision,
+      symbol,
+      maxsupply,
+      fee,
+      description,
+      receiver,
+      rbf
     });
   }
 

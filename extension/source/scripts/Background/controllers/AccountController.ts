@@ -16,7 +16,8 @@ import {
   IAccountInfo,
   ITransactionInfo,
   Transaction,
-  Assets
+  Assets,
+  ISPTInfo
 } from '../../types';
 import { sys } from 'constants/index';
 
@@ -33,7 +34,10 @@ export interface IAccountController {
   getRecommendFee: () => Promise<number>;
   updateTxs: () => void;
   getTempTx: () => ITransactionInfo | null;
+  getNewSPT: () => ISPTInfo | null;
   updateTempTx: (tx: ITransactionInfo) => void;
+  createSPT: (spt: ISPTInfo) => void;
+  confirmNewSPT: () => Promise<null | any>;
   confirmTempTx: () => Promise<null | any>;
   setNewAddress: (addr: string) => boolean;
 }
@@ -46,6 +50,7 @@ const AccountController = (actions: {
   let account: IAccountState;
   let tempTx: ITransactionInfo | null;
   let sysjs: any;
+  let newSPT: ISPTInfo | null;
 
 
   const getAccountInfo = async (): Promise<IAccountInfo> => {
@@ -234,6 +239,10 @@ const AccountController = (actions: {
     return tempTx || null;
   };
 
+  const getNewSPT = () => {
+    return newSPT || null;
+  };
+
   const updateTempTx = (tx: ITransactionInfo) => {
     tempTx = { ...tx };
     tempTx.fromAddress = tempTx.fromAddress.trim();
@@ -250,6 +259,32 @@ const AccountController = (actions: {
     );
 
     return true;
+  }
+
+  const createSPT = (spt: ISPTInfo) => {
+    newSPT = spt;
+    return true
+  }
+
+  const confirmNewSPT = async () => {
+    if (!sysjs) {
+      throw new Error('Error: No signed account exists');
+    }
+    if (!account) {
+      throw new Error("Error: Can't find active account info");
+    }
+    if (!newSPT) {
+      throw new Error("Error: Can't find transaction info");
+    }
+    //Code for creating new SPT
+    try {
+      newSPT = null;
+
+      return null;
+    }
+    catch (error) {
+      throw new Error(error);
+    }
   }
 
   const confirmTempTx = async () => {
@@ -318,6 +353,9 @@ const AccountController = (actions: {
     getRecommendFee,
     setNewAddress,
     isNFT,
+    createSPT,
+    getNewSPT,
+    confirmNewSPT
   };
 };
 

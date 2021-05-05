@@ -185,26 +185,26 @@ window.addEventListener('message', (event) => {
     return;
   }
   if (type == 'CREATE_TOKEN' && target == 'contentScript') {
-    // const {
-    //   fromConnectedAccount,
-    //   toAddress,
-    //   amount,
-    //   fee,
-    //   token,
-    //   isToken,
-    //   rbf
-    // } = event.data;
-    console.log("I'm on contentScript")
+    const {
+      precision,
+      symbol,
+      maxsupply,
+      fee,
+      description,
+      receiver,
+      rbf
+    } = event.data;
+
     browser.runtime.sendMessage({
       type: 'CREATE_TOKEN',
       target: 'background',
-      // fromConnectedAccount,
-      // toAddress,
-      // amount,
-      // fee,
-      // token,
-      // isToken,
-      // rbf
+      precision,
+      symbol,
+      maxsupply,
+      fee,
+      description,
+      receiver,
+      rbf
     });
 
     return;
