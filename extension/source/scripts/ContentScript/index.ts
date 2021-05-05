@@ -94,7 +94,7 @@ function injectScriptFile(file: string) {
     const container = document.head || document.documentElement;
     const scriptTag = document.createElement('script');
     scriptTag.src = browser.runtime.getURL(file);
-    
+
     container.insertBefore(scriptTag, container.children[0]);
 
     scriptTag.onload = () => {
@@ -184,6 +184,31 @@ window.addEventListener('message', (event) => {
 
     return;
   }
+  if (type == 'CREATE_TOKEN' && target == 'contentScript') {
+    // const {
+    //   fromConnectedAccount,
+    //   toAddress,
+    //   amount,
+    //   fee,
+    //   token,
+    //   isToken,
+    //   rbf
+    // } = event.data;
+    console.log("I'm on contentScript")
+    browser.runtime.sendMessage({
+      type: 'CREATE_TOKEN',
+      target: 'background',
+      // fromConnectedAccount,
+      // toAddress,
+      // amount,
+      // fee,
+      // token,
+      // isToken,
+      // rbf
+    });
+
+    return;
+  }
 }, false);
 
 browser.runtime.onMessage.addListener((request) => {
@@ -242,6 +267,17 @@ browser.runtime.onMessage.addListener((request) => {
       connected
     }, '*');
 
+    return;
+  }
+
+  if (type == 'CREATE_TOKEN' && target == 'contentScript') {
+    console.log("Zero part of function to create token ")
+    window.postMessage({
+      type: 'CREATE_TOKEN',
+      target: 'connectionsController',
+      complete
+    }, '*');
+    console.log("First part of function to create token ")
     return;
   }
 

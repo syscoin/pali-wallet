@@ -65,8 +65,6 @@ const WalletController = (): IWalletController => {
     if (!isUpdated && sjs !== null) {
       return
     }
-    console.log("creating mnemonic", mnemonic)
-    console.log("creating password", password)
     HDsigner = new sys.utils.HDSigner(mnemonic, null, true)
     sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
     // if (HDsigner.accountIndex > 0) {
@@ -82,7 +80,6 @@ const WalletController = (): IWalletController => {
 
     const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic, password)
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
-    console.log("The accounts on HDsigner:", HDsigner.accounts)
     account.subscribeAccount(sjs);
     account.getPrimaryAccount(password, sjs);
 
@@ -120,12 +117,10 @@ const WalletController = (): IWalletController => {
     try {
       const encriptedMnemonic = retrieveEncriptedMnemonic();
       //add unencript password 
-      console.log("The hash", encriptedMnemonic)
       const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, pwd).toString(CryptoJS.enc.Utf8); //add unencript password 
       if (!decriptedMnemonic) {
         throw new Error('password wrong');
       }
-      console.log("starting process:", HDsigner, sjs)
       if (HDsigner === null || sjs === null) {
         HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, true)
         sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
@@ -134,28 +129,21 @@ const WalletController = (): IWalletController => {
           return false
         }
         for (let i = 1; i <= accounts.length - 1; i++) {
-          console.log(i)
           const child = sjs.HDSigner.deriveAccount(i)
           /* eslint new-cap: ["error", { "newIsCap": false }] */
           sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks))
           sjs.HDSigner.accountIndex = activeAccountId
         }
         //Restore logic/ function goes here 
-        console.log('HDsigner retrieved')
-        console.log('XPUB retrieved', sjs.HDSigner.getAccountXpub())
       }
 
       password = pwd;
       mnemonic = decriptedMnemonic;
 
-      console.log('password and mnemonic unlock', password, mnemonic);
-
       account.getPrimaryAccount(password, sjs);
       account.watchMemPool();
-      console.log('unblock')
       return true;
     } catch (error) {
-      console.log(error);
       return false;
     }
   };
@@ -174,7 +162,6 @@ const WalletController = (): IWalletController => {
   const importPhrase = (seedphrase: string) => {
     if (validateMnemonic(seedphrase)) {
       mnemonic = seedphrase
-      console.log("mnemonic is set:", mnemonic)
       return true;
     }
 
@@ -224,7 +211,6 @@ const WalletController = (): IWalletController => {
   const getNewAddress = async () => {
     sjs.HDSigner.receivingIndex = -1;
     const address = await sjs.HDSigner.getNewReceivingAddress()
-    console.log('new address', address)
     return account.setNewAddress(address)
   }
 

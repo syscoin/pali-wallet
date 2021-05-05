@@ -46,7 +46,6 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
     (state: RootState) => state.wallet
   );
   const [showedId, setShowedId] = useState<string>('0');
-  const [selectedContact, setSelectedContact] = useState<string>('');
   const [editable, setEditable] = useState<boolean>(false);
   const [showedLabel, setShowedLabel] = useState<string>('');
 
@@ -90,14 +89,6 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
         return 'Export private key';
       case routes.ABOUT_VIEW:
         return 'About';
-      case routes.CONTACTS_VIEW:
-        return 'Contacts';
-      case routes.CONTACT_VIEW:
-        return 'Contact';
-      case routes.ADD_CONTACT_VIEW:
-        return 'Add contact';
-      case routes.EDIT_CONTACT_VIEW:
-        return 'Edit contact';
       case routes.IMPORT_ACCOUNT_VIEW:
         return 'Import private key';
       case routes.CONNECT_HARDWARE_WALLET_VIEW:
@@ -125,20 +116,6 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
         return <Views.PrivateKeyView id={showedId} />;
       case routes.ABOUT_VIEW:
         return <Views.AboutView />;
-      case routes.CONTACTS_VIEW:
-        return (
-          <Views.ContactsView
-            onSelect={(id: string) => setSelectedContact(id)}
-          />
-        );
-      case routes.ADD_CONTACT_VIEW:
-        return <Views.ModifyContactView type="add" />;
-      case routes.EDIT_CONTACT_VIEW:
-        return (
-          <Views.ModifyContactView type="edit" selected={selectedContact} />
-        );
-      case routes.CONTACT_VIEW:
-        return <Views.ContactView selected={selectedContact} />;
       case routes.IMPORT_ACCOUNT_VIEW:
         return <Views.ImportAccountView />;
       case routes.CONNECT_HARDWARE_WALLET_VIEW:

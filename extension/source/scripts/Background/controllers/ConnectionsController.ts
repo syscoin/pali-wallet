@@ -6,6 +6,7 @@ export interface IConnectionsController {
   getWalletState: () => any;
   getConnectedAccount: () => any;
   handleSendToken: (sender: string, receiver: string, amount: number, fee: number, token: any, isToken: boolean, rbf: boolean) => any;
+  handleCreateToken: (precision: number, symbol: string, maxsupply: number, fee: number, description: string, receiver: string, rbf: boolean) => any;
   isNFT: (guid: number) => boolean;
 }
 
@@ -26,7 +27,7 @@ const ConnectionsController = (): IConnectionsController => {
 
   const connectWallet = async () => {
     return await sendMessage({
-      type: 'CONNECT_WALLET', 
+      type: 'CONNECT_WALLET',
       target: 'connectionsController',
       freeze: true,
       eventResult: 'connected'
@@ -38,7 +39,7 @@ const ConnectionsController = (): IConnectionsController => {
 
   const getWalletState = async () => {
     return await sendMessage({
-      type: 'SEND_STATE_TO_PAGE', 
+      type: 'SEND_STATE_TO_PAGE',
       target: 'connectionsController',
       freeze: true,
       eventResult: 'state'
@@ -54,7 +55,7 @@ const ConnectionsController = (): IConnectionsController => {
       target: 'connectionsController',
       freeze: true,
       eventResult: 'connectedAccount'
-    }, { 
+    }, {
       type: 'SEND_CONNECTED_ACCOUNT',
       target: 'contentScript'
     });
@@ -79,6 +80,27 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
+  // const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, fee: number, description: string, receiver: string, rbf: boolean) => {
+  const handleCreateToken = async () => {
+    console.log("Creating token")
+    return await sendMessage({
+      type: 'CREATE_TOKEN',
+      target: 'connectionsController',
+      freeze: true,
+      eventResult: 'complete'
+    }, {
+      type: 'CREATE_TOKEN',
+      target: 'contentScript'
+      // precision,
+      // symbol,
+      // maxsupply,
+      // fee,
+      // description,
+      // receiver,
+      // rbf
+    });
+  }
+
   return {
     isNFT,
     connectWallet,
@@ -86,6 +108,7 @@ const ConnectionsController = (): IConnectionsController => {
     getWalletState,
     getConnectedAccount,
     handleSendToken,
+    handleCreateToken,
   }
 };
 

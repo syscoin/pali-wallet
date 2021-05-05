@@ -2,11 +2,9 @@ import React, { FC } from 'react';
 import { useSelector } from 'react-redux';
 import { useHistory } from 'react-router-dom';
 import AddIcon from '@material-ui/icons/Add';
-// import ImportIcon from '@material-ui/icons/ImportExport';
 import SettingsIcon from '@material-ui/icons/Settings';
 import LogOutIcon from '@material-ui/icons/ExitToApp';
 import SettingsInputHdmiIcon from '@material-ui/icons/SettingsInputHdmi';
-// import ContactsIcon from '@material-ui/icons/Group';
 import UserIcon from '@material-ui/icons/AccountCircleRounded';
 
 import Icon from 'components/Icon';
@@ -17,9 +15,7 @@ import AccountSelect from 'components/AccountSelect';
 import {
   ACCOUNT_VIEW,
   CONNECT_HARDWARE_WALLET_VIEW,
-  // CONTACTS_VIEW,
   GENERAL_VIEW,
-  // IMPORT_ACCOUNT_VIEW,
   NEW_ACCOUNT_VIEW,
 } from '../routes';
 

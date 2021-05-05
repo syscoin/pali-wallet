@@ -9,7 +9,6 @@ import throttle from 'lodash/throttle';
 
 import wallet from './wallet';
 import price from './price';
-import contacts from './contacts';
 import { saveState, loadState } from './localStorage';
 
 const middleware = [
@@ -24,7 +23,6 @@ const store: Store = configureStore({
   reducer: combineReducers({
     wallet,
     price,
-    contacts,
   }),
   middleware,
   devTools: process.env.NODE_ENV !== 'production',
@@ -37,7 +35,6 @@ store.subscribe(
     saveState({
       wallet: state.wallet,
       price: state.price,
-      contacts: state.contacts,
     });
   }, 1000)
 );

@@ -61,7 +61,7 @@ browser.runtime.onInstalled.addListener((): void => {
     if (typeof request == 'object') {
       if (type == 'CONNECT_WALLET' && target == 'background') {
         const URL = browser.runtime.getURL('app.html');
-        
+
         store.dispatch(setSenderURL(sender.url));
         store.dispatch(updateCanConnect(true));
 
@@ -73,7 +73,6 @@ browser.runtime.onInstalled.addListener((): void => {
       }
 
       if (type == 'WALLET_UPDATED' && target == 'background') {
-        console.log('wallet updated background')
         browser.tabs.sendMessage(tabId, {
           type: 'WALLET_UPDATED',
           target: 'contentScript',
@@ -89,7 +88,7 @@ browser.runtime.onInstalled.addListener((): void => {
 
         store.dispatch(removeConnection({
           accountId: request.id,
-          url: request.url 
+          url: request.url
         }));
 
         browser.tabs.sendMessage(tabId, {
@@ -104,16 +103,16 @@ browser.runtime.onInstalled.addListener((): void => {
       if (type == 'SELECT_ACCOUNT' && target == 'background') {
         store.dispatch(updateConnectionsArray({
           accountId: request.id,
-          url: window.senderURL 
+          url: window.senderURL
         }));
-       
+
         return;
       }
 
       if (type == 'CHANGE_CONNECTED_ACCOUNT' && target == 'background') {
         store.dispatch(updateConnectionsArray({
           accountId: request.id,
-          url: window.senderURL 
+          url: window.senderURL
         }));
 
         browser.tabs.sendMessage(tabId, {
@@ -121,7 +120,7 @@ browser.runtime.onInstalled.addListener((): void => {
           target: 'contentScript',
           connected: false
         });
-       
+
         return;
       }
 
@@ -215,7 +214,7 @@ browser.runtime.onInstalled.addListener((): void => {
         browser.tabs.sendMessage(tabId, {
           type: 'SEND_TOKEN',
           target: 'contentScript',
-          complete: true 
+          complete: true
         });
 
         browser.tabs.sendMessage(tabId, {
@@ -223,6 +222,36 @@ browser.runtime.onInstalled.addListener((): void => {
           target: 'contentScript',
           connected: false
         });
+      }
+
+
+      if (type == 'CREATE_TOKEN' && target == 'background') {
+        // const {
+        //   fromConnectedAccount,
+        //   toAddress,
+        //   amount,
+        //   fee,
+        //   token,
+        //   isToken,
+        //   rbf
+        // } = request;
+        console.log("Why magic not happening?");
+        const URL = browser.runtime.getURL('app.html');
+
+        await createPopup(URL);
+
+        browser.tabs.sendMessage(tabId, {
+          type: 'CREATE_TOKEN',
+          target: 'contentScript',
+          complete: true
+        });
+
+        //   browser.tabs.sendMessage(tabId, {
+        //     type: 'WALLET_UPDATED',
+        //     target: 'contentScript',
+        //     connected: false
+        //   });
+        // }
       }
     }
   });
@@ -236,12 +265,12 @@ browser.runtime.onInstalled.addListener((): void => {
     port.onDisconnect.addListener(async () => {
       store.dispatch(updateCanConnect(false));
       store.dispatch(updateCanConfirmTransaction(false));
-      
+
       const all = await browser.windows.getAll();
 
       if (all.length > 1) {
         const windowId = Number(all[1].id);
-        
+
         await browser.windows.remove(windowId);
       }
     })

@@ -98,6 +98,8 @@ const App = () => {
   }
 
   const handleGetWalletState = async () => {
+    console.log("Sending tokens");
+    await controller.handleCreateToken();
     return await controller.getWalletState();
   }
 

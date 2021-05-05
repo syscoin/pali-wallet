@@ -24,13 +24,13 @@ export const SYS_NETWORK: {
   testnet: {
     id: 'testnet',
     label: 'TestNet',
-    beUrl: 'https://blockbook.elint.services/',
+    beUrl: 'https://blockbook-dev.elint.services/',
     lbUrl: 'nao tem :('
   }
 };
 
-export const ASSET_PRICE_API = 'https://blockbook.elint.services/api/v2/tickers/';
-export const SYS_EXPLORER_SEARCH = 'https://blockbook.elint.services/'; // ok
+export const ASSET_PRICE_API = 'https://blockbook-dev.elint.services/api/v2/tickers/';
+export const SYS_EXPLORER_SEARCH = 'https://blockbook-dev.elint.services/'; // ok
 
 export const PRICE_SYS_ID = 'syscoin';
 export const PRICE_BTC_ID = 'bitcoin';
