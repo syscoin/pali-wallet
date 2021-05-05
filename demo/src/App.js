@@ -3,6 +3,8 @@ import logo from "./assets/images/logosys.svg";
 import ReactTooltip from 'react-tooltip';
 import Switch from "react-switch";
 import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
+import 'bootstrap';
+import 'bootstrap/dist/css/bootstrap.min.css'
 
 const App = () => {
   const [isInstalled, setIsInstalled] = useState(false);
@@ -126,27 +128,32 @@ const App = () => {
 
     return;
   }
-
   return (
     <div className="app">
-      {controller ? (
-        <div>
-          <header className="header">
-            <img src={logo} alt="logo" className="header__logo" />
-
-            <div className="header__info">
-              <p className="header__balance">{balance}</p>
+     
+      {controller ? (  
+       <div>  
+      <nav class="navbar navbar-expand-lg navbar-light  static-top">
+         <div class="container">
+           <a class="navbar-brand" href="https://syscoin.org/">
+           <img src={logo} alt="logo" className="header__logo"></img>
+               </a>
+               <a   className="button" href="/sysmint">Mint NFT</a>
+              <div class="collapse navbar-collapse" id="navbarResponsive">
+             <ul class="navbar-nav ml-auto">
+             <div className="header__info">
 
               <button
                 className="button"
                 onClick={canConnect ? handleMessageExtension : undefined}
-                disabled={!isInstalled}
-              >
+                disabled={!isInstalled}>
                 {connectedAccountAddress === '' ? 'Connect to Syscoin Wallet' : connectedAccountAddress}
-              </button>
-            </div>
-          </header>
-
+              </button>  </div>
+             </ul>
+           
+           </div>
+         </div>
+       </nav>  
           {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}
 
           <table className="table">
@@ -244,11 +251,11 @@ const App = () => {
                   type={'info'}
                 />
               </div>
-
+             
               <Switch
                 checked={checked}
                 onChange={handleTypeChanged}
-              ></Switch>
+              ></Switch> <p className="header__balance">{balance}</p>
             </div>
 
             <input
