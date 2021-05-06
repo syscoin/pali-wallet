@@ -1,12 +1,11 @@
-import { useEffect, useState, useCallback } from "react";
+import React, { Component, useEffect, useState, useCallback } from "react";
 import logo from "./assets/images/logosys.svg";
-import ReactTooltip from 'react-tooltip';
-import Switch from "react-switch";
-import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
-import 'bootstrap';
-import 'bootstrap/dist/css/bootstrap.min.css'
+import 'bootstrap/dist/css/bootstrap.min.css';
+import 'react-dropzone-uploader/dist/styles.css'
+import FormCrtSpt from './FormCrtSpt'
 
-const App = () => {
+const CreateSPT = () => {
+  const [preview, setPreview] = useState("");
   const [isInstalled, setIsInstalled] = useState(false);
   const [canConnect, setCanConnect] = useState(true);
   const [balance, setBalance] = useState(0);
@@ -55,19 +54,22 @@ const App = () => {
             setConnectedAccount(data);
             setConnectedAccountAddress(data.address.main);
             setBalance(data.balance);
-
-            return;
+          } else {
+            setConnectedAccount({});
+            setConnectedAccountAddress('');
+            setBalance(0);
           }
-
-          setConnectedAccount({});
-          setConnectedAccountAddress('');
-          setBalance(0);
 
           return;
         });
     }
   };
 
+  useEffect(() => {
+    if (controller) {
+
+    }
+  })
   useEffect(() => {
     if (controller) {
       setup();
@@ -98,30 +100,6 @@ const App = () => {
   }
 
   const handleGetWalletState = async () => {
-    console.log("Sending tokens");
-    // await controller.handleCreateToken(8,
-    //   'NikBar',
-    //   1000,
-    //    0.00001,
-    //   'larara lelere lololo lululu',
-    //   'tsys1qvaf78steqrvsljch9mn6n559ljj5g2xs7gvepq',
-    //   false);
-    // (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string)
-    await controller.handleIssueAsset(
-      false,
-      0.00001,
-      'umasset',
-      200,
-      'txsdkasod'
-    )
-    //(rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => {
-    // await controller.handleIssueNFT(
-    //   true,
-    //   0.0001,
-    //   'umassetguid',
-    //   'umnfthash',
-    //   'umaconta'
-    // )
     return await controller.getWalletState();
   }
 
@@ -135,24 +113,53 @@ const App = () => {
     setFee(0.00001);
   }
 
-  const handleSendToken = async (sender, receiver, amount, fee, token) => {
+
+  const handleSendToken = async (evt) => {
     const inputs = document.querySelectorAll('input');
+    alert(`Submitting Precision: ${evt} `)
+    // if (token !== null) {
+    //   await controller.handleCreateToken(precision,
+    //     symbol,
+    //     maxsupply,
+    //     fee,
+    //     description,
+    //     receiver,
+    //     rbf);
 
-    if (token !== null) {
-      await controller.handleSendToken(sender, receiver, amount, fee, token, true, !checked);
+    //   clearData(inputs);
 
-      clearData(inputs);
-
-      return;
-    }
-
-    await controller.handleSendToken(sender, receiver, amount, fee, null, false, !checked);
-
-    clearData(inputs);
+    //   return;
+    // }
+    // clearData(inputs);
 
     return;
   }
+  const getUploadParams = () => ({
+    url: 'https://api.nft.storage/upload',
+    headers: {
+      "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaWQ6ZXRocjoweGJiNUM1NzJkYmFlNDQ1MkFDOGFiZWZlMjk3ZTljREIyRmEzRjRlNzIiLCJpc3MiOiJuZnQtc3RvcmFnZSIsImlhdCI6MTYxOTcxMjM0MTgzNCwibmFtZSI6InN5cyJ9.KmVoWH8Sa0FNsPyWrPYEr1zCAdFw8bJwVnmzPsp_fg4"
+    }
+  })
+    ;//"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5ASDASDAXCZg0NTY5MDEiLCJpc3MiOiJuZnQtc3RvcmFnZSIsImlhdCI6MTYxODU5NzczODM5NCwibmFtZSI6ImtleTEifQ.uNeFoDDU_M8uzTNTVQ3uYnxejjVNldno5nFuxzoOWMk"
+  const handleChangeStatus = ({ meta, file, xhr }, status) => {
+    if (xhr?.response) {
+      const { value: { cid } } = JSON.parse(xhr.response)
+      setPreview(`https://ipfs.io/ipfs/${cid}/${file.name}`)
+
+      console.log(`CID:${cid}`)
+      console.log('meta: ', meta)
+      console.log('file', file)
+      console.log(`other information: `, JSON.parse(xhr.response));
+      document.getElementById('out').innerHTML += `${JSON.stringify(
+        `CID:${cid}`
+      )}\n`
+
+    };
+  };
+
+
   return (
+
     <div className="app">
 
       {controller ? (
@@ -162,29 +169,27 @@ const App = () => {
               <a class="navbar-brand" href="https://syscoin.org/">
                 <img src={logo} alt="logo" className="header__logo"></img>
               </a>
+              <a class="button" href="/">Home</a>
+
               <div class="collapse navbar-collapse" id="navbarResponsive">
                 <ul class="navbar-nav ml-auto">
-                  <div className="header__info">
-
-                    <button
-                      className="button"
-                      onClick={canConnect ? handleMessageExtension : undefined}
-                      disabled={!isInstalled}>
-                      {connectedAccountAddress === '' ? 'Connect to Syscoin Wallet' : connectedAccountAddress}
-                    </button>  </div>
+                  <button
+                    className="button"
+                    onClick={canConnect ? handleMessageExtension : undefined}
+                    disabled={!isInstalled}>
+                    {connectedAccountAddress === '' ? 'Connect to Syscoin Wallet' : connectedAccountAddress}
+                  </button>
                 </ul>
-
               </div>
             </div>
           </nav>
           {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}
 
 
-          <div className="menu">
-            <a className="button" href="/mintnft">Mint NFT</a>
-            <a className="button" href="/createcollection">Create Collection</a>
-            <a className="button" href="/createspt">Create SPT</a>
-            <a className="button" href="/mintspt">Mint SPT</a>
+          <div className="form">
+            <FormCrtSpt
+              formCallback={handleSendToken}
+            />
           </div>
         </div>
       ) : (
@@ -195,6 +200,10 @@ const App = () => {
       )}
     </div>
   );
-}
 
-export default App;
+}
+export default CreateSPT;
+
+
+
+

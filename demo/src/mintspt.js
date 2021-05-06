@@ -2,9 +2,8 @@ import React, { Component, useEffect, useState, useCallback } from "react";
 import logo from "./assets/images/logosys.svg";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-dropzone-uploader/dist/styles.css'
-import Dropzone from 'react-dropzone-uploader'
-import Formi from "./Form.js"
-  const App = () => {
+import FormSpt from "./FormSpt"
+  const Mintspt = () => {
 
 
     const [preview, setPreview] = useState("");
@@ -178,26 +177,9 @@ const handleChangeStatus = ({ meta, file, xhr }, status) => {
            </div>
          </div>
        </nav>  
-            {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}
-            <div >
-            <Dropzone
-getUploadParams={getUploadParams}
-onChangeStatus={handleChangeStatus}
-accept='image/*, image/gif, audio/*, video/*, gif/*, .gif, .pdf, .mp3'
-inputContent={() => ( 'Drag Files')}
-/>
-             <pre className="cid" id="out" ></pre> 
-    
-              </div> 
-              
-              <iframe className="iframe" src={preview} href={preview}></iframe>
-              <div>
-          <a class="button-2" href="/sysmint">Clear</a>
- </div>
- <div className="form"> 
-  <Formi></Formi>           
-  </div>
-          </div>
+       <FormSpt></FormSpt>
+</div>
+
         ) : (
           <div>
             <p>...</p>
@@ -208,7 +190,4 @@ inputContent={() => ( 'Drag Files')}
     );
   }
   
-  export default App;
-  
-  
-  
+  export default Mintspt;
