@@ -12,7 +12,9 @@ import {
   updateConnectionsArray,
   removeConnection,
   updateCanConfirmTransaction,
-  createAsset
+  createAsset,
+  issueAsset,
+  issueNFT
 } from 'state/wallet';
 
 import MasterController, { IMasterController } from './controllers';
@@ -144,6 +146,8 @@ browser.runtime.onInstalled.addListener((): void => {
       if (type == 'CANCEL_TRANSACTION' && target == 'background') {
         store.dispatch(updateCanConfirmTransaction(false));
         store.dispatch(createAsset(false));
+        store.dispatch(issueAsset(false));
+        store.dispatch(issueNFT(false));
 
         return;
       }
@@ -152,6 +156,8 @@ browser.runtime.onInstalled.addListener((): void => {
         store.dispatch(updateCanConnect(false));
         store.dispatch(updateCanConfirmTransaction(false));
         store.dispatch(createAsset(false));
+        store.dispatch(issueAsset(false));
+        store.dispatch(issueNFT(false));
 
         browser.tabs.sendMessage(tabId, {
           type: 'WALLET_UPDATED',
@@ -266,6 +272,63 @@ browser.runtime.onInstalled.addListener((): void => {
         //     connected: false
         //   });
         // }
+      }
+
+
+      if (type == 'ISSUE_TOKEN' && target == 'background') {
+        const {
+          assetGuid,
+          amount,
+          receiver,
+          fee,
+          rbf
+        } = request;
+        window.controller.wallet.account.issueSPT({
+          assetGuid,
+          amount,
+          fee,
+          receiver,
+          rbf
+        })
+        store.dispatch(issueAsset(true));
+
+        const URL = browser.runtime.getURL('app.html');
+
+        await createPopup(URL);
+
+        browser.tabs.sendMessage(tabId, {
+          type: 'ISSUE_TOKEN',
+          target: 'contentScript',
+          complete: true
+        });
+      }
+
+      if (type == 'ISSUE_NFT' && target == 'background') {
+        const {
+          assetGuid,
+          nfthash,
+          fee,
+          receiver,
+          rbf
+        } = request;
+        window.controller.wallet.account.issueNFT({
+          assetGuid,
+          nfthash,
+          fee,
+          receiver,
+          rbf
+        })
+        store.dispatch(issueNFT(true));
+        const URL = browser.runtime.getURL('app.html');
+
+        await createPopup(URL);
+
+        browser.tabs.sendMessage(tabId, {
+          type: 'ISSUE_NFT',
+          target: 'contentScript',
+          complete: true
+        });
+
       }
     }
   });

@@ -22,7 +22,9 @@ const initialState: IWalletState = {
   canConnect: false,
   connections: [],
   confirmingTransaction: false,
-  creatingAsset: false
+  creatingAsset: false,
+  issuingAsset: false,
+  issuingNFT: false
 };
 
 const WalletState = createSlice({
@@ -37,12 +39,25 @@ const WalletState = createSlice({
     },
 
     createAsset(state: IWalletState, action: PayloadAction<boolean>) {
-      console.log("Dispatching create Asset");
       return {
         ...state,
         creatingAsset: action.payload,
       }
     },
+
+    issueAsset(state: IWalletState, action: PayloadAction<boolean>) {
+      return {
+        ...state,
+        issuingAsset: action.payload,
+      }
+    },
+    issueNFT(state: IWalletState, action: PayloadAction<boolean>) {
+      return {
+        ...state,
+        issuingNFT: action.payload,
+      }
+    },
+
     removeConnection(state: IWalletState, action: PayloadAction<any>) {
       const connectionIndex: number = state.connections.findIndex(connection => connection.url === action.payload.url);
 
@@ -213,7 +228,9 @@ export const {
   updateConnectionsArray,
   removeConnection,
   updateCanConfirmTransaction,
-  createAsset
+  createAsset,
+  issueAsset,
+  issueNFT
 } = WalletState.actions;
 
 export default WalletState.reducer;

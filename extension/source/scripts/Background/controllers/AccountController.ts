@@ -17,7 +17,9 @@ import {
   ITransactionInfo,
   Transaction,
   Assets,
-  ISPTInfo
+  ISPTInfo,
+  ISPTIssue,
+  INFTIssue
 } from '../../types';
 import { sys } from 'constants/index';
 
@@ -35,9 +37,15 @@ export interface IAccountController {
   updateTxs: () => void;
   getTempTx: () => ITransactionInfo | null;
   getNewSPT: () => ISPTInfo | null;
+  getIssueSPT: () => ISPTIssue | null;
+  getIssueNFT: () => INFTIssue | null;
   updateTempTx: (tx: ITransactionInfo) => void;
   createSPT: (spt: ISPTInfo) => void;
+  issueSPT: (spt: ISPTIssue) => void;
+  issueNFT: (nft: INFTIssue) => void;
   confirmNewSPT: () => Promise<null | any>;
+  confirmIssueSPT: () => Promise<null | any>;
+  confirmIssueNFT: () => Promise<null | any>;
   confirmTempTx: () => Promise<null | any>;
   setNewAddress: (addr: string) => boolean;
 }
@@ -51,6 +59,8 @@ const AccountController = (actions: {
   let tempTx: ITransactionInfo | null;
   let sysjs: any;
   let newSPT: ISPTInfo | null;
+  let mintSPT: ISPTIssue | null;
+  let mintNFT: INFTIssue | null;
 
 
   const getAccountInfo = async (): Promise<IAccountInfo> => {
@@ -242,6 +252,12 @@ const AccountController = (actions: {
   const getNewSPT = () => {
     return newSPT || null;
   };
+  const getIssueSPT = () => {
+    return mintSPT || null;
+  };
+  const getIssueNFT = () => {
+    return mintNFT || null;
+  };
 
   const updateTempTx = (tx: ITransactionInfo) => {
     tempTx = { ...tx };
@@ -265,6 +281,14 @@ const AccountController = (actions: {
     newSPT = spt;
     return true
   }
+  const issueSPT = (spt: ISPTIssue) => {
+    mintSPT = spt;
+    return true
+  }
+  const issueNFT = (nft: INFTIssue) => {
+    mintNFT = nft;
+    return true
+  }
 
   const confirmNewSPT = async () => {
     if (!sysjs) {
@@ -286,6 +310,50 @@ const AccountController = (actions: {
       throw new Error(error);
     }
   }
+
+  const confirmIssueSPT = async () => {
+    if (!sysjs) {
+      throw new Error('Error: No signed account exists');
+    }
+    if (!account) {
+      throw new Error("Error: Can't find active account info");
+    }
+    if (!mintSPT) {
+      throw new Error("Error: Can't find transaction info");
+    }
+
+    try {
+      //Code for minting SPT
+      mintSPT = null;
+
+      return null;
+    }
+    catch (error) {
+      throw new Error(error);
+    }
+  }
+
+  const confirmIssueNFT = async () => {
+    if (!sysjs) {
+      throw new Error('Error: No signed account exists');
+    }
+    if (!account) {
+      throw new Error("Error: Can't find active account info");
+    }
+    if (!mintNFT) {
+      throw new Error("Error: Can't find transaction info");
+    }
+    try {
+      //Code for minting nft
+      mintNFT = null;
+
+      return null;
+    }
+    catch (error) {
+      throw new Error(error);
+    }
+  }
+
 
   const confirmTempTx = async () => {
     if (!sysjs) {
@@ -355,7 +423,13 @@ const AccountController = (actions: {
     isNFT,
     createSPT,
     getNewSPT,
-    confirmNewSPT
+    confirmNewSPT,
+    issueSPT,
+    issueNFT,
+    getIssueSPT,
+    getIssueNFT,
+    confirmIssueSPT,
+    confirmIssueNFT
   };
 };
 

@@ -38,7 +38,22 @@ export interface ISPTInfo {
   fee: number,
   description: string,
   receiver: string,
-  rbf: number
+  rbf: boolean
+}
+
+export interface ISPTIssue {
+  assetGuid: string,
+  amount: number,
+  fee: number,
+  receiver: string,
+  rbf: boolean
+}
+export interface INFTIssue {
+  assetGuid: string,
+  nfthash: string,
+  fee: number,
+  receiver: string,
+  rbf: boolean
 }
 
 export type PendingTx = {

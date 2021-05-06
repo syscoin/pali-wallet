@@ -50,4 +50,6 @@ export default interface IWalletState {
   connections: any[];
   confirmingTransaction: boolean;
   creatingAsset: boolean;
+  issuingAsset: boolean;
+  issuingNFT: boolean;
 }

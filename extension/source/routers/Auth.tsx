@@ -12,6 +12,8 @@ import Start from 'containers/auth/Start';
 import Home from 'containers/auth/Home';
 import Send, { SendConfirm } from 'containers/auth/Send';
 import Create from 'containers/auth/Create';
+import IssueAsset from 'containers/auth/IssueAsset';
+import IssueNFT from 'containers/auth/IssueNFT';
 import Receive from 'containers/auth/Receive';
 import Import from 'containers/common/Import';
 import ConnectWallet from 'containers/auth/ConnectWallet';
@@ -22,6 +24,7 @@ import { SendMatchProps } from './types';
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
+import { issueNFT } from 'state/wallet';
 
 const Auth = () => {
   const location = useLocation();
@@ -38,7 +41,7 @@ const Auth = () => {
     config: { duration: 200 },
   });
 
-  const { canConnect, accounts, currentSenderURL, confirmingTransaction, creatingAsset }: IWalletState = useSelector(
+  const { canConnect, accounts, currentSenderURL, confirmingTransaction, creatingAsset, issuingNFT, issuingAsset }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -71,6 +74,15 @@ const Auth = () => {
 
     if (creatingAsset && isUnlocked) {
       history.push('/create');
+      return;
+    }
+
+    if (issuingAsset && isUnlocked) {
+      history.push('/issueAsset');
+      return;
+    }
+    if (issuingNFT && isUnlocked) {
+      history.push('/issueNFT');
       return;
     }
 
@@ -149,6 +161,8 @@ const Auth = () => {
               <Route path="/send/confirm" component={SendConfirm} exact />
             )}
             {isUnlocked && <Route path="/create" component={Create} exact />}
+            {isUnlocked && <Route path="/issueAsset" component={IssueAsset} exact />}
+            {isUnlocked && <Route path="/issueNFT" component={IssueNFT} exact />}
             {isUnlocked && <Route path="/send" component={Send} exact />}
             {isUnlocked && (
               <Route
