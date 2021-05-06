@@ -169,5 +169,46 @@ input {
   top: 7px;
   left: 75px;
   }
-  
+  .input{
+    display: flex;
+    margin: 25px auto;
+    line-height: 1.5;
+    height: 40px;
 
+  }
+.menu{
+  position:relative;
+  top: 240px;
+
+  }
+  label {
+    position:relative;
+    text-align: right;
+    clear: both;
+    float:left;
+    
+}
+
+input[type="file"] {
+    display: none;
+}
+label[type="file"] {
+    padding: 20px 10px;
+    width: 560px;
+    height: 70px;
+    color: #FFF;
+    text-transform: uppercase;
+    text-align: center;
+    display: block;
+    margin-top: 10px;
+    cursor: pointer;
+    border: 2px solid rgb(32, 60, 104);
+  transition: 0.3s all;
+  border-radius: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  color: rgb(32, 60, 104);
+  margin: .5rem;
+  position:relative;
+}
+/* Aparência que terá o seletor de arquivo */

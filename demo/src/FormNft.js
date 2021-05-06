@@ -96,7 +96,7 @@ import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
           onChange={e =>  setAtributte2(e.target.value)}></input>
           <input type="text" id="lname" name="lname" placeholder="Atributte 3" value={propertyAtributte3}
           onChange={e =>  setAtributte3(e.target.value)}></input>
-          </div> <input className="button" type="submit" value="Submit"/>
+          </div> <input className="button" type="submit" value="MINT"/>
            
     </form>
   );
