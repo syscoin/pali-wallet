@@ -116,15 +116,15 @@ const CreateSPT = () => {
 
   const handleSendToken = async (evt) => {
     const inputs = document.querySelectorAll('input');
-    alert(`Submitting Precision: ${evt} `)
+    alert(`Submitting Precision: ${evt.target.precision.value}, Max Supply: ${evt.target.maxSupply.value}, Description: ${evt.target.description.value}, Symbol: ${evt.target.symbol.value}, Fee: ${evt.target.fee.value}, Sys Address: ${evt.target.sysAddress.value}, RBF: ${evt.target.rbf.value} `)
     // if (token !== null) {
-    //   await controller.handleCreateToken(precision,
+    //   await controller.handleCreateToken(precision,/numb
     //     symbol,
-    //     maxsupply,
-    //     fee,
+    //     maxsupply, nb
+    //     fee, nb
     //     description,
-    //     receiver,
-    //     rbf);
+    //     receiver, saddres
+    //     rbf);bol
 
     //   clearData(inputs);
 

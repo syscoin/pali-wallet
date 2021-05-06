@@ -1,52 +1,26 @@
 import React, { useState } from "react";
 
  function FormCollect(props) {
- const [collectName, setCollectName] = useState("");
- const [description, setDescription] = useState("");
- const [shortUrl, setShortUrl] = useState("");
- const [symbol, setSymbol] = useState("");
- const [propertyParent1, setProperty1] = useState("");
- const [propertyAtributte1, setAtributte1] = useState("");
- const [propertyParent2, setProperty2] = useState("");
- const [propertyAtributte2, setAtributte2] = useState("");
- const [propertyParent3, setProperty3] = useState("");
- const [propertyAtributte3, setAtributte3] = useState("");
-
-  const handleSubmit = (evt) => {
-      evt.preventDefault();
-      alert(`Submitting Collection Name: "${collectName}", Description: "${description}", Short Url: ${shortUrl} `)}
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={props.formCallback}>
 
   <div className="property">YOU ARE CREATING COLLECTION
-      <div>
-            <label for="input">AssetGuid:</label>
-          <input className="input" type="text" id="name" name="lname" value={collectName}
-          onChange={e =>  setCollectName(e.target.value)}></input>
-           <label for="Student">Value:</label>
-          <input className="input" type="text" id="lname" name="lname" value={description}
-          onChange={e =>  setDescription(e.target.value)}></input>
-           <label for="Student">Sys address:</label>
-           <input className="input" type="text" id="lname" name="lname"  value={shortUrl}
-          onChange={e =>  setShortUrl(e.target.value)}></input>
-              <label type="file" for="arquivo">UPLOAD SYMBOL</label>
-          <input type="file" name="arquivo" id="arquivo" value={symbol} onChange={e =>  setSymbol(e.target.value)}/> 
-        </div> </div>
+      <div><label for="input">AssetGuid:</label>
+          <input className="input" type="text" id="collectName" name="collectName" ></input>
+           <label for="input">Description:</label>
+          <input className="input" type="text" id="description" name="description"></input>
+           <label for="input">Short Url:</label>
+           <input className="input" type="text" id="shortUrl" name="shortUrl"></input>
+           <label for="input">Symbol:</label>
+              <input className="input" type="text" id="symbol" name="symbol" />  </div> </div>
         <div className="property">
-          <input type="text" id="lname" name="lname" placeholder="Property 1" value={propertyParent1}
-          onChange={e =>  setProperty1(e.target.value)}></input>
-          <input type="text" id="lname" name="lname" placeholder="Property 2" value={propertyParent2}
-          onChange={e =>  setProperty2(e.target.value)}></input>
-          <input type="text" id="lname" name="lname" placeholder="Property 3" value={propertyParent3}
-          onChange={e =>  setProperty3(e.target.value)}></input>
-          <input type="text" id="lname" name="lname" placeholder="Atributte 1" value={propertyAtributte1}
-          onChange={e => setAtributte1(e.target.value)}></input>
-          <input type="text" id="lname" name="lname" placeholder="Atributte 2" value={propertyAtributte2}
-          onChange={e =>  setAtributte2(e.target.value)}></input>
-          <input type="text" id="lname" name="lname" placeholder="Atributte 3" value={propertyAtributte3}
-          onChange={e =>  setAtributte3(e.target.value)}></input><input className="button" type="submit" value="CREATE"/>
-          </div>
-           
+          <input type="text" id="propertyParent1" name="propertyParent1" placeholder="Property 1"></input>
+          <input type="text" id="propertyParent2" name="propertyParent2" placeholder="Property 2"></input>
+          <input type="text" id="propertyParent3" name="propertyParent3" placeholder="Property 3" ></input>
+          <input type="text" id="propertyAtributte1" name="propertyAtributte1" placeholder="Atributte 1" ></input>
+          <input type="text" id="propertyAtributte2" name="propertyAtributte2" placeholder="Atributte 2" ></input>
+          <input type="text" id="propertyAtributte3" name="propertyAtributte3" placeholder="Atributte 3" ></input></div>  
+           <input className="button"type="submit" value="CREATE!"/>
     </form>
   );
 }

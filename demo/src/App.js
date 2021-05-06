@@ -97,7 +97,9 @@ const App = () => {
     await setup();
   }
 
-  const handleGetWalletState = async () => {
+  const handleGetWalletState = async (evt) => {
+    const inputs = document.querySelectorAll('input');
+    alert(`Submitting Asset Guid: ${evt.target.assetGuid.value}, Amount: ${evt.target.amount.value}, Fee: ${evt.target.fee.value}, RBF: ${evt.target.rbf.value}, Sys Address: ${evt.target.receiver.value}`)
     console.log("Sending tokens");
     // await controller.handleCreateToken(8,
     //   'NikBar',

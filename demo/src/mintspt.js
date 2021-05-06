@@ -100,9 +100,36 @@ import FormSpt from "./FormSpt"
       await setup();
     }
   
-    const handleGetWalletState = async () => {
+    const handleGetWalletState = async (evt) => {
+      const inputs = document.querySelectorAll('input');
+      alert(`Submitting Asset Guid: ${evt.target.assetGuid.value}, Amount: ${evt.target.amount.value}, Fee: ${evt.target.fee.value}, RBF: ${evt.target.rbf.value}, Sys Address: ${evt.target.receiver.value}`)
+      console.log("Sending tokens");
+       await controller.handleCreateToken(8,
+         'NikBar',
+         1000,
+          0.00001,
+         'larara lelere lololo lululu',
+         'tsys1qvaf78steqrvsljch9mn6n559ljj5g2xs7gvepq',
+         false) 
+      // (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string)
+      await controller.handleIssueAsset(
+        false,
+        0.00001,
+        'umasset',
+        200,
+        'txsdkasod'
+      )
+      //(rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => {
+       await controller.handleIssueNFT(
+         true,
+         0.0001,
+         'umassetguid',
+         'umnfthash',
+         'umaconta'
+       )
       return await controller.getWalletState();
     }
+  
   
     const clearData = (inputs) => {
       for (let input of inputs) {
@@ -177,7 +204,9 @@ const handleChangeStatus = ({ meta, file, xhr }, status) => {
            </div>
          </div>
        </nav>  
-       <FormSpt></FormSpt>
+       <FormSpt
+       formCallback={handleGetWalletState}
+      />
 </div>
 
         ) : (
