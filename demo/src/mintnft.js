@@ -210,3 +210,4 @@ inputContent={() => ( 'Drag Files')}
   
   export default Mintnft;
   
+ 
