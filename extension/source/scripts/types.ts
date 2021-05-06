@@ -31,6 +31,31 @@ export interface ITransactionInfo {
   rbf: boolean;
 }
 
+export interface ISPTInfo {
+  precision: number,
+  symbol: string,
+  maxsupply: number,
+  fee: number,
+  description: string,
+  receiver: string,
+  rbf: boolean
+}
+
+export interface ISPTIssue {
+  assetGuid: string,
+  amount: number,
+  fee: number,
+  receiver: string,
+  rbf: boolean
+}
+export interface INFTIssue {
+  assetGuid: string,
+  nfthash: string,
+  fee: number,
+  receiver: string,
+  rbf: boolean
+}
+
 export type PendingTx = {
   txid: string;
   value: number;

@@ -99,7 +99,29 @@ const App = () => {
 
   const handleGetWalletState = async () => {
     console.log("Sending tokens");
-    await controller.handleCreateToken();
+    // await controller.handleCreateToken(8,
+    //   'NikBar',
+    //   1000,
+    //    0.00001,
+    //   'larara lelere lololo lululu',
+    //   'tsys1qvaf78steqrvsljch9mn6n559ljj5g2xs7gvepq',
+    //   false);
+ // (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string)
+    await controller.handleIssueAsset(
+      false,
+      0.00001,
+      'umasset',
+      200,
+      'txsdkasod'
+    )
+    //(rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => {
+    // await controller.handleIssueNFT(
+    //   true,
+    //   0.0001,
+    //   'umassetguid',
+    //   'umnfthash',
+    //   'umaconta'
+    // )
     return await controller.getWalletState();
   }
 

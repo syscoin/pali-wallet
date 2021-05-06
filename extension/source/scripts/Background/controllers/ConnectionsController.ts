@@ -7,6 +7,8 @@ export interface IConnectionsController {
   getConnectedAccount: () => any;
   handleSendToken: (sender: string, receiver: string, amount: number, fee: number, token: any, isToken: boolean, rbf: boolean) => any;
   handleCreateToken: (precision: number, symbol: string, maxsupply: number, fee: number, description: string, receiver: string, rbf: boolean) => any;
+  handleIssueAsset: (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string) => any;
+  handleIssueNFT: (rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => any;
   isNFT: (guid: number) => boolean;
 }
 
@@ -80,9 +82,7 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  // const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, fee: number, description: string, receiver: string, rbf: boolean) => {
-  const handleCreateToken = async () => {
-    console.log("Creating token")
+  const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, fee: number, description: string, receiver: string, rbf: boolean) => {
     return await sendMessage({
       type: 'CREATE_TOKEN',
       target: 'connectionsController',
@@ -90,15 +90,49 @@ const ConnectionsController = (): IConnectionsController => {
       eventResult: 'complete'
     }, {
       type: 'CREATE_TOKEN',
-      target: 'contentScript'
-      // precision,
-      // symbol,
-      // maxsupply,
-      // fee,
-      // description,
-      // receiver,
-      // rbf
+      target: 'contentScript',
+      precision,
+      symbol,
+      maxsupply,
+      fee,
+      description,
+      receiver,
+      rbf
     });
+  }
+  const handleIssueAsset = async (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string) => {
+    return await sendMessage({
+      type: 'ISSUE_TOKEN',
+      target: 'connectionsController',
+      freeze: true,
+      eventResult: 'complete'
+    }, {
+      type: 'ISSUE_TOKEN',
+      target: 'contentScript',
+      assetGuid,
+      amount,
+      receiver,
+      fee,
+      rbf
+    });
+  }
+
+  const handleIssueNFT = async (rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => {
+    return await sendMessage({
+      type: 'ISSUE_NFT',
+      target: 'connectionsController',
+      freeze: true,
+      eventResult: 'complete'
+    }, {
+      type: 'ISSUE_NFT',
+      target: 'contentScript',
+      assetGuid,
+      nfthash,
+      receiver,
+      fee,
+      rbf
+    });
+
   }
 
   return {
@@ -109,6 +143,8 @@ const ConnectionsController = (): IConnectionsController => {
     getConnectedAccount,
     handleSendToken,
     handleCreateToken,
+    handleIssueAsset,
+    handleIssueNFT
   }
 };
 

@@ -185,26 +185,68 @@ window.addEventListener('message', (event) => {
     return;
   }
   if (type == 'CREATE_TOKEN' && target == 'contentScript') {
-    // const {
-    //   fromConnectedAccount,
-    //   toAddress,
-    //   amount,
-    //   fee,
-    //   token,
-    //   isToken,
-    //   rbf
-    // } = event.data;
-    console.log("I'm on contentScript")
+    const {
+      precision,
+      symbol,
+      maxsupply,
+      fee,
+      description,
+      receiver,
+      rbf
+    } = event.data;
+
     browser.runtime.sendMessage({
       type: 'CREATE_TOKEN',
       target: 'background',
-      // fromConnectedAccount,
-      // toAddress,
-      // amount,
-      // fee,
-      // token,
-      // isToken,
-      // rbf
+      precision,
+      symbol,
+      maxsupply,
+      fee,
+      description,
+      receiver,
+      rbf
+    });
+
+    return;
+  }
+
+  if (type == 'ISSUE_TOKEN' && target == 'contentScript') {
+    const {
+      assetGuid,
+      amount,
+      receiver,
+      fee,
+      rbf
+    } = event.data;
+    browser.runtime.sendMessage({
+      type: 'ISSUE_TOKEN',
+      target: 'background',
+      assetGuid,
+      amount,
+      receiver,
+      fee,
+      rbf
+    });
+
+    return;
+  }
+
+  if (type == 'ISSUE_NFT' && target == 'contentScript') {
+    const {
+      assetGuid,
+      nfthash,
+      receiver,
+      fee,
+      rbf
+    } = event.data;
+    browser.runtime.sendMessage({
+      type: 'ISSUE_NFT',
+      target: 'background',
+      assetGuid,
+      nfthash,
+      receiver,
+      fee,
+      rbf
     });
 
     return;
@@ -271,16 +313,31 @@ browser.runtime.onMessage.addListener((request) => {
   }
 
   if (type == 'CREATE_TOKEN' && target == 'contentScript') {
-    console.log("Zero part of function to create token ")
     window.postMessage({
       type: 'CREATE_TOKEN',
       target: 'connectionsController',
       complete
     }, '*');
-    console.log("First part of function to create token ")
     return;
   }
 
+  if (type == 'ISSUE_TOKEN' && target == 'contentScript') {
+    window.postMessage({
+      type: 'ISSUE_TOKEN',
+      target: 'connectionsController',
+      complete
+    }, '*');
+    return;
+  }
+
+  if (type == 'ISSUE_NFT' && target == 'contentScript') {
+    window.postMessage({
+      type: 'ISSUE_NFT',
+      target: 'connectionsController',
+      complete
+    }, '*');
+    return;
+  }
   if (type == 'WALLET_UPDATED' && target == 'contentScript') {
     window.postMessage({
       type: 'WALLET_UPDATED',
