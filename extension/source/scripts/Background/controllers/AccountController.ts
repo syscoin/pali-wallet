@@ -21,7 +21,7 @@ import {
   ISPTIssue,
   INFTIssue
 } from '../../types';
-import { sys } from 'constants/index';
+import { sys, SYS_NETWORK } from 'constants/index';
 
 export interface IAccountController {
   subscribeAccount: (sjs?: any, label?: string) => Promise<string | null>;
@@ -64,6 +64,7 @@ const AccountController = (actions: {
 
 
   const getAccountInfo = async (): Promise<IAccountInfo> => {
+    console.log('sysjs get account info', sysjs)
     let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
 
     console.log('res account info', res)
@@ -112,10 +113,12 @@ const AccountController = (actions: {
 
 
   const subscribeAccount = async (sjs?: any, label?: string) => {
+    console.log('sysjs subscribe account', sysjs)
     if (sjs) sysjs = sjs;
     else {
       sysjs.HDSigner.createAccount()
     }
+    console.log('sysjs subscribe account', sysjs)
     const res: IAccountInfo | null = await getAccountInfo();
     account = {
       id: sysjs.HDSigner.accountIndex,
@@ -153,6 +156,7 @@ const AccountController = (actions: {
   };
 
   const getLatestUpdate = async () => {
+    console.log('sysjs latest update', sysjs)
     const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
     sysjs.HDSigner.accountIndex = activeAccountId
     if (!accounts[activeAccountId]) {
@@ -160,6 +164,10 @@ const AccountController = (actions: {
     };
 
     const accLatestInfo = await getAccountInfo();
+
+    console.log('active account id', activeAccountId, accounts[activeAccountId])
+
+    console.log('acc latest info', accLatestInfo)
 
     if (!accLatestInfo) return;
     account = accounts[activeAccountId];
@@ -172,11 +180,14 @@ const AccountController = (actions: {
         assets: accLatestInfo.assets
       })
     );
+
+    console.log('accounts get latest ', accounts )
   };
 
   const getPrimaryAccount = (pwd: string, sjs: any) => {
+    console.log('sjs primary account and sysjs', sjs, sysjs)
     const { accounts, activeAccountId }: IWalletState = store.getState().wallet;
-    if (!sysjs) {
+    if (sjs) {
       sysjs = sjs;
     }
     if (!actions.checkPassword(pwd)) return;
@@ -224,6 +235,7 @@ const AccountController = (actions: {
   }
 
   const getRecommendFee = async () => {
+    console.log('sysjs recommend fee', sysjs)
     return await sys.utils.fetchEstimateFee(sysjs.blockbookURL, 1) / 10 ** 8;
   };
 

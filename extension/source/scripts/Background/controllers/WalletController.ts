@@ -122,19 +122,28 @@ const WalletController = (): IWalletController => {
       if (!decriptedMnemonic) {
         throw new Error('password wrong');
       }
+
+      console.log('decripted mnemonic unlock', decriptedMnemonic)
+      
       if (HDsigner === null || sjs === null) {
         HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, isTestnet)
         console.log('hdsigner unlock', HDsigner)
         sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
+        console.log('sysjs unlock', sjs)
         const { activeAccountId, accounts } = store.getState().wallet;
         if (accounts.length > 1000) {
           return false
         }
+
+        console.log('accounts length', accounts, accounts.length, accounts.length)
         for (let i = 1; i <= accounts.length - 1; i++) {
+          console.log('accounts length unlock', i, accounts,length, accounts)
           const child = sjs.HDSigner.deriveAccount(i)
+          console.log('child unlock', child)
           /* eslint new-cap: ["error", { "newIsCap": false }] */
           sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks))
           sjs.HDSigner.accountIndex = activeAccountId
+          console.log('sjs unlock 2', sjs)
         }
         //Restore logic/ function goes here 
       }
@@ -203,56 +212,71 @@ const WalletController = (): IWalletController => {
   };
 
   const switchNetwork = (networkId: string) => {
+    store.dispatch(changeActiveNetwork(SYS_NETWORK[networkId]!.id));
+    console.log('backend url netw', backendURl)
+
+    const encriptedMnemonic = retrieveEncriptedMnemonic();
+    //add unencript password 
+    const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, password).toString(CryptoJS.enc.Utf8); //add unencript password 
+    if (!decriptedMnemonic) {
+      throw new Error('password wrong');
+    }
+
+    console.log('decripted mnemonic unlock', decriptedMnemonic)
+
     if (SYS_NETWORK[networkId]!.id === 'main') {
-      HDsigner = new sys.utils.HDSigner(mnemonic, null, false);
-      sjs = new sys.SyscoinJSLib(HDsigner, backendURl);
+      HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, false);
+      sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.main.beUrl);
 
       console.log('hdsigner main', HDsigner, isTestnet, password, sjs)
 
-      store.dispatch(changeActiveNetwork(SYS_NETWORK[networkId]!.id));
-
       const { activeAccountId, accounts } = store.getState().wallet;
-
       if (accounts.length > 1000) {
-        return false;
+        return false
       }
 
-      for (let i = 1; i <= accounts.length; i++) {
-        const child = sjs.HDSigner.deriveAccount(i);
-        console.log('child main', child)
-
-        sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
-        sjs.HDSigner.accountIndex = activeAccountId;
+      console.log('accounts length', accounts, accounts.length, accounts.length)
+      for (let i = 1; i <= accounts.length - 1; i++) {
+        console.log('accounts length unlock', i, accounts,length, accounts)
+        const child = sjs.HDSigner.deriveAccount(i)
+        console.log('child unlock', child)
+        /* eslint new-cap: ["error", { "newIsCap": false }] */
+        sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks))
+        sjs.HDSigner.accountIndex = activeAccountId
+        console.log('sjs unlock 2', sjs)
       }
 
       account.getPrimaryAccount(password, sjs);
       account.getLatestUpdate();
+      account.watchMemPool();
 
       return;
     }
 
-    HDsigner = new sys.utils.HDSigner(mnemonic, null, true);
-    sjs = new sys.SyscoinJSLib(HDsigner, backendURl);
+    HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, true);
+    sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.testnet.beUrl);
+
+    const { activeAccountId, accounts } = store.getState().wallet;
+    if (accounts.length > 1000) {
+      return false
+    }
+
+    console.log('accounts length', accounts, accounts.length, accounts.length)
+    for (let i = 1; i <= accounts.length - 1; i++) {
+      console.log('accounts length unlock', i, accounts,length, accounts)
+      const child = sjs.HDSigner.deriveAccount(i)
+      console.log('child unlock', child)
+      /* eslint new-cap: ["error", { "newIsCap": false }] */
+      sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks))
+      sjs.HDSigner.accountIndex = activeAccountId
+      console.log('sjs unlock 2', sjs)
+    }
 
     console.log('hdsigner testnet', HDsigner, isTestnet, password, sjs)
 
-    store.dispatch(changeActiveNetwork(SYS_NETWORK[networkId]!.id));
-
-    const { activeAccountId, accounts } = store.getState().wallet;
-
-    if (accounts.length > 1000) {
-      return false;
-    }
-    for (let i = 1; i <= accounts.length; i++) {
-      const child = sjs.HDSigner.deriveAccount(i);
-      console.log('child test', child)
-
-      sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes,sjs.HDSigner.networks));
-      sjs.HDSigner.accountIndex = activeAccountId;
-    }
-
     account.getPrimaryAccount(password, sjs);
     account.getLatestUpdate();
+    account.watchMemPool();
 
     return;
   };

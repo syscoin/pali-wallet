@@ -29,6 +29,7 @@ const GeneralView = () => {
     }>
   ) => {
     controller.wallet.switchNetwork(ev.target.value as string);
+    console.log('network changed', ev.target.value)
   };
 
   return (
