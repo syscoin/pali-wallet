@@ -101,8 +101,8 @@ const App = () => {
     console.log("Sending tokens");
     await controller.handleCreateToken(8,
       'NikBar',
-      1000,
-       0.00001,
+      100000000000,
+       1000,
       'larara lelere lololo lululu',
       'tsys1qvaf78steqrvsljch9mn6n559ljj5g2xs7gvepq',
       false);
