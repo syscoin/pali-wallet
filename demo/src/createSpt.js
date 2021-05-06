@@ -2,25 +2,9 @@ import React, { Component, useEffect, useState, useCallback } from "react";
 import logo from "./assets/images/logosys.svg";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-dropzone-uploader/dist/styles.css'
-import Dropzone from 'react-dropzone-uploader'
-import FormCrtSpt from "./FormCrtSpt"
+import FormCrtSpt from './FormCrtSpt'
 
-
-import {SyscoinJSLib} from 'syscoinjs-lib';
-  const CreateSPT = () => { 
-
-const utils = require('./utils')
-const syscointx = require('syscointx-js')
-const BN = require('bn.js')
-    const sjs = require('syscoinjs-lib')
-    const mnemonic = 'air leader stone antenna first shrug panic before nut sport bench keen'
-// blockbook URL
-const backendURL = 'https://sys-explorer.tk/' // if using localhost you don't need SSL see use 'systemctl edit --full blockbook-syscoin.service' to remove SSL from blockbook
-// 'null' for no password encryption for local storage and 'true' for testnet
-const HDSigner = new sjs.utils.HDSigner(mnemonic, null, true)
-
-const syscoinjs = new sjs.SyscoinJSLib(HDSigner, backendURL)
-
+const CreateSPT = () => { 
     const [preview, setPreview] = useState("");
     const [isInstalled, setIsInstalled] = useState(false);
     const [canConnect, setCanConnect] = useState(true);
@@ -166,73 +150,6 @@ const handleChangeStatus = ({ meta, file, xhr }, status) => {
  
 }; 
 };  
-async function issueAssetNFT1 () {
-  const feeRate = new sjs.utils.BN(10)
-  const txOpts = { rbf: true }
-  const assetGuid = '2441957158'
-  const NFTID = sjs.utils.createAssetID('1', assetGuid)
-  // mint 1000 satoshi (not COINS)
-  // if assets need change sent, set this address. null to let HDSigner find a new address for you
-  const assetChangeAddress = null
-  const assetMap = new Map([
-    [NFTID, { changeAddress: assetChangeAddress, outputs: [{ value: new sjs.utils.BN(1), address: 'tsys1qdflre2yd37qtpqe2ykuhwandlhq04r2td2t9ae' }] }]
-  ])
-  // if SYS need change sent, set this address. null to let HDSigner find a new address for you
-  const sysChangeAddress = null
-  const psbt = await syscoinjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate)
-  if (!psbt) {
-    console.log('Could not create transaction, not enough funds?')
-  }
-}
-SyscoinJSLib.prototype.assetSend = async function (txOpts, assetMapIn, sysChangeAddress, feeRate, sysFromXpubOrAddress, utxos) {
-  if (!utxos) {
-    if (sysFromXpubOrAddress) {
-      utxos = await utils.fetchBackendUTXOS(this.blockbookURL, sysFromXpubOrAddress)
-    } else if (this.HDSigner) {
-      utxos = await utils.fetchBackendUTXOS(this.blockbookURL, this.HDSigner.getAccountXpub())
-    }
-  }
-  if (this.HDSigner) {
-    if (!sysChangeAddress) {
-      sysChangeAddress = await this.HDSigner.getNewChangeAddress()
-    }
-  }
-  const BN_ZERO = new BN(0)
-  const assetMap = new Map()
-  // create new map with base ID's setting zero val output in the base asset outputs array
-  for (const [assetGuid, valueAssetObj] of assetMapIn.entries()) {
-    const baseAssetID = utils.getBaseAssetID(assetGuid)
-    // if NFT
-    if (baseAssetID !== assetGuid) {
-      // likely NFT issuance only with no base value asset issued, create new base value object so assetSend can perform proof of ownership
-      if (!assetMapIn.has(baseAssetID)) {
-        const valueBaseAssetObj = { outputs: [{ address: sysChangeAddress, value: BN_ZERO }] }
-        valueBaseAssetObj.changeAddress = sysChangeAddress
-        assetMap.set(baseAssetID, valueBaseAssetObj)
-      }
-      assetMap.set(assetGuid, valueAssetObj)
-    // regular FT
-    } else {
-      valueAssetObj.outputs.push({ address: sysChangeAddress, value: BN_ZERO })
-      valueAssetObj.changeAddress = sysChangeAddress
-      assetMap.set(assetGuid, valueAssetObj)
-    }
-  }
-  if (this.HDSigner) {
-    for (const valueAssetObj of assetMap.values()) {
-      if (!valueAssetObj.changeAddress) {
-        valueAssetObj.changeAddress = await this.HDSigner.getNewChangeAddress()
-      }
-    }
-  }
-  // true last param for filtering out 0 conf UTXO
-  utxos = utils.sanitizeBlockbookUTXOs(sysFromXpubOrAddress, utxos, this.network, txOpts, assetMap, true)
-  const res = syscointx.assetSend(txOpts, utxos, assetMap, sysChangeAddress, feeRate)
-  if (sysFromXpubOrAddress) {
-    return { res: res, assets: utils.getAssetsRequiringNotarizationFromRes(res, utxos.assets) }
-  }
-  return await this.signAndSend(res, utils.getAssetsRequiringNotarizationFromRes(res, utxos.assets))
-}
 
 
     return (
@@ -275,9 +192,10 @@ SyscoinJSLib.prototype.assetSend = async function (txOpts, assetMapIn, sysChange
         )}
       </div>
     );
-  }
-  
+
+        }
   export default CreateSPT;
+  
   
   
   
