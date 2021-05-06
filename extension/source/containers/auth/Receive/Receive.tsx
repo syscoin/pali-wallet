@@ -28,8 +28,6 @@ const WalletReceive = () => {
         target: 'background'
       });
 
-      console.log('ok')
-
       setLoaded(true);
     }
   }, [])

@@ -82,6 +82,12 @@ browser.runtime.onInstalled.addListener((): void => {
         return;
       }
 
+      if (type == 'SUBSCRIBE' && target == 'background') {
+        console.log('subscribe ok')
+
+        return;
+      }
+
       if (type == 'RESET_CONNECTION_INFO' && target == 'background') {
         store.dispatch(setSenderURL(''));
         store.dispatch(updateCanConnect(false));

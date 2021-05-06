@@ -10,6 +10,7 @@ import throttle from 'lodash/throttle';
 import wallet from './wallet';
 import price from './price';
 import { saveState, loadState } from './localStorage';
+// import { browser } from 'webextension-polyfill-ts';
 
 const middleware = [
   ...getDefaultMiddleware({ thunk: false, serializableCheck: false }),
@@ -32,6 +33,12 @@ const store: Store = configureStore({
 store.subscribe(
   throttle(() => {
     const state = store.getState();
+    // browser.runtime.sendMessage({
+    //   type: 'SUBSCRIBE',
+    //   target: 'background'
+    // });
+
+    // console.log('message sent after action')
     saveState({
       wallet: state.wallet,
       price: state.price,

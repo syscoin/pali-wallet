@@ -44,7 +44,7 @@ const GeneralView = () => {
               onChange={handleChangeNetwork}
               options={[
                 { [SYS_NETWORK.main.id]: SYS_NETWORK.main.label },
-                { [SYS_NETWORK.ceres.id]: SYS_NETWORK.ceres.label },
+                { [SYS_NETWORK.testnet.id]: SYS_NETWORK.testnet.label },
               ]}
             />
           </span>

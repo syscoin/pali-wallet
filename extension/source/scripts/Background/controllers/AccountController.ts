@@ -50,6 +50,8 @@ const AccountController = (actions: {
 
   const getAccountInfo = async (): Promise<IAccountInfo> => {
     let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
+
+    console.log('res account info', res)
     const balance = res.balance / 1e8;
     let transactions: Transaction[] = [];
     let assets: Assets[] = [];

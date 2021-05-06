@@ -39,7 +39,8 @@ const WalletController = (): IWalletController => {
   let mnemonic = '';
   let HDsigner: any = null;
   let sjs: any = null;
-  let backendURl = SYS_NETWORK.testnet.beUrl;
+  let backendURl = store.getState().wallet.activeNetwork === 'testnet' ? SYS_NETWORK.testnet.beUrl : SYS_NETWORK.main.beUrl;
+  let isTestnet = store.getState().wallet.activeNetwork === 'testnet';
 
   const setWalletPassword = (pwd: string) => {
     password = pwd;
@@ -122,7 +123,8 @@ const WalletController = (): IWalletController => {
         throw new Error('password wrong');
       }
       if (HDsigner === null || sjs === null) {
-        HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, true)
+        HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, isTestnet)
+        console.log('hdsigner unlock', HDsigner)
         sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
         const { activeAccountId, accounts } = store.getState().wallet;
         if (accounts.length > 1000) {
@@ -201,11 +203,58 @@ const WalletController = (): IWalletController => {
   };
 
   const switchNetwork = (networkId: string) => {
-    if (SYS_NETWORK[networkId]!.id) {
-      // set network here (syscoin set network)
+    if (SYS_NETWORK[networkId]!.id === 'main') {
+      HDsigner = new sys.utils.HDSigner(mnemonic, null, false);
+      sjs = new sys.SyscoinJSLib(HDsigner, backendURl);
+
+      console.log('hdsigner main', HDsigner, isTestnet, password, sjs)
+
       store.dispatch(changeActiveNetwork(SYS_NETWORK[networkId]!.id));
+
+      const { activeAccountId, accounts } = store.getState().wallet;
+
+      if (accounts.length > 1000) {
+        return false;
+      }
+
+      for (let i = 1; i <= accounts.length; i++) {
+        const child = sjs.HDSigner.deriveAccount(i);
+        console.log('child main', child)
+
+        sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
+        sjs.HDSigner.accountIndex = activeAccountId;
+      }
+
+      account.getPrimaryAccount(password, sjs);
       account.getLatestUpdate();
+
+      return;
     }
+
+    HDsigner = new sys.utils.HDSigner(mnemonic, null, true);
+    sjs = new sys.SyscoinJSLib(HDsigner, backendURl);
+
+    console.log('hdsigner testnet', HDsigner, isTestnet, password, sjs)
+
+    store.dispatch(changeActiveNetwork(SYS_NETWORK[networkId]!.id));
+
+    const { activeAccountId, accounts } = store.getState().wallet;
+
+    if (accounts.length > 1000) {
+      return false;
+    }
+    for (let i = 1; i <= accounts.length; i++) {
+      const child = sjs.HDSigner.deriveAccount(i);
+      console.log('child test', child)
+
+      sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes,sjs.HDSigner.networks));
+      sjs.HDSigner.accountIndex = activeAccountId;
+    }
+
+    account.getPrimaryAccount(password, sjs);
+    account.getLatestUpdate();
+
+    return;
   };
 
   const getNewAddress = async () => {
