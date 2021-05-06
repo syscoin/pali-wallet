@@ -2,9 +2,8 @@ import React, { Component, useEffect, useState, useCallback } from "react";
 import logo from "./assets/images/logosys.svg";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-dropzone-uploader/dist/styles.css'
-import Dropzone from 'react-dropzone-uploader'
 import FormSpt from "./FormSpt"
-  const Mintnft = () => {
+  const Mintspt = () => {
 
 
     const [preview, setPreview] = useState("");
@@ -191,5 +190,5 @@ const handleChangeStatus = ({ meta, file, xhr }, status) => {
     );
   }
   
-  export default Mintnft;
+  export default Mintspt;
   
