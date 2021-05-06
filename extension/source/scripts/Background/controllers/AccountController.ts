@@ -298,15 +298,26 @@ const AccountController = (actions: {
       throw new Error("Error: Can't find active account info");
     }
     if (!newSPT) {
-      throw new Error("Error: Can't find transaction info");
+      throw new Error("Error: Can't find NewSPT info");
     }
-    //Code for creating new SPT
-    try {
-      newSPT = null;
 
+    try {
+      const _assetOpts = {
+        precision: newSPT.precision, symbol: newSPT.symbol, maxsupply: new sys.utils.BN(newSPT.maxsupply), description: newSPT.description
+      }
+      const txOpts = { rbf: newSPT.rbf }
+      const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, newSPT.receiver, new sys.utils.BN(newSPT.fee))
+      const txInfo = pendingTx.extractTransaction().getId()
+      store.dispatch(
+        updateTransactions({
+          id: account.id,
+          txs: [_coventPendingType(txInfo), ...account.transactions],
+        })
+      );
+      tempTx = null;
+      watchMemPool();
       return null;
-    }
-    catch (error) {
+    } catch (error) {
       throw new Error(error);
     }
   }
