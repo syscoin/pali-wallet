@@ -176,9 +176,7 @@ const handleChangeStatus = ({ meta, file, xhr }, status) => {
            </div>
          </div>
        </nav>  
-            {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}
-     
-            
+            {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}          
  <div className="form"> 
 <FormCollect></FormCollect>       
   </div>

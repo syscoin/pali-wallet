@@ -191,4 +191,3 @@ const handleChangeStatus = ({ meta, file, xhr }, status) => {
   }
   
   export default Mintspt;
-  
