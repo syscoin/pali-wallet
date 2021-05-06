@@ -3,7 +3,7 @@ import logo from "./assets/images/logosys.svg";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-dropzone-uploader/dist/styles.css'
 import Dropzone from 'react-dropzone-uploader'
-import Formi from "./FormNft.js"
+import Formi from "./FormNft"
   const Mintnft = () => {
 
 
