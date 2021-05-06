@@ -15,12 +15,6 @@ export const SYS_NETWORK: {
     beUrl: 'https://block-explorer.constellationnetwork.io',
     lbUrl: 'http://lb.constellationnetwork.io:9000',
   },
-  ceres: {
-    id: 'ceres',
-    label: 'Test Network',
-    beUrl: 'https://api-be.exchanges.constellationnetwork.io',
-    lbUrl: 'http://lb.exchanges.constellationnetwork.io:9000',
-  },
   testnet: {
     id: 'testnet',
     label: 'TestNet',
