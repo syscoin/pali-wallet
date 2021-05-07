@@ -9,8 +9,7 @@ import {
   updateAccountAddress
 } from 'state/wallet';
 import IWalletState, {
-  IAccountState,
-  Keystore
+  IAccountState
 } from 'state/wallet/types';
 import {
   IAccountInfo,
@@ -52,7 +51,6 @@ export interface IAccountController {
 
 const AccountController = (actions: {
   checkPassword: (pwd: string) => boolean;
-  importPrivKey: (privKey: string) => Keystore | null;
 }): IAccountController => {
   let intervalId: any;
   let account: IAccountState;

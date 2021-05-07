@@ -89,8 +89,6 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
         return 'Export private key';
       case routes.ABOUT_VIEW:
         return 'About';
-      case routes.IMPORT_ACCOUNT_VIEW:
-        return 'Import private key';
       case routes.CONNECT_HARDWARE_WALLET_VIEW:
         return 'Connect hardware wallet';
       default:
@@ -116,8 +114,6 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
         return <Views.PrivateKeyView id={showedId} />;
       case routes.ABOUT_VIEW:
         return <Views.AboutView />;
-      case routes.IMPORT_ACCOUNT_VIEW:
-        return <Views.ImportAccountView />;
       case routes.CONNECT_HARDWARE_WALLET_VIEW:
         return <Views.ConnectHardwareWalletView />;
       default:

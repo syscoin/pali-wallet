@@ -48,6 +48,7 @@ export interface ISPTIssue {
   receiver: string,
   rbf: boolean
 }
+
 export interface INFTIssue {
   assetGuid: string,
   nfthash: string,

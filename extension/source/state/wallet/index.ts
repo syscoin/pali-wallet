@@ -5,16 +5,13 @@ import { SYS_NETWORK } from 'constants/index';
 import IWalletState, {
   IAccountUpdateState,
   IAccountState,
-  Keystore,
   IAccountUpdateAddress
 } from './types';
 
 const initialState: IWalletState = {
-  keystores: [],
   status: 0,
   accounts: [],
   activeAccountId: 0,
-  seedKeystoreId: -1,
   activeNetwork: SYS_NETWORK.main.id,
   encriptedMnemonic: null,
   currentSenderURL: '',
@@ -37,14 +34,12 @@ const WalletState = createSlice({
         confirmingTransaction: action.payload,
       }
     },
-
     createAsset(state: IWalletState, action: PayloadAction<boolean>) {
       return {
         ...state,
         creatingAsset: action.payload,
       }
     },
-
     issueAsset(state: IWalletState, action: PayloadAction<boolean>) {
       return {
         ...state,
@@ -57,7 +52,6 @@ const WalletState = createSlice({
         issuingNFT: action.payload,
       }
     },
-
     removeConnection(state: IWalletState, action: PayloadAction<any>) {
       const connectionIndex: number = state.connections.findIndex(connection => connection.url === action.payload.url);
 
@@ -113,28 +107,8 @@ const WalletState = createSlice({
         currentSenderURL: action.payload
       }
     },
-    setKeystoreInfo(state: IWalletState, action: PayloadAction<Keystore>) {
-      return {
-        ...state,
-        keystores: [
-          ...state.keystores,
-          action.payload
-        ]
-      };
-    },
     setEncriptedMnemonic(state: IWalletState, action: PayloadAction<CryptoJS.lib.CipherParams>) {
       state.encriptedMnemonic = action.payload.toString();
-    },
-    removeKeystoreInfo(state: IWalletState, action: PayloadAction<number>) {
-      if (state.keystores[action.payload]) {
-        state.keystores.splice(action.payload, 1);
-      }
-    },
-    updateSeedKeystoreId(state: IWalletState, action: PayloadAction<number>) {
-      if (state.keystores && state.keystores[state.seedKeystoreId]) {
-        state.keystores.splice(state.seedKeystoreId, 1);
-      }
-      state.seedKeystoreId = action.payload;
     },
     updateStatus(state: IWalletState) {
       state.status = Date.now();
@@ -178,9 +152,7 @@ const WalletState = createSlice({
       };
     },
     deleteWallet(state: IWalletState) {
-      state.keystores = [];
       state.accounts = [];
-      state.seedKeystoreId = -1;
       state.activeAccountId = 0;
       state.encriptedMnemonic = null;
       state.activeNetwork = SYS_NETWORK.main.id;
@@ -207,14 +179,11 @@ const WalletState = createSlice({
 });
 
 export const {
-  setKeystoreInfo,
-  removeKeystoreInfo,
   updateStatus,
   createAccount,
   removeAccount,
   removeAccounts,
   deleteWallet,
-  updateSeedKeystoreId,
   changeAccountActiveId,
   changeActiveNetwork,
   updateAccount,

@@ -1,9 +1,10 @@
 export const saveState = (appState: any) => {
   try {
     const serializedState = JSON.stringify(appState);
+    
     localStorage.setItem('state', serializedState);
-  } catch (e) {
-    console.error('<!> Error saving state', e);
+  } catch (error) {
+    console.error('<!> Error saving state', error);
   }
 };
 
@@ -16,8 +17,8 @@ export const loadState = () => {
     }
 
     return JSON.parse(serializedState);
-  } catch (e) {
-    console.error('<!> Error getting state', e);
+  } catch (error) {
+    console.error('<!> Error getting state', error);
 
     return null;
   }

@@ -2,7 +2,6 @@ import { generateMnemonic, validateMnemonic } from 'bip39';
 import { fromZPrv } from 'bip84';
 import store from 'state/store';
 import {
-  setKeystoreInfo,
   deleteWallet as deleteWalletState,
   changeAccountActiveId,
   changeActiveNetwork,
@@ -11,12 +10,10 @@ import {
   removeAccounts
 } from 'state/wallet';
 import AccountController, { IAccountController } from './AccountController';
-import IWalletState, { Keystore } from 'state/wallet/types';
+import IWalletState from 'state/wallet/types';
 import { sys, SYS_NETWORK } from 'constants/index';
 import CryptoJS from 'crypto-js';
-// import {sys, SYS_NETWORK} from '../../../constants'
-// import {SyscoinJSLib} from 'syscoinjs-lib';
-// import {HDSigner} from 'syscoinjs-lib/utils';
+
 export interface IWalletController {
   account: Readonly<IAccountController>;
   setWalletPassword: (pwd: string) => void;
@@ -39,8 +36,8 @@ const WalletController = (): IWalletController => {
   let mnemonic = '';
   let HDsigner: any = null;
   let sjs: any = null;
-  let backendURl = store.getState().wallet.activeNetwork === 'testnet' ? SYS_NETWORK.testnet.beUrl : SYS_NETWORK.main.beUrl;
-  let isTestnet = store.getState().wallet.activeNetwork === 'testnet';
+  const backendURl: string = store.getState().wallet.activeNetwork === 'testnet' ? SYS_NETWORK.testnet.beUrl : SYS_NETWORK.main.beUrl;
+  const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
 
   const setWalletPassword = (pwd: string) => {
     password = pwd;
@@ -60,17 +57,13 @@ const WalletController = (): IWalletController => {
   };
 
   const createWallet = (isUpdated = false) => {
-    // if (!isUpdated && seedWalletKeystore()) {
-    //   return;
-    // }
     if (!isUpdated && sjs !== null) {
-      return
+      return;
     }
-    HDsigner = new sys.utils.HDSigner(mnemonic, null, true)
-    sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
-    // if (HDsigner.accountIndex > 0) {
-    //   throw new Error("account index is bigger then 0 logic inconsistency")
-    // }
+
+    HDsigner = new sys.utils.HDSigner(mnemonic, null, true);
+    sjs = new sys.SyscoinJSLib(HDsigner, backendURl);
+
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
 
@@ -79,8 +72,10 @@ const WalletController = (): IWalletController => {
       }
     }
 
-    const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic, password)
+    const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic, password);
+
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
+
     account.subscribeAccount(sjs);
     account.getPrimaryAccount(password, sjs);
 
@@ -89,23 +84,15 @@ const WalletController = (): IWalletController => {
     }
   };
 
-  // const seedWalletKeystore = () => {
-  //   const { keystores, seedKeystoreId }: IWalletState = store.getState().wallet;
-
-  //   return keystores && seedKeystoreId > -1 && keystores[seedKeystoreId]
-  //     ? keystores[seedKeystoreId]
-  //     : null;
-  // };
-
   const retrieveEncriptedMnemonic = () => {
     // not encrypted for now but we got to retrieve
-    const { encriptedMnemonic }: IWalletState = store.getState().wallet
-    // const { keystores, seedKeystoreId }: IWalletState = store.getState().wallet;
+    const { encriptedMnemonic }: IWalletState = store.getState().wallet;
 
     return encriptedMnemonic != ''
       ? encriptedMnemonic
       : null;
   };
+
   const checkPassword = (pwd: string) => {
     return password === pwd;
   };
@@ -185,28 +172,6 @@ const WalletController = (): IWalletController => {
     store.dispatch(updateStatus());
   };
 
-  const importPrivKey = (privKey: string) => {
-    const { keystores }: IWalletState = store.getState().wallet;
-
-    if (isLocked() || !privKey) {
-      return null;
-    }
-
-    const newKeystoreImportAccount: Keystore = {
-      id: 0,
-      address: 'address-newkeystore-imported',
-      phrase: mnemonic
-    }
-
-    if (keystores.filter((keystore) => (keystore as Keystore).address === (newKeystoreImportAccount as Keystore).address).length) {
-      return null;
-    }
-
-    store.dispatch(setKeystoreInfo(newKeystoreImportAccount));
-
-    return newKeystoreImportAccount;
-  };
-
   const _getAccountDataByNetwork = (sjs: any) => {
     const { activeAccountId, accounts } = store.getState().wallet;
 
@@ -262,7 +227,7 @@ const WalletController = (): IWalletController => {
     return account.setNewAddress(address);
   }
 
-  const account = AccountController({ checkPassword, importPrivKey });
+  const account = AccountController({ checkPassword });
 
   return {
     account,

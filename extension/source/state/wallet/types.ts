@@ -37,11 +37,9 @@ export interface Keystore {
 }
 
 export default interface IWalletState {
-  keystores: Keystore[];
   status: number;
   accounts: IAccountState[];
   activeAccountId: number;
-  seedKeystoreId: number;
   activeNetwork: string;
   encriptedMnemonic: any;
   currentSenderURL: string | undefined;

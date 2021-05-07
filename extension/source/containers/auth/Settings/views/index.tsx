@@ -7,5 +7,4 @@ export { default as RemoveAccountView } from './RemoveAccountView';
 export { default as PrivateKeyView } from './PrivateKeyView';
 export { default as NewAccountView } from './NewAccountView';
 export { default as AboutView } from './AboutView';
-export { default as ImportAccountView } from './ImportAccountView';
 export { default as ConnectHardwareWalletView } from './ConnectHardwareWalletView';

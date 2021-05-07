@@ -157,13 +157,13 @@ const App = () => {
 
       {controller ? (
         <div>
-          <nav class="navbar navbar-expand-lg navbar-light  static-top">
-            <div class="container">
-              <a class="navbar-brand" href="https://syscoin.org/">
+          <nav className="navbar navbar-expand-lg navbar-light  static-top">
+            <div className="container">
+              <a className="navbar-brand" href="https://syscoin.org/">
                 <img src={logo} alt="logo" className="header__logo"></img>
               </a>
-              <div class="collapse navbar-collapse" id="navbarResponsive">
-                <ul class="navbar-nav ml-auto">
+              <div className="collapse navbar-collapse" id="navbarResponsive">
+                <ul className="navbar-nav ml-auto">
                   <div className="header__info">
 
                     <button
@@ -178,7 +178,6 @@ const App = () => {
             </div>
           </nav>
           {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}
-
 
           <div className="menu">
             <a className="button" href="/mintnft">Mint NFT</a>

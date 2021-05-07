@@ -218,6 +218,7 @@ window.addEventListener('message', (event) => {
       fee,
       rbf
     } = event.data;
+
     browser.runtime.sendMessage({
       type: 'ISSUE_TOKEN',
       target: 'background',
@@ -239,6 +240,7 @@ window.addEventListener('message', (event) => {
       fee,
       rbf
     } = event.data;
+
     browser.runtime.sendMessage({
       type: 'ISSUE_NFT',
       target: 'background',
@@ -338,6 +340,7 @@ browser.runtime.onMessage.addListener((request) => {
     }, '*');
     return;
   }
+  
   if (type == 'WALLET_UPDATED' && target == 'contentScript') {
     window.postMessage({
       type: 'WALLET_UPDATED',

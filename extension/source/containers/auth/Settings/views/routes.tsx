@@ -7,5 +7,4 @@ export const NEW_ACCOUNT_VIEW = '#new_account';
 export const REMOVE_ACCOUNT_VIEW = '#remove_account';
 export const PRIV_KEY_VIEW = '#private_key';
 export const ABOUT_VIEW = '#about';
-export const IMPORT_ACCOUNT_VIEW = '#import_account';
 export const CONNECT_HARDWARE_WALLET_VIEW = '#connect_hardware_wallet_view';
