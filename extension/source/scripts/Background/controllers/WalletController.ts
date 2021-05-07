@@ -117,33 +117,27 @@ const WalletController = (): IWalletController => {
   const unLock = (pwd: string): boolean => {
     try {
       const encriptedMnemonic = retrieveEncriptedMnemonic();
-      //add unencript password 
-      const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, pwd).toString(CryptoJS.enc.Utf8); //add unencript password 
+      const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, pwd).toString(CryptoJS.enc.Utf8);
+      
       if (!decriptedMnemonic) {
         throw new Error('password wrong');
       }
 
-      console.log('decripted mnemonic unlock', decriptedMnemonic)
-      
       if (HDsigner === null || sjs === null) {
-        HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, isTestnet)
-        console.log('hdsigner unlock', HDsigner)
-        sjs = new sys.SyscoinJSLib(HDsigner, backendURl)
-        console.log('sysjs unlock', sjs)
+        HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, isTestnet);
+        sjs = new sys.SyscoinJSLib(HDsigner, backendURl);
+
         const { activeAccountId, accounts } = store.getState().wallet;
+
         if (accounts.length > 1000) {
-          return false
+          return false;
         }
 
-        console.log('accounts length', accounts, accounts.length, accounts.length)
         for (let i = 1; i <= accounts.length - 1; i++) {
-          console.log('accounts length unlock', i, accounts,length, accounts)
-          const child = sjs.HDSigner.deriveAccount(i)
-          console.log('child unlock', child)
-          /* eslint new-cap: ["error", { "newIsCap": false }] */
-          sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks))
-          sjs.HDSigner.accountIndex = activeAccountId
-          console.log('sjs unlock 2', sjs)
+          const child = sjs.HDSigner.deriveAccount(i);
+
+          sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
+          sjs.HDSigner.accountIndex = activeAccountId;
         }
         //Restore logic/ function goes here 
       }
@@ -153,6 +147,7 @@ const WalletController = (): IWalletController => {
 
       account.getPrimaryAccount(password, sjs);
       account.watchMemPool();
+
       return true;
     } catch (error) {
       return false;
@@ -208,47 +203,46 @@ const WalletController = (): IWalletController => {
     }
 
     store.dispatch(setKeystoreInfo(newKeystoreImportAccount));
+
     return newKeystoreImportAccount;
   };
 
+  const _getAccountDataByNetwork = (sjs: any) => {
+    const { activeAccountId, accounts } = store.getState().wallet;
+
+    if (accounts.length > 1000) {
+      return false;
+    }
+
+    for (let i = 1; i <= accounts.length - 1; i++) {
+      const child = sjs.HDSigner.deriveAccount(i);
+
+      sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
+      sjs.HDSigner.accountIndex = activeAccountId;
+    }
+
+    account.getPrimaryAccount(password, sjs);
+    account.getLatestUpdate();
+    account.watchMemPool();
+
+    return;
+  }
+
   const switchNetwork = (networkId: string) => {
     store.dispatch(changeActiveNetwork(SYS_NETWORK[networkId]!.id));
-    console.log('backend url netw', backendURl)
 
     const encriptedMnemonic = retrieveEncriptedMnemonic();
-    //add unencript password 
-    const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, password).toString(CryptoJS.enc.Utf8); //add unencript password 
+    const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, password).toString(CryptoJS.enc.Utf8);
+
     if (!decriptedMnemonic) {
       throw new Error('password wrong');
     }
-
-    console.log('decripted mnemonic unlock', decriptedMnemonic)
 
     if (SYS_NETWORK[networkId]!.id === 'main') {
       HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, false);
       sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.main.beUrl);
 
-      console.log('hdsigner main', HDsigner, isTestnet, password, sjs)
-
-      const { activeAccountId, accounts } = store.getState().wallet;
-      if (accounts.length > 1000) {
-        return false
-      }
-
-      console.log('accounts length', accounts, accounts.length, accounts.length)
-      for (let i = 1; i <= accounts.length - 1; i++) {
-        console.log('accounts length unlock', i, accounts,length, accounts)
-        const child = sjs.HDSigner.deriveAccount(i)
-        console.log('child unlock', child)
-        /* eslint new-cap: ["error", { "newIsCap": false }] */
-        sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks))
-        sjs.HDSigner.accountIndex = activeAccountId
-        console.log('sjs unlock 2', sjs)
-      }
-
-      account.getPrimaryAccount(password, sjs);
-      account.getLatestUpdate();
-      account.watchMemPool();
+      _getAccountDataByNetwork(sjs);
 
       return;
     }
@@ -256,35 +250,16 @@ const WalletController = (): IWalletController => {
     HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, true);
     sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.testnet.beUrl);
 
-    const { activeAccountId, accounts } = store.getState().wallet;
-    if (accounts.length > 1000) {
-      return false
-    }
-
-    console.log('accounts length', accounts, accounts.length, accounts.length)
-    for (let i = 1; i <= accounts.length - 1; i++) {
-      console.log('accounts length unlock', i, accounts,length, accounts)
-      const child = sjs.HDSigner.deriveAccount(i)
-      console.log('child unlock', child)
-      /* eslint new-cap: ["error", { "newIsCap": false }] */
-      sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks))
-      sjs.HDSigner.accountIndex = activeAccountId
-      console.log('sjs unlock 2', sjs)
-    }
-
-    console.log('hdsigner testnet', HDsigner, isTestnet, password, sjs)
-
-    account.getPrimaryAccount(password, sjs);
-    account.getLatestUpdate();
-    account.watchMemPool();
+    _getAccountDataByNetwork(sjs);
 
     return;
   };
 
   const getNewAddress = async () => {
     sjs.HDSigner.receivingIndex = -1;
-    const address = await sjs.HDSigner.getNewReceivingAddress()
-    return account.setNewAddress(address)
+    const address = await sjs.HDSigner.getNewReceivingAddress();
+
+    return account.setNewAddress(address);
   }
 
   const account = AccountController({ checkPassword, importPrivKey });

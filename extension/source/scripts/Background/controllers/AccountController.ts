@@ -21,7 +21,7 @@ import {
   ISPTIssue,
   INFTIssue
 } from '../../types';
-import { sys, SYS_NETWORK } from 'constants/index';
+import { sys } from 'constants/index';
 
 export interface IAccountController {
   subscribeAccount: (sjs?: any, label?: string) => Promise<string | null>;
@@ -61,13 +61,10 @@ const AccountController = (actions: {
   let newSPT: ISPTInfo | null;
   let mintSPT: ISPTIssue | null;
   let mintNFT: INFTIssue | null;
-
-
+  
   const getAccountInfo = async (): Promise<IAccountInfo> => {
-    console.log('sysjs get account info', sysjs)
     let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
 
-    console.log('res account info', res)
     const balance = res.balance / 1e8;
     let transactions: Transaction[] = [];
     let assets: Assets[] = [];
@@ -100,26 +97,26 @@ const AccountController = (actions: {
       }, {});
 
       for (var key in transform) {
-        assets.push(transform[key])
+        assets.push(transform[key]);
       }
     }
+
     return {
       balance,
       assets,
       transactions,
     };
-
   };
 
-
   const subscribeAccount = async (sjs?: any, label?: string) => {
-    console.log('sysjs subscribe account', sysjs)
-    if (sjs) sysjs = sjs;
-    else {
-      sysjs.HDSigner.createAccount()
-    }
-    console.log('sysjs subscribe account', sysjs)
+    if (sjs) {
+      sysjs = sjs;
+    } 
+
+    sysjs.HDSigner.createAccount();
+    
     const res: IAccountInfo | null = await getAccountInfo();
+
     account = {
       id: sysjs.HDSigner.accountIndex,
       label: label || `Account ${sysjs.HDSigner.accountIndex + 1}`,
@@ -131,6 +128,7 @@ const AccountController = (actions: {
       assets: res.assets,
       connectedTo: []
     };
+
     store.dispatch(createAccount(account));
 
     return account!.xpub;
@@ -156,20 +154,18 @@ const AccountController = (actions: {
   };
 
   const getLatestUpdate = async () => {
-    console.log('sysjs latest update', sysjs)
     const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
-    sysjs.HDSigner.accountIndex = activeAccountId
+
+    sysjs.HDSigner.accountIndex = activeAccountId;
+
     if (!accounts[activeAccountId]) {
       return;
     };
 
     const accLatestInfo = await getAccountInfo();
 
-    console.log('active account id', activeAccountId, accounts[activeAccountId])
-
-    console.log('acc latest info', accLatestInfo)
-
     if (!accLatestInfo) return;
+
     account = accounts[activeAccountId];
 
     store.dispatch(
@@ -180,16 +176,15 @@ const AccountController = (actions: {
         assets: accLatestInfo.assets
       })
     );
-
-    console.log('accounts get latest ', accounts )
   };
 
   const getPrimaryAccount = (pwd: string, sjs: any) => {
-    console.log('sjs primary account and sysjs', sjs, sysjs)
     const { accounts, activeAccountId }: IWalletState = store.getState().wallet;
+
     if (sjs) {
       sysjs = sjs;
     }
+
     if (!actions.checkPassword(pwd)) return;
 
     getLatestUpdate();
@@ -235,12 +230,10 @@ const AccountController = (actions: {
   }
 
   const getRecommendFee = async () => {
-    console.log('sysjs recommend fee', sysjs)
     return await sys.utils.fetchEstimateFee(sysjs.blockbookURL, 1) / 10 ** 8;
   };
 
   const _coventPendingType = (txid: string) => {
-
     return {
       txid: txid,
       value: 0,
@@ -256,7 +249,6 @@ const AccountController = (actions: {
     }
 
     getLatestUpdate();
-
   };
 
   const getTempTx = () => {
@@ -266,9 +258,11 @@ const AccountController = (actions: {
   const getNewSPT = () => {
     return newSPT || null;
   };
+
   const getIssueSPT = () => {
     return mintSPT || null;
   };
+
   const getIssueNFT = () => {
     return mintNFT || null;
   };
@@ -281,6 +275,7 @@ const AccountController = (actions: {
 
   const setNewAddress = (addr: string) => {
     const { activeAccountId } = store.getState().wallet;
+
     store.dispatch(
       updateAccountAddress({
         id: activeAccountId,
@@ -293,24 +288,31 @@ const AccountController = (actions: {
 
   const createSPT = (spt: ISPTInfo) => {
     newSPT = spt;
-    return true
+
+    return true;
   }
+
   const issueSPT = (spt: ISPTIssue) => {
     mintSPT = spt;
-    return true
+
+    return true;
   }
+
   const issueNFT = (nft: INFTIssue) => {
     mintNFT = nft;
-    return true
+
+    return true;
   }
 
   const confirmNewSPT = async () => {
     if (!sysjs) {
       throw new Error('Error: No signed account exists');
     }
+
     if (!account) {
       throw new Error("Error: Can't find active account info");
     }
+
     if (!newSPT) {
       throw new Error("Error: Can't find NewSPT info");
     }
@@ -320,16 +322,21 @@ const AccountController = (actions: {
         precision: newSPT.precision, symbol: newSPT.symbol, maxsupply: new sys.utils.BN(newSPT.maxsupply), description: newSPT.description
       }
       const txOpts = { rbf: newSPT.rbf }
-      const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, newSPT.receiver, new sys.utils.BN(newSPT.fee))
-      const txInfo = pendingTx.extractTransaction().getId()
+
+      const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, newSPT.receiver, new sys.utils.BN(newSPT.fee));
+      const txInfo = pendingTx.extractTransaction().getId();
+
       store.dispatch(
         updateTransactions({
           id: account.id,
           txs: [_coventPendingType(txInfo), ...account.transactions],
         })
       );
+
       tempTx = null;
+
       watchMemPool();
+
       return null;
     } catch (error) {
       throw new Error(error);
@@ -340,9 +347,11 @@ const AccountController = (actions: {
     if (!sysjs) {
       throw new Error('Error: No signed account exists');
     }
+
     if (!account) {
       throw new Error("Error: Can't find active account info");
     }
+    
     if (!mintSPT) {
       throw new Error("Error: Can't find transaction info");
     }
@@ -352,8 +361,7 @@ const AccountController = (actions: {
       mintSPT = null;
 
       return null;
-    }
-    catch (error) {
+    } catch (error) {
       throw new Error(error);
     }
   }
@@ -362,31 +370,34 @@ const AccountController = (actions: {
     if (!sysjs) {
       throw new Error('Error: No signed account exists');
     }
+
     if (!account) {
       throw new Error("Error: Can't find active account info");
     }
+
     if (!mintNFT) {
       throw new Error("Error: Can't find transaction info");
     }
+
     try {
       //Code for minting nft
       mintNFT = null;
 
       return null;
-    }
-    catch (error) {
+    } catch (error) {
       throw new Error(error);
     }
   }
-
 
   const confirmTempTx = async () => {
     if (!sysjs) {
       throw new Error('Error: No signed account exists');
     }
+
     if (!account) {
       throw new Error("Error: Can't find active account info");
     }
+
     if (!tempTx) {
       throw new Error("Error: Can't find transaction info");
     }
@@ -394,12 +405,15 @@ const AccountController = (actions: {
     try {
       if (tempTx.isToken && tempTx.token) {
         const txOpts = { rbf: tempTx.rbf }
-        const value = isNFT(tempTx.token.assetGuid) ? new sys.utils.BN(tempTx.amount) : new sys.utils.BN(tempTx.amount * 10 ** tempTx.token.decimals)
+        const value = isNFT(tempTx.token.assetGuid) ? new sys.utils.BN(tempTx.amount) : new sys.utils.BN(tempTx.amount * 10 ** tempTx.token.decimals);
+
         const assetMap = new Map([
           [tempTx.token.assetGuid, { changeAddress: null, outputs: [{ value: value, address: tempTx.toAddress }] }]
-        ])
-        const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(tempTx.fee * 1e8))
-        const txInfo = pendingTx.extractTransaction().getId()
+        ]);
+
+        const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(tempTx.fee * 1e8));
+        const txInfo = pendingTx.extractTransaction().getId();
+
         store.dispatch(
           updateTransactions({
             id: account.id,
@@ -409,10 +423,12 @@ const AccountController = (actions: {
       } else {
         const _outputsArr = [
           { address: tempTx.toAddress, value: new sys.utils.BN(tempTx.amount * 1e8) }
-        ]
+        ];
         const txOpts = { rbf: tempTx.rbf }
+
         const pendingTx = await sysjs.createTransaction(txOpts, null, _outputsArr, new sys.utils.BN(tempTx.fee * 1e8));
-        const txInfo = pendingTx.extractTransaction().getId()
+        const txInfo = pendingTx.extractTransaction().getId();
+
         store.dispatch(
           updateTransactions({
             id: account.id,
@@ -422,10 +438,11 @@ const AccountController = (actions: {
       }
 
       tempTx = null;
+
       watchMemPool();
+
       return null;
     } catch (error) {
-      debugger
       throw new Error(error);
     }
   };
