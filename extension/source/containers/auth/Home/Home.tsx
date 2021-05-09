@@ -35,6 +35,8 @@ const Home = () => {
 
   useEffect(() => {
     if (accounts[activeAccountId]) {
+      handleRefresh();
+      
       if (accounts[activeAccountId].connectedTo.length > 0) {
         setIsConnected(accounts[activeAccountId].connectedTo.findIndex((url: any) => {
           return url == currentURL;

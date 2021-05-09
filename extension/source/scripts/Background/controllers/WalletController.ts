@@ -61,8 +61,8 @@ const WalletController = (): IWalletController => {
       return;
     }
 
-    HDsigner = new sys.utils.HDSigner(mnemonic, null, true);
-    sjs = new sys.SyscoinJSLib(HDsigner, backendURl);
+    HDsigner = new sys.utils.HDSigner(mnemonic, null, false);
+    sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.main.beUrl);
 
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
@@ -154,7 +154,8 @@ const WalletController = (): IWalletController => {
 
   const importPhrase = (seedphrase: string) => {
     if (validateMnemonic(seedphrase)) {
-      mnemonic = seedphrase
+      mnemonic = seedphrase;
+
       return true;
     }
 

@@ -80,6 +80,8 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
     setShowed(false);
   };
 
+  console.log('transactions', transactions)
+
   return (
     <section
       className={clsx(styles.activity, { [styles.expanded]: isShowed })}
