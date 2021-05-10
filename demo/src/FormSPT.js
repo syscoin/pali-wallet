@@ -61,7 +61,7 @@ function FormSpt(props) {
             value={rbf}
             onClick={e =>  setRbf(e.target.value)}/> */}
 
-<label for="input">Precision:</label>
+<label for="input">AssetGuid:</label>
           <input 
           className="input" 
           type="text" 
@@ -70,7 +70,7 @@ function FormSpt(props) {
           required>
           </input>
 
-          <label for="input">amount1:</label>
+          <label for="input">Amount:</label>
           <input 
           className="input" 
           type="text" 
@@ -79,7 +79,7 @@ function FormSpt(props) {
           required>
           </input>
 
-          <label for="input">sysAddress</label>
+          <label for="input">Receiver</label>
           <input 
           className="input" 
           type="text" 
@@ -88,7 +88,7 @@ function FormSpt(props) {
           required>
           </input>
 
-          <label for="input">desc:</label>
+          <label for="input">Description:</label>
           <input 
           className="input" 
           type="text" 
@@ -97,7 +97,7 @@ function FormSpt(props) {
           required>
           </input>   
 
-            <label for="input">fee:</label>
+            <label for="input">Fee:</label>
             <input 
             className="input" 
             type="text" 
@@ -106,7 +106,6 @@ function FormSpt(props) {
             required>
             </input>
               
-
             <label for="input">RBF:</label>
             <input 
             id="rbf" 
