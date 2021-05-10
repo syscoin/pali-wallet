@@ -1,84 +1,80 @@
-import React, { useState } from "react";
+import React from "react";
 
-const FormCreateSPT = (props) => {
-  const [precision, setPrecision] = useState("");
-  const [maxSupply, setMaxSupply] = useState("");
-  const [description, setDescription] = useState("")
-  const [sysAddress, setSysAddress] = useState("");
-  const [symbol, setSymbol] = useState("");
-
-  // const handleSubmit = (event) => {
-  //   event.preventDefault();
-
-  //   alert(`Submitting Precision: ${precision}, Max Supply: "${maxSupply}", Sys Receiveing Address: ${sysAddress}, Description: ${description}, Symbol:${symbol} `)
-  // }
+function FormCrtSpt(props) {
 
   return (
     <form onSubmit={props.formCallback}>
       <div className="property">YOU ARE CREATING SPTS
-        <div>
-          <label for="precision">Precision:</label>
-          <input
-            className="input"
-            type="text"
-            id="precision"
-            name="precision"
-            value={precision}
-            onChange={(event) => setPrecision(event.target.value)}
-          />
-
-          <label for="maxSupply">Max. Supply:</label>
-          <input
-            className="input"
-            type="text"
-            id="maxSupply"
-            name="maxSupply"
-            value={maxSupply}
-            onChange={(event) => setMaxSupply(event.target.value)}
-          />
-
-          <label for="description">Description</label>
-          <input
-            className="input"
-            type="text"
-            id="description"
-            name="description"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-          />
-
-          <label for="address">Sys address:</label>
+      <div>
+          <label for="input">Precision:</label>
           <input 
-            className="input"
-            type="text"
-            id="address"
-            name="address"
-            value={sysAddress}
-            onChange={(event) => setSysAddress(event.target.value)}
-          />
+          className="input" 
+          type="text" 
+          id="precision" 
+          name="precision" 
+          required>
+          </input>
 
-          <label
-            for="symbol"
-          >
-            UPLOAD SYMBOL
-          </label>
-          <input
-            type="file"
-            name="symbol" 
-            id="symbol"
-            value={symbol}
-            onChange={(event) => setSymbol(event.target.value)}
-          />
-        </div>
+          <label for="input">Max. Supply:</label>
+          <input 
+          className="input" 
+          type="text" 
+          id="maxSupply" 
+          name="maxSupply" 
+          required>
+          </input>
 
-        <input
-          className="button"
-          type="submit"
-          value="CREATE"
-        />
-      </div>
+          <label for="input">Description</label>
+          <input 
+          className="input" 
+          type="text" 
+          id="description" 
+          name="description" 
+          required>
+          </input>
 
+          <label for="input">Symbol:</label>
+          <input 
+          className="input" 
+          type="text" 
+          id="symbol" 
+          name="symbol" 
+          required>
+          </input>   
+
+          <label for="input">Fee:</label>
+           <input 
+           className="input" 
+           type="text" 
+           id="fee" 
+           name="fee" 
+           required>
+            </input>   
+            
+            <label for="input">Sys address:</label>
+            <input 
+            className="input" 
+            type="text" 
+            id="sysAddress" 
+            name="sysAddress" 
+            required>
+            </input>
+              
+            <label for="input">RBF:</label>
+            <input 
+            id="rbf" 
+            name="rbf" 
+            type="checkbox" 
+            class="switchh"/>
+        
+        </div> 
+        
+            <input 
+            className="button" 
+            type="submit" 
+            value="CREATE!" />
+            </div>
     </form>
   );
 }
-export default FormCreateSPT;
+export default FormCrtSpt;

@@ -9,7 +9,7 @@ import MintNFT from './MintNFT';
 import MintSPT from './MintSPT';
 import createSPT from './createSpt';
 import CreateCollection from './createCollection';
-
+//v
 ReactDOM.render(
   <BrowserRouter>
     <Switch>

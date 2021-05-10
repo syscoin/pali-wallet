@@ -2,7 +2,6 @@ import React, { Component, useEffect, useState, useCallback } from "react";
 import logo from "./assets/images/logosys.svg";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-dropzone-uploader/dist/styles.css';
-import Dropzone from 'react-dropzone-uploader';
 import FormCollection from "./FormCollection"
 
 const CreateCollection = () => { 
@@ -191,6 +190,3 @@ const CreateCollection = () => {
 }
   
 export default CreateCollection;
-  
-  
-  

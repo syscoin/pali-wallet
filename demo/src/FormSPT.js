@@ -7,7 +7,7 @@ function FormSpt(props) {
   const [description, setDescription] = useState("");
   const [fee1, setFee1] = useState("");
   const [rbf, setRbf] = useState("");
-  //   alert(`Submitting Asset Guid: "${assetGuid}", Value: "${value}", Sys Receiveing Address: ${sysAddress} `)}
+  //   alert(`Submitting Asset Guid: "${assetGuid}", Value: "${value}", Sys Receiveing Address: ${sysAddress} `)//v}
   return (
     <form onSubmit={props.formCallback}>
 

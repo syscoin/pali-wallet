@@ -151,7 +151,7 @@ const MintSPT = () => {
       document.getElementById('out').innerHTML+= `${JSON.stringify(`CID:${cid}`)}\n`;
     }; 
   };  
-
+//v
   return (
     <div className="app">
       {controller ? (  

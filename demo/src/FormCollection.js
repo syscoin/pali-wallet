@@ -130,6 +130,6 @@ const FormCollection = (props) => {
       </div>   
     </form>
   );
-}
+}//v
 
 export default FormCollection;
