@@ -2,7 +2,7 @@ import React, { Component, useEffect, useState, useCallback } from "react";
 import logo from "./assets/images/logosys.svg";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-dropzone-uploader/dist/styles.css';
-import FormSPT from "./FormSPT";
+import FormSpt from "./FormSPT";
 
 const MintSPT = () => {
   const [preview, setPreview] = useState("");
@@ -125,6 +125,10 @@ const MintSPT = () => {
 
     return;
   }
+  const handleCreateToken = async (assetGuid, amount1, sysAddress, description, fee1, rbf) => {
+     alert(`Submitting: ${assetGuid}, ${amount1}, ${sysAddress}, ${description}, ${fee1}, ${rbf} `)
+     await controller.handleCreateToken( assetGuid, amount1, sysAddress, description, fee1, rbf )
+    return }
 
   const getUploadParams = () => ({
     url: 'https://api.nft.storage/upload',  
@@ -182,7 +186,7 @@ const MintSPT = () => {
             </div>
           </nav>  
 
-          <FormSPT />
+          <FormSpt formCallback={handleCreateToken}/>  
         </div>
         ) : (
         <div>
