@@ -13,7 +13,7 @@ function FormSpt(props) {
 
   <div className="property">YOU ARE MINTING SPTS
       <div>
-      <label for="input">AssetGuid:</label>
+      {/* <label for="input">AssetGuid:</label>
           <input 
           className="input" 
           type="text" 
@@ -59,7 +59,61 @@ function FormSpt(props) {
             type="checkbox" 
             class="switchh" 
             value={rbf}
-            onClick={e =>  setRbf(e.target.value)}/>
+            onClick={e =>  setRbf(e.target.value)}/> */}
+
+<label for="input">Precision:</label>
+          <input 
+          className="input" 
+          type="text" 
+          id="assetGuid" 
+          name="assetGuid" 
+          required>
+          </input>
+
+          <label for="input">amount1:</label>
+          <input 
+          className="input" 
+          type="text" 
+          id="amount1" 
+          name="amount1" 
+          required>
+          </input>
+
+          <label for="input">sysAddress</label>
+          <input 
+          className="input" 
+          type="text" 
+          id="sysAddress" 
+          name="sysAddress" 
+          required>
+          </input>
+
+          <label for="input">desc:</label>
+          <input 
+          className="input" 
+          type="text" 
+          id="description" 
+          name="description" 
+          required>
+          </input>   
+
+            <label for="input">fee:</label>
+            <input 
+            className="input" 
+            type="text" 
+            id="fee1" 
+            name="fee1" 
+            required>
+            </input>
+              
+
+            <label for="input">RBF:</label>
+            <input 
+            id="rbf" 
+            name="rbf" 
+            type="checkbox" 
+            class="switchh"/>
+        
         </div> 
         <input 
         className="button" 

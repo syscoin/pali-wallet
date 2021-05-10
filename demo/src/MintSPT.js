@@ -1,4 +1,4 @@
-import React, { Component, useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import logo from "./assets/images/logosys.svg";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-dropzone-uploader/dist/styles.css';
@@ -77,7 +77,7 @@ const MintSPT = () => {
   
   const handleAssetSelected = (event) => {
     if (connectedAccount) {
-      const selectedAsset = connectedAccount.assets.filter((asset) => asset.assetGuid == event.target.value);
+      const selectedAsset = connectedAccount.assets.filter((asset) => asset.assetGuid === event.target.value);
 
       if (selectedAsset[0]) {
         setSelectedAsset(selectedAsset[0]);
@@ -125,10 +125,21 @@ const MintSPT = () => {
 
     return;
   }
-  const handleCreateToken = async (assetGuid, amount1, sysAddress, description, fee1, rbf) => {
-     alert(`Submitting: ${assetGuid}, ${amount1}, ${sysAddress}, ${description}, ${fee1}, ${rbf} `)
-     await controller.handleCreateToken( assetGuid, amount1, sysAddress, description, fee1, rbf )
-    return }
+  // const handleCreateToken = async (assetGuid, amount1, sysAddress, description, fee1, rbf) => {
+  //    alert(`Submitting: ${assetGuid}, ${amount1}, ${sysAddress}, ${description}, ${fee1}, ${rbf} `)
+  //    console.log('çedsa')
+  //    await controller.handleCreateToken(assetGuid, amount1, sysAddress, description, fee1, rbf)
+     
+     
+  //   return }
+
+  const handleCreateToken = async (evt) => {
+  alert(`Submitting Precision: ${evt.target.assetGuid.value}, Max Supply: ${evt.target.amount1.value}, Description: ${evt.target.sysAddress.value}, Symbol: ${evt.target.description.value}, Fee: ${evt.target.fee1.value}, RBF: ${evt.target.rbf.value} `)
+  await controller.handleCreateToken(evt)
+     
+     
+ return }
+
 
   const getUploadParams = () => ({
     url: 'https://api.nft.storage/upload',  
