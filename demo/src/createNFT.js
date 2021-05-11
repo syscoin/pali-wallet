@@ -1,10 +1,10 @@
 import React, { Component, useEffect, useState, useCallback } from "react";
-import 'bootstrap/dist/css/bootstrap.min.css';
-import 'react-dropzone-uploader/dist/styles.css';
-import FormCollection from "./FormCollection"
 import logo from "./assets/images/logosys.svg";
+import 'bootstrap/dist/css/bootstrap.min.css';
+import 'react-dropzone-uploader/dist/styles.css'
+import FormCreateNFT from './FormCreateNFT'
 
-const CreateCollection = () => { 
+const CreateNFT = () => {
   const [preview, setPreview] = useState("");
   const [isInstalled, setIsInstalled] = useState(false);
   const [canConnect, setCanConnect] = useState(true);
@@ -15,38 +15,29 @@ const CreateCollection = () => {
   const [amount, setAmount] = useState(0);
   const [fee, setFee] = useState(0.00001);
   const [toAddress, setToAddress] = useState('');
-  const [selectedAsset,setSelectedAsset] = useState(null);
+  const [selectedAsset, setSelectedAsset] = useState(null);
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
     const callback = async (event) => {
       if (event.detail.SyscoinInstalled) {
         setIsInstalled(true);
-
         if (event.detail.ConnectionsController) {
           setController(window.ConnectionsController);
-
           return;
         }
-
         return;
       }
-
       setIsInstalled(false);
-
       window.removeEventListener('SyscoinStatus', callback);
     }
-
     window.addEventListener('SyscoinStatus', callback);
   }, []);
-
   const handleTypeChanged = useCallback((checked) => {
-      setChecked(checked)
+    setChecked(checked)
   }, []);
-
   const setup = async () => {
     const state = await controller.getWalletState();
-
     if (state.accounts.length > 0) {
       controller.getConnectedAccount()
         .then((data) => {
@@ -59,12 +50,17 @@ const CreateCollection = () => {
             setConnectedAccountAddress('');
             setBalance(0);
           }
-      
+
           return;
         });
     }
   };
 
+  useEffect(() => {
+    if (controller) {
+
+    }
+  })
   useEffect(() => {
     if (controller) {
       setup();
@@ -81,10 +77,8 @@ const CreateCollection = () => {
 
       if (selectedAsset[0]) {
         setSelectedAsset(selectedAsset[0]);
-
         return;
       }
-
       setSelectedAsset(null);
     }
   };
@@ -108,28 +102,10 @@ const CreateCollection = () => {
     setFee(0.00001);
   }
 
-  const handleSendToken = async (sender, receiver, amount, fee, token) => {
-    const inputs = document.querySelectorAll('input');
-
-    if (token !== null) {
-      await controller.handleSendToken(sender, receiver, amount, fee, token, true, !checked);
-
-      clearData(inputs);
-
-      return;
-    }
-
-    await controller.handleSendToken(sender, receiver, amount, fee, null, false, !checked);
-
-    clearData(inputs);
-
-    return;
-  }
-
   return (
     <div className="app">
-      {controller ? (  
-      <div>  
+      {controller ? (
+        <div>
                   <nav className="navbar navbar-expand-lg navbar-light  static-top">
 <div className="container">
   <a className="navbar-brand" href="https://syscoin.org/">
@@ -141,7 +117,6 @@ const CreateCollection = () => {
   </a>
 
   <a className="button" href="/">Home</a>
-
   <div className="collapse navbar-collapse" id="navbarResponsive">
     <ul className="navbar-nav ml-auto">
       <button
@@ -154,12 +129,12 @@ const CreateCollection = () => {
   </div>
 </div>
 </nav>
-        {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}  
-
-        <div className="form"> 
-          <FormCollection />      
+          {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}
+          <div className="form">
+            <FormCreateNFT
+            />
+          </div>
         </div>
-      </div>
       ) : (
         <div>
           <p>...</p>
@@ -168,5 +143,8 @@ const CreateCollection = () => {
     </div>
   );
 }
-  
-export default CreateCollection;
+export default CreateNFT;
+
+
+
+

@@ -1,10 +1,11 @@
 import React from "react";
 
-function FormCrtSpt(props) {
+function FormCreateNFT(props) {
 
   return (
-    <form onSubmit={props.formCallback}>
-      <div className="property">YOU ARE CREATING SPTS
+    <form onSubmit={props.formCallback}
+    >
+      <div className="property">YOU ARE CREATING NFTS
       <div>
           <label for="input">Precision:</label>
           <input 
@@ -12,8 +13,7 @@ function FormCrtSpt(props) {
           type="text" 
           id="precision" 
           name="precision" 
-          //required
-          >
+          required>
           </input>
 
           <label for="input">Max. Supply:</label>
@@ -22,8 +22,7 @@ function FormCrtSpt(props) {
           type="text" 
           id="maxSupply" 
           name="maxSupply" 
-          //required
-          >
+          required>
           </input>
 
           <label for="input">Description</label>
@@ -32,8 +31,7 @@ function FormCrtSpt(props) {
           type="text" 
           id="description" 
           name="description" 
-          //required
-          >
+          required>
           </input>
 
           <label for="input">Symbol:</label>
@@ -42,8 +40,7 @@ function FormCrtSpt(props) {
           type="text" 
           id="symbol" 
           name="symbol" 
-          //required
-          >
+          required>
           </input>   
 
           <label for="input">Fee:</label>
@@ -52,8 +49,7 @@ function FormCrtSpt(props) {
            type="text" 
            id="fee" 
            name="fee" 
-           //required
-           >
+           required>
             </input>   
             
             <label for="input">Sys address:</label>
@@ -62,8 +58,7 @@ function FormCrtSpt(props) {
             type="text" 
             id="sysAddress" 
             name="sysAddress" 
-           // required
-           >
+            required>
             </input>
               
             <label for="input">RBF:</label>
@@ -83,4 +78,4 @@ function FormCrtSpt(props) {
     </form>
   );
 }
-export default FormCrtSpt;
+export default FormCreateNFT;

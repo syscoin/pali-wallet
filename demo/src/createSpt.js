@@ -114,81 +114,53 @@ const CreateSPT = () => {
   }
 
 
-  const handleSendToken = async (evt) => {
-    const inputs = document.querySelectorAll('input');
-    alert(`Submitting Precision: ${evt.target.precision.value}, Max Supply: ${evt.target.maxSupply.value}, Description: ${evt.target.description.value}, Symbol: ${evt.target.symbol.value}, Fee: ${evt.target.fee.value}, Sys Address: ${evt.target.sysAddress.value}, RBF: ${evt.target.rbf.value} `)
-    // if (token !== null) {
-    //   await controller.handleCreateToken(precision,/numb
-    //     symbol,
-    //     maxsupply, nb
-    //     fee, nb
-    //     description,
-    //     receiver, saddres
-    //     rbf);bol
-
-    //   clearData(inputs);
-
-    //   return;
-    // }
-    // clearData(inputs);
-
-    return;
+  const handleCreateToken = async (evt) => {
+    await controller.handleCreateToken(
+      evt.target.precision.value,
+      evt.target.symbol.value,
+      evt.target.maxSupply.value,
+      evt.target.fee.value,
+      evt.target.description.value,
+      evt.target.sysAddress.value,
+      evt.target.rbf.value);
   }
 
-  const getUploadParams = () => ({
-    url: 'https://api.nft.storage/upload',
-    headers: {
-      "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaWQ6ZXRocjoweGJiNUM1NzJkYmFlNDQ1MkFDOGFiZWZlMjk3ZTljREIyRmEzRjRlNzIiLCJpc3MiOiJuZnQtc3RvcmFnZSIsImlhdCI6MTYxOTcxMjM0MTgzNCwibmFtZSI6InN5cyJ9.KmVoWH8Sa0FNsPyWrPYEr1zCAdFw8bJwVnmzPsp_fg4"
-    }
-  });
-
-  //"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5ASDASDAXCZg0NTY5MDEiLCJpc3MiOiJuZnQtc3RvcmFnZSIsImlhdCI6MTYxODU5NzczODM5NCwibmFtZSI6ImtleTEifQ.uNeFoDDU_M8uzTNTVQ3uYnxejjVNldno5nFuxzoOWMk"
-
-  const handleChangeStatus = ({ meta, file, xhr }, status) => {
-    if (xhr?.response) {
-      const { value: { cid } } = JSON.parse(xhr.response);
-
-      setPreview(`https://ipfs.io/ipfs/${cid}/${file.name}`);
-
-      console.log(`CID:${cid}`);
-      console.log('meta: ', meta);
-      console.log('file', file);
-      console.log(`other information: `, JSON.parse(xhr.response));
-
-      document.getElementById('out').innerHTML += `${JSON.stringify(`CID:${cid}`)}\n`;
-    };
-  };
-
+  
 
   return (
     <div className="app">
       {controller ? (
         <div>
-          <nav className="navbar navbar-expand-lg navbar-light  static-top">
-            <div className="container">
-              <a className="navbar-brand" href="https://syscoin.org/">
-                <img src={logo} alt="logo" className="header__logo"></img>
-              </a>
-              <a className="button" href="/">Home</a>
+              <nav className="navbar navbar-expand-lg navbar-light  static-top">
+<div className="container">
+  <a className="navbar-brand" href="https://syscoin.org/">
+    <img
+      src={logo}
+      alt="logo"
+      className="header__logo"
+    />
+  </a>
 
-              <div className="collapse navbar-collapse" id="navbarResponsive">
-                <ul className="navbar-nav ml-auto">
-                  <button
-                    className="button"
-                    onClick={canConnect ? handleMessageExtension : undefined}
-                    disabled={!isInstalled}>
-                    {connectedAccountAddress === '' ? 'Connect to Syscoin Wallet' : connectedAccountAddress}
-                  </button>
-                </ul>
-              </div>
-            </div>
-          </nav>
+  <a className="button" href="/">Home</a>
+
+  <div className="collapse navbar-collapse" id="navbarResponsive">
+    <ul className="navbar-nav ml-auto">
+      <button
+        className="button"
+        onClick={canConnect ? handleMessageExtension : undefined}
+        disabled={!isInstalled}>
+        {connectedAccountAddress === '' ? 'Connect to Syscoin Wallet' : connectedAccountAddress}
+      </button>
+    </ul>
+  </div>
+</div>
+</nav>
           {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}
 
 
           <div className="form">
             <FormCreateSPT
-              formCallback={handleSendToken}
+              formCallback={handleCreateToken}
             />
           </div>
         </div>

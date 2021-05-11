@@ -79,14 +79,14 @@ function FormSpt(props) {
           required>
           </input>
 
-          <label for="input">Receiver</label>
+          {/* <label for="input">Receiver</label>
           <input 
           className="input" 
           type="text" 
           id="sysAddress" 
           name="sysAddress" 
           required>
-          </input>
+          </input> */}
 
           <label for="input">Description:</label>
           <input 

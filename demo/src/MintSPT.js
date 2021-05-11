@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useCallback } from "react";
+
+import React, { Component, useEffect, useState, useCallback } from "react";
 import logo from "./assets/images/logosys.svg";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-dropzone-uploader/dist/styles.css';
-import FormSpt from "./FormSPT";
+import FormSPT from "./FormSPT";
 
 const MintSPT = () => {
   const [preview, setPreview] = useState("");
@@ -58,12 +59,19 @@ const MintSPT = () => {
             setConnectedAccount({});
             setConnectedAccountAddress('');
             setBalance(0);
-          }
-      
+          }      
           return;
         });
     }
   };
+  const handleIssueAsset = async (evt) => {
+  await controller.handleIssueAsset(
+    evt.target.rbf.value,
+    evt.target.fee1.value,
+    evt.target.assetGuid.value,
+    evt.target.amount1.value,
+    evt.target.description.value
+  )}
 
   useEffect(() => {
     if (controller) {
@@ -77,7 +85,7 @@ const MintSPT = () => {
   
   const handleAssetSelected = (event) => {
     if (connectedAccount) {
-      const selectedAsset = connectedAccount.assets.filter((asset) => asset.assetGuid === event.target.value);
+      const selectedAsset = connectedAccount.assets.filter((asset) => asset.assetGuid == event.target.value);
 
       if (selectedAsset[0]) {
         setSelectedAsset(selectedAsset[0]);
@@ -125,44 +133,7 @@ const MintSPT = () => {
 
     return;
   }
-  // const handleCreateToken = async (assetGuid, amount1, sysAddress, description, fee1, rbf) => {
-  //    alert(`Submitting: ${assetGuid}, ${amount1}, ${sysAddress}, ${description}, ${fee1}, ${rbf} `)
-  //    console.log('çedsa')
-  //    await controller.handleCreateToken(assetGuid, amount1, sysAddress, description, fee1, rbf)
-     
-     
-  //   return }
 
-  const handleCreateToken = async (evt) => {
-  alert(`Submitting Precision: ${evt.target.assetGuid.value}, Max Supply: ${evt.target.amount1.value}, Description: ${evt.target.sysAddress.value}, Symbol: ${evt.target.description.value}, Fee: ${evt.target.fee1.value}, RBF: ${evt.target.rbf.value} `)
-  await controller.handleCreateToken(evt)
-     
-     
- return }
-
-
-  const getUploadParams = () => ({
-    url: 'https://api.nft.storage/upload',  
-    headers: { "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaWQ6ZXRocjoweGJiNUM1NzJkYmFlNDQ1MkFDOGFiZWZlMjk3ZTljREIyRmEzRjRlNzIiLCJpc3MiOiJuZnQtc3RvcmFnZSIsImlhdCI6MTYxOTcxMjM0MTgzNCwibmFtZSI6InN5cyJ9.KmVoWH8Sa0FNsPyWrPYEr1zCAdFw8bJwVnmzPsp_fg4"
-    }
-  });
-
-  //"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5ASDASDAXCZg0NTY5MDEiLCJpc3MiOiJuZnQtc3RvcmFnZSIsImlhdCI6MTYxODU5NzczODM5NCwibmFtZSI6ImtleTEifQ.uNeFoDDU_M8uzTNTVQ3uYnxejjVNldno5nFuxzoOWMk"
- 
-  const handleChangeStatus = ({ meta, file, xhr }, status) => {
-    if (xhr?.response){
-      const {value: {cid}} = JSON.parse(xhr.response);
-
-      setPreview(`https://ipfs.io/ipfs/${cid}/${file.name}`);
-
-      console.log(`CID:${cid}`);
-      console.log('meta: ', meta);
-      console.log('file', file);
-      console.log(`other information: `, JSON.parse(xhr.response));
-      document.getElementById('out').innerHTML+= `${JSON.stringify(`CID:${cid}`)}\n`;
-    }; 
-  };  
-//v
   return (
     <div className="app">
       {controller ? (  
@@ -197,7 +168,7 @@ const MintSPT = () => {
             </div>
           </nav>  
 
-          <FormSpt formCallback={handleCreateToken}/>  
+          <FormSPT formCallback={handleIssueAsset}/>
         </div>
         ) : (
         <div>

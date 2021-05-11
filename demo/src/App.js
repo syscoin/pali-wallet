@@ -1,11 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
-import logo from "./assets/images/logosys.svg";
-import ReactTooltip from 'react-tooltip';
-import Switch from "react-switch";
-import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import 'bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css'
-
+import logo from "./assets/images/logosys.svg";
 const App = () => {
   const [isInstalled, setIsInstalled] = useState(false);
   const [canConnect, setCanConnect] = useState(true);
@@ -117,13 +113,13 @@ const App = () => {
       'txsdkasod'
     )
     //(rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => {
-    // await controller.handleIssueNFT(
-    //   true,
-    //   0.0001,
-    //   'umassetguid',
-    //   'umnfthash',
-    //   'umaconta'
-    // )
+   await controller.handleIssueNFT(
+       true,
+       0.0001,
+       'umassetguid',
+       'umnfthash',
+       'umaconta'
+     )
     return await controller.getWalletState();
   }
 
@@ -155,37 +151,44 @@ const App = () => {
     return;
   }
   return (
+
     <div className="app">
 
       {controller ? (
         <div>
-          <nav className="navbar navbar-expand-lg navbar-light  static-top">
-            <div className="container">
-              <a className="navbar-brand" href="https://syscoin.org/">
-                <img src={logo} alt="logo" className="header__logo"></img>
-              </a>
-              <div className="collapse navbar-collapse" id="navbarResponsive">
-                <ul className="navbar-nav ml-auto">
-                  <div className="header__info">
+         <nav className="navbar navbar-expand-lg navbar-light  static-top">
+<div className="container">
+  <a className="navbar-brand" href="https://syscoin.org/">
+    <img
+      src={logo}
+      alt="logo"
+      className="header__logo"
+    />
+  </a>
 
-                    <button
-                      className="button"
-                      onClick={canConnect ? handleMessageExtension : undefined}
-                      disabled={!isInstalled}>
-                      {connectedAccountAddress === '' ? 'Connect to Syscoin Wallet' : connectedAccountAddress}
-                    </button>  </div>
-                </ul>
+  <a className="button" href="/">Home</a>
 
-              </div>
-            </div>
-          </nav>
+  <div className="collapse navbar-collapse" id="navbarResponsive">
+    <ul className="navbar-nav ml-auto">
+      <button
+        className="button"
+        onClick={canConnect ? handleMessageExtension : undefined}
+        disabled={!isInstalled}>
+        {connectedAccountAddress === '' ? 'Connect to Syscoin Wallet' : connectedAccountAddress}
+      </button>
+    </ul>
+  </div>
+</div>
+</nav>
           {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}
 
           <div className="menu">
             <a className="button" href="/mintnft">Mint NFT</a>
+            <a className="button" href="/createnft">Create NFT</a>
             <a className="button" href="/createcollection">Create Collection</a>
             <a className="button" href="/createspt">Create SPT</a>
             <a className="button" href="/mintspt">Mint SPT</a>
+            
           </div>
         </div>
       ) : (
