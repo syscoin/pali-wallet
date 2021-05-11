@@ -4,7 +4,7 @@ import { BrowserRouter, Switch, Route } from 'react-router-dom';
 
 import App from './App';
 import './index.scss';
-
+import createNFT from './createNFT'
 import MintNFT from './MintNFT';
 import MintSPT from './MintSPT';
 import createSPT from './createSpt';
@@ -17,6 +17,7 @@ ReactDOM.render(
       <Route path="/mintnft" component={MintNFT} />
       <Route path="/mintspt" component={MintSPT} />
       <Route path="/createspt" component={createSPT} />
+      <Route path="/createnft" component={createNFT} />
       <Route path="/createcollection" component={CreateCollection} />
     </Switch>
   </BrowserRouter>,

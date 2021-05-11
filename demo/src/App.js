@@ -106,7 +106,7 @@ const App = () => {
     //   'larara lelere lololo lululu',
     //   'tsys1qvaf78steqrvsljch9mn6n559ljj5g2xs7gvepq',
     //   false);
-    // (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string)
+    // (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string
     await controller.handleIssueAsset(
       false,
       0.00001,
@@ -181,6 +181,7 @@ const App = () => {
 
           <div className="menu">
             <a className="button" href="/mintnft">Mint NFT</a>
+            <a className="button" href="/createnft">Create NFT</a>
             <a className="button" href="/createcollection">Create Collection</a>
             <a className="button" href="/createspt">Create SPT</a>
             <a className="button" href="/mintspt">Mint SPT</a>
