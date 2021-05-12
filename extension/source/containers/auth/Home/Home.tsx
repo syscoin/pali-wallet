@@ -30,13 +30,19 @@ const Home = () => {
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();
     controller.wallet.account.watchMemPool();
-    // controller.stateUpdater();
+    controller.stateUpdater();
   };
 
   useEffect(() => {
     if (accounts[activeAccountId]) {
       handleRefresh();
-      
+    }
+  }, [
+    accounts
+  ]);
+
+  useEffect(() => {
+    if (accounts[activeAccountId]) {
       if (accounts[activeAccountId].connectedTo.length > 0) {
         setIsConnected(accounts[activeAccountId].connectedTo.findIndex((url: any) => {
           return url == currentURL;

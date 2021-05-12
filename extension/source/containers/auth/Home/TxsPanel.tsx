@@ -101,47 +101,45 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
   };
 
   const getTxType = (tx: Transaction, txId: number) => {
-    // if (tx.tokenType === "SPTAssetAllocationSend" && transactionInfo[txId]) {
-    //   if (controller.wallet.account.isNFT(transactionInfo[txId].tokenTransfers[0].token)) {
-    //     return 'NFT transaction';
-    //   }
-
-    //   if (!controller.wallet.account.isNFT(transactionInfo[txId].tokenTransfers[0].token)) {
-    //     return 'NFT transaction';
-    //   }
-
-    //   return 'SYS transaction';
-    // }
-
-    // if (tx.tokenType === "SPTAssetActivate") {
-    //   return 'SPT creation';
-    // }
-
-    // if (tx.tokenType === "SPTAssetSend") {
-    //   return 'NFT creation';
-    // }
-
-    if (tx.tokenType === "SPTAssetAllocationSend") {
-      return 'SYS transaction';
-    }
-
-    if (tx.tokenType === "SPTAssetActivate" && assets && transactionInfo[txId]) {
-      if (controller.wallet.account.isNFT(transactionInfo[txId].tokenTransfers[0].token)) {
-        return 'NFT creation';
-      }
-  
-      return 'SPT creation';
-    }
-
-    if (tx.tokenType === "SPTAssetSend" && assets && transactionInfo[txId]) {
+    if (tx.tokenType === "SPTAssetAllocationSend" && transactionInfo[txId]) {
       if (controller.wallet.account.isNFT(transactionInfo[txId].tokenTransfers[0].token)) {
         return 'NFT transaction';
       }
-  
-      return 'SPT transaction';
+
+      if (!controller.wallet.account.isNFT(transactionInfo[txId].tokenTransfers[0].token)) {
+        return 'SPT transaction';
+      }
     }
 
-    return '';
+    if (tx.tokenType === "SPTAssetActivate") {
+      return 'SPT creation';
+    }
+
+    if (tx.tokenType === "SPTAssetSend") {
+      return 'NFT creation';
+    }
+
+    // if (tx.tokenType === "SPTAssetAllocationSend") {
+    //   return 'SYS transaction';
+    // }
+
+    // if (tx.tokenType === "SPTAssetActivate" && assets && transactionInfo[txId]) {
+    //   if (controller.wallet.account.isNFT(transactionInfo[txId].tokenTransfers[0].token)) {
+    //     return 'NFT creation';
+    //   }
+  
+    //   return 'SPT creation';
+    // }
+
+    // if (tx.tokenType === "SPTAssetSend" && assets && transactionInfo[txId]) {
+    //   if (controller.wallet.account.isNFT(transactionInfo[txId].tokenTransfers[0].token)) {
+    //     return 'NFT transaction';
+    //   }
+  
+    //   return 'SPT transaction';
+    // }
+
+    return 'sys';
   }
 
   return (
@@ -210,7 +208,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                           </span>
                           <small>{tx.txid}</small>
                           <small>{isConfirmed ? "Confirmed" : "Unconfirmed"}</small>
-                          <small>{getTxType(tx, idx)}</small>
+                          {/* <small>{getTxType(tx, idx)}</small> */}
                         </span>
                         <div className={styles.linkIcon}>
                           <UpArrowIcon />

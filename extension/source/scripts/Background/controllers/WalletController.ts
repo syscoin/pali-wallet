@@ -188,8 +188,8 @@ const WalletController = (): IWalletController => {
     }
 
     account.getPrimaryAccount(password, sjs);
-    account.getLatestUpdate();
-    account.watchMemPool();
+    // account.getLatestUpdate();
+    // account.watchMemPool();
 
     return;
   }
