@@ -196,7 +196,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                         {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}
                       </li>
                     )}
-                    <li >
+                    <li onClick={() => handleOpenExplorer(tx.txid)}>
                       <div>
                         {isConfirmed ? null : <Spinner size={25} className={styles.spinner} />}
                       </div>
@@ -212,7 +212,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                           <small>{isConfirmed ? "Confirmed" : "Unconfirmed"}</small>
                           <small>{getTxType(tx, idx)}</small>
                         </span>
-                        <div onClick={() => handleOpenExplorer(tx.txid)} className={styles.linkIcon}>
+                        <div className={styles.linkIcon}>
                           <UpArrowIcon />
                         </div>
                       </div>
