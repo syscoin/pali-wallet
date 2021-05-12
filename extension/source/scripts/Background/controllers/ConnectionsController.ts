@@ -10,6 +10,7 @@ export interface IConnectionsController {
   handleIssueAsset: (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string) => any;
   handleIssueNFT: (rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => any;
   isNFT: (guid: number) => boolean;
+  getAssetGuid: () => any;
 }
 
 const isNFT = (guid: number) => {
@@ -116,6 +117,26 @@ const ConnectionsController = (): IConnectionsController => {
       rbf
     });
   }
+  const getAssetGuid = async () => {
+    return await sendMessage({
+      type: 'ISSUE_ASSETGUID',
+      target: 'connectionsController',
+      freeze: true,
+      eventResult: 'complete'
+    }, {
+      type: 'ISSUE_ASSETGUID',
+      target: 'contentScript',
+
+    });
+  }
+  // const getAssetGuid = (assetGuid: any) => {
+  //   window.addEventListener('message', (event) => {
+  //     if (event.data.type === 'ISSUE_ASSETGUID') {
+  //       assetGuid();
+  //     }
+  //   });
+  // }
+  
 
   const handleIssueNFT = async (rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => {
     return await sendMessage({
@@ -144,7 +165,8 @@ const ConnectionsController = (): IConnectionsController => {
     handleSendToken,
     handleCreateToken,
     handleIssueAsset,
-    handleIssueNFT
+    handleIssueNFT,
+    getAssetGuid 
   }
 };
 

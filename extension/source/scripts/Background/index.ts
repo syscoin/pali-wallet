@@ -90,6 +90,17 @@ browser.runtime.onInstalled.addListener((): void => {
 
         return;
       }
+      if (type == 'ISSUE_ASSETGUID' && target == 'background') {
+        
+        browser.tabs.sendMessage(tabId, {
+          type: 'ISSUE_ASSETGUID',
+          target: 'contentScript',
+          eventResult: 'complete'
+        });
+      }
+
+
+
 
       if (type == 'RESET_CONNECTION_INFO' && target == 'background') {
         store.dispatch(setSenderURL(''));
@@ -358,7 +369,12 @@ browser.runtime.onInstalled.addListener((): void => {
         await browser.windows.remove(windowId);
       }
     })
+
+
   });
+
+
+
 });
 
 wrapStore(store, { portName: STORE_PORT });

@@ -118,6 +118,13 @@ window.addEventListener('message', (event) => {
     type,
     target
   } = event.data;
+  
+  if (type == "ISSUE_ASSETGUID" && target == 'contentScript') {
+    browser.runtime.sendMessage({
+      type: 'ISSUE_ASSETGUID',
+      target: 'background'
+    });
+  }
 
   if (event.source != window) {
     return;
@@ -308,7 +315,20 @@ browser.runtime.onMessage.addListener((request) => {
     window.postMessage({
       type: 'CONNECT_WALLET',
       target: 'connectionsController',
-      connected
+      eventResult: 'complete'
+    }, '*');
+
+    return;
+  }
+
+
+  if (type == 'ISSUE_ASSETGUID' && target == 'contentScript') {
+    window.postMessage({
+      type: 'CONNECT_WALLET',
+      target: 'connectionsController',
+      connected,
+      eventResult: 'complete',
+      complete
     }, '*');
 
     return;
@@ -347,7 +367,6 @@ browser.runtime.onMessage.addListener((request) => {
       target: 'connectionsController',
       connected
     }, '*');
-
     return;
   }
 });

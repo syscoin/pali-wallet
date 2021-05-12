@@ -1,74 +1,29 @@
 import React, { useState }from "react";
 
 function FormSpt(props) {
-  const [assetGuid, setAssetGuid] = useState("");
-  const [amount1, setAmount1] = useState("");
-  const [sysAddress, setSysAddress] = useState("");
-  const [description, setDescription] = useState("");
-  const [fee1, setFee1] = useState("");
-  const [rbf, setRbf] = useState("");
-  //   alert(`Submitting Asset Guid: "${assetGuid}", Value: "${value}", Sys Receiveing Address: ${sysAddress} `)//v}
+  const [controller, setController] = useState();
+
+
+  const getAssetGuid = async () => {
+ await controller.getAssetGuid()
+  } 
   return (
     <form onSubmit={props.formCallback}>
 
   <div className="property">YOU ARE MINTING SPTS
       <div>
-      {/* <label for="input">AssetGuid:</label>
-          <input 
-          className="input" 
-          type="text" 
-          id="lname" 
-          name="lname"  
-          value={assetGuid}
-          onChange={e =>  setAssetGuid(e.target.value)} required></input>
-      <label for="input">Amount:</label>
-          <input className="input" 
-          type="text" 
-          id="amount" 
-          name="amount"
-          value={amount1} required
-          onChange={e =>  setAmount1(e.target.value)}></input>
-      <label for="Student">Sys address:</label>
-           <input 
-           className="input" 
-           type="text"  
-           id="receiver" 
-           name="receiver" 
-           required value={sysAddress}
-           onChange={e =>  setSysAddress(e.target.value)}></input>  
-       <label for="input">Description:</label>
-          <input 
-          className="input" 
-          type="text" 
-          id="description" 
-          name="description" 
-          required value={description}
-          onChange={e =>  setDescription(e.target.value)}></input>
-       <label for="input">Fee:</label>
-          <input className="input"
-            type="text"
-            id="fee" 
-            name="fee" 
-            required 
-            value={fee1}
-            onChange={e =>  setFee1(e.target.value)}></input>
-        <label for="input">RBF:</label>
-           <input 
-            id="rbf" 
-            name="rbf" 
-            type="checkbox" 
-            class="switchh" 
-            value={rbf}
-            onClick={e =>  setRbf(e.target.value)}/> */}
-
-<label for="input">AssetGuid:</label>
-          <input 
-          className="input" 
-          type="text" 
-          id="assetGuid" 
+<div class="input-group mb-3">
+  <label for="custom-select">AssetGuid: </label>
+  <select id="assetGuid" 
           name="assetGuid" 
-          required>
-          </input>
+          class="custom-select" >
+    <option selected>Choose...</option>
+    <option value={getAssetGuid}>{getAssetGuid}</option>
+    <option value="2">Two</option>
+    <option value="3">Three</option>
+  </select>
+
+</div>
 
           <label for="input">Amount:</label>
           <input 
