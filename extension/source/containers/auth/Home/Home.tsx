@@ -34,11 +34,12 @@ const Home = () => {
   };
 
   useEffect(() => {
-    if (accounts[activeAccountId]) {
+    if (!controller.wallet.isLocked() && accounts.length > 0 && accounts[activeAccountId]) {
       handleRefresh();
     }
   }, [
-    accounts
+    !controller.wallet.isLocked(),
+    accounts.length > 0
   ]);
 
   useEffect(() => {

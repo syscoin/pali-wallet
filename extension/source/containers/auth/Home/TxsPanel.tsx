@@ -102,13 +102,15 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
 
   const getTxType = (tx: Transaction, txId: number) => {
     if (tx.tokenType === "SPTAssetAllocationSend" && transactionInfo[txId]) {
-      if (controller.wallet.account.isNFT(transactionInfo[txId].tokenTransfers[0].token)) {
-        return 'NFT transaction';
-      }
-
-      if (!controller.wallet.account.isNFT(transactionInfo[txId].tokenTransfers[0].token)) {
+      if (transactionInfo[txId].tokenTransfers) {
+        if (controller.wallet.account.isNFT(transactionInfo[txId].tokenTransfers[0].token)) {
+          return 'NFT transaction';
+        }
+  
         return 'SPT transaction';
       }
+
+      return 'No tokenTransfers';
     }
 
     if (tx.tokenType === "SPTAssetActivate") {
@@ -208,7 +210,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                           </span>
                           <small>{tx.txid}</small>
                           <small>{isConfirmed ? "Confirmed" : "Unconfirmed"}</small>
-                          {/* <small>{getTxType(tx, idx)}</small> */}
+                          <small>{getTxType(tx, idx)}</small>
                         </span>
                         <div className={styles.linkIcon}>
                           <UpArrowIcon />
