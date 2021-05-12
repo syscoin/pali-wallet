@@ -29,7 +29,7 @@ declare global {
 
 if (!window.controller) {
   window.controller = Object.freeze(MasterController());
-  setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
+  // setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
 }
 
 browser.runtime.onInstalled.addListener((): void => {
@@ -238,7 +238,6 @@ browser.runtime.onInstalled.addListener((): void => {
           connected: false
         });
       }
-
 
       if (type == 'CREATE_TOKEN' && target == 'background') {
         const {

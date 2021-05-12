@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { FC, Fragment, useCallback, useState } from 'react';
+import { FC, Fragment, useCallback, useState, useEffect } from 'react';
 import clsx from 'clsx';
 import { v4 as uuid } from 'uuid';
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
@@ -11,7 +11,6 @@ import Button from 'components/Button';
 import { useController } from 'hooks/index';
 import { formatDistanceDate } from '../helpers';
 import SyscoinIcon from 'assets/images/logosys.svg';
-import { SYS_EXPLORER_SEARCH } from 'constants/index';
 import { Transaction, Assets } from '../../../scripts/types';
 
 import styles from './Home.scss';
@@ -27,6 +26,23 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
   const [isShowed, setShowed] = useState<boolean>(false);
   const [isActivity, setActivity] = useState<boolean>(true);
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
+  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
+  const [transactionInfo, setTransactionInfo] = useState<any>({});
+
+  useEffect(() => {
+    if (transactions) {
+      transactions.map(async (transaction, index) => {
+        const txInfo = await controller.wallet.account.getTransactionInfoByTxId(transaction.txid);
+
+        console.log('tx info', txInfo);
+        
+        setTransactionInfo((prevTransactionInfo: any) => ({
+          ...prevTransactionInfo,
+          [index]: txInfo
+        }));
+      });
+    }
+  }, []);
 
   const isShowedGroupBar = useCallback(
     (tx: Transaction, idx: number) => {
@@ -57,22 +73,26 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
     }
   };
 
-  const handleScroll = useCallback((ev) => {
-    ev.persist();
-    if (ev.target.scrollTop) setShowed(true);
-    setScrollArea(ev.target);
-    const scrollOffset = ev.target.scrollHeight - ev.target.scrollTop;
-    if (scrollOffset === ev.target.clientHeight) {
+  const handleScroll = useCallback((event) => {
+    event.persist();
+
+    if (event.target.scrollTop) setShowed(true);
+
+    setScrollArea(event.target);
+
+    const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
+
+    if (scrollOffset === event.target.clientHeight) {
       handleFetchMoreTxs();
     }
   }, []);
 
   const handleOpenExplorer = (txid: string) => {
-    window.open(SYS_EXPLORER_SEARCH + '/tx/' + txid);
+    window.open(sysExplorer + '/tx/' + txid);
   };
 
   const handleOpenAssetExplorer = (txid: number) => {
-    window.open(SYS_EXPLORER_SEARCH + '/asset/' + txid);
+    window.open(sysExplorer + '/asset/' + txid);
   };
 
   const handleGoTop = () => {
@@ -80,7 +100,49 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
     setShowed(false);
   };
 
-  console.log('transactions', transactions)
+  const getTxType = (tx: Transaction, txId: number) => {
+    // if (tx.tokenType === "SPTAssetAllocationSend" && transactionInfo[txId]) {
+    //   if (controller.wallet.account.isNFT(transactionInfo[txId].tokenTransfers[0].token)) {
+    //     return 'NFT transaction';
+    //   }
+
+    //   if (!controller.wallet.account.isNFT(transactionInfo[txId].tokenTransfers[0].token)) {
+    //     return 'NFT transaction';
+    //   }
+
+    //   return 'SYS transaction';
+    // }
+
+    // if (tx.tokenType === "SPTAssetActivate") {
+    //   return 'SPT creation';
+    // }
+
+    // if (tx.tokenType === "SPTAssetSend") {
+    //   return 'NFT creation';
+    // }
+
+    if (tx.tokenType === "SPTAssetAllocationSend") {
+      return 'SYS transaction';
+    }
+
+    if (tx.tokenType === "SPTAssetActivate" && assets && transactionInfo[txId]) {
+      if (controller.wallet.account.isNFT(transactionInfo[txId].tokenTransfers[0].token)) {
+        return 'NFT creation';
+      }
+  
+      return 'SPT creation';
+    }
+
+    if (tx.tokenType === "SPTAssetSend" && assets && transactionInfo[txId]) {
+      if (controller.wallet.account.isNFT(transactionInfo[txId].tokenTransfers[0].token)) {
+        return 'NFT transaction';
+      }
+  
+      return 'SPT transaction';
+    }
+
+    return '';
+  }
 
   return (
     <section
@@ -134,7 +196,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                         {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}
                       </li>
                     )}
-                    <li onClick={() => handleOpenExplorer(tx.txid)}>
+                    <li >
                       <div>
                         {isConfirmed ? null : <Spinner size={25} className={styles.spinner} />}
                       </div>
@@ -148,8 +210,9 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                           </span>
                           <small>{tx.txid}</small>
                           <small>{isConfirmed ? "Confirmed" : "Unconfirmed"}</small>
+                          <small>{getTxType(tx, idx)}</small>
                         </span>
-                        <div className={styles.linkIcon}>
+                        <div onClick={() => handleOpenExplorer(tx.txid)} className={styles.linkIcon}>
                           <UpArrowIcon />
                         </div>
                       </div>
@@ -173,9 +236,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
               width="auto"
             />
           </>
-        )
-        :
-        assets.length ?
+        ) : assets.length ?
           <>
             <ul>
               {assets.map((asset: Assets, idx: number) => {

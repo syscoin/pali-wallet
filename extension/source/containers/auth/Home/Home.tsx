@@ -30,7 +30,7 @@ const Home = () => {
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();
     controller.wallet.account.watchMemPool();
-    controller.stateUpdater();
+    // controller.stateUpdater();
   };
 
   useEffect(() => {

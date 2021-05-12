@@ -1,5 +1,6 @@
 export const sys = require('syscoinjs-lib');
 export const STORE_PORT = 'SYSCOIN';
+
 export const SYS_NETWORK: {
   [networkId: string]: {
     id: string;

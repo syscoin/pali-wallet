@@ -47,6 +47,8 @@ export interface IAccountController {
   confirmIssueNFT: () => Promise<null | any>;
   confirmTempTx: () => Promise<null | any>;
   setNewAddress: (addr: string) => boolean;
+  getTransactionInfoByTxId: (txid: any) => any;
+  getSysExplorerSearch: () => string;
 }
 
 const AccountController = (actions: {
@@ -445,6 +447,14 @@ const AccountController = (actions: {
     }
   };
 
+  const getTransactionInfoByTxId = async (txid: any) => {
+    return await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
+  }
+
+  const getSysExplorerSearch = () => {
+    return sysjs.blockbookURL;
+  }
+
   return {
     subscribeAccount,
     getPrimaryAccount,
@@ -469,7 +479,9 @@ const AccountController = (actions: {
     getIssueSPT,
     getIssueNFT,
     confirmIssueSPT,
-    confirmIssueNFT
+    confirmIssueNFT,
+    getTransactionInfoByTxId,
+    getSysExplorerSearch
   };
 };
 
