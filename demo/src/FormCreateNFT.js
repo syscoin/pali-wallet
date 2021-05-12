@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-const FormCreateSPT = (props) => {
+const FormCreateNFT = (props) => {
   const [precision, setPrecision] = useState("");
   const [maxSupply, setMaxSupply] = useState("");
   const [description, setDescription] = useState("")
@@ -10,7 +10,7 @@ const FormCreateSPT = (props) => {
   return (
     <form onSubmit={props.formCallback}>
 
-    <div className="property">YOU ARE MINTING CREATING SPTS
+    <div className="property">YOU ARE MINTING CREATING NFTS
         <div>
     <label for="input">Precision:</label>
           <input 
@@ -81,4 +81,4 @@ const FormCreateSPT = (props) => {
     </form>
   );
 }
-export default FormCreateSPT;
+export default FormCreateNFT;

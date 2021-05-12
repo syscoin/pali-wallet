@@ -2,9 +2,9 @@ import React, { Component, useEffect, useState, useCallback } from "react";
 import logo from "./assets/images/logosys.svg";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-dropzone-uploader/dist/styles.css'
-import FormCreateSPT from './FormCreateSPT'
+import FormCreateNFT from './FormCreateNFT'
 
-const CreateSPT = () => {
+const CreateNFT = () => {
   const [preview, setPreview] = useState("");
   const [isInstalled, setIsInstalled] = useState(false);
   const [canConnect, setCanConnect] = useState(true);
@@ -159,7 +159,7 @@ const CreateSPT = () => {
 
 
           <div className="form">
-            <FormCreateSPT
+            <FormCreateNFT
               formCallback={handleCreateToken}
             />
           </div>
@@ -172,8 +172,4 @@ const CreateSPT = () => {
     </div>
   );
 }
-export default CreateSPT;
-
-
-
-
+export default CreateNFT;

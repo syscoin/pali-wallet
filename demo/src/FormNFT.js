@@ -18,7 +18,7 @@ const FormNFT = (props) => {
 
   const handleSubmit = (event) => {
     event.preventDefault();
-
+//v
     alert(`Submitting NFT Name: "${nftName}", Description: "${description}", MaxShares: ${maxShares}, Editions: ${editions}, Royalites: ${royalites}%, Property 1: ${propertyParent1}, Atributte 1: ${propertyAtributte1}, Property 2: ${propertyParent2}, Atributte 2: ${propertyAtributte2}, Property 3: ${propertyParent3}, Atributte 3: ${propertyAtributte3} `)
   }
 

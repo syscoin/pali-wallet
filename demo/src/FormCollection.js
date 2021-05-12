@@ -58,6 +58,7 @@ const FormCollection = (props) => {
           <label
             for="symbol"
           >
+
             UPLOAD SYMBOL
           </label>
 

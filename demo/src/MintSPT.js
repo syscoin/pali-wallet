@@ -1,3 +1,4 @@
+
 import React, { Component, useEffect, useState, useCallback } from "react";
 import logo from "./assets/images/logosys.svg";
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -64,6 +65,14 @@ const MintSPT = () => {
         });
     }
   };
+  const handleIssueAsset = async (evt) => {
+  await controller.handleIssueAsset(
+    evt.target.rbf.value,
+    evt.target.fee1.value,
+    evt.target.assetGuid.value,
+    evt.target.amount1.value,
+    evt.target.amount1.value
+  )}
 
   useEffect(() => {
     if (controller) {
@@ -182,7 +191,7 @@ const MintSPT = () => {
             </div>
           </nav>  
 
-          <FormSPT />
+          <FormSPT formCallback={handleIssueAsset}/>
         </div>
         ) : (
         <div>
