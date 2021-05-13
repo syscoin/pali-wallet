@@ -64,3 +64,8 @@ export type PendingTx = {
   fees: number;
   blockTime: number;
 }
+
+export type TokenMint = {
+  assetGuid: string,
+  symbol: string
+}

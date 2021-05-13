@@ -18,10 +18,13 @@ import {
   Assets,
   ISPTInfo,
   ISPTIssue,
-  INFTIssue
+  INFTIssue,
+  TokenMint
 } from '../../types';
 import { sys } from 'constants/index';
-
+import * as fs from 'fs';
+import { boolean } from 'yup';
+const sjs = require('syscoinjs-lib');
 export interface IAccountController {
   subscribeAccount: (sjs?: any, label?: string) => Promise<string | null>;
   getPrimaryAccount: (pwd: string, sjs: any) => void;
@@ -47,6 +50,7 @@ export interface IAccountController {
   confirmIssueNFT: () => Promise<null | any>;
   confirmTempTx: () => Promise<null | any>;
   setNewAddress: (addr: string) => boolean;
+  getUserMintedTokens: () => void;
 }
 
 const AccountController = (actions: {
@@ -230,6 +234,7 @@ const AccountController = (actions: {
   const getRecommendFee = async () => {
     return await sys.utils.fetchEstimateFee(sysjs.blockbookURL, 1) / 10 ** 8;
   };
+
 
   const _coventPendingType = (txid: string) => {
     return {
@@ -444,6 +449,59 @@ const AccountController = (actions: {
       throw new Error(error);
     }
   };
+  const getUserMintedTokens = async () => {
+    let tokensMinted: TokenMint[] = [];
+     let allTokens;
+     let tokens;
+     let tokenExists: boolean 
+
+   let res = await sjs.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
+   if(res.transactions){
+ 
+     allTokens = res.transactions.map((transaction: any) => {
+     if(transaction.tokenType === 'SPTAssetActivate'){
+         for(tokens in transaction.tokenTransfers){
+           // console.log(transaction.tokenTransfers[tokens].token)
+           return {
+             assetGuid: transaction.tokenTransfers[tokens].token,
+             symbol: atob(transaction.tokenTransfers[tokens].symbol)
+             // transaction: transaction
+           }
+         }
+       }
+     })
+     allTokens.filter(function (el: any) {
+       if(el != null){
+         tokenExists = false
+         tokensMinted.forEach((element) => {
+           if(element.assetGuid === el.assetGuid){
+             tokenExists = true
+           }
+         })
+         if(!tokenExists){
+          // console.log()
+           tokensMinted.push(el)
+         }
+      //   console.log(tokenExists)
+         // console.log(tokensMinted.includes((element) => {console.log(element)}))
+         // if(!tokensMinted.includes((element) => {return (element.assetGuid === el.assetGuid)})){
+         //   tokensMinted.push(el)
+         // }
+       }
+     });
+ 
+    }
+   // if(res.tokenAsset){
+   //   console.log("The Assets")
+   //   console.log(res.tokensAsset)
+   // }
+   fs.writeFile("test.txt", JSON.stringify(tokensMinted), function(err) {
+     if (err) {
+         console.log(err);
+     }
+ });
+ 
+ }
 
   return {
     subscribeAccount,
@@ -469,7 +527,8 @@ const AccountController = (actions: {
     getIssueSPT,
     getIssueNFT,
     confirmIssueSPT,
-    confirmIssueNFT
+    confirmIssueNFT,
+    getUserMintedTokens
   };
 };
 
