@@ -1,8 +1,8 @@
 import React, { Component, useEffect, useState, useCallback } from "react";
-import logo from "./assets/images/logosys.svg";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-dropzone-uploader/dist/styles.css'
-import FormCreateNFT from './FormCreateNFT'
+import Header from "../components/Header";
+import FormCreateToken from '../components/FormCreateToken';
 
 const CreateNFT = () => {
   const [preview, setPreview] = useState("");
@@ -33,9 +33,7 @@ const CreateNFT = () => {
     }
     window.addEventListener('SyscoinStatus', callback);
   }, []);
-  const handleTypeChanged = useCallback((checked) => {
-    setChecked(checked)
-  }, []);
+  
   const setup = async () => {
     const state = await controller.getWalletState();
     if (state.accounts.length > 0) {
@@ -58,11 +56,6 @@ const CreateNFT = () => {
 
   useEffect(() => {
     if (controller) {
-
-    }
-  })
-  useEffect(() => {
-    if (controller) {
       setup();
 
       controller.onWalletUpdate(setup);
@@ -71,67 +64,34 @@ const CreateNFT = () => {
     controller,
   ]);
 
-  const handleAssetSelected = (event) => {
-    if (connectedAccount) {
-      const selectedAsset = connectedAccount.assets.filter((asset) => asset.assetGuid == event.target.value);
-
-      if (selectedAsset[0]) {
-        setSelectedAsset(selectedAsset[0]);
-        return;
-      }
-      setSelectedAsset(null);
-    }
-  };
-
   const handleMessageExtension = async () => {
     await controller.connectWallet();
     await setup();
   }
 
-  const handleGetWalletState = async () => {
-    return await controller.getWalletState();
-  }
+  const handleCreateNFT = (event, { precision, maxSupply, description, symbol, fee, sysAddress, rbf }) => {
+    event.preventDefault();
 
-  const clearData = (inputs) => {
-    for (let input of inputs) {
-      input.value = '';
-    }
+    // await controller.handleCreateNFT(precision, maxSupply, description, symbol, fee, sysAddress, rbf);
 
-    setToAddress('');
-    setAmount(0);
-    setFee(0.00001);
+    console.log('handle create nft', precision, maxSupply, description, symbol, fee, sysAddress, rbf)
   }
 
   return (
     <div className="app">
       {controller ? (
         <div>
-                  <nav className="navbar navbar-expand-lg navbar-light  static-top">
-<div className="container">
-  <a className="navbar-brand" href="https://syscoin.org/">
-    <img
-      src={logo}
-      alt="logo"
-      className="header__logo"
-    />
-  </a>
+          <Header
+            canConnect={canConnect}
+            handleMessageExtension={handleMessageExtension}
+            isInstalled={isInstalled}
+            connectedAccountAddress={connectedAccountAddress}
+          />
 
-  <a className="button" href="/">Home</a>
-  <div className="collapse navbar-collapse" id="navbarResponsive">
-    <ul className="navbar-nav ml-auto">
-      <button
-        className="button"
-        onClick={canConnect ? handleMessageExtension : undefined}
-        disabled={!isInstalled}>
-        {connectedAccountAddress === '' ? 'Connect to Syscoin Wallet' : connectedAccountAddress}
-      </button>
-    </ul>
-  </div>
-</div>
-</nav>
-          {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}
           <div className="form">
-            <FormCreateNFT
+            <FormCreateToken
+              formCallback={handleCreateNFT}
+              token="NFT"
             />
           </div>
         </div>

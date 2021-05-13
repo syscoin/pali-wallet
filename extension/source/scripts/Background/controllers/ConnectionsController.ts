@@ -122,11 +122,10 @@ const ConnectionsController = (): IConnectionsController => {
       type: 'ISSUE_ASSETGUID',
       target: 'connectionsController',
       freeze: true,
-      eventResult: 'complete'
+      eventResult: 'assetGuidOk'
     }, {
       type: 'ISSUE_ASSETGUID',
       target: 'contentScript',
-
     });
   }
   // const getAssetGuid = (assetGuid: any) => {

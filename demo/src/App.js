@@ -1,22 +1,19 @@
+import "bootstrap";
+import "bootstrap/dist/css/bootstrap.min.css";
 import { useEffect, useState, useCallback } from "react";
-import 'bootstrap';
-import 'bootstrap/dist/css/bootstrap.min.css'
-import logo from "./assets/images/logosys.svg";
+import { buttons } from "./data";
+import Header from "./components/Header";
+
 const App = () => {
   const [isInstalled, setIsInstalled] = useState(false);
   const [canConnect, setCanConnect] = useState(true);
   const [balance, setBalance] = useState(0);
   const [controller, setController] = useState();
   const [connectedAccount, setConnectedAccount] = useState({});
-  const [connectedAccountAddress, setConnectedAccountAddress] = useState('');
-  const [amount, setAmount] = useState(0);
-  const [fee, setFee] = useState(0.00001);
-  const [toAddress, setToAddress] = useState('');
-  const [selectedAsset, setSelectedAsset] = useState(null);
-  const [checked, setChecked] = useState(false);
+  const [connectedAccountAddress, setConnectedAccountAddress] = useState("");
 
   useEffect(() => {
-    const callback = async (event) => {
+    const callback = (event) => {
       if (event.detail.SyscoinInstalled) {
         setIsInstalled(true);
 
@@ -31,14 +28,10 @@ const App = () => {
 
       setIsInstalled(false);
 
-      window.removeEventListener('SyscoinStatus', callback);
+      window.removeEventListener("SyscoinStatus", callback);
     }
 
-    window.addEventListener('SyscoinStatus', callback);
-  }, []);
-
-  const handleTypeChanged = useCallback((checked) => {
-    setChecked(checked)
+    window.addEventListener("SyscoinStatus", callback);
   }, []);
 
   const setup = async () => {
@@ -56,7 +49,7 @@ const App = () => {
           }
 
           setConnectedAccount({});
-          setConnectedAccountAddress('');
+          setConnectedAccountAddress("");
           setBalance(0);
 
           return;
@@ -74,121 +67,102 @@ const App = () => {
     controller,
   ]);
 
-  const handleAssetSelected = (event) => {
-    if (connectedAccount) {
-      const selectedAsset = connectedAccount.assets.filter((asset) => asset.assetGuid == event.target.value);
-
-      if (selectedAsset[0]) {
-        setSelectedAsset(selectedAsset[0]);
-
-        return;
-      }
-
-      setSelectedAsset(null);
-    }
-  };
-
   const handleMessageExtension = async () => {
     await controller.connectWallet();
     await setup();
   }
 
-  const handleGetWalletState = async (evt) => {
-    const inputs = document.querySelectorAll('input');
-    alert(`Submitting Asset Guid: ${evt.target.assetGuid.value}, Amount: ${evt.target.amount.value}, Fee: ${evt.target.fee.value}, RBF: ${evt.target.rbf.value}, Sys Address: ${evt.target.receiver.value}`)
-    console.log("Sending tokens");
-    // await controller.handleCreateToken(8,
-    //   'NikBar',
-    //   1000,
-    //    0.00001,
-    //   'larara lelere lololo lululu',
-    //   'tsys1qvaf78steqrvsljch9mn6n559ljj5g2xs7gvepq',
-    //   false);
-    // (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string)
-    await controller.handleIssueAsset(
-      false,
-      0.00001,
-      'umasset',
-      200,
-      'txsdkasod'
-    )
-    //(rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => {
-   await controller.handleIssueNFT(
-       true,
-       0.0001,
-       'umassetguid',
-       'umnfthash',
-       'umaconta'
-     )
-    return await controller.getWalletState();
+  const RenderButtons = () => {
+    return buttons.map((item) => {
+      return <a key={item.route} className="button" href={item.route}>{item.title}</a>
+    })
   }
 
-  const clearData = (inputs) => {
-    for (let input of inputs) {
-      input.value = '';
-    }
+  // const handleAssetSelected = (event) => {
+  //   if (connectedAccount) {
+  //     const selectedAsset = connectedAccount.assets.filter((asset) => asset.assetGuid == event.target.value);
 
-    setToAddress('');
-    setAmount(0);
-    setFee(0.00001);
-  }
+  //     if (selectedAsset[0]) {
+  //       setSelectedAsset(selectedAsset[0]);
 
-  const handleSendToken = async (sender, receiver, amount, fee, token) => {
-    const inputs = document.querySelectorAll('input');
+  //       return;
+  //     }
 
-    if (token !== null) {
-      await controller.handleSendToken(sender, receiver, amount, fee, token, true, !checked);
+  //     setSelectedAsset(null);
+  //   }
+  // };
 
-      clearData(inputs);
+  // const handleGetWalletState = async (evt) => {
+  //   const inputs = document.querySelectorAll("input");
+  //   alert(`Submitting Asset Guid: ${evt.target.assetGuid.value}, Amount: ${evt.target.amount.value}, Fee: ${evt.target.fee.value}, RBF: ${evt.target.rbf.value}, Sys Address: ${evt.target.receiver.value}`)
+  //   console.log("Sending tokens");
+  //   // await controller.handleCreateToken(8,
+  //   //   "NikBar",
+  //   //   1000,
+  //   //    0.00001,
+  //   //   "larara lelere lololo lululu",
+  //   //   "tsys1qvaf78steqrvsljch9mn6n559ljj5g2xs7gvepq",
+  //   //   false);
+  //   // (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string)
+  //   await controller.handleIssueAsset(
+  //     false,
+  //     0.00001,
+  //     "umasset",
+  //     200,
+  //     "txsdkasod"
+  //   )
+  //   //(rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => {
+  //  await controller.handleIssueNFT(
+  //      true,
+  //      0.0001,
+  //      "umassetguid",
+  //      "umnfthash",
+  //      "umaconta"
+  //    )
+  //   return await controller.getWalletState();
+  // }
 
-      return;
-    }
+  // const clearData = (inputs) => {
+  //   for (let input of inputs) {
+  //     input.value = "";
+  //   }
 
-    await controller.handleSendToken(sender, receiver, amount, fee, null, false, !checked);
+  //   setToAddress("");
+  //   setAmount(0);
+  //   setFee(0.00001);
+  // }
 
-    clearData(inputs);
+  // const handleSendToken = async (sender, receiver, amount, fee, token) => {
+  //   const inputs = document.querySelectorAll("input");
 
-    return;
-  }
+  //   if (token !== null) {
+  //     await controller.handleSendToken(sender, receiver, amount, fee, token, true, !checked);
+
+  //     clearData(inputs);
+
+  //     return;
+  //   }
+
+  //   await controller.handleSendToken(sender, receiver, amount, fee, null, false, !checked);
+
+  //   clearData(inputs);
+
+  //   return;
+  // }
+
   return (
-
     <div className="app">
-
       {controller ? (
         <div>
-         <nav className="navbar navbar-expand-lg navbar-light  static-top">
-<div className="container">
-  <a className="navbar-brand" href="https://syscoin.org/">
-    <img
-      src={logo}
-      alt="logo"
-      className="header__logo"
-    />
-  </a>
-
-  <a className="button" href="/">Home</a>
-
-  <div className="collapse navbar-collapse" id="navbarResponsive">
-    <ul className="navbar-nav ml-auto">
-      <button
-        className="button"
-        onClick={canConnect ? handleMessageExtension : undefined}
-        disabled={!isInstalled}>
-        {connectedAccountAddress === '' ? 'Connect to Syscoin Wallet' : connectedAccountAddress}
-      </button>
-    </ul>
-  </div>
-</div>
-</nav>
-          {!isInstalled && (<h1 className="app__title">You need to install Syscoin Wallet.</h1>)}
+          <Header
+            canConnect={canConnect}
+            handleMessageExtension={handleMessageExtension}
+            isInstalled={isInstalled}
+            connectedAccountAddress={connectedAccountAddress}
+          />
 
           <div className="menu">
-            <a className="button" href="/mintnft">Mint NFT</a>
-            <a className="button" href="/createnft">Create NFT</a>
-            <a className="button" href="/createcollection">Create Collection</a>
-            <a className="button" href="/createspt">Create SPT</a>
-            <a className="button" href="/mintspt">Mint SPT</a>
-            
+            <RenderButtons />
           </div>
         </div>
       ) : (
