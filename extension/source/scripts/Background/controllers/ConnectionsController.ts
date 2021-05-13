@@ -11,6 +11,7 @@ export interface IConnectionsController {
   handleIssueNFT: (rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => any;
   isNFT: (guid: number) => boolean;
   getAssetGuid: () => any;
+  getUserMintedTokens: () => any;
 }
 
 const isNFT = (guid: number) => {
@@ -154,7 +155,17 @@ const ConnectionsController = (): IConnectionsController => {
     });
 
   }
-
+  const getUserMintedTokens = async () => {
+    return await sendMessage({
+      type: 'GET_USERMINTEDTOKENS',
+      target: 'connectionsController',
+      freeze: true,
+      eventResult: 'complete'
+    }, {
+      type: 'GET_USERMINTEDTOKENS',
+      target: 'contentScript',
+    });
+  }
   return {
     isNFT,
     connectWallet,
@@ -165,7 +176,8 @@ const ConnectionsController = (): IConnectionsController => {
     handleCreateToken,
     handleIssueAsset,
     handleIssueNFT,
-    getAssetGuid 
+    getAssetGuid,
+    getUserMintedTokens
   }
 };
 

@@ -216,6 +216,7 @@ window.addEventListener('message', (event) => {
 
     return;
   }
+  
 
   if (type == 'ISSUE_TOKEN' && target == 'contentScript') {
     const {

@@ -14,7 +14,8 @@ import {
   updateCanConfirmTransaction,
   createAsset,
   issueAsset,
-  issueNFT
+  issueNFT,
+ 
 } from 'state/wallet';
 
 import MasterController, { IMasterController } from './controllers';
@@ -249,7 +250,19 @@ browser.runtime.onInstalled.addListener((): void => {
           connected: false
         });
       }
+      // if (type == 'GET_USERMINTEDTOKENS' && target == 'background') {
 
+      //   //logica da funcão que ta no script que te passei
+      //   tokensMinted = window.controller.wallet.account.getUsermintedTokens()
+      //   browser.tabs.sendMessage(tabId, {
+      //         type: 'SEND_STATE_TO_PAGE',
+      //         target: 'contentScript',even
+      //         usertokens:  tokensMinted
+    
+    
+      //       });
+      //     }
+          
 
       if (type == 'CREATE_TOKEN' && target == 'background') {
         const {
@@ -372,7 +385,7 @@ browser.runtime.onInstalled.addListener((): void => {
 
 
   });
-
+  
 
 
 });

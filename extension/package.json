@@ -43,6 +43,7 @@
     "crypto-js": "^4.0.0",
     "date-fns": "^2.16.1",
     "emoji-log": "^1.0.2",
+    "graceful-fs": "^4.2.6",
     "lodash": "^4.17.20",
     "qrcode.react": "^1.0.1",
     "react": "^16.13.1",

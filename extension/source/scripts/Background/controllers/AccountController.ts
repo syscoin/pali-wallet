@@ -22,9 +22,10 @@ import {
   TokenMint
 } from '../../types';
 import { sys } from 'constants/index';
-import * as fs from 'fs';
+
 import { boolean } from 'yup';
 const sjs = require('syscoinjs-lib');
+
 export interface IAccountController {
   subscribeAccount: (sjs?: any, label?: string) => Promise<string | null>;
   getPrimaryAccount: (pwd: string, sjs: any) => void;
@@ -495,12 +496,8 @@ const AccountController = (actions: {
    //   console.log("The Assets")
    //   console.log(res.tokensAsset)
    // }
-   fs.writeFile("test.txt", JSON.stringify(tokensMinted), function(err) {
-     if (err) {
-         console.log(err);
-     }
- });
- 
+
+    return res = tokensMinted
  }
 
   return {
