@@ -69,3 +69,9 @@ export type TokenMint = {
   assetGuid: string,
   symbol: string
 }
+
+export type allToken = {
+  assetGuid: string,
+  symbol: string,
+  tokens: any
+}

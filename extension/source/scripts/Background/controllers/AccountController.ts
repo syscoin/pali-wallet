@@ -19,7 +19,9 @@ import {
   ISPTInfo,
   ISPTIssue,
   INFTIssue,
-  TokenMint
+  TokenMint,
+  allToken
+  
 } from '../../types';
 import { sys } from 'constants/index';
 
@@ -51,7 +53,7 @@ export interface IAccountController {
   confirmIssueNFT: () => Promise<null | any>;
   confirmTempTx: () => Promise<null | any>;
   setNewAddress: (addr: string) => boolean;
-  getUserMintedTokens: () => void;
+  getUserMintedTokens: () => any;
   createCollection: (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string) => void;
   getCollection: () => any;
 }
@@ -455,53 +457,50 @@ const AccountController = (actions: {
   };
   const getUserMintedTokens = async () => {
     let tokensMinted: TokenMint[] = [];
-     let allTokens;
-     let tokens;
-     let tokenExists: boolean 
+    let allTokens: allToken[] = [];
+    let tokens;
+    let tokenExists: boolean 
+    let res = await sjs.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
+    if (res.transactions) {
+ 
+      allTokens = res.transactions.map((transaction: any) => {
+        if (transaction.tokenType === 'SPTAssetActivate') {
+          for (tokens in transaction.tokenTransfers) {
+            console.log('token', tokens);
 
-   let res = await sjs.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
-   if(res.transactions){
- 
-     allTokens = res.transactions.map((transaction: any) => {
-     if(transaction.tokenType === 'SPTAssetActivate'){
-         for(tokens in transaction.tokenTransfers){
-           // console.log(transaction.tokenTransfers[tokens].token)
-           return {
-             assetGuid: transaction.tokenTransfers[tokens].token,
-             symbol: atob(transaction.tokenTransfers[tokens].symbol)
-             // transaction: transaction
-           }
-         }
-       }
-     })
-     allTokens.filter(function (el: any) {
-       if(el != null){
-         tokenExists = false
-         tokensMinted.forEach((element) => {
-           if(element.assetGuid === el.assetGuid){
-             tokenExists = true
-           }
-         })
-         if(!tokenExists){
-          // console.log()
-           tokensMinted.push(el)
-         }
-      //   console.log(tokenExists)
-         // console.log(tokensMinted.includes((element) => {console.log(element)}))
-         // if(!tokensMinted.includes((element) => {return (element.assetGuid === el.assetGuid)})){
-         //   tokensMinted.push(el)
-         // }
-       }
-     });
- 
+
+             return {
+               assetGuid: transaction.tokenTransfers[tokens].token,
+               symbol: atob(transaction.tokenTransfers[tokens].symbol)
+               // transaction: transaction
+             }
+          }
+        }
+      })
+    
+     allTokens.map((token) => {
+      if (token) {
+        tokensMinted.map((mintedToken) => {
+          if (mintedToken.assetGuid === token.assetGuid) {
+            tokenExists = true;
+
+            return;
+          }
+        });
+
+        if (!tokenExists) {
+          tokensMinted.push(token);
+        }
+      }
+    });
+
+    return {
+      tokensMinted
     }
-   // if(res.tokenAsset){
-   //   console.log("The Assets")
-   //   console.log(res.tokensAsset)
-   // }
+  }}
 
-    return res = tokensMinted
-  }
+
+  
 
   const createCollection = (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string ) => {
     console.log('[account controller]: collection created')

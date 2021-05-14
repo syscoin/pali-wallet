@@ -20,6 +20,7 @@ const MintSPT = () => {
       receiver
     );
   };
+  
 
   return (
     <div className="app">

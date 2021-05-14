@@ -15,6 +15,12 @@ const FormMintSPT = (props) => {
     rbf,
     assetGuid
   } = state;
+  const [tokenMinted, setTokenMinted] = useState("");
+
+  const getUserMintedTokens = async () => {
+    setTokenMinted =  window.ConnectionsController.getUserMintedTokens().tokensMinted
+    return await window.ConnectionsController.getUserMintedTokens()
+  }
 
   return (
     <form onSubmit={(event) => props.formCallback(event, state)}>
@@ -35,6 +41,7 @@ const FormMintSPT = (props) => {
               })}
             >
               <option>Choose...</option>
+              <option value={tokenMinted}>{tokenMinted}</option>
               <option value="2">Two</option>
               <option value="3">Three</option>
             </select>
@@ -92,6 +99,14 @@ const FormMintSPT = (props) => {
           />
         </div>
       </fieldset>
+
+      <button
+        className="button" 
+       onClick={() => getUserMintedTokens()
+      }
+      >
+       GET
+      </button>
 
       <button
         className="button" 
