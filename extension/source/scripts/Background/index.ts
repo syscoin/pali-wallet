@@ -392,7 +392,9 @@ browser.runtime.onInstalled.addListener((): void => {
         browser.tabs.sendMessage(tabId, {
               type: 'GET_USERMINTEDTOKENS',
               target: 'contentScript',
-              userTokens:  "tokensMinted"
+              userTokens:  tokensMinted
+    
+    
             });
           }
     }
