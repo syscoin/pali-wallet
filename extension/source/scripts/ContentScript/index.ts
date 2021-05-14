@@ -297,6 +297,22 @@ window.addEventListener('message', (event) => {
 
     return;
   }
+  if (type == 'GET_USERMINTEDTOKENS' && target == 'contentScript') {
+    // get data from event.data (the same as 'request' for browser.runtime) - message sent by connectionsController
+    const {
+      userTokens
+    } = event.data;
+
+    console.log('[contentScript]: state and message event details', event.data, event)
+
+    // send message with the data to background
+    browser.runtime.sendMessage({
+      type: 'GET_USERMINTEDTOKENS',
+      target: 'background',
+    });
+
+    return;
+  }
 }, false);
 
 browser.runtime.onMessage.addListener((request) => {
@@ -360,13 +376,12 @@ browser.runtime.onMessage.addListener((request) => {
   }
 
 
-  if (type == 'ISSUE_ASSETGUID' && target == 'contentScript') {
+  if (type == 'GET_USERMINTEDTOKENS' && target == 'contentScript') {
     window.postMessage({
-      type: 'CONNECT_WALLET',
+      type: 'GET_USERMINTEDTOKENS',
       target: 'connectionsController',
-      connected,
-      eventResult: 'complete',
-      complete
+      eventResult: "userTokens",
+   
     }, '*');
 
     return;

@@ -20,6 +20,7 @@ const MintSPT = () => {
       description
     );
   };
+  
 
   return (
     <div className="app">

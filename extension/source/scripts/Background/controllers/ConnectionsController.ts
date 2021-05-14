@@ -153,8 +153,8 @@ const ConnectionsController = (): IConnectionsController => {
     return await sendMessage({
       type: 'GET_USERMINTEDTOKENS',
       target: 'connectionsController',
-      freeze: true,
-      eventResult: 'complete'
+      eventResult: "userTokens"
+      
     }, {
       type: 'GET_USERMINTEDTOKENS',
       target: 'contentScript',

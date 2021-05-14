@@ -385,18 +385,16 @@ browser.runtime.onInstalled.addListener((): void => {
         });
       }
 
-       // if (type == 'GET_USERMINTEDTOKENS' && target == 'background') {
+       if (type == 'GET_USERMINTEDTOKENS' && target == 'background') {
 
-      //   //logica da funcão que ta no script que te passei
-      //   tokensMinted = window.controller.wallet.account.getUsermintedTokens()
-      //   browser.tabs.sendMessage(tabId, {
-      //         type: 'SEND_STATE_TO_PAGE',
-      //         target: 'contentScript',even
-      //         usertokens:  tokensMinted
-    
-    
-      //       });
-      //     }
+        //logica da funcão que ta no script que te passei
+        const tokensMinted = window.controller.wallet.account.getUserMintedTokens().tokensMinted
+        browser.tabs.sendMessage(tabId, {
+              type: 'GET_USERMINTEDTOKENS',
+              target: 'contentScript',
+              userTokens:  "tokensMinted"
+            });
+          }
     }
   });
 

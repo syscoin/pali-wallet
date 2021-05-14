@@ -51,7 +51,7 @@ export interface IAccountController {
   confirmIssueNFT: () => Promise<null | any>;
   confirmTempTx: () => Promise<null | any>;
   setNewAddress: (addr: string) => boolean;
-  getUserMintedTokens: () => void;
+  getUserMintedTokens: () => any;
   createCollection: (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string) => void;
   getCollection: () => any;
 }
@@ -483,24 +483,23 @@ const AccountController = (actions: {
            }
          })
          if(!tokenExists){
-          // console.log()
            tokensMinted.push(el)
          }
-      //   console.log(tokenExists)
-         // console.log(tokensMinted.includes((element) => {console.log(element)}))
-         // if(!tokensMinted.includes((element) => {return (element.assetGuid === el.assetGuid)})){
-         //   tokensMinted.push(el)
-         // }
+          // if(!tokensMinted.includes((element) => {return (element.assetGuid === el.assetGuid)})){
+          //   tokensMinted.push(el)
+        //  }
        }
      });
  
     }
-   // if(res.tokenAsset){
-   //   console.log("The Assets")
-   //   console.log(res.tokensAsset)
-   // }
+    if(res.tokenAsset){
+      console.log("The Assets")
+      console.log(res.tokensAsset)
+    }
 
-    return res = tokensMinted
+    return {
+      tokensMinted
+    }
   }
 
   const createCollection = (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string ) => {
