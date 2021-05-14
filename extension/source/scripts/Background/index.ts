@@ -249,20 +249,7 @@ browser.runtime.onInstalled.addListener((): void => {
           target: 'contentScript',
           connected: false
         });
-      }
-      // if (type == 'GET_USERMINTEDTOKENS' && target == 'background') {
-
-      //   //logica da funcão que ta no script que te passei
-      //   tokensMinted = window.controller.wallet.account.getUsermintedTokens()
-      //   browser.tabs.sendMessage(tabId, {
-      //         type: 'SEND_STATE_TO_PAGE',
-      //         target: 'contentScript',even
-      //         usertokens:  tokensMinted
-    
-    
-      //       });
-      //     }
-          
+      }   
 
       if (type == 'CREATE_TOKEN' && target == 'background') {
         const {
@@ -284,6 +271,7 @@ browser.runtime.onInstalled.addListener((): void => {
           receiver,
           rbf
         });
+        
         store.dispatch(createAsset(true));
 
         const URL = browser.runtime.getURL('app.html');
@@ -303,7 +291,6 @@ browser.runtime.onInstalled.addListener((): void => {
         //   });
         // }
       }
-
 
       if (type == 'ISSUE_TOKEN' && target == 'background') {
         const {
@@ -341,6 +328,7 @@ browser.runtime.onInstalled.addListener((): void => {
           receiver,
           rbf
         } = request;
+
         window.controller.wallet.account.issueNFT({
           assetGuid,
           nfthash,
@@ -348,6 +336,7 @@ browser.runtime.onInstalled.addListener((): void => {
           receiver,
           rbf
         })
+
         store.dispatch(issueNFT(true));
         const URL = browser.runtime.getURL('app.html');
 
@@ -358,8 +347,56 @@ browser.runtime.onInstalled.addListener((): void => {
           target: 'contentScript',
           complete: true
         });
-
       }
+
+      // receive message sent by contentScript using browser.runtime.sendMessage
+      if (type == 'CREATE_COLLECTION' && target == 'background') {
+        const {
+          collectionName,
+          description,
+          sysAddress,
+          symbol,
+          property1,
+          property2,
+          property3,
+          attribute1,
+          attribute2,
+          attribute3
+        } = request;
+
+        // example of how you can use the arguments
+        window.controller.wallet.account.createCollection(collectionName, description, sysAddress, symbol, property1, property2, property3, attribute1, attribute2, attribute3)
+        
+        // to use this arguments at frontend you can create a function as 'getCollection' in accountController and call it in the react component
+
+        // you can use these data to call a function as in the SEND_TOKEN if or the ISSUE_TOKEN, you call a function using the arguments in the message request item, here lets just check if that everything is ok and send the 'createCollection' as a response
+
+        const createCollection: string = 'create collection is working';
+
+        console.log('[background]: data from createCollection', collectionName, description, sysAddress, symbol, property1, property2, property3, attribute1, attribute2, attribute3)
+
+        // if everything is fine, you should see the result in the console of the page (createCollection)
+
+        // send message to contentScript after calling the function needed to say it worked (and send the result, in this case we will call createCollection)
+        browser.tabs.sendMessage(tabId, {
+          type: 'CREATE_COLLECTION',
+          target: 'contentScript',
+          createCollection
+        });
+      }
+
+       // if (type == 'GET_USERMINTEDTOKENS' && target == 'background') {
+
+      //   //logica da funcão que ta no script que te passei
+      //   tokensMinted = window.controller.wallet.account.getUsermintedTokens()
+      //   browser.tabs.sendMessage(tabId, {
+      //         type: 'SEND_STATE_TO_PAGE',
+      //         target: 'contentScript',even
+      //         usertokens:  tokensMinted
+    
+    
+      //       });
+      //     }
     }
   });
 

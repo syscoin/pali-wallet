@@ -10,8 +10,9 @@ export interface IConnectionsController {
   handleIssueAsset: (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string) => any;
   handleIssueNFT: (rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => any;
   isNFT: (guid: number) => boolean;
-  getAssetGuid: () => any;
+  // getAssetGuid: () => any;
   getUserMintedTokens: () => any;
+  handleCreateCollection: (state: any) => void;
 }
 
 const isNFT = (guid: number) => {
@@ -118,25 +119,18 @@ const ConnectionsController = (): IConnectionsController => {
       rbf
     });
   }
-  const getAssetGuid = async () => {
-    return await sendMessage({
-      type: 'ISSUE_ASSETGUID',
-      target: 'connectionsController',
-      freeze: true,
-      eventResult: 'assetGuidOk'
-    }, {
-      type: 'ISSUE_ASSETGUID',
-      target: 'contentScript',
-    });
-  }
-  // const getAssetGuid = (assetGuid: any) => {
-  //   window.addEventListener('message', (event) => {
-  //     if (event.data.type === 'ISSUE_ASSETGUID') {
-  //       assetGuid();
-  //     }
+
+  // const getAssetGuid = async () => {
+  //   return await sendMessage({
+  //     type: 'ISSUE_ASSETGUID',
+  //     target: 'connectionsController',
+  //     freeze: true,
+  //     eventResult: 'assetGuidOk'
+  //   }, {
+  //     type: 'ISSUE_ASSETGUID',
+  //     target: 'contentScript',
   //   });
   // }
-  
 
   const handleIssueNFT = async (rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => {
     return await sendMessage({
@@ -166,6 +160,45 @@ const ConnectionsController = (): IConnectionsController => {
       target: 'contentScript',
     });
   }
+
+  const handleCreateCollection = async (state: { collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string }) => {
+    const {
+      collectionName,
+      description,
+      sysAddress,
+      symbol,
+      property1,
+      property2,
+      property3,
+      attribute1,
+      attribute2,
+      attribute3
+    } = state;
+
+    console.log('[connectionsController]: state', state)
+
+    return await sendMessage({
+      // check if the message received (from contentScript after contentScript receives the message from background (where it all starts)) has this type and target and set the eventResult
+      type: 'CREATE_COLLECTION',
+      target: 'connectionsController',
+      freeze: true,
+      eventResult: 'createCollection'
+    }, {
+      // send the data to contentScript through this message
+      type: 'CREATE_COLLECTION',
+      target: 'contentScript',
+      collectionName,
+      description,
+      sysAddress,
+      symbol,
+      property1,
+      property2,
+      property3,
+      attribute1,
+      attribute2,
+      attribute3
+    });
+  }
   return {
     isNFT,
     connectWallet,
@@ -176,8 +209,9 @@ const ConnectionsController = (): IConnectionsController => {
     handleCreateToken,
     handleIssueAsset,
     handleIssueNFT,
-    getAssetGuid,
-    getUserMintedTokens
+    // getAssetGuid,
+    getUserMintedTokens,
+    handleCreateCollection
   }
 };
 

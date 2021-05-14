@@ -52,6 +52,8 @@ export interface IAccountController {
   confirmTempTx: () => Promise<null | any>;
   setNewAddress: (addr: string) => boolean;
   getUserMintedTokens: () => void;
+  createCollection: (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string) => void;
+  getCollection: () => any;
 }
 
 const AccountController = (actions: {
@@ -64,6 +66,7 @@ const AccountController = (actions: {
   let newSPT: ISPTInfo | null;
   let mintSPT: ISPTIssue | null;
   let mintNFT: INFTIssue | null;
+  let collection: any;
   
   const getAccountInfo = async (): Promise<IAccountInfo> => {
     let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
@@ -498,7 +501,30 @@ const AccountController = (actions: {
    // }
 
     return res = tokensMinted
- }
+  }
+
+  const createCollection = (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string ) => {
+    console.log('[account controller]: collection created')
+
+    collection = {
+      collectionName,
+      description,
+      sysAddress,
+      symbol,
+      property1,
+      property2,
+      property3,
+      attribute1,
+      attribute2,
+      attribute3
+    }
+    
+    console.log(collection)
+  }
+
+  const getCollection = () => {
+    return collection;
+  }
 
   return {
     subscribeAccount,
@@ -525,7 +551,9 @@ const AccountController = (actions: {
     getIssueNFT,
     confirmIssueSPT,
     confirmIssueNFT,
-    getUserMintedTokens
+    getUserMintedTokens,
+    createCollection,
+    getCollection
   };
 };
 

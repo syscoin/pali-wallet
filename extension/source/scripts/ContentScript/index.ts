@@ -261,6 +261,42 @@ window.addEventListener('message', (event) => {
 
     return;
   }
+
+  if (type == 'CREATE_COLLECTION' && target == 'contentScript') {
+    // get data from event.data (the same as 'request' for browser.runtime) - message sent by connectionsController
+    const {
+      collectionName,
+      description,
+      sysAddress,
+      symbol,
+      property1,
+      property2,
+      property3,
+      attribute1,
+      attribute2,
+      attribute3
+    } = event.data;
+
+    console.log('[contentScript]: state and message event details', event.data, event)
+
+    // send message with the data to background
+    browser.runtime.sendMessage({
+      type: 'CREATE_COLLECTION',
+      target: 'background',
+      collectionName,
+      description,
+      sysAddress,
+      symbol,
+      property1,
+      property2,
+      property3,
+      attribute1,
+      attribute2,
+      attribute3
+    });
+
+    return;
+  }
 }, false);
 
 browser.runtime.onMessage.addListener((request) => {
@@ -270,7 +306,8 @@ browser.runtime.onMessage.addListener((request) => {
     complete,
     connected,
     state,
-    connectedAccount
+    connectedAccount,
+    createCollection
   } = request;
 
   if (type == 'DISCONNECT' && target == 'contentScript') {
@@ -367,6 +404,15 @@ browser.runtime.onMessage.addListener((request) => {
       type: 'WALLET_UPDATED',
       target: 'connectionsController',
       connected
+    }, '*');
+    return;
+  }
+
+  if (type == 'CREATE_COLLECTION' && target == 'contentScript') {
+    window.postMessage({
+      type: 'CREATE_COLLECTION',
+      target: 'connectionsController',
+      createCollection
     }, '*');
     return;
   }

@@ -7,71 +7,7 @@ import Header from "../components/Header";
 
 const MintNFT = () => {
   const [preview, setPreview] = useState("");
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [canConnect, setCanConnect] = useState(true);
-  const [balance, setBalance] = useState(0);
-  const [controller, setController] = useState();
-  const [connectedAccount, setConnectedAccount] = useState({});
-  const [connectedAccountAddress, setConnectedAccountAddress] = useState('');
-
-  useEffect(() => {
-    const callback = async (event) => {
-      if (event.detail.SyscoinInstalled) {
-        setIsInstalled(true);
-
-        if (event.detail.ConnectionsController) {
-          setController(window.ConnectionsController);
-
-          return;
-        }
-
-        return;
-      }
-
-      setIsInstalled(false);
-
-      window.removeEventListener('SyscoinStatus', callback);
-    }
-
-    window.addEventListener('SyscoinStatus', callback);
-  }, []);
-
-  const setup = async () => {
-    const state = await controller.getWalletState();
-
-    if (state.accounts.length > 0) {
-      controller.getConnectedAccount()
-        .then((data) => {
-          if (data) {
-            setConnectedAccount(data);
-            setConnectedAccountAddress(data.address.main);
-            setBalance(data.balance);
-          } else {
-            setConnectedAccount({});
-            setConnectedAccountAddress('');
-            setBalance(0);
-          }
-      
-          return;
-        });
-    }
-  };
-
-  useEffect(() => {
-    if (controller) {
-      setup();
-
-      controller.onWalletUpdate(setup);
-    }
-  }, [
-    controller,
-  ]);
-
-  const handleMessageExtension = async () => {
-    await controller.connectWallet();
-    await setup();
-  }
-
+  
   const getUploadParams = () => ({
     url: 'https://api.nft.storage/upload',  
     headers: { "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaWQ6ZXRocjoweGJiNUM1NzJkYmFlNDQ1MkFDOGFiZWZlMjk3ZTljREIyRmEzRjRlNzIiLCJpc3MiOiJuZnQtc3RvcmFnZSIsImlhdCI6MTYxOTcxMjM0MTgzNCwibmFtZSI6InN5cyJ9.KmVoWH8Sa0FNsPyWrPYEr1zCAdFw8bJwVnmzPsp_fg4"
@@ -94,7 +30,7 @@ const MintNFT = () => {
     }; 
   };
 
-  const handleMintNFT = (event, {
+  const handleMintNFT = async (event, {
     nftName,
     description,
     maxShares,
@@ -124,60 +60,49 @@ const MintNFT = () => {
     //   attribute1
     // )
 
+    console.log(await window.ConnectionsController.getWalletState())
+
     console.log('items nft mint', nftName, description, maxShares, editions, royalites, property1, property2, property3, attribute1, attribute2, attribute3)
     console.log('handle issue asset mint nft');
   }
 
   return (
     <div className="app">
-      {controller ? (  
-        <div>  
-          <Header
-            canConnect={canConnect}
-            handleMessageExtension={handleMessageExtension}
-            isInstalled={isInstalled}
-            connectedAccountAddress={connectedAccountAddress}
-          />
+      <Header />
 
-          <div>
-            <Dropzone
-              getUploadParams={getUploadParams}
-              onChangeStatus={handleChangeStatus}
-              accept='image/*, image/gif, audio/*, video/*, gif/*, .gif, .pdf, .mp3'
-              inputContent={() => ( 'Drag Files')}
-            />
+      <div>
+        <Dropzone
+          getUploadParams={getUploadParams}
+          onChangeStatus={handleChangeStatus}
+          accept='image/*, image/gif, audio/*, video/*, gif/*, .gif, .pdf, .mp3'
+          inputContent={() => ( 'Drag Files')}
+        />
 
-            <pre
-              className="cid"
-              id="out"
-            ></pre> 
-          </div> 
-          
-          <iframe
-            className="iframe"
-            src={preview}
-            href={preview}
-          ></iframe>
+        <pre
+          className="cid"
+          id="out"
+        ></pre> 
+      </div> 
+            
+      <iframe
+        className="iframe"
+        src={preview}
+        href={preview}
+      ></iframe>
 
-          <div>
-            <a
-              className="button-2"
-              href="/sysmint"
-            >
-              Clear
-            </a>
-          </div>
+      <div>
+        <a
+          className="button-2"
+          href="/sysmint"
+        >
+          Clear
+        </a>
+      </div>
 
-          <div className="form"> 
-            <FormMintNFT formCallback={handleMintNFT} />          
-          </div>
-        </div>
-      ) : (
-        <div>
-          <p>...</p>
-        </div>
-      )}
-  </div>
+      <div className="form"> 
+        <FormMintNFT formCallback={handleMintNFT} />          
+      </div>
+    </div>
   )
 }
   
