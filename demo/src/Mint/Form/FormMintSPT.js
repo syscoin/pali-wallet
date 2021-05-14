@@ -4,14 +4,14 @@ const FormMintSPT = (props) => {
   const [state, setState] = useState({
     amount: 0,
     fee: 0,
-    description: '',
+    receiver: '',
     rbf: false,
     assetGuid: ''
   });
   const {
     amount,
     fee,
-    description,
+    receiver,
     rbf,
     assetGuid
   } = state;
@@ -53,15 +53,15 @@ const FormMintSPT = (props) => {
             required
           />
 
-          <label htmlFor="description">Description:</label>
+          <label htmlFor="receiver">Receiver:</label>
           <input 
             className="input" 
             type="text" 
-            id="description" 
-            name="description"
+            id="receiver" 
+            name="receiver"
             onBlur={(event) => setState({
               ...state,
-              description: event.target.value
+              receiver: event.target.value
             })}
             required
           />
@@ -99,7 +99,7 @@ const FormMintSPT = (props) => {
         disabled={
           !amount ||
           !fee ||
-          !description ||
+          !receiver ||
           !rbf ||
           !assetGuid
         }

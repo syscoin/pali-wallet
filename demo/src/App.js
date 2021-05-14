@@ -36,7 +36,7 @@ const App = () => {
   //   //   "tsys1qvaf78steqrvsljch9mn6n559ljj5g2xs7gvepq",
   //   //   false);
   //   // (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string)
-  //   await controller.handleIssueAsset(
+  //   await controller.handleIssueSPT(
   //     false,
   //     0.00001,
   //     "umasset",

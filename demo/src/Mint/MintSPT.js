@@ -5,26 +5,26 @@ import FormMintSPT from "./Form/FormMintSPT";
 import Header from "../components/Header";
 
 const MintSPT = () => {
-  const handleIssueAsset = async (event, { amount, fee, description, rbf, assetGuid }) => {
+  const handleIssueSPT = async (event, { amount, fee, receiver, rbf, assetGuid }) => {
     event.preventDefault();
 
     console.log(await window.ConnectionsController.getWalletState())
 
-    console.log('handle mint spt', amount, fee, description, rbf, assetGuid)
+    console.log('handle mint spt', amount, fee, receiver, rbf, assetGuid)
 
-    await window.ConnectionsController.handleIssueAsset(
+    await window.ConnectionsController.handleIssueSPT(
       rbf,
       fee,
       assetGuid,
       amount,
-      description
+      receiver
     );
   };
 
   return (
     <div className="app">
       <Header /> 
-      <FormMintSPT formCallback={handleIssueAsset}/>
+      <FormMintSPT formCallback={handleIssueSPT}/>
     </div>
     );
   }

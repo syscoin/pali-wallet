@@ -5,12 +5,12 @@ import Header from "../components/Header";
 import FormCreateToken from '../components/FormCreateToken';
 
 const CreateSPT = () => {
-  const handleCreateToken = async (event, { precision, maxSupply, description, symbol, fee, sysAddress, rbf }) => {
+  const handleCreateToken = async (event, { precision, maxSupply, description, symbol, fee, receiver, rbf }) => {
     event.preventDefault();
 
     console.log(await window.ConnectionsController.getWalletState())
 
-    console.log('handle create spt', precision, maxSupply, description, symbol, fee, sysAddress, rbf)
+    console.log('handle create spt', precision, maxSupply, description, symbol, fee, receiver, rbf)
 
     // await controller.handleCreateToken(
     //   precision,
@@ -18,7 +18,7 @@ const CreateSPT = () => {
     //   maxSupply,
     //   fee,
     //   description,
-    //   sysAddress,
+    //   receiver,
     //   rbf
     // );
   }

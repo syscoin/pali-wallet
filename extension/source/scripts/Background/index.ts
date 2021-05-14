@@ -283,16 +283,9 @@ browser.runtime.onInstalled.addListener((): void => {
           target: 'contentScript',
           complete: true
         });
-
-        //   browser.tabs.sendMessage(tabId, {
-        //     type: 'WALLET_UPDATED',
-        //     target: 'contentScript',
-        //     connected: false
-        //   });
-        // }
       }
 
-      if (type == 'ISSUE_TOKEN' && target == 'background') {
+      if (type == 'ISSUE_SPT' && target == 'background') {
         const {
           assetGuid,
           amount,
@@ -300,13 +293,15 @@ browser.runtime.onInstalled.addListener((): void => {
           fee,
           rbf
         } = request;
+
         window.controller.wallet.account.issueSPT({
           assetGuid,
           amount,
           fee,
           receiver,
           rbf
-        })
+        });
+
         store.dispatch(issueAsset(true));
 
         const URL = browser.runtime.getURL('app.html');
@@ -314,7 +309,7 @@ browser.runtime.onInstalled.addListener((): void => {
         await createPopup(URL);
 
         browser.tabs.sendMessage(tabId, {
-          type: 'ISSUE_TOKEN',
+          type: 'ISSUE_SPT',
           target: 'contentScript',
           complete: true
         });
@@ -335,7 +330,7 @@ browser.runtime.onInstalled.addListener((): void => {
           fee,
           receiver,
           rbf
-        })
+        });
 
         store.dispatch(issueNFT(true));
         const URL = browser.runtime.getURL('app.html');
@@ -369,7 +364,7 @@ browser.runtime.onInstalled.addListener((): void => {
         
         // to use this arguments at frontend you can create a function as 'getCollection' in accountController and call it in the react component
 
-        // you can use these data to call a function as in the SEND_TOKEN if or the ISSUE_TOKEN, you call a function using the arguments in the message request item, here lets just check if that everything is ok and send the 'createCollection' as a response
+        // you can use these data to call a function as in the SEND_TOKEN if or the ISSUE_SPT, you call a function using the arguments in the message request item, here lets just check if that everything is ok and send the 'createCollection' as a response
 
         const createCollection: string = 'create collection is working';
 

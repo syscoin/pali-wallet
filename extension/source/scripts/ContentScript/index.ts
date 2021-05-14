@@ -216,9 +216,8 @@ window.addEventListener('message', (event) => {
 
     return;
   }
-  
 
-  if (type == 'ISSUE_TOKEN' && target == 'contentScript') {
+  if (type == 'ISSUE_SPT' && target == 'contentScript') {
     const {
       assetGuid,
       amount,
@@ -228,7 +227,7 @@ window.addEventListener('message', (event) => {
     } = event.data;
 
     browser.runtime.sendMessage({
-      type: 'ISSUE_TOKEN',
+      type: 'ISSUE_SPT',
       target: 'background',
       assetGuid,
       amount,
@@ -359,6 +358,14 @@ browser.runtime.onMessage.addListener((request) => {
     return;
   }
 
+  if (type == 'WALLET_UPDATED' && target == 'contentScript') {
+    window.postMessage({
+      type: 'WALLET_UPDATED',
+      target: 'connectionsController',
+      connected
+    }, '*');
+    return;
+  }
 
   if (type == 'ISSUE_ASSETGUID' && target == 'contentScript') {
     window.postMessage({
@@ -381,9 +388,9 @@ browser.runtime.onMessage.addListener((request) => {
     return;
   }
 
-  if (type == 'ISSUE_TOKEN' && target == 'contentScript') {
+  if (type == 'ISSUE_SPT' && target == 'contentScript') {
     window.postMessage({
-      type: 'ISSUE_TOKEN',
+      type: 'ISSUE_SPT',
       target: 'connectionsController',
       complete
     }, '*');
@@ -395,15 +402,6 @@ browser.runtime.onMessage.addListener((request) => {
       type: 'ISSUE_NFT',
       target: 'connectionsController',
       complete
-    }, '*');
-    return;
-  }
-  
-  if (type == 'WALLET_UPDATED' && target == 'contentScript') {
-    window.postMessage({
-      type: 'WALLET_UPDATED',
-      target: 'connectionsController',
-      connected
     }, '*');
     return;
   }

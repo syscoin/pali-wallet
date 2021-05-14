@@ -7,10 +7,9 @@ export interface IConnectionsController {
   getConnectedAccount: () => any;
   handleSendToken: (sender: string, receiver: string, amount: number, fee: number, token: any, isToken: boolean, rbf: boolean) => any;
   handleCreateToken: (precision: number, symbol: string, maxsupply: number, fee: number, description: string, receiver: string, rbf: boolean) => any;
-  handleIssueAsset: (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string) => any;
+  handleIssueSPT: (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string) => any;
   handleIssueNFT: (rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => any;
   isNFT: (guid: number) => boolean;
-  // getAssetGuid: () => any;
   getUserMintedTokens: () => any;
   handleCreateCollection: (state: any) => void;
 }
@@ -103,14 +102,15 @@ const ConnectionsController = (): IConnectionsController => {
       rbf
     });
   }
-  const handleIssueAsset = async (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string) => {
+
+  const handleIssueSPT = async (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string) => {
     return await sendMessage({
-      type: 'ISSUE_TOKEN',
+      type: 'ISSUE_SPT',
       target: 'connectionsController',
       freeze: true,
       eventResult: 'complete'
     }, {
-      type: 'ISSUE_TOKEN',
+      type: 'ISSUE_SPT',
       target: 'contentScript',
       assetGuid,
       amount,
@@ -119,18 +119,6 @@ const ConnectionsController = (): IConnectionsController => {
       rbf
     });
   }
-
-  // const getAssetGuid = async () => {
-  //   return await sendMessage({
-  //     type: 'ISSUE_ASSETGUID',
-  //     target: 'connectionsController',
-  //     freeze: true,
-  //     eventResult: 'assetGuidOk'
-  //   }, {
-  //     type: 'ISSUE_ASSETGUID',
-  //     target: 'contentScript',
-  //   });
-  // }
 
   const handleIssueNFT = async (rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => {
     return await sendMessage({
@@ -207,9 +195,8 @@ const ConnectionsController = (): IConnectionsController => {
     getConnectedAccount,
     handleSendToken,
     handleCreateToken,
-    handleIssueAsset,
+    handleIssueSPT,
     handleIssueNFT,
-    // getAssetGuid,
     getUserMintedTokens,
     handleCreateCollection
   }

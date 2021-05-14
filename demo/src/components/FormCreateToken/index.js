@@ -8,7 +8,7 @@ const FormCreateToken = (props) => {
     description: '',
     symbol: '',
     fee: 0,
-    sysAddress: '',
+    receiver: '',
     rbf: false
   });
 
@@ -18,7 +18,7 @@ const FormCreateToken = (props) => {
     description,
     symbol,
     fee,
-    sysAddress,
+    receiver,
     rbf
   } = state;
 
@@ -78,13 +78,13 @@ const FormCreateToken = (props) => {
             required
           /> 
               
-          <label htmlFor="sysAddress">Sys address:</label>
+          <label htmlFor="receiver">Sys address:</label>
           <input 
             className="input" 
             type="text" 
-            id="sysAddress" 
-            name="sysAddress" 
-            onBlur={(event) => setFormState(event, state, 'sysAddress', setState)}
+            id="receiver" 
+            name="receiver" 
+            onBlur={(event) => setFormState(event, state, 'receiver', setState)}
             required
           />
                 
@@ -107,7 +107,7 @@ const FormCreateToken = (props) => {
             !description ||
             !symbol ||
             !fee ||
-            !sysAddress ||
+            !receiver ||
             !rbf
           }
         >
