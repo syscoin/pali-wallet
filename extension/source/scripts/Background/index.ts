@@ -261,7 +261,8 @@ browser.runtime.onInstalled.addListener((): void => {
           receiver,
           rbf
         } = request;
-
+        console.log("Calling wallet controller")
+        console.log(request)
         window.controller.wallet.account.createSPT({
           precision,
           symbol,

@@ -12,15 +12,15 @@ const CreateSPT = () => {
 
     console.log('handle create spt', precision, maxSupply, description, symbol, fee, receiver, rbf)
 
-    // await controller.handleCreateToken(
-    //   precision,
-    //   symbol,
-    //   maxSupply,
-    //   fee,
-    //   description,
-    //   receiver,
-    //   rbf
-    // );
+    await await window.ConnectionsController.handleCreateToken(
+      Number(precision),
+      symbol,
+      Number(maxSupply),
+      Number(fee),
+      description,
+      receiver,
+      false
+    );
   }
 
   return (

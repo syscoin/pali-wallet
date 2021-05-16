@@ -38,8 +38,10 @@ const Create = () => {
 
     const handleConfirm = () => {
         if (accounts[activeAccountId].balance > 0) {
+            console.log("lets do it ")
             controller.wallet.account.confirmNewSPT().then(result => {
                 if (result) {
+                    console.log(result.message)
                     alert.removeAll();
                     alert.error(result.message);
 
