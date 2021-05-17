@@ -298,9 +298,6 @@ window.addEventListener('message', (event) => {
   }
   if (type == 'GET_USERMINTEDTOKENS' && target == 'contentScript') {
     // get data from event.data (the same as 'request' for browser.runtime) - message sent by connectionsController
-    const {
-      userTokens
-    } = event.data;
 
     console.log('[contentScript]: state and message event details', event.data, event)
 
@@ -322,7 +319,8 @@ browser.runtime.onMessage.addListener((request) => {
     connected,
     state,
     connectedAccount,
-    createCollection
+    createCollection,
+    userTokens
   } = request;
 
   if (type == 'DISCONNECT' && target == 'contentScript') {
@@ -384,11 +382,12 @@ browser.runtime.onMessage.addListener((request) => {
   }
 
   if (type == 'GET_USERMINTEDTOKENS' && target == 'contentScript') {
+    console.log('user tokens', userTokens);
+
     window.postMessage({
       type: 'GET_USERMINTEDTOKENS',
       target: 'connectionsController',
-      eventResult: "userTokens",
-   
+      userTokens,
     }, '*');
 
     return;

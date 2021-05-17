@@ -50,4 +50,5 @@ export default interface IWalletState {
   creatingAsset: boolean;
   issuingAsset: boolean;
   issuingNFT: boolean;
+  blockbookURL: string;
 }

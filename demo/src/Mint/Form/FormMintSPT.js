@@ -18,8 +18,11 @@ const FormMintSPT = (props) => {
   const [tokenMinted, setTokenMinted] = useState("");
 
   const getUserMintedTokens = async () => {
-    setTokenMinted =  window.ConnectionsController.getUserMintedTokens().tokensMinted
-    return await window.ConnectionsController.getUserMintedTokens()
+    console.log('get user minted tokens')
+
+    await window.ConnectionsController.getUserMintedTokens();
+
+    console.log('aafter function')
   }
 
   return (
@@ -41,7 +44,6 @@ const FormMintSPT = (props) => {
               })}
             >
               <option>Choose...</option>
-              <option value={tokenMinted}>{tokenMinted}</option>
               <option value="2">Two</option>
               <option value="3">Three</option>
             </select>
@@ -101,14 +103,14 @@ const FormMintSPT = (props) => {
       </fieldset>
 
       <button
-        className="button" 
-       onClick={() => getUserMintedTokens()
-      }
+        className="button"
+        type="button"
+        onClick={() => getUserMintedTokens()}
       >
        GET
       </button>
 
-      <button
+      {/* <button
         className="button" 
         type="submit"
         disabled={
@@ -120,7 +122,7 @@ const FormMintSPT = (props) => {
         }
       >
         Mint
-      </button>
+      </button> */}
     </form>
   );
 }

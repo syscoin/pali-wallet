@@ -21,13 +21,20 @@ const initialState: IWalletState = {
   confirmingTransaction: false,
   creatingAsset: false,
   issuingAsset: false,
-  issuingNFT: false
+  issuingNFT: false,
+  blockbookURL: ''
 };
 
 const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
+    updateBlockbookURL(state: IWalletState, action: PayloadAction<string>) {
+      return {
+        ...state,
+        blockbookURL: action.payload
+      }
+    },
     updateCanConfirmTransaction(state: IWalletState, action: PayloadAction<boolean>) {
       return {
         ...state,
@@ -199,7 +206,8 @@ export const {
   updateCanConfirmTransaction,
   createAsset,
   issueAsset,
-  issueNFT
+  issueNFT,
+  updateBlockbookURL
 } = WalletState.actions;
 
 export default WalletState.reducer;

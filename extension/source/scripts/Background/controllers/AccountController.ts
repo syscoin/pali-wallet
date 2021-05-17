@@ -241,7 +241,6 @@ const AccountController = (actions: {
     return await sys.utils.fetchEstimateFee(sysjs.blockbookURL, 1) / 10 ** 8;
   };
 
-
   const _coventPendingType = (txid: string) => {
     return {
       txid: txid,
@@ -455,52 +454,12 @@ const AccountController = (actions: {
       throw new Error(error);
     }
   };
+
   const getUserMintedTokens = async () => {
-    let tokensMinted: TokenMint[] = [];
-    let allTokens: allToken[] = [];
-    let tokens;
-    let tokenExists: boolean 
-    let res = await sjs.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
-    if (res.transactions) {
- 
-      allTokens = res.transactions.map((transaction: any) => {
-        if (transaction.tokenType === 'SPTAssetActivate') {
-          for (tokens in transaction.tokenTransfers) {
-            console.log('token', tokens);
+    console.log('get user minted tokens account conrtoller');
 
-
-             return {
-               assetGuid: transaction.tokenTransfers[tokens].token,
-               symbol: atob(transaction.tokenTransfers[tokens].symbol)
-               // transaction: transaction
-             }
-          }
-        }
-      })
-    
-     allTokens.map((token) => {
-      if (token) {
-        tokensMinted.map((mintedToken) => {
-          if (mintedToken.assetGuid === token.assetGuid) {
-            tokenExists = true;
-
-            return;
-          }
-        });
-
-        if (!tokenExists) {
-          tokensMinted.push(token);
-        }
-      }
-    });
-
-    return {
-      tokensMinted
-    }
-  }}
-
-
-  
+    const blockbookURL = store.getState().wallet.blockbookURL;
+  }
 
   const createCollection = (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string ) => {
     console.log('[account controller]: collection created')

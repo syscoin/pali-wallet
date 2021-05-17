@@ -381,17 +381,18 @@ browser.runtime.onInstalled.addListener((): void => {
       }
 
        if (type == 'GET_USERMINTEDTOKENS' && target == 'background') {
+        console.log('tokens minted get user minted tokens')
 
-        //logica da funcão que ta no script que te passei
-        const tokensMinted = window.controller.wallet.account.getUserMintedTokens().tokensMinted
+        const tokensMinted = await window.controller.wallet.account.getUserMintedTokens();
+
+        console.log('tokens minted', tokensMinted)
+
         browser.tabs.sendMessage(tabId, {
-              type: 'GET_USERMINTEDTOKENS',
-              target: 'contentScript',
-              userTokens:  tokensMinted
-    
-    
-            });
-          }
+          type: 'GET_USERMINTEDTOKENS',
+          target: 'contentScript',
+          userTokens: 'tokens minted is ok'
+        });
+      }
     }
   });
 
@@ -414,12 +415,7 @@ browser.runtime.onInstalled.addListener((): void => {
         await browser.windows.remove(windowId);
       }
     })
-
-
   });
-  
-
-
 });
 
 wrapStore(store, { portName: STORE_PORT });

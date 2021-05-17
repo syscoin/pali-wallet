@@ -135,14 +135,14 @@ const ConnectionsController = (): IConnectionsController => {
       fee,
       rbf
     });
-
   }
+
   const getUserMintedTokens = async () => {
     return await sendMessage({
       type: 'GET_USERMINTEDTOKENS',
       target: 'connectionsController',
-      eventResult: "userTokens"
-      
+      freeze: true,
+      eventResult: 'userTokens'
     }, {
       type: 'GET_USERMINTEDTOKENS',
       target: 'contentScript',
