@@ -463,46 +463,45 @@ const AccountController = (actions: {
       throw new Error(error);
     }
   };
-  
+
   const getUserMintedTokens = async () => {
     let tokensMinted: TokenMint[] = [];
     let allTokens: allToken[] = [];
     let tokens;
-    let tokenExists: boolean 
-    console.log("User blockbook URL :" + sysjs.blockbookURL)
-    let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
+    let tokenExists: boolean;
+
+    const res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
+
     if (res.transactions) {
- 
-      allTokens = res.transactions.map((transaction: any) => {
+      res.transactions.map((transaction: any) => {
         if (transaction.tokenType === 'SPTAssetActivate') {
-          for (tokens in transaction.tokenTransfers) {
-            console.log('token', transaction.tokenTransfers[tokens].token);
+          for (let token in transaction.tokenTransfers) {
+            console.log('token', transaction.tokenTransfers[token].token);
+            console.log('token 2', token);
 
-
-             return {
-               assetGuid: transaction.tokenTransfers[tokens].token,
-               symbol: atob(transaction.tokenTransfers[tokens].symbol)
-               // transaction: transaction
-             }
+            // return {
+            //   assetGuid: transaction.tokenTransfers[token].token,
+            //   symbol: atob(transaction.tokenTransfers[token].symbol)
+            // }
           }
         }
       })
     
-     allTokens.map((token) => {
-      if (token) {
-        tokensMinted.map((mintedToken) => {
-          if (mintedToken.assetGuid === token.assetGuid) {
-            tokenExists = true;
+    //  allTokens.map((token) => {
+    //   if (token) {
+    //     tokensMinted.map((mintedToken) => {
+    //       if (mintedToken.assetGuid === token.assetGuid) {
+    //         tokenExists = true;
 
-            return;
-          }
-        });
+    //         return;
+    //       }
+    //     });
 
-        if (!tokenExists) {
-          tokensMinted.push(token);
-        }
-      }
-    });
+    //     if (!tokenExists) {
+    //       tokensMinted.push(token);
+    //     }
+    //   }
+    // });
 
     return {
       tokensMinted
