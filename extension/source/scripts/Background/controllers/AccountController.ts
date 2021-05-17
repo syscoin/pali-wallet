@@ -296,6 +296,9 @@ const AccountController = (actions: {
 
   const createSPT = (spt: ISPTInfo) => {
     newSPT = spt;
+    console.log("checkout the spt")
+    console.log(newSPT)
+    console.log(typeof newSPT.precision)
 
     return true;
   }
@@ -330,8 +333,14 @@ const AccountController = (actions: {
         precision: newSPT.precision, symbol: newSPT.symbol, maxsupply: new sys.utils.BN(newSPT.maxsupply), description: newSPT.description
       }
       const txOpts = { rbf: newSPT.rbf }
-
+      console.log("sending token to be created")
+      console.log(_assetOpts)
+      console.log(txOpts)
+      console.log("the newSPt")
+      console.log(newSPT)
       const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, newSPT.receiver, new sys.utils.BN(newSPT.fee));
+      console.log("pending tx:")
+      console.log(pendingTx)
       const txInfo = pendingTx.extractTransaction().getId();
 
       store.dispatch(
@@ -454,12 +463,51 @@ const AccountController = (actions: {
       throw new Error(error);
     }
   };
-
+  
   const getUserMintedTokens = async () => {
-    console.log('get user minted tokens account conrtoller');
+    let tokensMinted: TokenMint[] = [];
+    let allTokens: allToken[] = [];
+    let tokens;
+    let tokenExists: boolean 
+    console.log("User blockbook URL :" + sysjs.blockbookURL)
+    let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
+    if (res.transactions) {
+ 
+      allTokens = res.transactions.map((transaction: any) => {
+        if (transaction.tokenType === 'SPTAssetActivate') {
+          for (tokens in transaction.tokenTransfers) {
+            console.log('token', transaction.tokenTransfers[tokens].token);
 
-    const blockbookURL = store.getState().wallet.blockbookURL;
-  }
+
+             return {
+               assetGuid: transaction.tokenTransfers[tokens].token,
+               symbol: atob(transaction.tokenTransfers[tokens].symbol)
+               // transaction: transaction
+             }
+          }
+        }
+      })
+    
+     allTokens.map((token) => {
+      if (token) {
+        tokensMinted.map((mintedToken) => {
+          if (mintedToken.assetGuid === token.assetGuid) {
+            tokenExists = true;
+
+            return;
+          }
+        });
+
+        if (!tokenExists) {
+          tokensMinted.push(token);
+        }
+      }
+    });
+
+    return {
+      tokensMinted
+    }
+  }}
 
   const createCollection = (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string ) => {
     console.log('[account controller]: collection created')
