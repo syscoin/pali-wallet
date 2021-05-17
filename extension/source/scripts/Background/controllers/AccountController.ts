@@ -56,6 +56,8 @@ export interface IAccountController {
   getUserMintedTokens: () => any;
   createCollection: (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string) => void;
   getCollection: () => any;
+  getTransactionInfoByTxId: (txid: any) => any;
+  getSysExplorerSearch: () => string;
 }
 
 const AccountController = (actions: {
@@ -530,6 +532,14 @@ const AccountController = (actions: {
   const getCollection = () => {
     return collection;
   }
+  
+  const getTransactionInfoByTxId = async (txid: any) => {
+    return await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
+  }
+
+  const getSysExplorerSearch = () => {
+    return sysjs.blockbookURL;
+  }
 
   return {
     subscribeAccount,
@@ -558,7 +568,9 @@ const AccountController = (actions: {
     confirmIssueNFT,
     getUserMintedTokens,
     createCollection,
-    getCollection
+    getCollection,
+    getTransactionInfoByTxId,
+    getSysExplorerSearch
   };
 };
 

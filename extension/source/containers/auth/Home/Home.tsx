@@ -34,9 +34,16 @@ const Home = () => {
   };
 
   useEffect(() => {
-    if (accounts[activeAccountId]) {
+    if (!controller.wallet.isLocked() && accounts.length > 0 && accounts[activeAccountId]) {
       handleRefresh();
-      
+    }
+  }, [
+    !controller.wallet.isLocked(),
+    accounts.length > 0
+  ]);
+
+  useEffect(() => {
+    if (accounts[activeAccountId]) {
       if (accounts[activeAccountId].connectedTo.length > 0) {
         setIsConnected(accounts[activeAccountId].connectedTo.findIndex((url: any) => {
           return url == currentURL;

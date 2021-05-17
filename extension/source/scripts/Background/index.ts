@@ -249,7 +249,7 @@ browser.runtime.onInstalled.addListener((): void => {
           target: 'contentScript',
           connected: false
         });
-      }   
+      }
 
       if (type == 'CREATE_TOKEN' && target == 'background') {
         const {

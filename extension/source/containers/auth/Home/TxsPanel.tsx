@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { FC, Fragment, useCallback, useState } from 'react';
+import { FC, Fragment, useCallback, useState, useEffect } from 'react';
 import clsx from 'clsx';
 import { v4 as uuid } from 'uuid';
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
@@ -11,7 +11,6 @@ import Button from 'components/Button';
 import { useController } from 'hooks/index';
 import { formatDistanceDate } from '../helpers';
 import SyscoinIcon from 'assets/images/logosys.svg';
-import { SYS_EXPLORER_SEARCH } from 'constants/index';
 import { Transaction, Assets } from '../../../scripts/types';
 
 import styles from './Home.scss';
@@ -27,6 +26,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
   const [isShowed, setShowed] = useState<boolean>(false);
   const [isActivity, setActivity] = useState<boolean>(true);
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
+  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   const isShowedGroupBar = useCallback(
     (tx: Transaction, idx: number) => {
@@ -57,22 +57,26 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
     }
   };
 
-  const handleScroll = useCallback((ev) => {
-    ev.persist();
-    if (ev.target.scrollTop) setShowed(true);
-    setScrollArea(ev.target);
-    const scrollOffset = ev.target.scrollHeight - ev.target.scrollTop;
-    if (scrollOffset === ev.target.clientHeight) {
+  const handleScroll = useCallback((event) => {
+    event.persist();
+
+    if (event.target.scrollTop) setShowed(true);
+
+    setScrollArea(event.target);
+
+    const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
+
+    if (scrollOffset === event.target.clientHeight) {
       handleFetchMoreTxs();
     }
   }, []);
 
   const handleOpenExplorer = (txid: string) => {
-    window.open(SYS_EXPLORER_SEARCH + '/tx/' + txid);
+    window.open(sysExplorer + '/tx/' + txid);
   };
 
   const handleOpenAssetExplorer = (txid: number) => {
-    window.open(SYS_EXPLORER_SEARCH + '/asset/' + txid);
+    window.open(sysExplorer + '/asset/' + txid);
   };
 
   const handleGoTop = () => {
@@ -80,7 +84,17 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
     setShowed(false);
   };
 
-  console.log('transactions', transactions)
+  const getTxType = (tx: Transaction) => {
+    if (tx.tokenType === "SPTAssetActivate") {
+      return 'SPT creation';
+    }
+
+    if (tx.tokenType === "SPTAssetSend") {
+      return 'NFT creation';
+    }
+
+    return 'Transaction';
+  }
 
   return (
     <section
@@ -148,6 +162,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                           </span>
                           <small>{tx.txid}</small>
                           <small>{isConfirmed ? "Confirmed" : "Unconfirmed"}</small>
+                          <small>{getTxType(tx)}</small>
                         </span>
                         <div className={styles.linkIcon}>
                           <UpArrowIcon />
@@ -173,9 +188,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
               width="auto"
             />
           </>
-        )
-        :
-        assets.length ?
+        ) : assets.length ?
           <>
             <ul>
               {assets.map((asset: Assets, idx: number) => {

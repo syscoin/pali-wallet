@@ -12,7 +12,6 @@ export interface IAccountState {
   masterPrv: string;
   assets: Assets[];
   address: { [assetId: string]: string };
-  // type: AccountType;
   balance: number;
   transactions: Transaction[];
   connectedTo: any[];
