@@ -33,7 +33,8 @@ const Create = () => {
   const newSPT = controller.wallet.account.getNewSPT();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
-  const [fee, setFee] = useState(10);
+  const [fee, setFee] = useState(0.00001);
+  const [rbf, setRbf] = useState(false);
   const [recommend, setRecommend] = useState(10);
 
   const handleGetFee = () => {
@@ -86,14 +87,6 @@ const Create = () => {
     });
   }
 
-  const handleCreateToken = () => {
-    browser.runtime.sendMessage({
-      type: 'CREATE_TOKEN',
-      target: 'background',
-      fee
-    });
-  }
-
   return confirmed ? (
     <Layout title="Your transaction is underway" showLogo>
       <CheckIcon className={styles.checked} />
@@ -141,6 +134,24 @@ const Create = () => {
             Recommend
           </Button>
         </section>
+
+        <label htmlFor="rbf">RBF:</label>
+        <input 
+          id="rbf" 
+          name="rbf" 
+          type="checkbox" 
+          className="switch"
+          onChange={() => {
+            setRbf(!rbf);
+
+            browser.runtime.sendMessage({
+              type: 'RBF_TO_CREATE_TOKEN',
+              target: 'background',
+              rbfCreateToken: rbf
+            });
+          }}
+          checked={rbf}
+        />
 
         <section className={styles.data}>
           <div className={styles.flex}>

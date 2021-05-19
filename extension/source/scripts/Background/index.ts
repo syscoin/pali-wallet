@@ -50,17 +50,12 @@ browser.runtime.onInstalled.addListener((): void => {
     });
 
     const tabId = Number(tabs[0].id);
-    let createTokenFee: number = 5;
-    let mintSPTFee: number = 5;
-    let dataFromPageToCreateToken: {
-      precision: number,
-      symbol: string,
-      maxsupply: number,
-      description: string,
-      receiver: string,
-      rbf: boolean,
-      // fee: number
-    }
+    let createTokenFee: number = 0.00001;
+    let mintSPTFee: number = 0.00001;
+    let mintNFTFee: number = 0.00001;
+    let rbfCreateToken: boolean = false;
+    let rbfMintSPT: boolean = false;
+    let rbfMintNFT: boolean = false;
 
     const createPopup = async (url: string) => {
       return await browser.windows.create({
@@ -274,6 +269,30 @@ browser.runtime.onInstalled.addListener((): void => {
         console.log('mint token fee after', mintSPTFee)
       }
 
+      if (type == 'SEND_FEE_TO_MINT_NFT' && target == 'background') {
+        console.log('mint token fee before', mintNFTFee)
+        mintNFTFee = request.mintNFTFee;
+        console.log('mint token fee after', mintNFTFee)
+      }
+
+      if (type == 'RBF_TO_CREATE_TOKEN' && target == 'background') {
+        console.log('create token rbf before', rbfCreateToken)
+        rbfCreateToken = request.rbfCreateToken;
+        console.log('create token rbf after', rbfCreateToken)
+      }
+
+      if (type == 'RBF_TO_MINT_SPT' && target == 'background') {
+        console.log('mint token rbf before', rbfMintSPT)
+        rbfMintSPT = request.rbfMintSPT;
+        console.log('mint token rbf after', rbfMintSPT)
+      }
+
+      if (type == 'RBF_TO_MINT_NFT' && target == 'background') {
+        console.log('mint nft rbf before', rbfMintNFT)
+        rbfMintNFT = request.rbfMintNFT;
+        console.log('mint nft rbf after', rbfMintNFT)
+      }
+
       if (type == 'CREATE_TOKEN' && target == 'background') {
         const {
           precision,
@@ -281,8 +300,9 @@ browser.runtime.onInstalled.addListener((): void => {
           maxsupply,
           description,
           receiver,
-          rbf
         } = request;
+
+        console.log('create token fee', createTokenFee)
 
         window.controller.wallet.account.createSPT({
           precision,
@@ -291,7 +311,7 @@ browser.runtime.onInstalled.addListener((): void => {
           fee: createTokenFee,
           description,
           receiver,
-          rbf
+          rbf: rbfCreateToken
         });
 
         store.dispatch(createAsset(true));
@@ -312,7 +332,6 @@ browser.runtime.onInstalled.addListener((): void => {
           assetGuid,
           amount,
           receiver,
-          rbf
         } = request;
 
         window.controller.wallet.account.issueSPT({
@@ -320,7 +339,7 @@ browser.runtime.onInstalled.addListener((): void => {
           amount: Number(amount),
           fee: mintSPTFee,
           receiver,
-          rbf
+          rbf: rbfMintSPT
         });
 
         store.dispatch(issueAsset(true));
@@ -341,15 +360,14 @@ browser.runtime.onInstalled.addListener((): void => {
           assetGuid,
           nfthash,
           receiver,
-          rbf
         } = request;
 
         window.controller.wallet.account.issueNFT({
           assetGuid,
           nfthash,
-          fee: 10,
+          fee: mintNFTFee,
           receiver,
-          rbf
+          rbf: rbfMintSPT
         });
 
         store.dispatch(issueNFT(true));

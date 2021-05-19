@@ -33,8 +33,9 @@ const IssueAsset = () => {
   const mintSPT = controller.wallet.account.getIssueSPT();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
-  const [fee, setFee] = useState(10);
+  const [fee, setFee] = useState(0.00001);
   const [recommend, setRecommend] = useState(10);
+  const [rbf, setRbf] = useState(false);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => { setRecommend(response); setFee(response); })
@@ -73,14 +74,6 @@ const IssueAsset = () => {
     browser.runtime.sendMessage({
       type: "CLOSE_POPUP",
       target: "background"
-    });
-  }
-
-  const handleCreateToken = () => {
-    browser.runtime.sendMessage({
-      type: 'CREATE_TOKEN',
-      target: 'background',
-      fee
     });
   }
 
@@ -131,6 +124,24 @@ const IssueAsset = () => {
             Recommend
           </Button>
         </section>
+
+        <label htmlFor="rbf">RBF:</label>
+        <input 
+          id="rbf" 
+          name="rbf" 
+          type="checkbox" 
+          className="switch"
+          onChange={() => {
+            setRbf(!rbf);
+
+            browser.runtime.sendMessage({
+              type: 'RBF_TO_MINT_SPT',
+              target: 'background',
+              rbfMintSPT: rbf
+            });
+          }}
+          checked={rbf}
+        />
 
         <section className={styles.data}>
           <div className={styles.flex}>

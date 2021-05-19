@@ -94,7 +94,6 @@ const FormMintNFT = (props) => {
         event,
         assetGuid,
         nfthash,
-        10,
         receiver,
         rbf,
       )}

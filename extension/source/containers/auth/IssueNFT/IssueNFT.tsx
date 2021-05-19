@@ -33,8 +33,9 @@ const IssueNFT = () => {
   const mintNFT = controller.wallet.account.getIssueNFT();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
-  const [fee, setFee] = useState(10);
+  const [fee, setFee] = useState(0.00001);
   const [recommend, setRecommend] = useState(10);
+  const [rbf, setRbf] = useState(false);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => { setRecommend(response); setFee(response); })
@@ -116,6 +117,24 @@ const IssueNFT = () => {
             Recommend
           </Button>
         </section>
+
+        <label htmlFor="rbf">RBF:</label>
+        <input 
+          id="rbf" 
+          name="rbf" 
+          type="checkbox" 
+          className="switch"
+          onChange={() => {
+            setRbf(!rbf);
+
+            browser.runtime.sendMessage({
+              type: 'RBF_TO_MINT_NFT',
+              target: 'background',
+              rbfMintNFT: rbf
+            });
+          }}
+          checked={rbf}
+        />
 
         <section className={styles.data}>
           <div className={styles.flex}>
