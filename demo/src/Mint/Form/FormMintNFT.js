@@ -1,185 +1,163 @@
-import React, { useState } from "react";
-import ReactTooltip from 'react-tooltip';
-import Switch from "react-switch";
-import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
-import { setFormState } from "../../helpers";
+import React, { useState, useEffect } from "react";
 
 const FormMintNFT = (props) => {
-  const [state, setState] = useState({
-    nftName: '',
-    description: '',
-    maxShares: 0,
-    editions: 0,
-    royalites: 0,
-    property1: '',
-    property2: '',
-    property3: '',
-    attribute1: '',
-    attribute2: '',
-    attribute3: ''
-  });
+  const [assetGuid, setAssetGuid] = useState('');
+  const [receiver, setReceiver] = useState('');
+  const [rbf, setRbf] = useState(false);
+  const [nfthash, setNfthash] = useState(0);
+  const [data, setData] = useState([]);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [canConnect, setCanConnect] = useState(true);
+  const [balance, setBalance] = useState(0);
+  const [controller, setController] = useState();
+  const [connectedAccount, setConnectedAccount] = useState({});
+  const [connectedAccountAddress, setConnectedAccountAddress] = useState("");
 
-  const {
-    nftName,
-    maxShares,
-    description,
-    editions,
-    royalites
-  } = state;
+  useEffect(() => {
+    const callback = (event) => {
+      if (event.detail.SyscoinInstalled) {
+        setIsInstalled(true);
+
+        if (event.detail.ConnectionsController) {
+          setController(window.ConnectionsController);
+
+          return;
+        }
+
+        return;
+      }
+
+      setIsInstalled(false);
+
+      window.removeEventListener("SyscoinStatus", callback);
+    }
+
+    window.addEventListener("SyscoinStatus", callback);
+  }, []);
+
+  const setup = async () => {
+    const state = await controller.getWalletState();
+
+    if (state.accounts.length > 0) {
+      controller.getConnectedAccount()
+        .then((data) => {
+          if (data) {
+            setConnectedAccount(data);
+            setConnectedAccountAddress(data.address.main);
+            setBalance(data.balance);
+
+            return;
+          }
+
+          setConnectedAccount({});
+          setConnectedAccountAddress("");
+          setBalance(0);
+
+          return;
+        });
+    }
+  };
+
+  useEffect(() => {
+    if (controller) {
+      setup();
+
+      controller.onWalletUpdate(setup);
+    }
+  }, [
+    controller,
+  ]);
+
+  useEffect(() => {
+    console.log('tokens', data);
+
+    const setup = async () => {
+      if (controller) {
+        setData(await controller.getUserMintedTokens());
+      }
+    }
+
+    setup();
+  }, [
+    controller
+  ]);
+
+  const RenderAsset = () => {
+    return data.map((asset, index) => {
+      return <option key={index}>{asset.assetGuid}</option>
+    });
+  }
 
   return (
-    <form onSubmit={(event) => props.formCallback(event, state)}>
-      <div id="checkbox">
-        <input
-          type="text"
-          id="nftName"
-          name="nftName"
-          placeholder="NFT Name"
-          onBlur={(event) => setFormState(event, state, 'nftName', setState)}
-        />
-
-        <input
-          type="text"
-          id="description"
-          name="description"
-          placeholder="Description"
-          onBlur={(event) => setFormState(event, state, 'description', setState)}
-        />
-
-        <input
-          type="number"
-          id="editions"
-          name="editions"
-          placeholder="Editions"
-          onBlur={(event) => setFormState(event, state, 'editions', setState)}
-        />
-      </div>
-
-      <div id="checkbox">
-        <input
-          type="number"
-          placeholder="Royalites %"
-          onBlur={(event) => setFormState(event, state, 'royalites', setState)}
-        />
+    <form
+      onSubmit={(event) => props.formCallback(
+        event,
+        assetGuid,
+        nfthash,
+        0.00001,
+        receiver,
+        rbf,
+      )}
+    >
+      <fieldset>
+        <legend>YOU ARE MINTING NFTS</legend>
 
         <div>
-          <p>Share?</p>
+          <div className="input-group mb-3">
+            <label htmlFor="assetGuid">AssetGuid:</label>
 
-          <input
-            id="share"
-            name="share"
-            type="checkbox"
-          />
-          <label htmlFor="share">Yes</label>
-
-          <input
-            type="text"
-            id="maxShares"
-            name="maxShares"
-            placeholder="Max. share"
-            onBlur={(event) => setFormState(event, state, 'maxShares', setState)}
-          />
-        </div>
-      </div> 
-
-      <div className="collection">
-        <div>
-          <h2>Chose collection:</h2>
-
-          <p className="button">Create</p>
-          <p className="button">SYS</p>
-
-          <div className="info_property">
-            <div
-              className="info_property"
-              style={{ margin: "2rem 0" }}
+            <select
+              id="assetGuid" 
+              name="assetGuid" 
+              className="custom-select"
+              onBlur={(event) => setAssetGuid(event.target.value)}
             >
-              <div
-                style={{ display: "flex", alignItems: "center" }}
-              >
-                <p
-                  style={{ margin: "0", fontSize: '0.9rem' }}
-                >
-                  Info Property
-                </p>
-
-                <HelpOutlineIcon
-                  style={{ width: "0.9rem", height: "0.9rem" }}
-                  data-tip data-for="prop_info"
-                />
-              </div>
-
-              <ReactTooltip
-                id="prop_info"
-                getContent={()=>
-                  <ul style={{ listStyle: "none", margin: "0", padding: "0" }}>
-                    <li style={{ margin: "0.5rem" }}>
-                      <span>
-                        You can create properties and fill each property with an atribute <br/> this is optional
-                      </span>
-                    </li>
-                  </ul>
-                }
-                effect='solid'
-                delayHide={100}
-                delayShow={100}
-                delayUpdate={500}
-                place={'right'}
-                border={true}
-                type={'info'}
-              />
-            </div>
+              <option>Choose...</option>
+              <RenderAsset />
+            </select>
           </div>
+
+          <label htmlFor="amount">NFT Hash:</label>
+          <input 
+            className="input" 
+            type="text" 
+            id="nfthash" 
+            name="nfthash"
+            onBlur={(event) => setNfthash(event.target.value)}
+            required
+          />
+
+          <label htmlFor="receiver">Receiver:</label>
+          <input 
+            className="input" 
+            type="text" 
+            id="receiver" 
+            name="receiver"
+            onBlur={(event) => setReceiver(event.target.value)}
+            required
+          />
+
+          <label htmlFor="rbf">RBF:</label>
+          <input 
+            id="rbf" 
+            name="rbf" 
+            type="checkbox" 
+            className="switch"
+            onChange={() => {
+              setRbf(!rbf)
+            }}
+            checked={rbf}
+          />
         </div>
-      </div>
-
-      <div className="property">
-        <input
-          type="text"
-          placeholder="Property 1"
-          onBlur={(event) => setFormState(event, state, 'property1', setState)}
-        />
-
-        <input
-          type="text"
-          placeholder="Property 2"
-          onBlur={(event) => setFormState(event, state, 'property2', setState)}
-        />
-
-        <input
-          type="text"
-          placeholder="Property 3"
-          onBlur={(event) => setFormState(event, state, 'property3', setState)}
-        />
-
-        <input
-          type="text"
-          placeholder="Atributte 1"
-          onBlur={(event) => setFormState(event, state, 'attribute1', setState)}
-        />
-
-        <input
-          type="text"
-          placeholder="Atributte 2"
-          onBlur={(event) => setFormState(event, state, 'attribute2', setState)}
-        />
-
-        <input
-          type="text"
-          placeholder="Atributte 3"
-          onBlur={(event) => setFormState(event, state, 'attribute3', setState)}
-        />
-      </div>
-
+      </fieldset>
+      
       <button
-        className="button"
+        className="button" 
         type="submit"
         disabled={
-          !nftName ||
-          !description ||
-          !maxShares ||
-          !editions ||
-          !royalites
+          !nfthash ||
+          !receiver ||
+          !assetGuid
         }
       >
         Mint
@@ -187,4 +165,5 @@ const FormMintNFT = (props) => {
     </form>
   );
 }
-  export default FormMintNFT;
+
+export default FormMintNFT;

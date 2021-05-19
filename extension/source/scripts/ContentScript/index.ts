@@ -196,7 +196,6 @@ window.addEventListener('message', (event) => {
       precision,
       symbol,
       maxsupply,
-      fee,
       description,
       receiver,
       rbf
@@ -208,7 +207,6 @@ window.addEventListener('message', (event) => {
       precision,
       symbol,
       maxsupply,
-      fee,
       description,
       receiver,
       rbf

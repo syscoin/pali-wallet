@@ -2,153 +2,184 @@ import React, { useState } from 'react';
 import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 
-import Header from 'containers/common/Header';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
-import { useFiat } from 'hooks/usePrice';
-import { useHistory } from 'react-router-dom';
 import CheckIcon from '@material-ui/icons/CheckCircle';
-import UpArrowIcon from '@material-ui/icons/ArrowUpward';
+
+import TextInput from 'components/TextInput';
 import { RootState } from 'state/store';
-// import { ellipsis } from '../helpers';
+import { ellipsis } from '../helpers';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 
 import styles from './IssueNFT.scss';
 import { browser } from 'webextension-polyfill-ts';
 
-
 const IssueNFT = () => {
-    const controller = useController();
-    // const getFiatAmount = useFiat();
-    // const history = useHistory();
-    const { accounts, activeAccountId, currentSenderURL }: IWalletState = useSelector(
-        (state: RootState) => state.wallet
-    );
-    const connectedAccount = accounts.find((account: IAccountState) => {
-        return account.connectedTo.find((url: any) => {
-            return url === currentSenderURL;
-        });
+  const controller = useController();
+  const alert = useAlert();
+
+  const { accounts, activeAccountId, currentSenderURL }: IWalletState = useSelector(
+    (state: RootState) => state.wallet
+  );
+
+  const connectedAccount = accounts.find((account: IAccountState) => {
+    return account.connectedTo.find((url: any) => {
+      return url === currentSenderURL;
     });
-    const mintNFT = controller.wallet.account.getIssueNFT();
-    const [confirmed, setConfirmed] = useState<boolean>(false);
-    const [loading, setLoading] = useState<boolean>(false);
-    const alert = useAlert();
+  });
 
-    const handleConfirm = () => {
-        if (accounts[activeAccountId].balance > 0) {
-            controller.wallet.account.confirmIssueNFT().then(result => {
-                if (result) {
-                    alert.removeAll();
-                    alert.error(result.message);
+  const mintNFT = controller.wallet.account.getIssueNFT();
+  const [confirmed, setConfirmed] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [fee, setFee] = useState(0.00001);
+  const [recommend, setRecommend] = useState(0.00001);
 
-                    return;
-                }
+  const handleGetFee = () => {
+    controller.wallet.account.getRecommendFee().then(response => { setRecommend(response); setFee(response); })
+  };
 
-                setConfirmed(true);
-                setLoading(false);
+  const handleConfirm = () => {
+    if (accounts[activeAccountId].balance > 0) {
+      controller.wallet.account.confirmIssueNFT().then(result => {
+        if (result) {
+          console.log(result.message)
+          alert.removeAll();
+          alert.error(result.message);
 
-            });
-
+          return;
         }
-    }
-    const handleClosePopup = () => {
-        browser.runtime.sendMessage({
-            type: "CLOSE_POPUP",
-            target: "background"
-        });
-    }
 
-    const handleCancelTransactionOnSite = () => {
-        browser.runtime.sendMessage({
-            type: "CANCEL_TRANSACTION",
-            target: "background"
-        });
-
-        browser.runtime.sendMessage({
-            type: "CLOSE_POPUP",
-            target: "background"
-        });
+        setConfirmed(true);
+        setLoading(false);
+      });
     }
-    return confirmed ? (
+  }
 
-        <Layout title="Your transaction is underway" linkTo="/remind" showLogo>
-            <CheckIcon className={styles.checked} />
-            <div className="body-description">
-                Your NFT is in minting process, you can check the transaction under your history.
+  const handleClosePopup = () => {
+    browser.runtime.sendMessage({
+      type: "CLOSE_POPUP",
+      target: "background"
+    });
+  }
+
+  const handleCancelTransactionOnSite = () => {
+    browser.runtime.sendMessage({
+      type: "CANCEL_TRANSACTION",
+      target: "background"
+    });
+
+    browser.runtime.sendMessage({
+      type: "CLOSE_POPUP",
+      target: "background"
+    });
+  }
+
+  return confirmed ? (
+    <Layout title="Your transaction is underway" showLogo>
+      <CheckIcon className={styles.checked} />
+
+      <div
+        className="body-description"
+      >
+        Your Tokens is in minting process, you can check the transaction under your history.
       </div>
-            <Button
-                type="button"
-                theme="btn-gradient-primary"
-                variant={styles.next}
-                linkTo="/home"
-                onClick={handleClosePopup}
-            >
-                Next
+
+      <Button
+        type="button"
+        theme="btn-gradient-primary"
+        variant={ styles.next }
+        linkTo="/home"
+        onClick={ handleClosePopup }
+      >
+        Ok
       </Button>
-        </Layout>
-    )
+    </Layout>
+  ) : (
+    <Layout title="Mint NFT" showLogo>
+      <div className={styles.wrapper}>
+        <section className={styles.fee}>
+          <TextInput
+            type="number"
+            placeholder="Enter fee"
+            fullWidth
+            name="fee"
+            value={fee}
+            onChange={(event) => setFee(Number(event.target.value))}
+          />
+          <Button
+            type="button"
+            variant={styles.textBtn}
+            onClick={handleGetFee}
+          >
+            Recommend
+          </Button>
+        </section>
 
+        <section className={styles.data}>
+          <div className={styles.flex}>
+            <p>{mintNFT?.rbf}</p>
+            <p>on</p>
+          </div>
 
-        : (
-            <Layout title="Mint NFT" linkTo="/remind" showLogo>
-                <section className={styles.txAmount}>
-                    {String(mintNFT?.assetGuid) + " " + String(mintNFT?.nfthash) + " " + String(mintNFT?.receiver)}
-                </section>
-                {/* <section className={styles.transaction}>
-                <div className={styles.row}>
-                    From
-                    <span>
-                        The address to
-                    </span>
-                </div>
-                <div className={styles.row}>
-                    To
-                    <span> Another span </span>
-                </div>
-                <div className={styles.row}>
-                    Transaction Fee
-                    <span>
-                        Transaction fee
-                    </span>
-                </div>
-            </section>
-            <section className={styles.confirm}>
-                <div className={styles.row}>
-                    Max Total
-                    <span>
-                        the max tots
-                    </span>
-                </div>
+          <div className={styles.flex}>
+            <p>Receiver</p>
+            <p>{mintNFT?.receiver}</p>
+          </div>
 
-                <p className={styles.confirmTransactionOnSite}>Confirm transaction on ?</p> */}
+          <div className={styles.flex}>
+            <p>Fee</p>
+            <p>{fee}</p>
+          </div>
 
+          <div className={styles.flex}>
+            <p>Asset guid</p>
+            <p>{mintNFT?.assetGuid}</p>
+          </div>
 
-                <div className={styles.actions}>
-                    <Button
-                        type="button"
-                        theme="btn-outline-secondary"
-                        variant={clsx(styles.button, styles.close)}
-                        onClick={handleCancelTransactionOnSite}
-                    >
-                        Cancel
-                    </Button>
+          <div className={styles.flex}>
+            <p>NFT Hash</p>
+            <p>{mintNFT?.nfthash}</p>
+          </div>
 
-                    <Button
-                        type="submit"
-                        theme="btn-outline-confirm"
-                        variant={styles.button}
-                        onClick={handleConfirm}
-                        loading={loading}
-                    >
-                        Confirm
-                    </Button>
-                </div>
-                {/* </section> */}
-            </Layout>
+          <div className={styles.flex}>
+            <p>Site</p>
+            <p>{currentSenderURL}</p>
+          </div>
 
-        );
+          <div className={styles.flex}>
+            <p>Max total</p>
+            <p>{fee}</p>
+          </div>
+        </section>
+
+        <section className={styles.confirm}>
+          <div className={styles.actions}>
+            <Button
+              type="button"
+              theme="btn-outline-secondary"
+              variant={clsx(styles.button, styles.close)}
+              onClick={handleCancelTransactionOnSite}
+            >
+              Reject
+            </Button>
+
+            <Button
+              type="submit"
+              theme="btn-outline-primary"
+              variant={styles.button}
+              onClick={handleConfirm}
+              loading={loading}
+              disabled={loading || !fee}
+            >
+              Confirm
+            </Button>
+          </div>
+        </section>
+      </div>
+    </Layout>
+  );
 }
 
 export default IssueNFT;

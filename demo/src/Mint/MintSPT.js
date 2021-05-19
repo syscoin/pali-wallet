@@ -5,7 +5,14 @@ import FormMintSPT from "./Form/FormMintSPT";
 import Header from "../components/Header";
 
 const MintSPT = () => {
-  const handleIssueSPT = async (event, { amount, fee, receiver, rbf, assetGuid }) => {
+  const handleIssueSPT = async (
+    event,
+    amount,
+    fee,
+    receiver,
+    rbf,
+    assetGuid
+  ) => {
     event.preventDefault();
 
     console.log(await window.ConnectionsController.getWalletState())
@@ -21,7 +28,6 @@ const MintSPT = () => {
     );
   };
   
-
   return (
     <div className="app">
       <Header /> 

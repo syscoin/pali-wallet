@@ -1,6 +1,6 @@
 import format from 'date-fns/format';
 
-export const ellipsis = (str: string, start = 7, end = 4) => {
+export const ellipsis = (str: any, start = 7, end = 4) => {
   return (
     str.substring(0, start) +
     '...' +

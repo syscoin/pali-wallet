@@ -1,50 +1,48 @@
 import React, { useState } from "react";
-import { setFormState } from "../../helpers";
 
 const FormCreateToken = (props) => {
-  const [state, setState] = useState({
-    precision: 0,
-    maxSupply: 0,
-    description: '',
-    symbol: '',
-    fee: 0,
-    receiver: '',
-    rbf: false
-  });
-
-  const {
-    precision,
-    maxSupply,
-    description,
-    symbol,
-    fee,
-    receiver,
-    rbf
-  } = state;
+  const [precision, setPrecision] = useState(0);
+  const [maxSupply, setMaxSupply] = useState(0);
+  const [description, setDescription] = useState('');
+  const [symbol, setSymbol] = useState('');
+  const [receiver, setReceiver] = useState('');
+  const [rbf, setRbf] = useState(false);
+  // const [fee, setFee] = useState(0);
 
   return (
-    <form onSubmit={(event) => props.formCallback(event, state)}>
+    <form 
+      onSubmit={(event) => props.formCallback(
+        event,
+        precision,
+        maxSupply,
+        description,
+        symbol,
+        // fee,
+        receiver,
+        rbf
+      )}
+    >
       <div className="property">
         <h2>You are creating {props.token}</h2>
         
         <div>
           <label htmlFor="precision">Precision:</label>
-          <input 
+          <input
             className="input" 
-            type="text" 
+            type="number" 
             id="precision" 
             name="precision"
-            onBlur={(event) => setFormState(event, state, 'precision', setState)}
+            onBlur={(event) => setPrecision(event.target.value)}
             required
           />
 
           <label htmlFor="maxSupply">Max. Supply:</label>
           <input 
             className="input" 
-            type="text" 
+            type="number" 
             id="maxSupply" 
             name="maxSupply"
-            onBlur={(event) => setFormState(event, state, 'maxSupply', setState)}
+            onBlur={(event) => setMaxSupply(event.target.value)}
             required
           />
 
@@ -54,7 +52,7 @@ const FormCreateToken = (props) => {
             type="text" 
             id="description" 
             name="description" 
-            onBlur={(event) => setFormState(event, state, 'description', setState)}
+            onBlur={(event) => setDescription(event.target.value)}
             required
           />
 
@@ -64,19 +62,19 @@ const FormCreateToken = (props) => {
             type="text" 
             id="symbol" 
             name="symbol"
-            onBlur={(event) => setFormState(event, state, 'symbol', setState)}
+            onBlur={(event) => setSymbol(event.target.value)}
             required
           />  
-
+{/* 
           <label htmlFor="fee">Fee:</label>
           <input 
             className="input" 
-            type="text" 
+            type="number" 
             id="fee" 
             name="fee"
-            onBlur={(event) => setFormState(event, state, 'fee', setState)}
+            onBlur={(event) => setFee(event.target.value)}
             required
-          /> 
+          />  */}
               
           <label htmlFor="receiver">Sys address:</label>
           <input 
@@ -84,17 +82,20 @@ const FormCreateToken = (props) => {
             type="text" 
             id="receiver" 
             name="receiver" 
-            onBlur={(event) => setFormState(event, state, 'receiver', setState)}
+            onBlur={(event) => setReceiver(event.target.value)}
             required
           />
-                
+
           <label htmlFor="rbf">RBF:</label>
           <input 
             id="rbf" 
             name="rbf" 
             type="checkbox"
             className="switch"
-            onChange={(event) => setFormState(event, state, 'rbf', setState)}
+            onChange={() => {
+              setRbf(!rbf)
+            }}
+            checked={rbf}
           />
         </div> 
         
@@ -106,9 +107,7 @@ const FormCreateToken = (props) => {
             !maxSupply ||
             !description ||
             !symbol ||
-            !fee ||
-            !receiver ||
-            !rbf
+            !receiver
           }
         >
           Create

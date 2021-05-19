@@ -1,32 +1,104 @@
 import React, { useState, useEffect } from "react";
 
 const FormMintSPT = (props) => {
-  const [state, setState] = useState({
-    amount: 0,
-    fee: 0,
-    receiver: '',
-    rbf: false,
-    assetGuid: ''
-  });
-  const {
-    amount,
-    fee,
-    receiver,
-    rbf,
-    assetGuid
-  } = state;
-  const [tokenMinted, setTokenMinted] = useState("");
+  const [assetGuid, setAssetGuid] = useState('');
+  const [receiver, setReceiver] = useState('');
+  const [rbf, setRbf] = useState(false);
+  const [amount, setAmount] = useState(0);
+  const [data, setData] = useState([]);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [canConnect, setCanConnect] = useState(true);
+  const [balance, setBalance] = useState(0);
+  const [controller, setController] = useState();
+  const [connectedAccount, setConnectedAccount] = useState({});
+  const [connectedAccountAddress, setConnectedAccountAddress] = useState("");
 
-  const getUserMintedTokens = async () => {
-    console.log('get user minted tokens')
+  useEffect(() => {
+    const callback = (event) => {
+      if (event.detail.SyscoinInstalled) {
+        setIsInstalled(true);
 
-    await window.ConnectionsController.getUserMintedTokens();
+        if (event.detail.ConnectionsController) {
+          setController(window.ConnectionsController);
 
-    console.log('aafter function')
+          return;
+        }
+
+        return;
+      }
+
+      setIsInstalled(false);
+
+      window.removeEventListener("SyscoinStatus", callback);
+    }
+
+    window.addEventListener("SyscoinStatus", callback);
+  }, []);
+
+  const setup = async () => {
+    const state = await controller.getWalletState();
+
+    if (state.accounts.length > 0) {
+      controller.getConnectedAccount()
+        .then((data) => {
+          if (data) {
+            setConnectedAccount(data);
+            setConnectedAccountAddress(data.address.main);
+            setBalance(data.balance);
+
+            return;
+          }
+
+          setConnectedAccount({});
+          setConnectedAccountAddress("");
+          setBalance(0);
+
+          return;
+        });
+    }
+  };
+
+  useEffect(() => {
+    if (controller) {
+      setup();
+
+      controller.onWalletUpdate(setup);
+    }
+  }, [
+    controller,
+  ]);
+
+  useEffect(() => {
+    console.log('tokens', data);
+
+    const setup = async () => {
+      if (controller) {
+        setData(await controller.getUserMintedTokens());
+      }
+    }
+
+    setup();
+  }, [
+    controller
+  ]);
+
+  const RenderAsset = () => {
+    return data.map((asset, index) => {
+      return <option key={index}>{asset.assetGuid}</option>
+    });
   }
 
   return (
-    <form onSubmit={(event) => props.formCallback(event, state)}>
+    <form
+      onSubmit={(event) => props.formCallback(
+        event,
+        amount,
+        0.0001, // fee - wallet
+        receiver,
+        rbf,
+        assetGuid
+      )}
+    >
       <fieldset>
         <legend>YOU ARE MINTING SPTS</legend>
 
@@ -38,14 +110,10 @@ const FormMintSPT = (props) => {
               id="assetGuid" 
               name="assetGuid" 
               className="custom-select"
-              onChange={(event) => setState({
-                ...state,
-                assetGuid: Number(event.target.value)
-              })}
+              onBlur={(event) => setAssetGuid(event.target.value)}
             >
               <option>Choose...</option>
-              <option value="2">Two</option>
-              <option value="3">Three</option>
+              <RenderAsset />
             </select>
           </div>
 
@@ -54,11 +122,8 @@ const FormMintSPT = (props) => {
             className="input" 
             type="number" 
             id="amount" 
-            name="amount" 
-            onBlur={(event) => setState({
-              ...state,
-              amount: Number(event.target.value)
-            })}
+            name="amount"
+            onBlur={(event) => setAmount(event.target.value)}
             required
           />
 
@@ -68,36 +133,20 @@ const FormMintSPT = (props) => {
             type="text" 
             id="receiver" 
             name="receiver"
-            onBlur={(event) => setState({
-              ...state,
-              receiver: event.target.value
-            })}
+            onBlur={(event) => setReceiver(event.target.value)}
             required
           />
 
-          <label htmlFor="fee">Fee:</label>
-          <input 
-            className="input" 
-            type="number" 
-            id="fee" 
-            name="fee" 
-            onBlur={(event) => setState({
-              ...state,
-              fee: Number(event.target.value)
-            })}
-            required
-          />
-              
           <label htmlFor="rbf">RBF:</label>
           <input 
             id="rbf" 
             name="rbf" 
             type="checkbox" 
             className="switch"
-            onChange={(event) => setState({
-              ...state,
-              rbf: event.target.value
-            })}
+            onChange={() => {
+              setRbf(!rbf)
+            }}
+            checked={rbf}
           />
         </div>
       </fieldset>
@@ -105,24 +154,21 @@ const FormMintSPT = (props) => {
       <button
         className="button"
         type="button"
-        onClick={() => getUserMintedTokens()}
       >
        GET
       </button>
 
-      {/* <button
+      <button
         className="button" 
         type="submit"
         disabled={
           !amount ||
-          !fee ||
           !receiver ||
-          !rbf ||
           !assetGuid
         }
       >
         Mint
-      </button> */}
+      </button>
     </form>
   );
 }

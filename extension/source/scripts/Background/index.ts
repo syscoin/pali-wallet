@@ -50,6 +50,17 @@ browser.runtime.onInstalled.addListener((): void => {
     });
 
     const tabId = Number(tabs[0].id);
+    let createTokenFee: number = 0.00001;
+    let mintSPTFee: number;
+    let dataFromPageToCreateToken: {
+      precision: number,
+      symbol: string,
+      maxsupply: number,
+      description: string,
+      receiver: string,
+      rbf: boolean,
+      // fee: number
+    }
 
     const createPopup = async (url: string) => {
       return await browser.windows.create({
@@ -251,28 +262,36 @@ browser.runtime.onInstalled.addListener((): void => {
         });
       }
 
+      if (type == 'SEND_FEE_TO_CREATE_TOKEN' && target == 'background') {
+        console.log('create token fee before', createTokenFee)
+        createTokenFee = request.createTokenFee;
+        console.log('create token fee after', createTokenFee)
+      }
+
+      if (type == 'SEND_FEE_TO_MINT_SPT' && target == 'background') {
+        mintSPTFee = request.mintSPTFee;
+      }
+
       if (type == 'CREATE_TOKEN' && target == 'background') {
         const {
           precision,
           symbol,
           maxsupply,
-          fee,
           description,
           receiver,
           rbf
         } = request;
-        console.log("Calling wallet controller")
-        console.log(request)
+
         window.controller.wallet.account.createSPT({
           precision,
           symbol,
           maxsupply,
-          fee,
+          fee: createTokenFee,
           description,
           receiver,
           rbf
         });
-        
+
         store.dispatch(createAsset(true));
 
         const URL = browser.runtime.getURL('app.html');
@@ -291,14 +310,13 @@ browser.runtime.onInstalled.addListener((): void => {
           assetGuid,
           amount,
           receiver,
-          fee,
           rbf
         } = request;
 
         window.controller.wallet.account.issueSPT({
           assetGuid,
-          amount,
-          fee,
+          amount: Number(amount),
+          fee: 0.00001,
           receiver,
           rbf
         });
@@ -320,7 +338,6 @@ browser.runtime.onInstalled.addListener((): void => {
         const {
           assetGuid,
           nfthash,
-          fee,
           receiver,
           rbf
         } = request;
@@ -328,12 +345,13 @@ browser.runtime.onInstalled.addListener((): void => {
         window.controller.wallet.account.issueNFT({
           assetGuid,
           nfthash,
-          fee,
+          fee: 0.00001,
           receiver,
           rbf
         });
 
         store.dispatch(issueNFT(true));
+
         const URL = browser.runtime.getURL('app.html');
 
         await createPopup(URL);
@@ -381,7 +399,7 @@ browser.runtime.onInstalled.addListener((): void => {
         });
       }
 
-       if (type == 'GET_USERMINTEDTOKENS' && target == 'background') {
+      if (type == 'GET_USERMINTEDTOKENS' && target == 'background') {
         console.log('tokens minted get user minted tokens')
 
         const tokensMinted = await window.controller.wallet.account.getUserMintedTokens();
@@ -391,7 +409,7 @@ browser.runtime.onInstalled.addListener((): void => {
         browser.tabs.sendMessage(tabId, {
           type: 'GET_USERMINTEDTOKENS',
           target: 'contentScript',
-          userTokens: 'tokens minted is ok'
+          userTokens: tokensMinted
         });
       }
     }

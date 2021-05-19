@@ -6,7 +6,7 @@ export interface IConnectionsController {
   getWalletState: () => any;
   getConnectedAccount: () => any;
   handleSendToken: (sender: string, receiver: string, amount: number, fee: number, token: any, isToken: boolean, rbf: boolean) => any;
-  handleCreateToken: (precision: number, symbol: string, maxsupply: number, fee: number, description: string, receiver: string, rbf: boolean) => any;
+  handleCreateToken: (precision: number, symbol: string, maxsupply: number, /* fee: number,*/ description: string, receiver: string, rbf: boolean) => any;
   handleIssueSPT: (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string) => any;
   handleIssueNFT: (rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => any;
   isNFT: (guid: number) => boolean;
@@ -84,7 +84,7 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, fee: number, description: string, receiver: string, rbf: boolean) => {
+  const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, description: string, receiver: string, rbf: boolean) => {
     return await sendMessage({
       type: 'CREATE_TOKEN',
       target: 'connectionsController',
@@ -96,7 +96,6 @@ const ConnectionsController = (): IConnectionsController => {
       precision,
       symbol,
       maxsupply,
-      fee,
       description,
       receiver,
       rbf

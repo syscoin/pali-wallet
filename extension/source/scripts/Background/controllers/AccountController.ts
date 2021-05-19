@@ -19,14 +19,9 @@ import {
   ISPTInfo,
   ISPTIssue,
   INFTIssue,
-  TokenMint,
-  allToken
-  
+  MintedToken,
 } from '../../types';
 import { sys } from 'constants/index';
-
-import { boolean } from 'yup';
-const sjs = require('syscoinjs-lib');
 
 export interface IAccountController {
   subscribeAccount: (sjs?: any, label?: string) => Promise<string | null>;
@@ -331,16 +326,18 @@ const AccountController = (actions: {
     }
 
     try {
+      console.log("the newSPt asset opts")
+      console.log(newSPT)
       const _assetOpts = {
-        precision: newSPT.precision, symbol: newSPT.symbol, maxsupply: new sys.utils.BN(newSPT.maxsupply), description: newSPT.description
+        precision: 8, symbol: 'symbol', maxsupply: new sys.utils.BN(100000000000), description: 'newSPT.description'
       }
-      const txOpts = { rbf: newSPT.rbf }
+      const txOpts = { rbf: false }
       console.log("sending token to be created")
       console.log(_assetOpts)
       console.log(txOpts)
       console.log("the newSPt")
       console.log(newSPT)
-      const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, newSPT.receiver, new sys.utils.BN(newSPT.fee));
+      const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, null, new sys.utils.BN(10));
       console.log("pending tx:")
       console.log(pendingTx)
       const txInfo = pendingTx.extractTransaction().getId();
@@ -352,7 +349,7 @@ const AccountController = (actions: {
         })
       );
 
-      tempTx = null;
+      newSPT = null;
 
       watchMemPool();
 
@@ -376,8 +373,40 @@ const AccountController = (actions: {
     }
 
     try {
-      //Code for minting SPT
-      mintSPT = null;
+      console.log('spt mint', mintSPT);
+
+      const feeRate = new sys.utils.BN(10);
+      const txOpts = { rbf: false };
+      const assetGuid = '881978605';
+      const assetChangeAddress = null;
+
+      const assetMap = new Map([
+        [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(6000), address: 'tsys1qpay7ehn7epk5dmh8xv7dn5ksvyhr06323mtz0s' }] }]
+      ]);
+
+      console.log('minting spt asset map', assetMap);
+
+      const sysChangeAddress = null;
+
+      const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
+
+      console.log('minting spt pendingTx', pendingTx);
+
+      if (!pendingTx) {
+        console.log('Could not create transaction, not enough funds?')
+      }
+
+      const txInfo = pendingTx.extractTransaction().getId();
+      console.log('tx info mint spt', txInfo)
+
+      store.dispatch(
+        updateTransactions({
+          id: account.id,
+          txs: [_coventPendingType(txInfo), ...account.transactions],
+        })
+      );
+
+      watchMemPool();
 
       return null;
     } catch (error) {
@@ -399,7 +428,39 @@ const AccountController = (actions: {
     }
 
     try {
-      //Code for minting nft
+      const feeRate = new sys.utils.BN(mintNFT?.fee);
+      const txOpts = { rbf: mintNFT?.rbf };
+      const assetGuid = mintNFT?.assetGuid;
+      const NFTID = sys.utils.createAssetID('1', assetGuid);
+      const assetChangeAddress = null;
+
+      const assetMap = new Map([
+        [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(mintNFT?.nfthash), address: mintNFT?.receiver }] }],
+        [NFTID, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(mintNFT?.fee), address: mintNFT?.receiver }] }]
+      ]);
+
+      console.log('minting nft asset map', assetMap);
+
+      const sysChangeAddress = null;
+
+      const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
+
+      console.log('minting spt pendingTx', pendingTx);
+
+      if (!pendingTx) {
+        console.log('Could not create transaction, not enough funds?')
+      }
+
+      const txInfo = pendingTx.extractTransaction().getId();
+      console.log('tx info mint nft', txInfo)
+
+      store.dispatch(
+        updateTransactions({
+          id: account.id,
+          txs: [_coventPendingType(txInfo), ...account.transactions],
+        })
+      );
+
       mintNFT = null;
 
       return null;
@@ -467,48 +528,33 @@ const AccountController = (actions: {
   };
 
   const getUserMintedTokens = async () => {
-    let tokensMinted: TokenMint[] = [];
-    let allTokens: allToken[] = [];
-    let tokens;
-    let tokenExists: boolean;
+    let mintedTokens: MintedToken[] = [];
 
     const res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
 
     if (res.transactions) {
       res.transactions.map((transaction: any) => {
-        if (transaction.tokenType === 'SPTAssetActivate') {
-          for (let token in transaction.tokenTransfers) {
-            console.log('token', transaction.tokenTransfers[token].token);
-            console.log('token 2', token);
+        if (transaction.tokenType === 'SPTAssetActivate' && transaction.tokenTransfers) {
+          for (let item of transaction.tokenTransfers) {
+            if (!mintedTokens.includes({ assetGuid: item.token, symbol: atob(item.symbol) })) {
+              mintedTokens.push({
+                assetGuid: item.token,
+                symbol: atob(item.symbol)
+              });
+            }
 
-            // return {
-            //   assetGuid: transaction.tokenTransfers[token].token,
-            //   symbol: atob(transaction.tokenTransfers[token].symbol)
-            // }
+            return;
           }
         }
-      })
-    
-    //  allTokens.map((token) => {
-    //   if (token) {
-    //     tokensMinted.map((mintedToken) => {
-    //       if (mintedToken.assetGuid === token.assetGuid) {
-    //         tokenExists = true;
 
-    //         return;
-    //       }
-    //     });
+        return;
+      });
 
-    //     if (!tokenExists) {
-    //       tokensMinted.push(token);
-    //     }
-    //   }
-    // });
-
-    return {
-      tokensMinted
+      return mintedTokens;
     }
-  }}
+
+    return;
+  }
 
   const createCollection = (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string ) => {
     console.log('[account controller]: collection created')

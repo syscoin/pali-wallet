@@ -65,13 +65,7 @@ export type PendingTx = {
   blockTime: number;
 }
 
-export type TokenMint = {
+export type MintedToken = {
   assetGuid: string,
   symbol: string
-}
-
-export type allToken = {
-  assetGuid: string,
-  symbol: string,
-  tokens: any
 }
