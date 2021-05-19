@@ -128,7 +128,8 @@ const Create = () => {
             onBlur={() => {
               browser.runtime.sendMessage({
                 type: 'SEND_FEE_TO_CREATE_TOKEN',
-                target: 'background'
+                target: 'background',
+                createTokenFee: fee
               })
             }}
           />
