@@ -19,11 +19,14 @@ import {
 
 import MasterController, { IMasterController } from './controllers';
 import { IAccountState } from 'state/wallet/types';
+// var TrezorConnect = require('trezor-connect').default;
+import TrezorConnect from 'trezor-connect';
 
 declare global {
   interface Window {
     controller: Readonly<IMasterController>;
     senderURL: string | undefined;
+    trezorConnect: any;
   }
 }
 
@@ -36,6 +39,44 @@ browser.runtime.onInstalled.addListener((): void => {
   console.emoji('🤩', 'Syscoin extension installed');
 
   window.controller.stateUpdater();
+
+
+  // TrezorConnect.manifest({
+  //   email: 'claudiocarvalhovilasboas@gmail.com',
+  //   appUrl: 'https://syscoin.org/'
+  // })
+  TrezorConnect.init({
+    connectSrc: 'https://localhost:8088/',
+    lazyLoad: true, // this param will prevent iframe injection until TrezorConnect.method will be called
+    manifest: {
+      email: 'claudiocarvalhovilasboas@gmail.com',
+      appUrl: 'https://syscoin.org/',
+    }
+  });
+  window.trezorConnect = TrezorConnect;
+  TrezorConnect.getAddress({
+    path: "m/49'/0'/0'/0/2",
+    coin: "btc"
+  });
+  console.log(TrezorConnect)
+  // TrezorConnect.getAddress({
+  //   path: "m/84'/1'/0'/0/0",
+  //   coin: 'tsys'
+  // })
+  //   .then(response => {
+  //     const message = response.success
+  //       ? `SYS Address: ${response.payload.address}`
+  //       : `Error: ${response.payload.error}`;
+  //     chrome.notifications.create(new Date().getTime().toString(), {
+  //       type: 'basic',
+  //       iconUrl: 'assets/icons/favicon-48.png',
+  //       title: 'TrezorConnect',
+  //       message,
+  //     });
+  //   })
+  // .catch(error => {
+  //   console.error('TrezorConnectError', error);
+  // });
 
   browser.runtime.onMessage.addListener(async (request, sender) => {
     const {
@@ -339,6 +380,10 @@ browser.runtime.onInstalled.addListener((): void => {
   });
 
   browser.runtime.onConnect.addListener((port) => {
+    if (port.name == 'trezor-connect') {
+      console.log('Blocked port')
+      return;
+    }
     browser.tabs.query({ active: true })
       .then((tabs) => {
         store.dispatch(updateCurrentURL(tabs[0].url));

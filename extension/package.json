@@ -60,6 +60,7 @@
     "saas": "^1.0.0",
     "sass": "^1.32.12",
     "syscoinjs-lib": "^1.0.126",
+    "trezor-connect": "^8.1.27",
     "uuid": "^8.3.2",
     "webext-base-css": "^1.1.0",
     "webext-redux": "^2.1.7",
