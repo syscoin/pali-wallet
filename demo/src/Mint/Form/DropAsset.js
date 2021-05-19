@@ -90,7 +90,11 @@ const Dropdown = () => {
      }
   
     return (
-
+<form
+    onSubmit={(props) => props.formCallback(
+      assetGuid
+    )}
+  >
                     <div className="input-group mb-3">
             <label htmlFor="assetGuid">AssetGuid:</label>
 
@@ -104,6 +108,7 @@ const Dropdown = () => {
               <RenderAsset />
             </select>
           </div>
+          </form>
     );
   }
 

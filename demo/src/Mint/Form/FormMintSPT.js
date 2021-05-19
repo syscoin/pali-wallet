@@ -139,7 +139,7 @@ const FormMintSPT = (props) => {
             required
           />
 
-          <label htmlFor="rbf">RBF:</label>
+          {/* <label htmlFor="rbf">RBF:</label>
           <input 
             id="rbf" 
             name="rbf" 
@@ -149,16 +149,10 @@ const FormMintSPT = (props) => {
               setRbf(!rbf)
             }}
             checked={rbf}
-          />
+          /> */}
         </div>
       </fieldset>
 
-      <button
-        className="button"
-        type="button"
-      >
-       GET
-      </button>
 
       <button
         className="button" 
