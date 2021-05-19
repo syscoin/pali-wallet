@@ -33,8 +33,8 @@ const Create = () => {
   const newSPT = controller.wallet.account.getNewSPT();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
-  const [fee, setFee] = useState(0.00001);
-  const [recommend, setRecommend] = useState(0.00001);
+  const [fee, setFee] = useState(10);
+  const [recommend, setRecommend] = useState(10);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => { setRecommend(response); setFee(response); })
@@ -155,7 +155,7 @@ const Create = () => {
 
           <div className={styles.flex}>
             <p>Receiver</p>
-            {/* <p>{ellipsis(newSPT?.receiver)}</p> */}
+            <p>{ellipsis(newSPT?.receiver)}</p>
           </div>
 
           <div className={styles.flex}>

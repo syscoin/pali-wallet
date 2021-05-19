@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 
 const Dropdown = () => {
-
     const [assetGuid, setAssetGuid] = useState('');
     const [receiver, setReceiver] = useState('');
     const [rbf, setRbf] = useState(false);

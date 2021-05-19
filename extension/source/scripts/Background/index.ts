@@ -50,8 +50,8 @@ browser.runtime.onInstalled.addListener((): void => {
     });
 
     const tabId = Number(tabs[0].id);
-    let createTokenFee: number = 0.00001;
-    let mintSPTFee: number;
+    let createTokenFee: number = 5;
+    let mintSPTFee: number = 5;
     let dataFromPageToCreateToken: {
       precision: number,
       symbol: string,
@@ -269,7 +269,9 @@ browser.runtime.onInstalled.addListener((): void => {
       }
 
       if (type == 'SEND_FEE_TO_MINT_SPT' && target == 'background') {
+        console.log('mint token fee before', mintSPTFee)
         mintSPTFee = request.mintSPTFee;
+        console.log('mint token fee after', mintSPTFee)
       }
 
       if (type == 'CREATE_TOKEN' && target == 'background') {
@@ -316,7 +318,7 @@ browser.runtime.onInstalled.addListener((): void => {
         window.controller.wallet.account.issueSPT({
           assetGuid,
           amount: Number(amount),
-          fee: 0.00001,
+          fee: mintSPTFee,
           receiver,
           rbf
         });
@@ -345,7 +347,7 @@ browser.runtime.onInstalled.addListener((): void => {
         window.controller.wallet.account.issueNFT({
           assetGuid,
           nfthash,
-          fee: 0.00001,
+          fee: 10,
           receiver,
           rbf
         });

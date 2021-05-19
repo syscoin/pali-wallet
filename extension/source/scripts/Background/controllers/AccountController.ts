@@ -329,9 +329,9 @@ const AccountController = (actions: {
       console.log("the newSPt asset opts")
       console.log(newSPT)
       const _assetOpts = {
-        precision: 8, symbol: 'symbol', maxsupply: new sys.utils.BN(100000000000), description: 'newSPT.description'
+        precision: newSPT.precision, symbol: newSPT.symbol, maxsupply: new sys.utils.BN(newSPT.maxsupply), description: newSPT.description
       }
-      const txOpts = { rbf: false }
+      const txOpts = { rbf: newSPT.rbf }
       console.log("sending token to be created")
       console.log(_assetOpts)
       console.log(txOpts)
@@ -375,13 +375,13 @@ const AccountController = (actions: {
     try {
       console.log('spt mint', mintSPT);
 
-      const feeRate = new sys.utils.BN(10);
-      const txOpts = { rbf: false };
-      const assetGuid = '881978605';
+      const feeRate = new sys.utils.BN(mintSPT.fee);
+      const txOpts = { rbf: mintSPT.rbf };
+      const assetGuid = mintSPT.assetGuid;
       const assetChangeAddress = null;
 
       const assetMap = new Map([
-        [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(6000), address: 'tsys1qpay7ehn7epk5dmh8xv7dn5ksvyhr06323mtz0s' }] }]
+        [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(mintSPT.amount), address: mintSPT.receiver }] }]
       ]);
 
       console.log('minting spt asset map', assetMap);
