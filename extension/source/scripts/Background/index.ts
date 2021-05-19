@@ -329,16 +329,18 @@ browser.runtime.onInstalled.addListener((): void => {
 
       if (type == 'ISSUE_SPT' && target == 'background') {
         const {
-          assetGuid,
           amount,
           receiver,
+          assetGuid
         } = request;
 
+        console.log('reqiest mint spt', request)
+
         window.controller.wallet.account.issueSPT({
-          assetGuid,
+          assetGuid: assetGuid,
           amount: Number(amount),
           fee: mintSPTFee,
-          receiver,
+          receiver: receiver,
           rbf: rbfMintSPT
         });
 

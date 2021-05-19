@@ -377,6 +377,8 @@ const AccountController = (actions: {
       const assetGuid = mintSPT.assetGuid;
       const assetChangeAddress = null;
 
+      console.log('mint spt', mintSPT)
+
       const assetMap = new Map([
         [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(mintSPT.amount * 1e8), address: mintSPT.receiver }] }]
       ]);

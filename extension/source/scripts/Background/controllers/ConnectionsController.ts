@@ -7,7 +7,7 @@ export interface IConnectionsController {
   getConnectedAccount: () => any;
   handleSendToken: (sender: string, receiver: string, amount: number, fee: number, token: any, isToken: boolean, rbf: boolean) => any;
   handleCreateToken: (precision: number, symbol: string, maxsupply: number,description: string, receiver: string) => any;
-  handleIssueSPT: (assetGuid: string, amount: number, receiver: string) => any;
+  handleIssueSPT: (amount: number, receiver: string, assetGuid: string) => any;
   handleIssueNFT: (assetGuid: string, nfthash: string, receiver: string) => any;
   isNFT: (guid: number) => boolean;
   getUserMintedTokens: () => any;
@@ -101,7 +101,8 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const handleIssueSPT = async (assetGuid: string, amount: number, receiver: string) => {
+  const handleIssueSPT = async (amount: number, receiver: string, assetGuid: string) => {
+    console.log('handleissuespt', amount, receiver, assetGuid)
     return await sendMessage({
       type: 'ISSUE_SPT',
       target: 'connectionsController',
@@ -110,9 +111,9 @@ const ConnectionsController = (): IConnectionsController => {
     }, {
       type: 'ISSUE_SPT',
       target: 'contentScript',
-      assetGuid,
       amount,
       receiver,
+      assetGuid
     });
   }
 

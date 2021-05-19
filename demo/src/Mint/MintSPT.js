@@ -8,23 +8,19 @@ const MintSPT = () => {
   const handleIssueSPT = async (
     event,
     amount,
-    fee,
     receiver,
-    rbf,
     assetGuid
   ) => {
     event.preventDefault();
 
     console.log(await window.ConnectionsController.getWalletState())
 
-    console.log('handle mint spt', amount, fee, receiver, rbf, assetGuid)
+    console.log('mintpstpage', amount, receiver, assetGuid)
 
     await window.ConnectionsController.handleIssueSPT(
-      rbf,
-      fee,
-      assetGuid,
       amount,
-      receiver
+      receiver,
+      assetGuid
     );
   };
   

@@ -158,6 +158,8 @@ const FormMintNFT = (props) => {
           !receiver ||
           !assetGuid
         }
+
+        onClick={() => console.log('asset guid', assetGuid)}
       >
         Mint
       </button>

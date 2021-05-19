@@ -156,7 +156,7 @@ const IssueAsset = () => {
 
           <div className={styles.flex}>
             <p>Receiver</p>
-            <p>{ellipsis(mintSPT?.receiver)}</p>
+            {/* <p>{ellipsis(mintSPT?.receiver)}</p> */}
           </div>
 
           <div className={styles.flex}>

@@ -86,7 +86,7 @@ const FormMintSPT = (props) => {
 
   const RenderAsset = () => {
     return data.map((asset, index) => {
-      return <option key={index}>Symbol:"{asset.symbol}"   Asset: "{asset.assetGuid}"</option>
+      return <option key={index}>{asset.assetGuid}</option>
     });
   }
  
@@ -95,9 +95,7 @@ const FormMintSPT = (props) => {
       onSubmit={(event) => props.formCallback(
         event,
         amount,
-        0.0001, // fee - wallet
         receiver,
-        rbf,
         assetGuid
       )}
     >
@@ -162,6 +160,7 @@ const FormMintSPT = (props) => {
           !receiver ||
           !assetGuid
         }
+        onClick={() => console.log('assetguid selected', assetGuid)}
       >
         Mint
       </button>
