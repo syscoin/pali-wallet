@@ -6,7 +6,8 @@ import {
   updateAccount,
   updateLabel,
   updateTransactions,
-  updateAccountAddress
+  updateAccountAddress,
+  updateAccountXpub
 } from 'state/wallet';
 import IWalletState, {
   IAccountState
@@ -48,6 +49,7 @@ export interface IAccountController {
   confirmIssueNFT: () => Promise<null | any>;
   confirmTempTx: () => Promise<null | any>;
   setNewAddress: (addr: string) => boolean;
+  setNewXpub: (id: number, xpub: string) => boolean;
   getUserMintedTokens: () => any;
   createCollection: (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string) => void;
   getCollection: () => any;
@@ -66,7 +68,7 @@ const AccountController = (actions: {
   let mintSPT: ISPTIssue | null;
   let mintNFT: INFTIssue | null;
   let collection: any;
-  
+
   const getAccountInfo = async (): Promise<IAccountInfo> => {
     let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
 
@@ -116,10 +118,10 @@ const AccountController = (actions: {
   const subscribeAccount = async (sjs?: any, label?: string) => {
     if (sjs) {
       sysjs = sjs;
-    } 
+    }
 
     sysjs.HDSigner.createAccount();
-    
+
     const res: IAccountInfo | null = await getAccountInfo();
 
     account = {
@@ -128,7 +130,6 @@ const AccountController = (actions: {
       balance: res.balance,
       transactions: res.transactions,
       xpub: sysjs.HDSigner.getAccountXpub(),
-      masterPrv: sysjs.HDSigner.accounts[sysjs.HDSigner.accountIndex].getAccountPrivateKey(),
       address: { 'main': await sysjs.HDSigner.getNewReceivingAddress() },
       assets: res.assets,
       connectedTo: []
@@ -291,6 +292,19 @@ const AccountController = (actions: {
     return true;
   }
 
+  const setNewXpub = (id: number, xpub: string) => {
+
+    store.dispatch(
+      updateAccountXpub({
+        id: id,
+        xpub: xpub,
+      })
+    );
+
+    return true;
+  }
+
+
   const createSPT = (spt: ISPTInfo) => {
     newSPT = spt;
     console.log("checkout the spt")
@@ -367,7 +381,7 @@ const AccountController = (actions: {
     if (!account) {
       throw new Error("Error: Can't find active account info");
     }
-    
+
     if (!mintSPT) {
       throw new Error("Error: Can't find transaction info");
     }
@@ -556,7 +570,7 @@ const AccountController = (actions: {
     return;
   }
 
-  const createCollection = (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string ) => {
+  const createCollection = (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string) => {
     console.log('[account controller]: collection created')
 
     collection = {
@@ -571,14 +585,14 @@ const AccountController = (actions: {
       attribute2,
       attribute3
     }
-    
+
     console.log(collection)
   }
 
   const getCollection = () => {
     return collection;
   }
-  
+
   const getTransactionInfoByTxId = async (txid: any) => {
     return await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
   }
@@ -602,6 +616,7 @@ const AccountController = (actions: {
     updateTxs,
     getRecommendFee,
     setNewAddress,
+    setNewXpub,
     isNFT,
     createSPT,
     getNewSPT,

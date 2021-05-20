@@ -47,7 +47,6 @@ const PrivateKeyView: FC<IPrivateKeyView> = ({ id }) => {
   const onSubmit = (data: any) => {
 
     if (controller.wallet.checkPassword(data.password)) {
-      setPrivKey(accounts[Number(id)].masterPrv)
       setChecked(true)
     }
     else {

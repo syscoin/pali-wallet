@@ -107,7 +107,7 @@ const WalletController = (): IWalletController => {
     try {
       const encriptedMnemonic = retrieveEncriptedMnemonic();
       const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, pwd).toString(CryptoJS.enc.Utf8);
-      
+
       if (!decriptedMnemonic) {
         throw new Error('password wrong');
       }
@@ -183,10 +183,12 @@ const WalletController = (): IWalletController => {
       return false;
     }
 
-    for (let i = 1; i <= accounts.length - 1; i++) {
+    for (let i = 0; i < accounts.length; i++) {
       const child = sjs.HDSigner.deriveAccount(i);
+      let derived = new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
 
-      sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
+      account.setNewXpub(i, derived.getAccountPublicKey());
+      sjs.HDSigner.accounts.push(account);
       sjs.HDSigner.accountIndex = activeAccountId;
     }
 
@@ -210,7 +212,6 @@ const WalletController = (): IWalletController => {
     if (SYS_NETWORK[networkId]!.id === 'main') {
       HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, false);
       sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.main.beUrl);
-      
       store.dispatch(updateBlockbookURL(SYS_NETWORK.main.beUrl));
 
       _getAccountDataByNetwork(sjs);

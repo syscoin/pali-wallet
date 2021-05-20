@@ -5,7 +5,8 @@ import { SYS_NETWORK } from 'constants/index';
 import IWalletState, {
   IAccountUpdateState,
   IAccountState,
-  IAccountUpdateAddress
+  IAccountUpdateAddress,
+  IAccountUpdateXpub
 } from './types';
 
 const initialState: IWalletState = {
@@ -158,6 +159,12 @@ const WalletState = createSlice({
         ...action.payload,
       };
     },
+    updateAccountXpub(state: IWalletState, action: PayloadAction<IAccountUpdateXpub>) {
+      state.accounts[action.payload.id] = {
+        ...state.accounts[action.payload.id],
+        ...action.payload,
+      };
+    },
     deleteWallet(state: IWalletState) {
       state.accounts = [];
       state.activeAccountId = 0;
@@ -198,6 +205,7 @@ export const {
   updateLabel,
   setEncriptedMnemonic,
   updateAccountAddress,
+  updateAccountXpub,
   setSenderURL,
   updateCurrentURL,
   updateCanConnect,
