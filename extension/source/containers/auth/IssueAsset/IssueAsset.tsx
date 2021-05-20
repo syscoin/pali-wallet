@@ -34,7 +34,8 @@ const IssueAsset = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0.00001);
-  const [recommend, setRecommend] = useState(0.00001);
+  const [recommend, setRecommend] = useState(10);
+  const [rbf, setRbf] = useState(false);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => { setRecommend(response); setFee(response); })
@@ -76,14 +77,6 @@ const IssueAsset = () => {
     });
   }
 
-  const handleCreateToken = () => {
-    browser.runtime.sendMessage({
-      type: 'CREATE_TOKEN',
-      target: 'background',
-      fee
-    });
-  }
-
   return confirmed ? (
     <Layout title="Your transaction is underway" showLogo>
       <CheckIcon className={styles.checked} />
@@ -115,6 +108,13 @@ const IssueAsset = () => {
             name="fee"
             value={fee}
             onChange={(event) => setFee(Number(event.target.value))}
+            onBlur={() => {
+              browser.runtime.sendMessage({
+                type: 'SEND_FEE_TO_MINT_SPT',
+                target: 'background',
+                mintSPTFee: fee
+              })
+            }}
           />
           <Button
             type="button"
@@ -125,20 +125,38 @@ const IssueAsset = () => {
           </Button>
         </section>
 
+        <label htmlFor="rbf">RBF:</label>
+        <input 
+          id="rbf" 
+          name="rbf" 
+          type="checkbox" 
+          className="switch"
+          onChange={() => {
+            setRbf(!rbf);
+
+            browser.runtime.sendMessage({
+              type: 'RBF_TO_MINT_SPT',
+              target: 'background',
+              rbfMintSPT: rbf
+            });
+          }}
+          checked={rbf}
+        />
+
         <section className={styles.data}>
           <div className={styles.flex}>
             <p>Amount</p>
-            <p>132</p>
+            <p>{mintSPT?.amount}</p>
           </div>
 
           <div className={styles.flex}>
             <p>RBF</p>
-            <p>on</p>
+            <p>{mintSPT?.rbf}</p>
           </div>
 
           <div className={styles.flex}>
             <p>Receiver</p>
-            <p>tsys...3232</p>
+            {/* <p>{ellipsis(mintSPT?.receiver)}</p> */}
           </div>
 
           <div className={styles.flex}>
@@ -148,17 +166,17 @@ const IssueAsset = () => {
 
           <div className={styles.flex}>
             <p>Asset guid</p>
-            <p>13213432</p>
+            <p>{mintSPT?.assetGuid}</p>
           </div>
 
           <div className={styles.flex}>
             <p>Site</p>
-            <p>localhost:3000/stststts</p>
+            <p>{currentSenderURL}</p>
           </div>
 
           <div className={styles.flex}>
             <p>Max total</p>
-            <p>12</p>
+            <p>{fee}</p>
           </div>
         </section>
 

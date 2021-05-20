@@ -6,9 +6,9 @@ export interface IConnectionsController {
   getWalletState: () => any;
   getConnectedAccount: () => any;
   handleSendToken: (sender: string, receiver: string, amount: number, fee: number, token: any, isToken: boolean, rbf: boolean) => any;
-  handleCreateToken: (precision: number, symbol: string, maxsupply: number, /* fee: number,*/ description: string, receiver: string, rbf: boolean) => any;
-  handleIssueSPT: (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string) => any;
-  handleIssueNFT: (rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => any;
+  handleCreateToken: (precision: number, symbol: string, maxsupply: number,description: string, receiver: string) => any;
+  handleIssueSPT: (amount: number, receiver: string, assetGuid: string) => any;
+  handleIssueNFT: (assetGuid: string, nfthash: string, receiver: string) => any;
   isNFT: (guid: number) => boolean;
   getUserMintedTokens: () => any;
   handleCreateCollection: (state: any) => void;
@@ -84,7 +84,7 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, description: string, receiver: string, rbf: boolean) => {
+  const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, description: string, receiver: string) => {
     return await sendMessage({
       type: 'CREATE_TOKEN',
       target: 'connectionsController',
@@ -97,12 +97,12 @@ const ConnectionsController = (): IConnectionsController => {
       symbol,
       maxsupply,
       description,
-      receiver,
-      rbf
+      receiver
     });
   }
 
-  const handleIssueSPT = async (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string) => {
+  const handleIssueSPT = async (amount: number, receiver: string, assetGuid: string) => {
+    console.log('handleissuespt', amount, receiver, assetGuid)
     return await sendMessage({
       type: 'ISSUE_SPT',
       target: 'connectionsController',
@@ -111,15 +111,13 @@ const ConnectionsController = (): IConnectionsController => {
     }, {
       type: 'ISSUE_SPT',
       target: 'contentScript',
-      assetGuid,
       amount,
       receiver,
-      fee,
-      rbf
+      assetGuid
     });
   }
 
-  const handleIssueNFT = async (rbf: boolean, fee: number, assetGuid: string, nfthash: string, receiver: string) => {
+  const handleIssueNFT = async (assetGuid: string, nfthash: string, receiver: string) => {
     return await sendMessage({
       type: 'ISSUE_NFT',
       target: 'connectionsController',
@@ -131,8 +129,6 @@ const ConnectionsController = (): IConnectionsController => {
       assetGuid,
       nfthash,
       receiver,
-      fee,
-      rbf
     });
   }
 

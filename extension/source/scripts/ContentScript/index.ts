@@ -217,21 +217,19 @@ window.addEventListener('message', (event) => {
 
   if (type == 'ISSUE_SPT' && target == 'contentScript') {
     const {
-      assetGuid,
       amount,
       receiver,
-      fee,
-      rbf
+      assetGuid
     } = event.data;
+
+    console.log('event data mint spt', event.data)
 
     browser.runtime.sendMessage({
       type: 'ISSUE_SPT',
       target: 'background',
-      assetGuid,
       amount,
       receiver,
-      fee,
-      rbf
+      assetGuid
     });
 
     return;
@@ -242,8 +240,6 @@ window.addEventListener('message', (event) => {
       assetGuid,
       nfthash,
       receiver,
-      fee,
-      rbf
     } = event.data;
 
     browser.runtime.sendMessage({
@@ -252,8 +248,6 @@ window.addEventListener('message', (event) => {
       assetGuid,
       nfthash,
       receiver,
-      fee,
-      rbf
     });
 
     return;

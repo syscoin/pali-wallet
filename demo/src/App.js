@@ -31,14 +31,14 @@ const App = () => {
   //   // await controller.handleCreateToken(8,
   //   //   "NikBar",
   //   //   1000,
-  //   //    0.00001,
+  //   //    10,
   //   //   "larara lelere lololo lululu",
   //   //   "tsys1qvaf78steqrvsljch9mn6n559ljj5g2xs7gvepq",
   //   //   false);
   //   // (rbf: boolean, fee: number, assetGuid: string, amount: number, receiver: string)
   //   await controller.handleIssueSPT(
   //     false,
-  //     0.00001,
+  //     10,
   //     "umasset",
   //     200,
   //     "txsdkasod"
@@ -61,7 +61,7 @@ const App = () => {
 
   //   setToAddress("");
   //   setAmount(0);
-  //   setFee(0.00001);
+  //   setFee(10);
   // }
 
   // const handleSendToken = async (sender, receiver, amount, fee, token) => {

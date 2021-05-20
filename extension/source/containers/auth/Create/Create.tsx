@@ -34,7 +34,8 @@ const Create = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0.00001);
-  const [recommend, setRecommend] = useState(0.00001);
+  const [rbf, setRbf] = useState(false);
+  const [recommend, setRecommend] = useState(10);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => { setRecommend(response); setFee(response); })
@@ -86,14 +87,6 @@ const Create = () => {
     });
   }
 
-  const handleCreateToken = () => {
-    browser.runtime.sendMessage({
-      type: 'CREATE_TOKEN',
-      target: 'background',
-      fee
-    });
-  }
-
   return confirmed ? (
     <Layout title="Your transaction is underway" showLogo>
       <CheckIcon className={styles.checked} />
@@ -142,6 +135,24 @@ const Create = () => {
           </Button>
         </section>
 
+        <label htmlFor="rbf">RBF:</label>
+        <input 
+          id="rbf" 
+          name="rbf" 
+          type="checkbox" 
+          className="switch"
+          onChange={() => {
+            setRbf(!rbf);
+
+            browser.runtime.sendMessage({
+              type: 'RBF_TO_CREATE_TOKEN',
+              target: 'background',
+              rbfCreateToken: rbf
+            });
+          }}
+          checked={rbf}
+        />
+
         <section className={styles.data}>
           <div className={styles.flex}>
             <p>Precision</p>
@@ -155,7 +166,7 @@ const Create = () => {
 
           <div className={styles.flex}>
             <p>Receiver</p>
-            {/* <p>{ellipsis(newSPT?.receiver)}</p> */}
+            <p>{ellipsis(newSPT?.receiver)}</p>
           </div>
 
           <div className={styles.flex}>

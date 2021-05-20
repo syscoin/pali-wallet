@@ -32,39 +32,20 @@ const MintNFT = () => {
 
   const handleMintNFT = async (
     event,
-    NFTName,
-    description,
-    maxShares,
-    editions,
-    royalites,
-    property1,
-    property2,
-    property3,
-    attribute1,
-    attribute2,
-    attribute3
+    assetGuid,
+    nfthash,
+    receiver
   ) => {
     event.preventDefault();
 
     // call controller function and send parameters to use in the messages
     await window.ConnectionsController.handleIssueNFT(
-      NFTName,
-      description,
-      maxShares,
-      editions,
-      royalites,
-      property1,
-      property2,
-      property3,
-      attribute1,
-      attribute1,
-      attribute1
+      assetGuid,
+      nfthash,
+      receiver
     )
 
     console.log(await window.ConnectionsController.getWalletState())
-
-    console.log('items nft mint', NFTName, description, maxShares, editions, royalites, property1, property2, property3, attribute1, attribute2, attribute3)
-    console.log('handle issue asset mint nft');
   }
 
   return (

@@ -94,7 +94,6 @@ const FormMintNFT = (props) => {
         event,
         assetGuid,
         nfthash,
-        0.00001,
         receiver,
         rbf,
       )}
@@ -159,6 +158,8 @@ const FormMintNFT = (props) => {
           !receiver ||
           !assetGuid
         }
+
+        onClick={() => console.log('asset guid', assetGuid)}
       >
         Mint
       </button>

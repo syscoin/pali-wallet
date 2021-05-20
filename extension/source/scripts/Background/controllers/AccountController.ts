@@ -340,20 +340,19 @@ const AccountController = (actions: {
     }
 
     try {
-      console.log("the newSPt asset opts")
-      console.log(newSPT)
+      const newMaxSupply = newSPT.maxsupply * 1e8;
+
       const _assetOpts = {
-        precision: 8, symbol: 'symbol', maxsupply: new sys.utils.BN(100000000000), description: 'newSPT.description'
+        precision: newSPT.precision, symbol: newSPT.symbol, maxsupply: new sys.utils.BN(newMaxSupply), description: newSPT.description
       }
-      const txOpts = { rbf: false }
-      console.log("sending token to be created")
-      console.log(_assetOpts)
-      console.log(txOpts)
-      console.log("the newSPt")
-      console.log(newSPT)
-      const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, null, new sys.utils.BN(10));
-      console.log("pending tx:")
-      console.log(pendingTx)
+
+      console.log('new spt', newSPT)
+      console.log('asset opts max sup fee', _assetOpts, newSPT.maxsupply, newSPT.maxsupply * 1e8, newSPT.fee, newSPT.fee * 1e8)
+
+      const txOpts = { rbf: newSPT.rbf }
+      
+      const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, null, new sys.utils.BN(newSPT.fee * 1e8));
+    
       const txInfo = pendingTx.extractTransaction().getId();
 
       store.dispatch(
@@ -387,18 +386,16 @@ const AccountController = (actions: {
     }
 
     try {
-      console.log('spt mint', mintSPT);
-
-      const feeRate = new sys.utils.BN(10);
-      const txOpts = { rbf: false };
-      const assetGuid = '881978605';
+      const feeRate = new sys.utils.BN(mintSPT.fee * 1e8);
+      const txOpts = { rbf: mintSPT.rbf };
+      const assetGuid = mintSPT.assetGuid;
       const assetChangeAddress = null;
 
-      const assetMap = new Map([
-        [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(6000), address: 'tsys1qpay7ehn7epk5dmh8xv7dn5ksvyhr06323mtz0s' }] }]
-      ]);
+      console.log('mint spt', mintSPT)
 
-      console.log('minting spt asset map', assetMap);
+      const assetMap = new Map([
+        [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(mintSPT.amount * 1e8), address: mintSPT.receiver }] }]
+      ]);
 
       const sysChangeAddress = null;
 
@@ -442,24 +439,25 @@ const AccountController = (actions: {
     }
 
     try {
-      const feeRate = new sys.utils.BN(mintNFT?.fee);
+      const feeRate = new sys.utils.BN(mintNFT.fee * 1e8);
       const txOpts = { rbf: mintNFT?.rbf };
       const assetGuid = mintNFT?.assetGuid;
       const NFTID = sys.utils.createAssetID('1', assetGuid);
       const assetChangeAddress = null;
 
       const assetMap = new Map([
-        [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(mintNFT?.nfthash), address: mintNFT?.receiver }] }],
-        [NFTID, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(mintNFT?.fee), address: mintNFT?.receiver }] }]
+        [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1000), address: mintNFT?.receiver }] }],
+        [NFTID, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1), address: mintNFT?.receiver }] }]
       ]);
 
+      console.log('mint nft', mintNFT)
       console.log('minting nft asset map', assetMap);
 
       const sysChangeAddress = null;
 
       const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
 
-      console.log('minting spt pendingTx', pendingTx);
+      console.log('minting nft pendingTx', pendingTx);
 
       if (!pendingTx) {
         console.log('Could not create transaction, not enough funds?')
