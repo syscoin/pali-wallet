@@ -86,7 +86,7 @@ const FormMintSPT = (props) => {
 
   const RenderAsset = () => {
     return data.map((asset, index) => {
-      return <option key={index}>{asset.assetGuid}</option>
+      return <option key={index}>Symbol:"{asset.symbol}"   Asset: "{asset.assetGuid}"</option>
     });
   }
  
@@ -104,19 +104,20 @@ const FormMintSPT = (props) => {
 
         <div>
           {/* <Dropdown/> */}
+          <div className="input-group mb-3">
+            <label htmlFor="assetGuid">AssetGuid:</label>
 
-          <label htmlFor="assetGuid">AssetGuid:</label>
-
-          <select
-            id="assetGuid" 
-            name="assetGuid" 
-            className="custom-select"
-            onChange={(event) => setAssetGuid(event.target.value)}
-          >
-            <option>{assetGuid}</option>
-            <RenderAsset />
-          </select>
-
+            <select
+              id="assetGuid" 
+              name="assetGuid" 
+              className="custom-select"
+              onBlur={(event) => setAssetGuid(event.target.value)}
+              required
+            >
+              <option>{assetGuid}</option>
+              <RenderAsset />
+            </select>
+          </div>
           <label htmlFor="amount">Amount:</label>
           <input 
             className="input" 
