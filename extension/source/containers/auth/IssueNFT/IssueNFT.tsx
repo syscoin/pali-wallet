@@ -34,7 +34,7 @@ const IssueNFT = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0.00001);
-  const [recommend, setRecommend] = useState(10);
+  const [recommend, setRecommend] = useState(0.00001);
   const [rbf, setRbf] = useState(false);
 
   const handleGetFee = () => {
@@ -106,7 +106,6 @@ const IssueNFT = () => {
             placeholder="Enter fee"
             fullWidth
             name="fee"
-            value={fee}
             onChange={(event) => setFee(Number(event.target.value))}
           />
           <Button
@@ -138,13 +137,13 @@ const IssueNFT = () => {
 
         <section className={styles.data}>
           <div className={styles.flex}>
-            <p>{mintNFT?.rbf}</p>
-            <p>on</p>
+            <p>RBF</p>
+            <p>{rbf ? 'Yes' : 'No'}</p>
           </div>
 
           <div className={styles.flex}>
             <p>Receiver</p>
-            <p>{mintNFT?.receiver}</p>
+            <p>{ellipsis(mintNFT?.receiver)}</p>
           </div>
 
           <div className={styles.flex}>
@@ -155,11 +154,6 @@ const IssueNFT = () => {
           <div className={styles.flex}>
             <p>Asset guid</p>
             <p>{mintNFT?.assetGuid}</p>
-          </div>
-
-          <div className={styles.flex}>
-            <p>NFT Hash</p>
-            <p>{mintNFT?.nfthash}</p>
           </div>
 
           <div className={styles.flex}>

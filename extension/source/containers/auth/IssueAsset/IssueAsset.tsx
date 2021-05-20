@@ -151,12 +151,12 @@ const IssueAsset = () => {
 
           <div className={styles.flex}>
             <p>RBF</p>
-            <p>{mintSPT?.rbf}</p>
+            <p>{rbf}</p>
           </div>
 
           <div className={styles.flex}>
             <p>Receiver</p>
-            {/* <p>{ellipsis(mintSPT?.receiver)}</p> */}
+            <p>{ellipsis(mintSPT?.receiver)}</p>
           </div>
 
           <div className={styles.flex}>

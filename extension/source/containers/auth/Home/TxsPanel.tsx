@@ -90,7 +90,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
     }
 
     if (tx.tokenType === "SPTAssetSend") {
-      return 'NFT creation';
+      return 'SPT mint';
     }
 
     return 'Transaction';
