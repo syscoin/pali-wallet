@@ -1,23 +1,19 @@
 import React, { FC, useState } from 'react';
-
+import { useSelector } from 'react-redux';
 import styles from './index.scss';
 import Button from 'components/Button';
 import TutorialPanel from './TutorialPanel';
-var TrezorConnect = window.trezorConnect;
+import IWalletState, { IAccountState } from 'state/wallet/types';
+import { useController } from 'hooks/index';
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
-
+  const controller = useController();
+  // const { accounts, activeAccountId, currentSenderURL, confirmingTransaction }: IWalletState = useSelector(
+  //   (state: RootState) => state.wallet
+  // );
 
   const onclick = async () => {
-    // TrezorConnect.manifest({
-    //   email: 'developer@xyz.com',
-    //   appUrl: 'http://your.application.com'
-    // })
-    TrezorConnect.getAddress({
-      path: "m/49'/0'/0'/0/0",
-      coin: "btc"
-    });
-    console.log(TrezorConnect)
+    controller.wallet.createHardwareWallet();
   }
   return (
     <div className={styles.wrapper} style={{ color: "white", textAlign: "center" }}>

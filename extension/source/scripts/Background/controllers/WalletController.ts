@@ -13,6 +13,7 @@ import AccountController, { IAccountController } from './AccountController';
 import IWalletState from 'state/wallet/types';
 import { sys, SYS_NETWORK } from 'constants/index';
 import CryptoJS from 'crypto-js';
+// var TrezorConnect = window.trezorConnect;
 
 export interface IWalletController {
   account: Readonly<IAccountController>;
@@ -20,6 +21,7 @@ export interface IWalletController {
   isLocked: () => boolean;
   generatePhrase: () => string | null;
   createWallet: (isUpdated?: boolean) => void;
+  createHardwareWallet: () => void;
   unLock: (pwd: string) => boolean;
   checkPassword: (pwd: string) => boolean;
   getPhrase: (pwd: string) => string | null;
@@ -36,8 +38,6 @@ const WalletController = (): IWalletController => {
   let mnemonic = '';
   let HDsigner: any = null;
   let sjs: any = null;
-  const backendURl: string = store.getState().wallet.activeNetwork === 'testnet' ? SYS_NETWORK.testnet.beUrl : SYS_NETWORK.main.beUrl;
-  const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
 
   const setWalletPassword = (pwd: string) => {
     password = pwd;
@@ -76,13 +76,49 @@ const WalletController = (): IWalletController => {
 
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
 
-    account.subscribeAccount(sjs);
-    account.getPrimaryAccount(password, sjs);
-
-    if (isUpdated) {
-      account.getLatestUpdate();
-    }
+    account.subscribeAccount(false, sjs).then(() => {
+      account.getPrimaryAccount(password, sjs);
+    })
   };
+
+  const createHardwareWallet = () => {
+    const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
+    console.log(isTestnet)
+    console.log("...................................")
+    console.log(store.getState().wallet.activeNetwork)
+    console.log("...................................")
+
+    let path: string = "m/84'/57'/0'";
+    let coin: string = "sys"
+    if (isTestnet) {
+      console.log("NO NO NO")
+      console.log("Wallet on testnet thats a NONO")
+      return;
+    }
+    window.trezorConnect.getAccountInfo({
+      path: path,
+      coin: coin
+    })
+      .then((response: any) => {
+        console.log("Only everything")
+        console.log(response.payload)
+        const message = response.success
+          ? `Trezor Wallet Account Created`
+          : `Error: ${response.payload.error}`;
+        chrome.notifications.create(new Date().getTime().toString(), {
+          type: 'basic',
+          iconUrl: 'assets/icons/favicon-48.png',
+          title: 'Hardware Wallet connected',
+          message,
+        });
+        if (response.success) {
+          account.subscribeAccount(true, response.payload);
+        }
+      })
+      .catch((error: any) => {
+        console.error('TrezorConnectError', error);
+      });
+  }
 
   const retrieveEncriptedMnemonic = () => {
     // not encrypted for now but we got to retrieve
@@ -105,12 +141,14 @@ const WalletController = (): IWalletController => {
     try {
       const encriptedMnemonic = retrieveEncriptedMnemonic();
       const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, pwd).toString(CryptoJS.enc.Utf8);
-      
+
       if (!decriptedMnemonic) {
         throw new Error('password wrong');
       }
 
       if (HDsigner === null || sjs === null) {
+        const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
+        const backendURl: string = store.getState().wallet.activeNetwork === 'testnet' ? SYS_NETWORK.testnet.beUrl : SYS_NETWORK.main.beUrl;
         HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, isTestnet);
         sjs = new sys.SyscoinJSLib(HDsigner, backendURl);
 
@@ -119,14 +157,18 @@ const WalletController = (): IWalletController => {
         if (accounts.length > 1000) {
           return false;
         }
-
         for (let i = 1; i <= accounts.length - 1; i++) {
-          const child = sjs.HDSigner.deriveAccount(i);
+          if (accounts[i].isTrezorWallet) {
+            console.log("Should not derive from hdsigner if the account is from the hardware wallet")
+          }
+          else {
+            const child = sjs.HDSigner.deriveAccount(i);
 
-          sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
-          sjs.HDSigner.accountIndex = activeAccountId;
+            sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
+            sjs.HDSigner.accountIndex = activeAccountId;
+          }
+
         }
-        //Restore logic/ function goes here 
       }
 
       password = pwd;
@@ -181,10 +223,15 @@ const WalletController = (): IWalletController => {
     }
 
     for (let i = 1; i <= accounts.length - 1; i++) {
-      const child = sjs.HDSigner.deriveAccount(i);
+      if (accounts[i].isTrezorWallet) {
+        console.log("Should not derive from hdsigner if the account is from the hardware wallet")
+      }
+      else {
+        const child = sjs.HDSigner.deriveAccount(i);
 
-      sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
-      sjs.HDSigner.accountIndex = activeAccountId;
+        sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
+        sjs.HDSigner.accountIndex = activeAccountId;
+      }
     }
 
     account.getPrimaryAccount(password, sjs);
@@ -236,6 +283,7 @@ const WalletController = (): IWalletController => {
     setWalletPassword,
     generatePhrase,
     createWallet,
+    createHardwareWallet,
     checkPassword,
     getPhrase,
     deleteWallet,

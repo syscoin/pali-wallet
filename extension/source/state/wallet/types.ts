@@ -9,12 +9,14 @@ export interface IAccountState {
   id: number;
   label: string;
   xpub: string;
-  masterPrv: string;
+  masterPrv?: string;
   assets: Assets[];
   address: { [assetId: string]: string };
   balance: number;
   transactions: Transaction[];
   connectedTo: any[];
+  isTrezorWallet: boolean;
+  trezorId?: number;
 }
 
 export interface IAccountUpdateState {

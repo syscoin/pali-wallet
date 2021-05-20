@@ -40,11 +40,6 @@ browser.runtime.onInstalled.addListener((): void => {
 
   window.controller.stateUpdater();
 
-
-  // TrezorConnect.manifest({
-  //   email: 'claudiocarvalhovilasboas@gmail.com',
-  //   appUrl: 'https://syscoin.org/'
-  // })
   TrezorConnect.init({
     connectSrc: 'https://localhost:8088/',
     lazyLoad: true, // this param will prevent iframe injection until TrezorConnect.method will be called
@@ -53,12 +48,12 @@ browser.runtime.onInstalled.addListener((): void => {
       appUrl: 'https://syscoin.org/',
     }
   });
-  window.trezorConnect = TrezorConnect;
-  TrezorConnect.getAddress({
-    path: "m/49'/0'/0'/0/2",
-    coin: "btc"
-  });
-  console.log(TrezorConnect)
+  // window.trezorConnect = TrezorConnect;
+  // TrezorConnect.getAddress({
+  //   path: "m/49'/0'/0'/0/2",
+  //   coin: "btc"
+  // });
+  // console.log(TrezorConnect)
   // TrezorConnect.getAddress({
   //   path: "m/84'/1'/0'/0/0",
   //   coin: 'tsys'
@@ -77,7 +72,7 @@ browser.runtime.onInstalled.addListener((): void => {
   // .catch(error => {
   //   console.error('TrezorConnectError', error);
   // });
-
+  window.trezorConnect = TrezorConnect;
   browser.runtime.onMessage.addListener(async (request, sender) => {
     const {
       type,
