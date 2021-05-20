@@ -240,8 +240,6 @@ window.addEventListener('message', (event) => {
       assetGuid,
       nfthash,
       receiver,
-      fee,
-      rbf
     } = event.data;
 
     browser.runtime.sendMessage({
@@ -250,8 +248,6 @@ window.addEventListener('message', (event) => {
       assetGuid,
       nfthash,
       receiver,
-      fee,
-      rbf
     });
 
     return;

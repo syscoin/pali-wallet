@@ -436,13 +436,14 @@ const AccountController = (actions: {
         [NFTID, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1), address: mintNFT?.receiver }] }]
       ]);
 
+      console.log('mint nft', mintNFT)
       console.log('minting nft asset map', assetMap);
 
       const sysChangeAddress = null;
 
       const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
 
-      console.log('minting spt pendingTx', pendingTx);
+      console.log('minting nft pendingTx', pendingTx);
 
       if (!pendingTx) {
         console.log('Could not create transaction, not enough funds?')

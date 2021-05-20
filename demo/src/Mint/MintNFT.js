@@ -34,14 +34,12 @@ const MintNFT = () => {
     event,
     assetGuid,
     nfthash,
-    receiver,
-    rbf,
+    receiver
   ) => {
     event.preventDefault();
 
     // call controller function and send parameters to use in the messages
     await window.ConnectionsController.handleIssueNFT(
-      rbf,
       assetGuid,
       nfthash,
       receiver
