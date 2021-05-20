@@ -6,7 +6,7 @@ const FormCreateToken = (props) => {
   const [description, setDescription] = useState('');
   const [symbol, setSymbol] = useState('');
   const [receiver, setReceiver] = useState('');
-  const [rbf, setRbf] = useState(false);
+  // const [rbf, setRbf] = useState(false);
   // const [fee, setFee] = useState(0);
 
   return (
@@ -19,7 +19,7 @@ const FormCreateToken = (props) => {
         symbol,
         // fee,
         receiver,
-        rbf
+        // rbf
       )}
     >
       <div className="property">
@@ -86,7 +86,7 @@ const FormCreateToken = (props) => {
             required
           />
 
-          <label htmlFor="rbf">RBF:</label>
+          {/* <label htmlFor="rbf">RBF:</label>
           <input 
             id="rbf" 
             name="rbf" 
@@ -96,7 +96,7 @@ const FormCreateToken = (props) => {
               setRbf(!rbf)
             }}
             checked={rbf}
-          />
+          /> */}
         </div> 
         
         <button 

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 const FormMintNFT = (props) => {
   const [assetGuid, setAssetGuid] = useState('');
   const [receiver, setReceiver] = useState('');
-  const [rbf, setRbf] = useState(false);
+  // const [rbf, setRbf] = useState(false);
   const [nfthash, setNfthash] = useState(0);
   const [data, setData] = useState([]);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -95,7 +95,7 @@ const FormMintNFT = (props) => {
         assetGuid,
         nfthash,
         receiver,
-        rbf,
+       // rbf,
       )}
     >
       <fieldset>
@@ -136,7 +136,7 @@ const FormMintNFT = (props) => {
             required
           />
 
-          <label htmlFor="rbf">RBF:</label>
+          {/* <label htmlFor="rbf">RBF:</label>
           <input 
             id="rbf" 
             name="rbf" 
@@ -146,7 +146,7 @@ const FormMintNFT = (props) => {
               setRbf(!rbf)
             }}
             checked={rbf}
-          />
+          /> */}
         </div>
       </fieldset>
       
