@@ -35,7 +35,7 @@ const Create = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0.00001);
   const [rbf, setRbf] = useState(false);
-  const [recommend, setRecommend] = useState(10);
+  const [recommend, setRecommend] = useState(0.00001);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => { setRecommend(response); setFee(response); })
@@ -116,7 +116,6 @@ const Create = () => {
             placeholder="Enter fee"
             fullWidth
             name="fee"
-            value={fee}
             onChange={(event) => setFee(Number(event.target.value))}
             onBlur={() => {
               browser.runtime.sendMessage({
@@ -162,6 +161,11 @@ const Create = () => {
           <div className={styles.flex}>
             <p>Symbol</p>
             <p>{newSPT?.symbol}</p>
+          </div>
+
+          <div className={styles.flex}>
+            <p>RBF</p>
+            <p>{rbf ? 'Yes' : 'No'}</p>
           </div>
 
           <div className={styles.flex}>

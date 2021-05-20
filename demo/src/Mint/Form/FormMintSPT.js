@@ -86,7 +86,7 @@ const FormMintSPT = (props) => {
 
   const RenderAsset = () => {
     return data.map((asset, index) => {
-      return <option key={index}>{asset.assetGuid}</option>
+      return <option key={index} value={asset.assetGuid}>{`Symbol: ${asset.symbol} --- AssetGuid: ${asset.assetGuid}`}</option>
     });
   }
  
