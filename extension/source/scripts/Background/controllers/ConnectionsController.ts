@@ -23,7 +23,7 @@ const isNFT = (guid: number) => {
 const ConnectionsController = (): IConnectionsController => {
   const onWalletUpdate = (onUpdated: any) => {
     window.addEventListener('message', (event) => {
-      if (event.data.type === 'WALLET_UPDATED') {
+      if (event.data.type === 'WALLET_UPDATED' && event.data.target === 'connectionsController') {
         onUpdated();
       }
     });

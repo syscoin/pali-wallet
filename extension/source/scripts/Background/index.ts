@@ -33,6 +33,23 @@ if (!window.controller) {
   setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
 }
 
+browser.tabs.query({
+  active: true,
+  windowType: 'normal'
+}).then((response) => {
+  const id = Number(response[0].id);
+
+  store.subscribe(() => {
+    console.log('wallet updated');
+
+    browser.tabs.sendMessage(id, {
+      type: 'WALLET_UPDATED',
+      target: 'contentScript',
+      connected: false
+    });
+  })
+});
+
 browser.runtime.onInstalled.addListener((): void => {
   console.emoji('🤩', 'Syscoin extension installed');
 
@@ -82,16 +99,6 @@ browser.runtime.onInstalled.addListener((): void => {
         return;
       }
 
-      if (type == 'WALLET_UPDATED' && target == 'background') {
-        browser.tabs.sendMessage(tabId, {
-          type: 'WALLET_UPDATED',
-          target: 'contentScript',
-          connected: false
-        });
-
-        return;
-      }
-
       if (type == 'SUBSCRIBE' && target == 'background') {
         console.log('subscribe ok')
 
@@ -118,12 +125,6 @@ browser.runtime.onInstalled.addListener((): void => {
           url: request.url
         }));
 
-        browser.tabs.sendMessage(tabId, {
-          type: 'WALLET_UPDATED',
-          target: 'contentScript',
-          connected: false
-        });
-
         return;
       }
 
@@ -142,24 +143,12 @@ browser.runtime.onInstalled.addListener((): void => {
           url: window.senderURL
         }));
 
-        browser.tabs.sendMessage(tabId, {
-          type: 'WALLET_UPDATED',
-          target: 'contentScript',
-          connected: false
-        });
-
         return;
       }
 
       if (type == 'CONFIRM_CONNECTION' && target == 'background') {
         if (window.senderURL == store.getState().wallet.currentURL) {
           store.dispatch(updateCanConnect(false));
-
-          browser.tabs.sendMessage(tabId, {
-            type: 'WALLET_UPDATED',
-            target: 'contentScript',
-            connected: false
-          });
 
           return;
         }
@@ -182,12 +171,6 @@ browser.runtime.onInstalled.addListener((): void => {
         store.dispatch(createAsset(false));
         store.dispatch(issueAsset(false));
         store.dispatch(issueNFT(false));
-
-        browser.tabs.sendMessage(tabId, {
-          type: 'WALLET_UPDATED',
-          target: 'contentScript',
-          connected: false
-        });
 
         browser.tabs.sendMessage(tabId, {
           type: 'DISCONNECT',
@@ -248,12 +231,6 @@ browser.runtime.onInstalled.addListener((): void => {
           type: 'SEND_TOKEN',
           target: 'contentScript',
           complete: true
-        });
-
-        browser.tabs.sendMessage(tabId, {
-          type: 'WALLET_UPDATED',
-          target: 'contentScript',
-          connected: false
         });
       }
 

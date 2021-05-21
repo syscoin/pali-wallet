@@ -139,15 +139,6 @@ window.addEventListener('message', (event) => {
     return;
   }
 
-  if (type == 'WALLET_UPDATED' && target == 'contentScript') {
-    window.postMessage({
-      type: 'WALLET_UPDATED',
-      target: 'background',
-    }, '*');
-
-    return;
-  }
-
   if (type == 'SEND_STATE_TO_PAGE' && target == 'contentScript') {
     browser.runtime.sendMessage({
       type: 'SEND_STATE_TO_PAGE',

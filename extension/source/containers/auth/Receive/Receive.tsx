@@ -23,11 +23,6 @@ const WalletReceive = () => {
   );
   useEffect(() => {
     if (controller.wallet.getNewAddress()) {
-      browser.runtime.sendMessage({
-        type: 'WALLET_UPDATED',
-        target: 'background'
-      });
-
       setLoaded(true);
     }
   }, [])

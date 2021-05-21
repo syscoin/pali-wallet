@@ -51,11 +51,6 @@ const SendConfirm = () => {
         setConfirmed(true);
         setLoading(false);
       });
-
-      browser.runtime.sendMessage({
-        type: 'WALLET_UPDATED',
-        target: 'background'
-      });
     }
   };
 
