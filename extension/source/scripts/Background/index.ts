@@ -40,12 +40,15 @@ browser.tabs.query({
   const id = Number(response[0].id);
 
   store.subscribe(() => {
-    console.log('wallet updated');
+    console.log('connected account', store.getState().wallet)
+    console.log('window.location', new URL(`${store.getState().wallet.currentURL}`))
 
     browser.tabs.sendMessage(id, {
       type: 'WALLET_UPDATED',
       target: 'contentScript',
       connected: false
+    }).then(() => {
+      console.log('wallet updated')
     });
   })
 });
@@ -87,14 +90,18 @@ browser.runtime.onInstalled.addListener((): void => {
 
     if (typeof request == 'object') {
       if (type == 'CONNECT_WALLET' && target == 'background') {
-        const URL = browser.runtime.getURL('app.html');
+        const url = browser.runtime.getURL('app.html');
+
+        console.log('browser runtime url', browser.runtime.getURL(`${sender.url}`))
 
         store.dispatch(setSenderURL(sender.url));
         store.dispatch(updateCanConnect(true));
 
-        await createPopup(URL);
+        await createPopup(url);
 
         window.senderURL = sender.url;
+
+        console.log('wndow sender ur', window.senderURL)
 
         return;
       }
@@ -113,9 +120,6 @@ browser.runtime.onInstalled.addListener((): void => {
         });
       }
 
-
-
-
       if (type == 'RESET_CONNECTION_INFO' && target == 'background') {
         store.dispatch(setSenderURL(''));
         store.dispatch(updateCanConnect(false));
@@ -129,6 +133,8 @@ browser.runtime.onInstalled.addListener((): void => {
       }
 
       if (type == 'SELECT_ACCOUNT' && target == 'background') {
+        console.log('sender url', window.senderURL);
+
         store.dispatch(updateConnectionsArray({
           accountId: request.id,
           url: window.senderURL
@@ -147,6 +153,10 @@ browser.runtime.onInstalled.addListener((): void => {
       }
 
       if (type == 'CONFIRM_CONNECTION' && target == 'background') {
+        const windowurl = new URL(`${window.senderURL}`);
+        const walleturl = new URL(`${store.getState().wallet.currentURL}`)
+        console.log('window url wallet url confirm connection', windowurl, walleturl)
+
         if (window.senderURL == store.getState().wallet.currentURL) {
           store.dispatch(updateCanConnect(false));
 
