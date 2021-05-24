@@ -31,8 +31,12 @@ const Modal: FC<IModal> = ({
     });
   }
 
+  const getHost = (url: string) => {
+    return new URL(url).host;
+  }
+
   const connectedAccounts = accounts.filter(account => {
-    return account.connectedTo.find((url: any) => url == title);
+    return account.connectedTo.find((url: any) => url == getHost(title));
   });
 
   return (

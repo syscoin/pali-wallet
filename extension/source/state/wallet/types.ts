@@ -46,7 +46,7 @@ export default interface IWalletState {
   activeNetwork: string;
   encriptedMnemonic: any;
   currentSenderURL: string | undefined;
-  currentURL: string | undefined;
+  currentURL: string;
   canConnect: boolean;
   connections: any[];
   confirmingTransaction: boolean;

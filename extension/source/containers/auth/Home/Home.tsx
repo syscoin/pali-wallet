@@ -33,6 +33,10 @@ const Home = () => {
     controller.stateUpdater();
   };
 
+  const getHost = (url: string) => {
+    return new URL(url).host;
+  }
+
   useEffect(() => {
     if (!controller.wallet.isLocked() && accounts.length > 0 && accounts[activeAccountId]) {
       handleRefresh();
@@ -46,7 +50,7 @@ const Home = () => {
     if (accounts[activeAccountId]) {
       if (accounts[activeAccountId].connectedTo.length > 0) {
         setIsConnected(accounts[activeAccountId].connectedTo.findIndex((url: any) => {
-          return url == currentURL;
+          return url == getHost(currentURL);
       }) > -1);
 
         return;

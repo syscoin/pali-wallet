@@ -542,12 +542,16 @@ const AccountController = (actions: {
   const getUserMintedTokens = async () => {
     let mintedTokens: MintedToken[] = [];
 
+    console.log('sysjs.blockbookurl',sysjs, sysjs.blockbookURL, store.getState().wallet.blockbookURL)
+
     const res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
 
     if (res.transactions) {
       res.transactions.map((transaction: any) => {
         if (transaction.tokenType === 'SPTAssetActivate' && transaction.tokenTransfers) {
           for (let item of transaction.tokenTransfers) {
+            console.log('item includes', item.token, item.symbol, mintedTokens.includes({ assetGuid: item.token, symbol: atob(item.symbol) }));
+
             if (!mintedTokens.includes({ assetGuid: item.token, symbol: atob(item.symbol) })) {
               mintedTokens.push({
                 assetGuid: item.token,

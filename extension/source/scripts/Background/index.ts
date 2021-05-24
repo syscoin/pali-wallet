@@ -24,7 +24,7 @@ import { IAccountState } from 'state/wallet/types';
 declare global {
   interface Window {
     controller: Readonly<IMasterController>;
-    senderURL: string | undefined;
+    senderURL: string;
   }
 }
 
@@ -40,7 +40,7 @@ browser.tabs.query({
   const id = Number(response[0].id);
 
   store.subscribe(() => {
-    console.log('connected account', store.getState().wallet)
+    // console.log('connected account', store.getState().wallet)
     console.log('window.location', new URL(`${store.getState().wallet.currentURL}`))
 
     browser.tabs.sendMessage(id, {
@@ -50,7 +50,9 @@ browser.tabs.query({
     }).then(() => {
       console.log('wallet updated')
     });
-  })
+  });
+
+  return;
 });
 
 browser.runtime.onInstalled.addListener((): void => {
@@ -88,18 +90,24 @@ browser.runtime.onInstalled.addListener((): void => {
       });
     }
 
+    const getHost = (url: string) => {
+      return new URL(url).host;
+    }
+
     if (typeof request == 'object') {
       if (type == 'CONNECT_WALLET' && target == 'background') {
         const url = browser.runtime.getURL('app.html');
 
-        console.log('browser runtime url', browser.runtime.getURL(`${sender.url}`))
+        // console.log('browser runtime url', browser.runtime.getURL(`${sender.url}`))
+        // const newurl = new URL(`${sender.url}`);
+        // console.log('sender url connect wallet', newurl)
 
-        store.dispatch(setSenderURL(sender.url));
+        store.dispatch(setSenderURL(getHost(`${sender.url}`)));
         store.dispatch(updateCanConnect(true));
 
         await createPopup(url);
 
-        window.senderURL = sender.url;
+        window.senderURL = getHost(`${sender.url}`);
 
         console.log('wndow sender ur', window.senderURL)
 
@@ -124,9 +132,11 @@ browser.runtime.onInstalled.addListener((): void => {
         store.dispatch(setSenderURL(''));
         store.dispatch(updateCanConnect(false));
 
+        console.log('remove connection url', request.url)
+
         store.dispatch(removeConnection({
           accountId: request.id,
-          url: request.url
+          url: getHost(request.url)
         }));
 
         return;
@@ -153,11 +163,7 @@ browser.runtime.onInstalled.addListener((): void => {
       }
 
       if (type == 'CONFIRM_CONNECTION' && target == 'background') {
-        const windowurl = new URL(`${window.senderURL}`);
-        const walleturl = new URL(`${store.getState().wallet.currentURL}`)
-        console.log('window url wallet url confirm connection', windowurl, walleturl)
-
-        if (window.senderURL == store.getState().wallet.currentURL) {
+        if (window.senderURL == getHost(store.getState().wallet.currentURL)) {
           store.dispatch(updateCanConnect(false));
 
           return;
@@ -200,8 +206,13 @@ browser.runtime.onInstalled.addListener((): void => {
 
       if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'background') {
         const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
-          return account.connectedTo.find((url) => url === store.getState().wallet.currentURL);
+          return account.connectedTo.find((url) => {
+            console.log(url === getHost(store.getState().wallet.currentURL))
+            return url === getHost(store.getState().wallet.currentURL)
+          });
         });
+
+        console.log('connected account', connectedAccount)
 
         browser.tabs.sendMessage(tabId, {
           type: 'SEND_CONNECTED_ACCOUNT',
@@ -233,9 +244,9 @@ browser.runtime.onInstalled.addListener((): void => {
 
         store.dispatch(updateCanConfirmTransaction(true));
 
-        const URL = browser.runtime.getURL('app.html');
+        const appURL = browser.runtime.getURL('app.html');
 
-        await createPopup(URL);
+        await createPopup(appURL);
 
         browser.tabs.sendMessage(tabId, {
           type: 'SEND_TOKEN',
@@ -303,9 +314,9 @@ browser.runtime.onInstalled.addListener((): void => {
 
         store.dispatch(createAsset(true));
 
-        const URL = browser.runtime.getURL('app.html');
+        const appURL = browser.runtime.getURL('app.html');
 
-        await createPopup(URL);
+        await createPopup(appURL);
 
         browser.tabs.sendMessage(tabId, {
           type: 'CREATE_TOKEN',
@@ -333,9 +344,9 @@ browser.runtime.onInstalled.addListener((): void => {
 
         store.dispatch(issueAsset(true));
 
-        const URL = browser.runtime.getURL('app.html');
+        const appURL = browser.runtime.getURL('app.html');
 
-        await createPopup(URL);
+        await createPopup(appURL);
 
         browser.tabs.sendMessage(tabId, {
           type: 'ISSUE_SPT',
@@ -361,9 +372,9 @@ browser.runtime.onInstalled.addListener((): void => {
 
         store.dispatch(issueNFT(true));
 
-        const URL = browser.runtime.getURL('app.html');
+        const appURL = browser.runtime.getURL('app.html');
 
-        await createPopup(URL);
+        await createPopup(appURL);
 
         browser.tabs.sendMessage(tabId, {
           type: 'ISSUE_NFT',
@@ -409,7 +420,7 @@ browser.runtime.onInstalled.addListener((): void => {
       }
 
       if (type == 'GET_USERMINTEDTOKENS' && target == 'background') {
-        console.log('tokens minted get user minted tokens')
+        console.log('tokens minted get user minted tokens url state', store.getState().wallet.blockbookURL)
 
         const tokensMinted = await window.controller.wallet.account.getUserMintedTokens();
 
@@ -427,7 +438,7 @@ browser.runtime.onInstalled.addListener((): void => {
   browser.runtime.onConnect.addListener((port) => {
     browser.tabs.query({ active: true })
       .then((tabs) => {
-        store.dispatch(updateCurrentURL(tabs[0].url));
+        store.dispatch(updateCurrentURL(`${tabs[0].url}`));
       });
 
     port.onDisconnect.addListener(async () => {

@@ -26,6 +26,10 @@ const initialState: IWalletState = {
   blockbookURL: ''
 };
 
+const getHost = (url: string) => {
+  return new URL(url).host;
+}
+
 const WalletState = createSlice({
   name: 'wallet',
   initialState,
@@ -103,7 +107,7 @@ const WalletState = createSlice({
         canConnect: action.payload,
       }
     },
-    updateCurrentURL(state: IWalletState, action: PayloadAction<string | undefined>) {
+    updateCurrentURL(state: IWalletState, action: PayloadAction<string>) {
       return {
         ...state,
         currentURL: action.payload,

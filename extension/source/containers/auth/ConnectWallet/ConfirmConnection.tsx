@@ -37,6 +37,8 @@ const ConfirmConnection = () => {
   }
 
   const handleConfirmConnection = () => {
+    console.log('sending message to confirm connection')
+    
     browser.runtime.sendMessage({
       type: "CONFIRM_CONNECTION",
       target: "background",
