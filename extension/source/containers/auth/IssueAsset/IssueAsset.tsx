@@ -106,6 +106,7 @@ const IssueAsset = () => {
             placeholder="Enter fee"
             fullWidth
             name="fee"
+            value={fee}
             onChange={(event) => setFee(Number(event.target.value))}
             onBlur={() => {
               browser.runtime.sendMessage({
@@ -150,7 +151,7 @@ const IssueAsset = () => {
 
           <div className={styles.flex}>
             <p>RBF</p>
-            <p>{rbf ? 'Yes' : 'No'}</p>
+            <p>{rbf}</p>
           </div>
 
           <div className={styles.flex}>
