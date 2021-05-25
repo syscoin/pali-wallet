@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from "react";
 import logo from "../../assets/images/logosys.svg";
-import { useInitController } from "../../GlobalHooks"
-import ControllerContext from "../../context"
+
 const Header = (props) => {
   const [isInstalled, setIsInstalled] = useState(false);
   const [canConnect, setCanConnect] = useState(true);
   const [balance, setBalance] = useState(0);
+  const [controller, setController] = useState();
   const [connectedAccount, setConnectedAccount] = useState({});
   const [connectedAccountAddress, setConnectedAccountAddress] = useState("");
-  const [controller, setController] = useState();
+
   useEffect(() => {
     const callback = (event) => {
       if (event.detail.SyscoinInstalled) {
@@ -70,14 +70,6 @@ const Header = (props) => {
   }
 
   return (
-    <ControllerContext.Provider value={{
-      isInstalled, setIsInstalled,
-      canConnect, setCanConnect,
-      balance, setBalance,
-      connectedAccount, setConnectedAccount,
-      connectedAccountAddress, setConnectedAccountAddress,
-      controller, setController
-    }}>
     <div>
       <nav className="navbar navbar-expand-lg navbar-light static-top">
         <div className="container">
@@ -118,7 +110,7 @@ const Header = (props) => {
       {!isInstalled && (
         <h1 className="app__title">You need to install Syscoin Wallet.</h1>
       )}
-    </div></ControllerContext.Provider>
+    </div>
   )
 }
 
