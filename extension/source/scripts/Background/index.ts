@@ -20,6 +20,7 @@ import {
 
 import MasterController, { IMasterController } from './controllers';
 import { IAccountState } from 'state/wallet/types';
+import throttle from 'lodash/throttle';
 
 declare global {
   interface Window {
@@ -40,9 +41,6 @@ browser.tabs.query({
   const id = Number(response[0].id);
 
   store.subscribe(() => {
-    // console.log('connected account', store.getState().wallet)
-    console.log('window.location', new URL(`${store.getState().wallet.currentURL}`))
-
     browser.tabs.sendMessage(id, {
       type: 'WALLET_UPDATED',
       target: 'contentScript',
@@ -55,10 +53,55 @@ browser.tabs.query({
   return;
 });
 
-browser.runtime.onInstalled.addListener((): void => {
+browser.runtime.onInstalled.addListener(async () => {
   console.emoji('🤩', 'Syscoin extension installed');
 
   window.controller.stateUpdater();
+
+  const observeStore = async (store: any) => {
+    let currentState: any;
+  
+    const handleChange = async () => {
+      let nextState = store.getState();
+
+      return new Promise(async (resolve) => {
+        if (nextState !== currentState) {
+          currentState = nextState;
+
+          const tabs = await browser.tabs.query({
+            active: true,
+            windowType: 'normal'
+          });
+  
+          const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
+            return account.connectedTo.findIndex((domain: string) => {
+              return domain === new URL(store.getState().wallet.currentURL).host;
+            })
+          });
+
+          if (connectedAccount) {
+            resolve(browser.tabs.sendMessage(Number(tabs[0].id), {
+              type: 'WALLET_UPDATED',
+              target: 'contentScript',
+              connected: false
+            }).then(() => {
+              console.log('wallet updated')
+            }));
+
+            return;
+          }
+
+          console.log('no account connected to this site')
+        }
+      });
+    }
+  
+    let unsubscribe = store.subscribe(handleChange);
+
+    await handleChange();
+
+    return unsubscribe;
+  }
 
   browser.runtime.onMessage.addListener(async (request, sender) => {
     const {
@@ -94,13 +137,19 @@ browser.runtime.onInstalled.addListener((): void => {
       return new URL(url).host;
     }
 
+    const checkConnectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
+      return account.connectedTo.find((domain: string) => {
+        return domain === getHost(store.getState().wallet.currentURL);
+      })
+    });
+  
+    // if (checkConnectedAccount) {
+    //   await observeStore(store);
+    // }
+
     if (typeof request == 'object') {
       if (type == 'CONNECT_WALLET' && target == 'background') {
         const url = browser.runtime.getURL('app.html');
-
-        // console.log('browser runtime url', browser.runtime.getURL(`${sender.url}`))
-        // const newurl = new URL(`${sender.url}`);
-        // console.log('sender url connect wallet', newurl)
 
         store.dispatch(setSenderURL(getHost(`${sender.url}`)));
         store.dispatch(updateCanConnect(true));
@@ -165,6 +214,8 @@ browser.runtime.onInstalled.addListener((): void => {
       if (type == 'CONFIRM_CONNECTION' && target == 'background') {
         if (window.senderURL == getHost(store.getState().wallet.currentURL)) {
           store.dispatch(updateCanConnect(false));
+          
+          // await observeStore(store);
 
           return;
         }
@@ -202,6 +253,8 @@ browser.runtime.onInstalled.addListener((): void => {
           target: 'contentScript',
           state: store.getState().wallet
         });
+
+        // await observeStore(store)
       }
 
       if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'background') {

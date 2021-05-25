@@ -33,12 +33,7 @@ const store: Store = configureStore({
 store.subscribe(
   throttle(() => {
     const state = store.getState();
-    // browser.runtime.sendMessage({
-    //   type: 'SUBSCRIBE',
-    //   target: 'background'
-    // });
-
-    // console.log('message sent after action')
+    
     saveState({
       wallet: state.wallet,
       price: state.price,

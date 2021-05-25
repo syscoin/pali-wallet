@@ -550,9 +550,7 @@ const AccountController = (actions: {
       res.transactions.map((transaction: any) => {
         if (transaction.tokenType === 'SPTAssetActivate' && transaction.tokenTransfers) {
           for (let item of transaction.tokenTransfers) {
-            console.log('item includes', item.token, item.symbol, mintedTokens.includes({ assetGuid: item.token, symbol: atob(item.symbol) }));
-
-            if (!mintedTokens.includes({ assetGuid: item.token, symbol: atob(item.symbol) })) {
+            if (mintedTokens.indexOf({ assetGuid: item.token, symbol: atob(item.symbol) }) === -1) {
               mintedTokens.push({
                 assetGuid: item.token,
                 symbol: atob(item.symbol)

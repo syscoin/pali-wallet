@@ -71,10 +71,13 @@ const FormMintNFT = (props) => {
   useEffect(() => {
     console.log('tokens', data);
 
-    const setup = async () => {
+    const setup = () => {
       if (controller) {
-        console.log('controller ok')
-        setData(await controller.getUserMintedTokens());
+        controller.getUserMintedTokens().then((response) => {
+          console.log(response);
+
+          setData(response);
+        });
       }
     }
 
