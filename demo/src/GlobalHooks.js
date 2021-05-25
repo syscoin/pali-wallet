@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from "react";
-import logo from "../../assets/images/logosys.svg";
-import { useInitController } from "../../GlobalHooks"
-import ControllerContext from "../../context"
-const Header = (props) => {
+import React, { useState, useContext, createContext, useEffect } from 'react';
+export const InitController = createContext();
+export default function InitControllerProvider({children}) {
+ const [controller, setController] = useState();
+
+
   const [isInstalled, setIsInstalled] = useState(false);
   const [canConnect, setCanConnect] = useState(true);
   const [balance, setBalance] = useState(0);
   const [connectedAccount, setConnectedAccount] = useState({});
   const [connectedAccountAddress, setConnectedAccountAddress] = useState("");
-  const [controller, setController] = useState();
+ 
   useEffect(() => {
     const callback = (event) => {
       if (event.detail.SyscoinInstalled) {
@@ -16,15 +17,12 @@ const Header = (props) => {
 
         if (event.detail.ConnectionsController) {
           setController(window.ConnectionsController);
-
           return;
         }
-
         return;
       }
 
       setIsInstalled(false);
-
       window.removeEventListener("SyscoinStatus", callback);
     }
 
@@ -41,14 +39,11 @@ const Header = (props) => {
             setConnectedAccount(data);
             setConnectedAccountAddress(data.address.main);
             setBalance(data.balance);
-
             return;
           }
-
           setConnectedAccount({});
           setConnectedAccountAddress("");
           setBalance(0);
-
           return;
         });
     }
@@ -57,7 +52,6 @@ const Header = (props) => {
   useEffect(() => {
     if (controller) {
       setup();
-
       controller.onWalletUpdate(setup);
     }
   }, [
@@ -70,56 +64,23 @@ const Header = (props) => {
   }
 
   return (
-    <ControllerContext.Provider value={{
-      isInstalled, setIsInstalled,
-      canConnect, setCanConnect,
-      balance, setBalance,
-      connectedAccount, setConnectedAccount,
-      connectedAccountAddress, setConnectedAccountAddress,
-      controller, setController
-    }}>
-    <div>
-      <nav className="navbar navbar-expand-lg navbar-light static-top">
-        <div className="container">
-          <a
-            className="navbar-brand"
-            href="https://syscoin.org/"
-          >
-            <img
-              src={logo}
-              alt="logo"
-              className="header__logo"
-            />
-          </a>
-
-          <a
-            className="button"
-            href="/"
-          >
-            Home
-          </a>
-
-          <div
-            className="collapse navbar-collapse"
-            id="navbarResponsive"
-          >
-            <ul className="navbar-nav ml-auto">
-              <button
+    <InitController.Provider
+      value={{
+        controller, setController
+      }}>
+      {children}
+      <button
                 className="button"
                 onClick={canConnect ? handleMessageExtension : undefined}
                 disabled={!isInstalled}>
                 {connectedAccountAddress === "" ? "Connect to Syscoin Wallet" : connectedAccountAddress}
               </button>
-            </ul>
-          </div>
-        </div>
-      </nav>
-
-      {!isInstalled && (
-        <h1 className="app__title">You need to install Syscoin Wallet.</h1>
-      )}
-    </div></ControllerContext.Provider>
-  )
+    </InitController.Provider>
+  );
+};
+export function useInitController() {
+    const context = useContext(InitController)
+      if (!context) throw new Error("blew blew")
+    const { controller, setController } = context;
+    return  {controller, setController }
 }
-
-export default Header;

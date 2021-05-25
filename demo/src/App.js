@@ -2,7 +2,7 @@ import "bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
 import { buttons } from "./data";
 import Header from "./components/Header";
-
+import  ControllerContext  from "./context"
 const App = () => {
   const RenderButtons = () => {
     return buttons.map((item) => {
@@ -84,8 +84,8 @@ const App = () => {
 
   return (
     <div className="app">
-      <Header />
 
+<ControllerContext.Consumer/>
       <div className="menu">
         <RenderButtons />
       </div>
