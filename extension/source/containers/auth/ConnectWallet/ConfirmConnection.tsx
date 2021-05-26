@@ -42,7 +42,8 @@ const ConfirmConnection = () => {
     browser.runtime.sendMessage({
       type: "CONFIRM_CONNECTION",
       target: "background",
-      id: connectedAccount[0].id
+      id: connectedAccount[0].id,
+      url: currentSenderURL
     });
 
     browser.runtime.sendMessage({

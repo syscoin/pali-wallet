@@ -20,12 +20,12 @@ import {
 
 import MasterController, { IMasterController } from './controllers';
 import { IAccountState } from 'state/wallet/types';
-import throttle from 'lodash/throttle';
 
 declare global {
   interface Window {
     controller: Readonly<IMasterController>;
     senderURL: string;
+    walletPopupId: any;
   }
 }
 
@@ -34,74 +34,71 @@ if (!window.controller) {
   setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
 }
 
-browser.tabs.query({
-  active: true,
-  windowType: 'normal'
-}).then((response) => {
-  const id = Number(response[0].id);
+const observeStore = async (store: any) => {
+  let currentState: any;
 
-  store.subscribe(() => {
-    browser.tabs.sendMessage(id, {
-      type: 'WALLET_UPDATED',
-      target: 'contentScript',
-      connected: false
-    }).then(() => {
-      console.log('wallet updated')
-    });
+  const handleChange = async () => {
+    let nextState = store.getState();
+
+    console.log('next state', nextState)
+
+    // return new Promise(async (resolve) => {
+      if (nextState !== currentState) {
+        currentState = nextState;
+
+        const tabs = await browser.tabs.query({
+          active: true,
+          windowType: 'normal'
+        });
+
+        console.log('current state', currentState)
+        // resolve('ok state is ok');
+
+          browser.tabs.query({ active: true, windowType: 'normal' })
+          .then((tabs) => {
+            console.log('tabs', tabs, tabs[0])
+            
+            const isAccountConnected = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
+              return account.connectedTo.find((url: string) => {
+                return url === new URL(`${tabs[0].url}`).host;
+              })
+            }) >= 0;
+
+            console.log('is account', isAccountConnected)
+
+            if (isAccountConnected) {
+              browser.tabs.sendMessage(Number(tabs[0].id), {
+                type: 'WALLET_UPDATED',
+                target: 'contentScript',
+                connected: false
+              }).then((response) => {
+                console.log('wallet updated', response)
+              })
+            }
+          });
+
+        return;
+      }
+    // });
+  }
+
+  let unsubscribe = store.subscribe(handleChange);
+
+  handleChange().then(() => {
+    console.log('handle change ok')
   });
 
-  return;
+  return unsubscribe;
+}
+
+observeStore(store).then(() => {
+  console.log('observe store ok')
 });
 
 browser.runtime.onInstalled.addListener(async () => {
   console.emoji('🤩', 'Syscoin extension installed');
 
   window.controller.stateUpdater();
-
-  const observeStore = async (store: any) => {
-    let currentState: any;
-  
-    const handleChange = async () => {
-      let nextState = store.getState();
-
-      return new Promise(async (resolve) => {
-        if (nextState !== currentState) {
-          currentState = nextState;
-
-          const tabs = await browser.tabs.query({
-            active: true,
-            windowType: 'normal'
-          });
-  
-          const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
-            return account.connectedTo.findIndex((domain: string) => {
-              return domain === new URL(store.getState().wallet.currentURL).host;
-            })
-          });
-
-          if (connectedAccount) {
-            resolve(browser.tabs.sendMessage(Number(tabs[0].id), {
-              type: 'WALLET_UPDATED',
-              target: 'contentScript',
-              connected: false
-            }).then(() => {
-              console.log('wallet updated')
-            }));
-
-            return;
-          }
-
-          console.log('no account connected to this site')
-        }
-      });
-    }
-  
-    let unsubscribe = store.subscribe(handleChange);
-
-    await handleChange();
-
-    return unsubscribe;
-  }
 
   browser.runtime.onMessage.addListener(async (request, sender) => {
     const {
@@ -123,29 +120,37 @@ browser.runtime.onInstalled.addListener(async () => {
     let rbfMintNFT: boolean = false;
 
     const createPopup = async (url: string) => {
-      return await browser.windows.create({
+      if (window.walletPopupId) {
+        console.log('window info popup id', window.walletPopupId);
+        const windowPopup = await browser.windows.get(window.walletPopupId, {
+          populate: true
+        })
+
+        console.log('window popup', windowPopup)
+
+        return;
+      }
+
+      browser.windows.create({
         url,
         type: 'popup',
         width: 372,
         height: 600,
         left: 900,
         top: 90
+      }).then((windowInfo) => {
+        window.walletPopupId = windowInfo.id;
+
+        console.log('window info popup', windowInfo.tabs[0].pendingUrl)
       });
+
+      // window.open(url, 'Pali Wallet', "width=372, height=600, left=900, top=90");
+
     }
 
     const getHost = (url: string) => {
       return new URL(url).host;
     }
-
-    const checkConnectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
-      return account.connectedTo.find((domain: string) => {
-        return domain === getHost(store.getState().wallet.currentURL);
-      })
-    });
-  
-    // if (checkConnectedAccount) {
-    //   await observeStore(store);
-    // }
 
     if (typeof request == 'object') {
       if (type == 'CONNECT_WALLET' && target == 'background') {
@@ -163,11 +168,6 @@ browser.runtime.onInstalled.addListener(async () => {
         return;
       }
 
-      if (type == 'SUBSCRIBE' && target == 'background') {
-        console.log('subscribe ok')
-
-        return;
-      }
       if (type == 'ISSUE_ASSETGUID' && target == 'background') {
         
         browser.tabs.sendMessage(tabId, {
@@ -187,6 +187,14 @@ browser.runtime.onInstalled.addListener(async () => {
           accountId: request.id,
           url: getHost(request.url)
         }));
+
+        Promise.resolve(browser.tabs.sendMessage(Number(tabs[0].id), {
+          type: 'WALLET_UPDATED',
+          target: 'contentScript',
+          connected: false
+        }).then((response) => {
+          console.log('wallet updated', response)
+        }))
 
         return;
       }
@@ -215,8 +223,6 @@ browser.runtime.onInstalled.addListener(async () => {
         if (window.senderURL == getHost(store.getState().wallet.currentURL)) {
           store.dispatch(updateCanConnect(false));
           
-          // await observeStore(store);
-
           return;
         }
 
@@ -253,8 +259,6 @@ browser.runtime.onInstalled.addListener(async () => {
           target: 'contentScript',
           state: store.getState().wallet
         });
-
-        // await observeStore(store)
       }
 
       if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'background') {

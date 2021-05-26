@@ -361,7 +361,10 @@ browser.runtime.onMessage.addListener((request) => {
       target: 'connectionsController',
       connected
     }, '*');
-    return;
+
+    console.log('wallet updated')
+
+    return Promise.resolve({ response: "wallet updated response from content script" });
   }
 
   if (type == 'GET_USERMINTEDTOKENS' && target == 'contentScript') {
