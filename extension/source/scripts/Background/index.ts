@@ -20,12 +20,12 @@ import {
 
 import MasterController, { IMasterController } from './controllers';
 import { IAccountState } from 'state/wallet/types';
+import { getHost } from './helpers';
 
 declare global {
   interface Window {
     controller: Readonly<IMasterController>;
     senderURL: string;
-    walletPopupId: any;
   }
 }
 
@@ -120,37 +120,28 @@ browser.runtime.onInstalled.addListener(async () => {
     let rbfMintNFT: boolean = false;
 
     const createPopup = async (url: string) => {
-      if (window.walletPopupId) {
-        console.log('window info popup id', window.walletPopupId);
-        const windowPopup = await browser.windows.get(window.walletPopupId, {
-          populate: true
-        })
+      const allWindows = await browser.windows.getAll({
+        windowTypes: ['popup']
+      });
 
-        console.log('window popup', windowPopup)
+      if (allWindows[0]) {
+        await browser.windows.update(Number(allWindows[0].id), {
+          drawAttention: true,
+          focused: true
+        });
 
         return;
       }
 
-      browser.windows.create({
+      await browser.windows.create({
         url,
         type: 'popup',
         width: 372,
         height: 600,
         left: 900,
         top: 90
-      }).then((windowInfo) => {
-        window.walletPopupId = windowInfo.id;
-
-        console.log('window info popup', windowInfo.tabs[0].pendingUrl)
       });
-
-      // window.open(url, 'Pali Wallet', "width=372, height=600, left=900, top=90");
-
-    }
-
-    const getHost = (url: string) => {
-      return new URL(url).host;
-    }
+    };
 
     if (typeof request == 'object') {
       if (type == 'CONNECT_WALLET' && target == 'background') {
@@ -181,7 +172,7 @@ browser.runtime.onInstalled.addListener(async () => {
         store.dispatch(setSenderURL(''));
         store.dispatch(updateCanConnect(false));
 
-        console.log('remove connection url', request.url)
+        console.log('remove connection url', request.url, getHost(request.url))
 
         store.dispatch(removeConnection({
           accountId: request.id,
