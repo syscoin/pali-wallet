@@ -29,6 +29,8 @@ const ConnectWallet = () => {
   };
 
   const handleCancelConnection = () => {
+    console.log('cancel connection', currentSenderURL)
+
     browser.runtime.sendMessage({
       type: "RESET_CONNECTION_INFO",
       target: "background",

@@ -39,61 +39,41 @@ const observeStore = async (store: any) => {
 
   const handleChange = async () => {
     let nextState = store.getState();
+    
+    if (nextState !== currentState) {
+      currentState = nextState;
 
-    console.log('next state', nextState)
+      const tabs = await browser.tabs.query({
+        active: true,
+        windowType: 'normal'
+      });
 
-    // return new Promise(async (resolve) => {
-      if (nextState !== currentState) {
-        currentState = nextState;
+      const isAccountConnected = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
+        return account.connectedTo.find((url: string) => {
+          return url === new URL(`${tabs[0].url}`).host;
+        })
+      }) >= 0;
 
-        const tabs = await browser.tabs.query({
-          active: true,
-          windowType: 'normal'
+      if (isAccountConnected) {
+        await browser.tabs.sendMessage(Number(tabs[0].id), {
+          type: 'WALLET_UPDATED',
+          target: 'contentScript',
+          connected: false
         });
-
-        console.log('current state', currentState)
-        // resolve('ok state is ok');
-
-          browser.tabs.query({ active: true, windowType: 'normal' })
-          .then((tabs) => {
-            console.log('tabs', tabs, tabs[0])
-            
-            const isAccountConnected = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
-              return account.connectedTo.find((url: string) => {
-                return url === new URL(`${tabs[0].url}`).host;
-              })
-            }) >= 0;
-
-            console.log('is account', isAccountConnected)
-
-            if (isAccountConnected) {
-              browser.tabs.sendMessage(Number(tabs[0].id), {
-                type: 'WALLET_UPDATED',
-                target: 'contentScript',
-                connected: false
-              }).then((response) => {
-                console.log('wallet updated', response)
-              })
-            }
-          });
 
         return;
       }
-    // });
+    }
   }
 
   let unsubscribe = store.subscribe(handleChange);
 
-  handleChange().then(() => {
-    console.log('handle change ok')
-  });
+  await handleChange();
 
   return unsubscribe;
 }
 
-observeStore(store).then(() => {
-  console.log('observe store ok')
-});
+observeStore(store);
 
 browser.runtime.onInstalled.addListener(async () => {
   console.emoji('🤩', 'Syscoin extension installed');
@@ -147,37 +127,27 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'CONNECT_WALLET' && target == 'background') {
         const url = browser.runtime.getURL('app.html');
 
-        store.dispatch(setSenderURL(getHost(`${sender.url}`)));
+        store.dispatch(setSenderURL(`${sender.url}`));
         store.dispatch(updateCanConnect(true));
 
         await createPopup(url);
 
-        window.senderURL = getHost(`${sender.url}`);
-
-        console.log('wndow sender ur', window.senderURL)
+        window.senderURL = `${sender.url}`;
 
         return;
       }
 
-      if (type == 'ISSUE_ASSETGUID' && target == 'background') {
-        
-        browser.tabs.sendMessage(tabId, {
-          type: 'ISSUE_ASSETGUID',
-          target: 'contentScript',
-          eventResult: 'complete'
-        });
-      }
-
       if (type == 'RESET_CONNECTION_INFO' && target == 'background') {
-        store.dispatch(setSenderURL(''));
         store.dispatch(updateCanConnect(false));
 
-        console.log('remove connection url', request.url, getHost(request.url))
+        console.log('remove connection url', request.url, 'get host request url', getHost(request.url), request, getHost(request.url) === request.url)
 
         store.dispatch(removeConnection({
           accountId: request.id,
-          url: getHost(request.url)
+          url: request.url
         }));
+        
+        store.dispatch(setSenderURL(''));
 
         Promise.resolve(browser.tabs.sendMessage(Number(tabs[0].id), {
           type: 'WALLET_UPDATED',
@@ -211,7 +181,7 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'CONFIRM_CONNECTION' && target == 'background') {
-        if (window.senderURL == getHost(store.getState().wallet.currentURL)) {
+        if (getHost(window.senderURL) == getHost(store.getState().wallet.currentURL)) {
           store.dispatch(updateCanConnect(false));
           
           return;

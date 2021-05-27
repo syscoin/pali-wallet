@@ -118,13 +118,6 @@ window.addEventListener('message', (event) => {
     type,
     target
   } = event.data;
-  
-  if (type == "ISSUE_ASSETGUID" && target == 'contentScript') {
-    browser.runtime.sendMessage({
-      type: 'ISSUE_ASSETGUID',
-      target: 'background'
-    });
-  }
 
   if (event.source != window) {
     return;

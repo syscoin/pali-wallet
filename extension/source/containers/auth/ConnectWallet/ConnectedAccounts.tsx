@@ -5,6 +5,7 @@ import Header from 'containers/common/Header';
 import checkGreen from 'assets/images/svg/check-green.svg';
 import clsx from 'clsx';
 import { ellipsis } from 'containers/auth/helpers';
+import { getHost } from '../../../scripts/Background/helpers';
 
 import styles from './ConnectWallet.scss';
 
@@ -46,7 +47,7 @@ const ConnectedAccounts = () => {
 
   const connectedAccount = accounts.filter(account => {
     return account.connectedTo.find((url: any) => {
-      return url == currentSenderURL;
+      return url == getHost(currentSenderURL);
     });
   });
 
@@ -103,7 +104,7 @@ const ConnectedAccounts = () => {
               <p>
                 This account is connected to
                 <br />
-                {currentSenderURL}
+                {getHost(currentSenderURL)}
               </p>
               <small>To change your connected account you need to have more than one account.</small>
             </div>

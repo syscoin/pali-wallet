@@ -5,6 +5,7 @@ import styles from './Modal.scss';
 
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
+import { getHost } from '../../scripts/Background/helpers';
 import IWalletState from 'state/wallet/types';
 
 interface IModal {
@@ -23,6 +24,8 @@ const Modal: FC<IModal> = ({
   );
 
   const handleDisconnect = (id: number) => {
+    console.log('title disconnect modal', title)
+
     browser.runtime.sendMessage({
       type: 'RESET_CONNECTION_INFO',
       target: 'background',
@@ -30,11 +33,7 @@ const Modal: FC<IModal> = ({
       url: title
     });
   }
-
-  const getHost = (url: string) => {
-    return new URL(url).host;
-  }
-
+  
   const connectedAccounts = accounts.filter(account => {
     return account.connectedTo.find((url: any) => url == getHost(title));
   });

@@ -2,6 +2,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { Transaction } from '../../scripts/types';
 
 import { SYS_NETWORK } from 'constants/index';
+import { getHost } from './../../scripts/Background/helpers';
 import IWalletState, {
   IAccountUpdateState,
   IAccountState,
@@ -25,10 +26,6 @@ const initialState: IWalletState = {
   issuingNFT: false,
   blockbookURL: ''
 };
-
-const getHost = (url: string) => {
-  return new URL(url).host;
-}
 
 const WalletState = createSlice({
   name: 'wallet',
@@ -65,7 +62,8 @@ const WalletState = createSlice({
       }
     },
     removeConnection(state: IWalletState, action: PayloadAction<any>) {
-      const connectionIndex: number = state.connections.findIndex(connection => connection.url === action.payload.url);
+      console.log('remove connection action payload', action.payload)
+      const connectionIndex: number = state.connections.findIndex(connection => connection.url === getHost(action.payload.url));
 
       if (connectionIndex === -1) {
         return;
@@ -73,15 +71,20 @@ const WalletState = createSlice({
 
       state.connections.splice(connectionIndex, 1);
 
-      state.accounts[action.payload.accountId].connectedTo.splice(state.accounts[action.payload.accountId].connectedTo.indexOf(action.payload.url), 1);
+      state.accounts[action.payload.accountId].connectedTo.splice(state.accounts[action.payload.accountId].connectedTo.indexOf(getHost(action.payload.url)), 1);
     },
-    updateConnectionsArray(state: IWalletState, action: PayloadAction<any>) {
-      const index: number = state.connections.findIndex(connection => connection.accountId !== action.payload.accountId && connection.url === action.payload.url);
+    updateConnectionsArray(state: IWalletState, action: PayloadAction<{ accountId: number, url: string }>) {
+      console.log('connections array action payload', action.payload)
+
+      const index: number = state.connections.findIndex(connection => connection.accountId !== action.payload.accountId && connection.url === getHost(action.payload.url));
 
       if (state.connections[index]) {
         state.accounts[state.connections[index].accountId].connectedTo.splice(state.connections.findIndex(url => url == state.connections[index].url), 1);
 
-        state.connections[index] = action.payload;
+        state.connections[index] = {
+          accountId: action.payload.accountId,
+          url: getHost(action.payload.url)
+        };
 
         state.accounts[state.connections[index].accountId].connectedTo.push(state.connections[index].url);
 
@@ -91,15 +94,22 @@ const WalletState = createSlice({
       const alreadyExistsIndex: number = state.connections.findIndex(connection => connection.accountId == action.payload.accountId && connection.url === action.payload.url);
 
       if (state.connections[alreadyExistsIndex]) {
-        state.connections[alreadyExistsIndex] = action.payload;
-        state.accounts[alreadyExistsIndex].connectedTo[alreadyExistsIndex] = action.payload.url;
+        state.connections[alreadyExistsIndex] = {
+          accountId: action.payload.accountId,
+          url: getHost(action.payload.url)
+        };
+
+        state.accounts[alreadyExistsIndex].connectedTo[alreadyExistsIndex] = getHost(action.payload.url);
 
         return;
       }
 
-      state.connections.push(action.payload);
+      state.connections.push({
+        accountId: action.payload.accountId,
+        url: getHost(action.payload.url)
+      });
 
-      state.accounts[action.payload.accountId].connectedTo.push(action.payload.url);
+      state.accounts[action.payload.accountId].connectedTo.push(getHost(action.payload.url));
     },
     updateCanConnect(state: IWalletState, action: PayloadAction<boolean>) {
       return {
@@ -113,7 +123,7 @@ const WalletState = createSlice({
         currentURL: action.payload,
       }
     },
-    setSenderURL(state: IWalletState, action: PayloadAction<string | undefined>) {
+    setSenderURL(state: IWalletState, action: PayloadAction<string>) {
       return {
         ...state,
         currentSenderURL: action.payload

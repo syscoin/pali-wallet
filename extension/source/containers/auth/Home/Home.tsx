@@ -17,6 +17,7 @@ import TxsPanel from './TxsPanel';
 
 import styles from './Home.scss';
 import { formatNumber } from '../helpers';
+import { getHost } from '../../../scripts/Background/helpers';
 
 const Home = () => {
   const controller = useController();
@@ -32,10 +33,6 @@ const Home = () => {
     controller.wallet.account.watchMemPool();
     controller.stateUpdater();
   };
-
-  const getHost = (url: string) => {
-    return new URL(url).host;
-  }
 
   useEffect(() => {
     if (!controller.wallet.isLocked() && accounts.length > 0 && accounts[activeAccountId]) {

@@ -15,6 +15,7 @@ import { useAlert } from 'react-alert';
 
 import styles from './IssueNFT.scss';
 import { browser } from 'webextension-polyfill-ts';
+import { getHost } from '../../../scripts/Background/helpers';
 
 const IssueNFT = () => {
   const controller = useController();
@@ -26,7 +27,7 @@ const IssueNFT = () => {
 
   const connectedAccount = accounts.find((account: IAccountState) => {
     return account.connectedTo.find((url: any) => {
-      return url === currentSenderURL;
+      return url === getHost(currentSenderURL);
     });
   });
 
@@ -158,7 +159,7 @@ const IssueNFT = () => {
 
           <div className={styles.flex}>
             <p>Site</p>
-            <p>{currentSenderURL}</p>
+            <p>{getHost(currentSenderURL)}</p>
           </div>
 
           <div className={styles.flex}>

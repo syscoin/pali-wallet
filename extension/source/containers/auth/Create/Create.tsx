@@ -15,6 +15,7 @@ import { useAlert } from 'react-alert';
 
 import styles from './Create.scss';
 import { browser } from 'webextension-polyfill-ts';
+import { getHost } from '../../../scripts/Background/helpers';
 
 const Create = () => {
   const controller = useController();
@@ -26,7 +27,7 @@ const Create = () => {
 
   const connectedAccount = accounts.find((account: IAccountState) => {
     return account.connectedTo.find((url: any) => {
-      return url === currentSenderURL;
+      return url === getHost(currentSenderURL);
     });
   });
 

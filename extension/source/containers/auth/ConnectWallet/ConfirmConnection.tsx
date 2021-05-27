@@ -10,6 +10,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { ellipsis } from '../helpers';
+import { getHost } from '../../../scripts/Background/helpers';
 
 const ConfirmConnection = () => {
   const { accounts, currentSenderURL }: IWalletState = useSelector(
@@ -18,21 +19,23 @@ const ConfirmConnection = () => {
 
   const connectedAccount = accounts.filter(account => {
     return account.connectedTo.find((url: any) => {
-      return url == currentSenderURL;
+      return url == getHost(currentSenderURL);
     });
   });
 
   const handleCancelConnection = () => {
+    console.log('canceling connection', currentSenderURL)
+
     browser.runtime.sendMessage({
       type: "RESET_CONNECTION_INFO",
       target: "background",
       id: connectedAccount[0].id,
       url: currentSenderURL
-    });
-
-    browser.runtime.sendMessage({
-      type: "CLOSE_POPUP",
-      target: "background"
+    }).then(() => {
+      browser.runtime.sendMessage({
+        type: "CLOSE_POPUP",
+        target: "background"
+      });
     });
   }
 
@@ -41,14 +44,12 @@ const ConfirmConnection = () => {
     
     browser.runtime.sendMessage({
       type: "CONFIRM_CONNECTION",
-      target: "background",
-      id: connectedAccount[0].id,
-      url: currentSenderURL
-    });
-
-    browser.runtime.sendMessage({
-      type: "CLOSE_POPUP",
       target: "background"
+    }).then(() => {
+      browser.runtime.sendMessage({
+        type: "CLOSE_POPUP",
+        target: "background"
+      });
     });
   }
 
