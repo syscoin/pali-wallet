@@ -61,6 +61,10 @@ const Home = () => {
     currentURL
   ]);
 
+  const handleSetModalIsOpen = () =>{
+    setIsOpenModal(!isOpenModal);
+  }
+
   return (
     <div className={styles.wrapper}>
       {isOpenModal && (
@@ -91,11 +95,11 @@ const Home = () => {
            }
 
             {isOpenModal && isConnected && (
-              <Modal title={currentURL} connected />
+              <Modal title={currentURL} connected callback={handleSetModalIsOpen} />
             )}
 
             {isOpenModal && (!isConnected) && (
-              <Modal title={currentURL} message="This account is not connected this site. To connect to a web3 site, find the connect button on their site." />
+              <Modal title={currentURL} message="This account is not connected this site. To connect to a web3 site, find the connect button on their site." callback={handleSetModalIsOpen} />
             )}
 
             <h3>

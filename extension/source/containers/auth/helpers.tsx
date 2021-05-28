@@ -33,6 +33,14 @@ export const formatNumber = (num: number, min = 4, max = 4, maxSig = 12) => {
   });
 };
 
+export const formatURL = (url: string) => {
+  if (url.length > 30) {
+    return `${url.slice(0, 30)}...`;
+  }
+
+  return url;
+}
+
 export const sendMessage = (eventReceivedDetails: any, postMessageDetails: any) => {
   return new Promise((resolve) => {
     const callback = (event: any) => {

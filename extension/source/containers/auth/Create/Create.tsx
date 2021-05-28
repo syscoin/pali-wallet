@@ -35,7 +35,10 @@ const Create = () => {
   const [creatingSPT, setCreatingSPT] = useState(false);
 
   const handleGetFee = () => {
-    controller.wallet.account.getRecommendFee().then(response => { setRecommend(response); setFee(response); })
+    controller.wallet.account.getRecommendFee().then(response => {
+      setRecommend(response);
+      setFee(response);
+    });
   };
 
   const handleConfirm = () => {
