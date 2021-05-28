@@ -86,12 +86,12 @@ const ConnectionsController = (): IConnectionsController => {
 
   const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, description: string, receiver: string) => {
     return await sendMessage({
-      type: 'CREATE_TOKEN',
+      type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
       target: 'connectionsController',
       freeze: true,
       eventResult: 'complete'
     }, {
-      type: 'CREATE_TOKEN',
+      type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
       target: 'contentScript',
       precision,
       symbol,

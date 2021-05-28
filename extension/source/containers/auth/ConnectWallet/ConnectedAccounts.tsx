@@ -12,8 +12,10 @@ import styles from './ConnectWallet.scss';
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
+import { useAlert } from 'react-alert';
 
 const ConnectedAccounts = () => {
+  const alert = useAlert();
   const { accounts, currentSenderURL, activeAccountId }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
@@ -32,17 +34,22 @@ const ConnectedAccounts = () => {
   }
 
   const handleConfirm = () => {
-    browser.runtime.sendMessage({
-      type: "CHANGE_CONNECTED_ACCOUNT",
-      target: "background",
-      id: accountId,
-      url: currentSenderURL
-    });
-
-    browser.runtime.sendMessage({
-      type: "CLOSE_POPUP",
-      target: "background"
-    });
+    try {
+      browser.runtime.sendMessage({
+        type: "CHANGE_CONNECTED_ACCOUNT",
+        target: "background",
+        id: accountId,
+        url: currentSenderURL
+      });
+  
+      browser.runtime.sendMessage({
+        type: "CLOSE_POPUP",
+        target: "background"
+      });
+    } catch (error) {
+      alert.removeAll();
+      alert.error('Error changing account. Try again.');
+    }
   }
 
   const connectedAccount = accounts.filter(account => {

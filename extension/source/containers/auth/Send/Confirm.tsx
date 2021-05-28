@@ -44,7 +44,7 @@ const SendConfirm = () => {
       controller.wallet.account.confirmTempTx().then(result => {
         if (result) {
           alert.removeAll();
-          alert.error(result.message);
+          alert.error('Sorry, an error has occurred.');
 
           return;
         }

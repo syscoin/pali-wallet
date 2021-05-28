@@ -11,8 +11,10 @@ import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { ellipsis } from '../helpers';
 import { getHost } from '../../../scripts/Background/helpers';
+import { useAlert } from 'react-alert';
 
 const ConfirmConnection = () => {
+  const alert = useAlert();
   const { accounts, currentSenderURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
@@ -24,8 +26,6 @@ const ConfirmConnection = () => {
   });
 
   const handleCancelConnection = () => {
-    console.log('canceling connection', currentSenderURL)
-
     browser.runtime.sendMessage({
       type: "RESET_CONNECTION_INFO",
       target: "background",
@@ -40,17 +40,20 @@ const ConfirmConnection = () => {
   }
 
   const handleConfirmConnection = () => {
-    console.log('sending message to confirm connection')
-    
-    browser.runtime.sendMessage({
-      type: "CONFIRM_CONNECTION",
-      target: "background"
-    }).then(() => {
+    try {
       browser.runtime.sendMessage({
-        type: "CLOSE_POPUP",
+        type: "CONFIRM_CONNECTION",
         target: "background"
+      }).then(() => {
+        browser.runtime.sendMessage({
+          type: "CLOSE_POPUP",
+          target: "background"
+        });
       });
-    });
+    } catch (error) {
+      alert.removeAll();
+      alert.error('Sorry, an internal error has occurred.');
+    }
   }
 
   return (

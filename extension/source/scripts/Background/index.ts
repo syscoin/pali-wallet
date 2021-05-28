@@ -273,43 +273,7 @@ browser.runtime.onInstalled.addListener(async () => {
         });
       }
 
-      if (type == 'SEND_FEE_TO_CREATE_TOKEN' && target == 'background') {
-        console.log('create token fee before', createTokenFee)
-        createTokenFee = request.createTokenFee;
-        console.log('create token fee after', createTokenFee)
-      }
-
-      if (type == 'SEND_FEE_TO_MINT_SPT' && target == 'background') {
-        console.log('mint token fee before', mintSPTFee)
-        mintSPTFee = request.mintSPTFee;
-        console.log('mint token fee after', mintSPTFee)
-      }
-
-      if (type == 'SEND_FEE_TO_MINT_NFT' && target == 'background') {
-        console.log('mint token fee before', mintNFTFee)
-        mintNFTFee = request.mintNFTFee;
-        console.log('mint token fee after', mintNFTFee)
-      }
-
-      if (type == 'RBF_TO_CREATE_TOKEN' && target == 'background') {
-        console.log('create token rbf before', rbfCreateToken)
-        rbfCreateToken = request.rbfCreateToken;
-        console.log('create token rbf after', rbfCreateToken)
-      }
-
-      if (type == 'RBF_TO_MINT_SPT' && target == 'background') {
-        console.log('mint token rbf before', rbfMintSPT)
-        rbfMintSPT = request.rbfMintSPT;
-        console.log('mint token rbf after', rbfMintSPT)
-      }
-
-      if (type == 'RBF_TO_MINT_NFT' && target == 'background') {
-        console.log('mint nft rbf before', rbfMintNFT)
-        rbfMintNFT = request.rbfMintNFT;
-        console.log('mint nft rbf after', rbfMintNFT)
-      }
-
-      if (type == 'CREATE_TOKEN' && target == 'background') {
+      if (type == 'DATA_FROM_PAGE_TO_CREATE_TOKEN' && target == 'background') {
         const {
           precision,
           symbol,
@@ -318,16 +282,12 @@ browser.runtime.onInstalled.addListener(async () => {
           receiver,
         } = request;
 
-        console.log('create token fee', createTokenFee)
-
-        window.controller.wallet.account.createSPT({
+        window.controller.wallet.account.setDataFromPageToCreateNewSPT({
           precision,
           symbol,
           maxsupply,
-          fee: createTokenFee,
           description,
-          receiver,
-          rbf: rbfCreateToken
+          receiver
         });
 
         store.dispatch(createAsset(true));
@@ -337,10 +297,19 @@ browser.runtime.onInstalled.addListener(async () => {
         await createPopup(appURL);
 
         browser.tabs.sendMessage(tabId, {
-          type: 'CREATE_TOKEN',
+          type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
           target: 'contentScript',
           complete: true
         });
+      }
+
+      if (type == 'DATA_FROM_WALLET_TO_CREATE_TOKEN' && target == 'background') {
+        window.controller.wallet.account.createSPT({
+          ...window.controller.wallet.account.getDataFromPageToCreateNewSPT(),
+          ...window.controller.wallet.account.getDataFromWalletToCreateSPT()
+        });
+
+        console.log('checking spt background', window.controller.wallet.account.getNewSPT())
       }
 
       if (type == 'ISSUE_SPT' && target == 'background') {
@@ -350,14 +319,10 @@ browser.runtime.onInstalled.addListener(async () => {
           assetGuid
         } = request;
 
-        console.log('reqiest mint spt', request)
-
-        window.controller.wallet.account.issueSPT({
-          assetGuid: assetGuid,
-          amount: Number(amount),
-          fee: mintSPTFee,
-          receiver: receiver,
-          rbf: rbfMintSPT
+        window.controller.wallet.account.setDataFromPageToMintSPT({
+          assetGuid,
+          receiver,
+          amount: Number(amount)
         });
 
         store.dispatch(issueAsset(true));
@@ -373,6 +338,22 @@ browser.runtime.onInstalled.addListener(async () => {
         });
       }
 
+      if (type == 'DATA_FROM_WALLET_TO_MINT_TOKEN' && target == 'background') {
+        window.controller.wallet.account.issueSPT({
+          ...window.controller.wallet.account.getDataFromPageToMintSPT(),
+          ...window.controller.wallet.account.getDataFromWalletToMintSPT()
+        });
+        
+        const state = {
+          ...window.controller.wallet.account.getDataFromPageToMintSPT(),
+          ...window.controller.wallet.account.getDataFromWalletToMintSPT()
+        }
+
+        console.log('state mint spt', state)
+
+        console.log('checking mint spt background', window.controller.wallet.account.getIssueSPT())
+      }
+
       if (type == 'ISSUE_NFT' && target == 'background') {
         const {
           assetGuid,
@@ -380,12 +361,10 @@ browser.runtime.onInstalled.addListener(async () => {
           receiver,
         } = request;
 
-        window.controller.wallet.account.issueNFT({
+        window.controller.wallet.account.setDataFromPageToMintNFT({
           assetGuid,
-          nfthash,
-          fee: mintNFTFee,
           receiver,
-          rbf: rbfMintSPT
+          nfthash
         });
 
         store.dispatch(issueNFT(true));
@@ -399,6 +378,15 @@ browser.runtime.onInstalled.addListener(async () => {
           target: 'contentScript',
           complete: true
         });
+      }
+
+      if (type == 'DATA_FROM_WALLET_TO_MINT_NFT' && target == 'background') {
+        window.controller.wallet.account.issueNFT({
+          ...window.controller.wallet.account.getDataFromPageToMintNFT(),
+          ...window.controller.wallet.account.getDataFromWalletToMintNFT()
+        });
+
+        console.log('checking mint nft background', window.controller.wallet.account.getIssueNFT())
       }
 
       // receive message sent by contentScript using browser.runtime.sendMessage

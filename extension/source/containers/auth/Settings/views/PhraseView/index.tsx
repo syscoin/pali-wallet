@@ -33,10 +33,12 @@ const PhraseView = () => {
     if (res) {
       setPhrase(res);
       setChecked(true);
-    } else {
-      alert.removeAll();
-      alert.error('Error: Invalid password');
+
+      return;
     }
+
+    alert.removeAll();
+    alert.error('Error: Invalid password');
   };
 
   const handleCopySeed = () => {

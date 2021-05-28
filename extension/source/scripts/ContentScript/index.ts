@@ -175,7 +175,7 @@ window.addEventListener('message', (event) => {
 
     return;
   }
-  if (type == 'CREATE_TOKEN' && target == 'contentScript') {
+  if (type == 'DATA_FROM_PAGE_TO_CREATE_TOKEN' && target == 'contentScript') {
     const {
       precision,
       symbol,
@@ -186,7 +186,7 @@ window.addEventListener('message', (event) => {
     } = event.data;
 
     browser.runtime.sendMessage({
-      type: 'CREATE_TOKEN',
+      type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
       target: 'background',
       precision,
       symbol,
@@ -299,6 +299,17 @@ browser.runtime.onMessage.addListener((request) => {
     userTokens
   } = request;
 
+  if (type == 'DATA_FOR_SPT' && target == 'contentScript') {
+    console.log('data for spt', request)
+    window.postMessage({
+      type: 'DATA_FOR_SPT',
+      target: 'createComponent',
+      lala: 'ebebe'
+    }, '*');
+
+    return;
+  }
+
   if (type == 'DISCONNECT' && target == 'contentScript') {
     const id = browser.runtime.id;
     const port = browser.runtime.connect(id, { name: 'SYSCOIN' });
@@ -372,9 +383,9 @@ browser.runtime.onMessage.addListener((request) => {
     return;
   }
 
-  if (type == 'CREATE_TOKEN' && target == 'contentScript') {
+  if (type == 'DATA_FROM_PAGE_TO_CREATE_TOKEN' && target == 'contentScript') {
     window.postMessage({
-      type: 'CREATE_TOKEN',
+      type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
       target: 'connectionsController',
       complete
     }, '*');

@@ -25,10 +25,12 @@ const DeleteWalletView = () => {
     if (controller.wallet.checkPassword(data.password)) {
       controller.wallet.deleteWallet(data.password);
       history.push('/app.html');
-    } else {
-      alert.removeAll();
-      alert.error('Error: Invalid password');
+
+      return;
     }
+
+    alert.removeAll();
+    alert.error('Error: Invalid password');
   };
 
   return (

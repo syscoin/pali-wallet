@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 
@@ -12,10 +12,12 @@ import { RootState } from 'state/store';
 import { ellipsis } from '../helpers';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
+import CircularProgress from '@material-ui/core/CircularProgress';
 
 import styles from './IssueAsset.scss';
 import { browser } from 'webextension-polyfill-ts';
 import { getHost } from '../../../scripts/Background/helpers';
+import Switch from "react-switch";
 
 const IssueAsset = () => {
   const controller = useController();
@@ -37,6 +39,7 @@ const IssueAsset = () => {
   const [fee, setFee] = useState(0.00001);
   const [recommend, setRecommend] = useState(10);
   const [rbf, setRbf] = useState(false);
+  const [issuingSPT, setIssuingSPT] = useState(false);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => { setRecommend(response); setFee(response); })
@@ -48,7 +51,7 @@ const IssueAsset = () => {
         if (result) {
           console.log(result.message)
           alert.removeAll();
-          alert.error(result.message);
+          alert.error('Sorry, an error has occurred.');
 
           return;
         }
@@ -78,6 +81,25 @@ const IssueAsset = () => {
     });
   }
 
+  const handleMessageToMintSPT = () => {
+    controller.wallet.account.setDataFromWalletToMintSPT({
+      fee,
+      rbf
+    });
+
+    browser.runtime.sendMessage({
+      type: 'DATA_FROM_WALLET_TO_MINT_TOKEN',
+      target: 'background'
+    });
+
+    setIssuingSPT(true);
+    setLoading(true);
+  }
+
+  const handleTypeChanged = useCallback((rbf: boolean) => {
+    setRbf(rbf);
+  }, []);
+
   return confirmed ? (
     <Layout title="Your transaction is underway" showLogo>
       <CheckIcon className={styles.checked} />
@@ -99,112 +121,138 @@ const IssueAsset = () => {
       </Button>
     </Layout>
   ) : (
-    <Layout title="Mint token" showLogo>
-      <div className={styles.wrapper}>
-        <section className={styles.fee}>
-          <TextInput
-            type="number"
-            placeholder="Enter fee"
-            fullWidth
-            name="fee"
-            onChange={(event) => setFee(Number(event.target.value))}
-            onBlur={() => {
-              browser.runtime.sendMessage({
-                type: 'SEND_FEE_TO_MINT_SPT',
-                target: 'background',
-                mintSPTFee: fee
-              })
-            }}
-          />
-          <Button
-            type="button"
-            variant={styles.textBtn}
-            onClick={handleGetFee}
-          >
-            Recommend
-          </Button>
-        </section>
+    <div>
+      {mintSPT ? (
+        <Layout title="Issue Token" showLogo>
+          <div className={styles.wrapper}>
+            <div>
+              <section className={styles.data}>
+                <div className={styles.flex}>
+                  <p>Amount</p>
+                  <p>{mintSPT?.amount}</p>
+                </div>
 
-        <label htmlFor="rbf">RBF:</label>
-        <input 
-          id="rbf" 
-          name="rbf" 
-          type="checkbox" 
-          className="switch"
-          onChange={() => {
-            setRbf(!rbf);
+                <div className={styles.flex}>
+                  <p>RBF</p>
+                  <p>{rbf ? 'Yes' : 'No'}</p>
+                </div>
 
-            browser.runtime.sendMessage({
-              type: 'RBF_TO_MINT_SPT',
-              target: 'background',
-              rbfMintSPT: rbf
-            });
-          }}
-          checked={rbf}
-        />
+                <div className={styles.flex}>
+                  <p>Receiver</p>
+                  <p>{ellipsis(mintSPT?.receiver)}</p>
+                </div>
 
-        <section className={styles.data}>
-          <div className={styles.flex}>
-            <p>Amount</p>
-            <p>{mintSPT?.amount}</p>
+                <div className={styles.flex}>
+                  <p>Fee</p>
+                  <p>{fee}</p>
+                </div>
+
+                <div className={styles.flex}>
+                  <p>Asset guid</p>
+                  <p>{mintSPT?.assetGuid}</p>
+                </div>
+
+                <div className={styles.flex}>
+                  <p>Site</p>
+                  <p>{getHost(currentSenderURL)}</p>
+                </div>
+
+                <div className={styles.flex}>
+                  <p>Max total</p>
+                  <p>{fee}</p>
+                </div>
+              </section>
+
+              <section className={styles.confirm}>
+                <div className={styles.actions}>
+                  <Button
+                    type="button"
+                    theme="btn-outline-secondary"
+                    variant={clsx(styles.button, styles.close)}
+                    onClick={handleCancelTransactionOnSite}
+                  >
+                    Reject
+                  </Button>
+
+                  <Button
+                    type="submit"
+                    theme="btn-outline-primary"
+                    variant={styles.button}
+                    onClick={handleConfirm}
+                  >
+                    Confirm
+                  </Button>
+                </div>
+              </section>
+            </div>
           </div>
+        </Layout>
+      ) : (
+        <div>
+          {issuingSPT && loading ? (
+            <Layout title="" showLogo>
+              <div className={styles.wrapper}>
+                <section className={clsx(styles.mask)}>
+                  <CircularProgress className={styles.loader} />
+                </section>
+              </div>
+            </Layout>
+          ) : (
+            <div>
+              <Layout title="Mint token" showLogo>
+                <div className={styles.wrapper}>
+                  <section className={styles.fee}>
+                    <TextInput
+                      type="number"
+                      placeholder="Enter fee"
+                      fullWidth
+                      name="fee"
+                      onChange={(event) => setFee(Number(event.target.value))}
+                    />
+                    <Button
+                      type="button"
+                      variant={styles.textBtn}
+                      onClick={handleGetFee}
+                    >
+                      Recommend
+                    </Button>
+                  </section>
 
-          <div className={styles.flex}>
-            <p>RBF</p>
-            <p>{rbf ? 'Yes' : 'No'}</p>
-          </div>
+                  <label htmlFor="rbf">RBF:</label>
+                  <Switch
+                    checked={rbf}
+                    onChange={handleTypeChanged}
+                  ></Switch>
 
-          <div className={styles.flex}>
-            <p>Receiver</p>
-            <p>{ellipsis(mintSPT?.receiver)}</p>
-          </div>
+                  <section className={styles.confirm}>
+                    <div className={styles.actions}>
+                      <Button
+                        type="button"
+                        theme="btn-outline-secondary"
+                        variant={clsx(styles.button, styles.close)}
+                        onClick={handleCancelTransactionOnSite}
+                      >
+                        Reject
+                      </Button>
 
-          <div className={styles.flex}>
-            <p>Fee</p>
-            <p>{fee}</p>
-          </div>
-
-          <div className={styles.flex}>
-            <p>Asset guid</p>
-            <p>{mintSPT?.assetGuid}</p>
-          </div>
-
-          <div className={styles.flex}>
-            <p>Site</p>
-            <p>{getHost(currentSenderURL)}</p>
-          </div>
-
-          <div className={styles.flex}>
-            <p>Max total</p>
-            <p>{fee}</p>
-          </div>
-        </section>
-
-        <section className={styles.confirm}>
-          <div className={styles.actions}>
-            <Button
-              type="button"
-              theme="btn-outline-secondary"
-              variant={clsx(styles.button, styles.close)}
-              onClick={handleCancelTransactionOnSite}
-            >
-              Reject
-            </Button>
-
-            <Button
-              type="submit"
-              theme="btn-outline-primary"
-              variant={styles.button}
-              onClick={handleConfirm}
-              loading={loading}
-              disabled={loading || !fee}
-            >
-              Confirm
-            </Button>
-          </div>
-        </section>
-      </div>
-    </Layout>
+                      <Button
+                        type="submit"
+                        theme="btn-outline-primary"
+                        variant={styles.button}
+                        onClick={handleMessageToMintSPT}
+                        disabled={!fee}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </section>
+                </div>
+              </Layout>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

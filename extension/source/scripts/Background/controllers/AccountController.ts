@@ -55,6 +55,18 @@ export interface IAccountController {
   getCollection: () => any;
   getTransactionInfoByTxId: (txid: any) => any;
   getSysExplorerSearch: () => string;
+  setDataFromPageToCreateNewSPT: (data: any) => void;
+  getDataFromPageToCreateNewSPT: () => any | null;
+  setDataFromWalletToCreateSPT: (data: any) => void;
+  getDataFromWalletToCreateSPT: () => any | null;
+  setDataFromPageToMintSPT: (data: any) => void;
+  getDataFromPageToMintSPT: () => any | null;
+  setDataFromWalletToMintSPT: (data: any) => void;
+  getDataFromWalletToMintSPT: () => any | null;
+  setDataFromPageToMintNFT: (data: any) => void;
+  getDataFromPageToMintNFT: () => any | null;
+  setDataFromWalletToMintNFT: (data: any) => void;
+  getDataFromWalletToMintNFT: () => any | null;
 }
 
 const AccountController = (actions: {
@@ -68,6 +80,12 @@ const AccountController = (actions: {
   let mintSPT: ISPTIssue | null;
   let mintNFT: INFTIssue | null;
   let collection: any;
+  let dataFromPageToCreateSPT: any;
+  let dataFromWalletToCreateSPT: any;
+  let dataFromPageToMintSPT: any;
+  let dataFromWalletToMintSPT: any;
+  let dataFromPageToMintNFT: any;
+  let dataFromWalletToMintNFT: any;
 
   const getAccountInfo = async (): Promise<IAccountInfo> => {
     let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
@@ -304,12 +322,59 @@ const AccountController = (actions: {
     return true;
   }
 
+  const setDataFromPageToCreateNewSPT = (data: any) => {
+    dataFromPageToCreateSPT = data;
+  } 
+  const getDataFromPageToCreateNewSPT = () => {
+    return dataFromPageToCreateSPT || null;
+  }
+
+  const setDataFromWalletToCreateSPT = (data: any) => {
+    dataFromWalletToCreateSPT = data;
+  }
+
+  const getDataFromWalletToCreateSPT = () => {
+    return dataFromWalletToCreateSPT || null;
+  }
+
+  const setDataFromPageToMintSPT = (data: any) => {
+    console.log('data mint spt page', data)
+    dataFromPageToMintSPT = data;
+  }
+  
+  const getDataFromPageToMintSPT = () => {
+    return dataFromPageToMintSPT || null;
+  }
+
+  const setDataFromWalletToMintSPT = (data: any) => {
+    console.log('data mint spt', data)
+    dataFromWalletToMintSPT = data;
+  }
+
+  const getDataFromWalletToMintSPT = () => {
+    return dataFromWalletToMintSPT || null;
+  }
+
+  const setDataFromPageToMintNFT = (data: any) => {
+    dataFromPageToMintNFT = data;
+  } 
+  const getDataFromPageToMintNFT = () => {
+    return dataFromPageToMintNFT || null;
+  }
+
+  const setDataFromWalletToMintNFT = (data: any) => {
+    console.log('set data nft', data)
+    dataFromWalletToMintNFT = data;
+  }
+
+  const getDataFromWalletToMintNFT = () => {
+    console.log('data mint nft', dataFromWalletToMintNFT)
+    return dataFromWalletToMintNFT || null;
+  }
 
   const createSPT = (spt: ISPTInfo) => {
     newSPT = spt;
-    console.log("checkout the spt")
-    console.log(newSPT)
-    console.log(typeof newSPT.precision)
+    console.log("checkout the spt", spt)
 
     return true;
   }
@@ -631,7 +696,19 @@ const AccountController = (actions: {
     createCollection,
     getCollection,
     getTransactionInfoByTxId,
-    getSysExplorerSearch
+    getSysExplorerSearch,
+    setDataFromPageToCreateNewSPT,
+    getDataFromPageToCreateNewSPT,
+    setDataFromWalletToCreateSPT,
+    getDataFromWalletToCreateSPT,
+    setDataFromPageToMintSPT,
+    getDataFromPageToMintSPT,
+    setDataFromWalletToMintSPT,
+    getDataFromWalletToMintSPT,
+    setDataFromPageToMintNFT,
+    getDataFromPageToMintNFT,
+    setDataFromWalletToMintNFT,
+    getDataFromWalletToMintNFT
   };
 };
 
