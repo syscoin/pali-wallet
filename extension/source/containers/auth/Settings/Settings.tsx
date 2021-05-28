@@ -62,12 +62,11 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
           <TextInput
             value={showedLabel}
             variant={styles.accLabel}
-            onChange={(
-              ev: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-            ) => setShowedLabel(ev.target.value)}
-            onKeyDown={(ev: KeyboardEvent<HTMLInputElement>) => {
-              if (ev.key === 'Enter') {
-                setShowedLabel(ev.currentTarget.value);
+            onChange={(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setShowedLabel(event.target.value)
+            }
+            onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+              if (event.key === 'Enter') {
+                setShowedLabel(event.currentTarget.value);
                 handleChangeLabel();
               }
             }}

@@ -78,49 +78,58 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       fee
     } = data;
 
-    console.log("Checking form data " + data)
     if (selectedAsset) {
-      controller.wallet.account.updateTempTx({
-        fromAddress: accounts[activeAccountId].address.main,
-        toAddress: address,
-        amount,
-        fee,
-        token: selectedAsset,
-        isToken: true,
-        rbf: !checked,
-      });
-    } else {
-      controller.wallet.account.updateTempTx({
-        fromAddress: accounts[activeAccountId].address.main,
-        toAddress: address,
-        amount,
-        fee,
-        token: null,
-        isToken: false,
-        rbf: !checked,
-      });
+      try {
+        controller.wallet.account.updateTempTx({
+          fromAddress: accounts[activeAccountId].address.main,
+          toAddress: address,
+          amount,
+          fee,
+          token: selectedAsset,
+          isToken: true,
+          rbf: !checked,
+        });
+  
+        history.push('/send/confirm');
+      } catch (error) {
+        console.log(error);
+        alert.removeAll();
+        alert.error('An internal error has occurred.');
+      }
+
+      return;
     }
+    
+    controller.wallet.account.updateTempTx({
+      fromAddress: accounts[activeAccountId].address.main,
+      toAddress: address,
+      amount,
+      fee,
+      token: null,
+      isToken: false,
+      rbf: !checked,
+    });  
 
     history.push('/send/confirm');
   };
 
   const handleAmountChange = useCallback(
-    (ev: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setAmount(ev.target.value);
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setAmount(event.target.value);
     },
     []
   );
 
   const handleFeeChange = useCallback(
-    (ev: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setFee(ev.target.value);
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setFee(event.target.value);
     },
     []
   );
 
   const handleAddressChange = useCallback(
-    (ev: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setAddress(ev.target.value.trim());
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setAddress(event.target.value.trim());
     },
     []
   );
@@ -129,39 +138,35 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     (
       checked: boolean
     ) => {
-      console.log("Checking checked" + checked)
-      setChecked(checked)
+      setChecked(checked);
     },
     []
   )
 
   const handleGetFee = () => {
-    controller.wallet.account.getRecommendFee().then(response => { setRecommend(response); setFee(response.toString()); })
-    // setRecommend(controller.wallet.account.getRecommendFee());
-    // setFee((controller.wallet.account.getRecommendFee()).toString());
+    controller.wallet.account.getRecommendFee().then(response => {
+      setRecommend(response);
+      setFee(response.toString());
+    });
   };
 
-  const handleAssetSelected = (ev: ChangeEvent<{
+  const handleAssetSelected = (event: ChangeEvent<{
     name?: string | undefined;
     value: unknown;
   }>
   ) => {
-    console.log("The asset" + ev.target.name + "value" + ev.target.value)
-    let selectedAsset = accounts[activeAccountId].assets.filter((asset: Assets) => asset.assetGuid == ev.target.value)
-    console.log('olsas', accounts[activeAccountId].assets)
+    let selectedAsset = accounts[activeAccountId].assets.filter((asset: Assets) => asset.assetGuid == event.target.value);
+
     if (selectedAsset[0]) {
-      setSelectedAsset(selectedAsset[0])
+      setSelectedAsset(selectedAsset[0]);
+
+      return;
     }
-    else {
-      setSelectedAsset(null)
-    }
+    
+    setSelectedAsset(null);
   };
 
   useEffect(handleGetFee, []);
-  // const isNFT = (guid: Number) => {
-  //   let assetGuid = BigInt.asUintN(64, BigInt(guid))
-  //   return (assetGuid >> BigInt(32)) > 0
-  // }
 
   return (
     <div className={styles.wrapper}>

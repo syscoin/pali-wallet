@@ -121,7 +121,6 @@
           &:hover { color: $deepPink; }
         }
 
-
         label {
           font-weight: $light;
           font-size: .8rem;
@@ -206,9 +205,10 @@
 
     .description {
       font-weight: $light;
-      font-size: .58rem;
+      font-size: .67rem;
       text-indent: 1em;
-      color: $deepPink;
+      color: $white;
+      text-align: center;
     }
 
     .actions {

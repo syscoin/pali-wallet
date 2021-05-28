@@ -23,13 +23,12 @@ const GeneralView = () => {
   );
 
   const handleChangeNetwork = (
-    ev: ChangeEvent<{
+    event: ChangeEvent<{
       name?: string | undefined;
       value: unknown;
     }>
   ) => {
-    controller.wallet.switchNetwork(ev.target.value as string);
-    console.log('network changed', ev.target.value)
+    controller.wallet.switchNetwork(event.target.value as string);
   };
 
   return (

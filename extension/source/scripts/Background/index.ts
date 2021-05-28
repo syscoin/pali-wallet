@@ -92,12 +92,6 @@ browser.runtime.onInstalled.addListener(async () => {
     });
 
     const tabId = Number(tabs[0].id);
-    let createTokenFee: number = 0.00001;
-    let mintSPTFee: number = 0.00001;
-    let mintNFTFee: number = 0.00001;
-    let rbfCreateToken: boolean = false;
-    let rbfMintSPT: boolean = false;
-    let rbfMintNFT: boolean = false;
 
     const createPopup = async (url: string) => {
       const allWindows = await browser.windows.getAll({
@@ -139,14 +133,10 @@ browser.runtime.onInstalled.addListener(async () => {
 
       if (type == 'RESET_CONNECTION_INFO' && target == 'background') {
         store.dispatch(updateCanConnect(false));
-
-        console.log('remove connection url', request.url, 'get host request url', getHost(request.url), request, getHost(request.url) === request.url)
-
         store.dispatch(removeConnection({
           accountId: request.id,
           url: request.url
         }));
-        
         store.dispatch(setSenderURL(''));
 
         Promise.resolve(browser.tabs.sendMessage(Number(tabs[0].id), {
@@ -229,8 +219,6 @@ browser.runtime.onInstalled.addListener(async () => {
             return url === getHost(store.getState().wallet.currentURL)
           });
         });
-
-        console.log('connected account', connectedAccount)
 
         browser.tabs.sendMessage(tabId, {
           type: 'SEND_CONNECTED_ACCOUNT',
@@ -343,13 +331,6 @@ browser.runtime.onInstalled.addListener(async () => {
           ...window.controller.wallet.account.getDataFromPageToMintSPT(),
           ...window.controller.wallet.account.getDataFromWalletToMintSPT()
         });
-        
-        const state = {
-          ...window.controller.wallet.account.getDataFromPageToMintSPT(),
-          ...window.controller.wallet.account.getDataFromWalletToMintSPT()
-        }
-
-        console.log('state mint spt', state)
 
         console.log('checking mint spt background', window.controller.wallet.account.getIssueSPT())
       }

@@ -27,11 +27,11 @@ const FileSelect: FC<IFileSelect> = ({
     onChange(null);
   }, []);
 
-  const handleFileChoose = (ev: ChangeEvent<HTMLInputElement>) => {
-    if (!ev.target.files?.length) {
+  const handleFileChoose = (event: ChangeEvent<HTMLInputElement>) => {
+    if (!event.target.files?.length) {
       return;
     }
-    const file: File = ev.target.files[0];
+    const file: File = event.target.files[0];
     setStatus(file.name);
     onChange(file);
   };

@@ -21,6 +21,7 @@ const ConnectWallet = () => {
 
   const handleSelectAccount = (id: number) => {
     setAccountId(id);
+    
     browser.runtime.sendMessage({
       type: "SELECT_ACCOUNT",
       target: "background",
@@ -29,8 +30,6 @@ const ConnectWallet = () => {
   };
 
   const handleCancelConnection = () => {
-    console.log('cancel connection', currentSenderURL)
-
     browser.runtime.sendMessage({
       type: "RESET_CONNECTION_INFO",
       target: "background",

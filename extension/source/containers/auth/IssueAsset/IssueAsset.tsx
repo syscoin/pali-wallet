@@ -10,7 +10,7 @@ import CheckIcon from '@material-ui/icons/CheckCircle';
 import TextInput from 'components/TextInput';
 import { RootState } from 'state/store';
 import { ellipsis } from '../helpers';
-import IWalletState, { IAccountState } from 'state/wallet/types';
+import IWalletState from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 import CircularProgress from '@material-ui/core/CircularProgress';
 
@@ -27,22 +27,19 @@ const IssueAsset = () => {
     (state: RootState) => state.wallet
   );
 
-  const connectedAccount = accounts.find((account: IAccountState) => {
-    return account.connectedTo.find((url: any) => {
-      return url === getHost(currentSenderURL);
-    });
-  });
-
   const mintSPT = controller.wallet.account.getIssueSPT();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
-  const [fee, setFee] = useState(0.00001);
-  const [recommend, setRecommend] = useState(10);
+  const [fee, setFee] = useState(0);
+  const [recommend, setRecommend] = useState(0.00001);
   const [rbf, setRbf] = useState(false);
   const [issuingSPT, setIssuingSPT] = useState(false);
 
   const handleGetFee = () => {
-    controller.wallet.account.getRecommendFee().then(response => { setRecommend(response); setFee(response); })
+    controller.wallet.account.getRecommendFee().then(response => {
+      setRecommend(response);
+      setFee(response);
+    })
   };
 
   const handleConfirm = () => {
@@ -52,6 +49,7 @@ const IssueAsset = () => {
           console.log(result.message)
           alert.removeAll();
           alert.error('Sorry, an error has occurred.');
+          handleCancelTransactionOnSite();
 
           return;
         }
@@ -207,6 +205,7 @@ const IssueAsset = () => {
                       placeholder="Enter fee"
                       fullWidth
                       name="fee"
+                      value={fee}
                       onChange={(event) => setFee(Number(event.target.value))}
                     />
                     <Button
@@ -217,6 +216,8 @@ const IssueAsset = () => {
                       Recommend
                     </Button>
                   </section>
+
+                  <p>With current network conditions, we recommend a fee of {recommend} SYS.</p>
 
                   <label htmlFor="rbf">RBF:</label>
                   <Switch

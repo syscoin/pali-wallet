@@ -10,16 +10,13 @@ import CheckIcon from '@material-ui/icons/CheckCircle';
 import TextInput from 'components/TextInput';
 import { RootState } from 'state/store';
 import { ellipsis } from '../helpers';
-import IWalletState, { IAccountState } from 'state/wallet/types';
-import { ISPTInfo } from 'source/scripts/types';
+import IWalletState from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 import CircularProgress from '@material-ui/core/CircularProgress';
 
 import styles from './Create.scss';
 import { browser } from 'webextension-polyfill-ts';
-import { getHost } from '../../../scripts/Background/helpers';
 import Switch from "react-switch";
-import Header from 'containers/common/Header';
 
 const Create = () => {
   const controller = useController();
@@ -32,7 +29,7 @@ const Create = () => {
   const newSPT = controller.wallet.account.getNewSPT();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
-  const [fee, setFee] = useState(0.00001);
+  const [fee, setFee] = useState(0);
   const [rbf, setRbf] = useState(false);
   const [recommend, setRecommend] = useState(0.00001);
   const [creatingSPT, setCreatingSPT] = useState(false);
@@ -48,6 +45,7 @@ const Create = () => {
           console.log(result.message)
           alert.removeAll();
           alert.error('Sorry, an error has occurred.');
+          handleCancelTransactionOnSite();
 
           return;
         }
@@ -208,6 +206,7 @@ const Create = () => {
                       placeholder="Enter fee"
                       fullWidth
                       name="fee"
+                      value={fee}
                       onChange={(event) => setFee(Number(event.target.value))}
                     />
                     <Button
@@ -218,6 +217,8 @@ const Create = () => {
                       Recommend
                     </Button>
                   </section>
+
+                  <p>With current network conditions, we recommend a fee of {recommend} SYS.</p>
       
                   <label htmlFor="rbf">RBF:</label>
         
