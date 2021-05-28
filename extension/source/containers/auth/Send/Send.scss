@@ -20,7 +20,7 @@
 
     font-weight: 600;
     font-size: 1.3rem;
-    line-height: 24px;
+    line-height: 18px;
     display: flex;
     align-items: center;
     text-align: center;
@@ -35,16 +35,9 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    // line-height: 18px;
     font-weight: 500;
     font-size: 1rem;
     color: $royalBlue;
-
-    span {
-      font-size: 1.5rem;
-      color: $white;
-    }
-
     border-bottom: 3px solid;
     border-image: 
       linear-gradient(
@@ -53,6 +46,17 @@
         $royalBlue 50%, 
         $navy 80%
       ) 10;
+
+    span {
+      font-size: 1.5rem;
+      color: $white;
+    }
+
+    small {
+      font-size: .9rem;
+      color: $white;
+    }
+
   }
 
   .input {

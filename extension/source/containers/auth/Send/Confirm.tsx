@@ -41,17 +41,21 @@ const SendConfirm = () => {
     if (accounts[activeAccountId].balance > 0) {
       setLoading(true);
 
-      controller.wallet.account.confirmTempTx().then(result => {
-        if (result) {
-          alert.removeAll();
-          alert.error('Sorry, an error has occurred.');
-
-          return;
-        }
+      try {
+        controller.wallet.account.confirmTempTx();
 
         setConfirmed(true);
         setLoading(false);
-      });
+      } catch (error) {
+        alert.removeAll();
+        alert.error('Error confirming transaction.');
+        
+        if (confirmingTransaction) {
+          handleCancelTransactionOnSite();
+
+          return;
+        }
+      }
     }
   };
 

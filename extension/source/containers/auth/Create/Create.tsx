@@ -40,19 +40,16 @@ const Create = () => {
 
   const handleConfirm = () => {
     if (accounts[activeAccountId].balance > 0) {
-      controller.wallet.account.confirmNewSPT().then(result => {
-        if (result) {
-          console.log(result.message)
-          alert.removeAll();
-          alert.error('Sorry, an error has occurred.');
-          handleCancelTransactionOnSite();
-
-          return;
-        }
-
+      try {
+        controller.wallet.account.confirmNewSPT();
+        
         setConfirmed(true);
         setLoading(false);
-      });
+      } catch (error) {
+        alert.removeAll();
+        alert.error('Sorry, an error has occurred.');
+        handleCancelTransactionOnSite();
+      }
     }
   }
 

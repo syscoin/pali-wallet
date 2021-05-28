@@ -78,6 +78,11 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       fee
     } = data;
 
+    if (accounts[activeAccountId].address.main === address) {
+      alert.removeAll();
+      alert.error('Error: cannot complete transaction. Check the recipient\'s address.');
+    }
+
     if (selectedAsset) {
       try {
         controller.wallet.account.updateTempTx({
@@ -185,6 +190,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
         <section className={styles.content}>
           <ul className={styles.form}>
             <li>
+             {accounts[activeAccountId].address.main === address && <small className={styles.description}>The recipient's address must be different from the sender address</small>}
               <label>Recipient Address</label>
               <img
                 src={`/${VerifiedIcon}`}
@@ -367,6 +373,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               theme="btn-outline-primary"
               variant={styles.button}
               disabled={
+                accounts[activeAccountId].address.main === address ||
                 accounts[activeAccountId].balance === 0 ||
                 accounts[activeAccountId].balance < Number(amount) ||
                 !isValidAddress ||

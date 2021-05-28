@@ -44,19 +44,16 @@ const IssueAsset = () => {
 
   const handleConfirm = () => {
     if (accounts[activeAccountId].balance > 0) {
-      controller.wallet.account.confirmIssueSPT().then(result => {
-        if (result) {
-          console.log(result.message)
-          alert.removeAll();
-          alert.error('Sorry, an error has occurred.');
-          handleCancelTransactionOnSite();
-
-          return;
-        }
+      try {
+        controller.wallet.account.confirmIssueSPT();
 
         setConfirmed(true);
         setLoading(false);
-      });
+      } catch (error) {
+        alert.removeAll();
+        alert.error('Sorry, an error has occurred.');
+        handleCancelTransactionOnSite();
+      }
     }
   }
 
@@ -152,7 +149,7 @@ const IssueAsset = () => {
 
                 <div className={styles.flex}>
                   <p>Site</p>
-                  <p>{getHost(currentSenderURL)}</p>
+                  <p>{currentSenderURL}</p>
                 </div>
 
                 <div className={styles.flex}>
