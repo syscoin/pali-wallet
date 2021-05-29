@@ -243,8 +243,11 @@ const AccountController = (actions: {
 
   const isValidSYSAddress = (address: string) => {
     if (address) { // validate sys address
-      return true;
+      if (address !== account.address.main) {
+        return true;
+      }
     }
+
     return false;
   };
 

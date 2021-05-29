@@ -182,21 +182,30 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
         <section className={styles.balance}>
           <div>
             Balance:{' '}
-            <span>{selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? selectedAsset.balance : (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) : accounts[activeAccountId].balance}</span> {selectedAsset ? selectedAsset.symbol : "SYS"}
+            <span>{selectedAsset ?
+              controller.wallet.account.isNFT(selectedAsset.assetGuid) ?
+              selectedAsset.balance :
+              (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
+              accounts[activeAccountId].balance}
+            </span> 
+            
+            {selectedAsset ? selectedAsset.symbol : "SYS"}
           </div>
+
           {accounts[activeAccountId].balance === 0 && <small>You don't have SYS available.</small>}
         </section>
 
         <section className={styles.content}>
           <ul className={styles.form}>
             <li>
-             {accounts[activeAccountId].address.main === address && <small className={styles.description}>The recipient's address must be different from the sender address</small>}
-              <label>Recipient Address</label>
+              <label htmlFor="address">Recipient Address</label>
+
               <img
-                src={`/${VerifiedIcon}`}
+                src={VerifiedIcon}
                 alt="checked"
                 className={statusIconClass}
               />
+
               <TextInput
                 placeholder="Enter a valid address"
                 fullWidth
@@ -208,13 +217,17 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               />
             </li>
 
-            <li>
+            <div className={styles.formBlock}>
+              <li>
+                <label htmlFor="asset">Choose Asset</label>
 
-              <label>Choose Asset</label>
-              <div style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
-
-                <div className={styles.select}>
-                  <MUISelect native defaultValue="SYS"
+                <div
+                  className={styles.select}
+                  id="asset"
+                >
+                  <MUISelect
+                    native
+                    defaultValue="SYS"
                     input={<Input id="grouped-native-select" />}
                     onChange={handleAssetSelected}
                   >
@@ -241,151 +254,155 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                       })
                       }
                     </optgroup>
-
                   </MUISelect>
-
                 </div>
+              </li>
 
-                <div>
-                  <span>
-                    <label>Z-DAG</label>
+              <li>
+                <div className={styles.zDag}>
+                  <label htmlFor="rbf">Z-DAG</label>
+
+                  <div className={styles.tooltip}>
                     <HelpOutlineIcon
-                      data-tip data-for="zdag_info"
+                      style={{ width: '17px', height: '17px' }}
+                      data-tip
+                      data-for="zdag_info"
                     />
-
                     <ReactTooltip id="zdag_info"
-                      getContent={() =>
-                        <ul>
-                          <li>Button:</li>
-                          <li>
-                            <span>
-                              OFF for Replace-by-fee(RBF)
-                              ON for Z-DAG
-                        </span>
-                          </li>
-
-                          <li>
-                            <span>
-                              Z-DAG, a exclusive syscoin feature,<br />
-                        is a blockchain scalability sulution
-                        </span>
-                          </li>
-
-                          <li>
-                            to know more: <br />
-                            <span onClick={() => { window.open("https://syscoin.org/news/what-is-z-dag"); }}>
-                              what is Z-DAG?
-                        </span>
-                          </li>
-                        </ul>
-                      }
-                      effect='solid'
-                      delayHide={1500}
-                      delayShow={500}
-                      delayUpdate={500}
-                      place={'left'}
-                      border={true}
-                      type={'info'}
-                    />
-                  </span>
+                        getContent={() =>
+                          <div style={{ backgroundColor: 'white' }}>
+                            <small style={{ fontWeight: 'bold' }}>
+                              OFF for Replace-by-fee (RBF) and ON for Z-DAG <br/> Z-DAG: a exclusive Syscoin feature. <br/> To know more: <br/>
+                              <span
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => {
+                                  window.open("https://syscoin.org/news/what-is-z-dag");
+                                }}
+                              >
+                                What is Z-DAG?
+                              </span>
+                            </small>
+                          </div>
+                        }
+                        backgroundColor="white"
+                        textColor="black"
+                        borderColor="#4d76b8"
+                        effect='solid'
+                        delayHide={300}
+                        delayShow={300}
+                        delayUpdate={300}
+                        place={'top'}
+                        border={true}
+                        type={'info'}
+                        multiline={true}
+                      />
+                  </div>
                 </div>
-
+                
                 <Switch
+                  height={20}
+                  width={60}
                   checked={checked}
                   onChange={handleTypeChanged}
                 ></Switch>
+              </li>
+            </div>
 
-              </div>
-            </li>
+            <div>
+              <li>
+                <label htmlFor="amount"> {selectedAsset ? selectedAsset.symbol : "SYS"} Amount</label>
 
-            <li>
-              <label> {selectedAsset ? selectedAsset.symbol : "SYS"} Amount</label>
-              <TextInput
-                type="number"
-                placeholder="Enter amount to send"
-                fullWidth
-                inputRef={register}
-                name="amount"
-                value={amount}
-                onChange={handleAmountChange}
-                variant={clsx(styles.input, styles.amount)}
-              />
+                <TextInput
+                  type="number"
+                  placeholder="Enter amount to send"
+                  fullWidth
+                  inputRef={register}
+                  name="amount"
+                  value={amount}
+                  onChange={handleAmountChange}
+                  variant={clsx(styles.input, styles.amount)}
+                />
+
+                <Button
+                  type="button"
+                  variant={styles.textBtn}
+                  onClick={() =>
+                    setAmount(selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? String(selectedAsset.balance) : String((selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals)) : String(accounts[activeAccountId].balance))
+                  }
+                >
+                  Max
+                </Button>
+              </li>
+
+              <li>
+                <label htmlFor="fee">Transaction Fee</label>
+                <TextInput
+                  type="number"
+                  placeholder="Enter transaction fee"
+                  fullWidth
+                  inputRef={register}
+                  name="fee"
+                  onChange={handleFeeChange}
+                  value={fee}
+                  variant={clsx(styles.input, styles.fee)}
+                />
+
+                <Button
+                  type="button"
+                  variant={styles.textBtn}
+                  onClick={handleGetFee}
+                >
+                  Recommend
+                </Button>
+              </li>
+            </div>
+
+            <div className={styles.description}>
+              {`With current network conditions we recommend a fee of ${recommend} SYS.`}
+            </div>
+            
+            <div className={styles.status}>
+              <span className={styles.equalAmount}>
+                ≈ {getFiatAmount(Number(amount) + Number(fee), 6)}
+              </span>
+              {!!Object.values(errors).length && (
+                <span className={styles.error}>
+                  {Object.values(errors)[0].message}
+                </span>
+              )}
+            </div>
+
+            <div className={styles.actions}>
               <Button
                 type="button"
-                variant={styles.textBtn}
-                onClick={() =>
-                  setAmount(selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? String(selectedAsset.balance) : String((selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals)) : String(accounts[activeAccountId].balance))
+                theme="btn-outline-secondary"
+                variant={clsx(styles.button, styles.close)}
+                linkTo="/home"
+              >
+                Close
+              </Button>
+
+              <Button
+                type="submit"
+                theme="btn-outline-primary"
+                variant={styles.button}
+                disabled={
+                  accounts[activeAccountId].address.main === address ||
+                  accounts[activeAccountId].balance === 0 ||
+                  accounts[activeAccountId].balance < Number(amount) ||
+                  !isValidAddress ||
+                  !amount ||
+                  !fee ||
+                  !address ||
+                  Number(amount) <= 0
                 }
               >
-                Max
+                Send
               </Button>
-            </li>
-
-            <li>
-              <label>Transaction Fee</label>
-              <TextInput
-                type="number"
-                placeholder="Enter transaction fee"
-                fullWidth
-                inputRef={register}
-                name="fee"
-                onChange={handleFeeChange}
-                value={fee}
-                variant={clsx(styles.input, styles.fee)}
-              />
-              <Button
-                type="button"
-                variant={styles.textBtn}
-                onClick={handleGetFee}
-              >
-                Recommend
-              </Button>
-            </li>
+            </div>
           </ul>
 
-          <div className={styles.description}>
-            {`With current network conditions we recommend a fee of ${recommend} SYS.`}
-          </div>
 
-          <div className={styles.status}>
-            <span className={styles.equalAmount}>
-              ≈ {getFiatAmount(Number(amount) + Number(fee), 6)}
-            </span>
-            {!!Object.values(errors).length && (
-              <span className={styles.error}>
-                {Object.values(errors)[0].message}
-              </span>
-            )}
-          </div>
-
-          <div className={styles.actions}>
-            <Button
-              type="button"
-              theme="btn-outline-secondary"
-              variant={clsx(styles.button, styles.close)}
-              linkTo="/home"
-            >
-              Close
-            </Button>
-
-            <Button
-              type="submit"
-              theme="btn-outline-primary"
-              variant={styles.button}
-              disabled={
-                accounts[activeAccountId].address.main === address ||
-                accounts[activeAccountId].balance === 0 ||
-                accounts[activeAccountId].balance < Number(amount) ||
-                !isValidAddress ||
-                !amount ||
-                !fee ||
-                !address ||
-                Number(amount) <= 0
-              }
-            >
-              Send
-            </Button>
-          </div>
         </section>
       </form>
     </div>
