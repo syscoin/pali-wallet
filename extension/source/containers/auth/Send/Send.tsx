@@ -44,7 +44,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const getFiatAmount = useFiat();
   const controller = useController();
   const alert = useAlert();
-  const { accounts, activeAccountId }: IWalletState = useSelector(
+  const { accounts, activeAccountId, activeNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
   const [address, setAddress] = useState<string>(initAddress);
@@ -55,7 +55,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
 
   const isValidAddress = useMemo(() => {
-    return controller.wallet.account.isValidSYSAddress(address);
+    return controller.wallet.account.isValidSYSAddress(address, activeNetwork);
   }, [address]);
 
   const addressInputClass = clsx(styles.input, styles.address, {

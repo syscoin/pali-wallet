@@ -187,7 +187,10 @@ const WalletController = (): IWalletController => {
       const child = sjs.HDSigner.deriveAccount(i);
       let derived = new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
 
+      console.log('child', child, 'derived', derived)
+
       account.setNewXpub(i, derived.getAccountPublicKey());
+      console.log('account', account, sjs, sjs.HDSigner)
       sjs.HDSigner.accounts.push(account);
       sjs.HDSigner.accountIndex = activeAccountId;
     }

@@ -1,4 +1,5 @@
 import store from 'state/store';
+import { bech32 } from 'bech32';
 import {
   createAccount,
   updateStatus,
@@ -33,7 +34,7 @@ export interface IAccountController {
   watchMemPool: () => void;
   getLatestUpdate: () => void;
   isNFT: (guid: number) => boolean;
-  isValidSYSAddress: (address: string) => boolean;
+  isValidSYSAddress: (address: string, network: string) => boolean | undefined;
   getRecommendFee: () => Promise<number>;
   updateTxs: () => void;
   getTempTx: () => ITransactionInfo | null;
@@ -86,6 +87,8 @@ const AccountController = (actions: {
   let dataFromWalletToMintSPT: any;
   let dataFromPageToMintNFT: any;
   let dataFromWalletToMintNFT: any;
+  let resAddress: any;
+  let encode: any;
 
   const getAccountInfo = async (): Promise<IAccountInfo> => {
     let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
@@ -241,14 +244,40 @@ const AccountController = (actions: {
     }, 30 * 1000);
   };
 
-  const isValidSYSAddress = (address: string) => {
-    if (address) { // validate sys address
-      if (address !== account.address.main) {
-        return true;
-      }
+  const isValidSYSAddress = (address: string, network: string) => {
+    try {
+      resAddress = bech32.decode(address)
+      console.log('res address try', resAddress)
+    } catch {
+      return false;
     }
 
-    return false;
+    if (network === "main" && resAddress.prefix === "sys") {
+      console.log('res address main', resAddress)
+      encode = bech32.encode(resAddress.prefix, resAddress.words);
+      console.log('encode main', resAddress)
+      console.log('encode return is equal address', encode, encode === address.toLowerCase())
+
+      return encode === address.toLowerCase();
+    }
+
+    if (network === "test" && resAddress.prefix === "tsys") {
+      console.log('res address testnet', resAddress)
+      encode = bech32.encode(resAddress.prefix, resAddress.words);
+      console.log('encode tesnet', encode)
+      console.log('encode return is equal address', encode, encode === address.toLowerCase())
+
+      return encode === address.toLowerCase();
+    }
+
+    // return encode === address.toLowerCase()
+    // if (address) { // validate sys address
+    //   if (address !== account.address.main) {
+    //     return true;
+    //   }
+    // }
+
+    // return false;
   };
 
   const isNFT = (guid: number) => {
