@@ -11,8 +11,12 @@ import CreateSPT from './Create/CreateSPT';
 import CreateCollection from './Create/CreateCollection';
 import CreateNFT from './Create/CreateNFT';
 
+import {Provider} from 'react-redux';
+import store from './States/redux/store.js'
+
 ReactDOM.render(
   <BrowserRouter>
+        <Provider store={store}>
     <Switch>
       <Route
         path="/"
@@ -26,6 +30,7 @@ ReactDOM.render(
       <Route path="/createnft" component={CreateNFT} />
       <Route path="/createcollection" component={CreateCollection} />
     </Switch>
+    </Provider>
   </BrowserRouter>,
   document.getElementById('root')
 );

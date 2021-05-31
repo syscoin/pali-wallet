@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import logo from "../../assets/images/logosys.svg";
+import {useDispatch} from 'react-redux'
+ import { login } from "../../States/features/userSlice"
 
 const Header = (props) => {
   const [isInstalled, setIsInstalled] = useState(false);
@@ -8,6 +10,17 @@ const Header = (props) => {
   const [controller, setController] = useState();
   const [connectedAccount, setConnectedAccount] = useState({});
   const [connectedAccountAddress, setConnectedAccountAddress] = useState("");
+  const dispatch = useDispatch();
+    // useEffect(() => {
+  //         (dispatch(login({
+  //                   isInstalled: isInstalled,
+  //                   canConnect: canConnect,
+  //                   balance: balance,
+  //                   controller: controller,
+  //                   connectedAccount: connectedAccount,
+  //                   connectedAccountAddress: connectedAccountAddress
+  //                     })))
+  //                   })
 
   useEffect(() => {
     const callback = (event) => {
@@ -106,10 +119,6 @@ const Header = (props) => {
           </div>
         </div>
       </nav>
-
-      {!isInstalled && (
-        <h1 className="app__title">You need to install Syscoin Wallet.</h1>
-      )}
     </div>
   )
 }
