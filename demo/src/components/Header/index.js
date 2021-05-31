@@ -130,9 +130,9 @@ const Header = (props) => {
               <button
                 className="button"
                 onClick={canConnect ? props.handleMessageExtension : undefined}
-                disabled={!store.getState().isInstalled}>
+                disabled={store.getState().isInstalled}>
                 {/* {store.getState().connectedAccountData.connectedAccountAddress === "" ? "Connect to Syscoin Wallet" : store.getState().connectedAccountData.connectedAccountAddress} */}
-                asdk
+               {/* { store.getState().connectedAccountData.connectedAccountAddress} */}
               </button>
             </ul>
           </div>

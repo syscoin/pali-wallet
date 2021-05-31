@@ -3,7 +3,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-dropzone-uploader/dist/styles.css';
 import FormMintSPT from "./Form/FormMintSPT";
 import Header from "../components/Header";
-
+import store from "../state/store";
 const MintSPT = () => {
   const handleIssueSPT = async (
     event,

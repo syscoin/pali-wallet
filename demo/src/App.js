@@ -116,11 +116,11 @@ const App = () => {
   return (
 
     <div className="app">
-      <Header handleMessageExtension={handleMessageExtension} />
-      <Menu />
-      {store.getState().isInstalled && (
-        <p>installaddaaaa</p>
-      )}
+      {/* <Header handleMessageExtension={handleMessageExtension} /> */}
+      
+      {!store.getState().isInstalled ? 
+        <p>Install the Wallet</p> :<Menu />
+      }
     </div>
   );
 }
