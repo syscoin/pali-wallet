@@ -10,7 +10,7 @@ import {useDispatch} from 'react-redux'
   setIsConnected
 } from "../../state/wallet";
 import store from "../../state/store";
-
+// peace uncle grit essence stuff angle cruise annual fury letter snack globe       ---- frase wallet
 const Header = (props) => {
   const [walletIsInstalled, setWalletIsInstalled] = useState(false);
   const [canConnect, setCanConnect] = useState(true);
@@ -130,9 +130,10 @@ const Header = (props) => {
               <button
                 className="button"
                 onClick={canConnect ? props.handleMessageExtension : undefined}
-                disabled={store.getState().isInstalled}>
-                {/* {store.getState().connectedAccountData.connectedAccountAddress === "" ? "Connect to Syscoin Wallet" : store.getState().connectedAccountData.connectedAccountAddress} */}
-               {/* { store.getState().connectedAccountData.connectedAccountAddress} */}
+                disabled={!store.getState().isInstalled}>
+                {/* {store.getState().connectedAccountData.connectedAccountAddress === "" ? "Connect to Syscoin Wallet" : store.getState()connectedAccountData.connectedAccountAddress} */}
+               {/* {localStorage.wallet.connectedAccountData.connectedAccountAddress} */}
+               algum address
               </button>
             </ul>
           </div>

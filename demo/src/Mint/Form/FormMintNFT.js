@@ -111,7 +111,7 @@ const FormMintNFT = (props) => {
             <label htmlFor="assetGuid">AssetGuid:</label>
             <button
               onClick={() => checkStore()}
-            >sakdha</button>
+            >test store</button>
 
             <select
               id="assetGuid" 
