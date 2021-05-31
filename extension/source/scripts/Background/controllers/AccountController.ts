@@ -245,39 +245,29 @@ const AccountController = (actions: {
   };
 
   const isValidSYSAddress = (address: string, network: string) => {
-    try {
-      resAddress = bech32.decode(address)
-      console.log('res address try', resAddress)
-    } catch {
+    if (address) {
+      try {
+        resAddress = bech32.decode(address);
+
+        if (network === "main" && resAddress.prefix === "sys") {
+          encode = bech32.encode(resAddress.prefix, resAddress.words);
+  
+          return encode === address.toLowerCase();
+        }
+    
+        if (network === "testnet" && resAddress.prefix === "tsys") {
+          encode = bech32.encode(resAddress.prefix, resAddress.words);
+    
+          return encode === address.toLowerCase();
+        }
+      } catch (error) {
+        return false;
+      }
+
       return false;
     }
 
-    if (network === "main" && resAddress.prefix === "sys") {
-      console.log('res address main', resAddress)
-      encode = bech32.encode(resAddress.prefix, resAddress.words);
-      console.log('encode main', resAddress)
-      console.log('encode return is equal address', encode, encode === address.toLowerCase())
-
-      return encode === address.toLowerCase();
-    }
-
-    if (network === "test" && resAddress.prefix === "tsys") {
-      console.log('res address testnet', resAddress)
-      encode = bech32.encode(resAddress.prefix, resAddress.words);
-      console.log('encode tesnet', encode)
-      console.log('encode return is equal address', encode, encode === address.toLowerCase())
-
-      return encode === address.toLowerCase();
-    }
-
-    // return encode === address.toLowerCase()
-    // if (address) { // validate sys address
-    //   if (address !== account.address.main) {
-    //     return true;
-    //   }
-    // }
-
-    // return false;
+    return false;
   };
 
   const isNFT = (guid: number) => {

@@ -192,9 +192,10 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             {selectedAsset ? selectedAsset.symbol : "SYS"}
           </div>
 
-          {accounts[activeAccountId].balance === 0 && <small>You don't have SYS available.</small>}
         </section>
 
+        {/* {accounts[activeAccountId].balance === 0 && <small>You don't have SYS available.</small>} */}
+        
         <section className={styles.content}>
           <ul className={styles.form}>
             <li>
@@ -310,7 +311,11 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
             <div>
               <li>
-                <label htmlFor="amount"> {selectedAsset ? selectedAsset.symbol : "SYS"} Amount</label>
+                <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label htmlFor="amount"> {selectedAsset ? selectedAsset.symbol : "SYS"} Amount</label>
+
+                  {accounts[activeAccountId].balance === 0 && <small className={styles.description} style={{ textAlign: 'left' }}>You don't have SYS available.</small>}
+                </div>
 
                 <TextInput
                   type="number"
