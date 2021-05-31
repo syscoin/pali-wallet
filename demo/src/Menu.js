@@ -9,13 +9,11 @@ const Menu = () => {
       return <a key={item.route} className="button" href={item.route}>{item.title}</a>
     })}
 
-
   return (
-    
- <div className="app">
-    <Header />
-   <RenderButtons />
-</div>
+    <div className="app">
+      {/* <Header /> */}
+      <RenderButtons />
+    </div>
   );
 }
 

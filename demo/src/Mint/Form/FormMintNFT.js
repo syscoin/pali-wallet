@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import store from '../../state/store';
 
 const FormMintNFT = (props) => {
   const [assetGuid, setAssetGuid] = useState('');
@@ -13,79 +14,83 @@ const FormMintNFT = (props) => {
   const [connectedAccount, setConnectedAccount] = useState({});
   const [connectedAccountAddress, setConnectedAccountAddress] = useState("");
 
-  useEffect(() => {
-    const callback = (event) => {
-      if (event.detail.SyscoinInstalled) {
-        setIsInstalled(true);
+  // useEffect(() => {
+  //   const callback = (event) => {
+  //     if (event.detail.SyscoinInstalled) {
+  //       setIsInstalled(true);
 
-        if (event.detail.ConnectionsController) {
-          setController(window.ConnectionsController);
+  //       if (event.detail.ConnectionsController) {
+  //         setController(window.ConnectionsController);
 
-          return;
-        }
+  //         return;
+  //       }
 
-        return;
-      }
+  //       return;
+  //     }
 
-      setIsInstalled(false);
+  //     setIsInstalled(false);
 
-      window.removeEventListener("SyscoinStatus", callback);
-    }
+  //     window.removeEventListener("SyscoinStatus", callback);
+  //   }
 
-    window.addEventListener("SyscoinStatus", callback);
-  }, []);
+  //   window.addEventListener("SyscoinStatus", callback);
+  // }, []);
 
-  const setup = async () => {
-    const state = await controller.getWalletState();
+  // const setup = async () => {
+  //   const state = await controller.getWalletState();
 
-    if (state.accounts.length > 0) {
-      controller.getConnectedAccount()
-        .then((data) => {
-          if (data) {
-            setConnectedAccount(data);
-            setConnectedAccountAddress(data.address.main);
-            setBalance(data.balance);
+  //   if (state.accounts.length > 0) {
+  //     controller.getConnectedAccount()
+  //       .then((data) => {
+  //         if (data) {
+  //           setConnectedAccount(data);
+  //           setConnectedAccountAddress(data.address.main);
+  //           setBalance(data.balance);
 
-            return;
-          }
+  //           return;
+  //         }
 
-          setConnectedAccount({});
-          setConnectedAccountAddress("");
-          setBalance(0);
+  //         setConnectedAccount({});
+  //         setConnectedAccountAddress("");
+  //         setBalance(0);
 
-          return;
-        });
-    }
-  };
+  //         return;
+  //       });
+  //   }
+  // };
 
-  useEffect(() => {
-    if (controller) {
-      setup();
+  // useEffect(() => {
+  //   if (controller) {
+  //     setup();
 
-      controller.onWalletUpdate(setup);
-    }
-  }, [
-    controller,
-  ]);
+  //     controller.onWalletUpdate(setup);
+  //   }
+  // }, [
+  //   controller,
+  // ]);
 
   useEffect(() => {
     console.log('tokens', data);
+    console.log('store controller', store.getState());
 
     const setup = async () => {
-      if (controller) {
-        setData(await controller.getUserMintedTokens());
+      if (store.getState().controller) {
+        console.log('store', store.getState().controller)
+        // setData(await store.getState().controller.getUserMintedTokens());
       }
     }
 
     setup();
-  }, [
-    controller
-  ]);
+  }, []);
 
-  const RenderAsset = () => {
-    return data.map((asset, index) => {
-      return <option key={index}>{asset.assetGuid}</option>
-    });
+  // const RenderAsset = () => {
+  //   return data.map((asset, index) => {
+  //     return <option key={index}>{asset.assetGuid}</option>
+  //   });
+  // }
+
+  const checkStore = () => {
+    console.log('store', store.getState())
   }
 
   return (
@@ -104,6 +109,9 @@ const FormMintNFT = (props) => {
         <div>
           <div className="input-group mb-3">
             <label htmlFor="assetGuid">AssetGuid:</label>
+            <button
+              onClick={() => checkStore()}
+            >sakdha</button>
 
             <select
               id="assetGuid" 
@@ -112,7 +120,7 @@ const FormMintNFT = (props) => {
               onBlur={(event) => setAssetGuid(event.target.value)}
             >
               <option>Choose...</option>
-              <RenderAsset />
+              {/* <RenderAsset /> */}
             </select>
           </div>
 

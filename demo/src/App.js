@@ -8,61 +8,66 @@ import {
   updateCanConnect,
   setController,
   setIsConnected
-} from "./States/features/userSlice"
-import { useDispatch } from 'react-redux'
-import { useSelector } from 'react-redux'
-import { selectUser } from './States/features/userSlice'
+} from "./state/wallet";
+// import { useDispatch } from 'react-redux'
+// import { useSelector } from 'react-redux'
+// import { selectUser } from './States/features/userSlice'
 import { useState, useEffect } from 'react'
 import Menu from "./Menu"
-import store from "./States/redux/store"
-const App = () => {
+import store from "./state/store";
 
-  const [isInstalled, setIsInstalled] = useState(false);
+const App = () => {
+  const [walletIsInstalled, setWalletIsInstalled] = useState(false);
   const [canConnect, setCanConnect] = useState(true);
   const [balance, setBalance] = useState(0);
-  const [controller, setController] = useState();
+  const [walletController, setWalletController] = useState();
   const [connectedAccount, setConnectedAccount] = useState({});
   const [connectedAccountAddress, setConnectedAccountAddress] = useState("");
-  const dispatch = useDispatch();
-  const user = useSelector(selectUser);
-
+  // // const dispatch = useDispatch();
+  // // const user = useSelector(selectUser);
 
   useEffect(() => {
     const callback = (event) => {
       // const { isIstalled } = userSlice.actions
       if (event.detail.SyscoinInstalled) {
-        setIsInstalled(true);
+        setWalletIsInstalled(true);
+        store.dispatch(setIsInstalled(true));
 
         if (event.detail.ConnectionsController) {
-          setController(window.ConnectionsController);
+          setWalletController(window.ConnectionsController);
+          store.dispatch(setController(window.ConnectionsController));
+          
           return;
         }
 
         return;
       }
 
-      setIsInstalled(false);
+      setWalletIsInstalled(false);
+      store.dispatch(setIsInstalled(false));
 
       window.removeEventListener("SyscoinStatus", callback);
-
-
     }
 
     window.addEventListener("SyscoinStatus", callback);
   }, []);
 
-
-
   const setup = async () => {
-    const state = await controller.getWalletState();
+    const state = await walletController.getWalletState();
 
     if (state.accounts.length > 0) {
-      controller.getConnectedAccount()
+      walletController.getConnectedAccount()
         .then((data) => {
           if (data) {
             setConnectedAccount(data);
             setConnectedAccountAddress(data.address.main);
             setBalance(data.balance);
+
+            store.dispatch(updateConnectedAccountData({
+              balance: data.balance,
+              connectedAccount: data,
+              connectedAccountAddress: data.address.main
+            }));
 
             return;
           }
@@ -71,19 +76,25 @@ const App = () => {
           setConnectedAccountAddress("");
           setBalance(0);
 
+          store.dispatch(updateConnectedAccountData({
+            balance: 0,
+            connectedAccount: {},
+            connectedAccountAddress: ''
+          }));
+
           return;
         });
     }
   };
 
   useEffect(() => {
-    if (controller) {
+    if (walletController) {
       setup();
 
-      controller.onWalletUpdate(setup);
+      walletController.onWalletUpdate(setup);
     }
   }, [
-    controller,
+    walletController,
   ]);
 
 //   useEffect(() => {
@@ -98,15 +109,18 @@ const App = () => {
 
 
   const handleMessageExtension = async () => {
-    await controller.connectWallet();
+    await store.getState().controller.connectWallet();
     await setup();
   }
 
   return (
 
     <div className="app">
-      {isInstalled ?
-        <Menu /> : <a>Install</a>}
+      <Header handleMessageExtension={handleMessageExtension} />
+      <Menu />
+      {store.getState().isInstalled && (
+        <p>installaddaaaa</p>
+      )}
     </div>
   );
 }

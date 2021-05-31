@@ -2,58 +2,67 @@ import React, { useState, useEffect } from "react";
 import logo from "../../assets/images/logosys.svg";
 import {useDispatch} from 'react-redux'
  import { login } from "../../States/features/userSlice"
+ import {
+  setIsInstalled,
+  updateConnectedAccountData,
+  updateCanConnect,
+  setController,
+  setIsConnected
+} from "../../state/wallet";
+import store from "../../state/store";
 
 const Header = (props) => {
-  const [isInstalled, setIsInstalled] = useState(false);
+  const [walletIsInstalled, setWalletIsInstalled] = useState(false);
   const [canConnect, setCanConnect] = useState(true);
   const [balance, setBalance] = useState(0);
-  const [controller, setController] = useState();
+  const [walletController, setWalletController] = useState();
   const [connectedAccount, setConnectedAccount] = useState({});
   const [connectedAccountAddress, setConnectedAccountAddress] = useState("");
-  const dispatch = useDispatch();
-    // useEffect(() => {
-  //         (dispatch(login({
-  //                   isInstalled: isInstalled,
-  //                   canConnect: canConnect,
-  //                   balance: balance,
-  //                   controller: controller,
-  //                   connectedAccount: connectedAccount,
-  //                   connectedAccountAddress: connectedAccountAddress
-  //                     })))
-  //                   })
+  // const dispatch = useDispatch();
+  // const user = useSelector(selectUser);
 
-  useEffect(() => {
-    const callback = (event) => {
-      if (event.detail.SyscoinInstalled) {
-        setIsInstalled(true);
+  // useEffect(() => {
+  //   const callback = (event) => {
+  //     // const { isIstalled } = userSlice.actions
+  //     if (event.detail.SyscoinInstalled) {
+  //       setWalletIsInstalled(true);
+  //       store.dispatch(setIsInstalled(true));
 
-        if (event.detail.ConnectionsController) {
-          setController(window.ConnectionsController);
+  //       if (event.detail.ConnectionsController) {
+  //         setWalletController(window.ConnectionsController);
+  //         store.dispatch(setController(window.ConnectionsController));
+          
+  //         return;
+  //       }
 
-          return;
-        }
+  //       return;
+  //     }
 
-        return;
-      }
+  //     setWalletIsInstalled(false);
+  //     store.dispatch(setIsInstalled(false));
 
-      setIsInstalled(false);
+  //     window.removeEventListener("SyscoinStatus", callback);
+  //   }
 
-      window.removeEventListener("SyscoinStatus", callback);
-    }
-
-    window.addEventListener("SyscoinStatus", callback);
-  }, []);
+  //   window.addEventListener("SyscoinStatus", callback);
+  // }, []);
 
   const setup = async () => {
-    const state = await controller.getWalletState();
+    const state = await walletController.getWalletState();
 
     if (state.accounts.length > 0) {
-      controller.getConnectedAccount()
+      walletController.getConnectedAccount()
         .then((data) => {
           if (data) {
             setConnectedAccount(data);
             setConnectedAccountAddress(data.address.main);
             setBalance(data.balance);
+
+            store.dispatch(updateConnectedAccountData({
+              balance: data.balance,
+              connectedAccount: data,
+              connectedAccountAddress: data.address.main
+            }));
 
             return;
           }
@@ -62,25 +71,34 @@ const Header = (props) => {
           setConnectedAccountAddress("");
           setBalance(0);
 
+          store.dispatch(updateConnectedAccountData({
+            balance: 0,
+            connectedAccount: {},
+            connectedAccountAddress: ''
+          }));
+
           return;
         });
     }
   };
 
-  useEffect(() => {
-    if (controller) {
-      setup();
+  // useEffect(() => {
+  //   if (walletController) {
+  //     setup();
 
-      controller.onWalletUpdate(setup);
-    }
-  }, [
-    controller,
-  ]);
+  //     walletController.onWalletUpdate(setup);
+  //   }
+  // }, [
+  //   walletController,
+  // ]);
 
-  const handleMessageExtension = async () => {
-    await controller.connectWallet();
-    await setup();
-  }
+
+  // const handleMessageExtension = async () => {
+  //   const controller = store.getState().controller;
+
+  //   await walletController.connectWallet();
+  //   await setup();
+  // }
 
   return (
     <div>
@@ -111,9 +129,10 @@ const Header = (props) => {
             <ul className="navbar-nav ml-auto">
               <button
                 className="button"
-                onClick={canConnect ? handleMessageExtension : undefined}
-                disabled={!isInstalled}>
-                {connectedAccountAddress === "" ? "Connect to Syscoin Wallet" : connectedAccountAddress}
+                onClick={canConnect ? props.handleMessageExtension : undefined}
+                disabled={!store.getState().isInstalled}>
+                {/* {store.getState().connectedAccountData.connectedAccountAddress === "" ? "Connect to Syscoin Wallet" : store.getState().connectedAccountData.connectedAccountAddress} */}
+                asdk
               </button>
             </ul>
           </div>

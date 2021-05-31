@@ -4,6 +4,7 @@ import 'react-dropzone-uploader/dist/styles.css';
 import Dropzone from 'react-dropzone-uploader';
 import FormMintNFT from "./Form/FormMintNFT";
 import Header from "../components/Header";
+import store from '../state/store';
 
 const MintNFT = () => {
   const [preview, setPreview] = useState("");
@@ -39,13 +40,13 @@ const MintNFT = () => {
     event.preventDefault();
 
     // call controller function and send parameters to use in the messages
-    await window.ConnectionsController.handleIssueNFT(
+    await store.getState().controller.handleIssueNFT(
       assetGuid,
       nfthash,
       receiver
     )
 
-    console.log(await window.ConnectionsController.getWalletState())
+    console.log(await store.getState().controller.getWalletState())
   }
 
   return (

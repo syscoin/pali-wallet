@@ -12,7 +12,7 @@ import CreateCollection from './Create/CreateCollection';
 import CreateNFT from './Create/CreateNFT';
 
 import {Provider} from 'react-redux';
-import store from './States/redux/store.js'
+import store from './state/store';
 
 ReactDOM.render(
   <BrowserRouter>
