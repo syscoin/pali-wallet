@@ -39,12 +39,31 @@
     position: absolute;
     width: 100%;
     top: 60px;
-    background: rgba($white, 0.8);
+    background: $white;
     backdrop-filter: blur(10px);
     border-bottom: 1px solid $gray-dark;
     overflow: auto;
     max-height: 150px;
     z-index: 1;
+
+    &::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    &::-webkit-scrollbar-track-piece {
+      background-color: #f1f1f1;
+      border-radius: 2rem;
+    }
+
+    &::-webkit-scrollbar-button {
+      display: none;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      border-radius: 2rem;
+      background-color: #c9c9c9;
+      transition: all .3s;
+    }
 
     li {
       width: 100%;

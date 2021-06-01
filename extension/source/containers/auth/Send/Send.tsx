@@ -191,10 +191,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             
             {selectedAsset ? selectedAsset.symbol : "SYS"}
           </div>
-
         </section>
-
-        {/* {accounts[activeAccountId].balance === 0 && <small>You don't have SYS available.</small>} */}
         
         <section className={styles.content}>
           <ul className={styles.form}>

@@ -53,6 +53,10 @@
       margin-bottom: 36px;
     }
 
+    .password:focus {
+      border: 1px solid $royalBlue;
+    }
+
     .unlock {
       margin-bottom: 30px;
     }

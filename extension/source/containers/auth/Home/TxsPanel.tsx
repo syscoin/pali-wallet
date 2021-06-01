@@ -41,8 +41,6 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
 
   const TokenTypeGroupBar = useCallback(
     (asset: Assets, idx: number) => {
-      console.log(assets)
-      console.log(idx)
       return (
         idx === 0 || controller.wallet.account.isNFT(asset.assetGuid) !==
         controller.wallet.account.isNFT(assets[idx - 1].assetGuid)
@@ -101,7 +99,6 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
       className={clsx(styles.activity, { [styles.expanded]: isShowed })}
       onScroll={handleScroll}
     >
-
       {!!(!isShowed) ?
         <div className={styles.wrapper}>
           <div className={styles.center}>
@@ -109,7 +106,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
               type="button"
               theme={isActivity ? "btn-rectangle-primary" : "btn-rectangle-selected"}
               variant={styles.button}
-              onClick={() => { setActivity(false) }}
+              onClick={() => {setActivity(false)}}
             >
               Assets
             </Button>
@@ -118,7 +115,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
               type="button"
               theme={isActivity ? "btn-rectangle-selected" : "btn-rectangle-primary"}
               variant={styles.button}
-              onClick={() => { setActivity(true) }}
+              onClick={() => {setActivity(true)}}
             >
               Activity
             </Button>
@@ -138,7 +135,6 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
           <>
             <ul>
               {transactions.map((tx: Transaction, idx: number) => {
-                // const isRecived = tx.receiver === address;
                 const isConfirmed = tx.confirmations > 0;
 
                 return (

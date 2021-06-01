@@ -257,17 +257,21 @@ const AccountController = (actions: {
         if (network === "main" && resAddress.prefix === "sys") {
           encode = bech32.encode(resAddress.prefix, resAddress.words);
   
+          if (address === account.address.main) {
+            return false;
+          }
+
           return encode === address.toLowerCase();
         }
     
         if (network === "testnet" && resAddress.prefix === "tsys") {
           encode = bech32.encode(resAddress.prefix, resAddress.words);
+
+          if (address === account.address.main) {
+            return false;
+          }
     
           return encode === address.toLowerCase();
-        }
-
-        if (address === account.address.main) {
-          return false;
         }
       } catch (error) {
         return false;

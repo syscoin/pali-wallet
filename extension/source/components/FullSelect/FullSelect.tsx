@@ -5,8 +5,6 @@ import DownArrowIcon from '@material-ui/icons/ExpandMore';
 import styles from './FullSelect.scss';
 
 interface IOptions {
-  // key => value of Option
-  // value => label of Option
   [key: string]: any;
 }
 
@@ -31,7 +29,7 @@ const FullSelect: FC<IFullSelect> = ({ options, value, onChange }) => {
       <ul className={styles.options}>
         {Object.keys(options).map((key: string) => (
           <li key={key} onClick={() => onChange(key)}>
-            {options[key]!.label}
+            <p>{options[key]!.label}</p>
           </li>
         ))}
       </ul>
