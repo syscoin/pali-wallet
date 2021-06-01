@@ -65,41 +65,48 @@
       }
     }
 
-    .iconBtn {
-      background: $royalBlue;
-      width: 48px;
-      height: 48px;
-      margin-top: 24px;
-      transition: all 0.3s;
+    .copy {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      text-align: center;
 
-      & ~ span {
-        font-weight: 500;
-        font-size: 1rem;
-        // line-height: 24px;
-        margin-left: 1rem;
-        align-items: center;
-        // text-transform: uppercase;
+      .iconBtn {
+        background: $royalBlue;
+        width: 48px;
+        height: 48px;
+        margin-top: 18px;
         transition: all 0.3s;
-        color: $royalBlue;
+  
+        & ~ span {
+          font-weight: 500;
+          font-size: .8rem;
+          margin-top: .5rem;
+          align-items: center;
+          transition: all 0.3s;
+          color: $royalBlue;
+    
+          &.active {
+            color: $deepPink-100;
+          }
+        }
+  
+        &:hover {
+          background: $royalBlue-medium;
+        }
   
         &.active {
-          color: $deepPink-100;
+          background: $deepPink;
+        }
+  
+        .icon {
+          color: $white;
+          font-size: 1.5rem;
         }
       }
-
-      &:hover {
-        background: $royalBlue-medium;
-      }
-
-      &.active {
-        background: $deepPink;
-      }
-
-      .icon {
-        color: $white;
-        font-size: 1.5rem;
-      }
     }
+
   }
 }
 

@@ -25,6 +25,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { issueNFT } from 'state/wallet';
+import { getHost } from '../scripts/Background/helpers';
 
 const Auth = () => {
   const location = useLocation();
@@ -47,7 +48,7 @@ const Auth = () => {
 
   const connectedAccounts = accounts.filter(account => {
     return account.connectedTo.findIndex((url: any) => {
-      return url == currentSenderURL;
+      return url == getHost(currentSenderURL);
     }) > -1;
   });
 

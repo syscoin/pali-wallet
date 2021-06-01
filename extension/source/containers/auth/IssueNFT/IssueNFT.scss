@@ -92,4 +92,38 @@
       width: 144px;
     }
   }
+
+  .mask {
+    transition: all 0.3s;
+    display: flex;
+    width: 100vw;
+    height: 100vh;
+    align-items: center;
+    justify-content: center;
+    background: $navy;
+    opacity: 1;
+    backdrop-filter: blur(0px);
+
+    .loader {
+      width: 60px;
+      height: 60px;
+      transition: all 300ms;
+      opacity: 1;
+
+      svg {
+        color: $white;
+      }
+    }
+
+    &.hide {
+      opacity: 0;
+      backdrop-filter: blur(10px);
+      align-items: center;
+      justify-content: center;
+
+      & .loader {
+        opacity: 0;
+      }
+    }
+  }
 }

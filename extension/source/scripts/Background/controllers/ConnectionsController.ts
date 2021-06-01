@@ -23,7 +23,7 @@ const isNFT = (guid: number) => {
 const ConnectionsController = (): IConnectionsController => {
   const onWalletUpdate = (onUpdated: any) => {
     window.addEventListener('message', (event) => {
-      if (event.data.type === 'WALLET_UPDATED') {
+      if (event.data.type === 'WALLET_UPDATED' && event.data.target === 'connectionsController') {
         onUpdated();
       }
     });
@@ -86,12 +86,12 @@ const ConnectionsController = (): IConnectionsController => {
 
   const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, description: string, receiver: string) => {
     return await sendMessage({
-      type: 'CREATE_TOKEN',
+      type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
       target: 'connectionsController',
       freeze: true,
       eventResult: 'complete'
     }, {
-      type: 'CREATE_TOKEN',
+      type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
       target: 'contentScript',
       precision,
       symbol,

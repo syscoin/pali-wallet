@@ -10,15 +10,18 @@ import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { ellipsis } from '../helpers';
+import { getHost } from '../../../scripts/Background/helpers';
+import { useAlert } from 'react-alert';
 
 const ConfirmConnection = () => {
+  const alert = useAlert();
   const { accounts, currentSenderURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
   const connectedAccount = accounts.filter(account => {
     return account.connectedTo.find((url: any) => {
-      return url == currentSenderURL;
+      return url == getHost(currentSenderURL);
     });
   });
 
@@ -28,25 +31,29 @@ const ConfirmConnection = () => {
       target: "background",
       id: connectedAccount[0].id,
       url: currentSenderURL
-    });
-
-    browser.runtime.sendMessage({
-      type: "CLOSE_POPUP",
-      target: "background"
+    }).then(() => {
+      browser.runtime.sendMessage({
+        type: "CLOSE_POPUP",
+        target: "background"
+      });
     });
   }
 
   const handleConfirmConnection = () => {
-    browser.runtime.sendMessage({
-      type: "CONFIRM_CONNECTION",
-      target: "background",
-      id: connectedAccount[0].id
-    });
-
-    browser.runtime.sendMessage({
-      type: "CLOSE_POPUP",
-      target: "background"
-    });
+    try {
+      browser.runtime.sendMessage({
+        type: "CONFIRM_CONNECTION",
+        target: "background"
+      }).then(() => {
+        browser.runtime.sendMessage({
+          type: "CLOSE_POPUP",
+          target: "background"
+        });
+      });
+    } catch (error) {
+      alert.removeAll();
+      alert.error('Sorry, an internal error has occurred.');
+    }
   }
 
   return (

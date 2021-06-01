@@ -73,10 +73,12 @@ const FormMintNFT = (props) => {
     console.log('tokens', data);
     console.log('store controller', store.getState());
 
+
     const setup = async () => {
       if (store.getState().controller) {
         console.log('store', store.getState().controller)
         // setData(await store.getState().controller.getUserMintedTokens());
+
       }
     }
 

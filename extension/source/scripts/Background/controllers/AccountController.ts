@@ -44,10 +44,10 @@ export interface IAccountController {
   createSPT: (spt: ISPTInfo) => void;
   issueSPT: (spt: ISPTIssue) => void;
   issueNFT: (nft: INFTIssue) => void;
-  confirmNewSPT: () => Promise<null | any>;
-  confirmIssueSPT: () => Promise<null | any>;
-  confirmIssueNFT: () => Promise<null | any>;
-  confirmTempTx: () => Promise<null | any>;
+  confirmNewSPT: () => void;
+  confirmIssueSPT: () => void;
+  confirmIssueNFT: () => void;
+  confirmTempTx: () => void;
   setNewAddress: (addr: string) => boolean;
   setNewXpub: (id: number, xpub: string) => boolean;
   getUserMintedTokens: () => any;
@@ -55,6 +55,18 @@ export interface IAccountController {
   getCollection: () => any;
   getTransactionInfoByTxId: (txid: any) => any;
   getSysExplorerSearch: () => string;
+  setDataFromPageToCreateNewSPT: (data: any) => void;
+  getDataFromPageToCreateNewSPT: () => any | null;
+  setDataFromWalletToCreateSPT: (data: any) => void;
+  getDataFromWalletToCreateSPT: () => any | null;
+  setDataFromPageToMintSPT: (data: any) => void;
+  getDataFromPageToMintSPT: () => any | null;
+  setDataFromWalletToMintSPT: (data: any) => void;
+  getDataFromWalletToMintSPT: () => any | null;
+  setDataFromPageToMintNFT: (data: any) => void;
+  getDataFromPageToMintNFT: () => any | null;
+  setDataFromWalletToMintNFT: (data: any) => void;
+  getDataFromWalletToMintNFT: () => any | null;
 }
 
 const AccountController = (actions: {
@@ -68,6 +80,12 @@ const AccountController = (actions: {
   let mintSPT: ISPTIssue | null;
   let mintNFT: INFTIssue | null;
   let collection: any;
+  let dataFromPageToCreateSPT: any;
+  let dataFromWalletToCreateSPT: any;
+  let dataFromPageToMintSPT: any;
+  let dataFromWalletToMintSPT: any;
+  let dataFromPageToMintNFT: any;
+  let dataFromWalletToMintNFT: any;
 
   const getAccountInfo = async (): Promise<IAccountInfo> => {
     let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
@@ -225,14 +243,18 @@ const AccountController = (actions: {
 
   const isValidSYSAddress = (address: string) => {
     if (address) { // validate sys address
-      return true;
+      if (address !== account.address.main) {
+        return true;
+      }
     }
+
     return false;
   };
 
   const isNFT = (guid: number) => {
-    let assetGuid = BigInt.asUintN(64, BigInt(guid))
-    return (assetGuid >> BigInt(32)) > 0
+    let assetGuid = BigInt.asUintN(64, BigInt(guid));
+
+    return (assetGuid >> BigInt(32)) > 0;
   }
 
   const getRecommendFee = async () => {
@@ -293,7 +315,6 @@ const AccountController = (actions: {
   }
 
   const setNewXpub = (id: number, xpub: string) => {
-
     store.dispatch(
       updateAccountXpub({
         id: id,
@@ -304,12 +325,58 @@ const AccountController = (actions: {
     return true;
   }
 
+  const setDataFromPageToCreateNewSPT = (data: any) => {
+    dataFromPageToCreateSPT = data;
+  } 
+  const getDataFromPageToCreateNewSPT = () => {
+    return dataFromPageToCreateSPT || null;
+  }
+
+  const setDataFromWalletToCreateSPT = (data: any) => {
+    dataFromWalletToCreateSPT = data;
+  }
+
+  const getDataFromWalletToCreateSPT = () => {
+    return dataFromWalletToCreateSPT || null;
+  }
+
+  const setDataFromPageToMintSPT = (data: any) => {
+    dataFromPageToMintSPT = data;
+  }
+  
+  const getDataFromPageToMintSPT = () => {
+    return dataFromPageToMintSPT || null;
+  }
+
+  const setDataFromWalletToMintSPT = (data: any) => {
+    console.log('data mint spt', data)
+    dataFromWalletToMintSPT = data;
+  }
+
+  const getDataFromWalletToMintSPT = () => {
+    return dataFromWalletToMintSPT || null;
+  }
+
+  const setDataFromPageToMintNFT = (data: any) => {
+    dataFromPageToMintNFT = data;
+  } 
+  const getDataFromPageToMintNFT = () => {
+    return dataFromPageToMintNFT || null;
+  }
+
+  const setDataFromWalletToMintNFT = (data: any) => {
+    console.log('set data nft', data)
+    dataFromWalletToMintNFT = data;
+  }
+
+  const getDataFromWalletToMintNFT = () => {
+    console.log('data mint nft', dataFromWalletToMintNFT)
+    return dataFromWalletToMintNFT || null;
+  }
 
   const createSPT = (spt: ISPTInfo) => {
     newSPT = spt;
-    console.log("checkout the spt")
-    console.log(newSPT)
-    console.log(typeof newSPT.precision)
+    console.log("checkout the spt", spt)
 
     return true;
   }
@@ -326,7 +393,32 @@ const AccountController = (actions: {
     return true;
   }
 
-  const confirmNewSPT = async () => {
+  const confirmSPTCreation = async (item: any) => {
+    const newMaxSupply = item.maxsupply * 1e8;
+
+    const _assetOpts = {
+      precision: item.precision, symbol: item.symbol, maxsupply: new sys.utils.BN(newMaxSupply), description: item.description
+    }
+
+    const txOpts = { rbf: item.rbf }
+      
+    const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, null, new sys.utils.BN(item.fee * 1e8));
+    
+    const txInfo = pendingTx.extractTransaction().getId();
+
+    store.dispatch(
+      updateTransactions({
+        id: account.id,
+        txs: [_coventPendingType(txInfo), ...account.transactions],
+      })
+    );
+
+    item = null;
+
+    watchMemPool();
+  }
+
+  const handleTransactions = (item: any, executeTransaction: any) => {
     if (!sysjs) {
       throw new Error('Error: No signed account exists');
     }
@@ -335,36 +427,12 @@ const AccountController = (actions: {
       throw new Error("Error: Can't find active account info");
     }
 
-    if (!newSPT) {
+    if (!item) {
       throw new Error("Error: Can't find NewSPT info");
     }
 
     try {
-      const newMaxSupply = newSPT.maxsupply * 1e8;
-
-      const _assetOpts = {
-        precision: newSPT.precision, symbol: newSPT.symbol, maxsupply: new sys.utils.BN(newMaxSupply), description: newSPT.description
-      }
-
-      console.log('new spt', newSPT)
-      console.log('asset opts max sup fee', _assetOpts, newSPT.maxsupply, newSPT.maxsupply * 1e8, newSPT.fee, newSPT.fee * 1e8)
-
-      const txOpts = { rbf: newSPT.rbf }
-      
-      const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, null, new sys.utils.BN(newSPT.fee * 1e8));
-    
-      const txInfo = pendingTx.extractTransaction().getId();
-
-      store.dispatch(
-        updateTransactions({
-          id: account.id,
-          txs: [_coventPendingType(txInfo), ...account.transactions],
-        })
-      );
-
-      newSPT = null;
-
-      watchMemPool();
+      executeTransaction(item);
 
       return null;
     } catch (error) {
@@ -372,43 +440,102 @@ const AccountController = (actions: {
     }
   }
 
-  const confirmIssueSPT = async () => {
-    if (!sysjs) {
-      throw new Error('Error: No signed account exists');
+  const confirmNewSPT = () => {
+    handleTransactions(newSPT, confirmSPTCreation);
+  }
+
+  const confirmMintSPT = async (item: any) => {
+    const feeRate = new sys.utils.BN(item.fee * 1e8);
+    const txOpts = { rbf: item.rbf };
+    const assetGuid = item.assetGuid;
+    const assetChangeAddress = null;
+
+    console.log('mint spt', item)
+
+    const assetMap = new Map([
+      [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(item.amount * 1e8), address: item.receiver }] }]
+    ]);
+
+    const sysChangeAddress = null;
+
+    const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
+
+    console.log('minting spt pendingTx', pendingTx);
+
+    if (!pendingTx) {
+      console.log('Could not create transaction, not enough funds?')
     }
 
-    if (!account) {
-      throw new Error("Error: Can't find active account info");
+    const txInfo = pendingTx.extractTransaction().getId();
+    console.log('tx info mint spt', txInfo)
+
+    store.dispatch(
+      updateTransactions({
+        id: account.id,
+        txs: [_coventPendingType(txInfo), ...account.transactions],
+      })
+    );
+
+    watchMemPool();
+  }
+
+  const confirmIssueSPT = () => {
+    handleTransactions(mintSPT, confirmMintSPT);
+  }
+
+  const confirmMintNFT = async (item: any) => {
+    const feeRate = new sys.utils.BN(item.fee * 1e8);
+    const txOpts = { rbf: item?.rbf };
+    const assetGuid = item?.assetGuid;
+    const NFTID = sys.utils.createAssetID('1', assetGuid);
+    const assetChangeAddress = null;
+
+    const assetMap = new Map([
+      [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1000), address: item?.receiver }] }],
+      [NFTID, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1), address: item?.receiver }] }]
+    ]);
+
+    console.log('mint nft', item)
+    console.log('minting nft asset map', assetMap);
+
+    const sysChangeAddress = null;
+
+    const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
+
+    console.log('minting nft pendingTx', pendingTx);
+
+    if (!pendingTx) {
+      console.log('Could not create transaction, not enough funds?')
     }
 
-    if (!mintSPT) {
-      throw new Error("Error: Can't find transaction info");
-    }
+    const txInfo = pendingTx.extractTransaction().getId();
+    console.log('tx info mint nft', txInfo)
 
-    try {
-      const feeRate = new sys.utils.BN(mintSPT.fee * 1e8);
-      const txOpts = { rbf: mintSPT.rbf };
-      const assetGuid = mintSPT.assetGuid;
-      const assetChangeAddress = null;
+    store.dispatch(
+      updateTransactions({
+        id: account.id,
+        txs: [_coventPendingType(txInfo), ...account.transactions],
+      })
+    );
 
-      console.log('mint spt', mintSPT)
+    mintNFT = null;  
+  }
+
+  const confirmIssueNFT = () => {
+    handleTransactions(mintNFT, confirmMintNFT);
+  }
+
+  const confirmTransactionTx = async (item: any) => {
+    if (item.isToken && item.token) {
+      const txOpts = { rbf: item.rbf }
+      const value = isNFT(item.token.assetGuid) ? new sys.utils.BN(item.amount) : new sys.utils.BN(item.amount * 10 ** item.token.decimals);
 
       const assetMap = new Map([
-        [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(mintSPT.amount * 1e8), address: mintSPT.receiver }] }]
+        [item.token.assetGuid, { changeAddress: null, outputs: [{ value: value, address: item.toAddress }] }]
       ]);
 
-      const sysChangeAddress = null;
-
-      const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
-
-      console.log('minting spt pendingTx', pendingTx);
-
-      if (!pendingTx) {
-        console.log('Could not create transaction, not enough funds?')
-      }
-
+      const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(item.fee * 1e8));
       const txInfo = pendingTx.extractTransaction().getId();
-      console.log('tx info mint spt', txInfo)
 
       store.dispatch(
         updateTransactions({
@@ -416,55 +543,14 @@ const AccountController = (actions: {
           txs: [_coventPendingType(txInfo), ...account.transactions],
         })
       );
+    } else {
+      const _outputsArr = [
+        { address: item.toAddress, value: new sys.utils.BN(item.amount * 1e8) }
+      ];
+      const txOpts = { rbf: item.rbf }
 
-      watchMemPool();
-
-      return null;
-    } catch (error) {
-      throw new Error(error);
-    }
-  }
-
-  const confirmIssueNFT = async () => {
-    if (!sysjs) {
-      throw new Error('Error: No signed account exists');
-    }
-
-    if (!account) {
-      throw new Error("Error: Can't find active account info");
-    }
-
-    if (!mintNFT) {
-      throw new Error("Error: Can't find transaction info");
-    }
-
-    try {
-      const feeRate = new sys.utils.BN(mintNFT.fee * 1e8);
-      const txOpts = { rbf: mintNFT?.rbf };
-      const assetGuid = mintNFT?.assetGuid;
-      const NFTID = sys.utils.createAssetID('1', assetGuid);
-      const assetChangeAddress = null;
-
-      const assetMap = new Map([
-        [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1000), address: mintNFT?.receiver }] }],
-        [NFTID, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1), address: mintNFT?.receiver }] }]
-      ]);
-
-      console.log('mint nft', mintNFT)
-      console.log('minting nft asset map', assetMap);
-
-      const sysChangeAddress = null;
-
-      const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
-
-      console.log('minting nft pendingTx', pendingTx);
-
-      if (!pendingTx) {
-        console.log('Could not create transaction, not enough funds?')
-      }
-
+      const pendingTx = await sysjs.createTransaction(txOpts, null, _outputsArr, new sys.utils.BN(item.fee * 1e8));
       const txInfo = pendingTx.extractTransaction().getId();
-      console.log('tx info mint nft', txInfo)
 
       store.dispatch(
         updateTransactions({
@@ -472,71 +558,15 @@ const AccountController = (actions: {
           txs: [_coventPendingType(txInfo), ...account.transactions],
         })
       );
-
-      mintNFT = null;
-
-      return null;
-    } catch (error) {
-      throw new Error(error);
     }
+
+    item = null;
+
+    watchMemPool();
   }
 
-  const confirmTempTx = async () => {
-    if (!sysjs) {
-      throw new Error('Error: No signed account exists');
-    }
-
-    if (!account) {
-      throw new Error("Error: Can't find active account info");
-    }
-
-    if (!tempTx) {
-      throw new Error("Error: Can't find transaction info");
-    }
-
-    try {
-      if (tempTx.isToken && tempTx.token) {
-        const txOpts = { rbf: tempTx.rbf }
-        const value = isNFT(tempTx.token.assetGuid) ? new sys.utils.BN(tempTx.amount) : new sys.utils.BN(tempTx.amount * 10 ** tempTx.token.decimals);
-
-        const assetMap = new Map([
-          [tempTx.token.assetGuid, { changeAddress: null, outputs: [{ value: value, address: tempTx.toAddress }] }]
-        ]);
-
-        const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(tempTx.fee * 1e8));
-        const txInfo = pendingTx.extractTransaction().getId();
-
-        store.dispatch(
-          updateTransactions({
-            id: account.id,
-            txs: [_coventPendingType(txInfo), ...account.transactions],
-          })
-        );
-      } else {
-        const _outputsArr = [
-          { address: tempTx.toAddress, value: new sys.utils.BN(tempTx.amount * 1e8) }
-        ];
-        const txOpts = { rbf: tempTx.rbf }
-
-        const pendingTx = await sysjs.createTransaction(txOpts, null, _outputsArr, new sys.utils.BN(tempTx.fee * 1e8));
-        const txInfo = pendingTx.extractTransaction().getId();
-
-        store.dispatch(
-          updateTransactions({
-            id: account.id,
-            txs: [_coventPendingType(txInfo), ...account.transactions],
-          })
-        );
-      }
-
-      tempTx = null;
-
-      watchMemPool();
-
-      return null;
-    } catch (error) {
-      throw new Error(error);
-    }
+  const confirmTempTx = () => {
+    handleTransactions(tempTx, confirmTransactionTx);
   };
 
   const getUserMintedTokens = async () => {
@@ -548,7 +578,7 @@ const AccountController = (actions: {
       res.transactions.map((transaction: any) => {
         if (transaction.tokenType === 'SPTAssetActivate' && transaction.tokenTransfers) {
           for (let item of transaction.tokenTransfers) {
-            if (!mintedTokens.includes({ assetGuid: item.token, symbol: atob(item.symbol) })) {
+            if (mintedTokens.indexOf({ assetGuid: item.token, symbol: atob(item.symbol) }) === -1) {
               mintedTokens.push({
                 assetGuid: item.token,
                 symbol: atob(item.symbol)
@@ -629,7 +659,19 @@ const AccountController = (actions: {
     createCollection,
     getCollection,
     getTransactionInfoByTxId,
-    getSysExplorerSearch
+    getSysExplorerSearch,
+    setDataFromPageToCreateNewSPT,
+    getDataFromPageToCreateNewSPT,
+    setDataFromWalletToCreateSPT,
+    getDataFromWalletToCreateSPT,
+    setDataFromPageToMintSPT,
+    getDataFromPageToMintSPT,
+    setDataFromWalletToMintSPT,
+    getDataFromWalletToMintSPT,
+    setDataFromPageToMintNFT,
+    getDataFromPageToMintNFT,
+    setDataFromWalletToMintNFT,
+    getDataFromWalletToMintNFT
   };
 };
 

@@ -17,6 +17,7 @@ import TxsPanel from './TxsPanel';
 
 import styles from './Home.scss';
 import { formatNumber } from '../helpers';
+import { getHost } from '../../../scripts/Background/helpers';
 
 const Home = () => {
   const controller = useController();
@@ -46,7 +47,7 @@ const Home = () => {
     if (accounts[activeAccountId]) {
       if (accounts[activeAccountId].connectedTo.length > 0) {
         setIsConnected(accounts[activeAccountId].connectedTo.findIndex((url: any) => {
-          return url == currentURL;
+          return url == getHost(currentURL);
       }) > -1);
 
         return;
@@ -59,6 +60,10 @@ const Home = () => {
     activeAccountId,
     currentURL
   ]);
+
+  const handleSetModalIsOpen = () =>{
+    setIsOpenModal(!isOpenModal);
+  }
 
   return (
     <div className={styles.wrapper}>
@@ -90,11 +95,11 @@ const Home = () => {
            }
 
             {isOpenModal && isConnected && (
-              <Modal title={currentURL} connected />
+              <Modal title={currentURL} connected callback={handleSetModalIsOpen} />
             )}
 
             {isOpenModal && (!isConnected) && (
-              <Modal title={currentURL} message="This account is not connected this site. To connect to a web3 site, find the connect button on their site." />
+              <Modal title={currentURL} message="This account is not connected this site. To connect to a web3 site, find the connect button on their site." callback={handleSetModalIsOpen} />
             )}
 
             <h3>

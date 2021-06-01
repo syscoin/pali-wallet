@@ -17,6 +17,7 @@ import { useAlert } from 'react-alert';
 
 import styles from './Confirm.scss';
 import { browser } from 'webextension-polyfill-ts';
+import { getHost } from '../../../scripts/Background/helpers';
 
 const SendConfirm = () => {
   const controller = useController();
@@ -28,7 +29,7 @@ const SendConfirm = () => {
   );
   const connectedAccount = accounts.find((account: IAccountState) => {
     return account.connectedTo.find((url: any) => {
-      return url === currentSenderURL;
+      return url === getHost(currentSenderURL);
     });
   });
   const tempTx = controller.wallet.account.getTempTx();
@@ -40,22 +41,21 @@ const SendConfirm = () => {
     if (accounts[activeAccountId].balance > 0) {
       setLoading(true);
 
-      controller.wallet.account.confirmTempTx().then(result => {
-        if (result) {
-          alert.removeAll();
-          alert.error(result.message);
-
-          return;
-        }
+      try {
+        controller.wallet.account.confirmTempTx();
 
         setConfirmed(true);
         setLoading(false);
-      });
+      } catch (error) {
+        alert.removeAll();
+        alert.error('Error confirming transaction.');
+        
+        if (confirmingTransaction) {
+          handleCancelTransactionOnSite();
 
-      browser.runtime.sendMessage({
-        type: 'WALLET_UPDATED',
-        target: 'background'
-      });
+          return;
+        }
+      }
     }
   };
 

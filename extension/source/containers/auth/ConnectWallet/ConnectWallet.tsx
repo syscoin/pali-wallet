@@ -21,6 +21,7 @@ const ConnectWallet = () => {
 
   const handleSelectAccount = (id: number) => {
     setAccountId(id);
+    
     browser.runtime.sendMessage({
       type: "SELECT_ACCOUNT",
       target: "background",

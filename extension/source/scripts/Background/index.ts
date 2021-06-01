@@ -20,11 +20,12 @@ import {
 
 import MasterController, { IMasterController } from './controllers';
 import { IAccountState } from 'state/wallet/types';
+import { getHost } from './helpers';
 
 declare global {
   interface Window {
     controller: Readonly<IMasterController>;
-    senderURL: string | undefined;
+    senderURL: string;
   }
 }
 
@@ -33,7 +34,48 @@ if (!window.controller) {
   setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
 }
 
-browser.runtime.onInstalled.addListener((): void => {
+const observeStore = async (store: any) => {
+  let currentState: any;
+
+  const handleChange = async () => {
+    let nextState = store.getState();
+    
+    if (nextState !== currentState) {
+      currentState = nextState;
+
+      const tabs = await browser.tabs.query({
+        active: true,
+        windowType: 'normal'
+      });
+
+      const isAccountConnected = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
+        return account.connectedTo.find((url: string) => {
+          return url === new URL(`${tabs[0].url}`).host;
+        })
+      }) >= 0;
+
+      if (isAccountConnected) {
+        await browser.tabs.sendMessage(Number(tabs[0].id), {
+          type: 'WALLET_UPDATED',
+          target: 'contentScript',
+          connected: false
+        });
+
+        return;
+      }
+    }
+  }
+
+  let unsubscribe = store.subscribe(handleChange);
+
+  await handleChange();
+
+  return unsubscribe;
+}
+
+observeStore(store);
+
+browser.runtime.onInstalled.addListener(async () => {
   console.emoji('🤩', 'Syscoin extension installed');
 
   window.controller.stateUpdater();
@@ -50,15 +92,22 @@ browser.runtime.onInstalled.addListener((): void => {
     });
 
     const tabId = Number(tabs[0].id);
-    let createTokenFee: number = 0.00001;
-    let mintSPTFee: number = 0.00001;
-    let mintNFTFee: number = 0.00001;
-    let rbfCreateToken: boolean = false;
-    let rbfMintSPT: boolean = false;
-    let rbfMintNFT: boolean = false;
 
     const createPopup = async (url: string) => {
-      return await browser.windows.create({
+      const allWindows = await browser.windows.getAll({
+        windowTypes: ['popup']
+      });
+
+      if (allWindows[0]) {
+        await browser.windows.update(Number(allWindows[0].id), {
+          drawAttention: true,
+          focused: true
+        });
+
+        return;
+      }
+
+      await browser.windows.create({
         url,
         type: 'popup',
         width: 372,
@@ -66,68 +115,44 @@ browser.runtime.onInstalled.addListener((): void => {
         left: 900,
         top: 90
       });
-    }
+    };
 
     if (typeof request == 'object') {
       if (type == 'CONNECT_WALLET' && target == 'background') {
-        const URL = browser.runtime.getURL('app.html');
+        const url = browser.runtime.getURL('app.html');
 
-        store.dispatch(setSenderURL(sender.url));
+        store.dispatch(setSenderURL(`${sender.url}`));
         store.dispatch(updateCanConnect(true));
 
-        await createPopup(URL);
+        await createPopup(url);
 
-        window.senderURL = sender.url;
-
-        return;
-      }
-
-      if (type == 'WALLET_UPDATED' && target == 'background') {
-        browser.tabs.sendMessage(tabId, {
-          type: 'WALLET_UPDATED',
-          target: 'contentScript',
-          connected: false
-        });
+        window.senderURL = `${sender.url}`;
 
         return;
       }
-
-      if (type == 'SUBSCRIBE' && target == 'background') {
-        console.log('subscribe ok')
-
-        return;
-      }
-      if (type == 'ISSUE_ASSETGUID' && target == 'background') {
-        
-        browser.tabs.sendMessage(tabId, {
-          type: 'ISSUE_ASSETGUID',
-          target: 'contentScript',
-          eventResult: 'complete'
-        });
-      }
-
-
-
 
       if (type == 'RESET_CONNECTION_INFO' && target == 'background') {
-        store.dispatch(setSenderURL(''));
         store.dispatch(updateCanConnect(false));
-
         store.dispatch(removeConnection({
           accountId: request.id,
           url: request.url
         }));
+        store.dispatch(setSenderURL(''));
 
-        browser.tabs.sendMessage(tabId, {
+        Promise.resolve(browser.tabs.sendMessage(Number(tabs[0].id), {
           type: 'WALLET_UPDATED',
           target: 'contentScript',
           connected: false
-        });
+        }).then((response) => {
+          console.log('wallet updated', response)
+        }))
 
         return;
       }
 
       if (type == 'SELECT_ACCOUNT' && target == 'background') {
+        console.log('sender url', window.senderURL);
+
         store.dispatch(updateConnectionsArray({
           accountId: request.id,
           url: window.senderURL
@@ -142,25 +167,13 @@ browser.runtime.onInstalled.addListener((): void => {
           url: window.senderURL
         }));
 
-        browser.tabs.sendMessage(tabId, {
-          type: 'WALLET_UPDATED',
-          target: 'contentScript',
-          connected: false
-        });
-
         return;
       }
 
       if (type == 'CONFIRM_CONNECTION' && target == 'background') {
-        if (window.senderURL == store.getState().wallet.currentURL) {
+        if (getHost(window.senderURL) == getHost(store.getState().wallet.currentURL)) {
           store.dispatch(updateCanConnect(false));
-
-          browser.tabs.sendMessage(tabId, {
-            type: 'WALLET_UPDATED',
-            target: 'contentScript',
-            connected: false
-          });
-
+          
           return;
         }
 
@@ -184,12 +197,6 @@ browser.runtime.onInstalled.addListener((): void => {
         store.dispatch(issueNFT(false));
 
         browser.tabs.sendMessage(tabId, {
-          type: 'WALLET_UPDATED',
-          target: 'contentScript',
-          connected: false
-        });
-
-        browser.tabs.sendMessage(tabId, {
           type: 'DISCONNECT',
           target: 'contentScript'
         });
@@ -207,7 +214,10 @@ browser.runtime.onInstalled.addListener((): void => {
 
       if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'background') {
         const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
-          return account.connectedTo.find((url) => url === store.getState().wallet.currentURL);
+          return account.connectedTo.find((url) => {
+            console.log(url === getHost(store.getState().wallet.currentURL))
+            return url === getHost(store.getState().wallet.currentURL)
+          });
         });
 
         browser.tabs.sendMessage(tabId, {
@@ -240,60 +250,18 @@ browser.runtime.onInstalled.addListener((): void => {
 
         store.dispatch(updateCanConfirmTransaction(true));
 
-        const URL = browser.runtime.getURL('app.html');
+        const appURL = browser.runtime.getURL('app.html');
 
-        await createPopup(URL);
+        await createPopup(appURL);
 
         browser.tabs.sendMessage(tabId, {
           type: 'SEND_TOKEN',
           target: 'contentScript',
           complete: true
         });
-
-        browser.tabs.sendMessage(tabId, {
-          type: 'WALLET_UPDATED',
-          target: 'contentScript',
-          connected: false
-        });
       }
 
-      if (type == 'SEND_FEE_TO_CREATE_TOKEN' && target == 'background') {
-        console.log('create token fee before', createTokenFee)
-        createTokenFee = request.createTokenFee;
-        console.log('create token fee after', createTokenFee)
-      }
-
-      if (type == 'SEND_FEE_TO_MINT_SPT' && target == 'background') {
-        console.log('mint token fee before', mintSPTFee)
-        mintSPTFee = request.mintSPTFee;
-        console.log('mint token fee after', mintSPTFee)
-      }
-
-      if (type == 'SEND_FEE_TO_MINT_NFT' && target == 'background') {
-        console.log('mint token fee before', mintNFTFee)
-        mintNFTFee = request.mintNFTFee;
-        console.log('mint token fee after', mintNFTFee)
-      }
-
-      if (type == 'RBF_TO_CREATE_TOKEN' && target == 'background') {
-        console.log('create token rbf before', rbfCreateToken)
-        rbfCreateToken = request.rbfCreateToken;
-        console.log('create token rbf after', rbfCreateToken)
-      }
-
-      if (type == 'RBF_TO_MINT_SPT' && target == 'background') {
-        console.log('mint token rbf before', rbfMintSPT)
-        rbfMintSPT = request.rbfMintSPT;
-        console.log('mint token rbf after', rbfMintSPT)
-      }
-
-      if (type == 'RBF_TO_MINT_NFT' && target == 'background') {
-        console.log('mint nft rbf before', rbfMintNFT)
-        rbfMintNFT = request.rbfMintNFT;
-        console.log('mint nft rbf after', rbfMintNFT)
-      }
-
-      if (type == 'CREATE_TOKEN' && target == 'background') {
+      if (type == 'DATA_FROM_PAGE_TO_CREATE_TOKEN' && target == 'background') {
         const {
           precision,
           symbol,
@@ -302,29 +270,34 @@ browser.runtime.onInstalled.addListener((): void => {
           receiver,
         } = request;
 
-        console.log('create token fee', createTokenFee)
-
-        window.controller.wallet.account.createSPT({
+        window.controller.wallet.account.setDataFromPageToCreateNewSPT({
           precision,
           symbol,
           maxsupply,
-          fee: createTokenFee,
           description,
-          receiver,
-          rbf: rbfCreateToken
+          receiver
         });
 
         store.dispatch(createAsset(true));
 
-        const URL = browser.runtime.getURL('app.html');
+        const appURL = browser.runtime.getURL('app.html');
 
-        await createPopup(URL);
+        await createPopup(appURL);
 
         browser.tabs.sendMessage(tabId, {
-          type: 'CREATE_TOKEN',
+          type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
           target: 'contentScript',
           complete: true
         });
+      }
+
+      if (type == 'DATA_FROM_WALLET_TO_CREATE_TOKEN' && target == 'background') {
+        window.controller.wallet.account.createSPT({
+          ...window.controller.wallet.account.getDataFromPageToCreateNewSPT(),
+          ...window.controller.wallet.account.getDataFromWalletToCreateSPT()
+        });
+
+        console.log('checking spt background', window.controller.wallet.account.getNewSPT())
       }
 
       if (type == 'ISSUE_SPT' && target == 'background') {
@@ -334,27 +307,32 @@ browser.runtime.onInstalled.addListener((): void => {
           assetGuid
         } = request;
 
-        console.log('reqiest mint spt', request)
-
-        window.controller.wallet.account.issueSPT({
-          assetGuid: assetGuid,
-          amount: Number(amount),
-          fee: mintSPTFee,
-          receiver: receiver,
-          rbf: rbfMintSPT
+        window.controller.wallet.account.setDataFromPageToMintSPT({
+          assetGuid,
+          receiver,
+          amount: Number(amount)
         });
 
         store.dispatch(issueAsset(true));
 
-        const URL = browser.runtime.getURL('app.html');
+        const appURL = browser.runtime.getURL('app.html');
 
-        await createPopup(URL);
+        await createPopup(appURL);
 
         browser.tabs.sendMessage(tabId, {
           type: 'ISSUE_SPT',
           target: 'contentScript',
           complete: true
         });
+      }
+
+      if (type == 'DATA_FROM_WALLET_TO_MINT_TOKEN' && target == 'background') {
+        window.controller.wallet.account.issueSPT({
+          ...window.controller.wallet.account.getDataFromPageToMintSPT(),
+          ...window.controller.wallet.account.getDataFromWalletToMintSPT()
+        });
+
+        console.log('checking mint spt background', window.controller.wallet.account.getIssueSPT())
       }
 
       if (type == 'ISSUE_NFT' && target == 'background') {
@@ -364,25 +342,32 @@ browser.runtime.onInstalled.addListener((): void => {
           receiver,
         } = request;
 
-        window.controller.wallet.account.issueNFT({
+        window.controller.wallet.account.setDataFromPageToMintNFT({
           assetGuid,
-          nfthash,
-          fee: mintNFTFee,
           receiver,
-          rbf: rbfMintSPT
+          nfthash
         });
 
         store.dispatch(issueNFT(true));
 
-        const URL = browser.runtime.getURL('app.html');
+        const appURL = browser.runtime.getURL('app.html');
 
-        await createPopup(URL);
+        await createPopup(appURL);
 
         browser.tabs.sendMessage(tabId, {
           type: 'ISSUE_NFT',
           target: 'contentScript',
           complete: true
         });
+      }
+
+      if (type == 'DATA_FROM_WALLET_TO_MINT_NFT' && target == 'background') {
+        window.controller.wallet.account.issueNFT({
+          ...window.controller.wallet.account.getDataFromPageToMintNFT(),
+          ...window.controller.wallet.account.getDataFromWalletToMintNFT()
+        });
+
+        console.log('checking mint nft background', window.controller.wallet.account.getIssueNFT())
       }
 
       // receive message sent by contentScript using browser.runtime.sendMessage
@@ -422,7 +407,7 @@ browser.runtime.onInstalled.addListener((): void => {
       }
 
       if (type == 'GET_USERMINTEDTOKENS' && target == 'background') {
-        console.log('tokens minted get user minted tokens')
+        console.log('tokens minted get user minted tokens url state', store.getState().wallet.blockbookURL)
 
         const tokensMinted = await window.controller.wallet.account.getUserMintedTokens();
 
@@ -440,7 +425,7 @@ browser.runtime.onInstalled.addListener((): void => {
   browser.runtime.onConnect.addListener((port) => {
     browser.tabs.query({ active: true })
       .then((tabs) => {
-        store.dispatch(updateCurrentURL(tabs[0].url));
+        store.dispatch(updateCurrentURL(`${tabs[0].url}`));
       });
 
     port.onDisconnect.addListener(async () => {

@@ -12,7 +12,6 @@ import IWalletState from 'state/wallet/types';
 import Spinner from '@material-ui/core/CircularProgress';
 
 import styles from './Receive.scss';
-import { browser } from 'webextension-polyfill-ts';
 
 const WalletReceive = () => {
   const [isCopied, copyText] = useCopyClipboard();
@@ -21,16 +20,13 @@ const WalletReceive = () => {
   const { accounts, activeAccountId }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
+
   useEffect(() => {
     if (controller.wallet.getNewAddress()) {
-      browser.runtime.sendMessage({
-        type: 'WALLET_UPDATED',
-        target: 'background'
-      });
-
       setLoaded(true);
     }
-  }, [])
+  }, []);
+  
   return (
     <div className={styles.wrapper}>
       <Header backLink="/home" />
@@ -48,17 +44,19 @@ const WalletReceive = () => {
               />
               {accounts[activeAccountId]!.address['main']}
             </div>
-            <IconButton
-              className={clsx(styles.iconBtn, { [styles.active]: isCopied })}
-              onClick={() =>
-                copyText(accounts[activeAccountId]!.address['main'])
-              }
-            >
-              <CopyIcon className={styles.icon} />
-            </IconButton>
-            <span className={clsx({ [styles.active]: isCopied })}>
-              {isCopied ? 'Copied Address' : 'Copy'}
-            </span>
+            <div className={styles.copy}>
+              <IconButton
+                className={clsx(styles.iconBtn, { [styles.active]: isCopied })}
+                onClick={() =>
+                  copyText(accounts[activeAccountId]!.address['main'])
+                }
+              >
+                <CopyIcon className={styles.icon} />
+              </IconButton>
+              <span className={clsx({ [styles.active]: isCopied })}>
+                {isCopied ? 'Copied Address' : 'Copy'}
+              </span>
+            </div>
           </div>
         ) : <Spinner classes={{ root: styles.spinner }} />}
 
