@@ -4,7 +4,7 @@ import ConnectionsController, { IConnectionsController } from './ConnectionsCont
 export interface IMasterController {
   wallet: Readonly<IWalletController>;
   connections: Readonly<IConnectionsController>;
-  stateUpdater: () => void;
+  stateUpdater: () => Promise<void>;
   appRoute: (newRoute?: string) => string;
 }
 
@@ -14,8 +14,8 @@ const MasterController = (): IMasterController => {
   const connections = Object.freeze(ConnectionsController());
 
 
-  const stateUpdater = () => {
-    utils.updateFiat();
+  const stateUpdater = async () => {
+    await utils.updateFiat();
   };
 
   return {

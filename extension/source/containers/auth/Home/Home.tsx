@@ -27,16 +27,23 @@ const Home = () => {
   );
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
   const [isConnected, setIsConnected] = useState<boolean>(false);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
 
   const handleRefresh = () => {
+    setRefreshing(true);
+
     controller.wallet.account.getLatestUpdate();
     controller.wallet.account.watchMemPool();
-    controller.stateUpdater();
+    controller.stateUpdater().then(() => {
+      setRefreshing(false);
+    });
   };
 
   useEffect(() => {
     if (!controller.wallet.isLocked() && accounts.length > 0 && accounts[activeAccountId]) {
-      handleRefresh();
+      controller.wallet.account.getLatestUpdate();
+      controller.wallet.account.watchMemPool();
+      controller.stateUpdater();
     }
   }, [
     !controller.wallet.isLocked(),
@@ -107,7 +114,7 @@ const Home = () => {
               <small>SYS</small>
             </h3>
             <small>≈ {getFiatAmount(accounts[activeAccountId].balance)}</small>
-            <IconButton className={styles.refresh} onClick={handleRefresh}>
+            <IconButton className={refreshing ? styles.loadingRefresh : styles.refresh} onClick={handleRefresh}>
               <RefreshIcon />
             </IconButton>
             <div className={styles.actions}>

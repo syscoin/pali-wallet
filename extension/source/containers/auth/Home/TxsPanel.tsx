@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { FC, Fragment, useCallback, useState, useEffect } from 'react';
+import { FC, Fragment, useCallback, useState } from 'react';
 import clsx from 'clsx';
 import { v4 as uuid } from 'uuid';
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
@@ -192,9 +192,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
           <>
             <ul>
               {assets.map((asset: Assets, idx: number) => {
-                // const isRecived = tx.receiver === address;
-                console.log("idx increment " + idx)
-                if(asset.assetGuid !== undefined){
+                if (asset.assetGuid !== undefined) {
                 return (
                   <Fragment key={uuid()}>
                     {TokenTypeGroupBar(asset, idx) && (

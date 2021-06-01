@@ -132,26 +132,59 @@
       right: 30px;
       height: 32px;
       color: $white;
+      transition: .3s all;
 
       &:hover {
         color: $deepPink;
-        animation-name: spin;
-        animation-duration: 3000ms;
-        animation-iteration-count: 1;
-        animation-timing-function: linear; 
-        transform: rotate(3deg);
+        // animation-name: spin;
+        // animation-duration: 3000ms;
+        // animation-iteration-count: 1;
+        // animation-timing-function: linear; 
+        // transform: rotate(3deg);
          /* transform: rotate(0.3rad);/ */
          /* transform: rotate(3grad); */ 
          /* transform: rotate(.03turn);  */
       }
+
+      // &:active {
+      //   animation-name: spin;
+      //   animation-duration: 1000ms;
+      //   animation-iteration-count: 1;
+      //   animation-timing-function: linear; 
+      //   transform: rotate(3deg);
+      // }
+
+
       
-      @keyframes spin {
-          from {
-              transform:rotate(0deg);
-          }
-          to {
-              transform:rotate(360deg);
-          }
+      // @keyframes spin {
+      //     from {
+      //         transform:rotate(0deg);
+      //     }
+      //     to {
+      //         transform:rotate(360deg);
+      //     }
+      // }
+    }
+
+    .loadingRefresh {
+      position: absolute;
+      width: 32px;
+      right: 30px;
+      height: 32px;
+      color: $white;
+      animation-name: spin;
+      animation-duration: 1000ms;
+      animation-iteration-count: 1;
+      animation-timing-function: linear; 
+      transform: rotate(3deg);
+    }
+
+    @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
       }
     }
 

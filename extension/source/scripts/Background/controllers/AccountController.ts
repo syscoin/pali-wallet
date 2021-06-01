@@ -92,6 +92,7 @@ const AccountController = (actions: {
 
   const getAccountInfo = async (): Promise<IAccountInfo> => {
     let res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
+    console.log('res account info and sysjs', res, sysjs)
 
     const balance = res.balance / 1e8;
     let transactions: Transaction[] = [];
@@ -143,6 +144,8 @@ const AccountController = (actions: {
 
     sysjs.HDSigner.createAccount();
 
+    console.log('subscribe account', sysjs.HDSigner)
+
     const res: IAccountInfo | null = await getAccountInfo();
 
     account = {
@@ -184,6 +187,8 @@ const AccountController = (actions: {
     const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
 
     sysjs.HDSigner.accountIndex = activeAccountId;
+
+    console.log('sysjs get latest update', sysjs)
 
     if (!accounts[activeAccountId]) {
       return;
@@ -259,6 +264,10 @@ const AccountController = (actions: {
           encode = bech32.encode(resAddress.prefix, resAddress.words);
     
           return encode === address.toLowerCase();
+        }
+
+        if (address === account.address.main) {
+          return false;
         }
       } catch (error) {
         return false;
