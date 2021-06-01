@@ -21,31 +21,31 @@ const Header = (props) => {
   // const dispatch = useDispatch();
   // const user = useSelector(selectUser);
 
-  // useEffect(() => {
-  //   const callback = (event) => {
-  //     // const { isIstalled } = userSlice.actions
-  //     if (event.detail.SyscoinInstalled) {
-  //       setWalletIsInstalled(true);
-  //       store.dispatch(setIsInstalled(true));
+  useEffect(() => {
+    const callback = (event) => {
+      // const { isIstalled } = userSlice.actions
+      if (event.detail.SyscoinInstalled) {
+        setWalletIsInstalled(true);
+        store.dispatch(setIsInstalled(true));
 
-  //       if (event.detail.ConnectionsController) {
-  //         setWalletController(window.ConnectionsController);
-  //         store.dispatch(setController(window.ConnectionsController));
+        if (event.detail.ConnectionsController) {
+          setWalletController(window.ConnectionsController);
+          store.dispatch(setController(window.ConnectionsController));
           
-  //         return;
-  //       }
+          return;
+        }
 
-  //       return;
-  //     }
+        return;
+      }
 
-  //     setWalletIsInstalled(false);
-  //     store.dispatch(setIsInstalled(false));
+      setWalletIsInstalled(false);
+      store.dispatch(setIsInstalled(false));
 
-  //     window.removeEventListener("SyscoinStatus", callback);
-  //   }
+      window.removeEventListener("SyscoinStatus", callback);
+    }
 
-  //   window.addEventListener("SyscoinStatus", callback);
-  // }, []);
+    window.addEventListener("SyscoinStatus", callback);
+  }, []);
 
   const setup = async () => {
     const state = await walletController.getWalletState();
@@ -82,23 +82,23 @@ const Header = (props) => {
     }
   };
 
-  // useEffect(() => {
-  //   if (walletController) {
-  //     setup();
+  useEffect(() => {
+    if (walletController) {
+      setup();
 
-  //     walletController.onWalletUpdate(setup);
-  //   }
-  // }, [
-  //   walletController,
-  // ]);
+      walletController.onWalletUpdate(setup);
+    }
+  }, [
+    walletController,
+  ]);
 
 
-  // const handleMessageExtension = async () => {
-  //   const controller = store.getState().controller;
+  const handleMessageExtension = async () => {
+    const controller = store.getState().controller;
 
-  //   await walletController.connectWallet();
-  //   await setup();
-  // }
+    await walletController.connectWallet();
+    await setup();
+  }
 
   return (
     <div>
