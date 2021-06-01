@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+
 import logo from "../../assets/images/logosys.svg";
-import {useDispatch} from 'react-redux'
- import { login } from "../../States/features/userSlice"
- import {
+import { useDispatch } from "react-redux";
+
+import {
   setIsInstalled,
   updateConnectedAccountData,
   updateCanConnect,
   setController,
-  setIsConnected
+  setIsConnected,
 } from "../../state/wallet";
 import store from "../../state/store";
 // peace uncle grit essence stuff angle cruise annual fury letter snack globe       ---- frase wallet
@@ -31,7 +33,7 @@ const Header = (props) => {
         if (event.detail.ConnectionsController) {
           setWalletController(window.ConnectionsController);
           store.dispatch(setController(window.ConnectionsController));
-          
+
           return;
         }
 
@@ -42,7 +44,7 @@ const Header = (props) => {
       store.dispatch(setIsInstalled(false));
 
       window.removeEventListener("SyscoinStatus", callback);
-    }
+    };
 
     window.addEventListener("SyscoinStatus", callback);
   }, []);
@@ -51,34 +53,37 @@ const Header = (props) => {
     const state = await walletController.getWalletState();
 
     if (state.accounts.length > 0) {
-      walletController.getConnectedAccount()
-        .then((data) => {
-          if (data) {
-            setConnectedAccount(data);
-            setConnectedAccountAddress(data.address.main);
-            setBalance(data.balance);
+      walletController.getConnectedAccount().then((data) => {
+        if (data) {
+          setConnectedAccount(data);
+          setConnectedAccountAddress(data.address.main);
+          setBalance(data.balance);
 
-            store.dispatch(updateConnectedAccountData({
+          store.dispatch(
+            updateConnectedAccountData({
               balance: data.balance,
               connectedAccount: data,
-              connectedAccountAddress: data.address.main
-            }));
-
-            return;
-          }
-
-          setConnectedAccount({});
-          setConnectedAccountAddress("");
-          setBalance(0);
-
-          store.dispatch(updateConnectedAccountData({
-            balance: 0,
-            connectedAccount: {},
-            connectedAccountAddress: ''
-          }));
+              connectedAccountAddress: data.address.main,
+            })
+          );
 
           return;
-        });
+        }
+
+        setConnectedAccount({});
+        setConnectedAccountAddress("");
+        setBalance(0);
+
+        store.dispatch(
+          updateConnectedAccountData({
+            balance: 0,
+            connectedAccount: {},
+            connectedAccountAddress: "",
+          })
+        );
+
+        return;
+      });
     }
   };
 
@@ -88,59 +93,44 @@ const Header = (props) => {
 
       walletController.onWalletUpdate(setup);
     }
-  }, [
-    walletController,
-  ]);
-
+  }, [walletController]);
 
   const handleMessageExtension = async () => {
     const controller = store.getState().controller;
 
     await walletController.connectWallet();
     await setup();
-  }
+  };
 
   return (
     <div>
       <nav className="navbar navbar-expand-lg navbar-light static-top">
         <div className="container">
-          <a
-            className="navbar-brand"
-            href="https://syscoin.org/"
-          >
-            <img
-              src={logo}
-              alt="logo"
-              className="header__logo"
-            />
+          <a className="navbar-brand" href="https://syscoin.org/">
+            <img src={logo} alt="logo" className="header__logo" />
           </a>
 
-          <a
-            className="button"
-            href="/"
-          >
+          <Link className="button" to="/">
             Home
-          </a>
+          </Link>
 
-          <div
-            className="collapse navbar-collapse"
-            id="navbarResponsive"
-          >
+          <div className="collapse navbar-collapse" id="navbarResponsive">
             <ul className="navbar-nav ml-auto">
               <button
                 className="button"
                 onClick={canConnect ? props.handleMessageExtension : undefined}
-                disabled={!store.getState().isInstalled}>
+                disabled={!store.getState().isInstalled}
+              >
                 {/* {store.getState().connectedAccountData.connectedAccountAddress === "" ? "Connect to Syscoin Wallet" : store.getState()connectedAccountData.connectedAccountAddress} */}
-               {/* {localStorage.wallet.connectedAccountData.connectedAccountAddress} */}
-               algum address
+                {/* {localStorage.wallet.connectedAccountData.connectedAccountAddress} */}
+                algum address
               </button>
             </ul>
           </div>
         </div>
       </nav>
     </div>
-  )
-}
+  );
+};
 
 export default Header;
