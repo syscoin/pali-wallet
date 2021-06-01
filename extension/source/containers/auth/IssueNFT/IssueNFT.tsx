@@ -37,7 +37,7 @@ const IssueNFT = () => {
     const alert = useAlert();
 
     const handleConfirm = () => {
-        if (accounts[activeAccountId].balance > 0) {
+        if ((accounts.find(element => element.id === activeAccountId)?.balance || -1) > 0) {
             controller.wallet.account.confirmIssueNFT().then(result => {
                 if (result) {
                     alert.removeAll();

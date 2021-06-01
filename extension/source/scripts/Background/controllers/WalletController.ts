@@ -7,7 +7,8 @@ import {
   changeActiveNetwork,
   updateStatus,
   setEncriptedMnemonic,
-  removeAccounts
+  removeAccounts,
+  removeAccount
 } from 'state/wallet';
 import AccountController, { IAccountController } from './AccountController';
 import IWalletState from 'state/wallet/types';
@@ -63,7 +64,6 @@ const WalletController = (): IWalletController => {
 
     HDsigner = new sys.utils.HDSigner(mnemonic, null, false);
     sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.main.beUrl);
-
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
 
@@ -76,7 +76,7 @@ const WalletController = (): IWalletController => {
 
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
 
-    account.subscribeAccount(false, sjs).then(() => {
+    account.subscribeAccount(false, sjs, undefined, true).then(() => {
       account.getPrimaryAccount(password, sjs);
     })
   };
@@ -91,17 +91,15 @@ const WalletController = (): IWalletController => {
     let path: string = "m/84'/57'/0'";
     let coin: string = "sys"
     if (isTestnet) {
-      console.log("NO NO NO")
-      console.log("Wallet on testnet thats a NONO")
-      return;
+      path = "m/84'/1'/0'";
+      coin = "tsys";
     }
+    console.log(window.trezorConnect)
     window.trezorConnect.getAccountInfo({
       path: path,
       coin: coin
     })
       .then((response: any) => {
-        console.log("Only everything")
-        console.log(response.payload)
         const message = response.success
           ? `Trezor Wallet Account Created`
           : `Error: ${response.payload.error}`;
@@ -157,7 +155,7 @@ const WalletController = (): IWalletController => {
         if (accounts.length > 1000) {
           return false;
         }
-        for (let i = 1; i <= accounts.length - 1; i++) {
+        for (let i = 1; i <= accounts.length; i++) {
           if (accounts[i].isTrezorWallet) {
             console.log("Should not derive from hdsigner if the account is from the hardware wallet")
           }
@@ -216,15 +214,58 @@ const WalletController = (): IWalletController => {
   };
 
   const _getAccountDataByNetwork = (sjs: any) => {
-    const { activeAccountId, accounts } = store.getState().wallet;
+    const { activeAccountId, accounts, activeNetwork } = store.getState().wallet;
 
     if (accounts.length > 1000) {
       return false;
     }
 
-    for (let i = 1; i <= accounts.length - 1; i++) {
+    for (let i = 1; i <= accounts.length; i++) {
       if (accounts[i].isTrezorWallet) {
         console.log("Should not derive from hdsigner if the account is from the hardware wallet")
+        if (activeAccountId !== accounts[i].id) {
+          console.log("User switching network without trezor connected")
+          store.dispatch(removeAccount(i));
+          store.dispatch(updateStatus());
+          const message = "Your device is being disconnected";
+          chrome.notifications.create(new Date().getTime().toString(), {
+            type: 'basic',
+            iconUrl: 'assets/icons/favicon-48.png',
+            title: 'Hardware Wallet removed due to network switch',
+            message
+          });
+
+        }
+        else {
+          let path: string = "m/84'/57'/0'";
+          let coin: string = "sys"
+          if (activeNetwork === 'testnet') {
+            path = "m/84'/1'/0'";
+            coin = "tsys";
+          }
+          window.trezorConnect.getAccountInfo({
+            path: path,
+            coin: coin
+          })
+            .then((response: any) => {
+              const message = response.success
+                ? `Trezor Wallet Account Created`
+                : `Error: ${response.payload.error}`;
+              chrome.notifications.create(new Date().getTime().toString(), {
+                type: 'basic',
+                iconUrl: 'assets/icons/favicon-48.png',
+                title: 'Hardware Wallet updated to ' + activeNetwork,
+                message,
+              });
+              if (response.success) {
+                console.log("update xpub")
+              }
+            })
+            .catch((error: any) => {
+              console.error('TrezorConnectError', error);
+            });
+
+        }
       }
       else {
         const child = sjs.HDSigner.deriveAccount(i);

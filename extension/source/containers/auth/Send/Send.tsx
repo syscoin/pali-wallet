@@ -81,7 +81,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     console.log("Checking form data " + data)
     if (selectedAsset) {
       controller.wallet.account.updateTempTx({
-        fromAddress: accounts[activeAccountId].address.main,
+        fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
         toAddress: address,
         amount,
         fee,
@@ -91,7 +91,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       });
     } else {
       controller.wallet.account.updateTempTx({
-        fromAddress: accounts[activeAccountId].address.main,
+        fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
         toAddress: address,
         amount,
         fee,
@@ -147,8 +147,8 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   }>
   ) => {
     console.log("The asset" + ev.target.name + "value" + ev.target.value)
-    let selectedAsset = accounts[activeAccountId].assets.filter((asset: Assets) => asset.assetGuid == ev.target.value)
-    console.log('olsas', accounts[activeAccountId].assets)
+    let selectedAsset = accounts.find(element => element.id === activeAccountId)!.assets.filter((asset: Assets) => asset.assetGuid == ev.target.value)
+    console.log('olsas', accounts.find(element => element.id === activeAccountId)!.assets)
     if (selectedAsset[0]) {
       setSelectedAsset(selectedAsset[0])
     }
@@ -172,9 +172,9 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
         <section className={styles.balance}>
           <div>
             Balance:{' '}
-            <span>{selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? selectedAsset.balance : (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) : accounts[activeAccountId].balance}</span> {selectedAsset ? selectedAsset.symbol : "SYS"}
+            <span>{selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? selectedAsset.balance : (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) : accounts.find(element => element.id === activeAccountId)!.balance}</span> {selectedAsset ? selectedAsset.symbol : "SYS"}
           </div>
-          {accounts[activeAccountId].balance === 0 && <small>You don't have SYS available.</small>}
+          {accounts.find(element => element.id === activeAccountId)!.balance === 0 && <small>You don't have SYS available.</small>}
         </section>
 
         <section className={styles.content}>
@@ -212,7 +212,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                     </optgroup>
 
                     <optgroup label="SPT">
-                      {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
+                      {accounts.find(element => element.id === activeAccountId)!.assets.map((asset: Assets, idx: number) => {
                         if (!controller.wallet.account.isNFT(asset.assetGuid)) {
                           return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
                         }
@@ -222,7 +222,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                     </optgroup>
 
                     <optgroup label="NFT">
-                      {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
+                      {accounts.find(element => element.id === activeAccountId)!.assets.map((asset: Assets, idx: number) => {
                         if (controller.wallet.account.isNFT(asset.assetGuid)) {
                           return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
                         }
@@ -303,7 +303,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 type="button"
                 variant={styles.textBtn}
                 onClick={() =>
-                  setAmount(selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? String(selectedAsset.balance) : String((selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals)) : String(accounts[activeAccountId].balance))
+                  setAmount(selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? String(selectedAsset.balance) : String((selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals)) : String(accounts.find(element => element.id === activeAccountId)!.balance))
                 }
               >
                 Max
@@ -362,8 +362,8 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               theme="btn-outline-primary"
               variant={styles.button}
               disabled={
-                accounts[activeAccountId].balance === 0 ||
-                accounts[activeAccountId].balance < Number(amount) ||
+                accounts.find(element => element.id === activeAccountId)!.balance === 0 ||
+                accounts.find(element => element.id === activeAccountId)!.balance < Number(amount) ||
                 !isValidAddress ||
                 !amount ||
                 !fee ||

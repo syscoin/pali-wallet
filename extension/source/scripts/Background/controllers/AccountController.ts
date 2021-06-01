@@ -24,7 +24,7 @@ import { sys } from 'constants/index';
 import { fromZPub } from 'bip84';
 
 export interface IAccountController {
-  subscribeAccount: (isHardwareWallet: boolean, sjs?: any, label?: string) => Promise<string | null>;
+  subscribeAccount: (isHardwareWallet: boolean, sjs?: any, label?: string, walletCreation?: boolean) => Promise<string | null>;
   getPrimaryAccount: (pwd: string, sjs: any) => void;
   unsubscribeAccount: (index: number, pwd: string) => boolean;
   updateAccountLabel: (id: number, label: string) => void;
@@ -86,6 +86,10 @@ const AccountController = (actions: {
 
     }
     else {
+      console.log("Wallet object")
+      console.log(sysjs.HDSigner)
+      console.log("New xpub")
+      console.log(sysjs.HDSigner.getAccountXpub())
       res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
 
     }
@@ -144,7 +148,7 @@ const AccountController = (actions: {
     }
   };
 
-  const subscribeAccount = async (isHardwareWallet: boolean = false, sjs?: any, label?: string) => {
+  const subscribeAccount = async (isHardwareWallet: boolean = false, sjs?: any, label?: string, walletCreation?: boolean) => {
     if (isHardwareWallet) {
       const { accounts } = store.getState().wallet;
       let trezorID: number = accounts.reduce((trezorID: number, account: IAccountState) => (account.trezorId) ? trezorID = trezorID > account.trezorId ? trezorID : account.trezorId : trezorID, 0);
@@ -153,7 +157,7 @@ const AccountController = (actions: {
 
       if (trezorinfo.address) {
         account = {
-          id: 9999999,
+          id: 9999 + trezorID,
           label: `Trezor ${trezorID + 1}`,
           balance: sjs.availableBalance / (10 ** 8),
           transactions: trezorinfo.transactions,
@@ -180,12 +184,12 @@ const AccountController = (actions: {
     if (sjs) {
       sysjs = sjs;
     }
-
-    sysjs.HDSigner.createAccount();
-    sysjs.HDSigner.accountIndex = 0;
+    if (!walletCreation) {
+      sysjs.HDSigner.createAccount();
+    }
+    // sysjs.HDSigner.accountIndex = 0;
 
     const res: IAccountInfo | null = await getAccountInfo();
-
     account = {
       id: sysjs.HDSigner.accountIndex,
       label: label || `Account ${sysjs.HDSigner.accountIndex + 1}`,
@@ -198,7 +202,8 @@ const AccountController = (actions: {
       connectedTo: [],
       isTrezorWallet: false
     };
-
+    console.log("The account being created")
+    console.log(account)
     store.dispatch(createAccount(account));
 
     return account!.xpub;
@@ -215,8 +220,14 @@ const AccountController = (actions: {
     return false;
   };
 
-  const updateAccountLabel = (id: number, label: string) => {
-    store.dispatch(updateLabel({ id, label }));
+  const updateAccountLabel = (id: number, label: string, isHardwareWallet?: boolean) => {
+    if (isHardwareWallet) {
+
+    }
+    else {
+      store.dispatch(updateLabel({ id, label }));
+    }
+
   };
 
   const addNewAccount = async (label: string) => {
@@ -228,10 +239,10 @@ const AccountController = (actions: {
 
 
 
-    if (!accounts[activeAccountId]) {
+    if (!accounts.find(element => element.id === activeAccountId)) {
       return;
     };
-    account = accounts[activeAccountId];
+    account = accounts.find(element => element.id === activeAccountId)!;
     if (!account.isTrezorWallet) {
       sysjs.HDSigner.accountIndex = activeAccountId;
       const accLatestInfo = await getAccountInfo();
@@ -277,7 +288,7 @@ const AccountController = (actions: {
     getLatestUpdate();
 
     if (!account && accounts) {
-      account = accounts[activeAccountId];
+      account = accounts.find(element => element.id === activeAccountId) || accounts[activeAccountId];
       store.dispatch(updateStatus());
     }
   };
@@ -293,9 +304,9 @@ const AccountController = (actions: {
       const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
 
       if (
-        !accounts[activeAccountId] ||
-        !accounts[activeAccountId].transactions ||
-        !accounts[activeAccountId].transactions.filter(
+        !accounts.find(element => element.id === activeAccountId) ||
+        !accounts.find(element => element.id === activeAccountId)?.transactions ||
+        !accounts.find(element => element.id === activeAccountId)!.transactions.filter(
           (tx: Transaction) => tx.confirmations > 0
         ).length
       ) {

@@ -54,14 +54,14 @@ const ConnectWallet = () => {
 
       {accounts.length > 0 ? (
         <ul className={styles.list}>
-          {accounts.map((acc: any, index: number) => (
-            <li key={index} onClick={() => handleSelectAccount(index)} className={styles.account}>
+          {accounts.map((acc: any) => (
+            <li key={acc.id} onClick={() => handleSelectAccount(acc.id)} className={styles.account}>
               <div className={styles.label}>
-                <p>{acc.label} {index === activeAccountId && <small>(active)</small>}</p>
+                <p>{acc.label} {acc.id === activeAccountId && <small>(active)</small>}</p>
                 <small>{ellipsis(acc.address.main)}</small>
               </div>
 
-              {index === accountId && <img src={checkGreen} alt="check" />}
+              {acc.id === accountId && <img src={checkGreen} alt="check" />}
 
             </li>
           ))}

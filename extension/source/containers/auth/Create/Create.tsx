@@ -37,7 +37,9 @@ const Create = () => {
     const alert = useAlert();
 
     const handleConfirm = () => {
-        if (accounts[activeAccountId].balance > 0) {
+        let acc = accounts.find(element => element.id === activeAccountId)
+
+        if ((acc ? acc.balance : -1) > 0) {
             controller.wallet.account.confirmNewSPT().then(result => {
                 if (result) {
                     alert.removeAll();

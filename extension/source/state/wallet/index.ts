@@ -132,7 +132,7 @@ const WalletState = createSlice({
       }
 
       state.accounts.splice(action.payload, 1);
-      state.activeAccountId = 0;
+      // state.activeAccountId = 0;
     },
 
     removeAccounts(state: IWalletState) {
@@ -140,8 +140,15 @@ const WalletState = createSlice({
       state.activeAccountId = 0;
     },
     updateAccount(state: IWalletState, action: PayloadAction<IAccountUpdateState>) {
-      state.accounts[action.payload.id] = {
-        ...state.accounts[action.payload.id],
+      // state.accounts[action.payload.id] = {
+      //   ...state.accounts[action.payload.id],
+      //   ...action.payload,
+      // };
+      console.log("getting object actual index")
+      let indexof = state.accounts.findIndex((element: IAccountState) => element.id == action.payload.id)
+      console.log(indexof)
+      state.accounts[indexof] = {
+        ...state.accounts[indexof],
         ...action.payload,
       };
     },
