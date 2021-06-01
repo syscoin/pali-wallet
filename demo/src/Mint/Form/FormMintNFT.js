@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
-import store from '../../state/store';
+import store from "../../state/store";
 
 const FormMintNFT = (props) => {
-  const [assetGuid, setAssetGuid] = useState('');
-  const [receiver, setReceiver] = useState('');
+  const [assetGuid, setAssetGuid] = useState("");
+  const [receiver, setReceiver] = useState("");
   // const [rbf, setRbf] = useState(false);
   const [nfthash, setNfthash] = useState(0);
   const [data, setData] = useState([]);
@@ -70,17 +70,15 @@ const FormMintNFT = (props) => {
   // ]);
 
   useEffect(() => {
-    console.log('tokens', data);
-    console.log('store controller', store.getState());
-
+    console.log("tokens", data);
+    console.log("store controller", store.getState());
 
     const setup = async () => {
       if (store.getState().controller) {
-        console.log('store', store.getState().controller)
+        console.log("store", store.getState().controller);
         // setData(await store.getState().controller.getUserMintedTokens());
-
       }
-    }
+    };
 
     setup();
   }, []);
@@ -92,18 +90,20 @@ const FormMintNFT = (props) => {
   // }
 
   const checkStore = () => {
-    console.log('store', store.getState())
-  }
+    console.log("store", store.getState());
+  };
 
   return (
     <form
-      onSubmit={(event) => props.formCallback(
-        event,
-        assetGuid,
-        nfthash,
-        receiver,
-       // rbf,
-      )}
+      onSubmit={(event) =>
+        props.formCallback(
+          event,
+          assetGuid,
+          nfthash,
+          receiver
+          // rbf,
+        )
+      }
     >
       <fieldset>
         <legend>YOU ARE MINTING NFTS</legend>
@@ -111,13 +111,11 @@ const FormMintNFT = (props) => {
         <div>
           <div className="input-group mb-3">
             <label htmlFor="assetGuid">AssetGuid:</label>
-            <button
-              onClick={() => checkStore()}
-            >test store</button>
+            <button onClick={() => checkStore()}>test store</button>
 
             <select
-              id="assetGuid" 
-              name="assetGuid" 
+              id="assetGuid"
+              name="assetGuid"
               className="custom-select"
               onBlur={(event) => setAssetGuid(event.target.value)}
             >
@@ -127,20 +125,20 @@ const FormMintNFT = (props) => {
           </div>
 
           <label htmlFor="amount">NFT Hash:</label>
-          <input 
-            className="input" 
-            type="text" 
-            id="nfthash" 
+          <input
+            className="input"
+            type="text"
+            id="nfthash"
             name="nfthash"
             onBlur={(event) => setNfthash(event.target.value)}
             required
           />
 
           <label htmlFor="receiver">Receiver:</label>
-          <input 
-            className="input" 
-            type="text" 
-            id="receiver" 
+          <input
+            className="input"
+            type="text"
+            id="receiver"
             name="receiver"
             onBlur={(event) => setReceiver(event.target.value)}
             required
@@ -159,22 +157,17 @@ const FormMintNFT = (props) => {
           /> */}
         </div>
       </fieldset>
-      
-      <button
-        className="button" 
-        type="submit"
-        disabled={
-          !nfthash ||
-          !receiver ||
-          !assetGuid
-        }
 
-        onClick={() => console.log('asset guid', assetGuid)}
+      <button
+        className="button"
+        type="submit"
+        disabled={!nfthash || !receiver || !assetGuid}
+        onClick={() => console.log("asset guid", assetGuid)}
       >
         Mint
       </button>
     </form>
   );
-}
+};
 
 export default FormMintNFT;

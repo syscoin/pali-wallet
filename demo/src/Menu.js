@@ -36,85 +36,85 @@ const Menu = () => {
   // // const dispatch = useDispatch();
   // // const user = useSelector(selectUser);
 
-  useEffect(() => {
-    const callback = (event) => {
-      // const { isIstalled } = userSlice.actions
-      if (event.detail.SyscoinInstalled) {
-        setWalletIsInstalled(true);
-        store.dispatch(setIsInstalled(true));
+  // useEffect(() => {
+  //   const callback = (event) => {
+  //     // const { isIstalled } = userSlice.actions
+  //     if (event.detail.SyscoinInstalled) {
+  //       setWalletIsInstalled(true);
+  //       store.dispatch(setIsInstalled(true));
 
-        if (event.detail.ConnectionsController) {
-          setWalletController(window.ConnectionsController);
-          store.dispatch(setController(window.ConnectionsController));
+  //       if (event.detail.ConnectionsController) {
+  //         setWalletController(window.ConnectionsController);
+  //         store.dispatch(setController(window.ConnectionsController));
 
-          return;
-        }
+  //         return;
+  //       }
 
-        return;
-      }
+  //       return;
+  //     }
 
-      setWalletIsInstalled(false);
-      store.dispatch(setIsInstalled(false));
+  //     setWalletIsInstalled(false);
+  //     store.dispatch(setIsInstalled(false));
 
-      window.removeEventListener("SyscoinStatus", callback);
-    };
+  //     window.removeEventListener("SyscoinStatus", callback);
+  //   };
 
-    window.addEventListener("SyscoinStatus", callback);
-  }, []);
+  //   window.addEventListener("SyscoinStatus", callback);
+  // }, []);
 
-  const setup = async () => {
-    const state = await walletController.getWalletState();
+  // const setup = async () => {
+  //   const state = await walletController.getWalletState();
 
-    if (state.accounts.length > 0) {
-      walletController.getConnectedAccount().then((data) => {
-        if (data) {
-          setConnectedAccount(data);
-          setConnectedAccountAddress(data.address.main);
-          setBalance(data.balance);
+  //   if (state.accounts.length > 0) {
+  //     walletController.getConnectedAccount().then((data) => {
+  //       if (data) {
+  //         setConnectedAccount(data);
+  //         setConnectedAccountAddress(data.address.main);
+  //         setBalance(data.balance);
 
-          store.dispatch(
-            updateConnectedAccountData({
-              balance: data.balance,
-              connectedAccount: data,
-              connectedAccountAddress: data.address.main,
-            })
-          );
+  //         store.dispatch(
+  //           updateConnectedAccountData({
+  //             balance: data.balance,
+  //             connectedAccount: data,
+  //             connectedAccountAddress: data.address.main,
+  //           })
+  //         );
 
-          return;
-        }
+  //         return;
+  //       }
 
-        setConnectedAccount({});
-        setConnectedAccountAddress("");
-        setBalance(0);
+  //       setConnectedAccount({});
+  //       setConnectedAccountAddress("");
+  //       setBalance(0);
 
-        store.dispatch(
-          updateConnectedAccountData({
-            balance: 0,
-            connectedAccount: {},
-            connectedAccountAddress: "",
-          })
-        );
+  //       store.dispatch(
+  //         updateConnectedAccountData({
+  //           balance: 0,
+  //           connectedAccount: {},
+  //           connectedAccountAddress: "",
+  //         })
+  //       );
 
-        return;
-      });
-    }
-  };
+  //       return;
+  //     });
+  //   }
+  // };
 
-  useEffect(() => {
-    if (walletController) {
-      setup();
+  // useEffect(() => {
+  //   if (walletController) {
+  //     setup();
 
-      walletController.onWalletUpdate(setup);
-    }
-  }, [walletController]);
-  const handleMessageExtension = async () => {
-    await store.getState().controller.connectWallet();
-    await setup();
-  };
+  //     walletController.onWalletUpdate(setup);
+  //   }
+  // }, [walletController]);
+  // const handleMessageExtension = async () => {
+  //   await store.getState().controller.connectWallet();
+  //   await setup();
+  // };
 
   return (
     <div className="app">
-      <Header handleMessageExtension={handleMessageExtension} />
+      <Header />
       <RenderButtons />
     </div>
   );
