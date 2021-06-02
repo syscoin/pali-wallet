@@ -24,7 +24,6 @@ import { SendMatchProps } from './types';
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
-import { issueNFT } from 'state/wallet';
 import { getHost } from '../scripts/Background/helpers';
 
 const Auth = () => {
@@ -82,7 +81,7 @@ const Auth = () => {
       history.push('/issueAsset');
       return;
     }
-    
+ 
     if (issuingNFT && isUnlocked) {
       history.push('/issueNFT');
       return;

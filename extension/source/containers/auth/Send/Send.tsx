@@ -62,6 +62,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const addressInputClass = clsx(styles.input, styles.address, {
     [styles.verified]: isValidAddress,
   });
+
   const statusIconClass = clsx(styles.statusIcon, {
     [styles.hide]: !isValidAddress,
   });
@@ -82,6 +83,8 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     if (accounts[activeAccountId].address.main === address) {
       alert.removeAll();
       alert.error('Error: cannot complete transaction. Check the recipient\'s address.');
+
+      return;
     }
 
     if (selectedAsset) {
@@ -195,7 +198,11 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
         <section className={styles.content}>
           <ul className={styles.form}>
             <li className={styles.item}>
-              <label htmlFor="address">Recipient Address</label>
+              <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label htmlFor="address">Recipient Address</label>
+
+                {address === accounts[activeAccountId].address.main && <small className={styles.description} style={{ textAlign: 'left' }}>Please, check the recipient's address.</small>}
+              </div>
 
               <img
                 src={VerifiedIcon}
