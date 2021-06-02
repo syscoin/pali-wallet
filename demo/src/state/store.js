@@ -38,17 +38,17 @@ const store = configureStore({
   reducer: wallet,
   middleware,
   devTools: process.env.NODE_ENV !== 'production',
-  preloadedState: loadState()
+  // preloadedState: loadState()
 });
 
-store.subscribe(
-  throttle(() => {
-    const state = store.getState();
+// store.subscribe(
+//   throttle(() => {
+//     const state = store.getState();
 
-    saveState({
-      wallet: state
-    });
-  }, 1000)
-)
+//     saveState({
+//       wallet: state
+//     });
+//   }, 1000)
+// )
 
 export default store;
