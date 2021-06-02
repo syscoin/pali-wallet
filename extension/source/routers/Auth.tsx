@@ -75,7 +75,7 @@ const Auth = () => {
       return;
     }
 
-    if (createasset && isUnlocked) {
+    if (creatingAsset && isUnlocked) {
       history.push('/create');
       return;
     }
