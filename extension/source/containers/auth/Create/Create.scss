@@ -5,17 +5,18 @@
   height: 100%;
   margin-top: -40px;
 
+  label {
+    margin-right: 0.3rem;
+    font-size: 16px;
+    color: white;
+    font-weight: lighter;
+  }
+
   .fee {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;
-
-    label {
-      margin-right: 0.3rem;
-      font-size: 16px;
-      color: white;
-    }
 
     input {
       border-radius: 2rem;
@@ -30,7 +31,7 @@
       width: fit-content;
       height: 1.7rem;
       position: absolute;
-      top: -8px;
+      top: 15px;
       box-shadow: none;
       border-radius: 0 40px 40px 0;
       padding: 1.2em;
@@ -40,11 +41,19 @@
       font-size: 0.8rem;
       color: white;
       transition: all 0.3s;
+      background-color: transparent;
 
       &:hover {
         color: $deepPink;
+        background-color: transparent;
       }
     }
+  }
+
+  .rbf {
+    display: flex;
+    align-items: center;
+    margin-top: 2rem;
   }
 
   .description {
@@ -96,8 +105,7 @@
   .mask {
     transition: all 0.3s;
     display: flex;
-    width: 100vw;
-    height: 100vh;
+    height: 75vh;
     align-items: center;
     justify-content: center;
     background: $navy;

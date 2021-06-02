@@ -46,7 +46,7 @@ const Auth = () => {
     (state: RootState) => state.wallet
   );
 
-  const createasset = true;
+  const issuenft = true;
 
   const connectedAccounts = accounts.filter(account => {
     return account.connectedTo.findIndex((url: any) => {
@@ -84,7 +84,7 @@ const Auth = () => {
       history.push('/issueAsset');
       return;
     }
-    if (issuingNFT && isUnlocked) {
+    if (issuenft && isUnlocked) {
       history.push('/issueNFT');
       return;
     }

@@ -191,6 +191,8 @@ const IssueNFT = () => {
           <div>
             <Layout title="Mint token" showLogo>
               <div className={styles.wrapper}>
+              <label htmlFor="fee">Fee</label>
+
                 <section className={styles.fee}>
                   <TextInput
                     type="number"
@@ -209,13 +211,19 @@ const IssueNFT = () => {
                   </Button>
                 </section>
 
-                <p>With current network conditions, we recommend a fee of {recommend} SYS.</p>
+                <p className={styles.description}>With current network conditions, we recommend a fee of {recommend} SYS.</p>
+      
+                <div className={styles.rbf}>
+                  <label htmlFor="rbf">RBF</label>
 
-                <label htmlFor="rbf">RBF:</label>
-                <Switch
-                  checked={rbf}
-                  onChange={handleTypeChanged}
-                ></Switch>
+                  <Switch
+                    offColor="#333f52"
+                    height={20}
+                    width={60}
+                    checked={rbf}
+                    onChange={handleTypeChanged}
+                  />
+                </div>
 
                 <section className={styles.confirm}>
                   <div className={styles.actions}>
