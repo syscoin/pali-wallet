@@ -83,7 +83,7 @@
     line-height: 24px;
     box-sizing: border-box;
     padding: 0 36px;
-    height: 70px;
+    height: 55px;
     width: 100%;
     color: $royalBlue;
 
@@ -96,17 +96,16 @@
               $navy 80%
             ) 10;
 
-          
+
+    & p {
+      margin: 0;
+      padding: 0;
+    }
+
     span {
       font-size: 12px;
       line-height: 18px;
       color: $white;
-    }
-
-    &:nth-last-child(1) {
-      flex-direction: row;
-      align-items: center;
-      justify-content: space-between;
     }
   }
 

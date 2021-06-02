@@ -17,8 +17,6 @@ import { Assets } from '../../../scripts/types';
 import Header from 'containers/common/Header';
 import Button from 'components/Button';
 import Switch from "react-switch";
-import MUISelect from '@material-ui/core/Select';
-import Input from '@material-ui/core/Input';
 import TextInput from 'components/TextInput';
 import VerifiedIcon from 'assets/images/svg/check-green.svg';
 import { useController } from 'hooks/index';
@@ -27,8 +25,10 @@ import IWalletState from 'state/wallet/types';
 import { RootState } from 'state/store';
 import ReactTooltip from 'react-tooltip';
 import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
+import DownArrowIcon from '@material-ui/icons/ExpandMore';
 
 import styles from './Send.scss';
+
 interface IWalletSend {
   initAddress?: string;
 }
@@ -53,6 +53,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const [recommend, setRecommend] = useState<number>(0);
   const [checked, setChecked] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
+  const [expanded, setExpanded] = useState<boolean>(false);
 
   const isValidAddress = useMemo(() => {
     return controller.wallet.account.isValidSYSAddress(address, activeNetwork);
@@ -155,12 +156,10 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     });
   };
 
-  const handleAssetSelected = (event: ChangeEvent<{
-    name?: string | undefined;
-    value: unknown;
-  }>
-  ) => {
-    let selectedAsset = accounts[activeAccountId].assets.filter((asset: Assets) => asset.assetGuid == event.target.value);
+  const handleAssetSelected = (item: any) => {
+    let selectedAsset = accounts[activeAccountId].assets.filter((asset: Assets) => asset.assetGuid == item.assetGuid);
+
+    console.log('item selected', item, selectedAsset)
 
     if (selectedAsset[0]) {
       setSelectedAsset(selectedAsset[0]);
@@ -195,7 +194,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
         
         <section className={styles.content}>
           <ul className={styles.form}>
-            <li>
+            <li className={styles.item}>
               <label htmlFor="address">Recipient Address</label>
 
               <img
@@ -216,47 +215,50 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             </li>
 
             <div className={styles.formBlock}>
-              <li>
+              <li className={styles.item}>
                 <label htmlFor="asset">Choose Asset</label>
 
                 <div
                   className={styles.select}
                   id="asset"
                 >
-                  <MUISelect
-                    native
-                    defaultValue="SYS"
-                    input={<Input id="grouped-native-select" />}
-                    onChange={handleAssetSelected}
+                  <div
+                    className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
+                    onClick={() => setExpanded(!expanded)}
                   >
-                    <optgroup label="Native">
-                      <option value={1}>SYS</option>
-                    </optgroup>
+                    <span className={styles.selected}>
+                      {selectedAsset?.symbol || "SYS"}
+                      <DownArrowIcon className={styles.arrow} />
+                    </span>
+                    <ul className={styles.options}>
+                      <li className={styles.option} onClick={() => handleAssetSelected(1)}>
+                        <p>SYS</p>
+                        <p>Native</p>
+                      </li>
 
-                    <optgroup label="SPT">
-                      {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
-                        if (!controller.wallet.account.isNFT(asset.assetGuid)) {
-                          return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
+                      {accounts[activeAccountId].assets.map((item, index) => {
+                        if (!controller.wallet.account.isNFT(item.assetGuid)) {
+                          return (
+                            <li className={styles.option} key={index} onClick={() => handleAssetSelected(item)}>
+                              <p>{item.symbol}</p>
+                              <p>SPT</p>
+                            </li>
+                          )
                         }
-                        return
-                      })
-                      }
-                    </optgroup>
 
-                    <optgroup label="NFT">
-                      {accounts[activeAccountId].assets.map((asset: Assets, idx: number) => {
-                        if (controller.wallet.account.isNFT(asset.assetGuid)) {
-                          return <option key={idx} value={asset.assetGuid}>{asset.symbol}</option>
-                        }
-                        return
-                      })
-                      }
-                    </optgroup>
-                  </MUISelect>
+                        return (
+                          <li className={styles.option} key={index} onClick={() => handleAssetSelected(item)}>
+                            <p>{item.symbol}</p>
+                            <p>NFT</p>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
                 </div>
               </li>
 
-              <li>
+              <li className={styles.item}>
                 <div className={styles.zDag}>
                   <label htmlFor="rbf">Z-DAG</label>
 
@@ -298,6 +300,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 </div>
                 
                 <Switch
+                  offColor="#333f52"
                   height={20}
                   width={60}
                   checked={checked}
@@ -307,7 +310,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             </div>
 
             <div>
-              <li>
+              <li className={styles.item}>
                 <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <label htmlFor="amount"> {selectedAsset ? selectedAsset.symbol : "SYS"} Amount</label>
 
@@ -336,7 +339,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 </Button>
               </li>
 
-              <li>
+              <li className={styles.item}>
                 <label htmlFor="fee">Transaction Fee</label>
                 <TextInput
                   type="number"

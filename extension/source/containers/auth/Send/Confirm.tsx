@@ -59,6 +59,10 @@ const SendConfirm = () => {
     }
   };
 
+  const handleCancel = () => {
+    history.push("/home");
+  }
+
   const handleClosePopup = () => {
     browser.runtime.sendMessage({
       type: "CLOSE_POPUP",
@@ -110,18 +114,18 @@ const SendConfirm = () => {
       </section>
       <section className={styles.transaction}>
         <div className={styles.row}>
-          From
+          <p>From</p>
           <span>
             {confirmingTransaction && connectedAccount ? connectedAccount?.label : accounts[activeAccountId].label || ''} (
             {ellipsis(tempTx!.fromAddress)})
           </span>
         </div>
         <div className={styles.row}>
-          To
+          <p>To</p>
           <span>{tempTx!.toAddress}</span>
         </div>
         <div className={styles.row}>
-          Transaction Fee
+          <p>Transaction fee</p>
           <span>
             {tempTx!.fee} SYS (≈ {getFiatAmount(tempTx?.fee || 0, 8)})
           </span>
@@ -129,7 +133,7 @@ const SendConfirm = () => {
       </section>
       <section className={styles.confirm}>
         <div className={styles.row}>
-          Max Total
+          <p>Max total</p>
           <span>
             {!tempTx?.isToken ? getFiatAmount(
               Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0),
@@ -147,14 +151,15 @@ const SendConfirm = () => {
             type="button"
             theme="btn-outline-secondary"
             variant={clsx(styles.button, styles.close)}
-            onClick={confirmingTransaction ? handleCancelTransactionOnSite : undefined}
+            onClick={confirmingTransaction ? handleCancelTransactionOnSite : handleCancel}
+            linkTo="/home"
           >
             Cancel
           </Button>
 
           <Button
             type="submit"
-            theme="btn-outline-confirm"
+            theme="btn-outline-primary"
             variant={styles.button}
             onClick={handleConfirm}
             loading={loading}
