@@ -46,6 +46,8 @@ const Auth = () => {
     (state: RootState) => state.wallet
   );
 
+  const createasset = true;
+
   const connectedAccounts = accounts.filter(account => {
     return account.connectedTo.findIndex((url: any) => {
       return url == getHost(currentSenderURL);
@@ -73,7 +75,7 @@ const Auth = () => {
       return;
     }
 
-    if (creatingAsset && isUnlocked) {
+    if (createasset && isUnlocked) {
       history.push('/create');
       return;
     }

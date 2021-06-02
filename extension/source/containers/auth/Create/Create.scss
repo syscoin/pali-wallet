@@ -29,16 +29,16 @@
       min-width: initial;
       width: fit-content;
       height: 1.7rem;
-      // position: absolute;
+      position: absolute;
+      top: -8px;
       box-shadow: none;
       border-radius: 0 40px 40px 0;
       padding: 1.2em;
       bottom: 0.02em;
-      right: -1px;
+      right: 37px;
       font-weight: $semibold;
       font-size: 0.8rem;
       color: white;
-      background: transparent;
       transition: all 0.3s;
 
       &:hover {

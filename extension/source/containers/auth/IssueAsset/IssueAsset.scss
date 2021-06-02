@@ -5,6 +5,12 @@
   height: 100%;
   margin-top: -40px;
 
+  li.item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .fee {
     display: flex;
     align-items: center;

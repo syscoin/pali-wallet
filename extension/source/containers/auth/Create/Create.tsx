@@ -16,6 +16,8 @@ import CircularProgress from '@material-ui/core/CircularProgress';
 
 import styles from './Create.scss';
 import { browser } from 'webextension-polyfill-ts';
+import ReactTooltip from 'react-tooltip';
+import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import Switch from "react-switch";
 
 const Create = () => {
@@ -226,6 +228,56 @@ const Create = () => {
                     checked={rbf}
                     onChange={handleTypeChanged}
                   ></Switch>
+
+                  <li className={styles.item}>
+                    <div className={styles.zDag}>
+                      <label htmlFor="rbf">Z-DAG</label>
+
+                      <div className={styles.tooltip}>
+                        <HelpOutlineIcon
+                          style={{ width: '17px', height: '17px' }}
+                          data-tip
+                          data-for="zdag_info"
+                        />
+                        <ReactTooltip id="zdag_info"
+                            getContent={() =>
+                              <div style={{ backgroundColor: 'white' }}>
+                                <small style={{ fontWeight: 'bold' }}>
+                                  OFF for Replace-by-fee (RBF) and ON for Z-DAG <br/> Z-DAG: a exclusive Syscoin feature. <br/> To know more: <br/>
+                                  <span
+                                    style={{ cursor: 'pointer' }}
+                                    onClick={() => {
+                                      window.open("https://syscoin.org/news/what-is-z-dag");
+                                    }}
+                                  >
+                                    What is Z-DAG?
+                                  </span>
+                                </small>
+                              </div>
+                            }
+                            backgroundColor="white"
+                            textColor="black"
+                            borderColor="#4d76b8"
+                            effect='solid'
+                            delayHide={300}
+                            delayShow={300}
+                            delayUpdate={300}
+                            place={'top'}
+                            border={true}
+                            type={'info'}
+                            multiline={true}
+                          />
+                      </div>
+                    </div>
+                    
+                    <Switch
+                      offColor="#333f52"
+                      height={20}
+                      width={60}
+                      checked={rbf}
+                      onChange={handleTypeChanged}
+                    />
+                  </li>
 
                   <section className={styles.confirm}>
                     <div className={styles.actions}>
