@@ -13,6 +13,7 @@ import { useController } from 'hooks/index';
 import { useFiat } from 'hooks/usePrice';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
+import IAccountState from 'state/wallet/types';
 import TxsPanel from './TxsPanel';
 
 import styles from './Home.scss';
@@ -40,7 +41,7 @@ const Home = () => {
   };
 
   useEffect(() => {
-    if (!controller.wallet.isLocked() && accounts.length > 0 && accounts[activeAccountId]) {
+    if (!controller.wallet.isLocked() && accounts.length > 0 && accounts.find(element => element.id === activeAccountId)) {
       controller.wallet.account.getLatestUpdate();
       controller.wallet.account.watchMemPool();
       controller.stateUpdater();
@@ -51,12 +52,13 @@ const Home = () => {
   ]);
 
   useEffect(() => {
-    if (accounts[activeAccountId]) {
-      if (accounts[activeAccountId].connectedTo.length > 0) {
-        setIsConnected(accounts[activeAccountId].connectedTo.findIndex((url: any) => {
-          return url == getHost(currentURL);
-      }) > -1);
 
+    let acc = accounts.find(element => element.id === activeAccountId)
+    if (acc && acc.connectedTo !== undefined) {
+      if (acc.connectedTo.length > 0) {
+        setIsConnected(acc.connectedTo.findIndex((url: any) => {
+          return url == getHost(currentURL);
+        }) > -1);
         return;
       }
 
@@ -68,7 +70,7 @@ const Home = () => {
     currentURL
   ]);
 
-  const handleSetModalIsOpen = () =>{
+  const handleSetModalIsOpen = () => {
     setIsOpenModal(!isOpenModal);
   }
 
@@ -78,7 +80,7 @@ const Home = () => {
         <div className={styles.background} onClick={() => setIsOpenModal(false)}></div>
       )}
 
-      {accounts[activeAccountId] ? (
+      {accounts.find(element => element.id === activeAccountId) ? (
         <>
           <Header showLogo />
           <section className={styles.account}>
@@ -92,14 +94,14 @@ const Home = () => {
                 }}
               />
             ) : (
-              accounts[activeAccountId].label
+              accounts.find(element => element.id === activeAccountId)?.label
             )}
           </section>
           <section className={styles.center}>
             {isConnected
               ? <small className={styles.connected} onClick={() => setIsOpenModal(!isOpenModal)}>Connected</small>
               : <small className={styles.connected} onClick={() => setIsOpenModal(!isOpenModal)}>Not connected</small>
-           }
+            }
 
             {isOpenModal && isConnected && (
               <Modal title={currentURL} connected callback={handleSetModalIsOpen} />
@@ -110,11 +112,11 @@ const Home = () => {
             )}
 
             <h3>
-              {formatNumber(accounts[activeAccountId].balance)}{' '}
+              {formatNumber(accounts.find(element => element.id === activeAccountId)?.balance || 0)}{' '}
               <small>SYS</small>
             </h3>
-            <small>≈ {getFiatAmount(accounts[activeAccountId].balance)}</small>
-            <IconButton className={refreshing ? styles.loadingRefresh : styles.refresh} onClick={handleRefresh}>
+            <small>{getFiatAmount(accounts.find(element => element.id === activeAccountId)?.balance || 0)}</small>
+            <IconButton className={styles.refresh} onClick={handleRefresh}>
               <RefreshIcon />
             </IconButton>
             <div className={styles.actions}>
@@ -137,20 +139,20 @@ const Home = () => {
             </div>
           </section>
           <TxsPanel
-            address={accounts[activeAccountId].address.main}
-            transactions={accounts[activeAccountId].transactions}
-            assets={accounts[activeAccountId].assets} 
+            address={accounts.find(element => element.id === activeAccountId)?.address.main || 'no addr'}
+            transactions={accounts.find(element => element.id === activeAccountId)?.transactions || []}
+            assets={accounts.find(element => element.id === activeAccountId)?.assets || []}
           />
         </>
       ) : (
         <section
           className={clsx(styles.mask, {
-            [styles.hide]: accounts[activeAccountId],
-         })}
+            [styles.hide]: accounts.find(element => element.id === activeAccountId),
+          })}
         >
           <CircularProgress className={styles.loader} />
         </section>
-      ) }
+      )}
     </div>
   );
 };

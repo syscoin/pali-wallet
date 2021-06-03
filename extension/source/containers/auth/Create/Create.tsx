@@ -44,17 +44,22 @@ const Create = () => {
   };
 
   const handleConfirm = () => {
-    if (accounts[activeAccountId].balance > 0) {
-      try {
-        controller.wallet.account.confirmNewSPT();
-        
+    let acc = accounts.find(element => element.id === activeAccountId)
+
+    if ((acc ? acc.balance : -1) > 0) {
+      controller.wallet.account.confirmNewSPT().then(result => {
+        if (result) {
+          alert.removeAll();
+          alert.error(result.message);
+
+          return;
+        }
+
         setConfirmed(true);
         setLoading(false);
-      } catch (error) {
-        alert.removeAll();
-        alert.error('Sorry, an error has occurred.');
-        handleCancelTransactionOnSite();
-      }
+
+      });
+
     }
   }
 
@@ -110,96 +115,96 @@ const Create = () => {
       <Button
         type="button"
         theme="btn-gradient-primary"
-        variant={ styles.next }
+        variant={styles.next}
         linkTo="/home"
-        onClick={ handleClosePopup }
+        onClick={handleClosePopup}
       >
         Ok
       </Button>
     </Layout>
   ) : (
-      <div>
-        {newSPT ? (
-          <Layout title="Create Token" showLogo>
-            <div className={styles.wrapper}>
-              <div>
-                <section className={styles.data}>
-                  <div className={styles.flex}>
-                    <p>Precision</p>
-                    <p>{newSPT?.precision}</p>
-                  </div>
+    <div>
+      {newSPT ? (
+        <Layout title="Create Token" showLogo>
+          <div className={styles.wrapper}>
+            <div>
+              <section className={styles.data}>
+                <div className={styles.flex}>
+                  <p>Precision</p>
+                  <p>{newSPT?.precision}</p>
+                </div>
 
-                  <div className={styles.flex}>
-                    <p>Symbol</p>
-                    <p>{newSPT?.symbol}</p>
-                  </div>
+                <div className={styles.flex}>
+                  <p>Symbol</p>
+                  <p>{newSPT?.symbol}</p>
+                </div>
 
-                  <div className={styles.flex}>
-                    <p>RBF</p>
-                    <p>{rbf ? 'Yes' : 'No'}</p>
-                  </div>
+                <div className={styles.flex}>
+                  <p>RBF</p>
+                  <p>{rbf ? 'Yes' : 'No'}</p>
+                </div>
 
-                  <div className={styles.flex}>
-                    <p>Receiver</p>
-                    <p>{ellipsis(newSPT?.receiver)}</p>
-                  </div>
+                <div className={styles.flex}>
+                  <p>Receiver</p>
+                  <p>{ellipsis(newSPT?.receiver)}</p>
+                </div>
 
-                  <div className={styles.flex}>
-                    <p>Fee</p>
-                    <p>{fee}</p>
-                  </div>
+                <div className={styles.flex}>
+                  <p>Fee</p>
+                  <p>{fee}</p>
+                </div>
 
-                  <div className={styles.flex}>
-                    <p>Description</p>
-                    <p>{newSPT?.description}</p>
-                  </div>
+                <div className={styles.flex}>
+                  <p>Description</p>
+                  <p>{newSPT?.description}</p>
+                </div>
 
-                  <div className={styles.flex}>
-                    <p>Site</p>
-                    <p>{currentSenderURL}</p>
-                  </div>
+                <div className={styles.flex}>
+                  <p>Site</p>
+                  <p>{currentSenderURL}</p>
+                </div>
 
-                  <div className={styles.flex}>
-                    <p>Max total</p>
-                    <p>{fee}</p>
-                  </div>
-                </section>
+                <div className={styles.flex}>
+                  <p>Max total</p>
+                  <p>{fee}</p>
+                </div>
+              </section>
 
-                <section className={styles.confirm}>
-                  <div className={styles.actions}>
-                    <Button
-                      type="button"
-                      theme="btn-outline-secondary"
-                      variant={clsx(styles.button, styles.close)}
-                      onClick={handleCancelTransactionOnSite}
-                    >
-                      Reject
+              <section className={styles.confirm}>
+                <div className={styles.actions}>
+                  <Button
+                    type="button"
+                    theme="btn-outline-secondary"
+                    variant={clsx(styles.button, styles.close)}
+                    onClick={handleCancelTransactionOnSite}
+                  >
+                    Reject
                     </Button>
 
-                    <Button
-                      type="submit"
-                      theme="btn-outline-primary"
-                      variant={styles.button}
-                      onClick={handleConfirm}
-                    >
-                      Confirm
+                  <Button
+                    type="submit"
+                    theme="btn-outline-primary"
+                    variant={styles.button}
+                    onClick={handleConfirm}
+                  >
+                    Confirm
                     </Button>
-                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </Layout>
+      ) : (
+        <div>
+          {creatingSPT && loading ? (
+            <Layout title="" showLogo>
+              <div className={styles.wrapper}>
+                <section className={clsx(styles.mask)}>
+                  <CircularProgress className={styles.loader} />
                 </section>
               </div>
-            </div>
-          </Layout>
-        ) : (
-          <div>
-            {creatingSPT && loading ? (
-              <Layout title="" showLogo>
-                <div className={styles.wrapper}>
-                  <section className={clsx(styles.mask)}>
-                    <CircularProgress className={styles.loader} />
-                  </section>
-                </div>
-              </Layout>
-            ) : (
+            </Layout>
+          ) : (
             <div>
               <Layout title="Create Token" showLogo>
                 <div className={styles.wrapper}>
@@ -224,7 +229,7 @@ const Create = () => {
                   </section>
 
                   <p className={styles.description}>With current network conditions, we recommend a fee of {recommend} SYS.</p>
-      
+
                   <div className={styles.rbf}>
                     <label htmlFor="rbf">RBF</label>
 
@@ -262,10 +267,10 @@ const Create = () => {
                 </div>
               </Layout>
             </div>
-            )}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

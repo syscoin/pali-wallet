@@ -15,17 +15,20 @@ import {
   createAsset,
   issueAsset,
   issueNFT,
- 
+
 } from 'state/wallet';
 
 import MasterController, { IMasterController } from './controllers';
 import { IAccountState } from 'state/wallet/types';
 import { getHost } from './helpers';
+// var TrezorConnect = require('trezor-connect').default;
+import TrezorConnect from 'trezor-connect';
 
 declare global {
   interface Window {
     controller: Readonly<IMasterController>;
     senderURL: string;
+    trezorConnect: any;
   }
 }
 
@@ -39,7 +42,7 @@ const observeStore = async (store: any) => {
 
   const handleChange = async () => {
     let nextState = store.getState();
-    
+
     if (nextState !== currentState) {
       currentState = nextState;
 
@@ -80,6 +83,15 @@ browser.runtime.onInstalled.addListener(async () => {
 
   window.controller.stateUpdater();
 
+  TrezorConnect.init({
+    connectSrc: 'https://localhost:8088/',
+    lazyLoad: true, // this param will prevent iframe injection until TrezorConnect.method will be called
+    manifest: {
+      email: 'claudiocarvalhovilasboas@gmail.com',
+      appUrl: 'https://syscoin.org/',
+    }
+  });
+  window.trezorConnect = TrezorConnect;
   browser.runtime.onMessage.addListener(async (request, sender) => {
     const {
       type,
@@ -173,7 +185,7 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'CONFIRM_CONNECTION' && target == 'background') {
         if (getHost(window.senderURL) == getHost(store.getState().wallet.currentURL)) {
           store.dispatch(updateCanConnect(false));
-          
+
           return;
         }
 
@@ -387,7 +399,7 @@ browser.runtime.onInstalled.addListener(async () => {
 
         // example of how you can use the arguments
         window.controller.wallet.account.createCollection(collectionName, description, sysAddress, symbol, property1, property2, property3, attribute1, attribute2, attribute3)
-        
+
         // to use this arguments at frontend you can create a function as 'getCollection' in accountController and call it in the react component
 
         // you can use these data to call a function as in the SEND_TOKEN if or the ISSUE_SPT, you call a function using the arguments in the message request item, here lets just check if that everything is ok and send the 'createCollection' as a response
@@ -423,6 +435,10 @@ browser.runtime.onInstalled.addListener(async () => {
   });
 
   browser.runtime.onConnect.addListener((port) => {
+    if (port.name == 'trezor-connect') {
+      console.log('Blocked port')
+      return;
+    }
     browser.tabs.query({ active: true })
       .then((tabs) => {
         store.dispatch(updateCurrentURL(`${tabs[0].url}`));
