@@ -1,5 +1,6 @@
 import store from 'state/store';
 import { bech32 } from 'bech32';
+import TrezorConnect from 'trezor-connect';
 import {
   createAccount,
   updateStatus,
@@ -23,7 +24,7 @@ import {
   INFTIssue,
   MintedToken,
 } from '../../types';
-import { sys } from 'constants/index';
+import { sys, trezor } from 'constants/index';
 import { fromZPub } from 'bip84';
 
 export interface IAccountController {
@@ -714,8 +715,21 @@ const AccountController = (actions: {
         console.log(psbt.res.inputs)
         console.log(psbt.res.outputs)
         console.log("the psbt transact" + JSON.stringify(psbt))
-        //TREZOR PART GOES UNDER NOW 
 
+        //TREZOR PART GOES UNDER NOW 
+        // const _psbt = new trezor.TransactionBuilder({ network: sysjs.network })
+        // _psbt.setVersion(135)
+        // for (let i = 0; i < psbt.res.inputs.length; i++) {
+        //   const input = psbt.res.inputs[i]
+        //   await _psbt.addInput(input.txId, input.vout, input.sequencex)
+        // }
+        // psbt.res.outputs.forEach(output => {
+        //   _psbt.addOutput(Buffer.from(output.address), parseInt(output.value, 16))
+        // })
+
+        // TrezorConnect.signTransaction({ coin: _psbt.network.network.bech32, version: _psbt.tx.version, inputs: _psbt.tx.ins, outputs: _psbt.tx.outs }).then(resp => {
+        //   console.log(resp)
+        // })
       }
       else {
         const pendingTx = await sysjs.createTransaction(txOpts, null, _outputsArr, new sys.utils.BN(item.fee * 1e8));
