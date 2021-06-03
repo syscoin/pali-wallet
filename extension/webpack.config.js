@@ -23,19 +23,20 @@ const targetBrowser = process.env.TARGET_BROWSER;
 const extensionReloaderPlugin =
   nodeEnv === 'development'
     ? new ExtensionReloader({
-        port: 9090,
-        reloadPage: true,
-        entries: {
-          // TODO: reload manifest on update
-          contentScript: 'contentScript',
-          background: 'background',
-          inpage: 'inpage',
-          extensionPage: ['popup', 'options'],
-        },
-      })
+      port: 9090,
+      reloadPage: true,
+      entries: {
+        // TODO: reload manifest on update
+        contentScript: 'contentScript',
+        background: 'background',
+        inpage: 'inpage',
+        extensionPage: ['popup', 'options'],
+        trezorScript: 'trezorScript'
+      },
+    })
     : () => {
-        this.apply = () => {};
-      };
+      this.apply = () => { };
+    };
 
 const getExtensionFileType = (browser) => {
   if (browser === 'opera') {
@@ -66,8 +67,10 @@ module.exports = {
     background: path.join(sourcePath, 'scripts/Background', 'index.ts'),
     inpage: path.join(sourcePath, 'scripts/ContentScript', 'inpage.ts'),
     contentScript: path.join(sourcePath, 'scripts/ContentScript', 'index.ts'),
+    trezorScript: path.join(sourcePath, 'vendor', 'trezor-content-script.js'),
     app: path.join(sourcePath, 'pages/App', 'index.tsx'),
     options: path.join(sourcePath, 'pages/Options', 'index.tsx'),
+    trezorUSB: path.join(sourcePath, 'vendor', 'trezor-usb-permissions.js')
   },
 
   output: {
@@ -180,6 +183,11 @@ module.exports = {
       inject: 'body',
       chunks: ['options'],
       filename: 'options.html',
+    }),
+    new HtmlWebpackPlugin({
+      template: path.join(viewsPath, 'trezor-usb-permissions.html'),
+      filename: 'trezor-usb-permissions.html',
+      chunks: ['trezorUSB'],
     }),
     // write css file(s) to build folder
     new MiniCssExtractPlugin({ filename: 'css/[name].css' }),

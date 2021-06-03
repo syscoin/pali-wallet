@@ -80,7 +80,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       fee
     } = data;
 
-    if (accounts[activeAccountId].address.main === address) {
+    if (accounts.find(element => element.id === activeAccountId)!.address.main === address) {
       alert.removeAll();
       alert.error('Error: cannot complete transaction. Check the recipient\'s address.');
 
@@ -90,7 +90,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     if (selectedAsset) {
       try {
         controller.wallet.account.updateTempTx({
-          fromAddress: accounts[activeAccountId].address.main,
+          fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
           toAddress: address,
           amount,
           fee,
@@ -98,7 +98,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
           isToken: true,
           rbf: !checked,
         });
-  
+
         history.push('/send/confirm');
       } catch (error) {
         console.log(error);
@@ -107,18 +107,17 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       }
 
       return;
+    } else {
+      controller.wallet.account.updateTempTx({
+        fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
+        toAddress: address,
+        amount,
+        fee,
+        token: null,
+        isToken: false,
+        rbf: !checked,
+      });
     }
-    
-    controller.wallet.account.updateTempTx({
-      fromAddress: accounts[activeAccountId].address.main,
-      toAddress: address,
-      amount,
-      fee,
-      token: null,
-      isToken: false,
-      rbf: !checked,
-    });  
-
     history.push('/send/confirm');
   };
 
@@ -160,7 +159,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   };
 
   const handleAssetSelected = (item: any) => {
-    let selectedAsset = accounts[activeAccountId].assets.filter((asset: Assets) => asset.assetGuid == item.assetGuid);
+    let selectedAsset = accounts.find(element => element.id === activeAccountId)!.assets.filter((asset: Assets) => asset.assetGuid == item.assetGuid);
 
     console.log('item selected', item, selectedAsset)
 
@@ -169,7 +168,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
       return;
     }
-    
+
     setSelectedAsset(null);
   };
 
@@ -186,22 +185,22 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             Balance:{' '}
             <span>{selectedAsset ?
               controller.wallet.account.isNFT(selectedAsset.assetGuid) ?
-              selectedAsset.balance :
-              (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
-              accounts[activeAccountId].balance}
-            </span> 
-            
+                selectedAsset.balance :
+                (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
+              accounts.find(element => element.id === activeAccountId)!.balance}
+            </span>
+
             {selectedAsset ? selectedAsset.symbol : "SYS"}
           </div>
         </section>
-        
+
         <section className={styles.content}>
           <ul className={styles.form}>
             <li className={styles.item}>
               <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <label htmlFor="address">Recipient Address</label>
 
-                {address === accounts[activeAccountId].address.main && <small className={styles.description} style={{ textAlign: 'left' }}>Please, check the recipient's address.</small>}
+                {address === accounts.find(element => element.id === activeAccountId)!.address.main && <small className={styles.description} style={{ textAlign: 'left' }}>Please, check the recipient's address.</small>}
               </div>
 
               <img
@@ -243,7 +242,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                         <p>Native</p>
                       </li>
 
-                      {accounts[activeAccountId].assets.map((item, index) => {
+                      {accounts.find(element => element.id === activeAccountId)!.assets.map((item, index) => {
                         if (!controller.wallet.account.isNFT(item.assetGuid)) {
                           return (
                             <li className={styles.option} key={index} onClick={() => handleAssetSelected(item)}>
@@ -276,36 +275,36 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                       data-for="zdag_info"
                     />
                     <ReactTooltip id="zdag_info"
-                        getContent={() =>
-                          <div style={{ backgroundColor: 'white' }}>
-                            <small style={{ fontWeight: 'bold' }}>
-                              OFF for Replace-by-fee (RBF) and ON for Z-DAG <br/> Z-DAG: a exclusive Syscoin feature. <br/> To know more: <br/>
-                              <span
-                                style={{ cursor: 'pointer' }}
-                                onClick={() => {
-                                  window.open("https://syscoin.org/news/what-is-z-dag");
-                                }}
-                              >
-                                What is Z-DAG?
-                              </span>
-                            </small>
-                          </div>
-                        }
-                        backgroundColor="white"
-                        textColor="black"
-                        borderColor="#4d76b8"
-                        effect='solid'
-                        delayHide={300}
-                        delayShow={300}
-                        delayUpdate={300}
-                        place={'top'}
-                        border={true}
-                        type={'info'}
-                        multiline={true}
-                      />
+                      getContent={() =>
+                        <div style={{ backgroundColor: 'white' }}>
+                          <small style={{ fontWeight: 'bold' }}>
+                            OFF for Replace-by-fee (RBF) and ON for Z-DAG <br /> Z-DAG: a exclusive Syscoin feature. <br /> To know more: <br />
+                            <span
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => {
+                                window.open("https://syscoin.org/news/what-is-z-dag");
+                              }}
+                            >
+                              What is Z-DAG?
+                            </span>
+                          </small>
+                        </div>
+                      }
+                      backgroundColor="white"
+                      textColor="black"
+                      borderColor="#4d76b8"
+                      effect='solid'
+                      delayHide={300}
+                      delayShow={300}
+                      delayUpdate={300}
+                      place={'top'}
+                      border={true}
+                      type={'info'}
+                      multiline={true}
+                    />
                   </div>
                 </div>
-                
+
                 <Switch
                   offColor="#333f52"
                   height={20}
@@ -321,7 +320,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <label htmlFor="amount"> {selectedAsset ? selectedAsset.symbol : "SYS"} Amount</label>
 
-                  {accounts[activeAccountId].balance === 0 && <small className={styles.description} style={{ textAlign: 'left' }}>You don't have SYS available.</small>}
+                  {accounts.find(element => element.id === activeAccountId)!.balance === 0 && <small className={styles.description} style={{ textAlign: 'left' }}>You don't have SYS available.</small>}
                 </div>
 
                 <TextInput
@@ -339,11 +338,11 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                   type="button"
                   variant={styles.textBtn}
                   onClick={() =>
-                    setAmount(selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? String(selectedAsset.balance) : String((selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals)) : String(accounts[activeAccountId].balance))
+                    setAmount(selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? String(selectedAsset.balance) : String((selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals)) : String(accounts.find(element => element.id === activeAccountId)!.balance))
                   }
                 >
                   Max
-                </Button>
+              </Button>
               </li>
 
               <li className={styles.item}>
@@ -365,14 +364,14 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                   onClick={handleGetFee}
                 >
                   Recommend
-                </Button>
+              </Button>
               </li>
             </div>
 
             <div className={styles.description}>
               {`With current network conditions we recommend a fee of ${recommend} SYS.`}
             </div>
-            
+
             <div className={styles.status}>
               <span className={styles.equalAmount}>
                 ≈ {getFiatAmount(Number(amount) + Number(fee), 6)}
@@ -392,16 +391,16 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 linkTo="/home"
               >
                 Close
-              </Button>
+            </Button>
 
               <Button
                 type="submit"
                 theme="btn-outline-primary"
                 variant={styles.button}
                 disabled={
-                  accounts[activeAccountId].address.main === address ||
-                  accounts[activeAccountId].balance === 0 ||
-                  accounts[activeAccountId].balance < Number(amount) ||
+                  accounts.find(element => element.id === activeAccountId)!.address.main === address ||
+                  accounts.find(element => element.id === activeAccountId)!.balance === 0 ||
+                  accounts.find(element => element.id === activeAccountId)!.balance < Number(amount) ||
                   !isValidAddress ||
                   !amount ||
                   !fee ||
@@ -410,7 +409,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 }
               >
                 Send
-              </Button>
+            </Button>
             </div>
           </ul>
 

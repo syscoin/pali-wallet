@@ -14,6 +14,8 @@ export interface IAccountState {
   balance: number;
   transactions: Transaction[];
   connectedTo: any[];
+  isTrezorWallet: boolean;
+  trezorId?: number;
 }
 
 export interface IAccountUpdateState {

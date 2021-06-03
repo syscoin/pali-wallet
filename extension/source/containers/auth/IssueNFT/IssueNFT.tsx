@@ -43,7 +43,7 @@ const IssueNFT = () => {
   };
 
   const handleConfirm = () => {
-    if (accounts[activeAccountId].balance > 0) {
+    if ((accounts.find(element => element.id === activeAccountId)?.balance || -1) > 0) {
       try {
         controller.wallet.account.confirmIssueNFT()
 
@@ -56,7 +56,6 @@ const IssueNFT = () => {
       }
     }
   }
-
   const handleClosePopup = () => {
     browser.runtime.sendMessage({
       type: "CLOSE_POPUP",
@@ -108,152 +107,152 @@ const IssueNFT = () => {
       <Button
         type="button"
         theme="btn-gradient-primary"
-        variant={ styles.next }
+        variant={styles.next}
         linkTo="/home"
-        onClick={ handleClosePopup }
+        onClick={handleClosePopup}
       >
         Ok
       </Button>
     </Layout>
   ) : (
     <div>
-    {mintNFT ? (
-      <Layout title="Issue NFT" showLogo>
-        <div className={styles.wrapper}>
-          <div>
-            <section className={styles.data}>
-              <div className={styles.flex}>
-                <p>RBF</p>
-                <p>{rbf ? 'Yes' : 'No'}</p>
-              </div>
-
-              <div className={styles.flex}>
-                <p>Receiver</p>
-                <p>{ellipsis(mintNFT?.receiver)}</p>
-              </div>
-
-              <div className={styles.flex}>
-                <p>Fee</p>
-                <p>{fee}</p>
-              </div>
-
-              <div className={styles.flex}>
-                <p>Asset guid</p>
-                <p>{mintNFT?.assetGuid}</p>
-              </div>
-
-              <div className={styles.flex}>
-                <p>Site</p>
-                <p>{currentSenderURL}</p>
-              </div>
-
-              <div className={styles.flex}>
-                <p>Max total</p>
-                <p>{fee}</p>
-              </div>
-            </section>
-
-            <section className={styles.confirm}>
-              <div className={styles.actions}>
-                <Button
-                  type="button"
-                  theme="btn-outline-secondary"
-                  variant={clsx(styles.button, styles.close)}
-                  onClick={handleCancelTransactionOnSite}
-                >
-                  Reject
-                </Button>
-
-                <Button
-                  type="submit"
-                  theme="btn-outline-primary"
-                  variant={styles.button}
-                  onClick={handleConfirm}
-                >
-                  Confirm
-                </Button>
-              </div>
-            </section>
-          </div>
-        </div>
-      </Layout>
-    ) : (
-      <div>
-        {issuingNFT && loading ? (
-          <Layout title="" showLogo>
-            <div className={styles.wrapper}>
-              <section className={clsx(styles.mask)}>
-                <CircularProgress className={styles.loader} />
-              </section>
-            </div>
-          </Layout>
-        ) : (
-          <div>
-            <Layout title="Mint token" showLogo>
-              <div className={styles.wrapper}>
-              <label htmlFor="fee">Fee</label>
-
-                <section className={styles.fee}>
-                  <TextInput
-                    type="number"
-                    placeholder="Enter fee"
-                    fullWidth
-                    name="fee"
-                    value={fee}
-                    onChange={(event) => setFee(Number(event.target.value))}
-                  />
-                  <Button
-                    type="button"
-                    variant={styles.textBtn}
-                    onClick={handleGetFee}
-                  >
-                    Recommend
-                  </Button>
-                </section>
-
-                <p className={styles.description}>With current network conditions, we recommend a fee of {recommend} SYS.</p>
-      
-                <div className={styles.rbf}>
-                  <label htmlFor="rbf">RBF</label>
-
-                  <Switch
-                    offColor="#333f52"
-                    height={20}
-                    width={60}
-                    checked={rbf}
-                    onChange={handleTypeChanged}
-                  />
+      {mintNFT ? (
+        <Layout title="Issue NFT" showLogo>
+          <div className={styles.wrapper}>
+            <div>
+              <section className={styles.data}>
+                <div className={styles.flex}>
+                  <p>RBF</p>
+                  <p>{rbf ? 'Yes' : 'No'}</p>
                 </div>
 
-                <section className={styles.confirm}>
-                  <div className={styles.actions}>
-                    <Button
-                      type="button"
-                      theme="btn-outline-secondary"
-                      variant={clsx(styles.button, styles.close)}
-                      onClick={handleCancelTransactionOnSite}
-                    >
-                      Reject
-                    </Button>
+                <div className={styles.flex}>
+                  <p>Receiver</p>
+                  <p>{ellipsis(mintNFT?.receiver)}</p>
+                </div>
 
-                    <Button
-                      type="submit"
-                      theme="btn-outline-primary"
-                      variant={styles.button}
-                      onClick={handleMessageToMintNFT}
-                      disabled={!fee}
-                    >
-                      Next
-                    </Button>
-                  </div>
+                <div className={styles.flex}>
+                  <p>Fee</p>
+                  <p>{fee}</p>
+                </div>
+
+                <div className={styles.flex}>
+                  <p>Asset guid</p>
+                  <p>{mintNFT?.assetGuid}</p>
+                </div>
+
+                <div className={styles.flex}>
+                  <p>Site</p>
+                  <p>{currentSenderURL}</p>
+                </div>
+
+                <div className={styles.flex}>
+                  <p>Max total</p>
+                  <p>{fee}</p>
+                </div>
+              </section>
+
+              <section className={styles.confirm}>
+                <div className={styles.actions}>
+                  <Button
+                    type="button"
+                    theme="btn-outline-secondary"
+                    variant={clsx(styles.button, styles.close)}
+                    onClick={handleCancelTransactionOnSite}
+                  >
+                    Reject
+                </Button>
+
+                  <Button
+                    type="submit"
+                    theme="btn-outline-primary"
+                    variant={styles.button}
+                    onClick={handleConfirm}
+                  >
+                    Confirm
+                </Button>
+                </div>
+              </section>
+            </div>
+          </div>
+        </Layout>
+      ) : (
+        <div>
+          {issuingNFT && loading ? (
+            <Layout title="" showLogo>
+              <div className={styles.wrapper}>
+                <section className={clsx(styles.mask)}>
+                  <CircularProgress className={styles.loader} />
                 </section>
               </div>
             </Layout>
-          </div>
-        )}
-      </div>
-    )}
-  </div>
+          ) : (
+            <div>
+              <Layout title="Mint token" showLogo>
+                <div className={styles.wrapper}>
+                  <label htmlFor="fee">Fee</label>
+
+                  <section className={styles.fee}>
+                    <TextInput
+                      type="number"
+                      placeholder="Enter fee"
+                      fullWidth
+                      name="fee"
+                      value={fee}
+                      onChange={(event) => setFee(Number(event.target.value))}
+                    />
+                    <Button
+                      type="button"
+                      variant={styles.textBtn}
+                      onClick={handleGetFee}
+                    >
+                      Recommend
+                  </Button>
+                  </section>
+
+                  <p className={styles.description}>With current network conditions, we recommend a fee of {recommend} SYS.</p>
+
+                  <div className={styles.rbf}>
+                    <label htmlFor="rbf">RBF</label>
+
+                    <Switch
+                      offColor="#333f52"
+                      height={20}
+                      width={60}
+                      checked={rbf}
+                      onChange={handleTypeChanged}
+                    />
+                  </div>
+
+                  <section className={styles.confirm}>
+                    <div className={styles.actions}>
+                      <Button
+                        type="button"
+                        theme="btn-outline-secondary"
+                        variant={clsx(styles.button, styles.close)}
+                        onClick={handleCancelTransactionOnSite}
+                      >
+                        Reject
+                    </Button>
+
+                      <Button
+                        type="submit"
+                        theme="btn-outline-primary"
+                        variant={styles.button}
+                        onClick={handleMessageToMintNFT}
+                        disabled={!fee}
+                      >
+                        Next
+                    </Button>
+                    </div>
+                  </section>
+                </div>
+              </Layout>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

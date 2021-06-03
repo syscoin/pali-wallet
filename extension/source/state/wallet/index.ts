@@ -154,7 +154,7 @@ const WalletState = createSlice({
       }
 
       state.accounts.splice(action.payload, 1);
-      state.activeAccountId = 0;
+      // state.activeAccountId = 0;
     },
 
     removeAccounts(state: IWalletState) {
@@ -162,14 +162,17 @@ const WalletState = createSlice({
       state.activeAccountId = 0;
     },
     updateAccount(state: IWalletState, action: PayloadAction<IAccountUpdateState>) {
-      state.accounts[action.payload.id] = {
-        ...state.accounts[action.payload.id],
+      let indexof = state.accounts.findIndex((element: IAccountState) => element.id == action.payload.id)
+      state.accounts[indexof] = {
+        ...state.accounts[indexof],
         ...action.payload,
       };
     },
     updateAccountAddress(state: IWalletState, action: PayloadAction<IAccountUpdateAddress>) {
-      state.accounts[action.payload.id] = {
-        ...state.accounts[action.payload.id],
+      let indexof = state.accounts.findIndex((element: IAccountState) => element.id == action.payload.id)
+      console.log(indexof)
+      state.accounts[indexof] = {
+        ...state.accounts[indexof],
         ...action.payload,
       };
     },
@@ -195,13 +198,15 @@ const WalletState = createSlice({
       state: IWalletState,
       action: PayloadAction<{ id: number; txs: Transaction[] }>
     ) {
-      state.accounts[action.payload.id].transactions = action.payload.txs;
+      let indexof = state.accounts.findIndex((element: IAccountState) => element.id == action.payload.id)
+      state.accounts[indexof].transactions = action.payload.txs;
     },
     updateLabel(
       state: IWalletState,
       action: PayloadAction<{ id: number; label: string }>
     ) {
-      state.accounts[action.payload.id].label = action.payload.label;
+      let indexof = state.accounts.findIndex((element: IAccountState) => element.id == action.payload.id)
+      state.accounts[indexof].label = action.payload.label;
     },
   },
 });

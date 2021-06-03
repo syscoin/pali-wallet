@@ -13,7 +13,10 @@
   "permissions": [
     "http://*/*",
     "https://*/*",
+    "*://connect.trezor.io/8/*",
+    "https://localhost:8088/",
     "tabs",
+    "notifications",
     "activeTab"
   ],
   "content_security_policy": "script-src 'self'; object-src 'self'",
@@ -61,6 +64,15 @@
       "run_at": "document_start",
       "js": [
         "js/contentScript.bundle.js"
+      ]
+    },
+    {
+      "matches": [
+        "*://connect.trezor.io/8/popup.html",
+        "https://localhost:8088/*"
+      ],
+      "js": [
+        "js/trezorScript.bundle.js"
       ]
     }
   ],

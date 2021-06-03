@@ -38,7 +38,7 @@ const SendConfirm = () => {
   const alert = useAlert();
 
   const handleConfirm = () => {
-    if (accounts[activeAccountId].balance > 0) {
+    if (accounts.find(element => element.id === activeAccountId)!.balance > 0) {
       setLoading(true);
 
       try {
@@ -116,7 +116,7 @@ const SendConfirm = () => {
         <div className={styles.row}>
           <p>From</p>
           <span>
-            {confirmingTransaction && connectedAccount ? connectedAccount?.label : accounts[activeAccountId].label || ''} (
+            {confirmingTransaction && connectedAccount ? connectedAccount?.label : accounts.find(element => element.id === activeAccountId)!.label || ''} (
             {ellipsis(tempTx!.fromAddress)})
           </span>
         </div>

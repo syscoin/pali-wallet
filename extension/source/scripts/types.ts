@@ -19,6 +19,7 @@ export interface IAccountInfo {
   balance: number;
   assets: Assets[];
   transactions: Transaction[];
+  address?: string;
 }
 
 export interface ITransactionInfo {

@@ -8,12 +8,17 @@ import {
   updateStatus,
   setEncriptedMnemonic,
   removeAccounts,
-  updateBlockbookURL
+  updateBlockbookURL,
+  removeAccount
 } from 'state/wallet';
 import AccountController, { IAccountController } from './AccountController';
-import IWalletState from 'state/wallet/types';
+import IWalletState, {
+  IAccountState
+} from 'state/wallet/types';
 import { sys, SYS_NETWORK } from 'constants/index';
 import CryptoJS from 'crypto-js';
+// var TrezorConnect = window.trezorConnect;
+import { fromZPub } from 'bip84';
 
 export interface IWalletController {
   account: Readonly<IAccountController>;
@@ -21,6 +26,7 @@ export interface IWalletController {
   isLocked: () => boolean;
   generatePhrase: () => string | null;
   createWallet: (isUpdated?: boolean) => void;
+  createHardwareWallet: () => void;
   unLock: (pwd: string) => boolean;
   checkPassword: (pwd: string) => boolean;
   getPhrase: (pwd: string) => string | null;
@@ -37,8 +43,6 @@ const WalletController = (): IWalletController => {
   let mnemonic = '';
   let HDsigner: any = null;
   let sjs: any = null;
-  const backendURl: string = store.getState().wallet.activeNetwork === 'testnet' ? SYS_NETWORK.testnet.beUrl : SYS_NETWORK.main.beUrl;
-  const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
 
   const setWalletPassword = (pwd: string) => {
     password = pwd;
@@ -64,7 +68,6 @@ const WalletController = (): IWalletController => {
 
     HDsigner = new sys.utils.HDSigner(mnemonic, null, false);
     sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.main.beUrl);
-
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
 
@@ -78,13 +81,42 @@ const WalletController = (): IWalletController => {
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
     store.dispatch(updateBlockbookURL(SYS_NETWORK.main.beUrl));
 
-    account.subscribeAccount(sjs);
-    account.getPrimaryAccount(password, sjs);
-
-    if (isUpdated) {
-      account.getLatestUpdate();
-    }
+    account.subscribeAccount(false, sjs, undefined, true).then(() => {
+      account.getPrimaryAccount(password, sjs);
+    })
   };
+
+  const createHardwareWallet = () => {
+    const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
+    let path: string = "m/84'/57'/0'";
+    let coin: string = "sys"
+    if (isTestnet) {
+      path = "m/84'/1'/0'";
+      coin = "tsys";
+    }
+    console.log(window.trezorConnect)
+    window.trezorConnect.getAccountInfo({
+      path: path,
+      coin: coin
+    })
+      .then((response: any) => {
+        const message = response.success
+          ? `Trezor Wallet Account Created`
+          : `Error: ${response.payload.error}`;
+        chrome.notifications.create(new Date().getTime().toString(), {
+          type: 'basic',
+          iconUrl: 'assets/icons/favicon-48.png',
+          title: 'Hardware Wallet connected',
+          message,
+        });
+        if (response.success) {
+          account.subscribeAccount(true, response.payload);
+        }
+      })
+      .catch((error: any) => {
+        console.error('TrezorConnectError', error);
+      });
+  }
 
   const retrieveEncriptedMnemonic = () => {
     // not encrypted for now but we got to retrieve
@@ -113,6 +145,8 @@ const WalletController = (): IWalletController => {
       }
 
       if (HDsigner === null || sjs === null) {
+        const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
+        const backendURl: string = store.getState().wallet.activeNetwork === 'testnet' ? SYS_NETWORK.testnet.beUrl : SYS_NETWORK.main.beUrl;
         HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, isTestnet);
         sjs = new sys.SyscoinJSLib(HDsigner, backendURl);
         store.dispatch(updateBlockbookURL(backendURl));
@@ -122,14 +156,18 @@ const WalletController = (): IWalletController => {
         if (accounts.length > 1000) {
           return false;
         }
+        for (let i = 1; i <= accounts.length; i++) {
+          if (accounts[i].isTrezorWallet) {
+            console.log("Should not derive from hdsigner if the account is from the hardware wallet")
+          }
+          else {
+            const child = sjs.HDSigner.deriveAccount(i);
 
-        for (let i = 1; i <= accounts.length - 1; i++) {
-          const child = sjs.HDSigner.deriveAccount(i);
+            sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
+            sjs.HDSigner.accountIndex = activeAccountId;
+          }
 
-          sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
-          sjs.HDSigner.accountIndex = activeAccountId;
         }
-        //Restore logic/ function goes here 
       }
 
       password = pwd;
@@ -177,28 +215,77 @@ const WalletController = (): IWalletController => {
   };
 
   const _getAccountDataByNetwork = (sjs: any) => {
-    const { activeAccountId, accounts } = store.getState().wallet;
+    const { activeAccountId, accounts, activeNetwork } = store.getState().wallet;
 
     if (accounts.length > 1000) {
       return false;
     }
+    console.log(accounts.length)
+    for (let i = 1; i <= accounts.length; i++) {
+      console.log("loop number " + i)
+      console.log(accounts[i])
+      if (accounts[i] === undefined || accounts[i] === null) break;
+      if (accounts[i].isTrezorWallet) {
+        console.log("Should not derive from hdsigner if the account is from the hardware wallet")
+        if (activeAccountId !== accounts[i].id) {
+          console.log("User switching network without trezor connected")
+          store.dispatch(removeAccount(i));
+          store.dispatch(updateStatus());
+          const message = "Your device is being disconnected";
+          chrome.notifications.create(new Date().getTime().toString(), {
+            type: 'basic',
+            iconUrl: 'assets/icons/favicon-48.png',
+            title: 'Hardware Wallet removed due to network switch',
+            message
+          });
 
-    for (let i = 0; i < accounts.length; i++) {
-      const child = sjs.HDSigner.deriveAccount(i);
-      let derived = new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
+        }
+        else {
+          let path: string = "m/84'/57'/0'";
+          let coin: string = "sys"
+          if (activeNetwork === 'testnet') {
+            path = "m/84'/1'/0'";
+            coin = "tsys";
+          }
+          window.trezorConnect.getAccountInfo({
+            path: path,
+            coin: coin
+          })
+            .then((response: any) => {
+              const message = response.success
+                ? `Trezor Wallet Account Created`
+                : `Error: ${response.payload.error}`;
+              chrome.notifications.create(new Date().getTime().toString(), {
+                type: 'basic',
+                iconUrl: 'assets/icons/favicon-48.png',
+                title: 'Hardware Wallet updated to ' + activeNetwork,
+                message,
+              });
+              if (response.success) {
+                console.log("update xpub")
+              }
+            })
+            .catch((error: any) => {
+              console.error('TrezorConnectError', error);
+            });
 
-      console.log('child', child, 'derived', derived)
+        }
+      }
+      else {
+        const child = sjs.HDSigner.deriveAccount(i);
+        let derived = new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
 
-      account.setNewXpub(i, derived.getAccountPublicKey());
-      console.log('account', account, sjs, sjs.HDSigner)
-      sjs.HDSigner.accounts.push(account);
-      sjs.HDSigner.accountIndex = activeAccountId;
+        console.log('child', child, 'derived', derived)
+
+        account.setNewXpub(i, derived.getAccountPublicKey());
+        console.log('account', account, sjs, sjs.HDSigner)
+        sjs.HDSigner.accounts.push(derived);
+        sjs.HDSigner.accountIndex = activeAccountId;
+        console.log("end of for")
+      }
     }
-
+    console.log("Updating account controller")
     account.getPrimaryAccount(password, sjs);
-    // account.getLatestUpdate();
-    // account.watchMemPool();
-
     return;
   }
 
@@ -233,8 +320,47 @@ const WalletController = (): IWalletController => {
   };
 
   const getNewAddress = async () => {
-    sjs.HDSigner.receivingIndex = -1;
-    const address = await sjs.HDSigner.getNewReceivingAddress();
+    const { activeAccountId, accounts } = store.getState().wallet;
+    let address: string = ""
+    let userAccount: IAccountState = accounts.find((el: IAccountState) => el.id === activeAccountId)
+    if (userAccount!.isTrezorWallet) {
+      console.log("Updating trezor address")
+      console.log("Old address")
+      console.log(userAccount.address)
+      const res = await sys.utils.fetchBackendAccount(sjs.blockbookURL, userAccount.xpub, 'tokens=nonzero&details=txs', true);
+      let account0 = new fromZPub(userAccount.xpub, sjs.HDSigner.pubTypes, sjs.HDSigner.networks)
+      let receivingIndex: number = -1
+      if (res.tokens) {
+        res.tokens.forEach((token: any) => {
+          if (token.path) {
+            const splitPath = token.path.split('/')
+            if (splitPath.length >= 6) {
+              const change = parseInt(splitPath[4], 10)
+              const index = parseInt(splitPath[5], 10)
+              if (change === 1) {
+                console.log("Can't update it's change index")
+              }
+              else if (index > receivingIndex) {
+                receivingIndex = index
+              }
+            }
+          }
+        })
+      }
+      console.log(receivingIndex)
+      address = account0.getAddress(receivingIndex + 1)
+      console.log("New address")
+      console.log(address)
+
+
+
+    }
+    else {
+      sjs.HDSigner.receivingIndex = -1;
+      address = await sjs.HDSigner.getNewReceivingAddress();
+      console.log("Receiving Index :")
+      console.log(sjs.HDSigner.receivingIndex)
+    }
 
     return account.setNewAddress(address);
   }
@@ -247,6 +373,7 @@ const WalletController = (): IWalletController => {
     setWalletPassword,
     generatePhrase,
     createWallet,
+    createHardwareWallet,
     checkPassword,
     getPhrase,
     deleteWallet,
