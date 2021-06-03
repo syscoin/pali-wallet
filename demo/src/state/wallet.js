@@ -8,19 +8,17 @@ export const walletConnection = createSlice({
     connectedAccountData: {
       balance: 0,
       connectedAccount: null,
-      connectedAccountAddress: ''
+      connectedAccountAddress: "",
     },
     controller: null,
-    connected: false
+    connected: false,
   },
   reducers: {
     setIsInstalled: (state, action) => {
-      console.log('state installed', state, action)
-
       return {
         ...state,
-        isInstalled: action.payload
-      }
+        isInstalled: action.payload,
+      };
     },
     updateConnectedAccountData: (state, action) => {
       return {
@@ -28,28 +26,28 @@ export const walletConnection = createSlice({
         connectedAccountData: {
           balance: action.payload.balance,
           connectedAccount: action.payload.connectedAccount,
-          connectedAccountAddress: action.payload.connectedAccountAddress
-        }
-      }
+          connectedAccountAddress: action.payload.connectedAccountAddress,
+        },
+      };
     },
     updateCanConnect: (state, action) => {
       return {
         ...state,
-        canConnect: action.payload
-      }
+        canConnect: action.payload,
+      };
     },
     setController: (state, action) => {
       return {
         ...state,
-        controller: action.payload
-      }
+        controller: action.payload,
+      };
     },
     setIsConnected: (state, action) => {
       return {
         ...state,
-        connected: action.payload
-      }
-    }
+        connected: action.payload,
+      };
+    },
   },
 });
 
@@ -58,9 +56,10 @@ export const {
   updateConnectedAccountData,
   updateCanConnect,
   setController,
-  setIsConnected
+  setIsConnected,
 } = walletConnection.actions;
 
-export const walletConnectionSlice = (state) => state.walletConnection.walletConnection;
+export const walletConnectionSlice = (state) =>
+  state.walletConnection.walletConnection;
 
 export default walletConnection.reducer;

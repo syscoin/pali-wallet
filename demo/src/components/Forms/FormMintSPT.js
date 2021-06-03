@@ -1,68 +1,22 @@
 import React, { useState, useEffect } from "react";
-import store from "../../state/store";
-import Dropdown from "./DropAsset";
+import { useSelector } from "react-redux";
 
-const FormMintSPT = (props) => {
+const FormMintSPT = (formCallback) => {
+  const controller = useSelector((state) => state.controller);
   const [assetGuid, setAssetGuid] = useState("");
   const [receiver, setReceiver] = useState("");
   const [rbf, setRbf] = useState(false);
   const [amount, setAmount] = useState(0);
-  const [data, setData] = useState([]);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [canConnect, setCanConnect] = useState(true);
-  const [balance, setBalance] = useState(0);
-  const [controller, setController] = useState();
-  const [connectedAccount, setConnectedAccount] = useState({});
-  const [connectedAccountAddress, setConnectedAccountAddress] = useState("");
-
-  const setup = async () => {
-    const _controller = await store.getState().controller;
-    const walletState = await store.getState().controller.getWalletState();
-
-    if (walletState.accounts.length > 0) {
-      _controller.getConnectedAccount().then((data) => {
-        if (data) {
-          setConnectedAccount(data);
-          setConnectedAccountAddress(data.address.main);
-          setBalance(data.balance);
-          setController(_controller);
-
-          return;
-        }
-
-        setConnectedAccount({});
-        setConnectedAccountAddress("");
-        setBalance(0);
-
-        return;
-      });
-    }
-  };
+  const [tokens, setTokens] = useState([]);
 
   useEffect(() => {
-    setup();
-    if (controller) {
-      setup();
-
-      controller.onWalletUpdate(setup);
-    }
-  }, [controller]);
-
-  useEffect(() => {
-    console.log("tokens", data);
-
-    const setup = async () => {
-      if (controller) {
-        console.log("torewkens");
-        setData(await controller.getUserMintedTokens());
-      }
-    };
-
-    setup();
-  }, [controller]);
+    (async () => {
+      controller && setTokens(await controller.getUserMintedTokens());
+    })();
+  }, []);
 
   const RenderAsset = () => {
-    return data.map((asset, index) => {
+    return tokens.map((asset, index) => {
       return (
         <option
           key={index}
@@ -75,7 +29,7 @@ const FormMintSPT = (props) => {
   return (
     <form
       onSubmit={(event) =>
-        props.formCallback(event, amount, receiver, assetGuid)
+        formCallback.formCallback(event, amount, receiver, assetGuid)
       }
     >
       <fieldset>

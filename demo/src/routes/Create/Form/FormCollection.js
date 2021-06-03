@@ -1,25 +1,21 @@
 import React, { useState } from "react";
-import { setFormState } from "../../helpers";
+import { setFormState } from "../../../helpers";
 
 const FormCollection = (props) => {
   const [state, setState] = useState({
-    collectionName: '',
-    description: '',
-    sysAddress: '',
-    symbol: '',
-    property1: '',
-    property2: '',
-    property3: '',
-    attribute1: '',
-    attribute2: '',
-    attribute3: ''
+    collectionName: "",
+    description: "",
+    sysAddress: "",
+    symbol: "",
+    property1: "",
+    property2: "",
+    property3: "",
+    attribute1: "",
+    attribute2: "",
+    attribute3: "",
   });
 
-  const {
-    collectionName,
-    description,
-    sysAddress
-  } = state;
+  const { collectionName, description, sysAddress } = state;
 
   return (
     <form onSubmit={(event) => props.formCallback(event, state)}>
@@ -29,11 +25,13 @@ const FormCollection = (props) => {
         <div>
           <label htmlFor="collectionName">Collection name (asset guid):</label>
           <input
-            className="input" 
+            className="input"
             type="text"
             id="collectionName"
             name="collectionName"
-            onBlur={(event) => setFormState(event, state, 'collectionName', setState)}
+            onBlur={(event) =>
+              setFormState(event, state, "collectionName", setState)
+            }
           />
 
           <label htmlFor="description">Description:</label>
@@ -42,7 +40,9 @@ const FormCollection = (props) => {
             type="text"
             id="description"
             name="description"
-            onBlur={(event) => setFormState(event, state, 'description', setState)}
+            onBlur={(event) =>
+              setFormState(event, state, "description", setState)
+            }
           />
 
           <label htmlFor="address">Sys address:</label>
@@ -51,7 +51,9 @@ const FormCollection = (props) => {
             type="text"
             id="address"
             name="address"
-            onBlur={(event) => setFormState(event, state, 'sysAddress', setState)}
+            onBlur={(event) =>
+              setFormState(event, state, "sysAddress", setState)
+            }
           />
 
           <label htmlFor="symbol">UPLOAD SYMBOL</label>
@@ -59,8 +61,8 @@ const FormCollection = (props) => {
             type="file"
             name="symbol"
             id="symbol"
-            onBlur={(event) => setFormState(event, state, 'symbol', setState)}
-          /> 
+            onBlur={(event) => setFormState(event, state, "symbol", setState)}
+          />
         </div>
       </div>
 
@@ -68,53 +70,49 @@ const FormCollection = (props) => {
         <input
           type="text"
           placeholder="Property 1"
-          onBlur={(event) => setFormState(event, state, 'property1', setState)}
+          onBlur={(event) => setFormState(event, state, "property1", setState)}
         />
 
         <input
           type="text"
           placeholder="Property 2"
-          onBlur={(event) => setFormState(event, state, 'property2', setState)}
+          onBlur={(event) => setFormState(event, state, "property2", setState)}
         />
 
         <input
           type="text"
           placeholder="Property 3"
-          onBlur={(event) => setFormState(event, state, 'property3', setState)}
+          onBlur={(event) => setFormState(event, state, "property3", setState)}
         />
 
         <input
           type="text"
           placeholder="Atributte 1"
-          onBlur={(event) => setFormState(event, state, 'attribute1', setState)}
+          onBlur={(event) => setFormState(event, state, "attribute1", setState)}
         />
 
         <input
           type="text"
           placeholder="Atributte 2"
-          onBlur={(event) => setFormState(event, state, 'attribute2', setState)}
+          onBlur={(event) => setFormState(event, state, "attribute2", setState)}
         />
 
         <input
           type="text"
           placeholder="Atributte 3"
-          onBlur={(event) => setFormState(event, state, 'attribute3', setState)}
+          onBlur={(event) => setFormState(event, state, "attribute3", setState)}
         />
 
         <button
           className="button"
           type="submit"
-          disabled={
-            !collectionName ||
-            !description ||
-            !sysAddress
-          }
+          disabled={!collectionName || !description || !sysAddress}
         >
           Create
         </button>
-      </div>   
+      </div>
     </form>
   );
-}
+};
 
 export default FormCollection;
