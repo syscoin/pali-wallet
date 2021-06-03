@@ -19,6 +19,7 @@ import Button from 'components/Button';
 import Switch from "react-switch";
 import TextInput from 'components/TextInput';
 import VerifiedIcon from 'assets/images/svg/check-green.svg';
+import Close from 'assets/images/svg/cancel.svg';
 import { useController } from 'hooks/index';
 import { useFiat } from 'hooks/usePrice';
 import IWalletState from 'state/wallet/types';
@@ -60,7 +61,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   }, [address]);
 
   const addressInputClass = clsx(styles.input, styles.address, {
-    [styles.verified]: isValidAddress,
+    [styles.verified]: isValidAddress || (address && !isValidAddress),
   });
 
   const statusIconClass = clsx(styles.statusIcon, {
@@ -208,6 +209,12 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 src={VerifiedIcon}
                 alt="checked"
                 className={statusIconClass}
+              />
+
+              <img
+                src={Close}
+                alt="checked"
+                className={address && !isValidAddress ? styles.statusIsNotValidClass : styles.hideCloseIcon}
               />
 
               <TextInput
