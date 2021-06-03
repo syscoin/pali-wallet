@@ -74,8 +74,12 @@ const AccountController = (actions: {
           if (token.path) {
             const splitPath = token.path.split('/')
             if (splitPath.length >= 6) {
+              const change = parseInt(splitPath[4], 10)
               const index = parseInt(splitPath[5], 10)
-              if (index > receivingIndex) {
+              if (change === 1) {
+                console.log("Can't update it's change index")
+              }
+              else if (index > receivingIndex) {
                 receivingIndex = index
               }
             }
@@ -373,14 +377,13 @@ const AccountController = (actions: {
 
   const setNewAddress = (addr: string) => {
     const { activeAccountId } = store.getState().wallet;
-
+    console.log(activeAccountId)
     store.dispatch(
       updateAccountAddress({
         id: activeAccountId,
         address: { "main": addr },
       })
     );
-
     return true;
   }
 
@@ -420,16 +423,31 @@ const AccountController = (actions: {
         precision: newSPT.precision, symbol: newSPT.symbol, maxsupply: new sys.utils.BN(newSPT.maxsupply), description: newSPT.description
       }
       const txOpts = { rbf: newSPT.rbf }
+      if (account.isTrezorWallet) {
+        const psbt = await sysjs.assetNew(_assetOpts, txOpts, null, newSPT.receiver, new sys.utils.BN(newSPT.fee), account.xpub);
+        if (!psbt) {
+          console.log('Could not create transaction, not enough funds?')
+        }
+        console.log(psbt.res.inputs)
+        console.log(psbt.res.outputs)
+        const memo = await sys.utils.getMemoFromOpReturn(psbt.res.outputs, "")
+        console.log('the output memo ' + (memo.toString('hex')))
+        console.log("the psbt transact" + JSON.stringify(psbt))
+        const txInfo = psbt.extractTransaction().getId();
+        console.log(txInfo)
+      }
+      else {
+        const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, newSPT.receiver, new sys.utils.BN(newSPT.fee));
+        const txInfo = pendingTx.extractTransaction().getId();
 
-      const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, newSPT.receiver, new sys.utils.BN(newSPT.fee));
-      const txInfo = pendingTx.extractTransaction().getId();
+        store.dispatch(
+          updateTransactions({
+            id: account.id,
+            txs: [_coventPendingType(txInfo), ...account.transactions],
+          })
+        );
+      }
 
-      store.dispatch(
-        updateTransactions({
-          id: account.id,
-          txs: [_coventPendingType(txInfo), ...account.transactions],
-        })
-      );
 
       tempTx = null;
 
@@ -508,31 +526,64 @@ const AccountController = (actions: {
         const assetMap = new Map([
           [tempTx.token.assetGuid, { changeAddress: null, outputs: [{ value: value, address: tempTx.toAddress }] }]
         ]);
+        if (account.isTrezorWallet) {
+          console.log("Is trezor wallet")
+          const psbt = await sysjs.assetAllocationSend(txOpts, assetMap, null,
+            new sys.utils.BN(tempTx.fee * 1e8), account.xpub)
+          // const psbt = await syscoinjs.assetAllocationSend(txOpts, assetMap, sysChangeAddress, feeRate) 
+          if (!psbt) {
+            console.log('Could not create transaction, not enough funds?')
+          }
+          console.log("Is not trezor wallet")
+          console.log("PSBT response")
+          console.log(psbt.res.inputs)
+          console.log(psbt.res.outputs)
+          //TREZOR PART GOES UNDER NOW 
+          //PSBT TO --TREZOR FORMAT
 
-        const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(tempTx.fee * 1e8));
-        const txInfo = pendingTx.extractTransaction().getId();
+        }
+        else {
+          const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(tempTx.fee * 1e8));
+          const txInfo = pendingTx.extractTransaction().getId();
 
-        store.dispatch(
-          updateTransactions({
-            id: account.id,
-            txs: [_coventPendingType(txInfo), ...account.transactions],
-          })
-        );
+          store.dispatch(
+            updateTransactions({
+              id: account.id,
+              txs: [_coventPendingType(txInfo), ...account.transactions],
+            })
+          );
+        }
       } else {
         const _outputsArr = [
           { address: tempTx.toAddress, value: new sys.utils.BN(tempTx.amount * 1e8) }
         ];
         const txOpts = { rbf: tempTx.rbf }
+        if (account.isTrezorWallet) {
+          console.log("Is trezor wallet")
+          const psbt = await sysjs.createTransaction(txOpts, null, _outputsArr,
+            new sys.utils.BN(tempTx.fee * 1e8), account.xpub);
+          if (!psbt) {
+            console.log('Could not create transaction, not enough funds?')
+          }
+          console.log("PSBT response")
+          console.log(psbt.res.inputs)
+          console.log(psbt.res.outputs)
+          console.log("the psbt transact" + JSON.stringify(psbt))
+          //TREZOR PART GOES UNDER NOW 
 
-        const pendingTx = await sysjs.createTransaction(txOpts, null, _outputsArr, new sys.utils.BN(tempTx.fee * 1e8));
-        const txInfo = pendingTx.extractTransaction().getId();
+        }
+        else {
+          const pendingTx = await sysjs.createTransaction(txOpts, null, _outputsArr, new sys.utils.BN(tempTx.fee * 1e8));
+          const txInfo = pendingTx.extractTransaction().getId();
 
-        store.dispatch(
-          updateTransactions({
-            id: account.id,
-            txs: [_coventPendingType(txInfo), ...account.transactions],
-          })
-        );
+          store.dispatch(
+            updateTransactions({
+              id: account.id,
+              txs: [_coventPendingType(txInfo), ...account.transactions],
+            })
+          );
+        }
+
       }
 
       tempTx = null;
@@ -541,6 +592,7 @@ const AccountController = (actions: {
 
       return null;
     } catch (error) {
+      console.log(error)
       throw new Error(error);
     }
   };

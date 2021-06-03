@@ -11,10 +11,13 @@ import {
   removeAccount
 } from 'state/wallet';
 import AccountController, { IAccountController } from './AccountController';
-import IWalletState from 'state/wallet/types';
+import IWalletState, {
+  IAccountState
+} from 'state/wallet/types';
 import { sys, SYS_NETWORK } from 'constants/index';
 import CryptoJS from 'crypto-js';
 // var TrezorConnect = window.trezorConnect;
+import { fromZPub } from 'bip84';
 
 export interface IWalletController {
   account: Readonly<IAccountController>;
@@ -83,11 +86,6 @@ const WalletController = (): IWalletController => {
 
   const createHardwareWallet = () => {
     const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
-    console.log(isTestnet)
-    console.log("...................................")
-    console.log(store.getState().wallet.activeNetwork)
-    console.log("...................................")
-
     let path: string = "m/84'/57'/0'";
     let coin: string = "sys"
     if (isTestnet) {
@@ -276,9 +274,6 @@ const WalletController = (): IWalletController => {
     }
 
     account.getPrimaryAccount(password, sjs);
-    // account.getLatestUpdate();
-    // account.watchMemPool();
-
     return;
   }
 
@@ -310,8 +305,47 @@ const WalletController = (): IWalletController => {
   };
 
   const getNewAddress = async () => {
-    sjs.HDSigner.receivingIndex = -1;
-    const address = await sjs.HDSigner.getNewReceivingAddress();
+    const { activeAccountId, accounts } = store.getState().wallet;
+    let address: string = ""
+    let userAccount: IAccountState = accounts.find((el: IAccountState) => el.id === activeAccountId)
+    if (userAccount!.isTrezorWallet) {
+      console.log("Updating trezor address")
+      console.log("Old address")
+      console.log(userAccount.address)
+      const res = await sys.utils.fetchBackendAccount(sjs.blockbookURL, userAccount.xpub, 'tokens=nonzero&details=txs', true);
+      let account0 = new fromZPub(userAccount.xpub, sjs.HDSigner.pubTypes, sjs.HDSigner.networks)
+      let receivingIndex: number = -1
+      if (res.tokens) {
+        res.tokens.forEach((token: any) => {
+          if (token.path) {
+            const splitPath = token.path.split('/')
+            if (splitPath.length >= 6) {
+              const change = parseInt(splitPath[4], 10)
+              const index = parseInt(splitPath[5], 10)
+              if (change === 1) {
+                console.log("Can't update it's change index")
+              }
+              else if (index > receivingIndex) {
+                receivingIndex = index
+              }
+            }
+          }
+        })
+      }
+      console.log(receivingIndex)
+      address = account0.getAddress(receivingIndex + 1)
+      console.log("New address")
+      console.log(address)
+
+
+
+    }
+    else {
+      sjs.HDSigner.receivingIndex = -1;
+      address = await sjs.HDSigner.getNewReceivingAddress();
+      console.log("Receiving Index :")
+      console.log(sjs.HDSigner.receivingIndex)
+    }
 
     return account.setNewAddress(address);
   }

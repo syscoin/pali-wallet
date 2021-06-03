@@ -21,16 +21,9 @@ import { browser } from 'webextension-polyfill-ts';
 
 const IssueAsset = () => {
     const controller = useController();
-    // const getFiatAmount = useFiat();
-    // const history = useHistory();
-    const { accounts, activeAccountId, currentSenderURL }: IWalletState = useSelector(
+    const { accounts, activeAccountId }: IWalletState = useSelector(
         (state: RootState) => state.wallet
     );
-    const connectedAccount = accounts.find((account: IAccountState) => {
-        return account.connectedTo.find((url: any) => {
-            return url === currentSenderURL;
-        });
-    });
     const mintSPT = controller.wallet.account.getIssueSPT();
     const [confirmed, setConfirmed] = useState<boolean>(false);
     const [loading, setLoading] = useState<boolean>(false);
