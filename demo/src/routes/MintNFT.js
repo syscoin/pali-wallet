@@ -35,13 +35,6 @@ const MintNFT = () => {
     }
   };
 
-  const handleMintNFT = async (event, assetGuid, nfthash, receiver) => {
-    event.preventDefault();
-
-    // call controller function and send parameters to use in the messages
-    await controller.handleIssueNFT(assetGuid, nfthash, receiver);
-  };
-
   return (
     <div>
       <div>
@@ -64,7 +57,7 @@ const MintNFT = () => {
       </div>
 
       <div className="form">
-        <FormMintNFT formCallback={handleMintNFT} />
+        <FormMintNFT />
       </div>
     </div>
   );

@@ -15,28 +15,24 @@ const FormMintSPT = (formCallback) => {
     })();
   }, []);
 
-  const RenderAsset = () => {
-    return tokens.map((asset, index) => {
-      return (
-        <option
-          key={index}
-          value={asset.assetGuid}
-        >{`Symbol: ${asset.symbol} --- AssetGuid: ${asset.assetGuid}`}</option>
-      );
-    });
-  };
+  async function handleIssueSPT(event) {
+    event.preventDefault();
+
+    if (!controller) return;
+
+    await controller.handleIssueSPT(amount, receiver, assetGuid);
+
+    event.target.reset();
+
+    setAssetGuid("");
+  }
 
   return (
-    <form
-      onSubmit={(event) =>
-        formCallback.formCallback(event, amount, receiver, assetGuid)
-      }
-    >
+    <form onSubmit={handleIssueSPT}>
       <fieldset>
         <legend>YOU ARE MINTING SPTS</legend>
 
         <div>
-          {/* <Dropdown/> */}
           <div className="input-group mb-3">
             <label htmlFor="assetGuid">AssetGuid:</label>
 
@@ -48,7 +44,14 @@ const FormMintSPT = (formCallback) => {
               required
             >
               <option>{assetGuid}</option>
-              <RenderAsset />
+              {tokens.map((asset, index) => {
+                return (
+                  <option
+                    key={index}
+                    value={asset.assetGuid}
+                  >{`Symbol: ${asset.symbol} --- AssetGuid: ${asset.assetGuid}`}</option>
+                );
+              })}
             </select>
           </div>
           <label htmlFor="amount">Amount:</label>

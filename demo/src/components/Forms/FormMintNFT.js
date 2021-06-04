@@ -5,7 +5,7 @@ const FormMintNFT = (props) => {
   const controller = useSelector((state) => state.controller);
   const [assetGuid, setAssetGuid] = useState("");
   const [receiver, setReceiver] = useState("");
-  const [nfthash, setNfthash] = useState(0);
+  const [nfthash, setNfthash] = useState("");
   const [data, setData] = useState([]);
 
   useEffect(() => {
@@ -14,18 +14,18 @@ const FormMintNFT = (props) => {
     })();
   }, []);
 
-  const RenderAsset = () => {
-    return data.map((asset, index) => {
-      return <option key={index}>{asset.assetGuid}</option>;
-    });
+  const handleMintNFT = async (event) => {
+    event.preventDefault();
+
+    await controller.handleIssueNFT(assetGuid, nfthash, receiver);
+
+    event.target.reset();
+
+    setAssetGuid(null);
   };
 
   return (
-    <form
-      onSubmit={(event) =>
-        props.formCallback(event, assetGuid, nfthash, receiver)
-      }
-    >
+    <form onSubmit={handleMintNFT}>
       <fieldset>
         <legend>YOU ARE MINTING NFTS</legend>
 
@@ -40,7 +40,10 @@ const FormMintNFT = (props) => {
               onBlur={(event) => setAssetGuid(event.target.value)}
             >
               <option>Choose...</option>
-              <RenderAsset />
+
+              {data.map((asset, index) => {
+                return <option key={index}>{asset.assetGuid}</option>;
+              })}
             </select>
           </div>
 
@@ -81,8 +84,7 @@ const FormMintNFT = (props) => {
       <button
         className="button"
         type="submit"
-        disabled={!nfthash || !receiver || !assetGuid}
-        onClick={() => console.log("asset guid", assetGuid)}
+        disabled={[nfthash, receiver, assetGuid].includes("")}
       >
         Mint
       </button>
