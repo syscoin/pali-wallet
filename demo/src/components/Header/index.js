@@ -28,6 +28,10 @@ const Header = () => {
     });
   }, []);
 
+  const trucate = (str) => {
+    return str.substr(0, 5) + "..." + str.substr(-5);
+  };
+
   return (
     <nav className="navbar navbar-expand-lg navbar-light static-top">
       <div className="container">
@@ -44,13 +48,14 @@ const Header = () => {
         <div className="collapse navbar-collapse" id="navbarResponsive">
           <ul className="navbar-nav ml-auto">
             <button
+              title={accountData.connectedAccountAddress}
               className="button"
               onClick={handleMessageExtension}
               disabled={!isInstalled}
             >
               {accountData.connectedAccountAddress === ""
                 ? "Connect to Syscoin Wallet"
-                : accountData.connectedAccountAddress}
+                : trucate(accountData.connectedAccountAddress)}
             </button>
           </ul>
         </div>
