@@ -1,13 +1,14 @@
-import React, { Component, useEffect, useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
+import { useSelector } from "react-redux";
+
 import "bootstrap/dist/css/bootstrap.min.css";
 import "react-dropzone-uploader/dist/styles.css";
 
 import Dropzone from "react-dropzone-uploader";
 import FormMintNFT from "../components/Forms/FormMintNFT";
 
-import store from "../state/store";
-
 const MintNFT = () => {
+  const controller = useSelector((state) => state.controller);
   const [preview, setPreview] = useState("");
 
   const getUploadParams = () => ({
@@ -28,10 +29,6 @@ const MintNFT = () => {
 
       setPreview(`https://ipfs.io/ipfs/${cid}/${file.name}`);
 
-      console.log(`CID:${cid}`);
-      console.log("meta: ", meta);
-      console.log("file", file);
-      console.log(`other information: `, JSON.parse(xhr.response));
       document.getElementById("out").innerHTML += `${JSON.stringify(
         `CID:${cid}`
       )}\n`;
@@ -42,11 +39,7 @@ const MintNFT = () => {
     event.preventDefault();
 
     // call controller function and send parameters to use in the messages
-    await store
-      .getState()
-      .controller.handleIssueNFT(assetGuid, nfthash, receiver);
-
-    console.log(await store.getState().controller.getWalletState());
+    await controller.handleIssueNFT(assetGuid, nfthash, receiver);
   };
 
   return (

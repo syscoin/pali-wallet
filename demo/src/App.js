@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { BrowserRouter, Route, Switch } from "react-router-dom";
 import { Provider } from "react-redux";
 import "bootstrap";
@@ -28,7 +28,7 @@ const App = () => {
             <>
               <Header />
               <Switch>
-                <Route path="/" exact={true} component={Home} />
+                <Route path="/" exact component={Home} />
                 <Route path="/mintnft" component={MintNFT} />
                 <Route path="/mintspt" component={MintSPT} />
                 <Route path="/createnft" component={CreateNFT} />

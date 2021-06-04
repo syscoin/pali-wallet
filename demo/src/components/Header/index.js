@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useSelector, useStore } from "react-redux";
+import { useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 
 import logo from "../../assets/images/logosys.svg";
@@ -15,9 +15,7 @@ const Header = () => {
   const handleMessageExtension = async () => {
     controller
       ? await controller.connectWallet()
-      : window.ConnectionsController.connectWallet().then((state) =>
-          console.log(state)
-        );
+      : await window.ConnectionsController.connectWallet();
   };
 
   const RenderButtons = useCallback(() => {
