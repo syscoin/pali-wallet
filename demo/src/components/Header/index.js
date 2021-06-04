@@ -28,7 +28,7 @@ const Header = () => {
     });
   }, []);
 
-  const trucate = (str) => {
+  const truncate = (str) => {
     return str.substr(0, 5) + "..." + str.substr(-5);
   };
 
@@ -55,7 +55,7 @@ const Header = () => {
             >
               {accountData.connectedAccountAddress === ""
                 ? "Connect to Syscoin Wallet"
-                : trucate(accountData.connectedAccountAddress)}
+                : truncate(accountData.connectedAccountAddress)}
             </button>
           </ul>
         </div>
