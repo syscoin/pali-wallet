@@ -1,6 +1,6 @@
 import React, { Component, useEffect, useState, useCallback } from "react";
 
-import FormCreateToken from "../../components/FormCreateToken";
+import FormCreateToken from "../components/FormCreateToken";
 
 import "bootstrap/dist/css/bootstrap.min.css";
 import "react-dropzone-uploader/dist/styles.css";
@@ -16,18 +16,6 @@ const CreateSPT = () => {
     rbf
   ) => {
     event.preventDefault();
-
-    console.log(await window.ConnectionsController.getWalletState());
-
-    console.log(
-      "handle create spt",
-      precision,
-      maxSupply,
-      description,
-      symbol,
-      receiver,
-      rbf
-    );
 
     await await window.ConnectionsController.handleCreateToken(
       Number(precision),

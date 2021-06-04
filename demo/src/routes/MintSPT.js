@@ -1,9 +1,10 @@
 import React from "react";
+import { useSelector } from "react-redux";
+
 import "bootstrap/dist/css/bootstrap.min.css";
 import "react-dropzone-uploader/dist/styles.css";
 
 import FormMintSPT from "../components/Forms/FormMintSPT";
-import { useSelector } from "react-redux";
 
 const MintSPT = () => {
   const controller = useSelector((state) => state.controller);

@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { BrowserRouter, Route, Switch } from "react-router-dom";
 import { Provider } from "react-redux";
+
 import "bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 import Home from "./routes/Home";
 import MintNFT from "./routes/MintNFT";
 import MintSPT from "./routes/MintSPT";
-import CreateCollection from "./routes/Create/CreateCollection";
-import CreateNFT from "./routes/Create/CreateNFT";
-import CreateSPT from "./routes/Create/CreateSPT";
+import CreateCollection from "./routes/CreateCollection";
+import CreateNFT from "./routes/CreateNFT";
+import CreateSPT from "./routes/CreateSPT";
 import Loader from "./routes/Loader";
 
 import Header from "./components/Header";

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { setFormState } from "../../../helpers";
+import { setFormState } from "../../helpers";
 
 const FormCollection = (props) => {
   const [state, setState] = useState({
