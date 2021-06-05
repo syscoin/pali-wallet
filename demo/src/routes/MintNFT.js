@@ -1,5 +1,4 @@
-import React, { useState } from "react";
-import { useSelector } from "react-redux";
+import { useState } from "react";
 
 import "bootstrap/dist/css/bootstrap.min.css";
 import "react-dropzone-uploader/dist/styles.css";
@@ -8,7 +7,6 @@ import Dropzone from "react-dropzone-uploader";
 import FormMintNFT from "../components/Forms/FormMintNFT";
 
 const MintNFT = () => {
-  const controller = useSelector((state) => state.controller);
   const [preview, setPreview] = useState("");
 
   const getUploadParams = () => ({

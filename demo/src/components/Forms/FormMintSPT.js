@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
 
-const FormMintSPT = (formCallback) => {
+const FormMintSPT = () => {
   const controller = useSelector((state) => state.controller);
   const [assetGuid, setAssetGuid] = useState("");
   const [receiver, setReceiver] = useState("");
-  const [rbf, setRbf] = useState(false);
   const [amount, setAmount] = useState(0);
   const [tokens, setTokens] = useState([]);
 

@@ -1,4 +1,3 @@
-import React, { useCallback, useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 
@@ -18,7 +17,7 @@ const Header = () => {
       : await window.ConnectionsController.connectWallet();
   };
 
-  const RenderButtons = useCallback(() => {
+  const RenderButtons = () => {
     return buttons.map((item) => {
       return (
         <Link key={item.route} className="button" to={item.route}>
@@ -26,7 +25,7 @@ const Header = () => {
         </Link>
       );
     });
-  }, []);
+  };
 
   const truncate = (str) => {
     return str.substr(0, 5) + "..." + str.substr(-5);
