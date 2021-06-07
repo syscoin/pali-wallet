@@ -6,6 +6,7 @@ import "bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 import Home from "./routes/Home";
+import Dashboard from "./routes/Dashboard";
 import MintNFT from "./routes/MintNFT";
 import MintSPT from "./routes/MintSPT";
 import CreateCollection from "./routes/CreateCollection";
@@ -20,7 +21,7 @@ const App = () => {
   const [isLoading, setIsloading] = useState(true);
 
   return (
-    <div className="app">
+    <div className="content">
       <BrowserRouter>
         <Provider store={store}>
           {isLoading ? (
@@ -30,6 +31,7 @@ const App = () => {
               <Header />
               <Switch>
                 <Route path="/" exact component={Home} />
+                <Route path="/dashboard" exact component={Dashboard} />
                 <Route path="/mintnft" component={MintNFT} />
                 <Route path="/mintspt" component={MintSPT} />
                 <Route path="/createnft" component={CreateNFT} />
