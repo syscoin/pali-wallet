@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import asset2 from "../images/asset.svg";
+import asset2 from "../images/asset2.svg";
 
 export default function Dashboard() {
   const controller = useSelector((state) => state.controller);
