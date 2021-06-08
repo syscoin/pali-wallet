@@ -10,6 +10,7 @@ import Dashboard from "./routes/Dashboard";
 import CreateNFT from "./routes/CreateNFT";
 import CreateSPT from "./routes/CreateSPT";
 import IssueSPT from "./routes/IssueSPT";
+import Update from "./routes/Update";
 import Transfer from "./routes/Transfer";
 import About from "./routes/About";
 import Loader from "./routes/Loader";
@@ -35,6 +36,7 @@ const App = () => {
                 <Route path="/create-nft" component={CreateNFT} />
                 <Route path="/create-spt" component={CreateSPT} />
                 <Route path="/issue-spt" component={IssueSPT} />
+                <Route path="/update" component={Update} />
                 <Route path="/transfer" component={Transfer} />
                 <Route path="/about" component={About} />
               </Switch>
