@@ -34,8 +34,8 @@ const App = () => {
                 <Route path="/dashboard" exact component={Dashboard} />
                 <Route path="/mintnft" component={MintNFT} />
                 <Route path="/mintspt" component={MintSPT} />
-                <Route path="/createnft" component={CreateNFT} />
-                <Route path="/createspt" component={CreateSPT} />
+                <Route path="/create-nft" component={CreateNFT} />
+                <Route path="/create-spt" component={CreateSPT} />
                 <Route path="/createnft" component={CreateNFT} />
                 <Route path="/createcollection" component={CreateCollection} />
               </Switch>
