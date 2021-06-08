@@ -7,12 +7,10 @@ import "bootstrap/dist/css/bootstrap.min.css";
 
 import Home from "./routes/Home";
 import Dashboard from "./routes/Dashboard";
-import MintNFT from "./routes/MintNFT";
-import MintSPT from "./routes/MintSPT";
-import CreateCollection from "./routes/CreateCollection";
 import CreateNFT from "./routes/CreateNFT";
 import CreateSPT from "./routes/CreateSPT";
 import IssueSPT from "./routes/IssueSPT";
+import Transfer from "./routes/Transfer";
 import About from "./routes/About";
 import Loader from "./routes/Loader";
 
@@ -34,13 +32,10 @@ const App = () => {
               <Switch>
                 <Route path="/" exact component={Home} />
                 <Route path="/dashboard" exact component={Dashboard} />
-                <Route path="/mintnft" component={MintNFT} />
-                <Route path="/mintspt" component={MintSPT} />
                 <Route path="/create-nft" component={CreateNFT} />
                 <Route path="/create-spt" component={CreateSPT} />
                 <Route path="/issue-spt" component={IssueSPT} />
-                <Route path="/createnft" component={CreateNFT} />
-                <Route path="/createcollection" component={CreateCollection} />
+                <Route path="/transfer" component={Transfer} />
                 <Route path="/about" component={About} />
               </Switch>
             </>
