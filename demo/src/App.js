@@ -12,6 +12,7 @@ import MintSPT from "./routes/MintSPT";
 import CreateCollection from "./routes/CreateCollection";
 import CreateNFT from "./routes/CreateNFT";
 import CreateSPT from "./routes/CreateSPT";
+import About from "./routes/About";
 import Loader from "./routes/Loader";
 
 import Header from "./components/Header";
@@ -38,6 +39,7 @@ const App = () => {
                 <Route path="/create-spt" component={CreateSPT} />
                 <Route path="/createnft" component={CreateNFT} />
                 <Route path="/createcollection" component={CreateCollection} />
+                <Route path="/about" component={About} />
               </Switch>
             </>
           )}
