@@ -1,6 +1,18 @@
+import { useEffect, useState } from "react";
+import { useSelector } from "react-redux";
 import asset2 from "../images/asset.svg";
 
 export default function Dashboard() {
+  const controller = useSelector((state) => state.controller);
+  const [mintedTokens, setMintedTokens] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      const tokens = await controller.getUserMintedTokens();
+      setMintedTokens(tokens);
+    })();
+  }, []);
+
   return (
     <section>
       <div className="inner">
