@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 
@@ -16,6 +17,17 @@ const Header = () => {
       ? await controller.connectWallet()
       : await window.ConnectionsController.connectWallet();
   };
+
+  useEffect(() => {
+    // menu open submenu
+    document.querySelectorAll(".dropdown").forEach((elem) => {
+      ["click", "touchstart"].forEach((e) => {
+        elem.addEventListener(e, function () {
+          elem.parentElement.classList.toggle("open");
+        });
+      });
+    });
+  }, []);
 
   return (
     <header>

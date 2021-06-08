@@ -12,8 +12,8 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="assets">
-          {Array.from({ length: 10 }).map(() => (
-            <div className="asset">
+          {Array.from({ length: 10 }).map((e, i) => (
+            <div className="asset" key={i}>
               <embed src={asset2} />
               <div className="balance">
                 343,455<span className="decimal">.866544444</span>
