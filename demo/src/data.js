@@ -1,7 +1,7 @@
 export const buttons = [
   {
-    title: 'Mint NFT',
-    route: '/mintnft'
+    title: "Mint NFT",
+    route: "/mintnft",
   },
   // {
   //   title: 'Create NFT',
@@ -12,19 +12,11 @@ export const buttons = [
   //   route: '/createcollection'
   // },
   {
-    title: 'Create SPT',
-    route: '/createspt'
+    title: "Create SPT",
+    route: "/createspt",
   },
   {
-    title: 'Mint SPT',
-    route: '/mintspt'
-  },
-  {
-    title: 'Update Asset',
-    route: '/updateasset'
-  },
-  {
-    title: 'Transfer ownership',
-    route: '/transferownership'
+    title: "Mint SPT",
+    route: "/mintspt",
   },
 ]

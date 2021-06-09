@@ -381,7 +381,8 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
             <div className={styles.status}>
               <span className={styles.equalAmount}>
-                ≈ {getFiatAmount(Number(amount) + Number(fee), 6)}
+                ≈ {!selectedAsset ? getFiatAmount(Number(amount) + Number(fee), 6) : getFiatAmount(Number(fee), 6)}
+
               </span>
               {!!Object.values(errors).length && (
                 <span className={styles.error}>

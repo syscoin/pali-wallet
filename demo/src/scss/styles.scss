@@ -1,0 +1,18 @@
+$blue: #223f9e;
+$light_blue: #abb9e6;
+$background_blue: #101d48;
+$background_white: #efefef;
+$white: #ffffff;
+$menu_btn_border: #ffffff24;
+// $menu_btn_active:#061135;
+$menu_btn_active: #061135;
+$menu_btn_hover: #040d29;
+$btn_color: #101d48;
+$btn_color_hover: #314177;
+
+@import "_bootstrap.scss";
+@import "_mixins.scss";
+@import "_fonts.scss";
+@import "_frame.scss";
+@import "_page.scss";
+@import "_menu.scss";

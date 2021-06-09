@@ -1,0 +1,646 @@
+section {
+  width: 100%;
+  float: left;
+  padding: 85px 50px 50px 350px; // change top padding to match logo size and it is lined-up to title on menu
+
+  .inner {
+    width: 50%;
+
+    &.wider {
+      width: 75%;
+    }
+
+    h1 {
+      font-size: 45px;
+      font-weight: 600;
+      margin-bottom: 50px;
+      line-height: 55px;
+    }
+
+    .holdings {
+      width: 100%;
+      float: left;
+
+      &.bottom-border {
+        border-bottom: 3px solid $white;
+        margin-bottom: 30px;
+        padding: 0 0 10px;
+      }
+
+      h2 {
+        width: 50%;
+        float: left;
+        font-size: 26px;
+      }
+
+      .sysvalue {
+        width: 50%;
+        float: right;
+        font-size: 22px;
+        text-align: right;
+        font-weight: 300;
+
+        .decimal {
+          font-size: 16px;
+          color: darkgrey;
+        }
+
+        em {
+          color: $blue;
+          font-weight: 600;
+          font-style: normal;
+        }
+      }
+    }
+
+    .assets {
+      width: 100%;
+      padding: 30px 0;
+
+      .asset {
+        width: 30%;
+        margin-right: 5%;
+        float: left;
+        background: $white;
+        padding: 20px;
+        text-align: center;
+        margin-bottom: 5%;
+        border-bottom: 3px solid $light_blue;
+        @include border-radius(5px);
+
+        &:nth-child(3n) {
+          margin-right: 0;
+        }
+
+        &:nth-child(3n + 1) {
+          clear: both;
+        }
+
+        embed,
+        img {
+          max-height: 75px;
+          margin-bottom: 10px;
+        }
+
+        .balance {
+          font-weight: 300;
+          font-size: 18px;
+
+          .decimal {
+            font-size: 12px;
+            color: darkgrey;
+          }
+        }
+
+        .symbol {
+          color: $blue;
+          font-weight: 600;
+          font-style: normal;
+          font-size: 28px;
+          margin-bottom: 20px;
+        }
+
+        .asset-id,
+        .nft-id {
+          font-size: 12px;
+          text-align: left;
+          font-family: monospace;
+          min-height: 14px;
+        }
+      }
+    }
+
+    form {
+      margin-top: 50px;
+
+      &.top-border {
+        border-top: 3px solid $white;
+
+        padding: 10px 0 0;
+      }
+
+      .spacer {
+        border-top: 3px solid $white;
+        width: 100%;
+        float: left;
+        clear: both;
+      }
+
+      label {
+        width: 100%;
+        margin-bottom: 3px;
+
+        i {
+          cursor: help;
+          color: #6d7db1;
+          float: right;
+        }
+      }
+
+      .form-line,
+      .row {
+        padding: 30px;
+        margin-right: -15px;
+        margin-left: -15px;
+        float: left;
+        clear: both;
+        width: calc(100% + 30px);
+        background: $background_white;
+        @include border-radius(5px);
+
+        &.spaced-top {
+          margin-top: 30px;
+        }
+
+        &.nested {
+          padding: 3px 7.5px;
+        }
+
+        &.gray {
+          background: #d6d8de;
+        }
+
+        .col-20,
+        .col-25,
+        .col-33,
+        .col-40,
+        .col-50,
+        .col-67,
+        .col-100 {
+          float: left;
+          padding: 0 10px;
+
+          &.spaced {
+            margin: 20px 0;
+          }
+
+          .label-spacing {
+            margin: 10px 0;
+          }
+        }
+
+        .col-20 {
+          width: 20%;
+        }
+
+        .col-25 {
+          width: 25%;
+        }
+
+        .col-33 {
+          width: 33.33%;
+        }
+
+        .col-40 {
+          width: 40%;
+        }
+
+        .col-50 {
+          width: 50%;
+        }
+
+        .col-67 {
+          width: 66.66%;
+        }
+
+        .col-100 {
+          width: 100%;
+        }
+
+        .fileupload {
+          margin-top: 18px;
+          text-align: center;
+
+          label {
+            font-size: 16px;
+            font-weight: 400;
+            background: $btn_color;
+            text-decoration: none;
+            border: 0;
+            @include border-radius(5px);
+            padding: 8px 12px;
+            color: white;
+            // transition: all .5s;
+            @include transition(all, 0.5s);
+            cursor: pointer;
+            width: auto;
+            margin-right: 20px;
+
+            &:hover {
+              background: $btn_color_hover;
+            }
+          }
+
+          img,
+          embed {
+            max-width: 80px;
+            max-height: 80px;
+          }
+
+          input {
+            opacity: 0;
+            position: absolute;
+            z-index: -1;
+          }
+        }
+
+        .advanced {
+          cursor: pointer;
+          display: inline-block;
+
+          i {
+            color: #6d7db1;
+
+            &.icon-down-open {
+              display: none;
+            }
+          }
+
+          &.open i.icon-down-open {
+            display: inline-block;
+          }
+
+          &.open i.icon-right-open {
+            display: none;
+          }
+        }
+
+        .advanced-panel {
+          padding-top: 0;
+          height: 0;
+          overflow: hidden;
+          float: left;
+
+          .form-line {
+            &.half {
+              width: 50%;
+              clear: none;
+              margin-top: 30px;
+
+              &.right {
+                float: right;
+              }
+            }
+          }
+
+          &.open {
+            padding: 20px 20px 0;
+            height: auto;
+          }
+        }
+      }
+
+      select {
+        width: 100%;
+        font-family: "Poppins";
+        font-size: 16px;
+        @include border-radius(5px);
+        // border:1px solid $btn_color;
+        padding: 0px 20px;
+      }
+
+      .btn-center {
+        width: 100%;
+        text-align: center;
+        margin-top: 50px;
+        float: left;
+      }
+
+      button {
+        font-size: 20px;
+        font-weight: 400;
+        background: $btn_color;
+        text-decoration: none;
+        border: 0;
+        @include border-radius(5px);
+        padding: 10px 20px;
+        color: white;
+        transition: all 0.5s;
+        @include transition(all, 0.5s);
+        cursor: pointer;
+
+        &.small {
+          background: none;
+          border: 0;
+          height: 34px;
+          padding: 0;
+          font-size: 14px;
+          color: rgba($btn_color, 0.4);
+
+          &:hover {
+            background: none;
+            color: rgba($btn_color, 0.8);
+          }
+        }
+
+        &:hover {
+          background: $btn_color_hover;
+        }
+      }
+    }
+
+    table {
+      margin: 20px 0;
+
+      td {
+        border: 3px solid $light_blue;
+        padding: 5px;
+      }
+    }
+
+    ul {
+      list-style: disc;
+      margin: 20px 0;
+      padding-left: 20px;
+    }
+
+    ol {
+      margin: 20px 0;
+      padding-left: 20px;
+    }
+
+    h2 {
+      font-weight: 600;
+    }
+
+    pre {
+      margin: 20px 0;
+    }
+
+    blockquote {
+      margin: 20px 0;
+      border-left: 5px solid $light_blue;
+      padding-left: 20px;
+      font-style: italic;
+    }
+
+    img,
+    embed {
+      margin: 20px 0;
+    }
+
+    a {
+      color: $blue;
+      text-decoration: none;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }
+}
+
+@media (max-width: 1800px) {
+  section {
+    .inner {
+      width: 75% !important;
+    }
+  }
+}
+
+@media (max-width: 1550px) {
+  .col-lg-20 {
+    width: 20% !important;
+  }
+
+  .col-lg-25 {
+    width: 25% !important;
+  }
+
+  .col-lg-33 {
+    width: 33.33% !important;
+  }
+
+  .col-lg-40 {
+    width: 40% !important;
+  }
+
+  .col-lg-50 {
+    width: 50% !important;
+  }
+
+  .col-lg-67 {
+    width: 66.66% !important;
+  }
+
+  .col-lg-100 {
+    width: 100% !important;
+  }
+
+  .lg-spaced-top {
+    margin-top: 30px !important;
+  }
+}
+
+@media (max-width: 1260px) {
+  section {
+    .inner {
+      width: 100% !important;
+    }
+  }
+
+  .col-md-20 {
+    width: 20% !important;
+  }
+
+  .col-md-25 {
+    width: 25% !important;
+  }
+
+  .col-md-33 {
+    width: 33.33% !important;
+  }
+
+  .col-md-40 {
+    width: 40% !important;
+  }
+
+  .col-md-50 {
+    width: 50% !important;
+  }
+
+  .col-md-67 {
+    width: 66.66% !important;
+  }
+
+  .col-md-100 {
+    width: 100% !important;
+  }
+
+  .md-spaced-top {
+    margin-top: 20px !important;
+  }
+}
+
+@media (max-width: 1060px) {
+  header {
+    width: 250px !important;
+  }
+
+  section {
+    padding-left: 300px;
+
+    .inner {
+      width: 100% !important;
+    }
+  }
+}
+
+@media (max-width: 900px) {
+  section {
+    padding: 50px;
+
+    h1 {
+      font-size: 36px !important;
+      margin-bottom: 40px !important;
+      line-height: 46px !important;
+      text-align: center;
+    }
+  }
+}
+
+@media (max-width: 850px) {
+  .col-sm-20 {
+    width: 20% !important;
+  }
+
+  .col-sm-25 {
+    width: 25% !important;
+  }
+
+  .col-sm-33 {
+    width: 33.33% !important;
+  }
+
+  .col-sm-40 {
+    width: 40% !important;
+  }
+
+  .col-sm-50 {
+    width: 50% !important;
+  }
+
+  .col-sm-67 {
+    width: 66.66% !important;
+  }
+
+  .col-sm-100 {
+    width: 100% !important;
+  }
+
+  .sm-spaced-top {
+    margin-top: 20px !important;
+  }
+
+  .advanced-panel {
+    .form-line {
+      &.half {
+        width: calc(100% + 30px) !important;
+      }
+    }
+  }
+}
+@media (max-width: 760px) {
+  section {
+    padding: 40px 20px;
+
+    h1 {
+      font-size: 30px !important;
+      margin-bottom: 30px !important;
+      line-height: 40px !important;
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .assets {
+    .asset {
+      width: 47.5% !important;
+      margin-right: 5% !important;
+
+      &:nth-child(2n) {
+        margin-right: 0 !important;
+      }
+
+      &:nth-child(3n + 1) {
+        clear: none !important;
+      }
+
+      &:nth-child(2n + 1) {
+        clear: both !important;
+      }
+    }
+  }
+
+  .holdings {
+    h2 {
+      width: 30% !important;
+    }
+
+    .sysvalue {
+      width: 70% !important;
+    }
+  }
+}
+
+@media (max-width: 500px) {
+  section {
+    h1 {
+      font-size: 24px !important;
+      line-height: 30px !important;
+    }
+
+    .holdings {
+      h2 {
+        width: 100% !important;
+        font-size: 20px !important;
+      }
+
+      .sysvalue {
+        width: 100% !important;
+        text-align: left !important;
+      }
+    }
+  }
+}
+
+@media (max-width: 450px) {
+  .assets {
+    .asset {
+      width: 100% !important;
+      margin-right: 0 !important;
+    }
+  }
+
+  .col-xs-20 {
+    width: 20% !important;
+  }
+
+  .col-xs-25 {
+    width: 25% !important;
+  }
+
+  .col-xs-33 {
+    width: 33.33% !important;
+  }
+
+  .col-xs-40 {
+    width: 40% !important;
+  }
+
+  .col-xs-50 {
+    width: 50% !important;
+  }
+
+  .col-xs-67 {
+    width: 66.66% !important;
+  }
+
+  .col-xs-100 {
+    width: 100% !important;
+  }
+
+  .xs-spaced-top {
+    margin-top: 20px !important;
+  }
+}
