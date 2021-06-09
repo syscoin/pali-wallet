@@ -44,6 +44,8 @@ export interface IAccountController {
   getNewSPT: () => ISPTInfo | null;
   getIssueSPT: () => ISPTIssue | null;
   getIssueNFT: () => INFTIssue | null;
+  getNewUpdateAsset: () => any | null;
+  getNewOwnership: () => any | null;
   updateTempTx: (tx: ITransactionInfo) => void;
   createSPT: (spt: ISPTInfo) => void;
   issueSPT: (spt: ISPTIssue) => void;
@@ -71,6 +73,19 @@ export interface IAccountController {
   getDataFromPageToMintNFT: () => any | null;
   setDataFromWalletToMintNFT: (data: any) => void;
   getDataFromWalletToMintNFT: () => any | null;
+  setDataFromPageToUpdateAsset: (data: any) => void;
+  getDataFromPageToUpdateAsset: () => any;
+  setDataFromWalletToUpdateAsset: (data: any) => void;
+  getDataFromWalletToUpdateAsset: () => any;
+  setDataFromPageToTransferOwnership: (data: any) => void;
+  getDataFromPageToTransferOwnership: () => any;
+  setDataFromWalletToTransferOwnership: (data: any) => void;
+  getDataFromWalletToTransferOwnership: () => any;
+  confirmUpdateAssetTransaction: () => any;
+  confirmTransferOwnership: () => any;
+  setUpdateAsset: (asset: any) => any;
+  setNewOwnership: (data: any) => any;
+  getAssetsID: () => any;
 }
 
 const AccountController = (actions: {
@@ -82,6 +97,8 @@ const AccountController = (actions: {
   let sysjs: any;
   let newSPT: ISPTInfo | null;
   let mintSPT: ISPTIssue | null;
+  let updateAssetItem: any;
+  let transferOwnershipData: any;
   let mintNFT: INFTIssue | null;
   let collection: any;
   let dataFromPageToCreateSPT: any;
@@ -90,8 +107,11 @@ const AccountController = (actions: {
   let dataFromWalletToMintSPT: any;
   let dataFromPageToMintNFT: any;
   let dataFromWalletToMintNFT: any;
+  let dataFromWalletToUpdateAsset: any;
+  let dataFromPageToUpdateAsset: any;
   let resAddress: any;
   let encode: any;
+
   const getAccountInfo = async (isHardwareWallet?: boolean, xpub?: any): Promise<IAccountInfo> => {
     let res, address = null;
     if (isHardwareWallet) {
@@ -423,6 +443,14 @@ const AccountController = (actions: {
     return mintNFT || null;
   };
 
+  const getNewUpdateAsset = () => {
+    return updateAssetItem || null;
+  }
+
+  const getNewOwnership = () => {
+    return transferOwnershipData || null;
+  }
+
   const updateTempTx = (tx: ITransactionInfo) => {
     tempTx = { ...tx };
     tempTx.fromAddress = tempTx.fromAddress.trim();
@@ -501,6 +529,38 @@ const AccountController = (actions: {
     return dataFromWalletToMintNFT || null;
   }
 
+  const setDataFromPageToUpdateAsset = (data: any) => {
+    dataFromPageToUpdateAsset = data;
+  }
+
+  const getDataFromPageToUpdateAsset = () => {
+    return dataFromPageToUpdateAsset || null;
+  }
+
+  const setDataFromWalletToUpdateAsset = (data: any) => {
+    console.log('set data update asset', data)
+    dataFromWalletToUpdateAsset = data;
+  }
+
+  const getDataFromWalletToUpdateAsset = () => {
+    return dataFromWalletToUpdateAsset || null;
+  }
+
+  const setDataFromPageToTransferOwnership = (data: any) => {
+    dataFromPageToCreateSPT = data;
+  }
+  const getDataFromPageToTransferOwnership = () => {
+    return dataFromPageToCreateSPT || null;
+  }
+
+  const setDataFromWalletToTransferOwnership = (data: any) => {
+    dataFromWalletToCreateSPT = data;
+  }
+
+  const getDataFromWalletToTransferOwnership = () => {
+    return dataFromWalletToCreateSPT || null;
+  }
+
   const createSPT = (spt: ISPTInfo) => {
     newSPT = spt;
     console.log("checkout the spt", spt)
@@ -519,7 +579,18 @@ const AccountController = (actions: {
 
     return true;
   }
+  const setUpdateAsset = (asset: any) => {
+    updateAssetItem = asset;
 
+    return true;
+  }
+
+  const setNewOwnership = (asset: any) => {
+    transferOwnershipData = asset;
+
+    return true;
+  }
+  
   const confirmSPTCreation = async (item: any) => {
     const newMaxSupply = item.maxsupply * 1e8;
 
@@ -790,9 +861,12 @@ const AccountController = (actions: {
     const res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
 
     if (res.transactions) {
-      res.transactions.map((transaction: any) => {
+      res.transactions.map(async (transaction: any) => {
         if (transaction.tokenType === 'SPTAssetActivate' && transaction.tokenTransfers) {
+          console.log('token transfers', transaction.tokenTransfers)
           for (let item of transaction.tokenTransfers) {
+            const assetId = await sys.utils.getBaseAssetID(item.token);
+
             if (mintedTokens.indexOf({ assetGuid: item.token, symbol: atob(item.symbol) }) === -1) {
               mintedTokens.push({
                 assetGuid: item.token,
@@ -803,15 +877,35 @@ const AccountController = (actions: {
             return;
           }
         }
+        return;
+      });
+      return mintedTokens;
+    }
+    return;
+  }
+  const getAssetsID = async () => {
+    const res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
+
+    if (res.transactions) {
+      res.transactions.map(async (transaction: any) => {
+        if (transaction.tokenType === 'SPTAssetActivate' && transaction.tokenTransfers) {
+          for (let item of transaction.tokenTransfers) {
+            const assetId = await sys.utils.getBaseAssetID(item.token);
+
+            // console.log('asset id', assetId)
+            // console.log('asset id', await sys.utils.createAssetID(assetId))
+
+            return;
+          }
+        }
 
         return;
       });
 
-      return mintedTokens;
+      return;
     }
-
-    return;
   }
+
 
   const createCollection = (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string) => {
     console.log('[account controller]: collection created')
@@ -837,11 +931,108 @@ const AccountController = (actions: {
   }
 
   const getTransactionInfoByTxId = async (txid: any) => {
+    console.log('info txid', await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid))
     return await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
   }
 
   const getSysExplorerSearch = () => {
     return sysjs.blockbookURL;
+  }
+  const confirmUpdateAsset = async (item: any) => {
+    const {
+      fee,
+      assetWhiteList,
+      updatecapabilityflags,
+      contract,
+      description,
+      rbf
+    } = item;
+    const feeRate = new sys.utils.BN(fee * 1e8);
+
+    const txOpts = {
+      rbf: rbf || true,
+      assetWhiteList: assetWhiteList || null,
+    };
+
+    const assetGuid = item.assetGuid;
+
+    const assetOpts = {
+      updatecapabilityflags: updatecapabilityflags || 127,
+      contract: Buffer.from(contract, 'hex') || null,
+      description: description,
+      // test commit
+      // notarykeyid: item.notarykeyid || '',
+      // notarydetails: {
+      //   endpoint: item.endpoint || '',
+      //   instanttransfers: item.instanttransfers || 0,
+      //   hdrequired: item.hdrequired || 0,
+      // },
+      // auxfeedetails: item.auxFeeDetails
+      // auxfeedetails: {
+      //   auxfeekeyid: item.auxFeeDetails.auxfeekeyid || 'bc1qg9stkxrszkdqsuj92lm4c7akvk36zvhqw7p6ck',
+      //   auxfees: [
+      //     {
+      //       bound: item.auxFeeDetails.bound || 0,
+      //       percent: item.auxFeeDetails.percent || 0
+      //     }
+      //   ]
+      // }
+    };
+
+    console.log('asset opts update asset', assetOpts)
+
+    const assetChangeAddress = null;
+
+    const assetMap = new Map([
+      [Number(assetGuid), {
+        changeAddress: assetChangeAddress,
+        outputs: [{
+          value: new sys.utils.BN(0),
+          address: assetChangeAddress
+        }]
+      }]
+    ]);
+
+    const sysChangeAddress = null;
+    const psbt = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
+
+    console.log('psbt', psbt)
+
+    if (!psbt) {
+      console.log('Could not create transaction, not enough funds?');
+    }
+  }
+
+  const confirmUpdateAssetTransaction = () => {
+    console.log('update asset item', updateAssetItem)
+    try {
+      handleTransactions(updateAssetItem, confirmUpdateAsset);
+    } catch (error) {
+      throw new Error(error);
+    }
+  }
+
+  const transferAsset = async (item: any) => {
+    const feeRate = new sys.utils.BN(item.fee * 1e8);
+    const txOpts = { rbf: item.rbf };
+    const assetGuid = item.assetGuid;
+    const assetOpts = {};
+
+    const assetChangeAddress = null;
+    const assetMap = new Map([
+      [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(0), address: item.newOwner }] }]
+    ]);
+
+    const sysChangeAddress = null;
+    const psbt = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
+
+    if (!psbt) {
+      console.log('Could not create transaction, not enough funds?');
+    }
+  }
+
+  const confirmTransferOwnership = () => {
+    handleTransactions(transferOwnershipData, transferAsset);
   }
 
   return {
@@ -868,6 +1059,8 @@ const AccountController = (actions: {
     issueNFT,
     getIssueSPT,
     getIssueNFT,
+    getNewUpdateAsset,
+    getNewOwnership,
     confirmIssueSPT,
     confirmIssueNFT,
     getUserMintedTokens,
@@ -886,7 +1079,20 @@ const AccountController = (actions: {
     setDataFromPageToMintNFT,
     getDataFromPageToMintNFT,
     setDataFromWalletToMintNFT,
-    getDataFromWalletToMintNFT
+  getDataFromWalletToMintNFT,
+    setDataFromPageToUpdateAsset,
+    getDataFromPageToUpdateAsset,
+    setDataFromWalletToUpdateAsset,
+    getDataFromWalletToUpdateAsset,
+    setDataFromPageToTransferOwnership,
+    getDataFromPageToTransferOwnership,
+    setDataFromWalletToTransferOwnership,
+    getDataFromWalletToTransferOwnership,
+    confirmUpdateAssetTransaction,
+    confirmTransferOwnership,
+    setUpdateAsset,
+    setNewOwnership,
+    getAssetsID
   };
 };
 
