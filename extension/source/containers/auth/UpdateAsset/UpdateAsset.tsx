@@ -14,13 +14,13 @@ import IWalletState from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 import CircularProgress from '@material-ui/core/CircularProgress';
 
-import styles from './Create.scss';
+import styles from './UpdateAsset.scss';
 import { browser } from 'webextension-polyfill-ts';
 import ReactTooltip from 'react-tooltip';
 import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import Switch from "react-switch";
 
-const Create = () => {
+const UpdateAsset = () => {
   const controller = useController();
   const alert = useAlert();
 
@@ -28,13 +28,13 @@ const Create = () => {
     (state: RootState) => state.wallet
   );
 
-  const newSPT = controller.wallet.account.getNewSPT();
+  const updateAsset = controller.wallet.account.getNewUpdateAsset();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0);
   const [rbf, setRbf] = useState(false);
   const [recommend, setRecommend] = useState(0.00001);
-  const [creatingSPT, setCreatingSPT] = useState(false);
+  const [updatingAsset, setUpdatingAsset] = useState(false);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => {
@@ -47,24 +47,31 @@ const Create = () => {
     let acc = accounts.find(element => element.id === activeAccountId)
 
     if ((acc ? acc.balance : -1) > 0) {
-      controller.wallet.account.confirmNewSPT();
+      try {
+        controller.wallet.account.confirmUpdateAssetTransaction();
+      } catch (error) {
+        console.log('error', error);
+        alert.removeAll();
+        alert.error('Error updating asset.')
+      }
+
       setConfirmed(true);
       setLoading(false);
     }
   }
 
-  const handleMessageToCreateNewSPT = () => {
-    controller.wallet.account.setDataFromWalletToCreateSPT({
+  const handleMessageToUpdateAsset = () => {
+    controller.wallet.account.setDataFromWalletToUpdateAsset({
       fee,
       rbf
     });
 
     browser.runtime.sendMessage({
-      type: 'DATA_FROM_WALLET_TO_CREATE_TOKEN',
+      type: 'DATA_FROM_WALLET_TO_UPDATE_TOKEN',
       target: 'background'
     });
 
-    setCreatingSPT(true);
+    setUpdatingAsset(true);
     setLoading(true);
   }
 
@@ -114,19 +121,19 @@ const Create = () => {
     </Layout>
   ) : (
     <div>
-      {newSPT ? (
-        <Layout title="Create Token" showLogo>
+      {updateAsset ? (
+        <Layout title="Update Token" showLogo>
           <div className={styles.wrapper}>
             <div>
               <section className={styles.data}>
                 <div className={styles.flex}>
-                  <p>Precision</p>
-                  <p>{newSPT?.precision}</p>
+                  <p>Asset GUID</p>
+                  <p>{updateAsset?.assetGuid}</p>
                 </div>
 
                 <div className={styles.flex}>
-                  <p>Symbol</p>
-                  <p>{newSPT?.symbol}</p>
+                  <p>Contract</p>
+                  <p>{updateAsset?.contract}</p>
                 </div>
 
                 <div className={styles.flex}>
@@ -135,8 +142,20 @@ const Create = () => {
                 </div>
 
                 <div className={styles.flex}>
-                  <p>Receiver</p>
-                  <p>{ellipsis(newSPT?.receiver)}</p>
+                  <div className={styles.detais}>
+                    <p>Aux fee details</p>
+
+                    <div className={styles.flex}>
+                      <p>Aux fee key id:</p>
+                      <p>{updateAsset?.auxFeeDetails.auxfeekeyid}</p>
+                    </div>
+
+                    <div className={styles.flex}>
+                      <p>Aux fees</p>
+                      <p>Bound: {updateAsset?.auxFeeDetails.bound}</p>
+                      <p>Percent: {updateAsset?.auxFeeDetails.percent}</p>
+                    </div>
+                  </div>
                 </div>
 
                 <div className={styles.flex}>
@@ -146,7 +165,7 @@ const Create = () => {
 
                 <div className={styles.flex}>
                   <p>Description</p>
-                  <p>{newSPT?.description}</p>
+                  <p>{updateAsset?.description}</p>
                 </div>
 
                 <div className={styles.flex}>
@@ -186,7 +205,7 @@ const Create = () => {
         </Layout>
       ) : (
         <div>
-          {creatingSPT && loading ? (
+          {updatingAsset && loading ? (
             <Layout title="" showLogo>
               <div className={styles.wrapper}>
                 <section className={clsx(styles.mask)}>
@@ -196,7 +215,7 @@ const Create = () => {
             </Layout>
           ) : (
             <div>
-              <Layout title="Create Token" showLogo>
+              <Layout title="Update Token" showLogo>
                 <div className={styles.wrapper}>
                   <label htmlFor="fee">Fee</label>
 
@@ -247,7 +266,7 @@ const Create = () => {
                         type="submit"
                         theme="btn-outline-primary"
                         variant={styles.button}
-                        onClick={handleMessageToCreateNewSPT}
+                        onClick={handleMessageToUpdateAsset}
                         disabled={!fee}
                       >
                         Next
@@ -264,4 +283,4 @@ const Create = () => {
   );
 }
 
-export default Create;
+export default UpdateAsset;

@@ -13,7 +13,6 @@ import { useController } from 'hooks/index';
 import { useFiat } from 'hooks/usePrice';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
-import IAccountState from 'state/wallet/types';
 import TxsPanel from './TxsPanel';
 
 import styles from './Home.scss';
@@ -28,23 +27,16 @@ const Home = () => {
   );
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
   const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
 
   const handleRefresh = () => {
-    setRefreshing(true);
-
     controller.wallet.account.getLatestUpdate();
     controller.wallet.account.watchMemPool();
-    controller.stateUpdater().then(() => {
-      setRefreshing(false);
-    });
+    controller.stateUpdater();
   };
 
   useEffect(() => {
     if (!controller.wallet.isLocked() && accounts.length > 0 && accounts.find(element => element.id === activeAccountId)) {
-      controller.wallet.account.getLatestUpdate();
-      controller.wallet.account.watchMemPool();
-      controller.stateUpdater();
+      handleRefresh();
     }
   }, [
     !controller.wallet.isLocked(),

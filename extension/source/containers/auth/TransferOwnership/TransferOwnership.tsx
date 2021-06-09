@@ -14,13 +14,13 @@ import IWalletState from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 import CircularProgress from '@material-ui/core/CircularProgress';
 
-import styles from './Create.scss';
+import styles from './TransferOwnership.scss';
 import { browser } from 'webextension-polyfill-ts';
 import ReactTooltip from 'react-tooltip';
 import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import Switch from "react-switch";
 
-const Create = () => {
+const TransferOwnership = () => {
   const controller = useController();
   const alert = useAlert();
 
@@ -28,13 +28,13 @@ const Create = () => {
     (state: RootState) => state.wallet
   );
 
-  const newSPT = controller.wallet.account.getNewSPT();
+  const ownership = controller.wallet.account.getNewOwnership();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0);
   const [rbf, setRbf] = useState(false);
   const [recommend, setRecommend] = useState(0.00001);
-  const [creatingSPT, setCreatingSPT] = useState(false);
+  const [transferringOwnership, setTransferringOwnership] = useState(false);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => {
@@ -47,24 +47,24 @@ const Create = () => {
     let acc = accounts.find(element => element.id === activeAccountId)
 
     if ((acc ? acc.balance : -1) > 0) {
-      controller.wallet.account.confirmNewSPT();
+      controller.wallet.account.confirmTransferOwnership();
       setConfirmed(true);
       setLoading(false);
     }
   }
 
-  const handleMessageToCreateNewSPT = () => {
-    controller.wallet.account.setDataFromWalletToCreateSPT({
+  const handleMessageToTransferOwnership = () => {
+    controller.wallet.account.setDataFromWalletToTransferOwnership({
       fee,
       rbf
     });
 
     browser.runtime.sendMessage({
-      type: 'DATA_FROM_WALLET_TO_CREATE_TOKEN',
+      type: 'DATA_FROM_WALLET_TO_TRANSFER_OWNERSHIP',
       target: 'background'
     });
 
-    setCreatingSPT(true);
+    setTransferringOwnership(true);
     setLoading(true);
   }
 
@@ -114,29 +114,19 @@ const Create = () => {
     </Layout>
   ) : (
     <div>
-      {newSPT ? (
-        <Layout title="Create Token" showLogo>
+      {ownership ? (
+        <Layout title="Transfer ownership" showLogo>
           <div className={styles.wrapper}>
             <div>
               <section className={styles.data}>
-                <div className={styles.flex}>
-                  <p>Precision</p>
-                  <p>{newSPT?.precision}</p>
-                </div>
-
-                <div className={styles.flex}>
-                  <p>Symbol</p>
-                  <p>{newSPT?.symbol}</p>
-                </div>
-
                 <div className={styles.flex}>
                   <p>RBF</p>
                   <p>{rbf ? 'Yes' : 'No'}</p>
                 </div>
 
                 <div className={styles.flex}>
-                  <p>Receiver</p>
-                  <p>{ellipsis(newSPT?.receiver)}</p>
+                  <p>New owner</p>
+                  <p>{ellipsis(ownership?.newOwner)}</p>
                 </div>
 
                 <div className={styles.flex}>
@@ -145,8 +135,8 @@ const Create = () => {
                 </div>
 
                 <div className={styles.flex}>
-                  <p>Description</p>
-                  <p>{newSPT?.description}</p>
+                  <p>Asset Guid</p>
+                  <p>{ownership?.assetGuid}</p>
                 </div>
 
                 <div className={styles.flex}>
@@ -186,7 +176,7 @@ const Create = () => {
         </Layout>
       ) : (
         <div>
-          {creatingSPT && loading ? (
+          {transferringOwnership && loading ? (
             <Layout title="" showLogo>
               <div className={styles.wrapper}>
                 <section className={clsx(styles.mask)}>
@@ -196,7 +186,7 @@ const Create = () => {
             </Layout>
           ) : (
             <div>
-              <Layout title="Create Token" showLogo>
+              <Layout title="Transfer ownership" showLogo>
                 <div className={styles.wrapper}>
                   <label htmlFor="fee">Fee</label>
 
@@ -247,7 +237,7 @@ const Create = () => {
                         type="submit"
                         theme="btn-outline-primary"
                         variant={styles.button}
-                        onClick={handleMessageToCreateNewSPT}
+                        onClick={handleMessageToTransferOwnership}
                         disabled={!fee}
                       >
                         Next
@@ -264,4 +254,4 @@ const Create = () => {
   );
 }
 
-export default Create;
+export default TransferOwnership;

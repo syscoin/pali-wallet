@@ -10,6 +10,8 @@ import MintSPT from './Mint/MintSPT';
 import CreateSPT from './Create/CreateSPT';
 import CreateCollection from './Create/CreateCollection';
 import CreateNFT from './Create/CreateNFT';
+import UpdateAsset from './Update/UpdateAsset';
+import TransferOwnership from './TransferOwnership/TransferOwnership';
 
 ReactDOM.render(
   <BrowserRouter>
@@ -25,6 +27,8 @@ ReactDOM.render(
       <Route path="/createspt" component={CreateSPT} />
       <Route path="/createnft" component={CreateNFT} />
       <Route path="/createcollection" component={CreateCollection} />
+      <Route path="/updateasset" component={UpdateAsset} />
+      <Route path="/transferownership" component={TransferOwnership} />
     </Switch>
   </BrowserRouter>,
   document.getElementById('root')

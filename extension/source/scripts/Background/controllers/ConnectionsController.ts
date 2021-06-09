@@ -12,6 +12,8 @@ export interface IConnectionsController {
   isNFT: (guid: number) => boolean;
   getUserMintedTokens: () => any;
   handleCreateCollection: (state: any) => void;
+  handleUpdateAsset: (assetGuid: string, contract?: string, capabilityFlags?: number | 127, receiver?: string, description?: string, supply?: number, endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean, auxFeeDetails?: any, notarykeyid?: string) => any;
+  handleTransferOwnership: (assetGuid: string, newOwner: string) => any;
 }
 
 const isNFT = (guid: number) => {
@@ -182,6 +184,44 @@ const ConnectionsController = (): IConnectionsController => {
       attribute3
     });
   }
+
+  const handleUpdateAsset = async (assetGuid: string, contract?: string, capabilityFlags?: number | 127, receiver?: string, description?: string, supply?: number, endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean, auxFeeDetails?: any, notarykeyid?: string) => {
+    return await sendMessage({
+      type: 'UPDATE_ASSET',
+      target: 'connectionsController',
+      freeze: true,
+      eventResult: 'complete'
+    }, {
+      type: 'UPDATE_ASSET',
+      target: 'contentScript',
+      assetGuid,
+      contract,
+      capabilityFlags,
+      receiver,
+      description,
+      supply,
+      endpoint,
+      instanttransfers,
+      hdrequired,
+      auxFeeDetails,
+      notarykeyid
+    });
+  }
+
+  const handleTransferOwnership = async (assetGuid: string, newOwner: string) => {
+    return await sendMessage({
+      type: 'TRANSFER_OWNERSHIP',
+      target: 'connectionsController',
+      freeze: true,
+      eventResult: 'complete'
+    }, {
+      type: 'TRANSFER_OWNERSHIP',
+      target: 'contentScript',
+      assetGuid,
+      newOwner
+    });
+  }
+
   return {
     isNFT,
     connectWallet,
@@ -193,7 +233,9 @@ const ConnectionsController = (): IConnectionsController => {
     handleIssueSPT,
     handleIssueNFT,
     getUserMintedTokens,
-    handleCreateCollection
+    handleCreateCollection,
+    handleUpdateAsset,
+    handleTransferOwnership
   }
 };
 

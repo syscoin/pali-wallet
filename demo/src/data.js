@@ -19,4 +19,12 @@ export const buttons = [
     title: 'Mint SPT',
     route: '/mintspt'
   },
+  {
+    title: 'Update Asset',
+    route: '/updateasset'
+  },
+  {
+    title: 'Transfer ownership',
+    route: '/transferownership'
+  },
 ]
