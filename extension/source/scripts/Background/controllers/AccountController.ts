@@ -775,6 +775,46 @@ const AccountController = (actions: {
         //TREZOR PART GOES UNDER NOW 
         //PSBT TO --TREZOR FORMAT
 
+        let trezortx: any = {};
+        trezortx.coin = "sys"
+        trezortx.version = psbt.res.txVersion
+        trezortx.inputs = []
+        trezortx.outputs = []
+
+        for (let i = 0; i < psbt.res.inputs.length; i++) {
+          const input = psbt.res.inputs[i]
+          let _input: any = {}
+
+          _input.address_n = convertToBip32Path(input.path)
+          _input.prev_index = input.vout
+          _input.prev_hash = input.txId
+          _input.sequence = input.sequence
+          _input.amount = input.value.toString()
+          _input.script_type = 'SPENDWITNESS'
+          trezortx.inputs.push(_input)
+        }
+
+        for (let i = 0; i < psbt.res.outputs.length; i++) {
+          const output = psbt.res.outputs[i]
+          let _output: any = {}
+
+          _output.address = output.address
+          _output.amount = output.value.toString()
+          _output.script_type = "PAYTOWITNESS"
+          trezortx.outputs.push(_output)
+        }
+        console.log(trezortx)
+        const resp = await TrezorConnect.signTransaction(trezortx)
+        console.log(resp)
+        if (resp.success == true) {
+          const response = await sys.utils.sendRawTransaction(sysjs.blockbookURL, resp.payload.serializedTx)
+          console.log(response)
+          console.log("tx ix")
+        } else {
+          console.log(resp.payload.error)
+        }
+
+
       }
       else {
         const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(item.fee * 1e8));
