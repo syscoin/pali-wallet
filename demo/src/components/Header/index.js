@@ -3,9 +3,7 @@ import { useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 
 import logo from "../../images/logo.svg";
-import { buttons } from "./../../data";
-
-// peace uncle grit essence stuff angle cruise annual fury letter snack globe
+import { elementEventHandler } from "../../utils/elementEventHandler";
 
 const Header = () => {
   const accountData = useSelector((state) => state.connectedAccountData);
@@ -19,17 +17,24 @@ const Header = () => {
   };
 
   useEffect(() => {
+    const dropdown = document.querySelectorAll(".dropdown");
+    const mobilemenu = document.querySelector(".mobilemenu");
+    const desktopmenu = document.querySelector(".desktopmenu");
+
     // menu open submenu
-    document.querySelectorAll(".dropdown").forEach((elem) => {
-      ["click", "touchstart"].forEach((e) => {
-        elem.addEventListener(e, function () {
-          elem.parentElement.classList.toggle("open");
-        });
-      });
-    });
+    dropdown.forEach(elementEventHandler(["click", "touchstart"], "open"));
+
+    // mobile menu open/close
+    elementEventHandler(["click", "touchstart"], "open", function () {
+      desktopmenu.classList.toggle("open");
+    })(mobilemenu);
+
+    // remove events when component is unmounted
+    return () =>
+      dropdown.forEach(
+        elementEventHandler(["click", "touchstart"], "open", "remove")
+      );
   }, []);
-
-
 
   return (
     <header>
@@ -56,7 +61,7 @@ const Header = () => {
                 </Link>
               </li>
               <li>
-                <a className="dropdown" href="#">
+                <a className="dropdown">
                   Create <i className="icon-down-open"></i>
                 </a>
                 <ul>
@@ -69,7 +74,7 @@ const Header = () => {
                 </ul>
               </li>
               <li>
-                <a className="dropdown" href="#">
+                <a className="dropdown">
                   Manage <i className="icon-down-open"></i>
                 </a>
                 <ul>

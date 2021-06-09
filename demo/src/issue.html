@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+		<meta http-equiv="X-UA-Compatible" content="ie=edge" />
+        <title>Token Creation Tool</title>
+        
+		<link rel="stylesheet" type="text/css" href="css/styles.css" />
+	</head>
+	<body>
+
+<div class="content">
+    <header>
+    <nav>
+        <a href="index.html" class="logo">
+            <embed src="imgs/logo.svg" />
+        </a>
+        <h1>Token Creation Tool</h1>
+        <!-- 
+            li has class 'open' for opened dropdown
+            a has class 'active' for active page
+            a has class 'dropdown' if it has a dropdown + element i for icon
+        -->
+        <ul>
+            <li>
+                <a href="dashboard.html" class="active">Dashboard</a>
+            </li>
+            <li>
+                <a class="dropdown" href="#">Create <i class="icon-down-open"></i></a>
+                <ul>
+                    <li>
+                        <a href="create-spt.html">Standard Token (Fungible)</a>
+                    </li>
+                    <li>
+                        <a href="create-nft.html">NFT (Non-Fungible)</a>
+                    </li>
+                </ul>
+            </li>
+            <li>
+                <a class="dropdown" href="#">Manage <i class="icon-down-open"></i></a>
+                <ul>
+                    <li>
+                        <a href="issue-spt.html">Issue Fungibles Into Circulation</a>
+                    </li>
+                    <li>
+                        <a href="update.html">Update Properties</a>
+                    </li> 
+                    <li>
+                        <a href="transfer.html">Transfer Ownership</a>
+                    </li>
+                </ul>
+            </li>
+            <li>
+                <a href="#">About</a>
+            </li>
+        </ul>
+    </nav>
+</header>
+   
+    <section>
+        <div class="inner wider">
+            <h1>Create a Standard Token (Fungible)</h1>
+            <p>
+                Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus quam ex, suscipit sagittis orci tincidunt, maximus posuere dui. Morbi porta magna hendrerit velit molestie ultricies. Sed a tellus est. Quisque ut velit quis orci rutrum congue ut euismod odio. Nunc non ipsum lacus. Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
+            </p>
+            <p>
+                Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus quam ex, suscipit sagittis orci tincidunt, maximus posuere dui. Morbi porta magna hendrerit velit molestie ultricies. Sed a tellus est. Quisque ut velit quis orci rutrum congue ut euismod odio. Nunc non ipsum lacus. Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
+            </p>
+
+            <form>
+
+                <div class="row">
+                    <div class="spacer col-100"></div>
+                </div>
+
+                <div class="form-line">
+                    <div class="form-group col-33">
+                        <label for="symbol">Symbol <i class="icon-info-circled" title="help goes here"></i></label>
+                        <input type="text" class="form-control" id="symbol" placeholder="">
+                        <p class="help-block">Max length: 8 alpha-numeric</p>
+                    </div>
+                    <div class="form-group col-67">
+                        <label for="owneraddr">Issuer/Owner Address <i class="icon-info-circled" title="help goes here"></i></label>
+                        <input type="text" class="form-control" id="owneraddr" placeholder="">
+                        <p class="help-block">Optional: If blank, the token will be assigned to new address in your connected wallet</p>
+                    </div>
+                </div>
+
+                <div class="form-line gray">
+                    <div class="form-group col-33">
+                        <label for="precision">Precision <i class="icon-info-circled" title="help goes here"></i></label>
+                        <input type="range" id="precision" name="points" min="0" max="8" value="8">
+                        <p class="help-block">0 - 8 (default 8)</p>
+                    </div>
+                    <div class="form-group col-33">
+                        <label for="supply">Max supply <i class="icon-info-circled" title="help goes here"></i></label>
+                        <input type="number" class="form-control" id="supply" placeholder="">
+                        <p class="help-block">Ceiling:</p>
+                    </div>
+                    <div class="form-group col-33">
+                        <label for="initialsupply">Initial Circulating Supply <i class="icon-info-circled" title="help goes here"></i></label>
+                        <input type="number" class="form-control" id="initialsupply" placeholder="">
+                        <p class="help-block">Ceiling: Max Supply. This value will be minted and sent to the issuer/owner address for further distribution. </p>
+                    </div>
+                </div>
+
+                <div class="form-line">
+                    <div class="form-group col-67">
+                        <label for="description">Description <i class="icon-info-circled" title="help goes here"></i></label>
+                        <textarea class="form-control" id="description" rows="4"></textarea>
+                        <p class="help-block">Max length: 256 bytes</p>
+                    </div>
+                    <div class="form-group col-33">
+                        <div class="fileupload">
+                            <label for="logo">Upload logo</label>
+                            <input type="file" id="logo">
+                            <img src="imgs/asset.svg" />
+                        </div>
+                    </div>
+                </div>
+
+                
+
+                <div class="form-line gray">
+                    <div class="form-group col-100">
+                        <div class="advanced open">Advanced <i class="icon-right-open"></i><i class="icon-down-open"></i></div> 
+                    </div>
+                    <div class="advanced-panel open">
+                        <div class="form-line">
+                            <div class="form-group col-100">
+                                <div class="checkbox">
+                                    <label>
+                                      <input type="checkbox"> Notary (Compliance & Busiess Rulesets)
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="form-group col-50 spaced">
+                                <label for="signer">Signer Address * <i class="icon-info-circled" title="help goes here"></i></label>
+                                <input type="text" class="form-control" id="signer" placeholder="">
+                                <p class="help-block">Address that will notarize transactions</p>
+                            </div>
+                            <div class="form-group col-50 spaced">
+                                <label for="endpointurl">Endpoint URL * <i class="icon-info-circled" title="help goes here"></i></label>
+                                <input type="text" class="form-control" id="endpointurl" placeholder="">
+                                <p class="help-block">URL to your notray API</p>
+                            </div>
+                            <div class="form-group col-100">
+                                <div class="checkbox small">
+                                    <label>
+                                      <input type="checkbox">Notary provides double-spend protection and guarantees safe instant transfers (Default: OFF) 
+                                    </label>
+                                </div>
+                                <div class="checkbox small">
+                                    <label>
+                                      <input type="checkbox"> HD required for asset transfers (all senders must supply their XPUB & HD Path) (Default: OFF)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-line half">
+                            <div class="form-group col-100">
+                                <div class="label-spacing">
+                                    <label>
+                                        Issuer Rights
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="form-group col-100">
+                                <div class="checkbox small">
+                                    <label>
+                                      <input type="checkbox">Issue supply into circulation (LOCKED - ALWAYS ON)
+                                    </label>
+                                </div>
+                                <div class="checkbox small">
+                                    <label>
+                                      <input type="checkbox">Edit field value: [public_value]
+                                    </label>
+                                </div>
+                                <div class="checkbox small">
+                                    <label>
+                                      <input type="checkbox">Edit field value: [contract]
+                                    </label>
+                                </div>
+                                <div class="checkbox small">
+                                    <label>
+                                      <input type="checkbox">Edit field value: [notary_address]
+                                    </label>
+                                </div>
+                                <div class="checkbox small">
+                                    <label>
+                                      <input type="checkbox">Edit field value: [notary_details]
+                                    </label>
+                                </div>
+                                <div class="checkbox small">
+                                    <label>
+                                      <input type="checkbox">Edit field value: [auxfee]
+                                    </label>
+                                </div>
+                                <div class="checkbox small">
+                                    <label>
+                                      <input type="checkbox">Edit field value: [capability_flags]
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-line half right">
+                            <div class="form-group col-100"> 
+                                <div class="checkbox">
+                                    <label>
+                                      <input type="checkbox">Auxiliary Fees
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="form-group col-100 spaced">
+                                <label for="payout">Payout Address * <i class="icon-info-circled" title="help goes here"></i></label>
+                                <input type="text" class="form-control" id="payout" placeholder="">
+                            </div>
+                            <div class="form-group col-100">
+                                <div class="row nested">
+                                    <div class="form-group col-40">
+                                        <p class="help-block">Bound</p>
+                                    </div>
+                                    <div class="form-group col-40">
+                                        <p class="help-block">Percent</p>
+                                    </div>
+                                </div>
+                                <div class="row nested">
+                                    <div class="form-group col-40">
+                                        <input type="text" class="form-control" placeholder="">
+                                    </div>
+                                    <div class="form-group col-40">
+                                        <input type="text" class="form-control" placeholder="">
+                                    </div>
+                                    <div class="form-group col-20">
+                                        <button class="small"><i class="icon-cancel"></i></button>
+                                    </div>
+                                </div>
+                                
+                                <div class="row nested">
+                                    <div class="form-group col-40">
+                                        <input type="text" class="form-control" placeholder="">
+                                    </div>
+                                    <div class="form-group col-40">
+                                        <input type="text" class="form-control" placeholder="">
+                                    </div>
+                                    <div class="form-group col-20">
+                                        <button class="small"><i class="icon-plus"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                    
+                </div>
+
+                <div class="btn-center">
+                    <button>Create Token</button>
+                </div>
+            </form>
+        </div>
+    </section>
+    
+</div>
+<footer class="footer">
+    <h2>footer</h2>
+</footer>
+
+<script src="js/script.min.js"></script>
+</body>
+</html>
+

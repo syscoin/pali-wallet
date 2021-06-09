@@ -1,5 +1,30 @@
-export default function CreateSPT() {
+import React, { useState, useEffect } from "react";
+import { useSelector } from "react-redux";
+ const CreateSPT=()  => {
+  const [precision, setPrecision] = useState(0);
+  const [maxSupply, setMaxSupply] = useState(0);
+  const [description, setDescription] = useState("");
+  const [symbol, setSymbol] = useState("");
+  const [receiver, setReceiver] = useState("");
+
+  const handleCreateToken = async (event) => {
+    event.preventDefault();
+
+    await await window.ConnectionsController.handleCreateToken(
+      Number(precision),
+      symbol,
+      Number(maxSupply),
+      description,
+      receiver
+    );
+
+    event.target.reset();
+  };
+
+
   return (
+   
+  
     <section>
       <div className="inner wider">
         <h1>Create a Standard Token (Fungible)</h1>
@@ -18,7 +43,7 @@ export default function CreateSPT() {
           Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
         </p>
 
-        <form onSubmit={() => {}}>
+        <form onSubmit={handleCreateToken}>
           <div className="row">
             <div className="spacer col-100"></div>
           </div>
@@ -30,7 +55,8 @@ export default function CreateSPT() {
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
-                onChange={() => {}}
+                onBlur={(event) => setSymbol(event.target.value)}
+                required
                 type="text"
                 className="form-control"
                 id="symbol"
@@ -44,7 +70,8 @@ export default function CreateSPT() {
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
-                onChange={() => {}}
+               onBlur={(event) => setReceiver(event.target.value)}
+               required
                 type="text"
                 className="form-control"
                 id="owneraddr"
@@ -64,7 +91,8 @@ export default function CreateSPT() {
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
-                onChange={() => {}}
+                onBlur={(event) => setPrecision(event.target.value)}
+                required
                 type="range"
                 id="precision"
                 name="points"
@@ -94,7 +122,8 @@ export default function CreateSPT() {
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
-                onChange={() => {}}
+                  onBlur={(event) => setMaxSupply(event.target.value)}
+                  required
                 type="number"
                 className="form-control"
                 id="initialsupply"
@@ -113,11 +142,15 @@ export default function CreateSPT() {
                 Description{" "}
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
-              <textarea
+                <input
                 className="form-control"
+                type="text"
                 id="description"
-                rows="4"
-              ></textarea>
+                name="description"
+                onBlur={(event) => setDescription(event.target.value)}
+                required
+              />
+              
               <p className="help-block">Max length: 256 bytes</p>
             </div>
             <div className="form-group col-33 col-md-50 col-sm-100">
@@ -344,3 +377,4 @@ export default function CreateSPT() {
     </section>
   );
 }
+export default  CreateSPT

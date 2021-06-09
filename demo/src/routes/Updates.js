@@ -1,20 +1,8 @@
-import "bootstrap/dist/css/bootstrap.min.css";
-import "react-dropzone-uploader/dist/styles.css";
-import React, { useState, useEffect } from "react";
-import { useSelector } from "react-redux";
-
-const CreateNFT = () => {
-  const handleCreateNFT = async (
-    event,
-    { precision, maxSupply, description, symbol, fee, sysAddress, rbf }
-  ) => {
-    event.preventDefault();
-  };
-
+export default function Update() {
   return (
     <section>
       <div className="inner wider">
-        <h1>Create and Issue a NFT (Non-Fungible)</h1>
+        <h1>Update Token Specifications</h1>
         <p>
           Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus quam
           ex, suscipit sagittis orci tincidunt, maximus posuere dui. Morbi porta
@@ -30,54 +18,19 @@ const CreateNFT = () => {
           Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
         </p>
 
-        <form onSubmit={() => {}}>
+        <form>
           <div className="row">
             <div className="spacer col-100"></div>
           </div>
 
           <div className="form-line">
-            <div className="form-group col-25 col-md-50 col-sm-100">
-              <label htmlFor="symbol">
-                Symbol{" "}
-                <i className="icon-info-circled" title="help goes here"></i>
-              </label>
-              <input
-                onChange={() => {}}
-                type="text"
-                className="form-control"
-                id="symbol"
-                placeholder=""
-              />
-              <p className="help-block">Max length: 8 alpha-numeric</p>
-            </div>
-            <div className="form-group col-50 col-md-50 col-sm-100 sm-spaced-top">
-              <label htmlFor="owneraddr">
-                Issuer/Owner Address{" "}
-                <i className="icon-info-circled" title="help goes here"></i>
-              </label>
-              <input
-                onChange={() => {}}
-                type="text"
-                className="form-control"
-                id="owneraddr"
-                placeholder=""
-              />
-              <p className="help-block">
-                Optional: If blank, the token will be assigned to new address in
-                your connected wallet
-              </p>
-            </div>
-            <div className="form-group col-25 col-md-100 md-spaced-top">
-              <label htmlFor="shares">
-                Total Shares{" "}
-                <i className="icon-info-circled" title="help goes here"></i>
-              </label>
-              <select className="form-control" id="shares">
+            <div className="form-group col-100">
+              <label htmlFor="token">Token</label>
+              <select className="form-control" id="token">
                 <option>1</option>
                 <option>2</option>
                 <option>3</option>
               </select>
-              <p className="help-block">Default 1</p>
             </div>
           </div>
 
@@ -104,12 +57,6 @@ const CreateNFT = () => {
           </div>
 
           <div className="form-line gray">
-            <div className="form-group col-100">
-              <div className="advanced open">
-                Advanced <i className="icon-right-open"></i>
-                <i className="icon-down-open"></i>
-              </div>
-            </div>
             <div className="advanced-panel open">
               <div className="form-line">
                 <div className="form-group col-100">
@@ -219,6 +166,7 @@ const CreateNFT = () => {
                   </div>
                 </div>
               </div>
+
               <div className="form-line half right">
                 <div className="form-group col-100">
                   <div className="checkbox">
@@ -307,15 +255,33 @@ const CreateNFT = () => {
                   </div>
                 </div>
               </div>
+
+              <div className="form-line spaced-top">
+                <div className="form-group col-100">
+                  <label htmlFor="contract">
+                    Contract{" "}
+                    <i className="icon-info-circled" title="help goes here"></i>
+                  </label>
+                  <input
+                    onChange={() => {}}
+                    type="text"
+                    className="form-control"
+                    id="contract"
+                    placeholder=""
+                  />
+                  <p className="help-block">
+                    ERC-20 Contract linked to this token via Syscoin Bridge
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
           <div className="btn-center">
-            <button>Create Token</button>
+            <button>Update Token</button>
           </div>
         </form>
       </div>
     </section>
   );
-};
-export default CreateNFT;
+}
