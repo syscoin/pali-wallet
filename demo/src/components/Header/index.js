@@ -1,117 +1,149 @@
-import React, { useState, useEffect } from "react";
-import logo from "../../assets/images/logosys.svg";
+import { useEffect } from "react";
+import { useSelector } from "react-redux";
+import { Link } from "react-router-dom";
 
-const Header = (props) => {
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [canConnect, setCanConnect] = useState(true);
-  const [balance, setBalance] = useState(0);
-  const [controller, setController] = useState();
-  const [connectedAccount, setConnectedAccount] = useState({});
-  const [connectedAccountAddress, setConnectedAccountAddress] = useState("");
+import logo from "../../images/logo.svg";
+import { elementEventHandler } from "../../utils/elementEventHandler";
 
-  useEffect(() => {
-    const callback = (event) => {
-      if (event.detail.SyscoinInstalled) {
-        setIsInstalled(true);
+const Header = () => {
+  const accountData = useSelector((state) => state.connectedAccountData);
+  const controller = useSelector((state) => state.controller);
+  const isInstalled = useSelector((state) => state.isInstalled);
 
-        if (event.detail.ConnectionsController) {
-          setController(window.ConnectionsController);
-
-          return;
-        }
-
-        return;
-      }
-
-      setIsInstalled(false);
-
-      window.removeEventListener("SyscoinStatus", callback);
-    }
-
-    window.addEventListener("SyscoinStatus", callback);
-  }, []);
-
-  const setup = async () => {
-    const state = await controller.getWalletState();
-
-    if (state.accounts.length > 0) {
-      controller.getConnectedAccount()
-        .then((data) => {
-          if (data) {
-            setConnectedAccount(data);
-            setConnectedAccountAddress(data.address.main);
-            setBalance(data.balance);
-
-            return;
-          }
-
-          setConnectedAccount({});
-          setConnectedAccountAddress("");
-          setBalance(0);
-
-          return;
-        });
-    }
+  const handleMessageExtension = async () => {
+    controller
+      ? await controller.connectWallet()
+      : await window.ConnectionsController.connectWallet();
   };
 
   useEffect(() => {
-    if (controller) {
-      setup();
+    const dropdown = document.querySelectorAll(".dropdown");
+    const mobilemenu = document.querySelector(".mobilemenu");
+    const desktopmenu = document.querySelector(".desktopmenu");
 
-      controller.onWalletUpdate(setup);
-    }
-  }, [
-    controller,
-  ]);
+    // menu open submenu
+    dropdown.forEach(elementEventHandler(["click", "touchstart"], "open"));
 
-  const handleMessageExtension = async () => {
-    await controller.connectWallet();
-    await setup();
-  }
+    // mobile menu open/close
+    elementEventHandler(["click", "touchstart"], "open", function () {
+      desktopmenu.classList.toggle("open");
+    })(mobilemenu);
+
+    // remove events when component is unmounted
+    return () =>
+      dropdown.forEach(
+        elementEventHandler(["click", "touchstart"], "open", "remove")
+      );
+  }, []);
 
   return (
-    <div>
-      <nav className="navbar navbar-expand-lg navbar-light static-top">
-        <div className="container">
-          <a
-            className="navbar-brand"
-            href="https://syscoin.org/"
-          >
-            <img
-              src={logo}
-              alt="logo"
-              className="header__logo"
-            />
-          </a>
+    <header>
+      <nav>
+        <div className="mobilemenu">
+          <Link to="/" className="openmenu">
+            <i className="icon-menu"></i>
+          </Link>
+          <Link to="/" className="logo">
+            <embed src={logo} />
+          </Link>
+        </div>
+        <div className="desktopmenu">
+          <div className="menu">
+            <Link to="/" className="logo">
+              <embed src={logo} />
+            </Link>
+            <h1>Token Creation Tool</h1>
 
-          <a
-            className="button"
-            href="/"
-          >
-            Home
-          </a>
-
-          <div
-            className="collapse navbar-collapse"
-            id="navbarResponsive"
-          >
-            <ul className="navbar-nav ml-auto">
-              <button
-                className="button"
-                onClick={canConnect ? handleMessageExtension : undefined}
-                disabled={!isInstalled}>
-                {connectedAccountAddress === "" ? "Connect to Syscoin Wallet" : connectedAccountAddress}
-              </button>
+            <ul>
+              <li>
+                <Link to="/dashboard" className="active">
+                  Dashboard
+                </Link>
+              </li>
+              <li>
+                <a className="dropdown">
+                  Create <i className="icon-down-open"></i>
+                </a>
+                <ul>
+                  <li>
+                    <Link to="/create-spt">Standard Token (Fungible)</Link>
+                  </li>
+                  <li>
+                    <Link to="/create-nft">NFT (Non-Fungible)</Link>
+                  </li>
+                </ul>
+              </li>
+              <li>
+                <a className="dropdown">
+                  Manage <i className="icon-down-open"></i>
+                </a>
+                <ul>
+                  <li>
+                    <Link to="/issue-spt">
+                      Issue Fungibles Into Circulation
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/update">Update Properties</Link>
+                  </li>
+                  <li>
+                    <Link to="/transfer">Transfer Ownership</Link>
+                  </li>
+                </ul>
+              </li>
+              <li>
+                <Link to="/about">About</Link>
+              </li>
             </ul>
+          </div>
+          <div className="navbottom">
+            <a
+              href="https://syscoin.org"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              Syscoin Platform
+            </a>
+            <a
+              href="https://support.syscoin.org/"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              Support
+            </a>
+            <a
+              href="https://syscoin.org/wallets-and-exchanges"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              Wallets
+            </a>
+            <a
+              href="https://github.com/syscoin"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              Github
+            </a>
+            <a
+              href="https://discord.gg/RkK2AXD"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              Discord
+            </a>
+            <a
+              href="https://syscoin.org/news"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              News
+            </a>
           </div>
         </div>
       </nav>
-
-      {!isInstalled && (
-        <h1 className="app__title">You need to install Syscoin Wallet.</h1>
-      )}
-    </div>
-  )
-}
+    </header>
+  );
+};
 
 export default Header;
