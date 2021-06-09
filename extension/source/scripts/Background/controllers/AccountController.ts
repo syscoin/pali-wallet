@@ -26,6 +26,7 @@ import {
 } from '../../types';
 import { sys, trezor } from 'constants/index';
 import { fromZPub } from 'bip84';
+import { string } from 'yup';
 
 export interface IAccountController {
   subscribeAccount: (isHardwareWallet: boolean, sjs?: any, label?: string, walletCreation?: boolean) => Promise<string | null>;
@@ -711,25 +712,51 @@ const AccountController = (actions: {
         if (!psbt) {
           console.log('Could not create transaction, not enough funds?')
         }
+
         console.log("PSBT response")
         console.log(psbt.res.inputs)
         console.log(psbt.res.outputs)
         console.log("the psbt transact" + JSON.stringify(psbt))
 
-        //TREZOR PART GOES UNDER NOW 
-        // const _psbt = new trezor.TransactionBuilder({ network: sysjs.network })
-        // _psbt.setVersion(135)
-        // for (let i = 0; i < psbt.res.inputs.length; i++) {
-        //   const input = psbt.res.inputs[i]
-        //   await _psbt.addInput(input.txId, input.vout, input.sequencex)
-        // }
-        // psbt.res.outputs.forEach(output => {
-        //   _psbt.addOutput(Buffer.from(output.address), parseInt(output.value, 16))
-        // })
+        // TREZOR PART GOES UNDER NOW
 
-        // TrezorConnect.signTransaction({ coin: _psbt.network.network.bech32, version: _psbt.tx.version, inputs: _psbt.tx.ins, outputs: _psbt.tx.outs }).then(resp => {
-        //   console.log(resp)
-        // })
+        let trezortx: any = {};
+        trezortx.coin = "sys"
+        trezortx.version = 135
+        trezortx.inputs = []
+        trezortx.outputs = []
+
+        for (let i = 0; i < psbt.res.inputs.length; i++) {
+          const input = psbt.res.inputs[i]
+          let _input: any = {}
+
+          _input.address_n = [input.path]
+          _input.prev_index = input.vout
+          _input.prev_hash = input.txId
+          _input.script_type = 'SPENDWITNESS'
+          trezortx.inputs.push(_input)
+        }
+
+        for (let i = 0; i < psbt.res.outputs.length; i++) {
+          const output = psbt.res.outputs[i]
+          let _output: any = {}
+
+          _output.address_n = [output.address]
+          _output.amount = output.value.toString()
+          _output.script_type = "PAYTOADDRESS"
+          trezortx.outputs.push(_output)
+        }
+
+        const resp = await TrezorConnect.signTransaction(trezortx)
+        console.log(resp)
+        if (resp.success == true) {
+          const response = await sys.utils.sendRawTransaction(sysjs.blockbookURL, resp.payload.serializedTx)
+          console.log(response)
+          console.log("tx ix")
+        } else {
+          console.log(resp.payload.error)
+        }
+
       }
       else {
         const pendingTx = await sysjs.createTransaction(txOpts, null, _outputsArr, new sys.utils.BN(item.fee * 1e8));
