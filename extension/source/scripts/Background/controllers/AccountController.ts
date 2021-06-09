@@ -1079,7 +1079,7 @@ const AccountController = (actions: {
     setDataFromPageToMintNFT,
     getDataFromPageToMintNFT,
     setDataFromWalletToMintNFT,
-  getDataFromWalletToMintNFT,
+    getDataFromWalletToMintNFT,
     setDataFromPageToUpdateAsset,
     getDataFromPageToUpdateAsset,
     setDataFromWalletToUpdateAsset,
