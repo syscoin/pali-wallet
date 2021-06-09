@@ -713,8 +713,10 @@ const AccountController = (actions: {
           console.log('Could not create transaction, not enough funds?')
         }
 
-        console.log("PSBT response")
+        console.log("PSBT response:")
+        console.log("PSBT inputs")
         console.log(psbt.res.inputs)
+        console.log("PSBT outputs")
         console.log(psbt.res.outputs)
         console.log("the psbt transact" + JSON.stringify(psbt))
 
@@ -722,7 +724,7 @@ const AccountController = (actions: {
 
         let trezortx: any = {};
         trezortx.coin = "sys"
-        trezortx.version = 135
+        trezortx.version = psbt.res.txVersion
         trezortx.inputs = []
         trezortx.outputs = []
 
@@ -730,9 +732,11 @@ const AccountController = (actions: {
           const input = psbt.res.inputs[i]
           let _input: any = {}
 
-          _input.address_n = [input.path]
+          _input.address_n = [84 | 0x80000000, 57 | 0x80000000, 0 | 0x80000000, 1, 49]
           _input.prev_index = input.vout
           _input.prev_hash = input.txId
+          _input.sequence = input.sequence
+          _input.amount = input.value.toString()
           _input.script_type = 'SPENDWITNESS'
           trezortx.inputs.push(_input)
         }
@@ -741,12 +745,12 @@ const AccountController = (actions: {
           const output = psbt.res.outputs[i]
           let _output: any = {}
 
-          _output.address_n = [output.address]
+          _output.address = output.address
           _output.amount = output.value.toString()
-          _output.script_type = "PAYTOADDRESS"
+          _output.script_type = "PAYTOWITNESS"
           trezortx.outputs.push(_output)
         }
-
+        console.log(trezortx)
         const resp = await TrezorConnect.signTransaction(trezortx)
         console.log(resp)
         if (resp.success == true) {

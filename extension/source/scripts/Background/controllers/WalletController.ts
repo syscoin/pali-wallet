@@ -91,8 +91,14 @@ const WalletController = (): IWalletController => {
     let path: string = "m/84'/57'/0'";
     let coin: string = "sys"
     if (isTestnet) {
-      path = "m/84'/1'/0'";
-      coin = "tsys";
+      const message = "Trezor doesn't support SYS testnet";
+      chrome.notifications.create(new Date().getTime().toString(), {
+        type: 'basic',
+        iconUrl: 'assets/icons/favicon-48.png',
+        title: 'Cant create hardware wallet on testnet',
+        message
+      });
+      return
     }
     console.log(window.trezorConnect)
     window.trezorConnect.getAccountInfo({
@@ -227,49 +233,16 @@ const WalletController = (): IWalletController => {
       if (accounts[i] === undefined || accounts[i] === null) break;
       if (accounts[i].isTrezorWallet) {
         console.log("Should not derive from hdsigner if the account is from the hardware wallet")
-        if (activeAccountId !== accounts[i].id) {
-          console.log("User switching network without trezor connected")
-          store.dispatch(removeAccount(i));
-          store.dispatch(updateStatus());
-          const message = "Your device is being disconnected";
-          chrome.notifications.create(new Date().getTime().toString(), {
-            type: 'basic',
-            iconUrl: 'assets/icons/favicon-48.png',
-            title: 'Hardware Wallet removed due to network switch',
-            message
-          });
-
-        }
-        else {
-          let path: string = "m/84'/57'/0'";
-          let coin: string = "sys"
-          if (activeNetwork === 'testnet') {
-            path = "m/84'/1'/0'";
-            coin = "tsys";
-          }
-          window.trezorConnect.getAccountInfo({
-            path: path,
-            coin: coin
-          })
-            .then((response: any) => {
-              const message = response.success
-                ? `Trezor Wallet Account Created`
-                : `Error: ${response.payload.error}`;
-              chrome.notifications.create(new Date().getTime().toString(), {
-                type: 'basic',
-                iconUrl: 'assets/icons/favicon-48.png',
-                title: 'Hardware Wallet updated to ' + activeNetwork,
-                message,
-              });
-              if (response.success) {
-                console.log("update xpub")
-              }
-            })
-            .catch((error: any) => {
-              console.error('TrezorConnectError', error);
-            });
-
-        }
+        console.log("User switching network without trezor connected")
+        store.dispatch(removeAccount(i));
+        store.dispatch(updateStatus());
+        const message = "Your device is being disconnected";
+        chrome.notifications.create(new Date().getTime().toString(), {
+          type: 'basic',
+          iconUrl: 'assets/icons/favicon-48.png',
+          title: 'Hardware Wallet removed due to network switch',
+          message
+        });
       }
       else {
         const child = sjs.HDSigner.deriveAccount(i);
