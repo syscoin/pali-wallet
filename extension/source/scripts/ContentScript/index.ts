@@ -237,6 +237,56 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (type == 'UPDATE_ASSET' && target == 'contentScript') {
+    const {
+      assetGuid,
+      contract,
+      capabilityFlags,
+      receiver,
+      description,
+      supply,
+      endpoint,
+      instanttransfers,
+      hdrequired,
+      auxFeeDetails,
+      notarykeyid
+    } = event.data;
+
+    browser.runtime.sendMessage({
+      type: 'UPDATE_ASSET',
+      target: 'background',
+      assetGuid,
+      contract,
+      capabilityFlags,
+      receiver,
+      description,
+      supply,
+      endpoint,
+      instanttransfers,
+      hdrequired,
+      auxFeeDetails,
+      notarykeyid,
+    });
+
+    return;
+  }
+
+  if (type == 'TRANSFER_OWNERSHIP' && target == 'contentScript') {
+    const {
+      assetGuid,
+      newOwner
+    } = event.data;
+
+    browser.runtime.sendMessage({
+      type: 'TRANSFER_OWNERSHIP',
+      target: 'background',
+      assetGuid,
+      newOwner,
+    });
+
+    return;
+  }
+
   if (type == 'CREATE_COLLECTION' && target == 'contentScript') {
     // get data from event.data (the same as 'request' for browser.runtime) - message sent by connectionsController
     const {

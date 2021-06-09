@@ -2910,6 +2910,15 @@ coinselectsyscoin@^1.0.75:
     bitcoinjs-lib "^5.2.0"
     bn.js "^5.1.3"
 
+coinselectsyscoin@^1.0.76:
+  version "1.0.76"
+  resolved "https://registry.yarnpkg.com/coinselectsyscoin/-/coinselectsyscoin-1.0.76.tgz#8b81b8ebcf1b233a2f4a713d124a9e31d4185c0b"
+  integrity sha512-j4LadmMKZshq07ji6sHLr7zaxrclf2hOJ5f0YPXl+AIPjkDUk55VQQEExIuHBNnJmVySwCDbv/FU/th6B8jCsQ==
+  dependencies:
+    bitcoin-ops "^1.4.1"
+    bitcoinjs-lib "^5.2.0"
+    bn.js "^5.1.3"
+
 collection-visit@^1.0.0:
   version "1.0.0"
   resolved "https://registry.yarnpkg.com/collection-visit/-/collection-visit-1.0.0.tgz#4bc0373c164bc3291b4d368c829cf1a80a59dca0"
@@ -9060,6 +9069,19 @@ syscointx-js@^1.0.86:
     bitcoinjs-lib "^5.2.0"
     bn.js "^5.1.3"
     coinselectsyscoin "^1.0.75"
+    secp256k1 "^3.8.0"
+    typeforce "^1.18.0"
+    varuint-bitcoin "^1.1.2"
+
+syscointx-js@^1.0.90:
+  version "1.0.90"
+  resolved "https://registry.yarnpkg.com/syscointx-js/-/syscointx-js-1.0.90.tgz#ed00a81340a7c356f39c252fe0d9344d3d29efb3"
+  integrity sha512-R1hbURQxeQ98iGcvUdpAKOTogzX5ikKAWQ2EGCAwGz8ZFn1PbyP+6mQ+KVFrhYWVYVKMtp+aaFAygh94e9BfgQ==
+  dependencies:
+    bitcoin-ops "^1.4.1"
+    bitcoinjs-lib "^5.2.0"
+    bn.js "^5.1.3"
+    coinselectsyscoin "^1.0.76"
     secp256k1 "^3.8.0"
     typeforce "^1.18.0"
     varuint-bitcoin "^1.1.2"

@@ -47,19 +47,9 @@ const Create = () => {
     let acc = accounts.find(element => element.id === activeAccountId)
 
     if ((acc ? acc.balance : -1) > 0) {
-      controller.wallet.account.confirmNewSPT().then(result => {
-        if (result) {
-          alert.removeAll();
-          alert.error(result.message);
-
-          return;
-        }
-
-        setConfirmed(true);
-        setLoading(false);
-
-      });
-
+      controller.wallet.account.confirmNewSPT();
+      setConfirmed(true);
+      setLoading(false);
     }
   }
 

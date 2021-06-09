@@ -15,7 +15,8 @@ import {
   createAsset,
   issueAsset,
   issueNFT,
-
+  setUpdateAsset,
+  setTransferOwnership
 } from 'state/wallet';
 
 import MasterController, { IMasterController } from './controllers';
@@ -197,6 +198,8 @@ browser.runtime.onInstalled.addListener(async () => {
         store.dispatch(createAsset(false));
         store.dispatch(issueAsset(false));
         store.dispatch(issueNFT(false));
+        store.dispatch(setUpdateAsset(false));
+        store.dispatch(setTransferOwnership(false));
 
         return;
       }
@@ -207,6 +210,8 @@ browser.runtime.onInstalled.addListener(async () => {
         store.dispatch(createAsset(false));
         store.dispatch(issueAsset(false));
         store.dispatch(issueNFT(false));
+        store.dispatch(setUpdateAsset(false));
+        store.dispatch(setTransferOwnership(false));
 
         browser.tabs.sendMessage(tabId, {
           type: 'DISCONNECT',
@@ -382,6 +387,94 @@ browser.runtime.onInstalled.addListener(async () => {
         console.log('checking mint nft background', window.controller.wallet.account.getIssueNFT())
       }
 
+      if (type == 'UPDATE_ASSET' && target == 'background') {
+        const {
+          assetGuid,
+          contract,
+          capabilityFlags,
+          receiver,
+          description,
+          supply,
+          endpoint,
+          instanttransfers,
+          hdrequired,
+          auxFeeDetails,
+          notarykeyid
+        } = request;
+
+        window.controller.wallet.account.setDataFromPageToUpdateAsset({
+          assetGuid,
+          contract,
+          capabilityFlags,
+          receiver,
+          description,
+          supply,
+          endpoint,
+          instanttransfers,
+          hdrequired,
+          auxFeeDetails,
+          notarykeyid
+        });
+
+        console.log('data from page', window.controller.wallet.account.getDataFromPageToUpdateAsset())
+
+        store.dispatch(setUpdateAsset(true));
+
+        const appURL = browser.runtime.getURL('app.html');
+
+        await createPopup(appURL);
+
+        browser.tabs.sendMessage(tabId, {
+          type: 'UPDATE_ASSET',
+          target: 'contentScript',
+          complete: true
+        });
+      }
+
+      if (type == 'DATA_FROM_WALLET_TO_UPDATE_TOKEN' && target == 'background') {
+        window.controller.wallet.account.setUpdateAsset({
+          ...window.controller.wallet.account.getDataFromPageToUpdateAsset(),
+          ...window.controller.wallet.account.getDataFromWalletToUpdateAsset()
+        });
+
+        console.log('checking update asset background', window.controller.wallet.account.getNewUpdateAsset())
+      }
+
+      if (type == 'TRANSFER_OWNERSHIP' && target == 'background') {
+        const {
+          assetGuid,
+          newOwner
+        } = request;
+
+        window.controller.wallet.account.setDataFromPageToTransferOwnership({
+          assetGuid,
+          newOwner
+        });
+
+        console.log('data from page', window.controller.wallet.account.getDataFromPageToTransferOwnership())
+
+        store.dispatch(setTransferOwnership(true));
+
+        const appURL = browser.runtime.getURL('app.html');
+
+        await createPopup(appURL);
+
+        browser.tabs.sendMessage(tabId, {
+          type: 'UPDATE_ASSET',
+          target: 'contentScript',
+          complete: true
+        });
+      }
+
+      if (type == 'DATA_FROM_WALLET_TO_TRANSFER_OWNERSHIP' && target == 'background') {
+        window.controller.wallet.account.setNewOwnership({
+          ...window.controller.wallet.account.getDataFromPageToTransferOwnership(),
+          ...window.controller.wallet.account.getDataFromWalletToTransferOwnership()
+        });
+
+        console.log('checking new ownership background', window.controller.wallet.account.getNewOwnership())
+      }
+
       // receive message sent by contentScript using browser.runtime.sendMessage
       if (type == 'CREATE_COLLECTION' && target == 'background') {
         const {
@@ -448,6 +541,10 @@ browser.runtime.onInstalled.addListener(async () => {
       store.dispatch(updateCanConnect(false));
       store.dispatch(updateCanConfirmTransaction(false));
       store.dispatch(createAsset(false));
+      store.dispatch(setUpdateAsset(false));
+      store.dispatch(issueNFT(false));
+      store.dispatch(issueAsset(false));
+      store.dispatch(setTransferOwnership(false));
 
       const all = await browser.windows.getAll();
 

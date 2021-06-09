@@ -36,6 +36,7 @@ export interface IWalletController {
   switchNetwork: (networkId: string) => void;
   getNewAddress: () => Promise<boolean>;
   logOut: () => void;
+
 }
 
 const WalletController = (): IWalletController => {
@@ -337,6 +338,7 @@ const WalletController = (): IWalletController => {
 
     return account.setNewAddress(address);
   }
+
 
   const account = AccountController({ checkPassword });
 
