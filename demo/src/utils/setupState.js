@@ -1,19 +1,26 @@
 import {
   setController,
+  setIsConnected,
   setIsInstalled,
   updateConnectedAccountData,
 } from "../state/wallet";
 
 export default async function setupState(store) {
+  let isConnected = false;
+
   if (window.ConnectionsController) {
     const controller = window.ConnectionsController;
-    const connectedAccount = controller
-      ? await controller.getConnectedAccount()
-      : undefined;
+
+    const connectedAccount =
+      (await controller.getConnectedAccount()) || undefined;
 
     store.dispatch(setController(controller));
-    store.dispatch(setIsInstalled(Boolean(window.SyscoinWallet)));
-    connectedAccount &&
+    store.dispatch(setIsInstalled(true));
+
+    if (connectedAccount) {
+      isConnected = true;
+
+      store.dispatch(setIsConnected(true));
       store.dispatch(
         updateConnectedAccountData({
           balance: connectedAccount.balance,
@@ -21,7 +28,8 @@ export default async function setupState(store) {
           connectedAccountAddress: connectedAccount.address.main,
         })
       );
+    }
   }
 
-  return Boolean(window.SyscoinWallet);
+  return isConnected;
 }

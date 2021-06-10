@@ -589,7 +589,7 @@ const AccountController = (actions: {
 
     return true;
   }
-  
+
   const confirmSPTCreation = async (item: any) => {
     const newMaxSupply = item.maxsupply * 1e8;
 
@@ -733,6 +733,23 @@ const AccountController = (actions: {
     handleTransactions(mintNFT, confirmMintNFT);
   }
 
+  const convertToBip32Path = (address: string) => {
+    let address_array: String[] = address.replace(/'/g, '').split("/")
+    address_array.shift()
+    let address_n: Number[] = []
+    for (let index in address_array) {
+      if (Number(index) <= 2 && Number(index) >= 0) {
+        address_n[Number(index)] = Number(address_array[index]) | 0x80000000
+      }
+      else {
+        address_n[Number(index)] = Number(address_array[index])
+      }
+    }
+    console.log("Address_n")
+    console.log(address_n)
+    return address_n
+  }
+
   const confirmTransactionTx = async (item: any) => {
     if (item.isToken && item.token) {
       const txOpts = { rbf: item.rbf }
@@ -777,7 +794,8 @@ const AccountController = (actions: {
 
       if (account.isTrezorWallet) {
         console.log("Is trezor wallet")
-        const psbt = await sysjs.createTransaction(txOpts, null, _outputsArr,
+        const changeAddress = await getNewChangeAddress();
+        const psbt = await sysjs.createTransaction(txOpts, changeAddress, _outputsArr,
           new sys.utils.BN(item.fee * 1e8), account.xpub);
         if (!psbt) {
           console.log('Could not create transaction, not enough funds?')
@@ -802,7 +820,7 @@ const AccountController = (actions: {
           const input = psbt.res.inputs[i]
           let _input: any = {}
 
-          _input.address_n = [84 | 0x80000000, 57 | 0x80000000, 0 | 0x80000000, 1, 49]
+          _input.address_n = convertToBip32Path(input.path)
           _input.prev_index = input.vout
           _input.prev_hash = input.txId
           _input.sequence = input.sequence
@@ -817,6 +835,8 @@ const AccountController = (actions: {
 
           _output.address = output.address
           _output.amount = output.value.toString()
+          console.log("BN")
+          console.log(output.value.toString())
           _output.script_type = "PAYTOWITNESS"
           trezortx.outputs.push(_output)
         }
@@ -1051,6 +1071,54 @@ const AccountController = (actions: {
 
   const confirmTransferOwnership = () => {
     handleTransactions(transferOwnershipData, transferAsset);
+  }
+
+
+  const getNewChangeAddress = async () => {
+    const { activeAccountId, accounts } = store.getState().wallet;
+    let address: string = ""
+    let userAccount: IAccountState = accounts.find((el: IAccountState) => el.id === activeAccountId)
+    if (userAccount!.isTrezorWallet) {
+      console.log("Updating trezor change address")
+      console.log("Old address")
+      console.log(userAccount.address)
+      const res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, userAccount.xpub, 'tokens=nonzero&details=txs', true);
+      let TrezorAccount = new fromZPub(userAccount.xpub, sysjs.HDSigner.pubTypes, sysjs.HDSigner.networks)
+      let receivingIndex: number = -1
+      let changeIndex: number = -1;
+      if (res.tokens) {
+        res.tokens.forEach((token: any) => {
+          if (token.path) {
+            const splitPath = token.path.split('/')
+            if (splitPath.length >= 6) {
+              const change = parseInt(splitPath[4], 10)
+              const index = parseInt(splitPath[5], 10)
+              if (change === 1) {
+                changeIndex = index
+              }
+              else if (index > receivingIndex) {
+                receivingIndex = index
+              }
+            }
+          }
+        })
+      }
+      console.log(changeIndex)
+      address = TrezorAccount.getAddress(changeIndex + 1, true)
+      console.log("change address")
+      console.log(address)
+      return address;
+
+
+
+    }
+    else {
+      console.error("Let HDsignet handle change address for non trezor wallets")
+      return null;
+    }
+
+
+
   }
 
   return {
