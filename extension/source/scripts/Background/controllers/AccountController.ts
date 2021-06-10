@@ -27,7 +27,8 @@ import {
 import { sys, trezor } from 'constants/index';
 import { fromZPub } from 'bip84';
 import { string } from 'yup';
-
+const bjs = require('bitcoinjs-lib')
+const bitcoinops = require('bitcoin-ops')
 export interface IAccountController {
   subscribeAccount: (isHardwareWallet: boolean, sjs?: any, label?: string, walletCreation?: boolean) => Promise<string | null>;
   getPrimaryAccount: (pwd: string, sjs: any) => void;
@@ -600,14 +601,28 @@ const AccountController = (actions: {
 
     const txOpts = { rbf: item.rbf }
     if (account.isTrezorWallet) {
-      // const psbt = await sysjs.assetNew(_assetOpts, txOpts, null, item.receiver, new sys.utils.BN(item.fee), account.xpub);
-      const psbt = await sysjs.assetNew(_assetOpts, txOpts, null, null, new sys.utils.BN(item.fee), account.xpub);
+      const changeAddress = await getNewChangeAddress();
+      // @ts-ignore: Unreachable code error
+      assetMap.get(item.token.assetGuid)!.changeAddress = changeAddress
+      console.log("Is trezor wallet")
+      console.log("SPT transaction")
+      const psbt = await sysjs.assetNew(_assetOpts, txOpts, changeAddress, null, new sys.utils.BN(item.fee), account.xpub);
       if (!psbt) {
         console.log('Could not create transaction, not enough funds?')
       }
-      console.log("The psbt")
+      console.log("Is not trezor wallet")
+      console.log(psbt.res)
+      console.log("PSBT response")
       console.log(psbt.res.inputs)
       console.log(psbt.res.outputs)
+      //TREZOR PART GOES UNDER NOW 
+      //PSBT TO --TREZOR FORMAT
+
+      let trezortx: any = {};
+      trezortx.coin = "sys"
+      trezortx.version = psbt.res.txVersion
+      trezortx.inputs = []
+      trezortx.outputs = []
     }
     else {
       const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, null, new sys.utils.BN(item.fee * 1e8));
@@ -761,14 +776,19 @@ const AccountController = (actions: {
       ]);
 
       if (account.isTrezorWallet) {
+        const changeAddress = await getNewChangeAddress();
+        // @ts-ignore: Unreachable code error
+        assetMap.get(item.token.assetGuid)!.changeAddress = changeAddress
         console.log("Is trezor wallet")
-        const psbt = await sysjs.assetAllocationSend(txOpts, assetMap, null,
+        console.log("SPT transaction")
+        const psbt = await sysjs.assetAllocationSend(txOpts, assetMap, changeAddress,
           new sys.utils.BN(item.fee * 1e8), account.xpub)
         // const psbt = await syscoinjs.assetAllocationSend(txOpts, assetMap, sysChangeAddress, feeRate) 
         if (!psbt) {
           console.log('Could not create transaction, not enough funds?')
         }
         console.log("Is not trezor wallet")
+        console.log(psbt.res)
         console.log("PSBT response")
         console.log(psbt.res.inputs)
         console.log(psbt.res.outputs)
@@ -781,6 +801,8 @@ const AccountController = (actions: {
         trezortx.inputs = []
         trezortx.outputs = []
 
+        // const memo = await sys.utils.getMemoFromOpReturn(psbt.res.outputs)
+        // console.log('the output memo ' + (memo))
         for (let i = 0; i < psbt.res.inputs.length; i++) {
           const input = psbt.res.inputs[i]
           let _input: any = {}
@@ -788,7 +810,7 @@ const AccountController = (actions: {
           _input.address_n = convertToBip32Path(input.path)
           _input.prev_index = input.vout
           _input.prev_hash = input.txId
-          _input.sequence = input.sequence
+          if (input.sequence) _input.sequence = input.sequence
           _input.amount = input.value.toString()
           _input.script_type = 'SPENDWITNESS'
           trezortx.inputs.push(_input)
@@ -798,9 +820,20 @@ const AccountController = (actions: {
           const output = psbt.res.outputs[i]
           let _output: any = {}
 
-          _output.address = output.address
           _output.amount = output.value.toString()
-          _output.script_type = "PAYTOWITNESS"
+          if (output.script) {
+            _output.script_type = "PAYTOOPRETURN"
+            const chunks = bjs.script.decompile(output.script)
+            if (chunks[0] === bitcoinops.OP_RETURN) {
+              _output.op_return_data = chunks[1].toString('hex')
+            }
+
+          }
+          else {
+            _output.script_type = "PAYTOWITNESS"
+            _output.address = output.address
+          }
+
           trezortx.outputs.push(_output)
         }
         console.log(trezortx)
@@ -865,7 +898,7 @@ const AccountController = (actions: {
           _input.address_n = convertToBip32Path(input.path)
           _input.prev_index = input.vout
           _input.prev_hash = input.txId
-          _input.sequence = input.sequence
+          if (input.sequence) _input.sequence = input.sequence
           _input.amount = input.value.toString()
           _input.script_type = 'SPENDWITNESS'
           trezortx.inputs.push(_input)
