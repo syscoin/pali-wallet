@@ -566,3 +566,12 @@ browser.runtime.onInstalled.addListener(async () => {
 });
 
 wrapStore(store, { portName: STORE_PORT });
+
+
+
+// used only for development mode to automatically reload the extension when starting the browser
+// remove this in production
+
+chrome.runtime.onStartup.addListener(() => {
+  chrome.runtime.reload();
+})
