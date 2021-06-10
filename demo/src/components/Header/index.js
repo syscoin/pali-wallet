@@ -22,10 +22,10 @@ const Header = () => {
     const desktopmenu = document.querySelector(".desktopmenu");
 
     // menu open submenu
-    dropdown.forEach(elementEventHandler(["click", "touchstart"], "open"));
+    dropdown.forEach(elementEventHandler(["click"], "open"));
 
     // mobile menu open/close
-    elementEventHandler(["click", "touchstart"], "open", function () {
+    elementEventHandler(["click"], "open", function () {
       desktopmenu.classList.toggle("open");
     })(mobilemenu);
 

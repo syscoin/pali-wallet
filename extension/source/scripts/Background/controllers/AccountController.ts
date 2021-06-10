@@ -24,11 +24,12 @@ import {
   INFTIssue,
   MintedToken,
 } from '../../types';
-import { sys, trezor } from 'constants/index';
+import { sys } from 'constants/index';
 import { fromZPub } from 'bip84';
 import { string } from 'yup';
 const bjs = require('bitcoinjs-lib')
 const bitcoinops = require('bitcoin-ops')
+
 export interface IAccountController {
   subscribeAccount: (isHardwareWallet: boolean, sjs?: any, label?: string, walletCreation?: boolean) => Promise<string | null>;
   getPrimaryAccount: (pwd: string, sjs: any) => void;
@@ -86,7 +87,7 @@ export interface IAccountController {
   confirmTransferOwnership: () => any;
   setUpdateAsset: (asset: any) => any;
   setNewOwnership: (data: any) => any;
-  getAssetsID: () => any;
+  getHoldingsData: () => any;
 }
 
 const AccountController = (actions: {
@@ -922,7 +923,6 @@ const AccountController = (actions: {
     watchMemPool();
   }
 
-
   const confirmTempTx = () => {
     handleTransactions(tempTx, confirmTransactionTx);
   };
@@ -935,10 +935,7 @@ const AccountController = (actions: {
     if (res.transactions) {
       res.transactions.map(async (transaction: any) => {
         if (transaction.tokenType === 'SPTAssetActivate' && transaction.tokenTransfers) {
-          console.log('token transfers', transaction.tokenTransfers)
           for (let item of transaction.tokenTransfers) {
-            const assetId = await sys.utils.getBaseAssetID(item.token);
-
             if (mintedTokens.indexOf({ assetGuid: item.token, symbol: atob(item.symbol) }) === -1) {
               mintedTokens.push({
                 assetGuid: item.token,
@@ -955,29 +952,52 @@ const AccountController = (actions: {
     }
     return;
   }
-  const getAssetsID = async () => {
-    const res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
 
-    if (res.transactions) {
-      res.transactions.map(async (transaction: any) => {
-        if (transaction.tokenType === 'SPTAssetActivate' && transaction.tokenTransfers) {
-          for (let item of transaction.tokenTransfers) {
-            const assetId = await sys.utils.getBaseAssetID(item.token);
+  const getHoldingsData = async () => {
+    let assetsData: any = [];
 
-            // console.log('asset id', assetId)
-            // console.log('asset id', await sys.utils.createAssetID(assetId))
+    const connectedAccountAssetsData = store.getState().wallet.accounts.filter((account: IAccountState) => {
+      return account.connectedTo.find((url: any) => {
+        return url == new URL(store.getState().wallet.currentURL).host;
+      });
+    });
 
-            return;
-          }
+    if (connectedAccountAssetsData[0]) {
+      connectedAccountAssetsData[0].assets.map(async (asset: any) => {
+        const {
+          balance,
+          type,
+          decimals,
+          symbol,
+          assetGuid
+        } = asset;
+
+        const assetId = await sys.utils.getBaseAssetID(assetGuid);
+  
+        const assetData = {
+          balance,
+          type,
+          decimals,
+          symbol,
+          assetGuid,
+          baseAssetID: assetId,
+          nftAssetID: isNFT(assetGuid) ? await sys.utils.createAssetID(assetId, assetGuid) : await sys.utils.createAssetID(null, assetGuid)
         }
-
-        return;
+  
+        if (assetsData.indexOf(assetData) === -1) {
+          assetsData.push(assetData);
+        }
       });
 
-      return;
+      return {
+        assetsData
+      };
     }
-  }
 
+    console.log('no account connected to this site :(');
+
+    return;
+  }
 
   const createCollection = (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string) => {
     console.log('[account controller]: collection created')
@@ -1010,6 +1030,7 @@ const AccountController = (actions: {
   const getSysExplorerSearch = () => {
     return sysjs.blockbookURL;
   }
+  
   const confirmUpdateAsset = async (item: any) => {
     const {
       fee,
@@ -1032,7 +1053,6 @@ const AccountController = (actions: {
       updatecapabilityflags: updatecapabilityflags || 127,
       contract: Buffer.from(contract, 'hex') || null,
       description: description,
-      // test commit
       // notarykeyid: item.notarykeyid || '',
       // notarydetails: {
       //   endpoint: item.endpoint || '',
@@ -1212,7 +1232,7 @@ const AccountController = (actions: {
     confirmTransferOwnership,
     setUpdateAsset,
     setNewOwnership,
-    getAssetsID
+    getHoldingsData
   };
 };
 
