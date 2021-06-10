@@ -3,6 +3,7 @@ import { browser } from 'webextension-polyfill-ts';
 declare global {
   interface Window {
     SyscoinWallet: any;
+    connectionConfirmed: boolean;
   }
 }
 
@@ -346,7 +347,8 @@ browser.runtime.onMessage.addListener((request) => {
     state,
     connectedAccount,
     createCollection,
-    userTokens
+    userTokens,
+    connectionConfirmed
   } = request;
 
   if (type == 'DATA_FOR_SPT' && target == 'contentScript') {
@@ -468,4 +470,16 @@ browser.runtime.onMessage.addListener((request) => {
     }, '*');
     return;
   }
+
+  if (type == 'WALLET_CONNECTION_CONFIRMED' && target == 'contentScript') {
+    window.postMessage({
+      type: 'WALLET_CONNECTION_CONFIRMED',
+      target: 'connectionsController',
+      connectionConfirmed
+    }, '*');
+
+    injectScript(`window.connectionConfirmed = ${connectionConfirmed}`);
+  }
+
+  return;
 });

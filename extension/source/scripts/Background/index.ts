@@ -187,6 +187,14 @@ browser.runtime.onInstalled.addListener(async () => {
         if (getHost(window.senderURL) == getHost(store.getState().wallet.currentURL)) {
           store.dispatch(updateCanConnect(false));
 
+          console.log('sending confirmation to page')
+
+          browser.tabs.sendMessage(tabId, {
+            type: 'WALLET_CONNECTION_CONFIRMED',
+            target: 'contentScript',
+            connectionConfirmed: true
+          });
+
           return;
         }
 

@@ -26,7 +26,7 @@ import {
 } from '../../types';
 import { sys } from 'constants/index';
 import { fromZPub } from 'bip84';
-import { string } from 'yup';
+// import { string } from 'yup';
 const bjs = require('bitcoinjs-lib')
 const bitcoinops = require('bitcoin-ops')
 

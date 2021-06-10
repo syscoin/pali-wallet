@@ -49,6 +49,8 @@ const ConfirmConnection = () => {
           type: "CLOSE_POPUP",
           target: "background"
         });
+
+        return true;
       });
     } catch (error) {
       alert.removeAll();

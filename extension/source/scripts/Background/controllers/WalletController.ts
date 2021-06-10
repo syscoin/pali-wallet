@@ -153,9 +153,12 @@ const WalletController = (): IWalletController => {
 
       if (HDsigner === null || sjs === null) {
         const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
+
         const backendURl: string = store.getState().wallet.activeNetwork === 'testnet' ? SYS_NETWORK.testnet.beUrl : SYS_NETWORK.main.beUrl;
+
         HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, isTestnet);
         sjs = new sys.SyscoinJSLib(HDsigner, backendURl);
+
         store.dispatch(updateBlockbookURL(backendURl));
 
         const { activeAccountId, accounts } = store.getState().wallet;
@@ -163,17 +166,18 @@ const WalletController = (): IWalletController => {
         if (accounts.length > 1000) {
           return false;
         }
-        for (let i = 1; i <= accounts.length; i++) {
-          if (accounts[i].isTrezorWallet) {
-            console.log("Should not derive from hdsigner if the account is from the hardware wallet")
-          }
-          else {
-            const child = sjs.HDSigner.deriveAccount(i);
 
-            sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
-            sjs.HDSigner.accountIndex = activeAccountId;
+        for (let i = 0; i < accounts.length; i++) {
+          if (i > 0 && accounts[i].isTrezorWallet) {
+            console.log("Should not derive from hdsigner if the account is from the hardware wallet");
+
+            return false;
           }
 
+          const child = sjs.HDSigner.deriveAccount(i);
+
+          sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
+          sjs.HDSigner.accountIndex = activeAccountId;
         }
       }
 
