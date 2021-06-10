@@ -165,7 +165,7 @@ browser.runtime.onInstalled.addListener(async () => {
 
       if (type == 'SELECT_ACCOUNT' && target == 'background') {
         console.log('sender url', window.senderURL);
-
+        console.log(request.id)
         store.dispatch(updateConnectionsArray({
           accountId: request.id,
           url: window.senderURL

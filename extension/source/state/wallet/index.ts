@@ -84,14 +84,14 @@ const WalletState = createSlice({
       }
 
       state.connections.splice(connectionIndex, 1);
-
-      state.accounts[action.payload.accountId].connectedTo.splice(state.accounts[action.payload.accountId].connectedTo.indexOf(getHost(action.payload.url)), 1);
+      let indexof = state.accounts.findIndex((element: IAccountState) => element.id == action.payload.accountId)
+      state.accounts[indexof].connectedTo.splice(state.accounts[indexof].connectedTo.indexOf(getHost(action.payload.url)), 1);
     },
     updateConnectionsArray(state: IWalletState, action: PayloadAction<{ accountId: number, url: string }>) {
       console.log('connections array action payload', action.payload)
-
       const index: number = state.connections.findIndex(connection => connection.accountId !== action.payload.accountId && connection.url === getHost(action.payload.url));
-
+      console.log("index" + index)
+      console.log(state.connections[index])
       if (state.connections[index]) {
         state.accounts[state.connections[index].accountId].connectedTo.splice(state.connections.findIndex(url => url == state.connections[index].url), 1);
 
@@ -99,8 +99,8 @@ const WalletState = createSlice({
           accountId: action.payload.accountId,
           url: getHost(action.payload.url)
         };
-
-        state.accounts[state.connections[index].accountId].connectedTo.push(state.connections[index].url);
+        let indexof = state.accounts.findIndex((element: IAccountState) => element.id == state.connections[index].accountId)
+        state.accounts[indexof].connectedTo.push(state.connections[index].url);
 
         return;
       }
@@ -122,8 +122,8 @@ const WalletState = createSlice({
         accountId: action.payload.accountId,
         url: getHost(action.payload.url)
       });
-
-      state.accounts[action.payload.accountId].connectedTo.push(getHost(action.payload.url));
+      let indexof = state.accounts.findIndex((element: IAccountState) => element.id == action.payload.accountId)
+      state.accounts[indexof].connectedTo.push(getHost(action.payload.url));
     },
     updateCanConnect(state: IWalletState, action: PayloadAction<boolean>) {
       return {

@@ -601,28 +601,8 @@ const AccountController = (actions: {
 
     const txOpts = { rbf: item.rbf }
     if (account.isTrezorWallet) {
-      const changeAddress = await getNewChangeAddress();
-      // @ts-ignore: Unreachable code error
-      assetMap.get(item.token.assetGuid)!.changeAddress = changeAddress
-      console.log("Is trezor wallet")
-      console.log("SPT transaction")
-      const psbt = await sysjs.assetNew(_assetOpts, txOpts, changeAddress, null, new sys.utils.BN(item.fee), account.xpub);
-      if (!psbt) {
-        console.log('Could not create transaction, not enough funds?')
-      }
-      console.log("Is not trezor wallet")
-      console.log(psbt.res)
-      console.log("PSBT response")
-      console.log(psbt.res.inputs)
-      console.log(psbt.res.outputs)
-      //TREZOR PART GOES UNDER NOW 
-      //PSBT TO --TREZOR FORMAT
-
-      let trezortx: any = {};
-      trezortx.coin = "sys"
-      trezortx.version = psbt.res.txVersion
-      trezortx.inputs = []
-      trezortx.outputs = []
+      console.log("Trezor don't support burning of coins")
+      //TODO: Return error message for the user in this scenario
     }
     else {
       const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, null, new sys.utils.BN(item.fee * 1e8));
