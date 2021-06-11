@@ -1,6 +1,4 @@
-import { useEffect } from 'react';
 import { useSelector } from "react-redux";
-import { useHistory } from "react-router-dom";
 
 import store from "../state/store";
 import setupState from "../utils/setupState";
@@ -11,20 +9,13 @@ export default function Home() {
   const accountData = useSelector((state) => state.connectedAccountData);
   const controller = useSelector((state) => state.controller);
   const isConnected = useSelector((state) => state.connected);
-  const history = useHistory();
 
   const handleConnect = async (event) => {
     event.preventDefault(store);
 
     if (controller && !isConnected) {
       controller.connectWallet().then(async (response) => {
-        if (response) {
-          await setupState(store);
-  
-          console.log('after setup store')
-    
-          history.push("/dashboard");
-        }
+        response && (await setupState(store));
 
         return;
       });
@@ -50,11 +41,11 @@ export default function Home() {
           Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
         </p>
         <form onSubmit={handleConnect}>
-          <select className="form-control">
+          {/* <select className="form-control">
             <option>1</option>
             <option>2</option>
             <option>3</option>
-          </select>
+          </select> */}
 
           <div className="btn-center">
             <button

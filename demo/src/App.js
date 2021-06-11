@@ -26,6 +26,11 @@ const App = () => {
     setIsloading(!isLoading);
   };
 
+  store.subscribe(() => {
+    const _isConnected = store.getState().connected;
+    _isConnected !== isConnected && setIsConnected(_isConnected);
+  });
+
   return (
     <div className="content">
       <BrowserRouter>
