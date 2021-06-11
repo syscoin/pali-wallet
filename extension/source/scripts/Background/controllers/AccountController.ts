@@ -654,6 +654,7 @@ const AccountController = (actions: {
     const txOpts = { rbf: item.rbf };
     const assetGuid = item.assetGuid;
     const assetChangeAddress = null;
+    let txInfo;
 
     console.log('mint spt', item)
 
@@ -661,18 +662,94 @@ const AccountController = (actions: {
       [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(item.amount * 1e8), address: item.receiver }] }]
     ]);
 
-    const sysChangeAddress = null;
+    let sysChangeAddress = null;
+    if (account.isTrezorWallet) {
+      sysChangeAddress = await getNewChangeAddress();
+      // @ts-ignore: Unreachable code error
+      assetMap.get(assetGuid)!.changeAddress = sysChangeAddress
+      console.log("Is trezor wallet")
+      console.log("SPT mint trans")
+      const psbt = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate, account.xpub);
+      // const psbt = await syscoinjs.assetAllocationSend(txOpts, assetMap, sysChangeAddress, feeRate) 
+      if (!psbt) {
+        console.log('Could not create transaction, not enough funds?')
+      }
+      console.log("PSBT")
+      console.log(psbt.res)
+      console.log("PSBT response in and outs")
+      console.log(psbt.res.inputs)
+      console.log(psbt.res.outputs)
+      console.log(psbt.res.outputs)
+      //TREZOR PART GOES UNDER NOW 
+      //PSBT TO --TREZOR FORMAT
 
-    const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
+      let trezortx: any = {};
+      trezortx.coin = "sys"
+      trezortx.version = psbt.res.txVersion
+      trezortx.inputs = []
+      trezortx.outputs = []
 
-    console.log('minting spt pendingTx', pendingTx);
+      // const memo = await sys.utils.getMemoFromOpReturn(psbt.res.outputs)
+      // console.log('the output memo ' + (memo))
+      for (let i = 0; i < psbt.res.inputs.length; i++) {
+        const input = psbt.res.inputs[i]
+        let _input: any = {}
 
-    if (!pendingTx) {
-      console.log('Could not create transaction, not enough funds?')
+        _input.address_n = convertToBip32Path(input.path)
+        _input.prev_index = input.vout
+        _input.prev_hash = input.txId
+        if (input.sequence) _input.sequence = input.sequence
+        _input.amount = input.value.toString()
+        _input.script_type = 'SPENDWITNESS'
+        trezortx.inputs.push(_input)
+      }
+
+      for (let i = 0; i < psbt.res.outputs.length; i++) {
+        const output = psbt.res.outputs[i]
+        let _output: any = {}
+
+        _output.amount = output.value.toString()
+        if (output.script) {
+          _output.script_type = "PAYTOOPRETURN"
+          const chunks = bjs.script.decompile(output.script)
+          if (chunks[0] === bitcoinops.OP_RETURN) {
+            _output.op_return_data = chunks[1].toString('hex')
+          }
+
+        }
+        else {
+          _output.script_type = "PAYTOWITNESS"
+          _output.address = output.address
+        }
+
+        trezortx.outputs.push(_output)
+      }
+      console.log(trezortx)
+      console.log("Calling trezor tx")
+      const resp = await TrezorConnect.signTransaction(trezortx)
+      console.log(resp)
+      if (resp.success == true) {
+        txInfo = await sys.utils.sendRawTransaction(sysjs.blockbookURL, resp.payload.serializedTx)
+        console.log(txInfo)
+        console.log("tx ix")
+      } else {
+        console.log(resp.payload.error)
+      }
+
+    }
+    else {
+      const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
+
+      console.log('minting spt pendingTx', pendingTx);
+
+      if (!pendingTx) {
+        console.log('Could not create transaction, not enough funds?')
+      }
+
+      txInfo = pendingTx.extractTransaction().getId();
+      console.log('tx info mint spt', txInfo)
     }
 
-    const txInfo = pendingTx.extractTransaction().getId();
-    console.log('tx info mint spt', txInfo)
 
     store.dispatch(
       updateTransactions({
@@ -694,7 +771,7 @@ const AccountController = (actions: {
     const assetGuid = item?.assetGuid;
     const NFTID = sys.utils.createAssetID('1', assetGuid);
     const assetChangeAddress = null;
-
+    let txInfo;
     const assetMap = new Map([
       [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1000), address: item?.receiver }] }],
       [NFTID, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1), address: item?.receiver }] }]
@@ -703,18 +780,90 @@ const AccountController = (actions: {
     console.log('mint nft', item)
     console.log('minting nft asset map', assetMap);
 
-    const sysChangeAddress = null;
+    let sysChangeAddress = null;
+    if (account.isTrezorWallet) {
+      sysChangeAddress = await getNewChangeAddress();
+      // @ts-ignore: Unreachable code error
+      assetMap.get(assetGuid)!.changeAddress = sysChangeAddress
+      // @ts-ignore: Unreachable code error
+      assetMap.get(NFTID)!.changeAddress = sysChangeAddress
+      const psbt = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate, account.xpub);
+      // const psbt = await syscoinjs.assetAllocationSend(txOpts, assetMap, sysChangeAddress, feeRate) 
+      if (!psbt) {
+        console.log('Could not create transaction, not enough funds?')
+      }
+      console.log("PSBT FROM NFT MINT")
+      console.log(psbt.res)
+      console.log("PSBT response in and outs")
+      console.log(psbt.res.inputs)
+      console.log(psbt.res.outputs)
+      console.log(psbt.res.outputs)
 
-    const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
+      let trezortx: any = {};
+      trezortx.coin = "sys"
+      trezortx.version = psbt.res.txVersion
+      trezortx.inputs = []
+      trezortx.outputs = []
 
-    console.log('minting nft pendingTx', pendingTx);
+      for (let i = 0; i < psbt.res.inputs.length; i++) {
+        const input = psbt.res.inputs[i]
+        let _input: any = {}
 
-    if (!pendingTx) {
-      console.log('Could not create transaction, not enough funds?')
+        _input.address_n = convertToBip32Path(input.path)
+        _input.prev_index = input.vout
+        _input.prev_hash = input.txId
+        if (input.sequence) _input.sequence = input.sequence
+        _input.amount = input.value.toString()
+        _input.script_type = 'SPENDWITNESS'
+        trezortx.inputs.push(_input)
+      }
+
+      for (let i = 0; i < psbt.res.outputs.length; i++) {
+        const output = psbt.res.outputs[i]
+        let _output: any = {}
+
+        _output.amount = output.value.toString()
+        if (output.script) {
+          _output.script_type = "PAYTOOPRETURN"
+          const chunks = bjs.script.decompile(output.script)
+          if (chunks[0] === bitcoinops.OP_RETURN) {
+            _output.op_return_data = chunks[1].toString('hex')
+          }
+
+        }
+        else {
+          _output.script_type = "PAYTOWITNESS"
+          _output.address = output.address
+        }
+
+        trezortx.outputs.push(_output)
+      }
+      console.log(trezortx)
+      console.log("Calling trezor tx FOR NFT MINT")
+      const resp = await TrezorConnect.signTransaction(trezortx)
+      console.log(resp)
+      if (resp.success == true) {
+        txInfo = await sys.utils.sendRawTransaction(sysjs.blockbookURL, resp.payload.serializedTx)
+        console.log(txInfo)
+        console.log("tx ix")
+      } else {
+        console.log(resp.payload.error)
+      }
+
     }
+    else {
 
-    const txInfo = pendingTx.extractTransaction().getId();
-    console.log('tx info mint nft', txInfo)
+      const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
+
+      console.log('minting nft pendingTx', pendingTx);
+
+      if (!pendingTx) {
+        console.log('Could not create transaction, not enough funds?')
+      }
+
+      const txInfo = pendingTx.extractTransaction().getId();
+      console.log('tx info mint nft', txInfo)
+    }
 
     store.dispatch(
       updateTransactions({
@@ -751,7 +900,7 @@ const AccountController = (actions: {
     if (item.isToken && item.token) {
       const txOpts = { rbf: item.rbf }
       const value = isNFT(item.token.assetGuid) ? new sys.utils.BN(item.amount) : new sys.utils.BN(item.amount * 10 ** item.token.decimals);
-
+      let txInfo;
       const assetMap = new Map([
         [item.token.assetGuid, { changeAddress: null, outputs: [{ value: value, address: item.toAddress }] }]
       ]);
@@ -760,17 +909,13 @@ const AccountController = (actions: {
         const changeAddress = await getNewChangeAddress();
         // @ts-ignore: Unreachable code error
         assetMap.get(item.token.assetGuid)!.changeAddress = changeAddress
-        console.log("Is trezor wallet")
-        console.log("SPT transaction")
         const psbt = await sysjs.assetAllocationSend(txOpts, assetMap, changeAddress,
           new sys.utils.BN(item.fee * 1e8), account.xpub)
         // const psbt = await syscoinjs.assetAllocationSend(txOpts, assetMap, sysChangeAddress, feeRate) 
         if (!psbt) {
           console.log('Could not create transaction, not enough funds?')
         }
-        console.log("Is not trezor wallet")
-        console.log(psbt.res)
-        console.log("PSBT response")
+        console.log("PSBT response in & outs")
         console.log(psbt.res.inputs)
         console.log(psbt.res.outputs)
         //TREZOR PART GOES UNDER NOW 
@@ -821,8 +966,8 @@ const AccountController = (actions: {
         const resp = await TrezorConnect.signTransaction(trezortx)
         console.log(resp)
         if (resp.success == true) {
-          const response = await sys.utils.sendRawTransaction(sysjs.blockbookURL, resp.payload.serializedTx)
-          console.log(response)
+          txInfo = await sys.utils.sendRawTransaction(sysjs.blockbookURL, resp.payload.serializedTx)
+          console.log(txInfo)
           console.log("tx ix")
         } else {
           console.log(resp.payload.error)
@@ -832,21 +977,20 @@ const AccountController = (actions: {
       }
       else {
         const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(item.fee * 1e8));
-        const txInfo = pendingTx.extractTransaction().getId();
-
-        store.dispatch(
-          updateTransactions({
-            id: account.id,
-            txs: [_coventPendingType(txInfo), ...account.transactions],
-          })
-        );
+        txInfo = pendingTx.extractTransaction().getId();
       }
+      store.dispatch(
+        updateTransactions({
+          id: account.id,
+          txs: [_coventPendingType(txInfo), ...account.transactions],
+        })
+      );
     } else {
       const _outputsArr = [
         { address: item.toAddress, value: new sys.utils.BN(item.amount * 1e8) }
       ];
       const txOpts = { rbf: item.rbf }
-
+      let txInfo;
       if (account.isTrezorWallet) {
         console.log("Is trezor wallet")
         const changeAddress = await getNewChangeAddress();
@@ -898,9 +1042,8 @@ const AccountController = (actions: {
         const resp = await TrezorConnect.signTransaction(trezortx)
         console.log(resp)
         if (resp.success == true) {
-          const response = await sys.utils.sendRawTransaction(sysjs.blockbookURL, resp.payload.serializedTx)
-          console.log(response)
-          console.log("tx ix")
+          txInfo = await sys.utils.sendRawTransaction(sysjs.blockbookURL, resp.payload.serializedTx)
+          console.log(txInfo)
         } else {
           console.log(resp.payload.error)
         }
@@ -908,15 +1051,15 @@ const AccountController = (actions: {
       }
       else {
         const pendingTx = await sysjs.createTransaction(txOpts, null, _outputsArr, new sys.utils.BN(item.fee * 1e8));
-        const txInfo = pendingTx.extractTransaction().getId();
+        txInfo = pendingTx.extractTransaction().getId();
 
-        store.dispatch(
-          updateTransactions({
-            id: account.id,
-            txs: [_coventPendingType(txInfo), ...account.transactions],
-          })
-        );
       }
+      store.dispatch(
+        updateTransactions({
+          id: account.id,
+          txs: [_coventPendingType(txInfo), ...account.transactions],
+        })
+      );
     }
     item = null;
 
@@ -929,8 +1072,13 @@ const AccountController = (actions: {
 
   const getUserMintedTokens = async () => {
     let mintedTokens: MintedToken[] = [];
-
-    const res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
+    let res;
+    if (account.isTrezorWallet) {
+      res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=nonzero&details=txs', true);
+    }
+    else {
+      res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
+    }
 
     if (res.transactions) {
       res.transactions.map(async (transaction: any) => {
@@ -973,7 +1121,7 @@ const AccountController = (actions: {
         } = asset;
 
         const assetId = await sys.utils.getBaseAssetID(assetGuid);
-  
+
         const assetData = {
           balance,
           type,
@@ -983,7 +1131,7 @@ const AccountController = (actions: {
           baseAssetID: assetId,
           nftAssetID: isNFT(assetGuid) ? await sys.utils.createAssetID(assetId, assetGuid) : await sys.utils.createAssetID(null, assetGuid)
         }
-  
+
         if (assetsData.indexOf(assetData) === -1) {
           assetsData.push(assetData);
         }
@@ -1030,7 +1178,7 @@ const AccountController = (actions: {
   const getSysExplorerSearch = () => {
     return sysjs.blockbookURL;
   }
-  
+
   const confirmUpdateAsset = async (item: any) => {
     const {
       fee,
