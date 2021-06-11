@@ -23,6 +23,8 @@ import {
   ISPTIssue,
   INFTIssue,
   MintedToken,
+  ISPTPageInfo,
+  ISPTWalletInfo,
 } from '../../types';
 import { sys } from 'constants/index';
 import { fromZPub } from 'bip84';
@@ -482,14 +484,15 @@ const AccountController = (actions: {
     return true;
   }
 
-  const setDataFromPageToCreateNewSPT = (data: any) => {
+  const setDataFromPageToCreateNewSPT = (data: ISPTPageInfo) => {
     dataFromPageToCreateSPT = data;
   }
+
   const getDataFromPageToCreateNewSPT = () => {
     return dataFromPageToCreateSPT || null;
   }
 
-  const setDataFromWalletToCreateSPT = (data: any) => {
+  const setDataFromWalletToCreateSPT = (data: ISPTWalletInfo) => {
     dataFromWalletToCreateSPT = data;
   }
 
@@ -646,7 +649,11 @@ const AccountController = (actions: {
   }
 
   const confirmNewSPT = () => {
-    handleTransactions(newSPT, confirmSPTCreation);
+    try {
+      handleTransactions(newSPT, confirmSPTCreation);
+    } catch (error) {
+      console.log('error confirming new spt', error)
+    }
   }
 
   const confirmMintSPT = async (item: any) => {

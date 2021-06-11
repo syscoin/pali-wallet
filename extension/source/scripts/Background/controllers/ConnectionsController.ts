@@ -1,4 +1,5 @@
 import { sendMessage } from 'containers/auth/helpers';
+import store from 'state/store';
 
 export interface IConnectionsController {
   connectWallet: () => any;
@@ -16,9 +17,10 @@ export interface IConnectionsController {
   handleTransferOwnership: (assetGuid: string, newOwner: string) => any;
 }
 
+
 const isNFT = (guid: number) => {
   let assetGuid = BigInt.asUintN(64, BigInt(guid));
-
+  
   return (assetGuid >> BigInt(32)) > 0
 }
 
@@ -32,13 +34,23 @@ const ConnectionsController = (): IConnectionsController => {
   }
 
   const connectWallet = async () => {
-    return await sendMessage({
+    sendMessage({
       type: 'CONNECT_WALLET',
       target: 'connectionsController',
       freeze: true,
       eventResult: 'connected'
     }, {
       type: 'CONNECT_WALLET',
+      target: 'contentScript'
+    })
+
+    return await sendMessage({
+      type: 'WALLET_CONNECTION_CONFIRMED',
+      target: 'connectionsController',
+      freeze: true,
+      eventResult: 'connectionConfirmed'
+    }, {
+      type: 'WALLET_CONNECTION_CONFIRMED',
       target: 'contentScript'
     });
   }
@@ -235,7 +247,7 @@ const ConnectionsController = (): IConnectionsController => {
     getUserMintedTokens,
     handleCreateCollection,
     handleUpdateAsset,
-    handleTransferOwnership
+    handleTransferOwnership,
   }
 };
 

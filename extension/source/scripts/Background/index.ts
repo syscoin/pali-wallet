@@ -137,6 +137,8 @@ browser.runtime.onInstalled.addListener(async () => {
         store.dispatch(setSenderURL(`${sender.url}`));
         store.dispatch(updateCanConnect(true));
 
+        console.log('connect wallet event', request)
+
         await createPopup(url);
 
         window.senderURL = `${sender.url}`;
@@ -192,7 +194,8 @@ browser.runtime.onInstalled.addListener(async () => {
           browser.tabs.sendMessage(tabId, {
             type: 'WALLET_CONNECTION_CONFIRMED',
             target: 'contentScript',
-            connectionConfirmed: true
+            connectionConfirmed: true,
+            state: store.getState().wallet
           });
 
           return;
@@ -235,6 +238,29 @@ browser.runtime.onInstalled.addListener(async () => {
           target: 'contentScript',
           state: store.getState().wallet
         });
+      }
+
+      if (type == 'CHECK_CONNECTION' && target == 'background') {
+        console.log(store.getState().wallet)
+        
+        browser.tabs.query({ active: true })
+          .then((tabs) => {
+            console.log(`${tabs[0].url}`);
+
+            const connectedAccount = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
+              return account.connectedTo.find((url: any) => {
+                return url == getHost(`${tabs[0].url}`);
+              });
+            }) !== -1;
+
+            console.log('connected account', connectedAccount)
+
+            browser.tabs.sendMessage(tabId, {
+              type: 'CHECK_CONNECTION',
+              target: 'contentScript',
+              state: store.getState().wallet
+            });
+          });
       }
 
       if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'background') {
@@ -560,6 +586,19 @@ browser.runtime.onInstalled.addListener(async () => {
         const windowId = Number(all[1].id);
 
         await browser.windows.remove(windowId);
+
+        // const tabs = await browser.tabs.query({
+        //   active: true,
+        //   windowType: 'normal'
+        // });
+    
+        // const tabId = Number(tabs[0].id);
+
+        // browser.tabs.sendMessage(tabId, {
+        //   type: 'GET_USERMINTEDTOKENS',
+        //   target: 'contentScript',
+        //   userTokens: tokensMinted
+        // });
       }
     })
   });

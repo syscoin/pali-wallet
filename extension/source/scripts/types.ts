@@ -42,6 +42,19 @@ export interface ISPTInfo {
   rbf: boolean
 }
 
+export interface ISPTPageInfo {
+  precision: number,
+  symbol: string,
+  maxsupply: number,
+  description: string,
+  receiver: string,
+}
+
+export interface ISPTWalletInfo {
+  fee: number,
+  rbf: boolean
+}
+
 export interface ISPTIssue {
   assetGuid: string,
   amount: number,

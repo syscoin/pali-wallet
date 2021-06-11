@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import { useSelector } from "react-redux";
-import { useHistory } from "react-router";
+import { useHistory } from "react-router-dom";
 
 import store from "../state/store";
 import setupState from "../utils/setupState";
@@ -16,11 +17,17 @@ export default function Home() {
     event.preventDefault(store);
 
     if (controller && !isConnected) {
-      await controller.connectWallet();
+      controller.connectWallet().then(async (response) => {
+        if (response) {
+          await setupState(store);
+  
+          console.log('after setup store')
+    
+          history.push("/dashboard");
+        }
 
-      await setupState(store);
-
-      history.push("/dashboard");
+        return;
+      });
     }
   };
 

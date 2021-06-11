@@ -54,11 +54,17 @@ export const sendMessage = (eventReceivedDetails: any, postMessageDetails: any) 
         console.log('event result', eventReceivedDetails, event.data[eventReceivedDetails.eventResult]);
 
         window.removeEventListener('message', callback);
+
+        return true;
       }
+
+      return false;
     };
 
     window.addEventListener('message', callback);
       
     window.postMessage(postMessageDetails, '*');
+
+    return true;
   });
 }

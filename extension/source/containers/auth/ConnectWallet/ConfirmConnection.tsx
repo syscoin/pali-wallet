@@ -52,9 +52,13 @@ const ConfirmConnection = () => {
 
         return true;
       });
+
+      return true;
     } catch (error) {
       alert.removeAll();
       alert.error('Sorry, an internal error has occurred.');
+
+      return false;
     }
   }
 

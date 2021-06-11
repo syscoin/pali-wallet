@@ -125,6 +125,7 @@ window.addEventListener('message', (event) => {
   }
 
   if (type == "CONNECT_WALLET" && target == 'contentScript') {
+    console.log('event data connect', event.data)
     browser.runtime.sendMessage({
       type: 'CONNECT_WALLET',
       target: 'background'
@@ -136,6 +137,15 @@ window.addEventListener('message', (event) => {
   if (type == 'SEND_STATE_TO_PAGE' && target == 'contentScript') {
     browser.runtime.sendMessage({
       type: 'SEND_STATE_TO_PAGE',
+      target: 'background'
+    });
+
+    return;
+  }
+
+  if (type == 'CHECK_CONNECTION' && target == 'contentScript') {
+    browser.runtime.sendMessage({
+      type: 'CHECK_CONNECTION',
       target: 'background'
     });
 
@@ -374,6 +384,16 @@ browser.runtime.onMessage.addListener((request) => {
   if (type == 'SEND_STATE_TO_PAGE' && target == 'contentScript') {
     window.postMessage({
       type: 'SEND_STATE_TO_PAGE',
+      target: 'connectionsController',
+      state
+    }, '*');
+
+    return;
+  }
+
+  if (type == 'CHECK_CONNECTION' && target == 'contentScript') {
+    window.postMessage({
+      type: 'CHECK_CONNECTION',
       target: 'connectionsController',
       state
     }, '*');
