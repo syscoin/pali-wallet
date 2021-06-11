@@ -167,7 +167,7 @@ const WalletController = (): IWalletController => {
           return false;
         }
 
-        for (let i = 0; i < accounts.length; i++) {
+        for (let i = 1; i < accounts.length; i++) {
           if (i > 0 && accounts[i].isTrezorWallet) {
             console.log("Should not derive from hdsigner if the account is from the hardware wallet");
 
