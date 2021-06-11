@@ -252,14 +252,10 @@ window.addEventListener('message', (event) => {
     const {
       assetGuid,
       contract,
-      capabilityFlags,
-      receiver,
+      capabilityflags,
       description,
-      supply,
-      endpoint,
-      instanttransfers,
-      hdrequired,
-      auxFeeDetails,
+      notarydetails,
+      auxfeedetails,
       notarykeyid
     } = event.data;
 
@@ -268,14 +264,10 @@ window.addEventListener('message', (event) => {
       target: 'background',
       assetGuid,
       contract,
-      capabilityFlags,
-      receiver,
+      capabilityflags,
       description,
-      supply,
-      endpoint,
-      instanttransfers,
-      hdrequired,
-      auxFeeDetails,
+      notarydetails,
+      auxfeedetails,
       notarykeyid,
     });
 

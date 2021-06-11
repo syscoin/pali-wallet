@@ -29,7 +29,9 @@ import {
   INFTWalletInfo,
   ISPTIssuePage,
   ISPTIssueWallet,
-  UpdateToken
+  UpdateToken,
+  UpdateTokenPageInfo,
+  UpdateTokenWalletInfo
 } from '../../types';
 import { sys } from 'constants/index';
 import { fromZPub } from 'bip84';
@@ -110,14 +112,14 @@ const AccountController = (actions: {
   let transferOwnershipData: any;
   let mintNFT: INFTIssue | null;
   let collection: any;
-  let dataFromPageToCreateSPT: any;
-  let dataFromWalletToCreateSPT: any;
-  let dataFromPageToMintSPT: any;
-  let dataFromWalletToMintSPT: any;
-  let dataFromPageToMintNFT: any;
-  let dataFromWalletToMintNFT: any;
-  let dataFromWalletToUpdateAsset: any;
-  let dataFromPageToUpdateAsset: any;
+  let dataFromPageToCreateSPT: ISPTPageInfo;
+  let dataFromWalletToCreateSPT: ISPTWalletInfo;
+  let dataFromPageToMintSPT: ISPTIssuePage;
+  let dataFromWalletToMintSPT: ISPTIssueWallet;
+  let dataFromPageToMintNFT: INFTPageInfo;
+  let dataFromWalletToMintNFT: INFTWalletInfo;
+  let dataFromWalletToUpdateAsset: UpdateTokenWalletInfo;
+  let dataFromPageToUpdateAsset: UpdateTokenPageInfo;
   let resAddress: any;
   let encode: any;
 
@@ -537,7 +539,7 @@ const AccountController = (actions: {
     return dataFromWalletToMintNFT || null;
   }
 
-  const setDataFromPageToUpdateAsset = (data: any) => {
+  const setDataFromPageToUpdateAsset = (data: UpdateTokenPageInfo) => {
     dataFromPageToUpdateAsset = data;
   }
 
@@ -545,7 +547,7 @@ const AccountController = (actions: {
     return dataFromPageToUpdateAsset || null;
   }
 
-  const setDataFromWalletToUpdateAsset = (data: any) => {
+  const setDataFromWalletToUpdateAsset = (data: UpdateTokenWalletInfo) => {
     console.log('set data update asset', data)
     dataFromWalletToUpdateAsset = data;
   }
@@ -571,7 +573,7 @@ const AccountController = (actions: {
 
   const createSPT = (spt: ISPTInfo) => {
     newSPT = spt;
-    console.log("checkout the spt", spt)
+    console.log("checkout the spt", spt, typeof spt)
 
     return true;
   }
@@ -587,7 +589,7 @@ const AccountController = (actions: {
 
     return true;
   }
-  const setUpdateAsset = (asset: any) => {
+  const setUpdateAsset = (asset: UpdateToken) => {
     updateAssetItem = asset;
 
     return true;
@@ -652,12 +654,8 @@ const AccountController = (actions: {
   }
 
   const confirmNewSPT = () => {
-    return new Promise((resolve, reject) => {
-      try {
-        resolve(handleTransactions(newSPT, confirmSPTCreation));
-      } catch (error) {
-        reject(error);
-      }
+    return new Promise((resolve) => {
+      resolve(handleTransactions(newSPT, confirmSPTCreation));
     })
   }
 
@@ -774,12 +772,8 @@ const AccountController = (actions: {
   }
 
   const confirmIssueSPT = () => {
-    return new Promise((resolve, reject) => {
-      try {
-        resolve(handleTransactions(mintSPT, confirmMintSPT));
-      } catch (error) {
-        reject(error);
-      }
+    return new Promise((resolve) => {
+      resolve(handleTransactions(mintSPT, confirmMintSPT));
     });
   }
 
@@ -894,12 +888,8 @@ const AccountController = (actions: {
   }
 
   const confirmIssueNFT = () => {
-    return new Promise((resolve, reject) => {
-      try {
-        resolve(handleTransactions(mintNFT, confirmMintNFT));
-      } catch (error) {
-        reject(error);
-      }
+    return new Promise((resolve) => {
+      resolve(handleTransactions(mintNFT, confirmMintNFT));
     });
   }
 
@@ -1091,14 +1081,9 @@ const AccountController = (actions: {
   }
 
   const confirmTempTx = () => {
-    return new Promise((resolve, reject) => {
-      try {
-        resolve(handleTransactions(tempTx, confirmTransactionTx));
-      } catch (error) {
-        reject(error);
-      }
+    return new Promise((resolve) => {
+      resolve(handleTransactions(tempTx, confirmTransactionTx));
     });
-    ;
   };
 
   const getUserMintedTokens = async () => {
@@ -1210,14 +1195,17 @@ const AccountController = (actions: {
     return sysjs.blockbookURL;
   }
 
-  const confirmUpdateAsset = async (item: any) => {
+  const confirmUpdateAsset = async (item: UpdateToken) => {
     const {
       fee,
       assetWhiteList,
-      updatecapabilityflags,
+      capabilityflags,
       contract,
       description,
-      rbf
+      rbf,
+      notarykeyid,
+      notarydetails,
+      auxfeedetails
     } = item;
     const feeRate = new sys.utils.BN(fee * 1e8);
 
@@ -1228,26 +1216,15 @@ const AccountController = (actions: {
 
     const assetGuid = item.assetGuid;
 
+    console.log('data confirm update asset  item, feeRate, txOpts, assetGuid', item, feeRate, txOpts, assetGuid)
+
     const assetOpts = {
-      updatecapabilityflags: updatecapabilityflags || 127,
-      contract: Buffer.from(contract, 'hex') || null,
+      updatecapabilityflags: capabilityflags || 127,
+      contract: Buffer.from(contract || '', 'hex') || null,
       description: description,
-      // notarykeyid: item.notarykeyid || '',
-      // notarydetails: {
-      //   endpoint: item.endpoint || '',
-      //   instanttransfers: item.instanttransfers || 0,
-      //   hdrequired: item.hdrequired || 0,
-      // },
-      // auxfeedetails: item.auxFeeDetails
-      // auxfeedetails: {
-      //   auxfeekeyid: item.auxFeeDetails.auxfeekeyid || 'bc1qg9stkxrszkdqsuj92lm4c7akvk36zvhqw7p6ck',
-      //   auxfees: [
-      //     {
-      //       bound: item.auxFeeDetails.bound || 0,
-      //       percent: item.auxFeeDetails.percent || 0
-      //     }
-      //   ]
-      // }
+      notarykeyid: notarykeyid || '',
+      notarydetails: notarydetails || null,
+      auxfeedetails: auxfeedetails || null,
     };
 
     console.log('asset opts update asset', assetOpts)
@@ -1264,7 +1241,10 @@ const AccountController = (actions: {
       }]
     ]);
 
+    console.log('asset map update asset', assetMap)
+
     const sysChangeAddress = null;
+
     const psbt = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
 
     console.log('psbt', psbt)
@@ -1276,11 +1256,10 @@ const AccountController = (actions: {
 
   const confirmUpdateAssetTransaction = () => {
     console.log('update asset item', updateAssetItem)
-    try {
-      handleTransactions(updateAssetItem, confirmUpdateAsset);
-    } catch (error) {
-      throw new Error(error);
-    }
+
+    return new Promise((resolve) => {
+      resolve(handleTransactions(updateAssetItem, confirmUpdateAsset));
+    });
   }
 
   const transferAsset = async (item: any) => {

@@ -108,7 +108,7 @@ export type MintedToken = {
 export type UpdateToken = {
   assetGuid: string;
   contract?: string | null;
-  capabilityFlags?: number | 127;
+  capabilityflags?: number | 127;
   receiver?: string;
   description: string | '';
   supply?: number;
@@ -117,7 +117,7 @@ export type UpdateToken = {
     instanttransfers?: boolean;
     hdrequired?: boolean;
   }
-  auxFeeDetails?: {
+  auxfeedetails?: {
     auxfeekeyid: any,
     auxfees: [
       {
@@ -130,4 +130,32 @@ export type UpdateToken = {
   fee: number;
   rbf: boolean;
   assetWhiteList?: any | null
+}
+
+export interface UpdateTokenPageInfo {
+  contract?: string;
+  capabilityflags?: number | 127;
+  receiver?: string;
+  description: string | '';
+  notarydetails?: {
+    endpoint?: string;
+    instanttransfers?: boolean;
+    hdrequired?: boolean;
+  }
+  auxfeedetails?: {
+    auxfeekeyid?: any,
+    auxfees?: [
+      {
+        bound?: any | 0,
+        percent?: any | 0
+      }
+    ]
+  };
+  notarykeyid?: string;
+  assetWhiteList?: any | null
+}
+
+export interface UpdateTokenWalletInfo {
+  fee: number;
+  rbf: boolean;
 }

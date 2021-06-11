@@ -13,7 +13,7 @@ export interface IConnectionsController {
   isNFT: (guid: number) => boolean;
   getUserMintedTokens: () => any;
   handleCreateCollection: (state: any) => void;
-  handleUpdateAsset: (assetGuid: string, contract?: string, capabilityFlags?: number | 127, receiver?: string, description?: string, supply?: number, endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean, auxFeeDetails?: any, notarykeyid?: string) => any;
+  handleUpdateAsset: (assetGuid: string, contract?: string, capabilityflags?: number | 127, description?: string, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notarykeyid?: string) => any;
   handleTransferOwnership: (assetGuid: string, newOwner: string) => any;
 }
 
@@ -197,7 +197,7 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const handleUpdateAsset = async (assetGuid: string, contract?: string, capabilityFlags?: number | 127, receiver?: string, description?: string, supply?: number, endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean, auxFeeDetails?: any, notarykeyid?: string) => {
+  const handleUpdateAsset = async (assetGuid: string, contract?: string, capabilityflags?: number | 127, description?: string, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfeedetails?: { auxfeekeyid?: any, auxfees?: [{ bound?: any | 0, percent?: any | 0 }] }, notarykeyid?: string) => {
     return await sendMessage({
       type: 'UPDATE_ASSET',
       target: 'connectionsController',
@@ -208,14 +208,10 @@ const ConnectionsController = (): IConnectionsController => {
       target: 'contentScript',
       assetGuid,
       contract,
-      capabilityFlags,
-      receiver,
+      capabilityflags,
       description,
-      supply,
-      endpoint,
-      instanttransfers,
-      hdrequired,
-      auxFeeDetails,
+      notarydetails,
+      auxfeedetails,
       notarykeyid
     });
   }
