@@ -25,6 +25,11 @@ import {
   MintedToken,
   ISPTPageInfo,
   ISPTWalletInfo,
+  INFTPageInfo,
+  INFTWalletInfo,
+  ISPTIssuePage,
+  ISPTIssueWallet,
+  UpdateToken
 } from '../../types';
 import { sys } from 'constants/index';
 import { fromZPub } from 'bip84';
@@ -54,10 +59,10 @@ export interface IAccountController {
   createSPT: (spt: ISPTInfo) => void;
   issueSPT: (spt: ISPTIssue) => void;
   issueNFT: (nft: INFTIssue) => void;
-  confirmNewSPT: () => void;
-  confirmIssueSPT: () => void;
-  confirmIssueNFT: () => void;
-  confirmTempTx: () => void;
+  confirmNewSPT: () => Promise<any>;
+  confirmIssueSPT: () => Promise<any>;
+  confirmIssueNFT: () => Promise<any>;
+  confirmTempTx: () => Promise<any>;
   setNewAddress: (addr: string) => boolean;
   setNewXpub: (id: number, xpub: string) => boolean;
   getUserMintedTokens: () => any;
@@ -101,7 +106,7 @@ const AccountController = (actions: {
   let sysjs: any;
   let newSPT: ISPTInfo | null;
   let mintSPT: ISPTIssue | null;
-  let updateAssetItem: any;
+  let updateAssetItem: UpdateToken | null;
   let transferOwnershipData: any;
   let mintNFT: INFTIssue | null;
   let collection: any;
@@ -500,7 +505,7 @@ const AccountController = (actions: {
     return dataFromWalletToCreateSPT || null;
   }
 
-  const setDataFromPageToMintSPT = (data: any) => {
+  const setDataFromPageToMintSPT = (data: ISPTIssuePage) => {
     dataFromPageToMintSPT = data;
   }
 
@@ -508,8 +513,7 @@ const AccountController = (actions: {
     return dataFromPageToMintSPT || null;
   }
 
-  const setDataFromWalletToMintSPT = (data: any) => {
-    console.log('data mint spt', data)
+  const setDataFromWalletToMintSPT = (data: ISPTIssueWallet) => {
     dataFromWalletToMintSPT = data;
   }
 
@@ -517,15 +521,14 @@ const AccountController = (actions: {
     return dataFromWalletToMintSPT || null;
   }
 
-  const setDataFromPageToMintNFT = (data: any) => {
+  const setDataFromPageToMintNFT = (data: INFTPageInfo) => {
     dataFromPageToMintNFT = data;
   }
   const getDataFromPageToMintNFT = () => {
     return dataFromPageToMintNFT || null;
   }
 
-  const setDataFromWalletToMintNFT = (data: any) => {
-    console.log('set data nft', data)
+  const setDataFromWalletToMintNFT = (data: INFTWalletInfo) => {
     dataFromWalletToMintNFT = data;
   }
 
@@ -626,7 +629,7 @@ const AccountController = (actions: {
   }
 
 
-  const handleTransactions = (item: any, executeTransaction: any) => {
+  const handleTransactions = async (item: any, executeTransaction: any) => {
     if (!sysjs) {
       throw new Error('Error: No signed account exists');
     }
@@ -640,20 +643,22 @@ const AccountController = (actions: {
     }
 
     try {
-      executeTransaction(item);
+      await executeTransaction(item);
 
       return null;
     } catch (error) {
-      throw new Error(error);
+      return error;
     }
   }
 
   const confirmNewSPT = () => {
-    try {
-      handleTransactions(newSPT, confirmSPTCreation);
-    } catch (error) {
-      console.log('error confirming new spt', error)
-    }
+    return new Promise((resolve, reject) => {
+      try {
+        resolve(handleTransactions(newSPT, confirmSPTCreation));
+      } catch (error) {
+        reject(error);
+      }
+    })
   }
 
   const confirmMintSPT = async (item: any) => {
@@ -769,7 +774,13 @@ const AccountController = (actions: {
   }
 
   const confirmIssueSPT = () => {
-    handleTransactions(mintSPT, confirmMintSPT);
+    return new Promise((resolve, reject) => {
+      try {
+        resolve(handleTransactions(mintSPT, confirmMintSPT));
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
 
   const confirmMintNFT = async (item: any) => {
@@ -883,7 +894,13 @@ const AccountController = (actions: {
   }
 
   const confirmIssueNFT = () => {
-    handleTransactions(mintNFT, confirmMintNFT);
+    return new Promise((resolve, reject) => {
+      try {
+        resolve(handleTransactions(mintNFT, confirmMintNFT));
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
 
   const convertToBip32Path = (address: string) => {
@@ -1074,7 +1091,14 @@ const AccountController = (actions: {
   }
 
   const confirmTempTx = () => {
-    handleTransactions(tempTx, confirmTransactionTx);
+    return new Promise((resolve, reject) => {
+      try {
+        resolve(handleTransactions(tempTx, confirmTransactionTx));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    ;
   };
 
   const getUserMintedTokens = async () => {
