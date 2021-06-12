@@ -4,6 +4,7 @@ import { useSelector } from "react-redux";
 import upload from "../utils/upload";
 import assetImg from "../images/asset.svg";
 import { token } from "../config";
+import { elementEventHandler } from "../utils/elementEventHandler";
 
 export default function CreateNFT() {
   const [precision, setPrecision] = useState(8);
@@ -20,6 +21,16 @@ export default function CreateNFT() {
   useEffect(() => {
     connectedAccountAddress && setReceiver(connectedAccountAddress);
   }, [connectedAccountAddress]);
+
+  useEffect(() => {
+    const advanced = document.querySelector(".advanced");
+    const advancedPanel = document.querySelector(".advanced-panel");
+
+    elementEventHandler(["click"], "", function () {
+      this.classList.toggle("open");
+      advancedPanel.classList.toggle("open");
+    })(advanced);
+  }, []);
 
   const handleCreateNFT = async (event) => {
     event.preventDefault();
@@ -161,12 +172,12 @@ export default function CreateNFT() {
 
           <div className="form-line gray">
             <div className="form-group col-100">
-              <div className="advanced open">
+              <div className="advanced">
                 Advanced <i className="icon-right-open"></i>
                 <i className="icon-down-open"></i>
               </div>
             </div>
-            <div className="advanced-panel open">
+            <div className="advanced-panel">
               <div className="form-line">
                 <div className="form-group col-100">
                   <div className="checkbox">
