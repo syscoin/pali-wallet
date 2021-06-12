@@ -1,14 +1,59 @@
-import "bootstrap/dist/css/bootstrap.min.css";
-import "react-dropzone-uploader/dist/styles.css";
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 
-const CreateNFT = () => {
-  const handleCreateNFT = async (
-    event,
-    { precision, maxSupply, description, symbol, fee, sysAddress, rbf }
-  ) => {
+import upload from "../utils/upload";
+import assetImg from "../images/asset.svg";
+import { token } from "../config";
+
+export default function CreateNFT() {
+  const [precision, setPrecision] = useState(8);
+  const [maxSupply, setMaxSupply] = useState(1);
+  const [description, setDescription] = useState("");
+  const [symbol, setSymbol] = useState("");
+  const [receiver, setReceiver] = useState("");
+  const [file, setFile] = useState();
+  const controller = useSelector((state) => state.controller);
+  const { connectedAccountAddress } = useSelector(
+    (state) => state.connectedAccountData
+  );
+
+  useEffect(() => {
+    connectedAccountAddress && setReceiver(connectedAccountAddress);
+  }, [connectedAccountAddress]);
+
+  const handleCreateNFT = async (event) => {
     event.preventDefault();
+  };
+
+  const handleInputChange = (setState) => {
+    return (event) => {
+      setState(event.target.value);
+    };
+  };
+
+  const handleInputFile = (setState) => {
+    return async (event) => {
+      const _file = event.target.files[0];
+
+      setState(_file);
+
+      const { value } = await upload(
+        "https://api.nft.storage/upload",
+        _file,
+        {
+          "Content-type": _file.type,
+          Authorization: `Bearer ${token}`,
+        },
+        (progressEvent) => {
+          const { loaded, total } = progressEvent;
+          const percentComplete = (loaded / total) * 100;
+
+          console.log(`${Math.round(percentComplete)}%`);
+        }
+      );
+
+      setDescription(value.cid);
+    };
   };
 
   return (
@@ -30,7 +75,7 @@ const CreateNFT = () => {
           Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
         </p>
 
-        <form onSubmit={() => {}}>
+        <form onSubmit={handleCreateNFT}>
           <div className="row">
             <div className="spacer col-100"></div>
           </div>
@@ -42,7 +87,7 @@ const CreateNFT = () => {
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
-                onChange={() => {}}
+                onChange={handleInputChange(setSymbol)}
                 type="text"
                 className="form-control"
                 id="symbol"
@@ -56,7 +101,8 @@ const CreateNFT = () => {
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
-                onChange={() => {}}
+                onChange={handleInputChange(setReceiver)}
+                value={receiver}
                 type="text"
                 className="form-control"
                 id="owneraddr"
@@ -72,7 +118,11 @@ const CreateNFT = () => {
                 Total Shares{" "}
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
-              <select className="form-control" id="shares">
+              <select
+                className="form-control"
+                id="shares"
+                onChange={handleInputChange(setMaxSupply)}
+              >
                 <option>1</option>
                 <option>2</option>
                 <option>3</option>
@@ -88,6 +138,8 @@ const CreateNFT = () => {
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <textarea
+                onChange={handleInputChange(setDescription)}
+                value={description}
                 className="form-control"
                 id="description"
                 rows="4"
@@ -97,8 +149,12 @@ const CreateNFT = () => {
             <div className="form-group col-33 col-md-50 col-sm-100">
               <div className="fileupload">
                 <label htmlFor="logo">Upload logo</label>
-                <input onChange={() => {}} type="file" id="logo" />
-                <img src="imgs/asset.svg" />
+                <input
+                  onChange={handleInputFile(setFile)}
+                  type="file"
+                  id="logo"
+                />
+                <img src={file ? URL.createObjectURL(file) : assetImg} />
               </div>
             </div>
           </div>
@@ -317,5 +373,4 @@ const CreateNFT = () => {
       </div>
     </section>
   );
-};
-export default CreateNFT;
+}
