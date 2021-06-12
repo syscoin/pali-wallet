@@ -25,6 +25,13 @@ import {
   MintedToken,
   ISPTPageInfo,
   ISPTWalletInfo,
+  INFTPageInfo,
+  INFTWalletInfo,
+  ISPTIssuePage,
+  ISPTIssueWallet,
+  UpdateToken,
+  UpdateTokenPageInfo,
+  UpdateTokenWalletInfo
 } from '../../types';
 import { sys } from 'constants/index';
 import { fromZPub } from 'bip84';
@@ -54,10 +61,10 @@ export interface IAccountController {
   createSPT: (spt: ISPTInfo) => void;
   issueSPT: (spt: ISPTIssue) => void;
   issueNFT: (nft: INFTIssue) => void;
-  confirmNewSPT: () => void;
-  confirmIssueSPT: () => void;
-  confirmIssueNFT: () => void;
-  confirmTempTx: () => void;
+  confirmNewSPT: () => Promise<any>;
+  confirmIssueSPT: () => Promise<any>;
+  confirmIssueNFT: () => Promise<any>;
+  confirmTempTx: () => Promise<any>;
   setNewAddress: (addr: string) => boolean;
   setNewXpub: (id: number, xpub: string) => boolean;
   getUserMintedTokens: () => any;
@@ -101,18 +108,18 @@ const AccountController = (actions: {
   let sysjs: any;
   let newSPT: ISPTInfo | null;
   let mintSPT: ISPTIssue | null;
-  let updateAssetItem: any;
+  let updateAssetItem: UpdateToken | null;
   let transferOwnershipData: any;
   let mintNFT: INFTIssue | null;
   let collection: any;
-  let dataFromPageToCreateSPT: any;
-  let dataFromWalletToCreateSPT: any;
-  let dataFromPageToMintSPT: any;
-  let dataFromWalletToMintSPT: any;
-  let dataFromPageToMintNFT: any;
-  let dataFromWalletToMintNFT: any;
-  let dataFromWalletToUpdateAsset: any;
-  let dataFromPageToUpdateAsset: any;
+  let dataFromPageToCreateSPT: ISPTPageInfo;
+  let dataFromWalletToCreateSPT: ISPTWalletInfo;
+  let dataFromPageToMintSPT: ISPTIssuePage;
+  let dataFromWalletToMintSPT: ISPTIssueWallet;
+  let dataFromPageToMintNFT: INFTPageInfo;
+  let dataFromWalletToMintNFT: INFTWalletInfo;
+  let dataFromWalletToUpdateAsset: UpdateTokenWalletInfo;
+  let dataFromPageToUpdateAsset: UpdateTokenPageInfo;
   let resAddress: any;
   let encode: any;
 
@@ -500,7 +507,7 @@ const AccountController = (actions: {
     return dataFromWalletToCreateSPT || null;
   }
 
-  const setDataFromPageToMintSPT = (data: any) => {
+  const setDataFromPageToMintSPT = (data: ISPTIssuePage) => {
     dataFromPageToMintSPT = data;
   }
 
@@ -508,8 +515,7 @@ const AccountController = (actions: {
     return dataFromPageToMintSPT || null;
   }
 
-  const setDataFromWalletToMintSPT = (data: any) => {
-    console.log('data mint spt', data)
+  const setDataFromWalletToMintSPT = (data: ISPTIssueWallet) => {
     dataFromWalletToMintSPT = data;
   }
 
@@ -517,15 +523,14 @@ const AccountController = (actions: {
     return dataFromWalletToMintSPT || null;
   }
 
-  const setDataFromPageToMintNFT = (data: any) => {
+  const setDataFromPageToMintNFT = (data: INFTPageInfo) => {
     dataFromPageToMintNFT = data;
   }
   const getDataFromPageToMintNFT = () => {
     return dataFromPageToMintNFT || null;
   }
 
-  const setDataFromWalletToMintNFT = (data: any) => {
-    console.log('set data nft', data)
+  const setDataFromWalletToMintNFT = (data: INFTWalletInfo) => {
     dataFromWalletToMintNFT = data;
   }
 
@@ -534,7 +539,7 @@ const AccountController = (actions: {
     return dataFromWalletToMintNFT || null;
   }
 
-  const setDataFromPageToUpdateAsset = (data: any) => {
+  const setDataFromPageToUpdateAsset = (data: UpdateTokenPageInfo) => {
     dataFromPageToUpdateAsset = data;
   }
 
@@ -542,7 +547,7 @@ const AccountController = (actions: {
     return dataFromPageToUpdateAsset || null;
   }
 
-  const setDataFromWalletToUpdateAsset = (data: any) => {
+  const setDataFromWalletToUpdateAsset = (data: UpdateTokenWalletInfo) => {
     console.log('set data update asset', data)
     dataFromWalletToUpdateAsset = data;
   }
@@ -568,7 +573,7 @@ const AccountController = (actions: {
 
   const createSPT = (spt: ISPTInfo) => {
     newSPT = spt;
-    console.log("checkout the spt", spt)
+    console.log("checkout the spt", spt, typeof spt)
 
     return true;
   }
@@ -584,7 +589,7 @@ const AccountController = (actions: {
 
     return true;
   }
-  const setUpdateAsset = (asset: any) => {
+  const setUpdateAsset = (asset: UpdateToken) => {
     updateAssetItem = asset;
 
     return true;
@@ -626,7 +631,7 @@ const AccountController = (actions: {
   }
 
 
-  const handleTransactions = (item: any, executeTransaction: any) => {
+  const handleTransactions = async (item: any, executeTransaction: any) => {
     if (!sysjs) {
       throw new Error('Error: No signed account exists');
     }
@@ -640,20 +645,18 @@ const AccountController = (actions: {
     }
 
     try {
-      executeTransaction(item);
+      await executeTransaction(item);
 
       return null;
     } catch (error) {
-      throw new Error(error);
+      return error;
     }
   }
 
   const confirmNewSPT = () => {
-    try {
-      handleTransactions(newSPT, confirmSPTCreation);
-    } catch (error) {
-      console.log('error confirming new spt', error)
-    }
+    return new Promise((resolve) => {
+      resolve(handleTransactions(newSPT, confirmSPTCreation));
+    })
   }
 
   const confirmMintSPT = async (item: any) => {
@@ -769,7 +772,9 @@ const AccountController = (actions: {
   }
 
   const confirmIssueSPT = () => {
-    handleTransactions(mintSPT, confirmMintSPT);
+    return new Promise((resolve) => {
+      resolve(handleTransactions(mintSPT, confirmMintSPT));
+    });
   }
 
   const confirmMintNFT = async (item: any) => {
@@ -883,7 +888,9 @@ const AccountController = (actions: {
   }
 
   const confirmIssueNFT = () => {
-    handleTransactions(mintNFT, confirmMintNFT);
+    return new Promise((resolve) => {
+      resolve(handleTransactions(mintNFT, confirmMintNFT));
+    });
   }
 
   const convertToBip32Path = (address: string) => {
@@ -1074,7 +1081,9 @@ const AccountController = (actions: {
   }
 
   const confirmTempTx = () => {
-    handleTransactions(tempTx, confirmTransactionTx);
+    return new Promise((resolve) => {
+      resolve(handleTransactions(tempTx, confirmTransactionTx));
+    });
   };
 
   const getUserMintedTokens = async () => {
@@ -1186,14 +1195,17 @@ const AccountController = (actions: {
     return sysjs.blockbookURL;
   }
 
-  const confirmUpdateAsset = async (item: any) => {
+  const confirmUpdateAsset = async (item: UpdateToken) => {
     const {
       fee,
       assetWhiteList,
-      updatecapabilityflags,
+      capabilityflags,
       contract,
       description,
-      rbf
+      rbf,
+      notarykeyid,
+      notarydetails,
+      auxfeedetails
     } = item;
     const feeRate = new sys.utils.BN(fee * 1e8);
 
@@ -1204,26 +1216,15 @@ const AccountController = (actions: {
 
     const assetGuid = item.assetGuid;
 
+    console.log('data confirm update asset  item, feeRate, txOpts, assetGuid', item, feeRate, txOpts, assetGuid)
+
     const assetOpts = {
-      updatecapabilityflags: updatecapabilityflags || 127,
-      contract: Buffer.from(contract, 'hex') || null,
+      updatecapabilityflags: capabilityflags || 127,
+      contract: Buffer.from(contract || '', 'hex') || null,
       description: description,
-      // notarykeyid: item.notarykeyid || '',
-      // notarydetails: {
-      //   endpoint: item.endpoint || '',
-      //   instanttransfers: item.instanttransfers || 0,
-      //   hdrequired: item.hdrequired || 0,
-      // },
-      // auxfeedetails: item.auxFeeDetails
-      // auxfeedetails: {
-      //   auxfeekeyid: item.auxFeeDetails.auxfeekeyid || 'bc1qg9stkxrszkdqsuj92lm4c7akvk36zvhqw7p6ck',
-      //   auxfees: [
-      //     {
-      //       bound: item.auxFeeDetails.bound || 0,
-      //       percent: item.auxFeeDetails.percent || 0
-      //     }
-      //   ]
-      // }
+      notarykeyid: notarykeyid || '',
+      notarydetails: notarydetails || null,
+      auxfeedetails: auxfeedetails || null,
     };
 
     console.log('asset opts update asset', assetOpts)
@@ -1240,7 +1241,10 @@ const AccountController = (actions: {
       }]
     ]);
 
+    console.log('asset map update asset', assetMap)
+
     const sysChangeAddress = null;
+
     const psbt = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
 
     console.log('psbt', psbt)
@@ -1252,11 +1256,10 @@ const AccountController = (actions: {
 
   const confirmUpdateAssetTransaction = () => {
     console.log('update asset item', updateAssetItem)
-    try {
-      handleTransactions(updateAssetItem, confirmUpdateAsset);
-    } catch (error) {
-      throw new Error(error);
-    }
+
+    return new Promise((resolve) => {
+      resolve(handleTransactions(updateAssetItem, confirmUpdateAsset));
+    });
   }
 
   const transferAsset = async (item: any) => {

@@ -38,25 +38,50 @@ const SendConfirm = () => {
   const alert = useAlert();
 
   const handleConfirm = () => {
-    if (accounts.find(element => element.id === activeAccountId)!.balance > 0) {
+    let acc = accounts.find(element => element.id === activeAccountId)
+
+    if ((acc ? acc.balance : -1) > 0) {
       setLoading(true);
 
-      try {
-        controller.wallet.account.confirmTempTx();
+      controller.wallet.account.confirmTempTx().then((error: any) => {
+        if (error) {
+          alert.removeAll();
+          alert.error('Can\'t complete transaction. Try again later.');
+
+          if (confirmingTransaction) {
+            setTimeout(() => {
+              handleCancelTransactionOnSite();
+            }, 4000);
+          }
+            
+          return;
+        }
 
         setConfirmed(true);
         setLoading(false);
-      } catch (error) {
-        alert.removeAll();
-        alert.error('Error confirming transaction.');
-        
-        if (confirmingTransaction) {
-          handleCancelTransactionOnSite();
-
-          return;
-        }
-      }
+      });
     }
+
+    
+    // if (accounts.find(element => element.id === activeAccountId)!.balance > 0) {
+    //   setLoading(true);
+
+    //   try {
+    //     controller.wallet.account.confirmTempTx();
+
+    //     setConfirmed(true);
+    //     setLoading(false);
+    //   } catch (error) {
+    //     alert.removeAll();
+    //     alert.error('Error confirming transaction.');
+        
+    //     if (confirmingTransaction) {
+    //       handleCancelTransactionOnSite();
+
+    //       return;
+    //     }
+    //   }
+    // }
   };
 
   const handleCancel = () => {

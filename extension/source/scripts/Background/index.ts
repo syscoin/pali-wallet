@@ -425,28 +425,20 @@ browser.runtime.onInstalled.addListener(async () => {
         const {
           assetGuid,
           contract,
-          capabilityFlags,
-          receiver,
+          capabilityflags,
           description,
-          supply,
-          endpoint,
-          instanttransfers,
-          hdrequired,
-          auxFeeDetails,
+          notarydetails,
+          auxfeedetails,
           notarykeyid
         } = request;
 
         window.controller.wallet.account.setDataFromPageToUpdateAsset({
           assetGuid,
           contract,
-          capabilityFlags,
-          receiver,
+          capabilityflags,
           description,
-          supply,
-          endpoint,
-          instanttransfers,
-          hdrequired,
-          auxFeeDetails,
+          notarydetails,
+          auxfeedetails,
           notarykeyid
         });
 

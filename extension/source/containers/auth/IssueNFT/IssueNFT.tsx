@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 
@@ -10,7 +10,7 @@ import CheckIcon from '@material-ui/icons/CheckCircle';
 import TextInput from 'components/TextInput';
 import { RootState } from 'state/store';
 import { ellipsis } from '../helpers';
-import IWalletState from 'state/wallet/types';
+import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 
 import styles from './IssueNFT.scss';
@@ -34,6 +34,7 @@ const IssueNFT = () => {
   const [recommend, setRecommend] = useState(0.00001);
   const [rbf, setRbf] = useState(false);
   const [issuingNFT, setIssuingNFT] = useState(false);
+  const [connectedAccountId, setConnectedAccountId] = useState(-1);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => {
@@ -42,18 +43,33 @@ const IssueNFT = () => {
     })
   };
 
+  useEffect(() => {
+    setConnectedAccountId(accounts.findIndex((account: IAccountState) => {
+      return account.connectedTo.filter((url: string) => {
+        return url === getHost(currentSenderURL);
+      })
+    }))
+  }, []);
+
   const handleConfirm = () => {
-    if ((accounts.find(element => element.id === activeAccountId)?.balance || -1) > 0) {
-      try {
-        controller.wallet.account.confirmIssueNFT()
+    let acc = accounts.find(element => element.id === connectedAccountId)
+
+    if ((acc ? acc.balance : -1) > 0) {
+      controller.wallet.account.confirmIssueNFT().then((error: any) => {
+        if (error) {
+          alert.removeAll();
+          alert.error('Can\'t issue token. Try again later.');
+
+          setTimeout(() => {
+            handleCancelTransactionOnSite();
+          }, 4000);
+            
+          return;
+        }
 
         setConfirmed(true);
         setLoading(false);
-      } catch (error) {
-        alert.removeAll();
-        alert.error('Error confirming transaction.');
-        handleCancelTransactionOnSite();
-      }
+      });
     }
   }
   const handleClosePopup = () => {

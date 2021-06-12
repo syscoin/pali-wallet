@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 
@@ -10,7 +10,8 @@ import CheckIcon from '@material-ui/icons/CheckCircle';
 import TextInput from 'components/TextInput';
 import { RootState } from 'state/store';
 import { ellipsis } from '../helpers';
-import IWalletState from 'state/wallet/types';
+import { getHost } from 'scripts/Background/helpers';
+import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 import CircularProgress from '@material-ui/core/CircularProgress';
 
@@ -35,6 +36,7 @@ const UpdateAsset = () => {
   const [rbf, setRbf] = useState(false);
   const [recommend, setRecommend] = useState(0.00001);
   const [updatingAsset, setUpdatingAsset] = useState(false);
+  const [connectedAccountId, setConnectedAccountId] = useState(-1);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => {
@@ -43,20 +45,33 @@ const UpdateAsset = () => {
     });
   };
 
+  useEffect(() => {
+    setConnectedAccountId(accounts.findIndex((account: IAccountState) => {
+      return account.connectedTo.filter((url: string) => {
+        return url === getHost(currentSenderURL);
+      })
+    }))
+  }, []);
+
   const handleConfirm = () => {
-    let acc = accounts.find(element => element.id === activeAccountId)
+    let acc = accounts.find(element => element.id === connectedAccountId)
 
     if ((acc ? acc.balance : -1) > 0) {
-      try {
-        controller.wallet.account.confirmUpdateAssetTransaction();
-      } catch (error) {
-        console.log('error', error);
-        alert.removeAll();
-        alert.error('Error updating asset.')
-      }
+      controller.wallet.account.confirmUpdateAssetTransaction().then((error: any) => {
+        if (error) {
+          alert.removeAll();
+          alert.error('Can\'t update token. Try again later.');
 
-      setConfirmed(true);
-      setLoading(false);
+          setTimeout(() => {
+            handleCancelTransactionOnSite();
+          }, 4000);
+            
+          return;
+        }
+
+        setConfirmed(true);
+        setLoading(false);
+      });
     }
   }
 
@@ -147,15 +162,15 @@ const UpdateAsset = () => {
 
                     <div className={styles.flex}>
                       <p>Aux fee key id:</p>
-                      <p>{updateAsset?.auxFeeDetails.auxfeekeyid}</p>
+                      <p>{updateAsset?.auxfeedetails.auxfeekeyid}</p>
                     </div>
 
                     <div className={styles.flex}>
                       <p>Aux fees</p>
-                      <p>Bound: {updateAsset?.auxFeeDetails.bound}</p>
-                      <p>Percent: {updateAsset?.auxFeeDetails.percent}</p>
+                      <p>Bound: {updateAsset?.auxfeedetails.auxfees[0].bound}</p>
+                      <p>Percent: {updateAsset?.auxfeedetails.auxfees[0].percent}</p>
                     </div>
-                  </div>
+                    </div>
                 </div>
 
                 <div className={styles.flex}>

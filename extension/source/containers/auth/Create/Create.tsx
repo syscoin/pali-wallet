@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 
@@ -10,7 +10,7 @@ import CheckIcon from '@material-ui/icons/CheckCircle';
 import TextInput from 'components/TextInput';
 import { RootState } from 'state/store';
 import { ellipsis } from '../helpers';
-import IWalletState from 'state/wallet/types';
+import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 import CircularProgress from '@material-ui/core/CircularProgress';
 
@@ -19,6 +19,7 @@ import { browser } from 'webextension-polyfill-ts';
 import ReactTooltip from 'react-tooltip';
 import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import Switch from "react-switch";
+import { getHost } from 'scripts/Background/helpers';
 
 const Create = () => {
   const controller = useController();
@@ -35,6 +36,7 @@ const Create = () => {
   const [rbf, setRbf] = useState(false);
   const [recommend, setRecommend] = useState(0.00001);
   const [creatingSPT, setCreatingSPT] = useState(false);
+  const [connectedAccountId, setConnectedAccountId] = useState(-1);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => {
@@ -43,13 +45,33 @@ const Create = () => {
     });
   };
 
+  useEffect(() => {
+    setConnectedAccountId(accounts.findIndex((account: IAccountState) => {
+      return account.connectedTo.filter((url: string) => {
+        return url === getHost(currentSenderURL);;
+      })
+    }))
+  }, []);
+
   const handleConfirm = () => {
-    let acc = accounts.find(element => element.id === activeAccountId)
+    let acc = accounts.find(element => element.id === connectedAccountId)
 
     if ((acc ? acc.balance : -1) > 0) {
-      controller.wallet.account.confirmNewSPT();
-      setConfirmed(true);
-      setLoading(false);
+      controller.wallet.account.confirmNewSPT().then((error: any) => {
+        if (error) {
+          alert.removeAll();
+          alert.error('Can\'t create token. Try again later.');
+
+          setTimeout(() => {
+            handleCancelTransactionOnSite();
+          }, 4000);
+            
+          return;
+        }
+
+        setConfirmed(true);
+        setLoading(false);
+      });
     }
   }
 
@@ -132,6 +154,11 @@ const Create = () => {
                 <div className={styles.flex}>
                   <p>RBF</p>
                   <p>{rbf ? 'Yes' : 'No'}</p>
+                </div>
+
+                <div className={styles.flex}>
+                  <p>From</p>
+                  <p>{accounts[connectedAccountId].label}</p>
                 </div>
 
                 <div className={styles.flex}>

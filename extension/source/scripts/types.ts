@@ -63,12 +63,33 @@ export interface ISPTIssue {
   rbf: boolean
 }
 
+export interface ISPTIssuePage {
+  assetGuid: string,
+  amount: number,
+  receiver: string,
+}
+
+export interface ISPTIssueWallet {
+  fee: number,
+  rbf: boolean
+}
+
 export interface INFTIssue {
   assetGuid: string,
   nfthash: string,
   fee: number,
   receiver: string,
   rbf: boolean
+}
+
+export interface INFTPageInfo {
+  assetGuid: string,
+  receiver: string,
+}
+
+export interface INFTWalletInfo {
+  fee: number;
+  rbf: boolean;
 }
 
 export type PendingTx = {
@@ -80,6 +101,61 @@ export type PendingTx = {
 }
 
 export type MintedToken = {
-  assetGuid: string,
-  symbol: string
+  assetGuid: string;
+  symbol: string;
+}
+
+export type UpdateToken = {
+  assetGuid: string;
+  contract?: string | null;
+  capabilityflags?: number | 127;
+  receiver?: string;
+  description: string | '';
+  supply?: number;
+  notarydetails?: {
+    endpoint?: string;
+    instanttransfers?: boolean;
+    hdrequired?: boolean;
+  }
+  auxfeedetails?: {
+    auxfeekeyid: any,
+    auxfees: [
+      {
+        bound: any | 0,
+        percent: any | 0
+      }
+    ]
+  };
+  notarykeyid?: string;
+  fee: number;
+  rbf: boolean;
+  assetWhiteList?: any | null
+}
+
+export interface UpdateTokenPageInfo {
+  contract?: string;
+  capabilityflags?: number | 127;
+  receiver?: string;
+  description: string | '';
+  notarydetails?: {
+    endpoint?: string;
+    instanttransfers?: boolean;
+    hdrequired?: boolean;
+  }
+  auxfeedetails?: {
+    auxfeekeyid?: any,
+    auxfees?: [
+      {
+        bound?: any | 0,
+        percent?: any | 0
+      }
+    ]
+  };
+  notarykeyid?: string;
+  assetWhiteList?: any | null
+}
+
+export interface UpdateTokenWalletInfo {
+  fee: number;
+  rbf: boolean;
 }
