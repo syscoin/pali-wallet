@@ -25,7 +25,7 @@ const Create = () => {
   const controller = useController();
   const alert = useAlert();
 
-  const { accounts, activeAccountId, currentSenderURL }: IWalletState = useSelector(
+  const { accounts, activeAccountId, currentSenderURL, activeNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -48,7 +48,7 @@ const Create = () => {
   useEffect(() => {
     setConnectedAccountId(accounts.findIndex((account: IAccountState) => {
       return account.connectedTo.filter((url: string) => {
-        return url === getHost(currentSenderURL);;
+        return url === getHost(currentSenderURL);
       })
     }))
   }, []);
@@ -61,6 +61,11 @@ const Create = () => {
         if (error) {
           alert.removeAll();
           alert.error('Can\'t create token. Try again later.');
+
+          if (!controller.wallet.account.isValidSYSAddress(String(newSPT?.receiver), activeNetwork)) {
+            alert.removeAll();
+            alert.error('Recipient\'s address is not valid.');
+          }
 
           setTimeout(() => {
             handleCancelTransactionOnSite();

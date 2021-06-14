@@ -612,15 +612,20 @@ const AccountController = (actions: {
     if (account.isTrezorWallet) {
       console.log("Trezor don't support burning of coins")
       //TODO: Return error message for the user in this scenario
-    }
-    else {
+    } else {
       const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, null, new sys.utils.BN(item.fee * 1e8));
 
       const txInfo = pendingTx.extractTransaction().getId();
 
+      const connectedAccountId = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
+        return account.connectedTo.filter((url: string) => {
+          return url === new URL(store.getState().wallet.currentSenderURL).host;
+        });
+      });
+
       store.dispatch(
         updateTransactions({
-          id: account.id,
+          id: store.getState().wallet.creatingAsset ? connectedAccountId : account.id,
           txs: [_coventPendingType(txInfo), ...account.transactions],
         })
       );
@@ -760,10 +765,15 @@ const AccountController = (actions: {
       console.log('tx info mint spt', txInfo)
     }
 
+    const connectedAccountId = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
+      return account.connectedTo.filter((url: string) => {
+        return url === new URL(store.getState().wallet.currentSenderURL).host;
+      });
+    });
 
     store.dispatch(
       updateTransactions({
-        id: account.id,
+        id: store.getState().wallet.issuingAsset ? connectedAccountId : account.id,
         txs: [_coventPendingType(txInfo), ...account.transactions],
       })
     );
@@ -877,9 +887,15 @@ const AccountController = (actions: {
       console.log('tx info mint nft', txInfo)
     }
 
+    const connectedAccountId = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
+      return account.connectedTo.filter((url: string) => {
+        return url === new URL(store.getState().wallet.currentSenderURL).host;
+      });
+    });
+
     store.dispatch(
       updateTransactions({
-        id: account.id,
+        id: store.getState().wallet.issuingNFT ? connectedAccountId : account.id,
         txs: [_coventPendingType(txInfo), ...account.transactions],
       })
     );
@@ -993,9 +1009,16 @@ const AccountController = (actions: {
         const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(item.fee * 1e8));
         txInfo = pendingTx.extractTransaction().getId();
       }
+
+      const connectedAccountId = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
+        return account.connectedTo.filter((url: string) => {
+          return url === new URL(store.getState().wallet.currentSenderURL).host;
+        });
+      });
+
       store.dispatch(
         updateTransactions({
-          id: account.id,
+          id: store.getState().wallet.confirmingTransaction ? connectedAccountId : account.id,
           txs: [_coventPendingType(txInfo), ...account.transactions],
         })
       );
@@ -1068,9 +1091,16 @@ const AccountController = (actions: {
         txInfo = pendingTx.extractTransaction().getId();
 
       }
+  
+      const connectedAccountId = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
+        return account.connectedTo.filter((url: string) => {
+          return url === new URL(store.getState().wallet.currentSenderURL).host;
+        });
+      });
+
       store.dispatch(
         updateTransactions({
-          id: account.id,
+          id: store.getState().wallet.confirmingTransaction ? connectedAccountId : account.id,
           txs: [_coventPendingType(txInfo), ...account.transactions],
         })
       );
@@ -1245,13 +1275,29 @@ const AccountController = (actions: {
 
     const sysChangeAddress = null;
 
-    const psbt = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
+    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
 
-    console.log('psbt', psbt)
+    const txInfo = pendingTx.extractTransaction().getId();
+    console.log('pendingTx', pendingTx)
 
-    if (!psbt) {
+    if (!pendingTx) {
       console.log('Could not create transaction, not enough funds?');
     }
+
+    const connectedAccountId = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
+      return account.connectedTo.filter((url: string) => {
+        return url === new URL(store.getState().wallet.currentSenderURL).host;
+      });
+    });
+
+    store.dispatch(
+      updateTransactions({
+        id: store.getState().wallet.issuingAsset ? connectedAccountId : account.id,
+        txs: [_coventPendingType(txInfo), ...account.transactions],
+      })
+    );
+
+    watchMemPool();
   }
 
   const confirmUpdateAssetTransaction = () => {
@@ -1274,11 +1320,33 @@ const AccountController = (actions: {
     ]);
 
     const sysChangeAddress = null;
-    const psbt = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
+    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
 
-    if (!psbt) {
+    if (!pendingTx) {
       console.log('Could not create transaction, not enough funds?');
     }
+
+    const txInfo = pendingTx.extractTransaction().getId();
+    console.log('pendingTx', pendingTx)
+
+    if (!pendingTx) {
+      console.log('Could not create transaction, not enough funds?');
+    }
+
+    const connectedAccountId = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
+      return account.connectedTo.filter((url: string) => {
+        return url === new URL(store.getState().wallet.currentSenderURL).host;
+      });
+    });
+
+    store.dispatch(
+      updateTransactions({
+        id: store.getState().wallet.issuingAsset ? connectedAccountId : account.id,
+        txs: [_coventPendingType(txInfo), ...account.transactions],
+      })
+    );
+
+    watchMemPool();
   }
 
   const confirmTransferOwnership = () => {
