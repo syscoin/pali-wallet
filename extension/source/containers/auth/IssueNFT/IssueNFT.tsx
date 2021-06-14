@@ -23,7 +23,7 @@ const IssueNFT = () => {
   const controller = useController();
   const alert = useAlert();
 
-  const { accounts, activeAccountId, currentSenderURL }: IWalletState = useSelector(
+  const { accounts, activeAccountId, currentSenderURL, activeNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -49,7 +49,18 @@ const IssueNFT = () => {
         return url === getHost(currentSenderURL);
       })
     }))
-  }, []);
+
+    if (!controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)) {
+      alert.removeAll();
+      alert.error('Recipient\'s address is not valid.');
+    }
+
+    setTimeout(() => {
+      handleCancelTransactionOnSite();
+    }, 4000);
+  }, [
+    !controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)
+  ]);
 
   const handleConfirm = () => {
     let acc = accounts.find(element => element.id === connectedAccountId)
@@ -59,6 +70,11 @@ const IssueNFT = () => {
         if (error) {
           alert.removeAll();
           alert.error('Can\'t issue token. Try again later.');
+
+          if (!controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)) {
+            alert.removeAll();
+            alert.error('Recipient\'s address is not valid.');
+          }
 
           setTimeout(() => {
             handleCancelTransactionOnSite();

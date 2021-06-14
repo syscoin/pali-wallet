@@ -51,7 +51,18 @@ const Create = () => {
         return url === getHost(currentSenderURL);
       })
     }))
-  }, []);
+
+    if (!controller.wallet.account.isValidSYSAddress(String(newSPT?.receiver), activeNetwork)) {
+      alert.removeAll();
+      alert.error('Recipient\'s address is not valid.');
+    }
+
+    setTimeout(() => {
+      handleCancelTransactionOnSite();
+    }, 4000);
+  }, [
+    !controller.wallet.account.isValidSYSAddress(String(newSPT?.receiver), activeNetwork)
+  ]);
 
   const handleConfirm = () => {
     let acc = accounts.find(element => element.id === connectedAccountId)

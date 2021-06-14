@@ -578,27 +578,12 @@ browser.runtime.onInstalled.addListener(async () => {
         const windowId = Number(all[1].id);
 
         await browser.windows.remove(windowId);
-
-        // const tabs = await browser.tabs.query({
-        //   active: true,
-        //   windowType: 'normal'
-        // });
-    
-        // const tabId = Number(tabs[0].id);
-
-        // browser.tabs.sendMessage(tabId, {
-        //   type: 'GET_USERMINTEDTOKENS',
-        //   target: 'contentScript',
-        //   userTokens: tokensMinted
-        // });
       }
     })
   });
 });
 
 wrapStore(store, { portName: STORE_PORT });
-
-
 
 // used only for development mode to automatically reload the extension when starting the browser
 // remove this in production

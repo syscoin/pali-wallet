@@ -25,7 +25,7 @@ const IssueAsset = () => {
   const controller = useController();
   const alert = useAlert();
 
-  const { accounts, activeAccountId, currentSenderURL }: IWalletState = useSelector(
+  const { accounts, activeAccountId, currentSenderURL, activeNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -54,6 +54,11 @@ const IssueAsset = () => {
           alert.removeAll();
           alert.error('Can\'t issue token. Try again later.');
 
+          if (!controller.wallet.account.isValidSYSAddress(String(mintSPT?.receiver), activeNetwork)) {
+            alert.removeAll();
+            alert.error('Recipient\'s address is not valid.');
+          }
+
           setTimeout(() => {
             handleCancelTransactionOnSite();
           }, 4000);
@@ -71,9 +76,20 @@ const IssueAsset = () => {
     setConnectedAccountId(accounts.findIndex((account: IAccountState) => {
       return account.connectedTo.filter((url: string) => {
         return url === getHost(currentSenderURL);
-      })
-    }))
-  }, []);
+      });
+    }));
+
+    if (!controller.wallet.account.isValidSYSAddress(String(mintSPT?.receiver), activeNetwork)) {
+      alert.removeAll();
+      alert.error('Recipient\'s address is not valid.');
+    }
+
+    setTimeout(() => {
+      handleCancelTransactionOnSite();
+    }, 4000);
+  }, [
+    !controller.wallet.account.isValidSYSAddress(String(mintSPT?.receiver), activeNetwork)
+  ]);
 
   const handleClosePopup = () => {
     browser.runtime.sendMessage({
