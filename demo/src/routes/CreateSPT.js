@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
- const CreateSPT=()  => {
-  const [precision, setPrecision] = useState(0);
-  const [maxSupply, setMaxSupply] = useState(0);
+
+import { elementEventHandler } from "../utils/elementEventHandler";
+import assetImg from "../images/asset.svg";
+
+export default function CreateSPT() {
+  const controller = useSelector((state) => state.controller);
+  const [precision, setPrecision] = useState(8);
+  const [maxSupply, setMaxSupply] = useState(1);
   const [description, setDescription] = useState("");
   const [symbol, setSymbol] = useState("");
   const [receiver, setReceiver] = useState("");
@@ -10,21 +15,30 @@ import { useSelector } from "react-redux";
   const handleCreateToken = async (event) => {
     event.preventDefault();
 
-    await await window.ConnectionsController.handleCreateToken(
-      Number(precision),
-      symbol,
-      Number(maxSupply),
-      description,
-      receiver
-    );
+    if (controller) {
+      await controller.handleCreateToken(
+        Number(precision),
+        symbol,
+        Number(maxSupply),
+        description,
+        receiver
+      );
 
-    event.target.reset();
+      event.target.reset();
+    }
   };
 
+  useEffect(() => {
+    const advanced = document.querySelector(".advanced");
+    const advancedPanel = document.querySelector(".advanced-panel");
+
+    elementEventHandler(["click"], "", function () {
+      this.classList.toggle("open");
+      advancedPanel.classList.toggle("open");
+    })(advanced);
+  }, []);
 
   return (
-   
-  
     <section>
       <div className="inner wider">
         <h1>Create a Standard Token (Fungible)</h1>
@@ -70,8 +84,8 @@ import { useSelector } from "react-redux";
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
-               onBlur={(event) => setReceiver(event.target.value)}
-               required
+                onBlur={(event) => setReceiver(event.target.value)}
+                required
                 type="text"
                 className="form-control"
                 id="owneraddr"
@@ -122,8 +136,8 @@ import { useSelector } from "react-redux";
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
-                  onBlur={(event) => setMaxSupply(event.target.value)}
-                  required
+                onBlur={(event) => setMaxSupply(event.target.value)}
+                required
                 type="number"
                 className="form-control"
                 id="initialsupply"
@@ -142,7 +156,7 @@ import { useSelector } from "react-redux";
                 Description{" "}
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
-                <input
+              <input
                 className="form-control"
                 type="text"
                 id="description"
@@ -150,26 +164,26 @@ import { useSelector } from "react-redux";
                 onBlur={(event) => setDescription(event.target.value)}
                 required
               />
-              
+
               <p className="help-block">Max length: 256 bytes</p>
             </div>
             <div className="form-group col-33 col-md-50 col-sm-100">
               <div className="fileupload">
                 <label htmlFor="logo">Upload logo</label>
                 <input onChange={() => {}} type="file" id="logo" />
-                <img src="imgs/asset.svg" />
+                <img src={assetImg} />
               </div>
             </div>
           </div>
 
           <div className="form-line gray">
             <div className="form-group col-100">
-              <div className="advanced open">
+              <div className="advanced">
                 Advanced <i className="icon-right-open"></i>
                 <i className="icon-down-open"></i>
               </div>
             </div>
-            <div className="advanced-panel open">
+            <div className="advanced-panel">
               <div className="form-line">
                 <div className="form-group col-100">
                   <div className="checkbox">
@@ -377,4 +391,3 @@ import { useSelector } from "react-redux";
     </section>
   );
 }
-export default  CreateSPT

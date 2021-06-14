@@ -27,6 +27,7 @@ const Header = () => {
     // mobile menu open/close
     elementEventHandler(["click"], "open", function () {
       desktopmenu.classList.toggle("open");
+      document.querySelector("body").classList.toggle("no-scroll");
     })(mobilemenu);
 
     // remove events when component is unmounted
@@ -40,9 +41,9 @@ const Header = () => {
     <header>
       <nav>
         <div className="mobilemenu">
-          <Link to="/" className="openmenu">
+          <a className="openmenu">
             <i className="icon-menu"></i>
-          </Link>
+          </a>
           <Link to="/" className="logo">
             <embed src={logo} />
           </Link>
