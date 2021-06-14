@@ -54,10 +54,10 @@ const IssueAsset = () => {
           alert.removeAll();
           alert.error('Can\'t issue token. Try again later.');
 
-          if (!controller.wallet.account.isValidSYSAddress(String(mintSPT?.receiver), activeNetwork)) {
-            alert.removeAll();
-            alert.error('Recipient\'s address is not valid.');
-          }
+          // if (!controller.wallet.account.isValidSYSAddress(String(mintSPT?.receiver), activeNetwork)) {
+          //   alert.removeAll();
+          //   alert.error('Recipient\'s address is not valid.');
+          // }
 
           setTimeout(() => {
             handleCancelTransactionOnSite();
@@ -79,16 +79,16 @@ const IssueAsset = () => {
       });
     }));
 
-    if (!controller.wallet.account.isValidSYSAddress(String(mintSPT?.receiver), activeNetwork)) {
-      alert.removeAll();
-      alert.error('Recipient\'s address is not valid.');
-    }
+    // if (!controller.wallet.account.isValidSYSAddress(String(mintSPT?.receiver), activeNetwork)) {
+    //   alert.removeAll();
+    //   alert.error('Recipient\'s address is not valid.');
 
-    setTimeout(() => {
-      handleCancelTransactionOnSite();
-    }, 4000);
+    //   setTimeout(() => {
+    //     handleCancelTransactionOnSite();
+    //   }, 4000);
+    // }
   }, [
-    !controller.wallet.account.isValidSYSAddress(String(mintSPT?.receiver), activeNetwork)
+    // !controller.wallet.account.isValidSYSAddress(String(mintSPT?.receiver), activeNetwork)
   ]);
 
   const handleClosePopup = () => {

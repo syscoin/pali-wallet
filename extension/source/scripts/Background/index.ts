@@ -16,7 +16,7 @@ import {
   issueAsset,
   issueNFT,
   setUpdateAsset,
-  setTransferOwnership
+  setTransferOwnership,
 } from 'state/wallet';
 
 import MasterController, { IMasterController } from './controllers';

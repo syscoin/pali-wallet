@@ -396,30 +396,20 @@ const AccountController = (actions: {
       try {
         resAddress = bech32.decode(address);
 
-        if (network === "main" && resAddress.prefix === "sys") {
+        if (network === 'main' && resAddress.prefix === 'sys') {
           encode = bech32.encode(resAddress.prefix, resAddress.words);
-
-          if (address === account.address.main) {
-            return false;
-          }
 
           return encode === address.toLowerCase();
         }
 
-        if (network === "testnet" && resAddress.prefix === "tsys") {
+        if (network === 'testnet' && resAddress.prefix === 'tsys') {
           encode = bech32.encode(resAddress.prefix, resAddress.words);
-
-          if (address === account.address.main) {
-            return false;
-          }
 
           return encode === address.toLowerCase();
         }
       } catch (error) {
         return false;
       }
-
-      return false;
     }
 
     return false;
@@ -1004,8 +994,6 @@ const AccountController = (actions: {
         } else {
           console.log(resp.payload.error)
         }
-
-
       }
       else {
         const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(item.fee * 1e8));
@@ -1084,6 +1072,7 @@ const AccountController = (actions: {
 
       updateTransactionData('confirmingTransaction', txInfo);
     }
+
     item = null;
 
     watchMemPool();
@@ -1098,6 +1087,7 @@ const AccountController = (actions: {
   const getUserMintedTokens = async () => {
     let mintedTokens: MintedToken[] = [];
     let res;
+
     if (account.isTrezorWallet) {
       res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=nonzero&details=txs', true);
     }
@@ -1121,6 +1111,7 @@ const AccountController = (actions: {
         }
         return;
       });
+      
       return mintedTokens;
     }
     return;

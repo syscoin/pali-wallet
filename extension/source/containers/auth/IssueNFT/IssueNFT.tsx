@@ -50,16 +50,16 @@ const IssueNFT = () => {
       })
     }))
 
-    if (!controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)) {
-      alert.removeAll();
-      alert.error('Recipient\'s address is not valid.');
-    }
-
-    setTimeout(() => {
-      handleCancelTransactionOnSite();
-    }, 4000);
+    // if (!controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)) {
+    //   alert.removeAll();
+    //   alert.error('Recipient\'s address is not valid.');
+      
+    //   setTimeout(() => {
+    //     handleCancelTransactionOnSite();
+    //   }, 4000);
+    // }
   }, [
-    !controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)
+    // !controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)
   ]);
 
   const handleConfirm = () => {
@@ -71,10 +71,10 @@ const IssueNFT = () => {
           alert.removeAll();
           alert.error('Can\'t issue token. Try again later.');
 
-          if (!controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)) {
-            alert.removeAll();
-            alert.error('Recipient\'s address is not valid.');
-          }
+          // if (!controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)) {
+          //   alert.removeAll();
+          //   alert.error('Recipient\'s address is not valid.');
+          // }
 
           setTimeout(() => {
             handleCancelTransactionOnSite();

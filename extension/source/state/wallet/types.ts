@@ -58,4 +58,5 @@ export default interface IWalletState {
   updatingAsset: boolean;
   blockbookURL: string;
   transferringOwnership: boolean;
+  sendingSys: boolean;
 }
