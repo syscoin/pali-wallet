@@ -29,6 +29,7 @@ const GeneralView = () => {
     }>
   ) => {
     controller.wallet.switchNetwork(event.target.value as string);
+    controller.wallet.getNewAddress();
   };
 
   return (
