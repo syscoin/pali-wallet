@@ -773,7 +773,7 @@ const AccountController = (actions: {
 
     store.dispatch(
       updateTransactions({
-        id: store.getState().wallet.issuingAsset ? connectedAccountId : account.id,
+        id: store.getState().wallet.updatingAsset ? connectedAccountId : account.id,
         txs: [_coventPendingType(txInfo), ...account.transactions],
       })
     );
@@ -1292,7 +1292,7 @@ const AccountController = (actions: {
 
     store.dispatch(
       updateTransactions({
-        id: store.getState().wallet.issuingAsset ? connectedAccountId : account.id,
+        id: store.getState().wallet.updatingAsset ? connectedAccountId : account.id,
         txs: [_coventPendingType(txInfo), ...account.transactions],
       })
     );
@@ -1341,7 +1341,7 @@ const AccountController = (actions: {
 
     store.dispatch(
       updateTransactions({
-        id: store.getState().wallet.issuingAsset ? connectedAccountId : account.id,
+        id: store.getState().wallet.transferringOwnership ? connectedAccountId : account.id,
         txs: [_coventPendingType(txInfo), ...account.transactions],
       })
     );
