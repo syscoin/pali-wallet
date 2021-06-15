@@ -21,9 +21,15 @@ const App = () => {
 
   window.onload = async function () {
     const _isConnected = await setupState(store);
+    const controller = store.getState().controller;
 
     setIsConnected(_isConnected);
     setIsloading(!isLoading);
+
+    _isConnected &&
+      controller.onWalletUpdate(async function () {
+        await setupState(store);
+      });
   };
 
   store.subscribe(() => {
