@@ -47,20 +47,20 @@ const IssueNFT = () => {
     setConnectedAccountId(accounts.findIndex((account: IAccountState) => {
       return account.connectedTo.filter((url: string) => {
         return url === getHost(currentSenderURL);
-      })
-    }))
+      });
+    }));
 
-    // if (!controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)) {
-    //   alert.removeAll();
-    //   alert.error('Recipient\'s address is not valid.');
-      
-    //   setTimeout(() => {
-    //     handleCancelTransactionOnSite();
-    //   }, 4000);
-    // }
-  }, [
-    // !controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)
-  ]);
+    if (mintNFT) {
+      if (!controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)) {
+        alert.removeAll();
+        alert.error('Recipient\'s address is not valid.');
+        
+        setTimeout(() => {
+          handleCancelTransactionOnSite();
+        }, 4000);
+      }
+    }
+  }, []);
 
   const handleConfirm = () => {
     let acc = accounts.find(element => element.id === connectedAccountId)
@@ -71,10 +71,12 @@ const IssueNFT = () => {
           alert.removeAll();
           alert.error('Can\'t issue token. Try again later.');
 
-          // if (!controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)) {
-          //   alert.removeAll();
-          //   alert.error('Recipient\'s address is not valid.');
-          // }
+          if (mintNFT) {
+            if (!controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)) {
+              alert.removeAll();
+              alert.error('Recipient\'s address is not valid.');
+            }
+          }
 
           setTimeout(() => {
             handleCancelTransactionOnSite();
@@ -220,7 +222,7 @@ const IssueNFT = () => {
             </Layout>
           ) : (
             <div>
-              <Layout title="Mint token" showLogo>
+              <Layout title="Issue NFT" showLogo>
                 <div className={styles.wrapper}>
                   <label htmlFor="fee">Fee</label>
 

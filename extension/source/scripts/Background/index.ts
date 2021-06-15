@@ -137,8 +137,6 @@ browser.runtime.onInstalled.addListener(async () => {
         store.dispatch(setSenderURL(`${sender.url}`));
         store.dispatch(updateCanConnect(true));
 
-        console.log('connect wallet event', request)
-
         await createPopup(url);
 
         window.senderURL = `${sender.url}`;
@@ -166,8 +164,6 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'SELECT_ACCOUNT' && target == 'background') {
-        console.log('sender url', window.senderURL);
-        console.log(request.id)
         store.dispatch(updateConnectionsArray({
           accountId: request.id,
           url: window.senderURL
@@ -188,8 +184,6 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'CONFIRM_CONNECTION' && target == 'background') {
         if (getHost(window.senderURL) == getHost(store.getState().wallet.currentURL)) {
           store.dispatch(updateCanConnect(false));
-
-          console.log('sending confirmation to page')
 
           browser.tabs.sendMessage(tabId, {
             type: 'WALLET_CONNECTION_CONFIRMED',
@@ -240,33 +234,9 @@ browser.runtime.onInstalled.addListener(async () => {
         });
       }
 
-      if (type == 'CHECK_CONNECTION' && target == 'background') {
-        console.log(store.getState().wallet)
-        
-        browser.tabs.query({ active: true })
-          .then((tabs) => {
-            console.log(`${tabs[0].url}`);
-
-            const connectedAccount = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
-              return account.connectedTo.find((url: any) => {
-                return url == getHost(`${tabs[0].url}`);
-              });
-            }) !== -1;
-
-            console.log('connected account', connectedAccount)
-
-            browser.tabs.sendMessage(tabId, {
-              type: 'CHECK_CONNECTION',
-              target: 'contentScript',
-              state: store.getState().wallet
-            });
-          });
-      }
-
       if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'background') {
         const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
           return account.connectedTo.find((url) => {
-            console.log(url === getHost(store.getState().wallet.currentURL))
             return url === getHost(store.getState().wallet.currentURL)
           });
         });
@@ -275,6 +245,16 @@ browser.runtime.onInstalled.addListener(async () => {
           type: 'SEND_CONNECTED_ACCOUNT',
           target: 'contentScript',
           connectedAccount
+        });
+      }
+
+      if (type == 'CHECK_ADDRESS' && target == 'background') {
+        const isValidSYSAddress = window.controller.wallet.account.isValidSYSAddress(request.address, store.getState().wallet.activeNetwork);
+
+        browser.tabs.sendMessage(tabId, {
+          type: 'CHECK_ADDRESS',
+          target: 'contentScript',
+          isValidSYSAddress
         });
       }
 
@@ -347,8 +327,6 @@ browser.runtime.onInstalled.addListener(async () => {
           ...window.controller.wallet.account.getDataFromPageToCreateNewSPT(),
           ...window.controller.wallet.account.getDataFromWalletToCreateSPT()
         });
-
-        console.log('checking spt background', window.controller.wallet.account.getNewSPT())
       }
 
       if (type == 'ISSUE_SPT' && target == 'background') {
@@ -382,8 +360,6 @@ browser.runtime.onInstalled.addListener(async () => {
           ...window.controller.wallet.account.getDataFromPageToMintSPT(),
           ...window.controller.wallet.account.getDataFromWalletToMintSPT()
         });
-
-        console.log('checking mint spt background', window.controller.wallet.account.getIssueSPT())
       }
 
       if (type == 'ISSUE_NFT' && target == 'background') {
@@ -417,8 +393,6 @@ browser.runtime.onInstalled.addListener(async () => {
           ...window.controller.wallet.account.getDataFromPageToMintNFT(),
           ...window.controller.wallet.account.getDataFromWalletToMintNFT()
         });
-
-        console.log('checking mint nft background', window.controller.wallet.account.getIssueNFT())
       }
 
       if (type == 'UPDATE_ASSET' && target == 'background') {
@@ -442,8 +416,6 @@ browser.runtime.onInstalled.addListener(async () => {
           notarykeyid
         });
 
-        console.log('data from page', window.controller.wallet.account.getDataFromPageToUpdateAsset())
-
         store.dispatch(setUpdateAsset(true));
 
         const appURL = browser.runtime.getURL('app.html');
@@ -462,8 +434,6 @@ browser.runtime.onInstalled.addListener(async () => {
           ...window.controller.wallet.account.getDataFromPageToUpdateAsset(),
           ...window.controller.wallet.account.getDataFromWalletToUpdateAsset()
         });
-
-        console.log('checking update asset background', window.controller.wallet.account.getNewUpdateAsset())
       }
 
       if (type == 'TRANSFER_OWNERSHIP' && target == 'background') {
@@ -476,8 +446,6 @@ browser.runtime.onInstalled.addListener(async () => {
           assetGuid,
           newOwner
         });
-
-        console.log('data from page', window.controller.wallet.account.getDataFromPageToTransferOwnership())
 
         store.dispatch(setTransferOwnership(true));
 
@@ -497,11 +465,8 @@ browser.runtime.onInstalled.addListener(async () => {
           ...window.controller.wallet.account.getDataFromPageToTransferOwnership(),
           ...window.controller.wallet.account.getDataFromWalletToTransferOwnership()
         });
-
-        console.log('checking new ownership background', window.controller.wallet.account.getNewOwnership())
       }
 
-      // receive message sent by contentScript using browser.runtime.sendMessage
       if (type == 'CREATE_COLLECTION' && target == 'background') {
         const {
           collectionName,
@@ -516,20 +481,10 @@ browser.runtime.onInstalled.addListener(async () => {
           attribute3
         } = request;
 
-        // example of how you can use the arguments
         window.controller.wallet.account.createCollection(collectionName, description, sysAddress, symbol, property1, property2, property3, attribute1, attribute2, attribute3)
-
-        // to use this arguments at frontend you can create a function as 'getCollection' in accountController and call it in the react component
-
-        // you can use these data to call a function as in the SEND_TOKEN if or the ISSUE_SPT, you call a function using the arguments in the message request item, here lets just check if that everything is ok and send the 'createCollection' as a response
 
         const createCollection: string = 'create collection is working';
 
-        console.log('[background]: data from createCollection', collectionName, description, sysAddress, symbol, property1, property2, property3, attribute1, attribute2, attribute3)
-
-        // if everything is fine, you should see the result in the console of the page (createCollection)
-
-        // send message to contentScript after calling the function needed to say it worked (and send the result, in this case we will call createCollection)
         browser.tabs.sendMessage(tabId, {
           type: 'CREATE_COLLECTION',
           target: 'contentScript',
@@ -537,15 +492,11 @@ browser.runtime.onInstalled.addListener(async () => {
         });
       }
 
-      if (type == 'GET_USERMINTEDTOKENS' && target == 'background') {
-        console.log('tokens minted get user minted tokens url state', store.getState().wallet.blockbookURL)
-
+      if (type == 'GET_USER_MINTED_TOKENS' && target == 'background') {
         const tokensMinted = await window.controller.wallet.account.getUserMintedTokens();
 
-        console.log('tokens minted', tokensMinted)
-
         browser.tabs.sendMessage(tabId, {
-          type: 'GET_USERMINTEDTOKENS',
+          type: 'GET_USER_MINTED_TOKENS',
           target: 'contentScript',
           userTokens: tokensMinted
         });
@@ -555,9 +506,9 @@ browser.runtime.onInstalled.addListener(async () => {
 
   browser.runtime.onConnect.addListener((port) => {
     if (port.name == 'trezor-connect') {
-      console.log('Blocked port')
       return;
     }
+
     browser.tabs.query({ active: true })
       .then((tabs) => {
         store.dispatch(updateCurrentURL(`${tabs[0].url}`));

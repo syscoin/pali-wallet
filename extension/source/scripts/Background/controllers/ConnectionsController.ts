@@ -15,8 +15,8 @@ export interface IConnectionsController {
   handleCreateCollection: (state: any) => void;
   handleUpdateAsset: (assetGuid: string, contract?: string, capabilityflags?: number | 127, description?: string, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notarykeyid?: string) => any;
   handleTransferOwnership: (assetGuid: string, newOwner: string) => any;
+  isValidSYSAddress: (address: string) => any;
 }
-
 
 const isNFT = (guid: number) => {
   let assetGuid = BigInt.asUintN(64, BigInt(guid));
@@ -148,12 +148,12 @@ const ConnectionsController = (): IConnectionsController => {
 
   const getUserMintedTokens = async () => {
     return await sendMessage({
-      type: 'GET_USERMINTEDTOKENS',
+      type: 'GET_USER_MINTED_TOKENS',
       target: 'connectionsController',
       freeze: true,
       eventResult: 'userTokens'
     }, {
-      type: 'GET_USERMINTEDTOKENS',
+      type: 'GET_USER_MINTED_TOKENS',
       target: 'contentScript',
     });
   }
@@ -230,6 +230,19 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
+  const isValidSYSAddress = async (address: string) => {
+    return await sendMessage({
+      type: 'CHECK_ADDRESS',
+      target: 'connectionsController',
+      freeze: true,
+      eventResult: 'isValidSYSAddress'
+    }, {
+      type: 'CHECK_ADDRESS',
+      target: 'contentScript',
+      address,
+    });
+  }
+
   return {
     isNFT,
     connectWallet,
@@ -244,6 +257,7 @@ const ConnectionsController = (): IConnectionsController => {
     handleCreateCollection,
     handleUpdateAsset,
     handleTransferOwnership,
+    isValidSYSAddress
   }
 };
 

@@ -52,16 +52,20 @@ const Create = () => {
       })
     }))
 
-    // if (!controller.wallet.account.isValidSYSAddress(String(newSPT?.receiver), activeNetwork)) {
-    //   alert.removeAll();
-    //   alert.error('Recipient\'s address is not valid.');
+    console.log('string new spt', String(newSPT?.receiver), newSPT?.receiver)
 
-    //   setTimeout(() => {
-    //     handleCancelTransactionOnSite();
-    //   }, 4000);
-    // }
+    if (newSPT) {
+      if (!controller.wallet.account.isValidSYSAddress(String(newSPT?.receiver), activeNetwork)) {
+        alert.removeAll();
+        alert.error('Recipient\'s address is not valid.');
+  
+        setTimeout(() => {
+          handleCancelTransactionOnSite();
+        }, 4000);
+      }
+    }
   }, [
-    // !controller.wallet.account.isValidSYSAddress(String(newSPT?.receiver), activeNetwork)
+    newSPT
   ]);
 
   const handleConfirm = () => {
@@ -73,10 +77,12 @@ const Create = () => {
           alert.removeAll();
           alert.error('Can\'t create token. Try again later.');
 
-          // if (!controller.wallet.account.isValidSYSAddress(String(newSPT?.receiver), activeNetwork)) {
-          //   alert.removeAll();
-          //   alert.error('Recipient\'s address is not valid.');
-          // }
+          if (newSPT) {
+            if (!controller.wallet.account.isValidSYSAddress(String(newSPT?.receiver), activeNetwork)) {
+              alert.removeAll();
+              alert.error('Recipient\'s address is not valid.');
+            }
+          }
 
           setTimeout(() => {
             handleCancelTransactionOnSite();

@@ -157,11 +157,9 @@ const AccountController = (actions: {
               const index = parseInt(splitPath[5], 10);
 
               if (change === 1) {
-                console.log("Can't update it's change index");
-
                 return;
               }
-              
+
               if (index > receivingIndex) {
                 receivingIndex = index;
 
@@ -221,12 +219,12 @@ const AccountController = (actions: {
         address
       };
     }
-    
+
     return {
       balance,
       assets,
       transactions,
-    };    
+    };
   };
 
   const subscribeAccount = async (isHardwareWallet: boolean = false, sjs?: any, label?: string, walletCreation?: boolean) => {
@@ -251,11 +249,9 @@ const AccountController = (actions: {
         };
 
         store.dispatch(createAccount(account));
-        
+
         return account!.xpub;
       }
-
-      console.error("The trezor info output is wrong" + JSON.stringify(trezorinfo));
 
       return null;
     }
@@ -269,7 +265,7 @@ const AccountController = (actions: {
     }
 
     const res: IAccountInfo | null = await getAccountInfo();
-    
+
     account = {
       id: sysjs.HDSigner.accountIndex,
       label: label || `Account ${sysjs.HDSigner.accountIndex + 1}`,
@@ -302,7 +298,7 @@ const AccountController = (actions: {
     if (isHardwareWallet) {
       return;
     }
-    
+
     store.dispatch(updateLabel({ id, label }));
   };
 
@@ -321,7 +317,7 @@ const AccountController = (actions: {
 
     if (!account.isTrezorWallet) {
       sysjs.HDSigner.accountIndex = activeAccountId;
-      
+
       const accLatestInfo = await getAccountInfo();
 
       if (!accLatestInfo) return;
@@ -337,7 +333,7 @@ const AccountController = (actions: {
 
       return;
     }
-    
+
     const accLatestInfo = await getAccountInfo(true, account.xpub);
 
     if (!accLatestInfo) return;
@@ -354,7 +350,7 @@ const AccountController = (actions: {
 
   const getPrimaryAccount = (pwd: string, sjs: any) => {
     const { accounts, activeAccountId }: IWalletState = store.getState().wallet;
-    
+
     if (sjs) {
       sysjs = sjs;
     }
@@ -475,7 +471,7 @@ const AccountController = (actions: {
 
   const setNewAddress = (addr: string) => {
     const { activeAccountId } = store.getState().wallet;
-    
+
     store.dispatch(
       updateAccountAddress({
         id: activeAccountId,
@@ -541,7 +537,6 @@ const AccountController = (actions: {
   }
 
   const getDataFromWalletToMintNFT = () => {
-    console.log('data mint nft', dataFromWalletToMintNFT)
     return dataFromWalletToMintNFT || null;
   }
 
@@ -554,7 +549,6 @@ const AccountController = (actions: {
   }
 
   const setDataFromWalletToUpdateAsset = (data: UpdateTokenWalletInfo) => {
-    console.log('set data update asset', data)
     dataFromWalletToUpdateAsset = data;
   }
 
@@ -579,7 +573,6 @@ const AccountController = (actions: {
 
   const createSPT = (spt: ISPTInfo) => {
     newSPT = spt;
-    console.log("checkout the spt", spt, typeof spt)
 
     return true;
   }
@@ -620,10 +613,7 @@ const AccountController = (actions: {
     const txOpts = { rbf: item.rbf };
 
     if (account.isTrezorWallet) {
-      console.log("Trezor don't support burning of coins")
-      //TODO: Return error message for the user in this scenario
-
-      return;
+      throw new Error("Trezor don't support burning of coins");
     }
 
     const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, null, new sys.utils.BN(item.fee * 1e8));
@@ -657,7 +647,7 @@ const AccountController = (actions: {
       return null;
     } catch (error) {
       console.log('transaction error', error);
-      
+
       return error;
     }
   }
@@ -674,8 +664,6 @@ const AccountController = (actions: {
     const assetGuid = item.assetGuid;
     const assetChangeAddress = null;
     let txInfo;
-
-    console.log('mint spt', item)
 
     const assetMap = new Map([
       [assetGuid, {
@@ -756,9 +744,9 @@ const AccountController = (actions: {
 
         trezortx.outputs.push(_output);
       }
-      
+
       const resp = await TrezorConnect.signTransaction(trezortx);
-      
+
       if (resp.success == true) {
         txInfo = await sys.utils.sendRawTransaction(sysjs.blockbookURL, resp.payload.serializedTx);
       } else {
@@ -1086,6 +1074,7 @@ const AccountController = (actions: {
 
   const getUserMintedTokens = async () => {
     let mintedTokens: MintedToken[] = [];
+    let allTokens: MintedToken[] = [];
     let res;
 
     if (account.isTrezorWallet) {
@@ -1095,24 +1084,54 @@ const AccountController = (actions: {
       res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
     }
 
+    // if (res.transactions) {
+    //   res.transactions.map(async (transaction: any) => {
+    //     if (transaction.tokenType === 'SPTAssetActivate' && transaction.tokenTransfers) {
+    //       for (let item of transaction.tokenTransfers) {
+    //         if (mintedTokens.indexOf({ assetGuid: item.token, symbol: atob(item.symbol) }) === -1) {
+    //           mintedTokens.push({
+    //             assetGuid: item.token,
+    //             symbol: atob(item.symbol)
+    //           });
+    //         }
+
+    //         return;
+    //       }
+    //     }
+    //     return;
+    //   });
+
+    //   return mintedTokens;
+    // }
+    // return;
     if (res.transactions) {
       res.transactions.map(async (transaction: any) => {
-        if (transaction.tokenType === 'SPTAssetActivate' && transaction.tokenTransfers) {
-          for (let item of transaction.tokenTransfers) {
-            if (mintedTokens.indexOf({ assetGuid: item.token, symbol: atob(item.symbol) }) === -1) {
-              mintedTokens.push({
-                assetGuid: item.token,
-                symbol: atob(item.symbol)
-              });
-            }
-
-            return;
+        if (transaction.tokenType === 'SPTAssetActivate') {
+          for (let tokens in transaction.tokenTransfers) {
+            // console.log(transaction.tokenTransfers[tokens].token)
+            allTokens.push({
+              assetGuid: transaction.tokenTransfers[tokens].token,
+              symbol: atob(transaction.tokenTransfers[tokens].symbol)
+              // transaction: transaction
+            })
           }
         }
-        return;
-      });
-      
-      return mintedTokens;
+      })
+
+      allTokens.filter(function (el: any) {
+        if (el != null) {
+          let tokenExists: boolean = false
+          mintedTokens.forEach((element: any) => {
+            if (element.assetGuid === el.assetGuid) {
+              tokenExists = true
+            }
+          })
+          if (!tokenExists) {
+            mintedTokens.push(el)
+          }
+        }
+      })
+      return mintedTokens
     }
     return;
   }
@@ -1272,6 +1291,7 @@ const AccountController = (actions: {
     const txOpts = { rbf: item.rbf };
     const assetGuid = item.assetGuid;
     const assetOpts = {};
+    let txInfo = null;
 
     const assetChangeAddress = null;
     const assetMap = new Map([
@@ -1284,19 +1304,85 @@ const AccountController = (actions: {
       }]
     ]);
 
-    const sysChangeAddress = null;
+    let sysChangeAddress: string | null = null;
+
+    if (account.isTrezorWallet) {
+      sysChangeAddress = await getNewChangeAddress();
+
+      // @ts-ignore
+      assetMap.get(assetGuid)!.changeAddress = sysChangeAddress;
+
+      const psbt = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
+
+      if (!psbt) {
+        console.log('Could not create transaction, not enough funds?')
+      }
+
+      let trezortx: any = {};
+      trezortx.coin = "sys";
+      trezortx.version = psbt.res.txVersion;
+      trezortx.inputs = [];
+      trezortx.outputs = [];
+
+      for (let i = 0; i < psbt.res.inputs.length; i++) {
+        const input = psbt.res.inputs[i];
+        let _input: any = {};
+
+        _input.address_n = convertToBip32Path(input.path);
+        _input.prev_index = input.vout;
+        _input.prev_hash = input.txId;
+
+        if (input.sequence) _input.sequence = input.sequence;
+
+        _input.amount = input.value.toString();
+        _input.script_type = 'SPENDWITNESS';
+        trezortx.inputs.push(_input);
+      }
+
+      for (let i = 0; i < psbt.res.outputs.length; i++) {
+        const output = psbt.res.outputs[i];
+        let _output: any = {};
+
+        _output.amount = output.value.toString();
+
+        if (output.script) {
+          _output.script_type = "PAYTOOPRETURN";
+
+          const chunks = bjs.script.decompile(output.script);
+
+          if (chunks[0] === bitcoinops.OP_RETURN) {
+            _output.op_return_data = chunks[1].toString('hex');
+          }
+        }
+
+        _output.script_type = "PAYTOWITNESS";
+        _output.address = output.address;
+
+        trezortx.outputs.push(_output);
+      }
+
+      const resp = await TrezorConnect.signTransaction(trezortx);
+
+      if (resp.success == true) {
+        txInfo = await sys.utils.sendRawTransaction(sysjs.blockbookURL, resp.payload.serializedTx);
+
+        txInfo = psbt.extractTransaction().getId();
+
+        updateTransactionData('transferringOwnership', txInfo);
+
+        watchMemPool();
+      }
+
+      return;
+    }
+
     const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
 
     if (!pendingTx) {
       console.log('Could not create transaction, not enough funds?');
     }
 
-    const txInfo = pendingTx.extractTransaction().getId();
-    console.log('pendingTx', pendingTx)
-
-    if (!pendingTx) {
-      console.log('Could not create transaction, not enough funds?');
-    }
+    txInfo = pendingTx.extractTransaction().getId();
 
     updateTransactionData('transferringOwnership', txInfo);
 
@@ -1336,7 +1422,7 @@ const AccountController = (actions: {
 
                 return;
               }
-              
+
               if (index > receivingIndex) {
                 receivingIndex = index;
               }
@@ -1344,14 +1430,14 @@ const AccountController = (actions: {
           }
         });
       }
-      
+
       address = TrezorAccount.getAddress(changeIndex + 1, true);
 
       return address;
     }
-    
+
     console.error("Let HDsignet handle change address for non trezor wallets");
-    
+
     return null;
   }
 
