@@ -161,6 +161,16 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (type == 'CHECK_ADDRESS' && target == 'contentScript') {
+    browser.runtime.sendMessage({
+      type: 'CHECK_ADDRESS',
+      target: 'background',
+      address: event.data.address
+    });
+
+    return;
+  }
+
   if (type == 'SEND_TOKEN' && target == 'contentScript') {
     const {
       fromConnectedAccount,
@@ -350,7 +360,8 @@ browser.runtime.onMessage.addListener((request) => {
     connectedAccount,
     createCollection,
     userTokens,
-    connectionConfirmed
+    connectionConfirmed,
+    isValidSYSAddress
   } = request;
 
   if (type == 'DATA_FOR_SPT' && target == 'contentScript') {
@@ -398,6 +409,16 @@ browser.runtime.onMessage.addListener((request) => {
       type: 'SEND_CONNECTED_ACCOUNT',
       target: 'connectionsController',
       connectedAccount
+    }, '*');
+
+    return;
+  }
+
+  if (type == 'CHECK_ADDRESS' && target == 'contentScript') {
+    window.postMessage({
+      type: 'CHECK_ADDRESS',
+      target: 'connectionsController',
+      isValidSYSAddress
     }, '*');
 
     return;

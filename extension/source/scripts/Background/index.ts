@@ -278,6 +278,16 @@ browser.runtime.onInstalled.addListener(async () => {
         });
       }
 
+      if (type == 'CHECK_ADDRESS' && target == 'background') {
+        const isValidSYSAddress = window.controller.wallet.account.isValidSYSAddress(request.address, store.getState().wallet.activeNetwork);
+
+        browser.tabs.sendMessage(tabId, {
+          type: 'CHECK_ADDRESS',
+          target: 'contentScript',
+          isValidSYSAddress
+        });
+      }
+
       if (type == 'SEND_TOKEN' && target == 'background') {
         const {
           fromConnectedAccount,
