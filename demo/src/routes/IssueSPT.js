@@ -1,13 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 
 export default function IssueSPT() {
+  const [assetGuid, setAssetGuid] = useState("");
+  const [amount, setAmount] = useState(0);
+  const [tokens, setTokens] = useState([]);
   const controller = useSelector((state) => state.controller);
   const { connectedAccountAddress } = useSelector(
     (state) => state.connectedAccountData
   );
-  const [assetGuid, setAssetGuid] = useState("");
-  const [amount, setAmount] = useState(0);
+
+  useEffect(() => {
+    controller &&
+      controller.getUserMintedTokens().then((data) => {
+        data && setTokens(data);
+      });
+  }, []);
 
   const handleIssueSPT = async (event) => {
     event.preventDefault();
@@ -53,18 +61,18 @@ export default function IssueSPT() {
           <div className="form-line">
             <div className="form-group col-100">
               <label htmlFor="token">Standard Token</label>
-              <input
+              <select
                 onChange={handleInputChange(setAssetGuid)}
-                type="text"
                 className="form-control"
                 id="token"
-              />
-
-              {/* <select className="form-control" id="token">
-                <option>1</option>
-                <option>2</option>
-                <option>3</option>
-              </select> */}
+              >
+                <option></option>
+                {tokens.map((token) => (
+                  <option value={token.assetGuid} key={token.assetGuid}>
+                    {token.assetGuid} - {token.symbol}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
