@@ -125,7 +125,6 @@ window.addEventListener('message', (event) => {
   }
 
   if (type == "CONNECT_WALLET" && target == 'contentScript') {
-    console.log('event data connect', event.data)
     browser.runtime.sendMessage({
       type: 'CONNECT_WALLET',
       target: 'background'
@@ -137,15 +136,6 @@ window.addEventListener('message', (event) => {
   if (type == 'SEND_STATE_TO_PAGE' && target == 'contentScript') {
     browser.runtime.sendMessage({
       type: 'SEND_STATE_TO_PAGE',
-      target: 'background'
-    });
-
-    return;
-  }
-
-  if (type == 'CHECK_CONNECTION' && target == 'contentScript') {
-    browser.runtime.sendMessage({
-      type: 'CHECK_CONNECTION',
       target: 'background'
     });
 
@@ -227,8 +217,6 @@ window.addEventListener('message', (event) => {
       assetGuid
     } = event.data;
 
-    console.log('event data mint spt', event.data)
-
     browser.runtime.sendMessage({
       type: 'ISSUE_SPT',
       target: 'background',
@@ -301,7 +289,6 @@ window.addEventListener('message', (event) => {
   }
 
   if (type == 'CREATE_COLLECTION' && target == 'contentScript') {
-    // get data from event.data (the same as 'request' for browser.runtime) - message sent by connectionsController
     const {
       collectionName,
       description,
@@ -315,9 +302,6 @@ window.addEventListener('message', (event) => {
       attribute3
     } = event.data;
 
-    console.log('[contentScript]: state and message event details', event.data, event)
-
-    // send message with the data to background
     browser.runtime.sendMessage({
       type: 'CREATE_COLLECTION',
       target: 'background',
@@ -335,14 +319,9 @@ window.addEventListener('message', (event) => {
 
     return;
   }
-  if (type == 'GET_USERMINTEDTOKENS' && target == 'contentScript') {
-    // get data from event.data (the same as 'request' for browser.runtime) - message sent by connectionsController
-
-    console.log('[contentScript]: state and message event details', event.data, event)
-
-    // send message with the data to background
+  if (type == 'GET_USER_MINTED_TOKENS' && target == 'contentScript') {
     browser.runtime.sendMessage({
-      type: 'GET_USERMINTEDTOKENS',
+      type: 'GET_USER_MINTED_TOKENS',
       target: 'background',
     });
 
@@ -365,7 +344,6 @@ browser.runtime.onMessage.addListener((request) => {
   } = request;
 
   if (type == 'DATA_FOR_SPT' && target == 'contentScript') {
-    console.log('data for spt', request)
     window.postMessage({
       type: 'DATA_FOR_SPT',
       target: 'createComponent',
@@ -387,16 +365,6 @@ browser.runtime.onMessage.addListener((request) => {
   if (type == 'SEND_STATE_TO_PAGE' && target == 'contentScript') {
     window.postMessage({
       type: 'SEND_STATE_TO_PAGE',
-      target: 'connectionsController',
-      state
-    }, '*');
-
-    return;
-  }
-
-  if (type == 'CHECK_CONNECTION' && target == 'contentScript') {
-    window.postMessage({
-      type: 'CHECK_CONNECTION',
       target: 'connectionsController',
       state
     }, '*');
@@ -451,16 +419,12 @@ browser.runtime.onMessage.addListener((request) => {
       connected
     }, '*');
 
-    console.log('wallet updated')
-
     return Promise.resolve({ response: "wallet updated response from content script" });
   }
 
-  if (type == 'GET_USERMINTEDTOKENS' && target == 'contentScript') {
-    console.log('user tokens', userTokens);
-
+  if (type == 'GET_USER_MINTED_TOKENS' && target == 'contentScript') {
     window.postMessage({
-      type: 'GET_USERMINTEDTOKENS',
+      type: 'GET_USER_MINTED_TOKENS',
       target: 'connectionsController',
       userTokens,
     }, '*');

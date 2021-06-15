@@ -148,12 +148,12 @@ const ConnectionsController = (): IConnectionsController => {
 
   const getUserMintedTokens = async () => {
     return await sendMessage({
-      type: 'GET_USERMINTEDTOKENS',
+      type: 'GET_USER_MINTED_TOKENS',
       target: 'connectionsController',
       freeze: true,
       eventResult: 'userTokens'
     }, {
-      type: 'GET_USERMINTEDTOKENS',
+      type: 'GET_USER_MINTED_TOKENS',
       target: 'contentScript',
     });
   }

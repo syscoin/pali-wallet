@@ -116,7 +116,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
         fee,
         token: null,
         isToken: false,
-        rbf: !checked,
+        rbf: true,
       });
     }
     history.push('/send/confirm');
@@ -313,6 +313,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 </div>
 
                 <Switch
+                  disabled={!selectedAsset}
                   offColor="#333f52"
                   height={20}
                   width={60}

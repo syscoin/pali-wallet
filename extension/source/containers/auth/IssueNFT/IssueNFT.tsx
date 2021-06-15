@@ -222,7 +222,7 @@ const IssueNFT = () => {
             </Layout>
           ) : (
             <div>
-              <Layout title="Mint token" showLogo>
+              <Layout title="Issue NFT" showLogo>
                 <div className={styles.wrapper}>
                   <label htmlFor="fee">Fee</label>
 
