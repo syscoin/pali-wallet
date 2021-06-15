@@ -1,4 +1,31 @@
+import { useState } from "react";
+import { useSelector } from "react-redux";
+
 export default function IssueSPT() {
+  const controller = useSelector((state) => state.controller);
+  const { connectedAccountAddress } = useSelector(
+    (state) => state.connectedAccountData
+  );
+  const [assetGuid, setAssetGuid] = useState("");
+  const [amount, setAmount] = useState(0);
+
+  const handleIssueSPT = async (event) => {
+    event.preventDefault();
+
+    controller &&
+      (await controller.handleIssueSPT(
+        amount,
+        connectedAccountAddress,
+        assetGuid
+      ));
+  };
+
+  const handleInputChange = (setState) => {
+    return (event) => {
+      setState(event.target.value);
+    };
+  };
+
   return (
     <section>
       <div className="inner">
@@ -18,7 +45,7 @@ export default function IssueSPT() {
           Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
         </p>
 
-        <form onSubmit={() => {}}>
+        <form onSubmit={handleIssueSPT}>
           <div className="row">
             <div className="spacer col-100"></div>
           </div>
@@ -26,11 +53,18 @@ export default function IssueSPT() {
           <div className="form-line">
             <div className="form-group col-100">
               <label htmlFor="token">Standard Token</label>
-              <select className="form-control" id="token">
+              <input
+                onChange={handleInputChange(setAssetGuid)}
+                type="text"
+                className="form-control"
+                id="token"
+              />
+
+              {/* <select className="form-control" id="token">
                 <option>1</option>
                 <option>2</option>
                 <option>3</option>
-              </select>
+              </select> */}
             </div>
           </div>
 
@@ -40,7 +74,12 @@ export default function IssueSPT() {
                 Quantity to Issue{" "}
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
-              <input type="number" className="form-control" id="quantity" />
+              <input
+                onChange={handleInputChange(setAmount)}
+                type="number"
+                className="form-control"
+                id="quantity"
+              />
               <p className="help-block">
                 Ceiling: Max Supply
                 <br />
