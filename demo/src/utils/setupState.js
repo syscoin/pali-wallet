@@ -10,6 +10,7 @@ export default async function setupState(store) {
 
   if (window.ConnectionsController) {
     const controller = window.ConnectionsController;
+    const holdingsData = await controller.getHoldingsData();
 
     const connectedAccount =
       (await controller.getConnectedAccount()) || undefined;
@@ -24,7 +25,7 @@ export default async function setupState(store) {
       store.dispatch(
         updateConnectedAccountData({
           balance: connectedAccount.balance,
-          connectedAccount,
+          connectedAccount: { ...connectedAccount, assets: holdingsData },
           connectedAccountAddress: connectedAccount.address.main,
         })
       );
