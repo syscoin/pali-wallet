@@ -611,7 +611,8 @@ const AccountController = (actions: {
       rbf,
       maxsupply,
       fee,
-      notaryAddress
+      notaryAddress,
+      payoutAddress,
     } = item;
 
     const newMaxSupply = maxsupply * 1e8;
@@ -621,7 +622,7 @@ const AccountController = (actions: {
       symbol,
       maxsupply: new sys.utils.BN(newMaxSupply),
       description,
-      updatecapabilityflags: capabilityflags,
+      updatecapabilityflags: capabilityflags || 127,
       notarydetails,
       auxfeedetails,
       notarykeyid: Buffer.from('', 'hex')
@@ -629,13 +630,44 @@ const AccountController = (actions: {
 
     if (notaryAddress) {
       const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
-      address: notaryAddress,
-      network: sysjs.HDSigner.network
+        address: notaryAddress,
+        network: sysjs.HDSigner.network
       });
 
       _assetOpts = {
         ..._assetOpts,
         notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
+      }
+    }
+
+    if (notarydetails) {
+      _assetOpts = {
+        ..._assetOpts,
+        notarydetails
+      }
+    }
+
+    if (payoutAddress) {
+      const payment = sys.utils.bitcoinjs.payments.p2wpkh({
+        address: payoutAddress,
+        network: sysjs.HDSigner.network
+      });
+      
+      const auxFeeKeyID = Buffer.from(payment.hash.toString('hex'), 'hex');
+
+      _assetOpts = {
+        ..._assetOpts,
+        auxfeedetails: {
+          ..._assetOpts.auxfeedetails,
+          auxfeekeyid: auxFeeKeyID
+        }
+      }
+    }
+
+    if (auxfeedetails) {
+      _assetOpts = {
+        ..._assetOpts,
+        auxfeedetails
       }
     }
 
@@ -1107,10 +1139,17 @@ const AccountController = (actions: {
     let allTokens: MintedToken[] = [];
     let res;
 
-    if (account.isTrezorWallet) {
+    const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
+      return account.connectedTo.find((url: any) => {
+        return url == new URL(store.getState().wallet.currentURL).host;
+      });
+    });
+
+    console.log('connected', connectedAccount)
+
+    if (connectedAccount.isTrezorWallet) {
       res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=nonzero&details=txs', true);
-    }
-    else {
+    } else {
       res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
     }
 
@@ -1134,49 +1173,166 @@ const AccountController = (actions: {
     //   return mintedTokens;
     // }
     // return;
+
+    // if (res.transactions) {
+    //   console.log('transactions', res.transactions)
+
+    //   res.transactions.map(async (transaction: any) => {
+
+    //     if (transaction.tokenType === 'SPTAssetActivate') {
+    //       for (let tokens in transaction.tokenTransfers) {
+    //         const assetData = await getDataAsset(transaction.tokenTransfers[tokens].token);
+
+    //         console.log({
+    //           assetGuid: transaction.tokenTransfers[tokens].token,
+    //           symbol: atob(transaction.tokenTransfers[tokens].symbol),
+    //           maxSupply: Number(assetData.maxSupply),
+    //           totalSupply: Number(assetData.totalSupply)
+    //         })
+
+    //         allTokens.push({
+    //           assetGuid: transaction.tokenTransfers[tokens].token,
+    //           symbol: atob(transaction.tokenTransfers[tokens].symbol),
+    //           maxSupply: Number(assetData.maxSupply),
+    //           totalSupply: Number(assetData.totalSupply)
+    //         })
+
+    //         console.log('alltokens', allTokens)
+    //       }
+    //     }
+    //   })
+
+    //   allTokens.filter(function (el: any) {
+    //     if (el != null) {
+    //       let tokenExists: boolean = false
+    //       mintedTokens.forEach((element: any) => {
+    //         if (element.assetGuid === el.assetGuid) {
+    //           tokenExists = true
+    //         }
+    //       })
+    //       if (!tokenExists) {
+    //         console.log('alltokens element', el)
+    //         mintedTokens.push(el)
+    //       }
+    //     }
+    //   })
+
+    //   console.log('minted tokens', mintedTokens)
+    //   return mintedTokens
+    // }
+    // return;
+
+    // if (res.transactions) {
+    //   res.transactions.map(async (transaction: any) => {
+    //     if (transaction.tokenType === 'SPTAssetActivate') {
+    //       for (let tokens in transaction.tokenTransfers) {
+    //         // console.log(transaction.tokenTransfers[tokens].token)
+    //         // console.log(tokens, transaction.tokenTransfers)
+    //         // allTokens.push({
+    //         //   assetGuid: transaction.tokenTransfers[tokens].token,
+    //         //   symbol: atob(transaction.tokenTransfers[tokens].symbol)
+    //         //   // transaction: transaction
+    //         // })
+
+    //         getDataAsset(transaction.tokenTransfers[tokens].token).then((response) => {
+    //           console.log('response', response)
+
+              // allTokens.push({
+              //   assetGuid: transaction.tokenTransfers[tokens].token,
+              //   symbol: atob(transaction.tokenTransfers[tokens].symbol),
+              //   maxSupply: Number(response.maxSupply),
+              //   totalSupply: Number(response.totalSupply)
+              // })
+    //         });
+
+    //         // console.log('data asset', assetData, assetData.maxSupply)
+
+    //         // console.log({
+    //         //   assetGuid: transaction.tokenTransfers[tokens].token,
+    //         //   symbol: atob(transaction.tokenTransfers[tokens].symbol),
+    //         //   maxSupply: Number(assetData.maxSupply),
+    //         //   totalSupply: Number(assetData.totalSupply)
+    //         // })
+
+    //         // allTokens.push({
+    //         //   assetGuid: transaction.tokenTransfers[tokens].token,
+    //         //   symbol: atob(transaction.tokenTransfers[tokens].symbol),
+    //         //   maxSupply: Number(assetData.maxSupply),
+    //         //   totalSupply: Number(assetData.totalSupply)
+    //         // })
+    //       }
+
+          // allTokens.filter(function (el: any) {
+          //   if (el != null) {
+          //     let tokenExists: boolean = false
+          //     mintedTokens.forEach((element: any) => {
+          //       if (element.assetGuid === el.assetGuid) {
+          //         tokenExists = true
+          //       }
+          //     })
+          //     if (!tokenExists) {
+          //       mintedTokens.push(el)
+          //     }
+          //   }
+          // })
+
+    //       return mintedTokens
+    //     }
+    //   })
+
+    //   return mintedTokens
+
+    // }
+    // return;
+
+
     if (res.transactions) {
       res.transactions.map(async (transaction: any) => {
         if (transaction.tokenType === 'SPTAssetActivate') {
           for (let tokens in transaction.tokenTransfers) {
-            // console.log(transaction.tokenTransfers[tokens].token)
+            const response = await getDataAsset(transaction.tokenTransfers[tokens].token);
+
             allTokens.push({
               assetGuid: transaction.tokenTransfers[tokens].token,
-              symbol: atob(transaction.tokenTransfers[tokens].symbol)
-              // transaction: transaction
+              symbol: atob(transaction.tokenTransfers[tokens].symbol),
+              maxSupply: Number(response.maxSupply),
+              totalSupply: Number(response.totalSupply)
             })
           }
-        }
-      })
 
-      allTokens.filter(function (el: any) {
-        if (el != null) {
-          let tokenExists: boolean = false
-          mintedTokens.forEach((element: any) => {
-            if (element.assetGuid === el.assetGuid) {
-              tokenExists = true
+          allTokens.filter(function (el: any) {
+            if (el != null) {
+              let tokenExists: boolean = false
+              mintedTokens.forEach((element: any) => {
+                if (element.assetGuid === el.assetGuid) {
+                  tokenExists = true
+                }
+              })
+              if (!tokenExists) {
+                mintedTokens.push(el)
+              }
             }
           })
-          if (!tokenExists) {
-            mintedTokens.push(el)
-          }
+
+          console.log('minted tokens', mintedTokens)
+      
+          return mintedTokens;
         }
       })
-      return mintedTokens
     }
-    return;
   }
 
   const getHoldingsData = async () => {
     let assetsData: any = [];
 
-    const connectedAccountAssetsData = store.getState().wallet.accounts.filter((account: IAccountState) => {
+    const connectedAccountAssetsData = store.getState().wallet.accounts.find((account: IAccountState) => {
       return account.connectedTo.find((url: any) => {
         return url == new URL(store.getState().wallet.currentURL).host;
       });
     });
 
-    if (connectedAccountAssetsData[0]) {
-      connectedAccountAssetsData[0].assets.map(async (asset: any) => {
+    if (connectedAccountAssetsData) {
+      connectedAccountAssetsData.assets.map(async (asset: any) => {
         const {
           balance,
           type,
@@ -1194,7 +1350,7 @@ const AccountController = (actions: {
           symbol,
           assetGuid,
           baseAssetID: assetId,
-          nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : sys.utils.createAssetID(null, assetGuid)
+          nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null
         }
 
         if (assetsData.indexOf(assetData) === -1) {
@@ -1236,6 +1392,10 @@ const AccountController = (actions: {
     return await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
   }
 
+  const getDataAsset = async (assetGuid: any) => {
+    return await sys.utils.fetchBackendAsset(sysjs.blockbookURL, assetGuid);
+  }
+
   const getSysExplorerSearch = () => {
     return sysjs.blockbookURL;
   }
@@ -1252,7 +1412,8 @@ const AccountController = (actions: {
       auxfeedetails,
       notaryAddress
     } = item;
-    const feeRate = new sys.utils.BN(fee * 1e8);
+    const feeRate = new sys.utils.BN(10);
+    console.log('fee', fee, fee * 1e8)
 
     const txOpts = {
       rbf: rbf || true,
@@ -1265,48 +1426,48 @@ const AccountController = (actions: {
 
 
     let assetOpts = {
-      updatecapabilityflags: capabilityflags || 127,
-      contract: Buffer.from(contract || '', 'hex') || null,
-      description,
-      notarydetails,
-      auxfeedetails,
-      notarykeyid: Buffer.from('', 'hex')
+      // updatecapabilityflags: capabilityflags || 127,
+      // contract: Buffer.from(contract || '', 'hex') || null,
+      description: 'lasldskd',
+      // notarydetails,
+      // auxfeedetails,
+      // notarykeyid: Buffer.from('', 'hex')
     };
 
-    if (auxfeedetails) {
-      const scalarPct = 1000;
-      const keyPair = sysjs.HDSigner.createKeypair(0);
-      const payment = sys.utils.bitcoinjs.payments.p2wpkh({
-        pubkey: keyPair.publicKey,
-        network: sysjs.HDSigner.network
-      })
-      const auxfeekeyid = Buffer.from(payment.hash.toString('hex'), 'hex')
+    // if (auxfeedetails) {
+    //   const scalarPct = 1000;
+    //   const keyPair = sysjs.HDSigner.createKeypair(0);
+    //   const payment = sys.utils.bitcoinjs.payments.p2wpkh({
+    //     pubkey: keyPair.publicKey,
+    //     network: sysjs.HDSigner.network
+    //   })
+    //   const auxfeekeyid = Buffer.from(payment.hash.toString('hex'), 'hex')
 
-      assetOpts = {
-        ...assetOpts,
-        auxfeedetails: {
-          auxfees: [
-            {
-              bound: new sys.utils.BN(0),
-              percent: 1 * scalarPct
-            }
-          ],
-          auxfeekeyid
-        }
-      };
-    }
+    //   assetOpts = {
+    //     ...assetOpts,
+    //     auxfeedetails: {
+    //       auxfees: [
+    //         {
+    //           bound: new sys.utils.BN(0),
+    //           percent: 1 * scalarPct
+    //         }
+    //       ],
+    //       auxfeekeyid
+    //     }
+    //   };
+    // }
 
-    if (notaryAddress) {
-      const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
-      address: notaryAddress,
-      network: sysjs.HDSigner.network
-      });
+    // if (notaryAddress) {
+    //   const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
+    //   address: notaryAddress,
+    //   network: sysjs.HDSigner.network
+    //   });
 
-      assetOpts = {
-        ...assetOpts,
-        notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
-      }
-    }
+    //   assetOpts = {
+    //     ...assetOpts,
+    //     notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
+    //   }
+    // }
 
     console.log('asset opts update asset', assetOpts)
 
@@ -1326,7 +1487,7 @@ const AccountController = (actions: {
 
     const sysChangeAddress = null;
 
-    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
+    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, new sys.utils.BN(10));
 
     const txInfo = pendingTx.extractTransaction().getId();
     console.log('pendingTx', pendingTx)

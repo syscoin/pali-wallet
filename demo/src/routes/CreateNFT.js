@@ -1,18 +1,20 @@
 import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
+import { NFTStorage, File } from "nft.storage";
 
-import upload from "../utils/upload";
 import assetImg from "../images/asset.svg";
+import loaderImg from "../images/spinner.svg";
 import { token } from "../config";
 import { elementEventHandler } from "../utils/elementEventHandler";
 
 export default function CreateNFT() {
-  const [precision, setPrecision] = useState(8);
+  const [symbol, setSymbol] = useState("");
   const [maxSupply, setMaxSupply] = useState(1);
   const [description, setDescription] = useState("");
-  const [symbol, setSymbol] = useState("");
+  const [metadataDescription, setMetadataDescription] = useState("");
   const [receiver, setReceiver] = useState("");
   const [file, setFile] = useState();
+  const [isUploading, setIsUploading] = useState(false);
   const controller = useSelector((state) => state.controller);
   const { connectedAccountAddress } = useSelector(
     (state) => state.connectedAccountData
@@ -42,29 +44,27 @@ export default function CreateNFT() {
     };
   };
 
-  const handleInputFile = (setState) => {
-    return async (event) => {
-      const _file = event.target.files[0];
+  const handleInputFile = async (event) => {
+    const client = new NFTStorage({ token });
+    const _file = event.target.files[0];
 
-      setState(_file);
+    if (!["image/jpg", "image/png", "image/jpeg"].includes(_file.type)) {
+      //notify the user that the file type is not supported
 
-      const { value } = await upload(
-        "https://api.nft.storage/upload",
-        _file,
-        {
-          "Content-type": _file.type,
-          Authorization: `Bearer ${token}`,
-        },
-        (progressEvent) => {
-          const { loaded, total } = progressEvent;
-          const percentComplete = (loaded / total) * 100;
+      return;
+    }
 
-          console.log(`${Math.round(percentComplete)}%`);
-        }
-      );
+    setFile(_file);
+    setIsUploading(true);
 
-      setDescription(value.cid);
-    };
+    const metadata = await client.store({
+      name: symbol,
+      description,
+      image: new File([_file], _file.name, { type: _file.type }),
+    });
+
+    setIsUploading(false);
+    setMetadataDescription(metadata.url);
   };
 
   return (
@@ -113,7 +113,6 @@ export default function CreateNFT() {
               </label>
               <input
                 onChange={handleInputChange(setReceiver)}
-                value={receiver}
                 type="text"
                 className="form-control"
                 id="owneraddr"
@@ -160,13 +159,34 @@ export default function CreateNFT() {
             <div className="form-group col-33 col-md-50 col-sm-100">
               <div className="fileupload">
                 <label htmlFor="logo">Upload logo</label>
-                <input
-                  onChange={handleInputFile(setFile)}
-                  type="file"
-                  id="logo"
+                <input onChange={handleInputFile} type="file" id="logo" />
+                <img
+                  src={
+                    !isUploading
+                      ? file
+                        ? URL.createObjectURL(file)
+                        : assetImg
+                      : loaderImg
+                  }
                 />
-                <img src={file ? URL.createObjectURL(file) : assetImg} />
               </div>
+            </div>
+          </div>
+
+          <div className="form-line">
+            <div className="form-group col-67 col-md-50 col-sm-100">
+              <label htmlFor="owneraddr">
+                Metadata url{" "}
+                <i className="icon-info-circled" title="help goes here"></i>
+              </label>
+              <input
+                value={metadataDescription}
+                disabled
+                type="text"
+                className="form-control"
+                id="owneraddr"
+                placeholder=""
+              />
             </div>
           </div>
 

@@ -313,7 +313,8 @@ browser.runtime.onInstalled.addListener(async () => {
           capabilityflags,
           notarydetails,
           auxfeedetails,
-          notaryAddress
+          notaryAddress,
+          payoutAddress
         } = request;
 
         window.controller.wallet.account.setDataFromPageToCreateNewSPT({
@@ -325,7 +326,8 @@ browser.runtime.onInstalled.addListener(async () => {
           capabilityflags,
           notarydetails,
           auxfeedetails,
-          notaryAddress
+          notaryAddress,
+          payoutAddress
         });
 
         store.dispatch(createAsset(true));

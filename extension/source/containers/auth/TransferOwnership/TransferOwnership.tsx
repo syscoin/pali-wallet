@@ -47,9 +47,21 @@ const TransferOwnership = () => {
     let acc = accounts.find(element => element.id === activeAccountId)
 
     if ((acc ? acc.balance : -1) > 0) {
-      controller.wallet.account.confirmTransferOwnership();
-      setConfirmed(true);
-      setLoading(false);
+      controller.wallet.account.confirmTransferOwnership().then((error: any) => {
+        if (error) {
+          alert.removeAll();
+          alert.error('Can\'t transfer token. Try again later.');
+
+          setTimeout(() => {
+            handleCancelTransactionOnSite();
+          }, 4000);
+            
+          return;
+        }
+
+        setConfirmed(true);
+        setLoading(false);
+      });
     }
   }
 

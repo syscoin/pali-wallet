@@ -99,7 +99,7 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, description: string, receiver: string, capabilityflags?: number, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notaryAddress?: string) => {
+  const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, description: string, receiver: string, capabilityflags?: number, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notaryAddress?: string, payoutAddress?: string) => {
     return await sendMessage({
       type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
       target: 'connectionsController',
@@ -116,7 +116,8 @@ const ConnectionsController = (): IConnectionsController => {
       capabilityflags,
       notarydetails,
       auxfeedetails,
-      notaryAddress
+      notaryAddress,
+      payoutAddress
     });
   }
 

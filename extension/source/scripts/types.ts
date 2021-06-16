@@ -98,6 +98,8 @@ export type PendingTx = {
 export type MintedToken = {
   assetGuid: string;
   symbol: string;
+  maxSupply: number,
+  totalSupply: number
 }
 
 export type UpdateToken = {
