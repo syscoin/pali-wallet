@@ -261,13 +261,12 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'GET_HOLDINGS_DATA' && target == 'background') {
         const holdingsData = await window.controller.wallet.account.getHoldingsData();
 
-        console.log('holdings data', holdingsData)
-
         browser.tabs.sendMessage(tabId, {
           type: 'GET_HOLDINGS_DATA',
           target: 'contentScript',
           holdingsData
         });
+
       }
 
       if (type == 'SEND_TOKEN' && target == 'background') {

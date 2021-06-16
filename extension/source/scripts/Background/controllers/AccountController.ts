@@ -1175,8 +1175,6 @@ const AccountController = (actions: {
       });
     });
 
-    console.log('connected', connectedAccountAssetsData, connectedAccountAssetsData[0], connectedAccountAssetsData[0].assets)
-
     if (connectedAccountAssetsData[0]) {
       connectedAccountAssetsData[0].assets.map(async (asset: any) => {
         const {
@@ -1196,22 +1194,18 @@ const AccountController = (actions: {
           symbol,
           assetGuid,
           baseAssetID: assetId,
-          nftAssetID: isNFT(assetGuid) ? await sys.utils.createAssetID(assetId, assetGuid) : await sys.utils.createAssetID(null, assetGuid)
+          nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : sys.utils.createAssetID(null, assetGuid)
         }
 
         if (assetsData.indexOf(assetData) === -1) {
           assetsData.push(assetData);
         }
+        
+        return assetsData;
       });
-
-      console.log('assets data', assetsData)
-
-      return assetsData;
     }
 
-    console.log('no account connected to this site :(');
-
-    return;
+    return assetsData;
   }
 
   const createCollection = (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string) => {
