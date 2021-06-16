@@ -1175,6 +1175,8 @@ const AccountController = (actions: {
       });
     });
 
+    console.log('connected', connectedAccountAssetsData, connectedAccountAssetsData[0], connectedAccountAssetsData[0].assets)
+
     if (connectedAccountAssetsData[0]) {
       connectedAccountAssetsData[0].assets.map(async (asset: any) => {
         const {
@@ -1202,9 +1204,9 @@ const AccountController = (actions: {
         }
       });
 
-      return {
-        assetsData
-      };
+      console.log('assets data', assetsData)
+
+      return assetsData;
     }
 
     console.log('no account connected to this site :(');

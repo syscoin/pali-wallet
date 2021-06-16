@@ -161,6 +161,16 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (type == 'GET_HOLDINGS_DATA' && target == 'contentScript') {
+    browser.runtime.sendMessage({
+      type: 'GET_HOLDINGS_DATA',
+      target: 'background',
+    });
+
+    return;
+  }
+
+
   if (type == 'SEND_TOKEN' && target == 'contentScript') {
     const {
       fromConnectedAccount,
@@ -340,7 +350,8 @@ browser.runtime.onMessage.addListener((request) => {
     createCollection,
     userTokens,
     connectionConfirmed,
-    isValidSYSAddress
+    isValidSYSAddress,
+    holdingsData
   } = request;
 
   if (type == 'DATA_FOR_SPT' && target == 'contentScript') {
@@ -387,6 +398,17 @@ browser.runtime.onMessage.addListener((request) => {
       type: 'CHECK_ADDRESS',
       target: 'connectionsController',
       isValidSYSAddress
+    }, '*');
+
+    return;
+  }
+
+
+  if (type == 'GET_HOLDINGS_DATA' && target == 'contentScript') {
+    window.postMessage({
+      type: 'GET_HOLDINGS_DATA',
+      target: 'connectionsController',
+      holdingsData
     }, '*');
 
     return;

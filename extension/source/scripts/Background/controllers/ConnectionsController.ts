@@ -16,6 +16,7 @@ export interface IConnectionsController {
   handleUpdateAsset: (assetGuid: string, contract?: string, capabilityflags?: number | 127, description?: string, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notaryAddress?: string) => any;
   handleTransferOwnership: (assetGuid: string, newOwner: string) => any;
   isValidSYSAddress: (address: string) => any;
+  getHoldingsData: () => any;
 }
 
 const isNFT = (guid: number) => {
@@ -244,6 +245,18 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
+  const getHoldingsData = async () => {
+    return await sendMessage({
+      type: 'GET_HOLDINGS_DATA',
+      target: 'connectionsController',
+      freeze: true,
+      eventResult: 'holdingsData'
+    }, {
+      type: 'GET_HOLDINGS_DATA',
+      target: 'contentScript',
+    });
+  }
+
   return {
     isNFT,
     connectWallet,
@@ -258,7 +271,8 @@ const ConnectionsController = (): IConnectionsController => {
     handleCreateCollection,
     handleUpdateAsset,
     handleTransferOwnership,
-    isValidSYSAddress
+    isValidSYSAddress,
+    getHoldingsData
   }
 };
 
