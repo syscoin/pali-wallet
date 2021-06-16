@@ -5,6 +5,7 @@ import asset2 from "../images/asset2.svg";
 
 export default function Dashboard() {
   const [assets, setAssets] = useState([]);
+  const { isNFT } = useSelector((state) => state.controller);
   const { balance, connectedAccount } = useSelector(
     (state) => state.connectedAccountData
   );
@@ -48,7 +49,9 @@ export default function Dashboard() {
               </div>
               <div className="symbol">{asset.symbol}</div>
               <div className="asset-id">Asset ID: {asset.assetGuid}</div>
-              {/* <div className="nft-id">NFT ID: 4324234234242</div> */}
+              {isNFT(asset.assetGuid) && (
+                <div className="nft-id">NFT ID: {asset.nftAssetID}</div>
+              )}
             </div>
           ))}
         </div>
