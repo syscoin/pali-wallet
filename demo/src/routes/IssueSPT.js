@@ -15,6 +15,8 @@ export default function IssueSPT() {
       controller.getUserMintedTokens().then((data) => {
         data && setTokens(data);
       });
+
+    return () => setTokens([]);
   }, []);
 
   const handleIssueSPT = async (event) => {
