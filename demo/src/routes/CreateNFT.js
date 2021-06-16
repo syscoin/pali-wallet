@@ -48,6 +48,8 @@ export default function CreateNFT() {
     const client = new NFTStorage({ token });
     const _file = event.target.files[0];
 
+    if (!_file) return;
+
     if (!["image/jpg", "image/png", "image/jpeg"].includes(_file.type)) {
       //notify the user that the file type is not supported
 
