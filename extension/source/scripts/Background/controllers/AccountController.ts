@@ -1107,10 +1107,17 @@ const AccountController = (actions: {
     let allTokens: MintedToken[] = [];
     let res;
 
-    if (account.isTrezorWallet) {
+    const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
+      return account.connectedTo.find((url: any) => {
+        return url == new URL(store.getState().wallet.currentURL).host;
+      });
+    });
+
+    console.log('connected', connectedAccount)
+
+    if (connectedAccount.isTrezorWallet) {
       res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=nonzero&details=txs', true);
-    }
-    else {
+    } else {
       res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
     }
 
@@ -1134,11 +1141,13 @@ const AccountController = (actions: {
     //   return mintedTokens;
     // }
     // return;
+
     if (res.transactions) {
       res.transactions.map(async (transaction: any) => {
         if (transaction.tokenType === 'SPTAssetActivate') {
           for (let tokens in transaction.tokenTransfers) {
             // console.log(transaction.tokenTransfers[tokens].token)
+            console.log(tokens, transaction.tokenTransfers)
             allTokens.push({
               assetGuid: transaction.tokenTransfers[tokens].token,
               symbol: atob(transaction.tokenTransfers[tokens].symbol)
@@ -1169,14 +1178,14 @@ const AccountController = (actions: {
   const getHoldingsData = async () => {
     let assetsData: any = [];
 
-    const connectedAccountAssetsData = store.getState().wallet.accounts.filter((account: IAccountState) => {
+    const connectedAccountAssetsData = store.getState().wallet.accounts.find((account: IAccountState) => {
       return account.connectedTo.find((url: any) => {
         return url == new URL(store.getState().wallet.currentURL).host;
       });
     });
 
-    if (connectedAccountAssetsData[0]) {
-      connectedAccountAssetsData[0].assets.map(async (asset: any) => {
+    if (connectedAccountAssetsData) {
+      connectedAccountAssetsData.assets.map(async (asset: any) => {
         const {
           balance,
           type,
@@ -1252,7 +1261,8 @@ const AccountController = (actions: {
       auxfeedetails,
       notaryAddress
     } = item;
-    const feeRate = new sys.utils.BN(fee * 1e8);
+    const feeRate = new sys.utils.BN(10);
+    console.log('fee', fee, fee * 1e8)
 
     const txOpts = {
       rbf: rbf || true,
@@ -1265,48 +1275,48 @@ const AccountController = (actions: {
 
 
     let assetOpts = {
-      updatecapabilityflags: capabilityflags || 127,
-      contract: Buffer.from(contract || '', 'hex') || null,
-      description,
-      notarydetails,
-      auxfeedetails,
-      notarykeyid: Buffer.from('', 'hex')
+      // updatecapabilityflags: capabilityflags || 127,
+      // contract: Buffer.from(contract || '', 'hex') || null,
+      description: 'lasldskd',
+      // notarydetails,
+      // auxfeedetails,
+      // notarykeyid: Buffer.from('', 'hex')
     };
 
-    if (auxfeedetails) {
-      const scalarPct = 1000;
-      const keyPair = sysjs.HDSigner.createKeypair(0);
-      const payment = sys.utils.bitcoinjs.payments.p2wpkh({
-        pubkey: keyPair.publicKey,
-        network: sysjs.HDSigner.network
-      })
-      const auxfeekeyid = Buffer.from(payment.hash.toString('hex'), 'hex')
+    // if (auxfeedetails) {
+    //   const scalarPct = 1000;
+    //   const keyPair = sysjs.HDSigner.createKeypair(0);
+    //   const payment = sys.utils.bitcoinjs.payments.p2wpkh({
+    //     pubkey: keyPair.publicKey,
+    //     network: sysjs.HDSigner.network
+    //   })
+    //   const auxfeekeyid = Buffer.from(payment.hash.toString('hex'), 'hex')
 
-      assetOpts = {
-        ...assetOpts,
-        auxfeedetails: {
-          auxfees: [
-            {
-              bound: new sys.utils.BN(0),
-              percent: 1 * scalarPct
-            }
-          ],
-          auxfeekeyid
-        }
-      };
-    }
+    //   assetOpts = {
+    //     ...assetOpts,
+    //     auxfeedetails: {
+    //       auxfees: [
+    //         {
+    //           bound: new sys.utils.BN(0),
+    //           percent: 1 * scalarPct
+    //         }
+    //       ],
+    //       auxfeekeyid
+    //     }
+    //   };
+    // }
 
-    if (notaryAddress) {
-      const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
-      address: notaryAddress,
-      network: sysjs.HDSigner.network
-      });
+    // if (notaryAddress) {
+    //   const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
+    //   address: notaryAddress,
+    //   network: sysjs.HDSigner.network
+    //   });
 
-      assetOpts = {
-        ...assetOpts,
-        notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
-      }
-    }
+    //   assetOpts = {
+    //     ...assetOpts,
+    //     notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
+    //   }
+    // }
 
     console.log('asset opts update asset', assetOpts)
 
@@ -1326,7 +1336,7 @@ const AccountController = (actions: {
 
     const sysChangeAddress = null;
 
-    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
+    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, new sys.utils.BN(10));
 
     const txInfo = pendingTx.extractTransaction().getId();
     console.log('pendingTx', pendingTx)
