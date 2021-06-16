@@ -617,13 +617,6 @@ const AccountController = (actions: {
 
     const newMaxSupply = maxsupply * 1e8;
 
-    const keyPair = sysjs.HDSigner.createKeypair(0);
-    const payment = sys.utils.bitcoinjs.payments.p2wpkh({
-      pubkey: keyPair.publicKey,
-      network: sysjs.HDSigner.network
-    });
-    const auxFeeKeyID = Buffer.from(payment.hash.toString('hex'), 'hex');
-
     let _assetOpts = {
       precision,
       symbol,
@@ -637,8 +630,8 @@ const AccountController = (actions: {
 
     if (notaryAddress) {
       const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
-      address: notaryAddress,
-      network: sysjs.HDSigner.network
+        address: notaryAddress,
+        network: sysjs.HDSigner.network
       });
 
       _assetOpts = {
@@ -654,7 +647,14 @@ const AccountController = (actions: {
       }
     }
 
-    if (auxfeedetails) {
+    if (payoutAddress) {
+      const payment = sys.utils.bitcoinjs.payments.p2wpkh({
+        address: payoutAddress,
+        network: sysjs.HDSigner.network
+      });
+      
+      const auxFeeKeyID = Buffer.from(payment.hash.toString('hex'), 'hex');
+
       _assetOpts = {
         ..._assetOpts,
         auxfeedetails: {
@@ -664,8 +664,11 @@ const AccountController = (actions: {
       }
     }
 
-    if (payoutAddress) {
-      console.log('payout address', payoutAddress)
+    if (auxfeedetails) {
+      _assetOpts = {
+        ..._assetOpts,
+        auxfeedetails
+      }
     }
 
     console.log('new spt asset opts', item, _assetOpts)
