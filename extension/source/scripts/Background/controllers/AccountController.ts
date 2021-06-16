@@ -601,22 +601,53 @@ const AccountController = (actions: {
   }
 
   const confirmSPTCreation = async (item: any) => {
-    const newMaxSupply = item.maxsupply * 1e8;
+    const {
+      capabilityflags,
+      notarydetails,
+      auxfeedetails,
+      precision,
+      symbol,
+      description,
+      rbf,
+      maxsupply,
+      fee,
+      notaryAddress
+    } = item;
 
-    const _assetOpts = {
-      precision: item.precision,
-      symbol: item.symbol,
+    const newMaxSupply = maxsupply * 1e8;
+
+    let _assetOpts = {
+      precision,
+      symbol,
       maxsupply: new sys.utils.BN(newMaxSupply),
-      description: item.description
+      description,
+      updatecapabilityflags: capabilityflags,
+      notarydetails,
+      auxfeedetails,
+      notarykeyid: Buffer.from('', 'hex')
     };
 
-    const txOpts = { rbf: item.rbf };
+    if (notaryAddress) {
+      const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
+      address: notaryAddress,
+      network: sysjs.HDSigner.network
+      });
+
+      _assetOpts = {
+        ..._assetOpts,
+        notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
+      }
+    }
+
+    console.log('new spt asset opts', item, _assetOpts)
+
+    const txOpts = { rbf };
 
     if (account.isTrezorWallet) {
       throw new Error("Trezor don't support burning of coins");
     }
 
-    const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, null, new sys.utils.BN(item.fee * 1e8));
+    const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, null, new sys.utils.BN(fee * 1e8));
 
     const txInfo = pendingTx.extractTransaction().getId();
 
@@ -626,7 +657,6 @@ const AccountController = (actions: {
 
     watchMemPool();
   }
-
 
   const handleTransactions = async (item: any, executeTransaction: any) => {
     if (!sysjs) {
@@ -670,7 +700,7 @@ const AccountController = (actions: {
         changeAddress: assetChangeAddress,
         outputs: [{
           value: new sys.utils.BN(item.amount * 1e8),
-          address: item.receiver
+          address: assetChangeAddress
         }]
       }]
     ]);
@@ -786,8 +816,8 @@ const AccountController = (actions: {
     const assetChangeAddress = null;
     let txInfo;
     const assetMap = new Map([
-      [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1000), address: item?.receiver }] }],
-      [NFTID, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1), address: item?.receiver }] }]
+      [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1000), address: assetChangeAddress }] }],
+      [NFTID, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1), address: assetChangeAddress }] }]
     ]);
 
     console.log('mint nft', item)
@@ -1145,6 +1175,8 @@ const AccountController = (actions: {
       });
     });
 
+    console.log('connected', connectedAccountAssetsData, connectedAccountAssetsData[0], connectedAccountAssetsData[0].assets)
+
     if (connectedAccountAssetsData[0]) {
       connectedAccountAssetsData[0].assets.map(async (asset: any) => {
         const {
@@ -1172,9 +1204,9 @@ const AccountController = (actions: {
         }
       });
 
-      return {
-        assetsData
-      };
+      console.log('assets data', assetsData)
+
+      return assetsData;
     }
 
     console.log('no account connected to this site :(');
@@ -1222,9 +1254,9 @@ const AccountController = (actions: {
       contract,
       description,
       rbf,
-      notarykeyid,
       notarydetails,
-      auxfeedetails
+      auxfeedetails,
+      notaryAddress
     } = item;
     const feeRate = new sys.utils.BN(fee * 1e8);
 
@@ -1237,14 +1269,50 @@ const AccountController = (actions: {
 
     console.log('data confirm update asset  item, feeRate, txOpts, assetGuid', item, feeRate, txOpts, assetGuid)
 
-    const assetOpts = {
+
+    let assetOpts = {
       updatecapabilityflags: capabilityflags || 127,
       contract: Buffer.from(contract || '', 'hex') || null,
-      description: description,
-      notarykeyid: notarykeyid || '',
-      notarydetails: notarydetails || null,
-      auxfeedetails: auxfeedetails || null,
+      description,
+      notarydetails,
+      auxfeedetails,
+      notarykeyid: Buffer.from('', 'hex')
     };
+
+    if (auxfeedetails) {
+      const scalarPct = 1000;
+      const keyPair = sysjs.HDSigner.createKeypair(0);
+      const payment = sys.utils.bitcoinjs.payments.p2wpkh({
+        pubkey: keyPair.publicKey,
+        network: sysjs.HDSigner.network
+      })
+      const auxfeekeyid = Buffer.from(payment.hash.toString('hex'), 'hex')
+
+      assetOpts = {
+        ...assetOpts,
+        auxfeedetails: {
+          auxfees: [
+            {
+              bound: new sys.utils.BN(0),
+              percent: 1 * scalarPct
+            }
+          ],
+          auxfeekeyid
+        }
+      };
+    }
+
+    if (notaryAddress) {
+      const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
+      address: notaryAddress,
+      network: sysjs.HDSigner.network
+      });
+
+      assetOpts = {
+        ...assetOpts,
+        notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
+      }
+    }
 
     console.log('asset opts update asset', assetOpts)
 
@@ -1353,10 +1421,10 @@ const AccountController = (actions: {
           if (chunks[0] === bitcoinops.OP_RETURN) {
             _output.op_return_data = chunks[1].toString('hex');
           }
+        } else {
+          _output.script_type = "PAYTOWITNESS";
+          _output.address = output.address;
         }
-
-        _output.script_type = "PAYTOWITNESS";
-        _output.address = output.address;
 
         trezortx.outputs.push(_output);
       }

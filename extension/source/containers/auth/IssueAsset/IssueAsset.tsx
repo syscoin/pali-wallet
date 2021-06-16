@@ -54,13 +54,6 @@ const IssueAsset = () => {
           alert.removeAll();
           alert.error('Can\'t issue token. Try again later.');
 
-          if (mintSPT) {
-            if (!controller.wallet.account.isValidSYSAddress(String(mintSPT?.receiver), activeNetwork)) {
-              alert.removeAll();
-              alert.error('Recipient\'s address is not valid.');
-            }
-          }
-
           setTimeout(() => {
             handleCancelTransactionOnSite();
           }, 4000);
@@ -80,17 +73,6 @@ const IssueAsset = () => {
         return url === getHost(currentSenderURL);
       });
     }));
-
-    if (mintSPT) {
-      if (!controller.wallet.account.isValidSYSAddress(String(mintSPT?.receiver), activeNetwork)) {
-        alert.removeAll();
-        alert.error('Recipient\'s address is not valid.');
-  
-        setTimeout(() => {
-          handleCancelTransactionOnSite();
-        }, 4000);
-      }
-    }
   }, []);
 
   const handleClosePopup = () => {
@@ -171,11 +153,6 @@ const IssueAsset = () => {
                 <div className={ styles.flex }>
                   <p>From</p>
                   <p>{accounts[connectedAccountId].label}</p>
-                </div>
-
-                <div className={ styles.flex }>
-                  <p>Receiver</p>
-                  <p>{ ellipsis(mintSPT?.receiver) }</p>
                 </div>
 
                 <div className={ styles.flex }>

@@ -99,7 +99,7 @@ const TransferOwnership = () => {
       <div
         className="body-description"
       >
-        Your Tokens is in creation process, you can check the transaction under your history.
+        Your token is in transferring process, you can check the transaction under your history.
       </div>
 
       <Button
