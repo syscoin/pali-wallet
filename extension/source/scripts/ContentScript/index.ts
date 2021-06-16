@@ -193,7 +193,10 @@ window.addEventListener('message', (event) => {
       maxsupply,
       description,
       receiver,
-      rbf
+      capabilityflags,
+      notarydetails,
+      auxfeedetails,
+      notaryAddress
     } = event.data;
 
     browser.runtime.sendMessage({
@@ -204,7 +207,10 @@ window.addEventListener('message', (event) => {
       maxsupply,
       description,
       receiver,
-      rbf
+      capabilityflags,
+      notarydetails,
+      auxfeedetails,
+      notaryAddress
     });
 
     return;
@@ -213,7 +219,6 @@ window.addEventListener('message', (event) => {
   if (type == 'ISSUE_SPT' && target == 'contentScript') {
     const {
       amount,
-      receiver,
       assetGuid
     } = event.data;
 
@@ -221,7 +226,6 @@ window.addEventListener('message', (event) => {
       type: 'ISSUE_SPT',
       target: 'background',
       amount,
-      receiver,
       assetGuid
     });
 
@@ -231,16 +235,12 @@ window.addEventListener('message', (event) => {
   if (type == 'ISSUE_NFT' && target == 'contentScript') {
     const {
       assetGuid,
-      nfthash,
-      receiver,
     } = event.data;
 
     browser.runtime.sendMessage({
       type: 'ISSUE_NFT',
       target: 'background',
       assetGuid,
-      nfthash,
-      receiver,
     });
 
     return;
@@ -254,7 +254,7 @@ window.addEventListener('message', (event) => {
       description,
       notarydetails,
       auxfeedetails,
-      notarykeyid
+      notaryAddress
     } = event.data;
 
     browser.runtime.sendMessage({
@@ -266,7 +266,7 @@ window.addEventListener('message', (event) => {
       description,
       notarydetails,
       auxfeedetails,
-      notarykeyid,
+      notaryAddress,
     });
 
     return;

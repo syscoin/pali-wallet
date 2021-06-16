@@ -49,17 +49,6 @@ const IssueNFT = () => {
         return url === getHost(currentSenderURL);
       });
     }));
-
-    if (mintNFT) {
-      if (!controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)) {
-        alert.removeAll();
-        alert.error('Recipient\'s address is not valid.');
-        
-        setTimeout(() => {
-          handleCancelTransactionOnSite();
-        }, 4000);
-      }
-    }
   }, []);
 
   const handleConfirm = () => {
@@ -70,13 +59,6 @@ const IssueNFT = () => {
         if (error) {
           alert.removeAll();
           alert.error('Can\'t issue token. Try again later.');
-
-          if (mintNFT) {
-            if (!controller.wallet.account.isValidSYSAddress(String(mintNFT?.receiver), activeNetwork)) {
-              alert.removeAll();
-              alert.error('Recipient\'s address is not valid.');
-            }
-          }
 
           setTimeout(() => {
             handleCancelTransactionOnSite();
@@ -158,11 +140,6 @@ const IssueNFT = () => {
                 <div className={styles.flex}>
                   <p>RBF</p>
                   <p>{rbf ? 'Yes' : 'No'}</p>
-                </div>
-
-                <div className={styles.flex}>
-                  <p>Receiver</p>
-                  <p>{ellipsis(mintNFT?.receiver)}</p>
                 </div>
 
                 <div className={styles.flex}>

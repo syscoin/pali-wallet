@@ -299,6 +299,10 @@ browser.runtime.onInstalled.addListener(async () => {
           maxsupply,
           description,
           receiver,
+          capabilityflags,
+          notarydetails,
+          auxfeedetails,
+          notaryAddress
         } = request;
 
         window.controller.wallet.account.setDataFromPageToCreateNewSPT({
@@ -306,7 +310,11 @@ browser.runtime.onInstalled.addListener(async () => {
           symbol,
           maxsupply,
           description,
-          receiver
+          receiver,
+          capabilityflags,
+          notarydetails,
+          auxfeedetails,
+          notaryAddress
         });
 
         store.dispatch(createAsset(true));
@@ -332,13 +340,11 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'ISSUE_SPT' && target == 'background') {
         const {
           amount,
-          receiver,
           assetGuid
         } = request;
 
         window.controller.wallet.account.setDataFromPageToMintSPT({
           assetGuid,
-          receiver,
           amount: Number(amount)
         });
 
@@ -365,14 +371,10 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'ISSUE_NFT' && target == 'background') {
         const {
           assetGuid,
-          nfthash,
-          receiver,
         } = request;
 
         window.controller.wallet.account.setDataFromPageToMintNFT({
           assetGuid,
-          receiver,
-          nfthash
         });
 
         store.dispatch(issueNFT(true));
@@ -403,7 +405,7 @@ browser.runtime.onInstalled.addListener(async () => {
           description,
           notarydetails,
           auxfeedetails,
-          notarykeyid
+          notaryAddress
         } = request;
 
         window.controller.wallet.account.setDataFromPageToUpdateAsset({
@@ -413,7 +415,7 @@ browser.runtime.onInstalled.addListener(async () => {
           description,
           notarydetails,
           auxfeedetails,
-          notarykeyid
+          notaryAddress
         });
 
         store.dispatch(setUpdateAsset(true));

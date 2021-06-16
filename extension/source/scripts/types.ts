@@ -59,14 +59,12 @@ export interface ISPTIssue {
   assetGuid: string,
   amount: number,
   fee: number,
-  receiver: string,
   rbf: boolean
 }
 
 export interface ISPTIssuePage {
   assetGuid: string,
   amount: number,
-  receiver: string,
 }
 
 export interface ISPTIssueWallet {
@@ -76,15 +74,12 @@ export interface ISPTIssueWallet {
 
 export interface INFTIssue {
   assetGuid: string,
-  nfthash: string,
   fee: number,
-  receiver: string,
   rbf: boolean
 }
 
 export interface INFTPageInfo {
   assetGuid: string,
-  receiver: string,
 }
 
 export interface INFTWalletInfo {
@@ -112,20 +107,22 @@ export type UpdateToken = {
   receiver?: string;
   description: string | '';
   supply?: number;
+  notaryAddress?: string;
   notarydetails?: {
     endpoint?: string;
     instanttransfers?: boolean;
     hdrequired?: boolean;
   }
-  auxfeedetails?: {
-    auxfeekeyid: any,
-    auxfees: [
-      {
-        bound: any | 0,
-        percent: any | 0
-      }
-    ]
-  };
+  auxfeedetails?: any;
+  // {
+  //   auxfeekeyid: Buffer,
+  //   auxfees: [
+  //     {
+  //       bound: any | 0,
+  //       percent: any | 0
+  //     }
+  //   ]
+  // };
   notarykeyid?: string;
   fee: number;
   rbf: boolean;
