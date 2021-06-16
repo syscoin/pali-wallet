@@ -6,27 +6,12 @@ import assetImg from "../images/asset.svg";
 
 export default function CreateSPT() {
   const controller = useSelector((state) => state.controller);
+  const { connectedAccountAddress } = useSelector((state) => state.connectedAccountData);
   const [precision, setPrecision] = useState(8);
   const [maxSupply, setMaxSupply] = useState(1);
   const [description, setDescription] = useState("");
   const [symbol, setSymbol] = useState("");
   const [receiver, setReceiver] = useState("");
-
-  const handleCreateToken = async (event) => {
-    event.preventDefault();
-
-    if (controller) {
-      await controller.handleCreateToken(
-        Number(precision),
-        symbol,
-        Number(maxSupply),
-        description,
-        receiver
-      );
-
-      event.target.reset();
-    }
-  };
 
   useEffect(() => {
     const advanced = document.querySelector(".advanced");
@@ -37,6 +22,28 @@ export default function CreateSPT() {
       advancedPanel.classList.toggle("open");
     })(advanced);
   }, []);
+
+  const handleCreateToken = async (event) => {
+    event.preventDefault();
+
+    if (controller) {
+      await controller.handleCreateToken(
+        Number(precision),
+        symbol,
+        Number(maxSupply),
+        description,
+        Boolean(receiver) || connectedAccountAddress
+      );
+
+      event.target.reset();
+    }
+  };
+
+  const handleInputChange = (setState) => {
+    return (event) => {
+      setState(event.target.value);
+    };
+  };
 
   return (
     <section>
@@ -69,7 +76,7 @@ export default function CreateSPT() {
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
-                onBlur={(event) => setSymbol(event.target.value)}
+                onChange={handleInputChange(setSymbol)}
                 required
                 type="text"
                 className="form-control"
@@ -84,8 +91,7 @@ export default function CreateSPT() {
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
-                onBlur={(event) => setReceiver(event.target.value)}
-                required
+                onChange={handleInputChange(setReceiver)}
                 type="text"
                 className="form-control"
                 id="owneraddr"
@@ -105,14 +111,14 @@ export default function CreateSPT() {
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
-                onBlur={(event) => setPrecision(event.target.value)}
+                onChange={handleInputChange(setPrecision)}
                 required
                 type="range"
                 id="precision"
                 name="points"
                 min="0"
                 max="8"
-                value="8"
+                value={precision}
               />
               <p className="help-block">0 - 8 (default 8)</p>
             </div>
@@ -122,7 +128,7 @@ export default function CreateSPT() {
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
-                onChange={() => {}}
+                onChange={handleInputChange(setMaxSupply)}
                 type="number"
                 className="form-control"
                 id="supply"
@@ -136,8 +142,7 @@ export default function CreateSPT() {
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
-                onBlur={(event) => setMaxSupply(event.target.value)}
-                required
+                onChange={() => {}}
                 type="number"
                 className="form-control"
                 id="initialsupply"
@@ -157,11 +162,11 @@ export default function CreateSPT() {
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
+                onChange={handleInputChange(setDescription)}
                 className="form-control"
                 type="text"
                 id="description"
                 name="description"
-                onBlur={(event) => setDescription(event.target.value)}
                 required
               />
 

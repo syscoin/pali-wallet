@@ -1,4 +1,37 @@
+import { useEffect, useState } from "react";
+import { useSelector } from "react-redux";
+
 export default function Transfer() {
+  const [tokens, setTokens] = useState([]);
+  const [assetGuid, setAssetGuid] = useState("");
+  const [newOwner, setNewOwner] = useState("");
+  const controller = useSelector((state) => state.controller);
+  const { connectedAccountAddress } = useSelector(
+    (state) => state.connectedAccountData
+  );
+
+  useEffect(() => {
+    controller &&
+      controller.getUserMintedTokens().then((data) => {
+        data && setTokens(data);
+      });
+  }, []);
+
+  const handleInputChange = (setState) => {
+    return (event) => {
+      setState(event.target.value);
+    };
+  };
+
+  const handleTransferOwnership = async (event) => {
+    event.preventDefault();
+
+    controller &&
+      (await controller.handleTransferOwnership(assetGuid, newOwner));
+
+    event.target.reset();
+  };
+
   return (
     <section>
       <div className="inner">
@@ -18,7 +51,7 @@ export default function Transfer() {
           Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
         </p>
 
-        <form>
+        <form onSubmit={handleTransferOwnership}>
           <div className="row">
             <div className="spacer col-100"></div>
           </div>
@@ -26,10 +59,17 @@ export default function Transfer() {
           <div className="form-line">
             <div className="form-group col-100">
               <label htmlFor="token">Standard Token</label>
-              <select className="form-control" id="token">
-                <option>1</option>
-                <option>2</option>
-                <option>3</option>
+              <select
+                onChange={handleInputChange(setAssetGuid)}
+                className="form-control"
+                id="token"
+              >
+                <option></option>
+                {tokens.map((token) => (
+                  <option value={token.assetGuid} key={token.assetGuid}>
+                    {token.assetGuid} - {token.symbol}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -41,7 +81,7 @@ export default function Transfer() {
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
-                onChange={() => {}}
+                onChange={handleInputChange(setNewOwner)}
                 type="text"
                 className="form-control"
                 id="newaddr"
@@ -53,11 +93,10 @@ export default function Transfer() {
             <div className="form-group col-50 col-md-100">
               <label>&nbsp;</label>
               <input
-                onChange={() => {}}
                 type="text"
                 className="form-control"
                 disabled
-                value="Saosija089fsf089sef0w98r0923hr0932r90"
+                value={connectedAccountAddress}
               />
               <p className="help-block">Current Issuer/Owner</p>
             </div>
