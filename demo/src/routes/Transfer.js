@@ -15,6 +15,8 @@ export default function Transfer() {
       controller.getUserMintedTokens().then((data) => {
         data && setTokens(data);
       });
+
+    return () => setTokens([]);
   }, []);
 
   const handleInputChange = (setState) => {
