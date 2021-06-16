@@ -8,10 +8,10 @@ import styles from './Start.scss';
 const Start = () => {
   return (
     <div className={styles.home}>
-      <h1 className="heading-1 full-width t-roboto t-royalBlue">
-        Welcome to
+      <h1 className="heading-start full-width t-roboto t-royalBlue">
+        <p>Welcome to</p>
         <br />
-        Syscoin Wallet
+        <b>Pali Wallet</b>
       </h1>
       <img src={`/${LogoImage}`} className={styles.logo} alt="syscoin" />
       <Button

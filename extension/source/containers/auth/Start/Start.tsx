@@ -22,10 +22,10 @@ const Starter = () => {
 
   return (
     <div className={styles.home}>
-      <h1 className="heading-1 full-width t-roboto tw-medium t-royalBlue">
-        Welcome to
+      <h1 className="heading-start full-width t-roboto tw-medium t-royalBlue">
+        <p>Welcome to</p>
         <br />
-        Syscoin Wallet
+        Pali Wallet
       </h1>
       <img src={LogoImage} className={styles.logo} alt="syscoin" />
       <form onSubmit={handleSubmit(onSubmit)}>
