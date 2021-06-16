@@ -13,12 +13,15 @@ export default function Dashboard() {
     connectedAccount && setAssets(connectedAccount.assets);
   }, [connectedAccount]);
 
-  const RenderBalance = ({ balance }) => {
-    const _balance = `${balance}`.split(".");
+  const RenderBalance = ({ balance, decimals }) => {
+    const _balance = `${
+      !decimals ? balance : balance / Math.pow(10, decimals)
+    }`.split(".");
+
     return (
       <>
-        {Intl.NumberFormat("en-US").format(_balance[0])}
-        <span className="decimal">.{_balance[1]}</span> <em>SYS</em>
+        {Intl.NumberFormat().format(_balance[0])}
+        <span className="decimal">{_balance[1] && `,${_balance[1]}`}</span>
       </>
     );
   };
@@ -30,7 +33,7 @@ export default function Dashboard() {
         <div className="holdings bottom-border">
           <h2>Holdings</h2>
           <div className="sysvalue">
-            <RenderBalance balance={balance} />
+            <RenderBalance balance={balance} /> <em>SYS</em>
           </div>
         </div>
         <div className="assets">
@@ -38,8 +41,10 @@ export default function Dashboard() {
             <div className="asset" key={asset.assetGuid}>
               <img src={asset2} />
               <div className="balance">
-                {asset.balance}
-                {/*<span className="decimal">.866544444</span>*/}
+                <RenderBalance
+                  balance={asset.balance}
+                  decimals={asset.decimals}
+                />
               </div>
               <div className="symbol">{asset.symbol}</div>
               <div className="asset-id">Asset ID: {asset.assetGuid}</div>
