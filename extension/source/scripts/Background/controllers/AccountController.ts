@@ -159,7 +159,7 @@ const AccountController = (actions: {
               if (change === 1) {
                 return;
               }
-              
+
               if (index > receivingIndex) {
                 receivingIndex = index;
 
@@ -219,12 +219,12 @@ const AccountController = (actions: {
         address
       };
     }
-    
+
     return {
       balance,
       assets,
       transactions,
-    };    
+    };
   };
 
   const subscribeAccount = async (isHardwareWallet: boolean = false, sjs?: any, label?: string, walletCreation?: boolean) => {
@@ -249,7 +249,7 @@ const AccountController = (actions: {
         };
 
         store.dispatch(createAccount(account));
-        
+
         return account!.xpub;
       }
 
@@ -265,7 +265,7 @@ const AccountController = (actions: {
     }
 
     const res: IAccountInfo | null = await getAccountInfo();
-    
+
     account = {
       id: sysjs.HDSigner.accountIndex,
       label: label || `Account ${sysjs.HDSigner.accountIndex + 1}`,
@@ -298,7 +298,7 @@ const AccountController = (actions: {
     if (isHardwareWallet) {
       return;
     }
-    
+
     store.dispatch(updateLabel({ id, label }));
   };
 
@@ -317,7 +317,7 @@ const AccountController = (actions: {
 
     if (!account.isTrezorWallet) {
       sysjs.HDSigner.accountIndex = activeAccountId;
-      
+
       const accLatestInfo = await getAccountInfo();
 
       if (!accLatestInfo) return;
@@ -333,7 +333,7 @@ const AccountController = (actions: {
 
       return;
     }
-    
+
     const accLatestInfo = await getAccountInfo(true, account.xpub);
 
     if (!accLatestInfo) return;
@@ -350,7 +350,7 @@ const AccountController = (actions: {
 
   const getPrimaryAccount = (pwd: string, sjs: any) => {
     const { accounts, activeAccountId }: IWalletState = store.getState().wallet;
-    
+
     if (sjs) {
       sysjs = sjs;
     }
@@ -471,7 +471,7 @@ const AccountController = (actions: {
 
   const setNewAddress = (addr: string) => {
     const { activeAccountId } = store.getState().wallet;
-    
+
     store.dispatch(
       updateAccountAddress({
         id: activeAccountId,
@@ -677,7 +677,7 @@ const AccountController = (actions: {
       return null;
     } catch (error) {
       console.log('transaction error', error);
-      
+
       return error;
     }
   }
@@ -774,9 +774,9 @@ const AccountController = (actions: {
 
         trezortx.outputs.push(_output);
       }
-      
+
       const resp = await TrezorConnect.signTransaction(trezortx);
-      
+
       if (resp.success == true) {
         txInfo = await sys.utils.sendRawTransaction(sysjs.blockbookURL, resp.payload.serializedTx);
       } else {
@@ -1104,6 +1104,7 @@ const AccountController = (actions: {
 
   const getUserMintedTokens = async () => {
     let mintedTokens: MintedToken[] = [];
+    let allTokens: MintedToken[] = [];
     let res;
 
     if (account.isTrezorWallet) {
@@ -1113,24 +1114,54 @@ const AccountController = (actions: {
       res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
     }
 
+    // if (res.transactions) {
+    //   res.transactions.map(async (transaction: any) => {
+    //     if (transaction.tokenType === 'SPTAssetActivate' && transaction.tokenTransfers) {
+    //       for (let item of transaction.tokenTransfers) {
+    //         if (mintedTokens.indexOf({ assetGuid: item.token, symbol: atob(item.symbol) }) === -1) {
+    //           mintedTokens.push({
+    //             assetGuid: item.token,
+    //             symbol: atob(item.symbol)
+    //           });
+    //         }
+
+    //         return;
+    //       }
+    //     }
+    //     return;
+    //   });
+
+    //   return mintedTokens;
+    // }
+    // return;
     if (res.transactions) {
       res.transactions.map(async (transaction: any) => {
-        if (transaction.tokenType === 'SPTAssetActivate' && transaction.tokenTransfers) {
-          for (let item of transaction.tokenTransfers) {
-            if (mintedTokens.indexOf({ assetGuid: item.token, symbol: atob(item.symbol) }) === -1) {
-              mintedTokens.push({
-                assetGuid: item.token,
-                symbol: atob(item.symbol)
-              });
-            }
-
-            return;
+        if (transaction.tokenType === 'SPTAssetActivate') {
+          for (let tokens in transaction.tokenTransfers) {
+            // console.log(transaction.tokenTransfers[tokens].token)
+            allTokens.push({
+              assetGuid: transaction.tokenTransfers[tokens].token,
+              symbol: atob(transaction.tokenTransfers[tokens].symbol)
+              // transaction: transaction
+            })
           }
         }
-        return;
-      });
-      
-      return mintedTokens;
+      })
+
+      allTokens.filter(function (el: any) {
+        if (el != null) {
+          let tokenExists: boolean = false
+          mintedTokens.forEach((element: any) => {
+            if (element.assetGuid === el.assetGuid) {
+              tokenExists = true
+            }
+          })
+          if (!tokenExists) {
+            mintedTokens.push(el)
+          }
+        }
+      })
+      return mintedTokens
     }
     return;
   }
@@ -1395,21 +1426,21 @@ const AccountController = (actions: {
 
         trezortx.outputs.push(_output);
       }
-      
+
       const resp = await TrezorConnect.signTransaction(trezortx);
-      
+
       if (resp.success == true) {
         txInfo = await sys.utils.sendRawTransaction(sysjs.blockbookURL, resp.payload.serializedTx);
 
         txInfo = psbt.extractTransaction().getId();
 
         updateTransactionData('transferringOwnership', txInfo);
-        
+
         watchMemPool();
       }
 
       return;
-    } 
+    }
 
     const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
 
@@ -1457,7 +1488,7 @@ const AccountController = (actions: {
 
                 return;
               }
-              
+
               if (index > receivingIndex) {
                 receivingIndex = index;
               }
@@ -1465,14 +1496,14 @@ const AccountController = (actions: {
           }
         });
       }
-      
+
       address = TrezorAccount.getAddress(changeIndex + 1, true);
 
       return address;
     }
-    
+
     console.error("Let HDsignet handle change address for non trezor wallets");
-    
+
     return null;
   }
 
