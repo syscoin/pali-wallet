@@ -1194,7 +1194,7 @@ const AccountController = (actions: {
           symbol,
           assetGuid,
           baseAssetID: assetId,
-          nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : sys.utils.createAssetID(null, assetGuid)
+          nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null
         }
 
         if (assetsData.indexOf(assetData) === -1) {
