@@ -611,17 +611,25 @@ const AccountController = (actions: {
       rbf,
       maxsupply,
       fee,
-      notaryAddress
+      notaryAddress,
+      payoutAddress,
     } = item;
 
     const newMaxSupply = maxsupply * 1e8;
+
+    const keyPair = sysjs.HDSigner.createKeypair(0);
+    const payment = sys.utils.bitcoinjs.payments.p2wpkh({
+      pubkey: keyPair.publicKey,
+      network: sysjs.HDSigner.network
+    });
+    const auxFeeKeyID = Buffer.from(payment.hash.toString('hex'), 'hex');
 
     let _assetOpts = {
       precision,
       symbol,
       maxsupply: new sys.utils.BN(newMaxSupply),
       description,
-      updatecapabilityflags: capabilityflags,
+      updatecapabilityflags: capabilityflags || 127,
       notarydetails,
       auxfeedetails,
       notarykeyid: Buffer.from('', 'hex')
@@ -637,6 +645,27 @@ const AccountController = (actions: {
         ..._assetOpts,
         notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
       }
+    }
+
+    if (notarydetails) {
+      _assetOpts = {
+        ..._assetOpts,
+        notarydetails
+      }
+    }
+
+    if (auxfeedetails) {
+      _assetOpts = {
+        ..._assetOpts,
+        auxfeedetails: {
+          ..._assetOpts.auxfeedetails,
+          auxfeekeyid: auxFeeKeyID
+        }
+      }
+    }
+
+    if (payoutAddress) {
+      console.log('payout address', payoutAddress)
     }
 
     console.log('new spt asset opts', item, _assetOpts)
@@ -1142,37 +1171,152 @@ const AccountController = (actions: {
     // }
     // return;
 
+    // if (res.transactions) {
+    //   console.log('transactions', res.transactions)
+
+    //   res.transactions.map(async (transaction: any) => {
+
+    //     if (transaction.tokenType === 'SPTAssetActivate') {
+    //       for (let tokens in transaction.tokenTransfers) {
+    //         const assetData = await getDataAsset(transaction.tokenTransfers[tokens].token);
+
+    //         console.log({
+    //           assetGuid: transaction.tokenTransfers[tokens].token,
+    //           symbol: atob(transaction.tokenTransfers[tokens].symbol),
+    //           maxSupply: Number(assetData.maxSupply),
+    //           totalSupply: Number(assetData.totalSupply)
+    //         })
+
+    //         allTokens.push({
+    //           assetGuid: transaction.tokenTransfers[tokens].token,
+    //           symbol: atob(transaction.tokenTransfers[tokens].symbol),
+    //           maxSupply: Number(assetData.maxSupply),
+    //           totalSupply: Number(assetData.totalSupply)
+    //         })
+
+    //         console.log('alltokens', allTokens)
+    //       }
+    //     }
+    //   })
+
+    //   allTokens.filter(function (el: any) {
+    //     if (el != null) {
+    //       let tokenExists: boolean = false
+    //       mintedTokens.forEach((element: any) => {
+    //         if (element.assetGuid === el.assetGuid) {
+    //           tokenExists = true
+    //         }
+    //       })
+    //       if (!tokenExists) {
+    //         console.log('alltokens element', el)
+    //         mintedTokens.push(el)
+    //       }
+    //     }
+    //   })
+
+    //   console.log('minted tokens', mintedTokens)
+    //   return mintedTokens
+    // }
+    // return;
+
+    // if (res.transactions) {
+    //   res.transactions.map(async (transaction: any) => {
+    //     if (transaction.tokenType === 'SPTAssetActivate') {
+    //       for (let tokens in transaction.tokenTransfers) {
+    //         // console.log(transaction.tokenTransfers[tokens].token)
+    //         // console.log(tokens, transaction.tokenTransfers)
+    //         // allTokens.push({
+    //         //   assetGuid: transaction.tokenTransfers[tokens].token,
+    //         //   symbol: atob(transaction.tokenTransfers[tokens].symbol)
+    //         //   // transaction: transaction
+    //         // })
+
+    //         getDataAsset(transaction.tokenTransfers[tokens].token).then((response) => {
+    //           console.log('response', response)
+
+              // allTokens.push({
+              //   assetGuid: transaction.tokenTransfers[tokens].token,
+              //   symbol: atob(transaction.tokenTransfers[tokens].symbol),
+              //   maxSupply: Number(response.maxSupply),
+              //   totalSupply: Number(response.totalSupply)
+              // })
+    //         });
+
+    //         // console.log('data asset', assetData, assetData.maxSupply)
+
+    //         // console.log({
+    //         //   assetGuid: transaction.tokenTransfers[tokens].token,
+    //         //   symbol: atob(transaction.tokenTransfers[tokens].symbol),
+    //         //   maxSupply: Number(assetData.maxSupply),
+    //         //   totalSupply: Number(assetData.totalSupply)
+    //         // })
+
+    //         // allTokens.push({
+    //         //   assetGuid: transaction.tokenTransfers[tokens].token,
+    //         //   symbol: atob(transaction.tokenTransfers[tokens].symbol),
+    //         //   maxSupply: Number(assetData.maxSupply),
+    //         //   totalSupply: Number(assetData.totalSupply)
+    //         // })
+    //       }
+
+          // allTokens.filter(function (el: any) {
+          //   if (el != null) {
+          //     let tokenExists: boolean = false
+          //     mintedTokens.forEach((element: any) => {
+          //       if (element.assetGuid === el.assetGuid) {
+          //         tokenExists = true
+          //       }
+          //     })
+          //     if (!tokenExists) {
+          //       mintedTokens.push(el)
+          //     }
+          //   }
+          // })
+
+    //       return mintedTokens
+    //     }
+    //   })
+
+    //   return mintedTokens
+
+    // }
+    // return;
+
+
     if (res.transactions) {
       res.transactions.map(async (transaction: any) => {
         if (transaction.tokenType === 'SPTAssetActivate') {
           for (let tokens in transaction.tokenTransfers) {
-            // console.log(transaction.tokenTransfers[tokens].token)
-            console.log(tokens, transaction.tokenTransfers)
+            const response = await getDataAsset(transaction.tokenTransfers[tokens].token);
+
             allTokens.push({
               assetGuid: transaction.tokenTransfers[tokens].token,
-              symbol: atob(transaction.tokenTransfers[tokens].symbol)
-              // transaction: transaction
+              symbol: atob(transaction.tokenTransfers[tokens].symbol),
+              maxSupply: Number(response.maxSupply),
+              totalSupply: Number(response.totalSupply)
             })
           }
-        }
-      })
 
-      allTokens.filter(function (el: any) {
-        if (el != null) {
-          let tokenExists: boolean = false
-          mintedTokens.forEach((element: any) => {
-            if (element.assetGuid === el.assetGuid) {
-              tokenExists = true
+          allTokens.filter(function (el: any) {
+            if (el != null) {
+              let tokenExists: boolean = false
+              mintedTokens.forEach((element: any) => {
+                if (element.assetGuid === el.assetGuid) {
+                  tokenExists = true
+                }
+              })
+              if (!tokenExists) {
+                mintedTokens.push(el)
+              }
             }
           })
-          if (!tokenExists) {
-            mintedTokens.push(el)
-          }
+
+          console.log('minted tokens', mintedTokens)
+      
+          return mintedTokens;
         }
       })
-      return mintedTokens
     }
-    return;
   }
 
   const getHoldingsData = async () => {
@@ -1243,6 +1387,10 @@ const AccountController = (actions: {
   const getTransactionInfoByTxId = async (txid: any) => {
     console.log('info txid', await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid))
     return await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
+  }
+
+  const getDataAsset = async (assetGuid: any) => {
+    return await sys.utils.fetchBackendAsset(sysjs.blockbookURL, assetGuid);
   }
 
   const getSysExplorerSearch = () => {

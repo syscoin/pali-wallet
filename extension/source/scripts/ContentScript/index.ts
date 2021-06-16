@@ -206,7 +206,8 @@ window.addEventListener('message', (event) => {
       capabilityflags,
       notarydetails,
       auxfeedetails,
-      notaryAddress
+      notaryAddress,
+      payoutAddress
     } = event.data;
 
     browser.runtime.sendMessage({
@@ -220,7 +221,8 @@ window.addEventListener('message', (event) => {
       capabilityflags,
       notarydetails,
       auxfeedetails,
-      notaryAddress
+      notaryAddress,
+      payoutAddress
     });
 
     return;
