@@ -17,7 +17,7 @@ const ConnectHardwareWalletView: FC = () => {
   }
   return (
     <div className={styles.wrapper} style={{ color: "white", textAlign: "center" }}>
-      <p style={{ textAlign: "center" }}>Select a hardware wallet you'd like to use with Syscoin Wallet</p>
+      <p style={{ textAlign: "center" }}>Select a hardware wallet you'd like to use with Pali Wallet</p>
 
       <div className={styles.options}>
         <div className={selected ? styles.optionSelected : styles.option} onClick={() => setSelected(!selected)}>
