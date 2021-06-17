@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
+import { elementEventHandler } from "../utils/elementEventHandler";
+
 export default function AdvancedPanel({
   onChange,
   renderContractField = false,
+  toggleButton = false,
 }) {
   const [contract, setContract] = useState("");
   const [capabilityFlags, setCapabilityFlags] = useState(0);
@@ -13,8 +16,21 @@ export default function AdvancedPanel({
   const [auxfees, setAuxFees] = useState([]);
   const [notaryAddress, setNotaryAddress] = useState();
 
-  const stateRef = useRef();
-  stateRef.current = {
+  useEffect(() => {
+    if (typeof onChange === "function") {
+      const state = {
+        ...(contract && { contract }),
+        ...(capabilityFlags && { capabilityFlags }),
+        ...(endpoint && { endpoint }),
+        ...(endpoint && { instanttransfers, hdrequired }),
+        ...(auxfeekeyid && { auxfeekeyid }),
+        ...(auxfees.length && { auxfees }),
+        ...(notaryAddress && { notaryAddress }),
+      };
+
+      Object.entries(state).length && onChange(state);
+    }
+  }, [
     contract,
     capabilityFlags,
     endpoint,
@@ -23,33 +39,7 @@ export default function AdvancedPanel({
     auxfeekeyid,
     auxfees,
     notaryAddress,
-  };
-
-  useEffect(() => {
-    const inputs = document.querySelectorAll("input");
-
-    const onChangeEvent = (event) => {
-      onChange(stateRef.current);
-    };
-
-    if (typeof onChange === "function") {
-      const evt = new Event("input");
-
-      evt.simulated = true;
-
-      inputs.forEach((input) => {
-        input.dispatchEvent(evt);
-        input.addEventListener("input", onChangeEvent);
-      });
-    }
-
-    return () => {
-      typeof onChange === "function" &&
-        inputs.forEach((input) => {
-          input.removeEventListener("input", onChangeEvent);
-        });
-    };
-  }, []);
+  ]);
 
   const handleInputChange = (setState) => {
     return (event) => {
@@ -101,9 +91,29 @@ export default function AdvancedPanel({
     };
   };
 
+  useEffect(() => {
+    if (!toggleButton) {
+      const advanced = document.querySelector(".advanced");
+      const advancedPanel = document.querySelector(".advanced-panel");
+
+      elementEventHandler(["click"], "", function () {
+        this.classList.toggle("open");
+        advancedPanel.classList.toggle("open");
+      })(advanced);
+    }
+  }, []);
+
   return (
     <div className="form-line gray">
-      <div className="advanced-panel open">
+      {!toggleButton && (
+        <div className="form-group col-100">
+          <div className="advanced">
+            Advanced <i className="icon-right-open"></i>
+            <i className="icon-down-open"></i>
+          </div>
+        </div>
+      )}
+      <div className={`advanced-panel ${toggleButton && "open"}`}>
         <div className="form-line">
           <div className="label-spacing">
             <label>Compliance & Business Rulesets</label>
