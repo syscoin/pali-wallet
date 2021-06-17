@@ -331,10 +331,21 @@ window.addEventListener('message', (event) => {
 
     return;
   }
+
   if (type == 'GET_USER_MINTED_TOKENS' && target == 'contentScript') {
     browser.runtime.sendMessage({
       type: 'GET_USER_MINTED_TOKENS',
       target: 'background',
+    });
+
+    return;
+  }
+
+  if (type == 'GET_ASSET_DATA' && target == 'contentScript') {
+    browser.runtime.sendMessage({
+      type: 'GET_ASSET_DATA',
+      target: 'background',
+      assetGuid: event.data.assetGuid
     });
 
     return;
@@ -353,7 +364,8 @@ browser.runtime.onMessage.addListener((request) => {
     userTokens,
     connectionConfirmed,
     isValidSYSAddress,
-    holdingsData
+    holdingsData,
+    assetData
   } = request;
 
   if (type == 'DATA_FOR_SPT' && target == 'contentScript') {
@@ -451,6 +463,14 @@ browser.runtime.onMessage.addListener((request) => {
       type: 'GET_USER_MINTED_TOKENS',
       target: 'connectionsController',
       userTokens,
+    }, '*');
+  }
+
+  if (type == 'GET_ASSET_DATA' && target == 'contentScript') {
+    window.postMessage({
+      type: 'GET_ASSET_DATA',
+      target: 'connectionsController',
+      assetData,
     }, '*');
 
     return;

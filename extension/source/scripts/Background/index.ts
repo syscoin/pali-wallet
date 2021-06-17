@@ -516,6 +516,16 @@ browser.runtime.onInstalled.addListener(async () => {
           userTokens: tokensMinted
         });
       }
+
+      if (type == 'GET_ASSET_DATA' && target == 'background') {
+        const assetData = await window.controller.wallet.account.getDataAsset(request.assetGuid);
+
+        browser.tabs.sendMessage(tabId, {
+          type: 'GET_ASSET_DATA',
+          target: 'contentScript',
+          assetData
+        });
+      }
     }
   });
 
