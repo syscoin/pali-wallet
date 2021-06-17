@@ -19,6 +19,7 @@
     "jquery": "^3.6.0",
     "js-ipfs-fetch": "^1.4.2",
     "lodash.throttle": "^4.1.1",
+    "nft.storage": "^2.0.0",
     "node-sass": "^5.0.0",
     "popper.js": "^1.16.1",
     "postcss": "^8.2.9",
