@@ -96,7 +96,7 @@ const ConnectedAccounts = () => {
               </Button>
               <Button
                 type="button"
-                theme="btn-outline-secondary"
+                theme="btn-outline-confirm"
                 variant={styles.button}
                 disabled={accountId === -1}
                 onClick={() => handleConfirm()}

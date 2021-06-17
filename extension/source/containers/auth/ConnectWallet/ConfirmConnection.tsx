@@ -92,7 +92,7 @@ const ConfirmConnection = () => {
 
         <Button
           type="button"
-          theme="btn-outline-secondary"
+          theme="btn-outline-confirm"
           variant={styles.button}
           linkTo="/home"
           onClick={handleConfirmConnection}
