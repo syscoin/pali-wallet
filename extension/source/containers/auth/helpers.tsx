@@ -1,6 +1,10 @@
 import format from 'date-fns/format';
 
 export const ellipsis = (str: any, start = 7, end = 4) => {
+  if (typeof str !== 'string') {
+    return str;
+  }
+  
   return (
     str.substring(0, start) +
     '...' +

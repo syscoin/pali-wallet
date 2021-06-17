@@ -495,6 +495,7 @@ const AccountController = (actions: {
   }
 
   const setDataFromPageToCreateNewSPT = (data: ISPTPageInfo) => {
+    console.log('data from page to create spt', data)
     dataFromPageToCreateSPT = data;
   }
 
@@ -574,6 +575,7 @@ const AccountController = (actions: {
 
   const createSPT = (spt: ISPTInfo) => {
     newSPT = spt;
+    console.log('new spt', spt)
 
     return true;
   }

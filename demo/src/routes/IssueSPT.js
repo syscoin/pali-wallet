@@ -25,7 +25,6 @@ export default function IssueSPT() {
     controller &&
       (await controller.handleIssueSPT(
         amount,
-        connectedAccountAddress,
         assetGuid
       ));
   };

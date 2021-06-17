@@ -32,7 +32,7 @@ export default function CreateSPT() {
         symbol,
         Number(maxSupply),
         description,
-        Boolean(receiver) || connectedAccountAddress
+        receiver || connectedAccountAddress
       );
 
       event.target.reset();

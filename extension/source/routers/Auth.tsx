@@ -43,14 +43,14 @@ const Auth = () => {
     config: { duration: 200 },
   });
 
-  const { canConnect, accounts, currentSenderURL, confirmingTransaction, creatingAsset, issuingNFT, issuingAsset, updatingAsset, transferringOwnership }: IWalletState = useSelector(
+  const { canConnect, accounts, currentURL, confirmingTransaction, creatingAsset, issuingNFT, issuingAsset, updatingAsset, transferringOwnership }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
   const connectedAccounts = accounts.filter(account => {
     console.log(account)
     return account.connectedTo.findIndex((url: any) => {
-      return url == getHost(currentSenderURL);
+      return url == getHost(currentURL);
     }) > -1;
   });
 
