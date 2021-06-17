@@ -96,6 +96,7 @@ export interface IAccountController {
   setUpdateAsset: (asset: any) => any;
   setNewOwnership: (data: any) => any;
   getHoldingsData: () => any;
+  getDataAsset: (assetGuid: any) => any;
 }
 
 const AccountController = (actions: {
@@ -494,6 +495,7 @@ const AccountController = (actions: {
   }
 
   const setDataFromPageToCreateNewSPT = (data: ISPTPageInfo) => {
+    console.log('data from page to create spt', data)
     dataFromPageToCreateSPT = data;
   }
 
@@ -573,6 +575,7 @@ const AccountController = (actions: {
 
   const createSPT = (spt: ISPTInfo) => {
     newSPT = spt;
+    console.log('new spt', spt)
 
     return true;
   }
@@ -1135,8 +1138,6 @@ const AccountController = (actions: {
   };
 
   const getUserMintedTokens = async () => {
-    let mintedTokens: MintedToken[] = [];
-    let allTokens: MintedToken[] = [];
     let res;
 
     const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
@@ -1153,173 +1154,52 @@ const AccountController = (actions: {
       res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
     }
 
-    // if (res.transactions) {
-    //   res.transactions.map(async (transaction: any) => {
-    //     if (transaction.tokenType === 'SPTAssetActivate' && transaction.tokenTransfers) {
-    //       for (let item of transaction.tokenTransfers) {
-    //         if (mintedTokens.indexOf({ assetGuid: item.token, symbol: atob(item.symbol) }) === -1) {
-    //           mintedTokens.push({
-    //             assetGuid: item.token,
-    //             symbol: atob(item.symbol)
-    //           });
-    //         }
-
-    //         return;
-    //       }
-    //     }
-    //     return;
-    //   });
-
-    //   return mintedTokens;
-    // }
-    // return;
-
-    // if (res.transactions) {
-    //   console.log('transactions', res.transactions)
-
-    //   res.transactions.map(async (transaction: any) => {
-
-    //     if (transaction.tokenType === 'SPTAssetActivate') {
-    //       for (let tokens in transaction.tokenTransfers) {
-    //         const assetData = await getDataAsset(transaction.tokenTransfers[tokens].token);
-
-    //         console.log({
-    //           assetGuid: transaction.tokenTransfers[tokens].token,
-    //           symbol: atob(transaction.tokenTransfers[tokens].symbol),
-    //           maxSupply: Number(assetData.maxSupply),
-    //           totalSupply: Number(assetData.totalSupply)
-    //         })
-
-    //         allTokens.push({
-    //           assetGuid: transaction.tokenTransfers[tokens].token,
-    //           symbol: atob(transaction.tokenTransfers[tokens].symbol),
-    //           maxSupply: Number(assetData.maxSupply),
-    //           totalSupply: Number(assetData.totalSupply)
-    //         })
-
-    //         console.log('alltokens', allTokens)
-    //       }
-    //     }
-    //   })
-
-    //   allTokens.filter(function (el: any) {
-    //     if (el != null) {
-    //       let tokenExists: boolean = false
-    //       mintedTokens.forEach((element: any) => {
-    //         if (element.assetGuid === el.assetGuid) {
-    //           tokenExists = true
-    //         }
-    //       })
-    //       if (!tokenExists) {
-    //         console.log('alltokens element', el)
-    //         mintedTokens.push(el)
-    //       }
-    //     }
-    //   })
-
-    //   console.log('minted tokens', mintedTokens)
-    //   return mintedTokens
-    // }
-    // return;
-
-    // if (res.transactions) {
-    //   res.transactions.map(async (transaction: any) => {
-    //     if (transaction.tokenType === 'SPTAssetActivate') {
-    //       for (let tokens in transaction.tokenTransfers) {
-    //         // console.log(transaction.tokenTransfers[tokens].token)
-    //         // console.log(tokens, transaction.tokenTransfers)
-    //         // allTokens.push({
-    //         //   assetGuid: transaction.tokenTransfers[tokens].token,
-    //         //   symbol: atob(transaction.tokenTransfers[tokens].symbol)
-    //         //   // transaction: transaction
-    //         // })
-
-    //         getDataAsset(transaction.tokenTransfers[tokens].token).then((response) => {
-    //           console.log('response', response)
-
-              // allTokens.push({
-              //   assetGuid: transaction.tokenTransfers[tokens].token,
-              //   symbol: atob(transaction.tokenTransfers[tokens].symbol),
-              //   maxSupply: Number(response.maxSupply),
-              //   totalSupply: Number(response.totalSupply)
-              // })
-    //         });
-
-    //         // console.log('data asset', assetData, assetData.maxSupply)
-
-    //         // console.log({
-    //         //   assetGuid: transaction.tokenTransfers[tokens].token,
-    //         //   symbol: atob(transaction.tokenTransfers[tokens].symbol),
-    //         //   maxSupply: Number(assetData.maxSupply),
-    //         //   totalSupply: Number(assetData.totalSupply)
-    //         // })
-
-    //         // allTokens.push({
-    //         //   assetGuid: transaction.tokenTransfers[tokens].token,
-    //         //   symbol: atob(transaction.tokenTransfers[tokens].symbol),
-    //         //   maxSupply: Number(assetData.maxSupply),
-    //         //   totalSupply: Number(assetData.totalSupply)
-    //         // })
-    //       }
-
-          // allTokens.filter(function (el: any) {
-          //   if (el != null) {
-          //     let tokenExists: boolean = false
-          //     mintedTokens.forEach((element: any) => {
-          //       if (element.assetGuid === el.assetGuid) {
-          //         tokenExists = true
-          //       }
-          //     })
-          //     if (!tokenExists) {
-          //       mintedTokens.push(el)
-          //     }
-          //   }
-          // })
-
-    //       return mintedTokens
-    //     }
-    //   })
-
-    //   return mintedTokens
-
-    // }
-    // return;
-
-
     if (res.transactions) {
-      res.transactions.map(async (transaction: any) => {
+      const allTokens: any[] = [];
+      let mintedTokens: MintedToken[] = [];
+
+      await Promise.all(res.transactions.map(async (transaction: any) => {
         if (transaction.tokenType === 'SPTAssetActivate') {
-          for (let tokens in transaction.tokenTransfers) {
-            const response = await getDataAsset(transaction.tokenTransfers[tokens].token);
-
-            allTokens.push({
-              assetGuid: transaction.tokenTransfers[tokens].token,
-              symbol: atob(transaction.tokenTransfers[tokens].symbol),
-              maxSupply: Number(response.maxSupply),
-              totalSupply: Number(response.totalSupply)
-            })
-          }
-
-          allTokens.filter(function (el: any) {
-            if (el != null) {
-              let tokenExists: boolean = false
-              mintedTokens.forEach((element: any) => {
-                if (element.assetGuid === el.assetGuid) {
-                  tokenExists = true
-                }
-              })
-              if (!tokenExists) {
-                mintedTokens.push(el)
-              }
+          for (let token of transaction.tokenTransfers) {
+            try {
+              const response = await getDataAsset(token.token);
+    
+              allTokens.push({
+                assetGuid: token.token,
+                symbol: atob(token.symbol),
+                maxSupply: Number(response.maxSupply),
+                totalSupply: Number(response.totalSupply)
+              });
+            } catch (error) {
+              console.log('Get data asset error: ');
+              console.log(error);
             }
-          })
-
-          console.log('minted tokens', mintedTokens)
-      
-          return mintedTokens;
+          }
         }
-      })
+    
+        return allTokens;
+      }));
+
+      allTokens.filter(function (el: any) {
+        if (el != null) {
+          let tokenExists: boolean = false;
+
+          mintedTokens.forEach((element: any) => {
+            if (element.assetGuid === el.assetGuid) {
+              tokenExists = true
+            }
+          });
+
+          if (!tokenExists) {
+            mintedTokens.push(el);
+          }
+        }
+      });
+
+      return mintedTokens;
     }
+
+    return;
   }
 
   const getHoldingsData = async () => {
@@ -1721,7 +1601,8 @@ const AccountController = (actions: {
     confirmTransferOwnership,
     setUpdateAsset,
     setNewOwnership,
-    getHoldingsData
+    getHoldingsData,
+    getDataAsset
   };
 };
 

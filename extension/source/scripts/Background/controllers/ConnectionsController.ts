@@ -11,12 +11,13 @@ export interface IConnectionsController {
   handleIssueSPT: (amount: number, assetGuid: string) => any;
   handleIssueNFT: (assetGuid: string, nfthash: string, receiver: string) => any;
   isNFT: (guid: number) => boolean;
-  getUserMintedTokens: () => any;
+  getUserMintedTokens: () => Promise<any>;
   handleCreateCollection: (state: any) => void;
   handleUpdateAsset: (assetGuid: string, contract?: string, capabilityflags?: number | 127, description?: string, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notaryAddress?: string) => any;
   handleTransferOwnership: (assetGuid: string, newOwner: string) => any;
   isValidSYSAddress: (address: string) => any;
   getHoldingsData: () => any;
+  getDataAsset: (assetGuid: any) => any;
 }
 
 const isNFT = (guid: number) => {
@@ -161,6 +162,19 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
+  const getDataAsset = async (assetGuid: any) => {
+    return await sendMessage({
+      type: 'GET_ASSET_DATA',
+      target: 'connectionsController',
+      freeze: true,
+      eventResult: 'assetData'
+    }, {
+      type: 'GET_ASSET_DATA',
+      target: 'contentScript',
+      assetGuid,
+    });
+  }
+
   const handleCreateCollection = async (state: { collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string }) => {
     const {
       collectionName,
@@ -273,7 +287,8 @@ const ConnectionsController = (): IConnectionsController => {
     handleUpdateAsset,
     handleTransferOwnership,
     isValidSYSAddress,
-    getHoldingsData
+    getHoldingsData,
+    getDataAsset
   }
 };
 

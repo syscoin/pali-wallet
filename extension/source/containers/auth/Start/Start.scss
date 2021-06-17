@@ -6,13 +6,13 @@
   left: 0px;
   right: 0px;
   min-height: 100%;
-  background: $navy;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-direction: column;
   padding: 36px;
   box-sizing: border-box;
+  background: $navy;
   border-style: solid;
   border-width: 2px 0;
   border-image: 
@@ -24,9 +24,9 @@
     ) 10;
 
   .logo {
-    margin-top: 36px;
-    margin-bottom: 48px;
-    width: 170px;
+    width: 220px;
+    margin-top: 1em;
+    // margin-bottom: 1em;
   }
 
   .error {
@@ -50,7 +50,7 @@
     width: 100%;
 
     .password {
-      margin-bottom: 36px;
+      margin-bottom: 1em;
       background-color: #1b2d4b;
     }
 
@@ -59,7 +59,8 @@
     }
 
     .unlock {
-      margin-bottom: 30px;
+      margin-top: .7em;
+      margin-bottom: 1em;
     }
   }
 }
