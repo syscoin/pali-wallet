@@ -43,8 +43,8 @@
     backdrop-filter: blur(10px);
     overflow: auto;
     z-index: 1;
-    border-bottom: 1px solid $navy-border;
-    background: $navy-dark;
+    border-bottom: 2px solid $royalBlue;
+    background-image: linear-gradient($navy, $navy-medium);
 
     &::-webkit-scrollbar {
       width: 8px;
@@ -52,7 +52,7 @@
 
     &::-webkit-scrollbar-track-piece {
       background-color: #f1f1f1;
-      border-radius: 2rem;
+      border-radius: 10px;
     }
 
     &::-webkit-scrollbar-button {
@@ -60,7 +60,7 @@
     }
 
     &::-webkit-scrollbar-thumb {
-      border-radius: 2rem;
+      border-radius: 10px;
       background-color: #c9c9c9;
       transition: all .3s;
     }
@@ -77,6 +77,8 @@
       &:hover {
         color: $royalBlue-medium;
         background: $navy-medium;
+        // border-left: 1px solid tomato;
+        // border-right: 1px solid tomato;
       }
     }
   }
