@@ -22,7 +22,7 @@ const Starter = () => {
 
   return (
     <div className={styles.home}>
-      <h1 className="heading-start full-width t-roboto tw-medium t-royalBlue">
+      <h1 className="heading-start full-width t-roboto t-royalBlue">
         <p>Welcome to</p>
         <br />
         Pali Wallet

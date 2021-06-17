@@ -30,21 +30,21 @@
   }
 
   ul.options {
+    max-height: 150px;
+    width: 100%;
     margin: 0;
     padding: 0;
+    top: 60px;
+    position: absolute;
     list-style: none;
     transition: all 300ms;
     transform: scaleY(0);
     transform-origin: top;
-    position: absolute;
-    width: 100%;
-    top: 60px;
-    background: $white;
     backdrop-filter: blur(10px);
-    border-bottom: 1px solid $gray-dark;
     overflow: auto;
-    max-height: 150px;
     z-index: 1;
+    border-bottom: 1px solid $navy-border;
+    background: $navy-dark;
 
     &::-webkit-scrollbar {
       width: 8px;
@@ -72,9 +72,11 @@
       align-items: center;
       justify-content: center;
       transition: all 300ms;
+      color: $royalBlue;
 
       &:hover {
-        background: $gray-light;
+        color: $royalBlue-medium;
+        background: $navy-medium;
       }
     }
   }

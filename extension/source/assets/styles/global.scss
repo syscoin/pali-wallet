@@ -31,22 +31,22 @@
   }
 
   .heading-start {
-    font-family: $roboto;
     margin: 0;
     font-weight: bold;
-    font-size: 2.3rem;
+    font-size: 2.7rem;
+    font-family: $roboto;
     text-align: center;
     letter-spacing: .1em;
-    color: $royalBlue;
     line-height: .2em;
+    color: $royalBlue;
     
     
     p {
       text-align: center;
       color: $navy-light;
-      font-size: .9rem;
+      font-size: 1rem;
       font-weight: $regular;
-      letter-spacing: .7em;
+      letter-spacing: .5em;
       text-transform: uppercase;
     }
   }

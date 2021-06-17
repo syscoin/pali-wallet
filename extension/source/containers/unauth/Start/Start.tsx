@@ -11,7 +11,7 @@ const Start = () => {
       <h1 className="heading-start full-width t-roboto t-royalBlue">
         <p>Welcome to</p>
         <br />
-        <b>Pali Wallet</b>
+        Pali Wallet
       </h1>
       <img src={`/${LogoImage}`} className={styles.logo} alt="syscoin" />
       <Button
