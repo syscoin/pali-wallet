@@ -66,7 +66,7 @@ const ConfirmConnection = () => {
     <div className={styles.wrapper}>
       <Header showLogo />
 
-      <h1>Connect with <b>Syscoin Wallet</b></h1>
+      <h1>Connect with <b>Pali Wallet</b></h1>
 
       <p>2/2</p>
 

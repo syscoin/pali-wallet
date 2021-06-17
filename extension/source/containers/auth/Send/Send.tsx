@@ -229,12 +229,16 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
             <div className={styles.formBlock}>
               <li className={styles.item}>
-                <label htmlFor="asset">Choose Asset</label>
-
                 <div
                   className={styles.select}
                   id="asset"
                 >
+                  <label 
+                    htmlFor="asset"
+                    style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  >
+                    Choose Asset
+                  </label>
                   <div
                     className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
                     onClick={() => setExpanded(!expanded)}
@@ -285,14 +289,17 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                       getContent={() =>
                         <div style={{ backgroundColor: 'white' }}>
                           <small style={{ fontWeight: 'bold' }}>
-                            OFF for Replace-by-fee (RBF) and ON for Z-DAG <br /> Z-DAG: a exclusive Syscoin feature. <br /> To know more: <br />
+                            OFF for Replace-by-fee (RBF) and ON for Z-DAG <br /> 
+                            Z-DAG: a exclusive Syscoin feature.
+                            <br />
+                            <strong>To know more:</strong>
                             <span
                               style={{ cursor: 'pointer' }}
                               onClick={() => {
                                 window.open("https://syscoin.org/news/what-is-z-dag");
                               }}
                             >
-                              What is Z-DAG?
+                              <a href=""> What is Z-DAG?</a>
                             </span>
                           </small>
                         </div>
@@ -354,7 +361,12 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               </li>
 
               <li className={styles.item}>
-                <label htmlFor="fee">Transaction Fee</label>
+                <label 
+                  htmlFor="fee"
+                  style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  Transaction Fee
+                </label>
                 <TextInput
                   type="number"
                   placeholder="Enter transaction fee"

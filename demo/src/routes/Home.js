@@ -54,7 +54,7 @@ export default function Home() {
               onClick={handleConnect}
               disabled={!controller}
             >
-              Connect to Syscoin Wallet
+              Connect to Pali Wallet
             </button>
           </div>
         </form>
