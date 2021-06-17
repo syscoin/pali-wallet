@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function AdvancedPanel({
   onChange,
@@ -13,17 +13,8 @@ export default function AdvancedPanel({
   const [auxfees, setAuxFees] = useState([]);
   const [notaryAddress, setNotaryAddress] = useState();
 
-  useEffect(() => {
-    onChange({
-      contract,
-      capabilityFlags,
-      endpoint,
-      instanttransfers,
-      hdrequired,
-      auxfees,
-      notaryAddress,
-    });
-  }, [
+  const stateRef = useRef();
+  stateRef.current = {
     contract,
     capabilityFlags,
     endpoint,
@@ -32,7 +23,33 @@ export default function AdvancedPanel({
     auxfeekeyid,
     auxfees,
     notaryAddress,
-  ]);
+  };
+
+  useEffect(() => {
+    const inputs = document.querySelectorAll("input");
+
+    const onChangeEvent = (event) => {
+      onChange(stateRef.current);
+    };
+
+    if (typeof onChange === "function") {
+      const evt = new Event("input");
+
+      evt.simulated = true;
+
+      inputs.forEach((input) => {
+        input.dispatchEvent(evt);
+        input.addEventListener("input", onChangeEvent);
+      });
+    }
+
+    return () => {
+      typeof onChange === "function" &&
+        inputs.forEach((input) => {
+          input.removeEventListener("input", onChangeEvent);
+        });
+    };
+  }, []);
 
   const handleInputChange = (setState) => {
     return (event) => {
