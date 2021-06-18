@@ -118,11 +118,13 @@
       cursor: pointer;
       border-left: 3px solid $deepPink;
       border-right: 3px solid $deepPink;
+      font-weight: $regular;
       color: $deepPink;
 
       &:hover {
         color: $deepPink-100;
         width: 96%;
+        font-weight: $semibold;
         // letter-spacing: .1em;
         border-left: 10px solid $deepPink-100;
         border-right: 10px solid $deepPink-100;
@@ -153,7 +155,7 @@
       width: 32px;
       height: 32px;
       right: 3.5em;
-      top: 3.5em;
+      top: 3.9em;
       color: $white;
       transition: .3s all;
 
@@ -222,7 +224,7 @@
       font-weight: $bold;
       font-size: 2.4rem;
       // line-height: 48px;
-      margin: 0px;
+      margin: .5em 0 0 0;
       color: $deepPink;
 
       small {
