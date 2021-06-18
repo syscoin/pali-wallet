@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { elementEventHandler } from "../utils/elementEventHandler";
 
@@ -21,14 +21,19 @@ export default function AdvancedPanel({
       const state = {
         ...(contract && { contract }),
         ...(capabilityFlags && { capabilityFlags }),
-        ...(endpoint && { endpoint }),
-        ...(endpoint && { instanttransfers, hdrequired }),
-        ...(auxfeekeyid && { auxfeekeyid }),
-        ...(auxfees.length && { auxfees }),
+        ...(endpoint && {
+          notarydetails: { endpoint, instanttransfers, hdrequired },
+        }),
+        ...(auxfeekeyid && {
+          auxfeedetails: {
+            auxfeekeyid,
+            auxfees: auxfees.length ? auxfees : [{ bound: 0, percent: 0 }],
+          },
+        }),
         ...(notaryAddress && { notaryAddress }),
       };
 
-      Object.entries(state).length && onChange(state);
+      onChange(state);
     }
   }, [
     contract,
@@ -92,7 +97,7 @@ export default function AdvancedPanel({
   };
 
   useEffect(() => {
-    if (!toggleButton) {
+    if (toggleButton) {
       const advanced = document.querySelector(".advanced");
       const advancedPanel = document.querySelector(".advanced-panel");
 
@@ -105,7 +110,7 @@ export default function AdvancedPanel({
 
   return (
     <div className="form-line gray">
-      {!toggleButton && (
+      {toggleButton && (
         <div className="form-group col-100">
           <div className="advanced">
             Advanced <i className="icon-right-open"></i>
@@ -113,7 +118,7 @@ export default function AdvancedPanel({
           </div>
         </div>
       )}
-      <div className={`advanced-panel ${toggleButton && "open"}`}>
+      <div className={`advanced-panel ${!toggleButton && "open"}`}>
         <div className="form-line">
           <div className="label-spacing">
             <label>Compliance & Business Rulesets</label>

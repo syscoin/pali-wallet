@@ -3,12 +3,10 @@ import { useSelector } from "react-redux";
 
 export default function IssueSPT() {
   const [assetGuid, setAssetGuid] = useState("");
+  const [asset, setAsset] = useState({ maxSupply: "", totalSupply: "" });
   const [amount, setAmount] = useState(0);
   const [tokens, setTokens] = useState([]);
   const controller = useSelector((state) => state.controller);
-  const { connectedAccountAddress } = useSelector(
-    (state) => state.connectedAccountData
-  );
 
   useEffect(() => {
     controller &&
@@ -19,14 +17,22 @@ export default function IssueSPT() {
     return () => setTokens([]);
   }, []);
 
+  useEffect(() => {
+    if (controller && assetGuid) {
+      controller.getDataAsset(assetGuid).then((data) => {
+        const { maxSupply, totalSupply, decimals } = data;
+        setAsset({
+          maxSupply: maxSupply / Math.pow(10, decimals),
+          totalSupply: totalSupply / Math.pow(10, decimals),
+        });
+      });
+    }
+  }, [assetGuid]);
+
   const handleIssueSPT = async (event) => {
     event.preventDefault();
 
-    controller &&
-      (await controller.handleIssueSPT(
-        amount,
-        assetGuid
-      ));
+    controller && (await controller.handleIssueSPT(amount, assetGuid));
   };
 
   const handleInputChange = (setState) => {
@@ -102,7 +108,7 @@ export default function IssueSPT() {
                 type="text"
                 className="form-control"
                 disabled
-                value="999999"
+                value={asset.totalSupply}
               />
               <p className="help-block">Current Circulating Supply</p>
             </div>
@@ -112,7 +118,7 @@ export default function IssueSPT() {
                 type="text"
                 className="form-control"
                 disabled
-                value="999999"
+                value={asset.maxSupply}
               />
               <p className="help-block">Max Supply</p>
             </div>
