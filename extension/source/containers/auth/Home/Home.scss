@@ -110,28 +110,50 @@
     background: $navy;
     transition: .3s all;
 
-    .connected {
-      cursor: pointer;
-      padding: 4px;
-      border-radius: 10px;
-      width: 50%;
+    .notConnected {
+      width: 98%;
+      margin-bottom: .5em;
       text-align: center;
-      transition: .3s all;
-      border: 1px solid $white;
-      color: $white;
-      margin: .4rem 0;
+      // transition: .3s all;
+      cursor: pointer;
+      border-left: 3px solid $deepPink;
+      border-right: 3px solid $deepPink;
+      color: $deepPink;
 
       &:hover {
-        border: 1px solid #4d76b8;
+        color: $deepPink-100;
+        width: 96%;
+        // letter-spacing: .1em;
+        border-left: 10px solid $deepPink-100;
+        border-right: 10px solid $deepPink-100;
+      }
+    }
+
+    .connected {
+      width: 98%;
+      margin-bottom: .5em;
+      text-align: center;
+      // transition: .3s all;
+      cursor: pointer;
+      border-left: 3px solid $yellowGreen;
+      border-right: 3px solid $yellowGreen;
+      color: $yellowGreen;
+
+      &:hover {
+        color: $yellowGreen;
+        width: 96%;
+        // letter-spacing: .1em;
+        border-left: 10px solid $yellowGreen;
+        border-right: 10px solid $yellowGreen;
       }
     }
 
     .refresh {
       position: absolute;
       width: 32px;
-      right: 33px;
-      top: 94px;
       height: 32px;
+      right: 3.5em;
+      top: 3.5em;
       color: $white;
       transition: .3s all;
 
@@ -197,25 +219,25 @@
     }
 
     & > h3 {
-      font-weight: 500;
-      font-size: 33px;
-      line-height: 48px;
+      font-weight: $bold;
+      font-size: 2.4rem;
+      // line-height: 48px;
       margin: 0px;
       color: $deepPink;
 
       small {
-        font-weight: 500;
+        font-weight: $bold;
         font-size: 18px;
-        line-height: 24px;
+        // line-height: 24px;
       }
     }
 
     & > small {
-      font-weight: 500;
-      font-size: 16px;
-      line-height: 24px;
+      margin-top: .2em;
+      font-weight: $light;
+      font-size: 1rem;
+      // line-height: 24px;
       color: $white;
-      margin-top: 8px;
     }
 
     .actions {
