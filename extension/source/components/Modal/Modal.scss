@@ -11,16 +11,20 @@
 }
 
 .modal {
-  background-color: white;
-  position: absolute;
+  width: 70%;
   top: 50px;
   z-index: 20;
-  width: 70%;
+  transition: .3s all;
+  position: absolute;
   padding: 1rem 2rem;
   border-radius: 1rem;
-  font-size: 15px;
-  transition: .3s all;
+  border: 1px solid $deepPink;
+  font-size: .8rem;
+  color: $royalBlue-medium;
   font-family: 'Poppins', sans-serif;
+  background-color: $navy-darker;
+
+  margin-top: 1em;
 
   .close {
     padding: .6rem;
@@ -28,33 +32,59 @@
     justify-content: flex-end;
 
     button {
-      width: 47%;
+      width: 98%;
       height: 2rem;
-      border: 1px solid #4d76b8;
+      color: $deepPink;
+      border: 1px solid transparent;
       border-radius: 2rem;
+      background-image: 
+        linear-gradient(
+          rgba(255, 255, 255, 0), 
+          rgba(255, 255, 255, 0)), 
+          linear-gradient(
+            30deg, 
+            #8C1F4E 10%,
+            $deepPink-100 50%
+          );
+        background-origin: border-box;
+        background-clip: content-box, border-box;
+        box-shadow: 2px 1000px 1px $navy inset;
+
       cursor: pointer;
-      background: $white;
       font-weight: bold;
-      color: #4d76b8;
       margin: .5rem 0 0;
       transition: .3s all;
       outline: none;
 
       &:hover {
-        background-color: #4d76b8;
-        color: $white;
+        box-shadow: none;
+        color: white;
+      }
+
+      &:active {
+        transform: scale(0.95);
       }
     }
   }
 
   .title {
-    border-bottom: 2px solid rgb(202, 202, 202);
-    margin-bottom: 1rem;
-    padding: 1rem 0;
-    font-weight: bold;
+    // margin-bottom: .5rem;
+    padding: 1rem 0 .5rem 0;
     display: flex;
     flex-direction: column;
     gap: 10px;
+    color: $royalBlue-medium;
+    font-size: 1.2rem;
+    font-weight: bold;
+    text-align: center;
+    border-bottom: 2px solid;
+    border-image: 
+      linear-gradient(
+        to right, 
+        $navy 20%, 
+        $royalBlue 50%, 
+        $navy 80%
+      ) 10;
   }
 
   .account {
