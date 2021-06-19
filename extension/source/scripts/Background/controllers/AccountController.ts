@@ -923,23 +923,22 @@ const AccountController = (actions: {
     console.log("Asset shares Data: " + sharesData)
 
     const txOpts: any = { rbf };
-    const capabilityflags = 127;
 
     const feeRate = new sys.utils.BN(fee * 1e8)
 
     const assetOpts = {
       precision,
       symbol,
-      maxsupply: 1,
+      maxsupply: new sys.utils.BN(1 * 1e8),
       description,
-      updatecapabilityflags: capabilityflags
+      updatecapabilityflags: 0
     };
 
     const sysChangeAddress = null;
 
-    console.log('asset opts parent child', assetOpts, feeRate)
+    console.log('asset opts parent child', assetOpts, fee, feeRate)
 
-    const psbt = await sysjs.assetNew(assetOpts, txOpts, sysChangeAddress, sysReceivingAddress, feeRate);
+    const psbt = await sysjs.assetNew(assetOpts, txOpts, null, null, feeRate);
 
     if (!psbt) {
       console.log('Could not create transaction, not enough funds?');
@@ -947,7 +946,7 @@ const AccountController = (actions: {
       return;
     }
 
-    const assets = sysjs.getAssetsFromTx(psbt.extractTransaction());
+    const assets = syscointx.getAssetsFromTx(psbt.extractTransaction());
 
     const endResult = { asset_guid: assets.keys().next().value };
 
@@ -958,13 +957,13 @@ const AccountController = (actions: {
 
   const issueBlankChildNFTs = async (parentAssetGuid: string, qty: number, startNFTID: number, receivingAddress: string, feeRate: number, rbf: boolean) => {
     const xpub = await sysjs.HDSigner.getAccountXpub();
-    console.log("Root xpub: "+xpub);
+    console.log("Root xpub: " + xpub);
 
-    if(qty > 50) {
+    if (qty > 50) {
       throw new Error('ERROR: We are limiting the max quantity to 50 blank NFTs per execution. Let\'s be good stewards of the blockchain and not add much bloat.');
     }
 
-    if((startNFTID + qty) > 4294967295) {
+    if ((startNFTID + qty) > 4294967295) {
       throw new Error('ERROR: NFTID may not exceed value 4294967295. Your arguments increment beyond this value.');
     }
 
@@ -975,6 +974,8 @@ const AccountController = (actions: {
       assetWhiteList: new Map([[parentAssetGuid, {}]])
     };
 
+    console.log('issue blank params', parentAssetGuid, qty, startNFTID, receivingAddress, feeRate, rbf)
+
     const assetChangeAddress = null;
     const sysChangeAddress = null;
 
@@ -984,7 +985,7 @@ const AccountController = (actions: {
 
     console.log('request backend is synced', backendIsSynced)
 
-    if(backendIsSynced.data.blockbook.inSync == true && backendIsSynced.data.blockbook.syncMode == true) {
+    if (backendIsSynced.data.blockbook.inSync == true && backendIsSynced.data.blockbook.syncMode == true) {
       for (var i = startNFTID; i <= startNFTID + qty; i++) {
         let parentAsset = await axios.get(`${sysjs.blockbookURL}/api/v2/asset/${newParentAssetGuid}`, { httpsAgent: agent });
         console.log(parentAsset.data)
@@ -999,10 +1000,10 @@ const AccountController = (actions: {
 
         console.log(`making sure nft ${childAssetGuid} does not exist on-chain`);
 
-        if(NFTAssetIdAlreadyExists.data.error === 'Asset not found') {
+        if (NFTAssetIdAlreadyExists.data.error === 'Asset not found') {
           assetArray.push(
             [Number(childAssetGuid), {
-              changeAddress: assetChangeAddress, 
+              changeAddress: assetChangeAddress,
               outputs: [{
                 value: new sys.utils.BN('20000'),
                 address: receivingAddress
@@ -1014,9 +1015,9 @@ const AccountController = (actions: {
         }
 
         console.log(`nftid ${i} already exists on-chain for parent asset ${parentAssetGuid}`)
-      } 
+      }
 
-      if(assetArray.length > 0){
+      if (assetArray.length > 0) {
         console.log(`committing ${assetArray.length} to the blockchain`);
 
         const assetMap = new Map(assetArray);
@@ -1025,7 +1026,7 @@ const AccountController = (actions: {
 
         if (!psbt) {
           console.log('Could not create transaction, not enough funds?');
-        } 
+        }
 
         const onChainChildAssetGuids = syscointx.getAllocationsFromTx(psbt.extractTransaction());
 
@@ -1040,7 +1041,7 @@ const AccountController = (actions: {
 
   const sendChildNFTtoCreator = async (nftGuid: string, receivingAddress: string, amount: number, feeRate: number, rbf: boolean) => {
     const xpub = await sysjs.HDSigner.getAccountXpub();
-    console.log("Root xpub: "+xpub);
+    console.log("Root xpub: " + xpub);
 
     const NFTguid = nftGuid.toString();
     const asset = await axios.get(`${sysjs.blockbookURL}/api/v2/asset/${NFTguid}`, { httpsAgent: agent });
@@ -1052,7 +1053,7 @@ const AccountController = (actions: {
     const txOpts = {
       rbf,
       assetWhiteList: new Map([[NFTguid, {}]])
-    };  
+    };
 
     const assetChangeAddress = null;
     const sysChangeAddress = null;
@@ -1073,7 +1074,7 @@ const AccountController = (actions: {
       console.log('Could not create transaction, not enough funds?')
     }
 
-    for(let output in psbt.txOutputs){
+    for (let output in psbt.txOutputs) {
       console.log("The psbt txOutput: " + (psbt.txOutputs[output]))
     }
   }
@@ -1098,11 +1099,19 @@ const AccountController = (actions: {
 
     const newParentAsset = await createParentAsset(1, symbol, description, fee, rbf, issuer);
 
-    // await issueBlankChildNFTs('734878548', 10, 82732743, 'receivingAddress', feeRate, rbf);
+    const assetId = sys.utils.getBaseAssetID(newParentAsset?.asset_guid);
+    const nftIdParentAsset = sys.utils.createAssetID(assetId, newParentAsset?.asset_guid);
+
+    console.log(nftIdParentAsset)
+
+    // 4294967295 nft id max
+    // 9172645498812352635 nft id now
+
+    await issueBlankChildNFTs(newParentAsset?.asset_guid, 1, 10, issuer, feeRate, rbf);
 
     // await sendChildNFTtoCreator(nftGuid, receivingAddress, amount, feeRate, rbf);
 
-    console.log('parent asset created', newParentAsset);
+    console.log('parent asset created', newParentAsset?.asset_guid);
 
 
     // const createNewSPT: Promise<any> = new Promise((resolve) => {
@@ -1112,98 +1121,35 @@ const AccountController = (actions: {
     // });
 
 
-    const txOpts = { rbf };
+    // const txOpts = { rbf };
 
-    const assetGuid = 'newassetguid';
-    const NFTID = sys.utils.createAssetID('1', assetGuid);
-    const assetChangeAddress = null;
+    // const assetGuid = 'newassetguid';
+    // const NFTID = sys.utils.createAssetID('1', assetGuid);
+    // const assetChangeAddress = null;
 
-    let txInfo;
+    // let txInfo;
 
-    const assetMap = new Map([
-      [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1000), address: assetChangeAddress }] }],
-      [NFTID, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1), address: assetChangeAddress }] }]
-    ]);
+    // const assetMap = new Map([
+    //   [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1000), address: assetChangeAddress }] }],
+    //   [NFTID, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1), address: assetChangeAddress }] }]
+    // ]);
 
-    console.log('mint nft', item)
+    // console.log('mint nft', item)
 
-    let sysChangeAddress = null;
-    if (account.isTrezorWallet) {
-      sysChangeAddress = await getNewChangeAddress();
-      // @ts-ignore
-      assetMap.get(assetGuid)!.changeAddress = sysChangeAddress;
-      // @ts-ignore
-      assetMap.get(NFTID)!.changeAddress = sysChangeAddress;
+    // let sysChangeAddress = null;
+    // if (account.isTrezorWallet) {
+    //   throw new Error('trezor does not support nft creation')
+    // }
 
-      const psbt = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate, account.xpub);
-      
-      if (!psbt) {
-        console.log('Could not create transaction, not enough funds?')
-      }
+    // const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
 
-      let trezortx: any = {};
-      trezortx.coin = "sys";
-      trezortx.version = psbt.res.txVersion;
-      trezortx.inputs = [];
-      trezortx.outputs = [];
+    // if (!pendingTx) {
+    //   console.log('Could not create transaction, not enough funds?')
+    // }
 
-      for (let i = 0; i < psbt.res.inputs.length; i++) {
-        const input = psbt.res.inputs[i];
-        let _input: any = {};
+    // txInfo = pendingTx.extractTransaction().getId();
 
-        _input.address_n = convertToBip32Path(input.path);
-        _input.prev_index = input.vout;
-        _input.prev_hash = input.txId;
-        if (input.sequence) _input.sequence = input.sequence;
-        _input.amount = input.value.toString();
-        _input.script_type = 'SPENDWITNESS';
-        trezortx.inputs.push(_input);
-      }
-
-      for (let i = 0; i < psbt.res.outputs.length; i++) {
-        const output = psbt.res.outputs[i];
-        let _output: any = {};
-
-        _output.amount = output.value.toString();
-
-        if (output.script) {
-          _output.script_type = "PAYTOOPRETURN";
-
-          const chunks = bjs.script.decompile(output.script);
-
-          if (chunks[0] === bitcoinops.OP_RETURN) {
-            _output.op_return_data = chunks[1].toString('hex');
-          }
-        } else {
-          _output.script_type = "PAYTOWITNESS";
-          _output.address = output.address;
-        }
-
-        trezortx.outputs.push(_output);
-      }
-
-      console.log("Calling trezor tx FOR NFT MINT");
-
-      const resp = await TrezorConnect.signTransaction(trezortx);
-
-      if (resp.success == true) {
-        txInfo = await sys.utils.sendRawTransaction(sysjs.blockbookURL, resp.payload.serializedTx);
-
-        return;
-      }
-
-      console.log(resp.payload.error)
-    } else {
-      const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
-
-      if (!pendingTx) {
-        console.log('Could not create transaction, not enough funds?')
-      }
-
-      txInfo = pendingTx.extractTransaction().getId();
-    }
-
-    updateTransactionData('issuingNFT', txInfo);
+    // updateTransactionData('issuingNFT', txInfo);
   }
 
   const confirmIssueNFT = () => {
@@ -1477,7 +1423,7 @@ const AccountController = (actions: {
     });
 
     if (connectedAccountAssetsData) {
-      connectedAccountAssetsData.assets.map(async (asset: any) => {
+      connectedAccountAssetsData.assets.map((asset: any) => {
         const {
           balance,
           type,
@@ -1486,7 +1432,7 @@ const AccountController = (actions: {
           assetGuid
         } = asset;
 
-        const assetId = await sys.utils.getBaseAssetID(assetGuid);
+        const assetId = sys.utils.getBaseAssetID(assetGuid);
 
         const assetData = {
           balance,
@@ -1571,12 +1517,20 @@ const AccountController = (actions: {
 
     let assetOpts = {
       updatecapabilityflags: capabilityflags || 127,
-      contract: Buffer.from(contract || '', 'hex') || null,
       description: 'lasldskd',
+      contract: null,
       notarydetails,
       auxfeedetails,
       notarykeyid: Buffer.from('', 'hex')
     };
+
+    if (contract) {
+      assetOpts = {
+        ...assetOpts,
+        // @ts-ignore
+        contract: Buffer.from(contract, 'hex')
+      };
+    }
 
     if (auxfeedetails) {
       const scalarPct = 1000;
