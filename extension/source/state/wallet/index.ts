@@ -27,7 +27,7 @@ const initialState: IWalletState = {
   updatingAsset: false,
   transferringOwnership: false,
   blockbookURL: '',
-  sendingSys: false
+  sendingSys: false,
 };
 
 const WalletState = createSlice({
@@ -258,7 +258,7 @@ export const {
   updateBlockbookURL,
   setUpdateAsset,
   setTransferOwnership,
-  updateSendingSys
+  updateSendingSys,
 } = WalletState.actions;
 
 export default WalletState.reducer;

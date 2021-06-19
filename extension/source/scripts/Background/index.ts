@@ -381,13 +381,31 @@ browser.runtime.onInstalled.addListener(async () => {
         });
       }
 
-      if (type == 'ISSUE_NFT' && target == 'background') {
+      if (type == 'CREATE_AND_ISSUE_NFT' && target == 'background') {
         const {
-          assetGuid,
+          symbol,
+          issuer,
+          totalShares,
+          description,
+          notary,
+          notarydetails,
+          auxfee,
+          auxfeedetails,
+          notaryAddress,
+          payoutAddress,
         } = request;
 
         window.controller.wallet.account.setDataFromPageToMintNFT({
-          assetGuid,
+          symbol,
+          issuer,
+          totalShares,
+          description,
+          notary,
+          notarydetails,
+          auxfee,
+          auxfeedetails,
+          notaryAddress,
+          payoutAddress,
         });
 
         store.dispatch(issueNFT(true));
@@ -397,7 +415,7 @@ browser.runtime.onInstalled.addListener(async () => {
         await createPopup(appURL);
 
         browser.tabs.sendMessage(tabId, {
-          type: 'ISSUE_NFT',
+          type: 'CREATE_AND_ISSUE_NFT',
           target: 'contentScript',
           complete: true
         });

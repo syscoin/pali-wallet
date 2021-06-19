@@ -244,15 +244,33 @@ window.addEventListener('message', (event) => {
     return;
   }
 
-  if (type == 'ISSUE_NFT' && target == 'contentScript') {
+  if (type == 'CREATE_AND_ISSUE_NFT' && target == 'contentScript') {
     const {
-      assetGuid,
+      symbol,
+      issuer,
+      totalShares,
+      description,
+      notary,
+      notarydetails,
+      auxfee,
+      auxfeedetails,
+      notaryAddress,
+      payoutAddress,
     } = event.data;
 
     browser.runtime.sendMessage({
-      type: 'ISSUE_NFT',
+      type: 'CREATE_AND_ISSUE_NFT',
       target: 'background',
-      assetGuid,
+      symbol,
+      issuer,
+      totalShares,
+      description,
+      notary,
+      notarydetails,
+      auxfee,
+      auxfeedetails,
+      notaryAddress,
+      payoutAddress,
     });
 
     return;
@@ -494,9 +512,9 @@ browser.runtime.onMessage.addListener((request) => {
     return;
   }
 
-  if (type == 'ISSUE_NFT' && target == 'contentScript') {
+  if (type == 'CREATE_AND_ISSUE_NFT' && target == 'contentScript') {
     window.postMessage({
-      type: 'ISSUE_NFT',
+      type: 'CREATE_AND_ISSUE_NFT',
       target: 'connectionsController',
       complete
     }, '*');

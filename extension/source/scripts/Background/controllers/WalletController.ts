@@ -9,7 +9,7 @@ import {
   setEncriptedMnemonic,
   removeAccounts,
   updateBlockbookURL,
-  removeAccount
+  removeAccount,
 } from 'state/wallet';
 import AccountController, { IAccountController } from './AccountController';
 import IWalletState, {
@@ -36,7 +36,6 @@ export interface IWalletController {
   switchNetwork: (networkId: string) => void;
   getNewAddress: () => Promise<boolean>;
   logOut: () => void;
-
 }
 
 const WalletController = (): IWalletController => {
@@ -69,6 +68,7 @@ const WalletController = (): IWalletController => {
 
     HDsigner = new sys.utils.HDSigner(mnemonic, null, false);
     sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.main.beUrl);
+
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
 
@@ -280,6 +280,7 @@ const WalletController = (): IWalletController => {
     if (SYS_NETWORK[networkId]!.id === 'main') {
       HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, false);
       sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.main.beUrl);
+
       store.dispatch(updateBlockbookURL(SYS_NETWORK.main.beUrl));
 
       _getAccountDataByNetwork(sjs);

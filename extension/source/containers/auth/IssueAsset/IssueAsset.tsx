@@ -25,7 +25,7 @@ const IssueAsset = () => {
   const controller = useController();
   const alert = useAlert();
 
-  const { accounts, activeAccountId, currentSenderURL, activeNetwork }: IWalletState = useSelector(
+  const { accounts, activeAccountId, currentSenderURL, activeNetwork, currentURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -64,15 +64,22 @@ const IssueAsset = () => {
         setConfirmed(true);
         setLoading(false);
       });
+
+      console.log('account conne mint spt', mintSPT)
     }
   }
 
   useEffect(() => {
     setConnectedAccountId(accounts.findIndex((account: IAccountState) => {
       return account.connectedTo.filter((url: string) => {
-        return url === getHost(currentSenderURL);
+        return url === getHost(currentURL);
       });
     }));
+  }, []);
+
+
+  useEffect(() => {
+    console.log('account conne mint spt', mintSPT)
   }, []);
 
   const handleClosePopup = () => {
@@ -146,13 +153,8 @@ const IssueAsset = () => {
                 </div>
 
                 <div className={ styles.flex }>
-                  <p>RBF</p>
+                  <p>Z-DAG</p>
                   <p>{ rbf ? 'Yes' : 'No' }</p>
-                </div>
-
-                <div className={ styles.flex }>
-                  <p>From</p>
-                  <p>{accounts[connectedAccountId].label}</p>
                 </div>
 
                 <div className={ styles.flex }>
@@ -237,7 +239,7 @@ const IssueAsset = () => {
                   <p className={ styles.description }>With current network conditions, we recommend a fee of { recommend } SYS.</p>
 
                   <div className={ styles.rbf }>
-                    <label htmlFor="rbf">RBF</label>
+                    <label htmlFor="rbf">Z-DAG</label>
 
                     <Switch
                       offColor="#333f52"

@@ -152,25 +152,8 @@ const UpdateAsset = () => {
                 </div>
 
                 <div className={styles.flex}>
-                  <p>RBF</p>
+                  <p>Z-DAG</p>
                   <p>{rbf ? 'Yes' : 'No'}</p>
-                </div>
-
-                <div className={styles.flex}>
-                  <div className={styles.detais}>
-                    <p>Aux fee details</p>
-
-                    <div className={styles.flex}>
-                      <p>Aux fee key id:</p>
-                      <p>{updateAsset?.auxfeedetails.auxfeekeyid}</p>
-                    </div>
-
-                    <div className={styles.flex}>
-                      <p>Aux fees</p>
-                      <p>Bound: {updateAsset?.auxfeedetails.auxfees[0].bound}</p>
-                      <p>Percent: {updateAsset?.auxfeedetails.auxfees[0].percent}</p>
-                    </div>
-                    </div>
                 </div>
 
                 <div className={styles.flex}>
@@ -255,7 +238,7 @@ const UpdateAsset = () => {
                   <p className={styles.description}>With current network conditions, we recommend a fee of {recommend} SYS.</p>
 
                   <div className={styles.rbf}>
-                    <label htmlFor="rbf">RBF</label>
+                    <label htmlFor="rbf">Z-DAG</label>
 
                     <Switch
                       offColor="#333f52"

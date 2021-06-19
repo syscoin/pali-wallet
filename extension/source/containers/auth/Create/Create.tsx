@@ -174,13 +174,8 @@ const Create = () => {
                 </div>
 
                 <div className={styles.flex}>
-                  <p>RBF</p>
+                  <p>Z-DAG</p>
                   <p>{rbf ? 'Yes' : 'No'}</p>
-                </div>
-
-                <div className={styles.flex}>
-                  <p>From</p>
-                  <p>{accounts[connectedAccountId].label}</p>
                 </div>
 
                 <div className={styles.flex}>
@@ -270,7 +265,7 @@ const Create = () => {
                   <p className={styles.description}>With current network conditions, we recommend a fee of {recommend} SYS.</p>
 
                   <div className={styles.rbf}>
-                    <label htmlFor="rbf">RBF</label>
+                    <label htmlFor="rbf">Z-DAG</label>
 
                     <Switch
                       offColor="#333f52"

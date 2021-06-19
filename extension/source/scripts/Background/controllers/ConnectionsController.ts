@@ -7,13 +7,71 @@ export interface IConnectionsController {
   getWalletState: () => any;
   getConnectedAccount: () => any;
   handleSendToken: (sender: string, receiver: string, amount: number, fee: number, token: any, isToken: boolean, rbf: boolean) => any;
-  handleCreateToken: (precision: number, symbol: string, maxsupply: number, description: string, receiver: string, capabilityflags?: number, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }) => any;
+  handleCreateToken: (
+    precision: number,
+    symbol: string,
+    maxsupply: number,
+    description: string,
+    receiver: string,
+    capabilityflags?: number,
+    notarydetails?: {
+      endpoint?: string,
+      instanttransfers?: boolean,
+      hdrequired?: boolean
+    },
+    auxfeedetails?: {
+      auxfeekeyid: string,
+      auxfees: [{
+        bound: any | 0,
+        percent: any | 0
+      }] 
+    }
+  ) => any;
   handleIssueSPT: (amount: number, assetGuid: string) => any;
-  handleIssueNFT: (assetGuid: string, nfthash: string, receiver: string) => any;
+  handleIssueNFT: (
+    symbol: string, 
+    issuer: string, 
+    totalShares: number, 
+    description: string,
+    notary?: boolean,
+    notarydetails?: {
+      endpoint?: string,
+      instanttransfers?: boolean,
+      hdrequired?: boolean
+    },
+    auxfee?: boolean,
+    auxfeedetails?: {
+      auxfeekeyid: string,
+      auxfees: [{
+        bound: any | 0,
+        percent: any | 0
+      }]
+    },
+    notaryAddress?: string,
+    payoutAddress?: string
+  ) => any;
   isNFT: (guid: number) => boolean;
   getUserMintedTokens: () => Promise<any>;
   handleCreateCollection: (state: any) => void;
-  handleUpdateAsset: (assetGuid: string, contract?: string, capabilityflags?: number | 127, description?: string, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notaryAddress?: string) => any;
+  handleUpdateAsset: (
+    assetGuid: string,
+    contract?: string,
+    capabilityflags?: number | 127,
+    description?: string,
+    notarydetails?: {
+      endpoint?: string,
+      instanttransfers?: boolean,
+      hdrequired?: boolean
+    },
+    auxfeedetails?: {
+      auxfeekeyid: string,
+      auxfees: [{
+      bound: any | 0,
+      percent: any | 0
+      }]
+    },
+    notaryAddress?: string
+  ) => any;
   handleTransferOwnership: (assetGuid: string, newOwner: string) => any;
   isValidSYSAddress: (address: string) => any;
   getHoldingsData: () => any;
@@ -22,7 +80,7 @@ export interface IConnectionsController {
 
 const isNFT = (guid: number) => {
   let assetGuid = BigInt.asUintN(64, BigInt(guid));
-  
+
   return (assetGuid >> BigInt(32)) > 0
 }
 
@@ -137,16 +195,25 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const handleIssueNFT = async (assetGuid: string) => {
+  const handleIssueNFT = async (symbol: string, issuer: string, totalShares: number, description: string, notary?: boolean, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfee?: boolean, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notaryAddress?: string, payoutAddress?: string) => {
     return await sendMessage({
-      type: 'ISSUE_NFT',
+      type: 'CREATE_AND_ISSUE_NFT',
       target: 'connectionsController',
       freeze: true,
       eventResult: 'complete'
     }, {
-      type: 'ISSUE_NFT',
+      type: 'CREATE_AND_ISSUE_NFT',
       target: 'contentScript',
-      assetGuid,
+      symbol,
+      issuer,
+      totalShares,
+      description,
+      notary,
+      notarydetails,
+      auxfee,
+      auxfeedetails,
+      notaryAddress,
+      payoutAddress
     });
   }
 

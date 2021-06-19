@@ -60,6 +60,8 @@ const IssueNFT = () => {
           alert.removeAll();
           alert.error('Can\'t issue token. Try again later.');
 
+          console.log('error', error)
+
           setTimeout(() => {
             handleCancelTransactionOnSite();
           }, 4000);
@@ -117,7 +119,7 @@ const IssueNFT = () => {
       <div
         className="body-description"
       >
-        Your Tokens is in minting process, you can check the transaction under your history.
+        Your Tokens is in creating and minting process, you can check the transaction under your history.
       </div>
 
       <Button
@@ -133,12 +135,12 @@ const IssueNFT = () => {
   ) : (
     <div>
       {mintNFT ? (
-        <Layout title="Issue NFT" showLogo>
+        <Layout title="Create and issue NFT" showLogo>
           <div className={styles.wrapper}>
             <div>
               <section className={styles.data}>
                 <div className={styles.flex}>
-                  <p>RBF</p>
+                  <p>Z-DAG</p>
                   <p>{rbf ? 'Yes' : 'No'}</p>
                 </div>
 
@@ -199,7 +201,7 @@ const IssueNFT = () => {
             </Layout>
           ) : (
             <div>
-              <Layout title="Issue NFT" showLogo>
+              <Layout title="Create and issue NFT" showLogo>
                 <div className={styles.wrapper}>
                   <label htmlFor="fee">Fee</label>
 
@@ -224,7 +226,7 @@ const IssueNFT = () => {
                   <p className={styles.description}>With current network conditions, we recommend a fee of {recommend} SYS.</p>
 
                   <div className={styles.rbf}>
-                    <label htmlFor="rbf">RBF</label>
+                    <label htmlFor="rbf">Z-DAG</label>
 
                     <Switch
                       offColor="#333f52"

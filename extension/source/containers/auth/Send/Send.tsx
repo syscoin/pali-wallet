@@ -407,7 +407,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 theme="btn-outline-primary"
                 variant={styles.button}
                 disabled={
-                  accounts.find(element => element.id === activeAccountId)!.address.main === address ||
                   accounts.find(element => element.id === activeAccountId)!.balance === 0 ||
                   accounts.find(element => element.id === activeAccountId)!.balance < Number(amount) ||
                   !isValidAddress ||
