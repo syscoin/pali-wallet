@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useSelector } from "react-redux";
 
 import assetImg from "../images/asset.svg";
@@ -91,6 +91,7 @@ export default function CreateSPT() {
                 className="form-control"
                 id="symbol"
                 placeholder=""
+                autocomplete="off"
               />
               <p className="help-block">Max length: 8 alpha-numeric</p>
             </div>
@@ -142,6 +143,7 @@ export default function CreateSPT() {
                 className="form-control"
                 id="supply"
                 placeholder=""
+                autocomplete="off"
               />
               <p className="help-block">Ceiling:</p>
             </div>
@@ -156,6 +158,7 @@ export default function CreateSPT() {
                 className="form-control"
                 id="initialsupply"
                 placeholder=""
+                autocomplete="off"
               />
               <p className="help-block">
                 Ceiling: Max Supply. This value will be minted and sent to the
@@ -176,6 +179,7 @@ export default function CreateSPT() {
                 type="text"
                 id="description"
                 name="description"
+                autocomplete="off"
                 required
               />
 

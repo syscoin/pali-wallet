@@ -115,6 +115,7 @@ export default function CreateNFT() {
                 className="form-control"
                 id="symbol"
                 placeholder=""
+                autocomplete="off"
               />
               <p className="help-block">Max length: 8 alpha-numeric</p>
             </div>
@@ -144,6 +145,7 @@ export default function CreateNFT() {
                 className="form-control"
                 id="shares"
                 onChange={handleInputChange(setMaxSupply)}
+                autocomplete="off"
               >
                 <option>1</option>
                 <option>2</option>
@@ -165,12 +167,13 @@ export default function CreateNFT() {
                 className="form-control"
                 id="description"
                 rows="4"
+                autocomplete="off"
               ></textarea>
               <p className="help-block">Max length: 256 bytes</p>
             </div>
             <div className="form-group col-33 col-md-50 col-sm-100">
               <div className="fileupload">
-                <label htmlFor="logo">Upload logo</label>
+                <label htmlFor="logo">Upload to IPFS</label>
                 <input onChange={handleInputFile} type="file" id="logo" />
                 <img
                   src={
@@ -198,13 +201,12 @@ export default function CreateNFT() {
                 id="metadataDescription"
                 placeholder=""
                 ref={textAreaRef}
+                autocomplete="off"
               /> 
             </div>
             <div className="form-group col-33 col-md-50 col-sm-100">
             <div className="fileupload">
                   {
-       /* Logical shortcut for only displaying the 
-          button if the copy command exists */
        document.queryCommandSupported('copy') &&
         <div>
           <button 
