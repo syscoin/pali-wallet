@@ -92,7 +92,9 @@ browser.runtime.onInstalled.addListener(async () => {
       appUrl: 'https://syscoin.org/',
     }
   });
+
   window.trezorConnect = TrezorConnect;
+
   browser.runtime.onMessage.addListener(async (request, sender) => {
     const {
       type,
@@ -107,26 +109,41 @@ browser.runtime.onInstalled.addListener(async () => {
     const tabId = Number(tabs[0].id);
 
     const createPopup = async (url: string) => {
-      const allWindows = await browser.windows.getAll({
-        windowTypes: ['popup']
-      });
+      let paliCheck: any = {
+        title: 'Pali Wallet',
+        alreadyOpen: false,
+        windowId: -1
+      };
 
-      if (allWindows[0]) {
-        await browser.windows.update(Number(allWindows[0].id), {
-          drawAttention: true,
-          focused: true
+      browser.tabs.query({ active: true })
+      .then(async (tabs) => {
+        tabs.map(async (tab) => {
+          if (tab.title === 'Pali Wallet' && tab.width === 372 && tab.height === 600) {
+            paliCheck = {
+              ...paliCheck,
+              alreadyOpen: true,
+              windowId: tab.windowId
+            };
+          }
         });
 
-        return;
-      }
+        if (paliCheck.alreadyOpen) {
+          await browser.windows.update(Number(paliCheck.windowId), {
+            drawAttention: true,
+            focused: true
+          });
 
-      await browser.windows.create({
-        url,
-        type: 'popup',
-        width: 372,
-        height: 600,
-        left: 900,
-        top: 90
+          return;
+        }
+
+        await browser.windows.create({
+          url,
+          type: 'popup',
+          width: 372,
+          height: 600,
+          left: 900,
+          top: 90
+        });
       });
     };
 
@@ -566,13 +583,16 @@ browser.runtime.onInstalled.addListener(async () => {
       store.dispatch(issueAsset(false));
       store.dispatch(setTransferOwnership(false));
 
-      const all = await browser.windows.getAll();
+      browser.tabs.query({ active: true })
+        .then(async (tabs) => {
+          tabs.map(async (tab) => {
+            if (tab.title === 'Pali Wallet' && tab.width === 372 && tab.height === 600) {
+              await browser.windows.remove(Number(tab.windowId));
+            }
 
-      if (all.length > 1) {
-        const windowId = Number(all[1].id);
-
-        await browser.windows.remove(windowId);
-      }
+            return;
+          });
+        });
     })
   });
 });

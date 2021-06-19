@@ -40,6 +40,7 @@
     "@types/uuid": "^8.3.0",
     "@types/yup": "^0.29.9",
     "advanced-css-reset": "^1.1.1",
+    "axios": "^0.21.1",
     "bech32": "^2.0.0",
     "clsx": "^1.1.1",
     "crypto-js": "^4.0.0",
