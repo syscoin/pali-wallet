@@ -58,7 +58,7 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#' }) => {
         </IconButton>
       )}
 
-      <span className={styles.title}>Syscoin Wallet</span>
+      <span className={styles.title}>Pali Wallet</span>
 
       {encriptedMnemonic ? (
         <IconButton

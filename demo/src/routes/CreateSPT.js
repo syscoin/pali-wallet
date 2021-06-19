@@ -1,27 +1,21 @@
 import React, { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
 
-import { elementEventHandler } from "../utils/elementEventHandler";
 import assetImg from "../images/asset.svg";
+import AdvancedPanel from "../components/AdvancedPanel";
 
 export default function CreateSPT() {
-  const controller = useSelector((state) => state.controller);
-  const { connectedAccountAddress } = useSelector((state) => state.connectedAccountData);
   const [precision, setPrecision] = useState(8);
   const [maxSupply, setMaxSupply] = useState(1);
   const [description, setDescription] = useState("");
   const [symbol, setSymbol] = useState("");
   const [receiver, setReceiver] = useState("");
-
-  useEffect(() => {
-    const advanced = document.querySelector(".advanced");
-    const advancedPanel = document.querySelector(".advanced-panel");
-
-    elementEventHandler(["click"], "", function () {
-      this.classList.toggle("open");
-      advancedPanel.classList.toggle("open");
-    })(advanced);
-  }, []);
+  const [file, setFile] = useState();
+  const [advancedOptions, setAdvancedOptions] = useState({});
+  const controller = useSelector((state) => state.controller);
+  const { connectedAccountAddress } = useSelector(
+    (state) => state.connectedAccountData
+  );
 
   const handleCreateToken = async (event) => {
     event.preventDefault();
@@ -32,7 +26,8 @@ export default function CreateSPT() {
         symbol,
         Number(maxSupply),
         description,
-        receiver || connectedAccountAddress
+        receiver || connectedAccountAddress,
+        ...Object.values(advancedOptions)
       );
 
       event.target.reset();
@@ -43,6 +38,20 @@ export default function CreateSPT() {
     return (event) => {
       setState(event.target.value);
     };
+  };
+
+  const handleInputFile = async (event) => {
+    const _file = event.target.files[0];
+
+    if (!_file) return;
+
+    if (!["image/jpg", "image/png", "image/jpeg"].includes(_file.type)) {
+      //notify the user that the file type is not supported
+
+      return;
+    }
+
+    setFile(_file);
   };
 
   return (
@@ -175,218 +184,13 @@ export default function CreateSPT() {
             <div className="form-group col-33 col-md-50 col-sm-100">
               <div className="fileupload">
                 <label htmlFor="logo">Upload logo</label>
-                <input onChange={() => {}} type="file" id="logo" />
-                <img src={assetImg} />
+                <input onChange={handleInputFile} type="file" id="logo" />
+                <img src={file ? URL.createObjectURL(file) : assetImg} />
               </div>
             </div>
           </div>
 
-          <div className="form-line gray">
-            <div className="form-group col-100">
-              <div className="advanced">
-                Advanced <i className="icon-right-open"></i>
-                <i className="icon-down-open"></i>
-              </div>
-            </div>
-            <div className="advanced-panel">
-              <div className="form-line">
-                <div className="form-group col-100">
-                  <div className="checkbox">
-                    <label>
-                      <input onChange={() => {}} type="checkbox" /> Notary
-                      (Compliance & Busiess Rulesets)
-                    </label>
-                  </div>
-                </div>
-                <div className="form-group col-50 spaced col-sm-100">
-                  <label htmlFor="signer">
-                    Signer Address *{" "}
-                    <i className="icon-info-circled" title="help goes here"></i>
-                  </label>
-                  <input
-                    onChange={() => {}}
-                    type="text"
-                    className="form-control"
-                    id="signer"
-                    placeholder=""
-                  />
-                  <p className="help-block">
-                    Address that will notarize transactions
-                  </p>
-                </div>
-                <div className="form-group col-50 spaced col-sm-100">
-                  <label htmlFor="endpointurl">
-                    Endpoint URL *{" "}
-                    <i className="icon-info-circled" title="help goes here"></i>
-                  </label>
-                  <input
-                    onChange={() => {}}
-                    type="text"
-                    className="form-control"
-                    id="endpointurl"
-                    placeholder=""
-                  />
-                  <p className="help-block">URL to your notray API</p>
-                </div>
-                <div className="form-group col-100">
-                  <div className="checkbox small">
-                    <label>
-                      <input onChange={() => {}} type="checkbox" />
-                      Notary provides double-spend protection and guarantees
-                      safe instant transfers (Default: OFF)
-                    </label>
-                  </div>
-                  <div className="checkbox small">
-                    <label>
-                      <input onChange={() => {}} type="checkbox" /> HD required
-                      for asset transfers (all senders must supply their XPUB &
-                      HD Path) (Default: OFF)
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="form-line half">
-                <div className="form-group col-100">
-                  <div className="label-spacing">
-                    <label>Issuer Rights</label>
-                  </div>
-                </div>
-                <div className="form-group col-100">
-                  <div className="checkbox small">
-                    <label>
-                      <input onChange={() => {}} type="checkbox" />
-                      Issue supply into circulation (LOCKED - ALWAYS ON)
-                    </label>
-                  </div>
-                  <div className="checkbox small">
-                    <label>
-                      <input onChange={() => {}} type="checkbox" />
-                      Edit field value: [public_value]
-                    </label>
-                  </div>
-                  <div className="checkbox small">
-                    <label>
-                      <input onChange={() => {}} type="checkbox" />
-                      Edit field value: [contract]
-                    </label>
-                  </div>
-                  <div className="checkbox small">
-                    <label>
-                      <input onChange={() => {}} type="checkbox" />
-                      Edit field value: [notary_address]
-                    </label>
-                  </div>
-                  <div className="checkbox small">
-                    <label>
-                      <input onChange={() => {}} type="checkbox" />
-                      Edit field value: [notary_details]
-                    </label>
-                  </div>
-                  <div className="checkbox small">
-                    <label>
-                      <input onChange={() => {}} type="checkbox" />
-                      Edit field value: [auxfee]
-                    </label>
-                  </div>
-                  <div className="checkbox small">
-                    <label>
-                      <input onChange={() => {}} type="checkbox" />
-                      Edit field value: [capability_flags]
-                    </label>
-                  </div>
-                </div>
-              </div>
-              <div className="form-line half right">
-                <div className="form-group col-100">
-                  <div className="checkbox">
-                    <label>
-                      <input onChange={() => {}} type="checkbox" />
-                      Auxiliary Fees
-                    </label>
-                  </div>
-                </div>
-                <div className="form-group col-100 spaced">
-                  <label htmlFor="payout">
-                    Payout Address *{" "}
-                    <i className="icon-info-circled" title="help goes here"></i>
-                  </label>
-                  <input
-                    onChange={() => {}}
-                    type="text"
-                    className="form-control"
-                    id="payout"
-                    placeholder=""
-                  />
-                </div>
-                <div className="form-group col-100">
-                  <div className="row nested">
-                    <div className="form-group col-40">
-                      <p className="help-block">Bound</p>
-                    </div>
-                    <div className="form-group col-40">
-                      <p className="help-block">Percent</p>
-                    </div>
-                  </div>
-                  <div className="row nested">
-                    <div className="form-group col-40">
-                      <input
-                        onChange={() => {}}
-                        type="text"
-                        className="form-control"
-                        placeholder=""
-                      />
-                    </div>
-                    <div className="form-group col-40">
-                      <input
-                        onChange={() => {}}
-                        type="text"
-                        className="form-control"
-                        placeholder=""
-                      />
-                    </div>
-                    <div className="form-group col-20">
-                      <button className="small">
-                        <i className="icon-cancel"></i>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="row nested">
-                    <div className="form-group col-40">
-                      <input
-                        onChange={() => {}}
-                        type="text"
-                        className="form-control"
-                        placeholder=""
-                      />
-                    </div>
-                    <div className="form-group col-40">
-                      <input
-                        onChange={() => {}}
-                        type="text"
-                        className="form-control"
-                        placeholder=""
-                      />
-                    </div>
-                    <div className="form-group col-20">
-                      <button className="small">
-                        <i className="icon-plus"></i>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="row nested">
-                    <div className="col-100">
-                      <p className="help-block">
-                        At least one Bound | Percent pair is required
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <AdvancedPanel onChange={setAdvancedOptions} toggleButton />
 
           <div className="btn-center">
             <button>Create Token</button>

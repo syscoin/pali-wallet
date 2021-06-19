@@ -28,6 +28,11 @@
       font-size: 12px;
       line-height: 24px;
       color: $white;
+
+      &:hover {
+        border-radius: 8px;
+        border: 1px solid $deepPink;
+      }
     }
   }
 

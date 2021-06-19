@@ -47,7 +47,7 @@ const ConnectWallet = () => {
     <div className={styles.wrapper}>
       <Header showLogo />
 
-      <h1>Connect with <b>Syscoin Wallet</b></h1>
+      <h1>Connect with <b>Pali Wallet</b></h1>
 
       <p>1/2</p>
       <p>{currentSenderURL}</p>

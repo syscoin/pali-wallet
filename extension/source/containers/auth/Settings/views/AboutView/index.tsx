@@ -6,7 +6,7 @@ import styles from './index.scss';
 const AboutView: FC = () => {
   return (
     <div className={styles.about}>
-      <span>Syscoin Wallet Chrome Extension v1.2</span>
+      <span>Pali Wallet Chrome Extension v1.2</span>
       <span>Version: 1.2.1</span>
       <span>
         Support:{' '}

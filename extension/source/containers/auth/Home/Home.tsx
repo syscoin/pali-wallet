@@ -92,7 +92,7 @@ const Home = () => {
           <section className={styles.center}>
             {isConnected
               ? <small className={styles.connected} onClick={() => setIsOpenModal(!isOpenModal)}>Connected</small>
-              : <small className={styles.connected} onClick={() => setIsOpenModal(!isOpenModal)}>Not connected</small>
+              : <small className={styles.notConnected} onClick={() => setIsOpenModal(!isOpenModal)}>Not connected</small>
             }
 
             {isOpenModal && isConnected && (

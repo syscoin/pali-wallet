@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { NFTStorage, File } from "nft.storage";
 
@@ -16,6 +16,8 @@ export default function CreateNFT() {
   const [file, setFile] = useState();
   const [isUploading, setIsUploading] = useState(false);
   const controller = useSelector((state) => state.controller);
+  const [copySuccess, setCopySuccess] = useState('');
+  const textAreaRef = useRef(null);
   const { connectedAccountAddress } = useSelector(
     (state) => state.connectedAccountData
   );
@@ -64,8 +66,18 @@ export default function CreateNFT() {
     });
 
     setIsUploading(false);
-    setMetadataDescription(metadata.url);
+    setMetadataDescription(
+      `https://ipfs.io/ipfs/${metadata.ipnft}/metadata.json`
+    )
   };
+
+  function copyToClipboard(e) {
+    textAreaRef.current.select();
+    document.execCommand('copy');
+    e.target.focus();
+    setCopySuccess('Copied!');
+  };
+
 
   return (
     <section>
@@ -175,19 +187,44 @@ export default function CreateNFT() {
 
           <div className="form-line">
             <div className="form-group col-67 col-md-50 col-sm-100">
-              <label htmlFor="owneraddr">
+                <label htmlFor="owneraddr">
                 Metadata url{" "}
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
                 value={metadataDescription}
-                disabled
-                type="text"
+                type="url"
                 className="form-control"
-                id="owneraddr"
+                id="metadataDescription"
                 placeholder=""
-              />
+                ref={textAreaRef}
+              /> 
             </div>
+            <div className="form-group col-33 col-md-50 col-sm-100">
+            <div className="fileupload">
+                  {
+       /* Logical shortcut for only displaying the 
+          button if the copy command exists */
+       document.queryCommandSupported('copy') &&
+        <div>
+          <button 
+          className="copy"
+          onClick={copyToClipboard}>Copy</button> 
+          {copySuccess}
+        </div>
+      }
+            </div>
+          </div>
+          </div>
+          <div className="form-line">
+            <div className="form-group col-67 col-md-50 col-sm-100">
+             
+              
+            <div className="form-group col-25 col-md-100 md-spaced-top">
+              <div className="fileupload">
+                 
+      </div>
+            </div></div>
           </div>
 
           <div className="form-line gray">
