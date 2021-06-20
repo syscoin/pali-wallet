@@ -1100,7 +1100,7 @@ const AccountController = (actions: {
     const newParentAsset = await createParentAsset(1, symbol, description, fee, rbf, issuer);
 
     const assetId = sys.utils.getBaseAssetID(newParentAsset?.asset_guid);
-    const nftIdParentAsset = sys.utils.createAssetID(assetId, newParentAsset?.asset_guid);
+    const nftIdParentAsset = sys.utils.createAssetID(1, newParentAsset?.asset_guid);
 
     console.log(nftIdParentAsset)
 
@@ -1113,21 +1113,13 @@ const AccountController = (actions: {
 
     console.log('parent asset created', newParentAsset?.asset_guid);
 
-
-    // const createNewSPT: Promise<any> = new Promise((resolve) => {
-    //   resolve(handleTransactions({}, confirmSPTCreation));
-
-    //   newSPT = null;
-    // });
-
-
     // const txOpts = { rbf };
 
     // const assetGuid = 'newassetguid';
     // const NFTID = sys.utils.createAssetID('1', assetGuid);
     // const assetChangeAddress = null;
 
-    // let txInfo;
+    // // let txInfo;
 
     // const assetMap = new Map([
     //   [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1000), address: assetChangeAddress }] }],
