@@ -1546,7 +1546,8 @@ const AccountController = (actions: {
       auxfeedetails,
       notaryAddress
     } = item;
-    const feeRate = new sys.utils.BN(10);
+
+    const feeRate = new sys.utils.BN(fee * 1e8);
     console.log('fee', fee, fee * 1e8)
 
     const txOpts = {
@@ -1559,12 +1560,12 @@ const AccountController = (actions: {
     console.log('data confirm update asset  item, feeRate, txOpts, assetGuid', item, feeRate, txOpts, assetGuid)
 
     let assetOpts = {
-      updatecapabilityflags: capabilityflags || 127,
+      updatecapabilityflags: capabilityflags,
       description: 'lasldskd',
-      contract: null,
+      contract,
       notarydetails,
       auxfeedetails,
-      notarykeyid: Buffer.from('', 'hex')
+      notarykeyid: null
     };
 
     if (contract) {
@@ -1586,6 +1587,7 @@ const AccountController = (actions: {
 
       assetOpts = {
         ...assetOpts,
+        // @ts-ignore
         auxfeedetails: {
           auxfees: [
             {
@@ -1606,6 +1608,7 @@ const AccountController = (actions: {
 
       assetOpts = {
         ...assetOpts,
+        // @ts-ignore
         notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
       }
     }
@@ -1618,7 +1621,7 @@ const AccountController = (actions: {
       [Number(assetGuid), {
         changeAddress: assetChangeAddress,
         outputs: [{
-          value: new sys.utils.BN(0),
+          value: new sys.utils.BN(1),
           address: assetChangeAddress
         }]
       }]
@@ -1628,7 +1631,7 @@ const AccountController = (actions: {
 
     const sysChangeAddress = null;
 
-    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, new sys.utils.BN(10));
+    const pendingTx = await sysjs.assetUpdate(assetGuid, {}, txOpts, assetMap, sysChangeAddress, new sys.utils.BN(fee * 1e8));
 
     const txInfo = pendingTx.extractTransaction().getId();
     console.log('pendingTx', pendingTx)

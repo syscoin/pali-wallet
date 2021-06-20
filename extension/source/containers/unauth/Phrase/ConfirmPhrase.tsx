@@ -1,9 +1,9 @@
-import React, { useState, /* useMemo */ } from 'react';
+import React, { useState, useMemo } from 'react';
 import Button from 'components/Button';
 import CheckIcon from '@material-ui/icons/CheckCircle';
 import { useHistory } from 'react-router-dom';
 import shuffle from 'lodash/shuffle';
-// import isEqual from 'lodash/isEqual';
+import isEqual from 'lodash/isEqual';
 import { useController } from 'hooks/index';
 
 import Layout from '../../common/Layout';
@@ -23,10 +23,10 @@ const ConfirmPhrase = () => {
     ? `Your Wallet is ready`
     : `Verify your recovery\nphrase`;
 
-  // const isNotEqualArrays = useMemo((): boolean => {
-  //   if (!phrases) return true;
-  //   return !isEqual(phrases.split(' '), newList);
-  // }, [phrases, newList]);
+  const isNotEqualArrays = useMemo((): boolean => {
+    if (!phrases) return true;
+    return !isEqual(phrases.split(' '), newList);
+  }, [phrases, newList]);
 
   const handleOrgPhrase = (idx: number) => {
     const tempList = [...orgList];
@@ -92,7 +92,7 @@ const ConfirmPhrase = () => {
         type="button"
         theme="btn-gradient-primary"
         variant={passed ? styles.start : styles.validate}
-        // disabled={isNotEqualArrays}
+        disabled={isNotEqualArrays}
         onClick={handleConfirm}
       >
         {passed ? 'Next' : 'Validate'}

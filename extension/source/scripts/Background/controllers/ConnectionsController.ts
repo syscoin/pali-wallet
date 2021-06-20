@@ -281,7 +281,7 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const handleUpdateAsset = async (assetGuid: string, contract?: string, capabilityflags?: number | 127, description?: string, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfeedetails?: { auxfeekeyid?: any, auxfees?: [{ bound?: any | 0, percent?: any | 0 }] }, notaryAddress?: string) => {
+  const handleUpdateAsset = async (assetGuid: string, contract?: string | null, capabilityflags?: number | 127, description?: string | null, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean } | null, auxfeedetails?: { auxfeekeyid?: any, auxfees?: [{ bound?: any | 0, percent?: any | 0 }] } | null, notaryAddress?: string | null) => {
     return await sendMessage({
       type: 'UPDATE_ASSET',
       target: 'connectionsController',
@@ -291,12 +291,12 @@ const ConnectionsController = (): IConnectionsController => {
       type: 'UPDATE_ASSET',
       target: 'contentScript',
       assetGuid,
-      contract,
-      capabilityflags,
-      description,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress
+      contract: contract || null,
+      capabilityflags: capabilityflags || 127,
+      description: description || null,
+      notarydetails: notarydetails || null,
+      auxfeedetails: auxfeedetails || null,
+      notaryAddress: notaryAddress || null
     });
   }
 
