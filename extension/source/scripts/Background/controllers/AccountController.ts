@@ -379,7 +379,8 @@ const AccountController = (actions: {
 
   const watchMemPool = () => {
     if (intervalId) {
-      return;
+      console.log('interval id', intervalId)
+      return true;
     }
 
     intervalId = setInterval(() => {
@@ -395,8 +396,14 @@ const AccountController = (actions: {
         ).length
       ) {
         clearInterval(intervalId);
+
+        return false;
       }
+
+      return;
     }, 30 * 1000);
+
+    return true;
   };
 
   const isValidSYSAddress = (address: string, network: string) => {
@@ -914,25 +921,17 @@ const AccountController = (actions: {
     };
   }
 
-  const createParentAsset = async (precision: number, symbol: string, description: string, fee: number, rbf: boolean, sysReceivingAddress: string) => {
+  const createParentAsset = async (assetOpts: any, fee: number, rbf: boolean, sysReceivingAddress: string) => {
     const xpub: any = await sysjs.HDSigner.getAccountXpub();
     console.log("Root xpub: " + xpub);
 
-    const sharesData = await getAssetSharesData(precision);
+    const sharesData = await getAssetSharesData(8);
 
     console.log("Asset shares Data: " + sharesData)
 
     const txOpts: any = { rbf };
 
     const feeRate = new sys.utils.BN(fee * 1e8)
-
-    const assetOpts = {
-      precision,
-      symbol,
-      maxsupply: new sys.utils.BN(1 * 1e8),
-      description,
-      updatecapabilityflags: 0
-    };
 
     const sysChangeAddress = null;
 
@@ -952,7 +951,16 @@ const AccountController = (actions: {
 
     console.log('end result', endResult);
 
-    return endResult;
+    console.log('psbt asset new', psbt)
+
+    const txInfo = psbt.extractTransaction().getId();
+
+    console.log('tx info', txInfo)
+
+    return {
+      asset_guid: assets.keys().next().value,
+      txid: txInfo
+    };
   }
 
   const issueBlankChildNFTs = async (parentAssetGuid: string, qty: number, startNFTID: number, receivingAddress: string, feeRate: number, rbf: boolean) => {
@@ -986,7 +994,7 @@ const AccountController = (actions: {
     console.log('request backend is synced', backendIsSynced)
 
     if (backendIsSynced.data.blockbook.inSync == true && backendIsSynced.data.blockbook.syncMode == true) {
-      for (var i = startNFTID; i <= startNFTID + qty; i++) {
+      for (let i = startNFTID; i <= startNFTID + qty; i++) {
         let parentAsset = await axios.get(`${sysjs.blockbookURL}/api/v2/asset/${newParentAssetGuid}`, { httpsAgent: agent });
         console.log(parentAsset.data)
 
@@ -995,6 +1003,8 @@ const AccountController = (actions: {
         console.log('shares data', sharesData)
 
         const childAssetGuid = sys.utils.createAssetID(i, parentAssetGuid);
+
+        console.log('i from startnftid childassetguid', i, childAssetGuid)
 
         const NFTAssetIdAlreadyExists = await axios.get(`${sysjs.blockbookURL}/api/v2/asset/${childAssetGuid}`, { httpsAgent: agent });
 
@@ -1039,7 +1049,7 @@ const AccountController = (actions: {
     console.log('backend is not synced. give it time to sync, then try again');
   }
 
-  const sendChildNFTtoCreator = async (nftGuid: string, receivingAddress: string, amount: number, feeRate: number, rbf: boolean) => {
+  const sendChildNFTtoCreator = async (nftGuid: string, receivingAddress: string, feeRate: number, rbf: boolean) => {
     const xpub = await sysjs.HDSigner.getAccountXpub();
     console.log("Root xpub: " + xpub);
 
@@ -1048,7 +1058,7 @@ const AccountController = (actions: {
 
     console.log('request asset', asset)
     const sharesData = await getAssetSharesData(asset.data.asset.decimals);
-    const satoshiAmount = (amount * sharesData.kCoin).toString();
+    const satoshiAmount = (1 * sharesData.kCoin).toString();
 
     const txOpts = {
       rbf,
@@ -1095,23 +1105,67 @@ const AccountController = (actions: {
       payoutAddress
     } = item;
 
+    const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
+      return account.connectedTo.find((url: any) => {
+        return url == new URL(store.getState().wallet.currentURL).host;
+      });
+    });
+
+    if (connectedAccount.isTrezorWallet) {
+      throw new Error('trezor does not support nft creation')
+    }
+
     const feeRate = new sys.utils.BN(fee * 1e8);
 
-    const newParentAsset = await createParentAsset(1, symbol, description, fee, rbf, issuer);
+    let assetOpts = {
+      precision: 8,
+      symbol,
+      maxsupply: new sys.utils.BN(1 * 1e8),
+      description,
+      // updatecapabilityflags: 127
+    }
 
-    const assetId = sys.utils.getBaseAssetID(newParentAsset?.asset_guid);
-    const nftIdParentAsset = sys.utils.createAssetID(1, newParentAsset?.asset_guid);
+    const newParentAsset = await createParentAsset(assetOpts, fee, rbf, issuer);
 
-    console.log(nftIdParentAsset)
+    // assetOpts = {
+    //   ...assetOpts,
+    //   // updatecapabilityflags: 0
+    // }
 
-    // 4294967295 nft id max
-    // 9172645498812352635 nft id now
+    if (newParentAsset?.asset_guid) {
+      const assetId = sys.utils.getBaseAssetID(newParentAsset?.asset_guid);
+      const nftIdParentAsset = sys.utils.createAssetID('1', newParentAsset?.asset_guid);
 
-    await issueBlankChildNFTs(newParentAsset?.asset_guid, 1, 10, issuer, feeRate, rbf);
+      console.log(nftIdParentAsset, newParentAsset, newParentAsset?.asset_guid, assetId, nftIdParentAsset, issuer, fee, rbf)
 
-    // await sendChildNFTtoCreator(nftGuid, receivingAddress, amount, feeRate, rbf);
+      try {
+        return new Promise((resolve) => {
+          let interval: any;
 
-    console.log('parent asset created', newParentAsset?.asset_guid);
+          interval = setInterval(async () => {
+            const newParentTx = await getTransactionInfoByTxId(newParentAsset.txid);
+
+            if (newParentTx.confirmations > 0) {
+              const onChainChildAssetGuid = await issueBlankChildNFTs(newParentAsset?.asset_guid, 1, nftIdParentAsset, issuer, fee, rbf);
+
+              // await sendChildNFTtoCreator(onChainChildAssetGuid, issuer, feeRate, rbf);
+
+              console.log(onChainChildAssetGuid)
+
+              clearInterval(interval)
+
+              resolve('transaction ok')
+
+              return;
+            }
+
+            console.log('confirming transactions', newParentTx, newParentTx.confirmations)
+          }, 3000);
+        })
+      } catch (error) {
+        console.log('error sending child nft to creator', error)
+      }
+    }
 
     // const txOpts = { rbf };
 
@@ -1129,9 +1183,7 @@ const AccountController = (actions: {
     // console.log('mint nft', item)
 
     // let sysChangeAddress = null;
-    // if (account.isTrezorWallet) {
-    //   throw new Error('trezor does not support nft creation')
-    // }
+
 
     // const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
 
@@ -1471,7 +1523,6 @@ const AccountController = (actions: {
   }
 
   const getTransactionInfoByTxId = async (txid: any) => {
-    console.log('info txid', await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid))
     return await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
   }
 
