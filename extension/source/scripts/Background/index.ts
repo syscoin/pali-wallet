@@ -453,7 +453,8 @@ browser.runtime.onInstalled.addListener(async () => {
           description,
           notarydetails,
           auxfeedetails,
-          notaryAddress
+          notaryAddress,
+          payoutAddress
         } = request;
 
         window.controller.wallet.account.setDataFromPageToUpdateAsset({
@@ -463,7 +464,8 @@ browser.runtime.onInstalled.addListener(async () => {
           description,
           notarydetails,
           auxfeedetails,
-          notaryAddress
+          notaryAddress,
+          payoutAddress
         });
 
         store.dispatch(setUpdateAsset(true));

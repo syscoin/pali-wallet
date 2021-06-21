@@ -38,6 +38,7 @@ import {
 } from '../../types';
 import { sys } from 'constants/index';
 import { fromZPub } from 'bip84';
+
 const bjs = require('bitcoinjs-lib');
 const bitcoinops = require('bitcoin-ops');
 const syscointx = require('syscointx-js');
@@ -126,10 +127,6 @@ const AccountController = (actions: {
   let dataFromPageToUpdateAsset: UpdateTokenPageInfo;
   let resAddress: any;
   let encode: any;
-
-  const needleOptions = {
-    rejectUnauthorized: false
-  };
 
   const agent = new https.Agent({
     rejectUnauthorized: false,
@@ -882,6 +879,7 @@ const AccountController = (actions: {
     });
   }
 
+
   const getAssetSharesData = (precision: number) => {
     let shares: string;
     let coin: number;
@@ -1516,7 +1514,7 @@ const AccountController = (actions: {
         return allTokens;
       }));
 
-      allTokens.filter(function (el: any) {
+      allTokens.filter(function(el: any) {
         if (el != null) {
           let tokenExists: boolean = false;
 
@@ -1618,6 +1616,7 @@ const AccountController = (actions: {
   const confirmUpdateAsset = async (item: UpdateToken) => {
     const {
       fee,
+      assetGuid,
       assetWhiteList,
       capabilityflags,
       contract,
@@ -1625,17 +1624,17 @@ const AccountController = (actions: {
       rbf,
       notarydetails,
       auxfeedetails,
-      notaryAddress
+      notaryAddress,
+      payoutAddress
     } = item;
 
-    const feeRate = new sys.utils.BN(fee * 1e8);
-    console.log('fee', fee, fee * 1e8)
     let txOpts: any = {
       rbf: rbf || true
     };
+
     let assetOpts: any = {
       updatecapabilityflags: capabilityflags,
-      description: 'lasldskd'
+      description
     };
 
     if (assetWhiteList) {
@@ -1645,42 +1644,32 @@ const AccountController = (actions: {
       };
     }
 
-
-    const assetGuid = item.assetGuid;
-
-    console.log('data confirm update asset  item, feeRate, txOpts, assetGuid', item, feeRate, txOpts, assetGuid)
     if (notarydetails) {
       assetOpts = {
         ...assetOpts,
-        // contract,
         notarydetails,
         auxfeedetails,
         notarykeyid: null
       }
-
     }
 
-
-    // if (contract) {
-    //   assetOpts = {
-    //     ...assetOpts,
-    //     // @ts-ignore
-    //     contract: Buffer.from(contract, 'hex')
-    //   };
-    // }
+    if (contract) {
+      assetOpts = {
+        ...assetOpts,
+        contract: Buffer.from(contract, 'hex')
+      };
+    }
 
     if (auxfeedetails) {
       const scalarPct = 1000;
-      const keyPair = sysjs.HDSigner.createKeypair(0);
       const payment = sys.utils.bitcoinjs.payments.p2wpkh({
-        pubkey: keyPair.publicKey,
+        address: payoutAddress,
         network: sysjs.HDSigner.network
       })
       const auxfeekeyid = Buffer.from(payment.hash.toString('hex'), 'hex')
 
       assetOpts = {
         ...assetOpts,
-        // @ts-ignore
         auxfeedetails: {
           auxfees: [
             {
@@ -1701,35 +1690,23 @@ const AccountController = (actions: {
 
       assetOpts = {
         ...assetOpts,
-        // @ts-ignore
         notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
       }
     }
-
-    console.log('asset opts update asset', assetOpts)
-
-    const assetChangeAddress = null;
 
     const thisAssetMap = new Map([
       [assetGuid, {
         changeAddress: null,
         outputs: [{
-          value: new sys.utils.BN(0), //Asset value when updating must always be equal 0
+          value: new sys.utils.BN(0),
           address: null
         }]
       }]
     ]);
 
-    console.log('this asset map update asset', thisAssetMap)
-    console.log('asset tx opts update asset', txOpts)
-    console.log("this fee update", new sys.utils.BN(fee * 1e8))
-
-    const sysChangeAddress = null;
-
     const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, thisAssetMap, null, new sys.utils.BN(fee * 1e8));
 
     const txInfo = pendingTx.extractTransaction().getId();
-    console.log('pendingTx', pendingTx)
 
     if (!pendingTx) {
       console.log('Could not create transaction, not enough funds?');
@@ -1741,8 +1718,6 @@ const AccountController = (actions: {
   }
 
   const confirmUpdateAssetTransaction = () => {
-    console.log('update asset item', updateAssetItem)
-
     return new Promise((resolve) => {
       resolve(handleTransactions(updateAssetItem, confirmUpdateAsset));
 
@@ -1756,24 +1731,21 @@ const AccountController = (actions: {
     const assetGuid = item.assetGuid;
     const assetOpts = {};
     let txInfo = null;
+    const newOwner = item.newOwner;
 
-    const assetChangeAddress = null;
     const assetMap = new Map([
       [assetGuid, {
-        changeAddress: assetChangeAddress,
+        changeAddress: newOwner,
         outputs: [{
           value: new sys.utils.BN(0),
-          address: item.newOwner
+          address: newOwner
         }]
       }]
     ]);
 
-    let sysChangeAddress: string | null = null;
-
     if (account.isTrezorWallet) {
-      sysChangeAddress = await getNewChangeAddress();
+      let sysChangeAddress = await getNewChangeAddress();
 
-      // @ts-ignore
       assetMap.get(assetGuid)!.changeAddress = sysChangeAddress;
 
       const psbt = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
@@ -1840,7 +1812,7 @@ const AccountController = (actions: {
       return;
     }
 
-    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
+    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, newOwner, feeRate);
 
     if (!pendingTx) {
       console.log('Could not create transaction, not enough funds?');

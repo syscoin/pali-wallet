@@ -27,7 +27,7 @@ export interface IConnectionsController {
     }
   ) => any;
   handleIssueSPT: (amount: number, assetGuid: string) => any;
-  handleIssueNFT: (
+  handleCreateNFT: (
     symbol: string, 
     issuer: string, 
     totalShares: number, 
@@ -49,13 +49,14 @@ export interface IConnectionsController {
     notaryAddress?: string,
     payoutAddress?: string
   ) => any;
+  handleIssueNFT: (amount: number, assetGuid: string) => any;
   isNFT: (guid: number) => boolean;
   getUserMintedTokens: () => Promise<any>;
   handleCreateCollection: (state: any) => void;
   handleUpdateAsset: (
     assetGuid: string,
     contract?: string,
-    capabilityflags?: number | 127,
+    capabilityflags?: number | 0,
     description?: string,
     notarydetails?: {
       endpoint?: string,
@@ -180,7 +181,6 @@ const ConnectionsController = (): IConnectionsController => {
   }
 
   const handleIssueSPT = async (amount: number, assetGuid: string) => {
-    console.log('handleissuespt', amount, assetGuid)
     return await sendMessage({
       type: 'ISSUE_SPT',
       target: 'connectionsController',
@@ -194,7 +194,7 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const handleIssueNFT = async (symbol: string, issuer: string, totalShares: number, description: string, notary?: boolean, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfee?: boolean, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notaryAddress?: string, payoutAddress?: string) => {
+  const handleCreateNFT = async (symbol: string, issuer: string, totalShares: number, description: string, notary?: boolean, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfee?: boolean, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notaryAddress?: string, payoutAddress?: string) => {
     return await sendMessage({
       type: 'CREATE_AND_ISSUE_NFT',
       target: 'connectionsController',
@@ -213,6 +213,20 @@ const ConnectionsController = (): IConnectionsController => {
       auxfeedetails,
       notaryAddress,
       payoutAddress
+    });
+  }
+  
+  const handleIssueNFT = async (amount: number, assetGuid: string) => {
+    return await sendMessage({
+      type: 'ISSUE_NFT',
+      target: 'connectionsController',
+      freeze: true,
+      eventResult: 'complete'
+    }, {
+      type: 'ISSUE_NFT',
+      target: 'contentScript',
+      amount,
+      assetGuid
     });
   }
 
@@ -280,7 +294,7 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const handleUpdateAsset = async (assetGuid: string, contract?: string | null, capabilityflags?: number | 127, description?: string | null, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean } | null, auxfeedetails?: { auxfeekeyid?: any, auxfees?: [{ bound?: any | 0, percent?: any | 0 }] } | null, notaryAddress?: string | null) => {
+  const handleUpdateAsset = async (assetGuid: string, contract?: string | null, capabilityflags?: number | 127, description?: string | null, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean } | null, auxfeedetails?: { auxfeekeyid?: any, auxfees?: [{ bound?: any | 0, percent?: any | 0 }] } | null, notaryAddress?: string | null, payoutAddress?: string | null) => {
     return await sendMessage({
       type: 'UPDATE_ASSET',
       target: 'connectionsController',
@@ -291,11 +305,12 @@ const ConnectionsController = (): IConnectionsController => {
       target: 'contentScript',
       assetGuid,
       contract: contract || null,
-      capabilityflags: capabilityflags || 127,
+      capabilityflags: capabilityflags || 0,
       description: description || null,
       notarydetails: notarydetails || null,
       auxfeedetails: auxfeedetails || null,
-      notaryAddress: notaryAddress || null
+      notaryAddress: notaryAddress || null,
+      payoutAddress: payoutAddress || null
     });
   }
 
@@ -347,14 +362,15 @@ const ConnectionsController = (): IConnectionsController => {
     handleSendToken,
     handleCreateToken,
     handleIssueSPT,
-    handleIssueNFT,
+    handleCreateNFT,
     getUserMintedTokens,
     handleCreateCollection,
     handleUpdateAsset,
     handleTransferOwnership,
     isValidSYSAddress,
     getHoldingsData,
-    getDataAsset
+    getDataAsset,
+    handleIssueNFT
   }
 };
 

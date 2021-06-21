@@ -284,7 +284,8 @@ window.addEventListener('message', (event) => {
       description,
       notarydetails,
       auxfeedetails,
-      notaryAddress
+      notaryAddress,
+      payoutAddress
     } = event.data;
 
     browser.runtime.sendMessage({
@@ -297,6 +298,7 @@ window.addEventListener('message', (event) => {
       notarydetails,
       auxfeedetails,
       notaryAddress,
+      payoutAddress
     });
 
     return;

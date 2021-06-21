@@ -118,7 +118,7 @@ const UpdateAsset = () => {
       <div
         className="body-description"
       >
-        Your Tokens is in creation process, you can check the transaction under your history.
+        Your Tokens is in update process, you can check the transaction under your history.
       </div>
 
       <Button
@@ -141,11 +141,6 @@ const UpdateAsset = () => {
                 <div className={styles.flex}>
                   <p>Asset GUID</p>
                   <p>{updateAsset?.assetGuid}</p>
-                </div>
-
-                <div className={styles.flex}>
-                  <p>Contract</p>
-                  <p>{updateAsset?.contract}</p>
                 </div>
 
                 <div className={styles.flex}>

@@ -105,10 +105,8 @@ export type MintedToken = {
 export type UpdateToken = {
   assetGuid: string;
   contract?: string | null;
-  capabilityflags?: number | 127;
-  receiver?: string;
-  description: string | '';
-  supply?: number;
+  capabilityflags?: number | 0;
+  description: string | null;
   notaryAddress?: string;
   notarydetails?: {
     endpoint?: string;
@@ -116,19 +114,11 @@ export type UpdateToken = {
     hdrequired?: boolean;
   }
   auxfeedetails?: any;
-  // {
-  //   auxfeekeyid: Buffer,
-  //   auxfees: [
-  //     {
-  //       bound: any | 0,
-  //       percent: any | 0
-  //     }
-  //   ]
-  // };
   notarykeyid?: string;
   fee: number;
   rbf: boolean;
-  assetWhiteList?: any | null
+  assetWhiteList?: any | null;
+  payoutAddress?: string | null;
 }
 
 export interface UpdateTokenPageInfo {
