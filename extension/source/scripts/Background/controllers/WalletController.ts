@@ -227,7 +227,7 @@ const WalletController = (): IWalletController => {
   };
 
   const _getAccountDataByNetwork = (sjs: any) => {
-    const { activeAccountId, accounts, activeNetwork } = store.getState().wallet;
+    const { activeAccountId, accounts } = store.getState().wallet;
 
     if (accounts.length > 1000) {
       return false;

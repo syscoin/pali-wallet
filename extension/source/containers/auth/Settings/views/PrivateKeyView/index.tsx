@@ -32,7 +32,7 @@ const PrivateKeyView: FC<IPrivateKeyView> = ({ id }) => {
   const [isCopied, copyText] = useCopyClipboard();
   const [checked, setChecked] = useState<boolean>(false);
   const [isCopiedAddress, copyAddress] = useState<boolean>(false);
-  const [privKey, setPrivKey] = useState<string>(
+  const [privKey] = useState<string>(
     '*************************************************************'
   );
 
