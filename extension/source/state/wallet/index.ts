@@ -28,6 +28,7 @@ const initialState: IWalletState = {
   transferringOwnership: false,
   blockbookURL: '',
   sendingSys: false,
+  changingNetwork: false,
 };
 
 const WalletState = createSlice({
@@ -38,6 +39,12 @@ const WalletState = createSlice({
       return {
         ...state,
         sendingSys: action.payload
+      }
+    },
+    updateSwitchNetwork(state: IWalletState, action: PayloadAction<boolean>) {
+      return {
+        ...state,
+        changingNetwork: action.payload
       }
     },
     updateBlockbookURL(state: IWalletState, action: PayloadAction<string>) {
@@ -259,6 +266,7 @@ export const {
   setUpdateAsset,
   setTransferOwnership,
   updateSendingSys,
+  updateSwitchNetwork
 } = WalletState.actions;
 
 export default WalletState.reducer;

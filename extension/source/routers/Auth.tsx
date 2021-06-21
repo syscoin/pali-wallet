@@ -48,7 +48,6 @@ const Auth = () => {
   );
 
   const connectedAccounts = accounts.filter(account => {
-    console.log(account)
     return account.connectedTo.findIndex((url: any) => {
       return url == getHost(currentURL);
     }) > -1;

@@ -10,6 +10,7 @@ import {
   removeAccounts,
   updateBlockbookURL,
   removeAccount,
+  updateSwitchNetwork
 } from 'state/wallet';
 import AccountController, { IAccountController } from './AccountController';
 import IWalletState, {
@@ -231,39 +232,37 @@ const WalletController = (): IWalletController => {
     if (accounts.length > 1000) {
       return false;
     }
-    console.log(accounts.length)
+    
     for (let i = 1; i <= accounts.length; i++) {
-      console.log("loop number " + i)
-      console.log(accounts[i])
       if (accounts[i] === undefined || accounts[i] === null) break;
+
       if (accounts[i].isTrezorWallet) {
-        console.log("Should not derive from hdsigner if the account is from the hardware wallet")
-        console.log("User switching network without trezor connected")
         store.dispatch(removeAccount(i));
         store.dispatch(updateStatus());
-        const message = "Your device is being disconnected";
+
+        const message = 'Your device is being disconnected';
+
         chrome.notifications.create(new Date().getTime().toString(), {
           type: 'basic',
           iconUrl: 'assets/icons/favicon-48.png',
           title: 'Hardware Wallet removed due to network switch',
           message
         });
-      }
-      else {
-        const child = sjs.HDSigner.deriveAccount(i);
-        let derived = new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
 
-        console.log('child', child, 'derived', derived)
-
-        account.setNewXpub(i, derived.getAccountPublicKey());
-        console.log('account', account, sjs, sjs.HDSigner)
-        sjs.HDSigner.accounts.push(derived);
-        sjs.HDSigner.accountIndex = activeAccountId;
-        console.log("end of for")
+        return;
       }
+
+      const child = sjs.HDSigner.deriveAccount(i);
+      let derived = new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
+
+      account.setNewXpub(i, derived.getAccountPublicKey());
+      
+      sjs.HDSigner.accounts.push(derived);
+      sjs.HDSigner.accountIndex = activeAccountId;
     }
-    console.log("Updating account controller")
+
     account.getPrimaryAccount(password, sjs);
+    
     return;
   }
 
@@ -282,6 +281,7 @@ const WalletController = (): IWalletController => {
       sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.main.beUrl);
 
       store.dispatch(updateBlockbookURL(SYS_NETWORK.main.beUrl));
+      store.dispatch(updateSwitchNetwork(true));
 
       _getAccountDataByNetwork(sjs);
 
@@ -292,6 +292,7 @@ const WalletController = (): IWalletController => {
     sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.testnet.beUrl);
 
     store.dispatch(updateBlockbookURL(SYS_NETWORK.testnet.beUrl));
+    store.dispatch(updateSwitchNetwork(true));
 
     _getAccountDataByNetwork(sjs);
 
@@ -300,41 +301,44 @@ const WalletController = (): IWalletController => {
 
   const getNewAddress = async () => {
     const { activeAccountId, accounts } = store.getState().wallet;
-    let address: string = ""
-    let userAccount: IAccountState = accounts.find((el: IAccountState) => el.id === activeAccountId)
+    let address: string = '';
+    let userAccount: IAccountState = accounts.find((el: IAccountState) => el.id === activeAccountId);
+
     if (userAccount!.isTrezorWallet) {
-      console.log("Updating trezor address")
-      console.log("Old address")
-      console.log(userAccount.address)
       const res = await sys.utils.fetchBackendAccount(sjs.blockbookURL, userAccount.xpub, 'tokens=nonzero&details=txs', true);
-      let account0 = new fromZPub(userAccount.xpub, sjs.HDSigner.pubTypes, sjs.HDSigner.networks)
-      let receivingIndex: number = -1
+
+      let account0 = new fromZPub(userAccount.xpub, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
+
+      let receivingIndex: number = -1;
+
       if (res.tokens) {
         res.tokens.forEach((token: any) => {
           if (token.path) {
-            const splitPath = token.path.split('/')
+            const splitPath = token.path.split('/');
+
             if (splitPath.length >= 6) {
-              const change = parseInt(splitPath[4], 10)
-              const index = parseInt(splitPath[5], 10)
+              const change = parseInt(splitPath[4], 10);
+              const index = parseInt(splitPath[5], 10);
+
               if (change === 1) {
-                console.log("Can't update it's change index")
+                console.log("Can't update it's change index");
+
+                return;
               }
-              else if (index > receivingIndex) {
+
+              if (index > receivingIndex) {
                 receivingIndex = index
               }
             }
           }
         })
       }
-      console.log(receivingIndex)
-      address = account0.getAddress(receivingIndex + 1)
+      
+      address = account0.getAddress(receivingIndex + 1);
+
       console.log("New address")
       console.log(address)
-
-
-
-    }
-    else {
+    } else {
       sjs.HDSigner.receivingIndex = -1;
       address = await sjs.HDSigner.getNewReceivingAddress();
       console.log("Receiving Index :")
@@ -343,7 +347,6 @@ const WalletController = (): IWalletController => {
 
     return account.setNewAddress(address);
   }
-
 
   const account = AccountController({ checkPassword });
 

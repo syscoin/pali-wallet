@@ -1,17 +1,20 @@
 import * as React from 'react';
-import { FC, Fragment, useCallback, useState } from 'react';
+import {FC, Fragment, useCallback, useState} from 'react';
 import clsx from 'clsx';
-import { v4 as uuid } from 'uuid';
+import {v4 as uuid} from 'uuid';
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
 import GoTopIcon from '@material-ui/icons/VerticalAlignTop';
 import IconButton from '@material-ui/core/IconButton';
 import Spinner from '@material-ui/core/CircularProgress';
 import Button from 'components/Button';
 
-import { useController } from 'hooks/index';
-import { formatDistanceDate } from '../helpers';
+import {useController} from 'hooks/index';
+import {formatDistanceDate} from '../helpers';
 import SyscoinIcon from 'assets/images/logosys.svg';
-import { Transaction, Assets } from '../../../scripts/types';
+import {Transaction, Assets} from '../../../scripts/types';
+import {RootState} from 'state/store';
+import IWalletState from 'state/wallet/types';
+import {useSelector} from 'react-redux';
 
 import styles from './Home.scss';
 
@@ -21,12 +24,16 @@ interface ITxsPanel {
   assets: Assets[];
 }
 
-const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
+const TxsPanel: FC<ITxsPanel> = ({transactions, assets}) => {
   const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
   const [isActivity, setActivity] = useState<boolean>(true);
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
+
+  const {changingNetwork}: IWalletState = useSelector(
+    (state: RootState) => state.wallet
+  );
 
   const isShowedGroupBar = useCallback(
     (tx: Transaction, idx: number) => {
@@ -50,7 +57,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
   );
 
   const handleFetchMoreTxs = () => {
-    if (transactions.length) {
+    if(transactions.length) {
       controller.wallet.account.updateTxs();
     }
   };
@@ -58,13 +65,13 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
   const handleScroll = useCallback((event) => {
     event.persist();
 
-    if (event.target.scrollTop) setShowed(true);
+    if(event.target.scrollTop) setShowed(true);
 
     setScrollArea(event.target);
 
     const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
 
-    if (scrollOffset === event.target.clientHeight) {
+    if(scrollOffset === event.target.clientHeight) {
       handleFetchMoreTxs();
     }
   }, []);
@@ -78,16 +85,16 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
   };
 
   const handleGoTop = () => {
-    scrollArea!.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollArea!.scrollTo({top: 0, behavior: 'smooth'});
     setShowed(false);
   };
 
   const getTxType = (tx: Transaction) => {
-    if (tx.tokenType === "SPTAssetActivate") {
+    if(tx.tokenType === "SPTAssetActivate") {
       return 'SPT creation';
     }
 
-    if (tx.tokenType === "SPTAssetSend") {
+    if(tx.tokenType === "SPTAssetSend") {
       return 'SPT mint';
     }
 
@@ -96,7 +103,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
 
   return (
     <section
-      className={clsx(styles.activity, { [styles.expanded]: isShowed })}
+      className={clsx(styles.activity, {[styles.expanded]: isShowed})}
       onScroll={handleScroll}
     >
       {!!(!isShowed) ?
@@ -129,6 +136,21 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
           </IconButton>
         </div>
       }
+
+      {changingNetwork && (
+        <>
+          <span className={styles.noTxComment}>
+            <Spinner size={25} className={styles.spinner} />
+          </span>
+          <img
+            src={SyscoinIcon}
+            className={styles.syscoin}
+            alt="syscoin"
+            height="167"
+            width="auto"
+          />
+        </>
+      )}
 
       {isActivity ?
         transactions.length ? (
@@ -188,28 +210,28 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
           <>
             <ul>
               {assets.map((asset: Assets, idx: number) => {
-                if (asset.assetGuid !== undefined) {
-                return (
-                  <Fragment key={uuid()}>
-                    {TokenTypeGroupBar(asset, idx) && (
-                      <li className={styles.groupbar}>
-                        {controller.wallet.account.isNFT(asset.assetGuid) ? "NFT" : "SPT"}
-                      </li>
-                    )}
-                    <li onClick={() => handleOpenAssetExplorer(asset.assetGuid)}>
-                      <div>
-                        <span>
-                          <span>{controller.wallet.account.isNFT(asset.assetGuid) ? asset.balance : (asset.balance / 10 ** asset.decimals).toFixed(8)}  {asset.symbol} </span>
-                        </span>
-                        <div className={styles.linkIcon}>
-                          <UpArrowIcon />
+                if(asset.assetGuid !== undefined) {
+                  return (
+                    <Fragment key={uuid()}>
+                      {TokenTypeGroupBar(asset, idx) && (
+                        <li className={styles.groupbar}>
+                          {controller.wallet.account.isNFT(asset.assetGuid) ? "NFT" : "SPT"}
+                        </li>
+                      )}
+                      <li onClick={() => handleOpenAssetExplorer(asset.assetGuid)}>
+                        <div>
+                          <span>
+                            <span>{controller.wallet.account.isNFT(asset.assetGuid) ? asset.balance : (asset.balance / 10 ** asset.decimals).toFixed(8)}  {asset.symbol} </span>
+                          </span>
+                          <div className={styles.linkIcon}>
+                            <UpArrowIcon />
+                          </div>
                         </div>
-                      </div>
-                    </li>
-                  </Fragment>
-                );
-              }
-              return
+                      </li>
+                    </Fragment>
+                  );
+                }
+                return
               })}
             </ul>
           </>

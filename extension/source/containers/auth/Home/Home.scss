@@ -35,6 +35,19 @@
     .loader {
       width: 60px;
       height: 60px;
+      margin: 6px 0;
+      transition: all 300ms;
+      opacity: 1;
+
+      svg {
+        color: $white;
+      }
+    }
+
+    .loaderBalance {
+      width: 24px;
+      height: 24px;
+      margin: 6px 0;
       transition: all 300ms;
       opacity: 1;
 

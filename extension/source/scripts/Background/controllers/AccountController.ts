@@ -11,7 +11,8 @@ import {
   updateLabel,
   updateTransactions,
   updateAccountAddress,
-  updateAccountXpub
+  updateAccountXpub,
+  updateSwitchNetwork
 } from 'state/wallet';
 import IWalletState, {
   IAccountState
@@ -343,12 +344,16 @@ const AccountController = (actions: {
         })
       );
 
+      store.dispatch(updateSwitchNetwork(false))
+
       return;
     }
 
     const accLatestInfo = await getAccountInfo(true, account.xpub);
 
     if (!accLatestInfo) return;
+
+    console.log('acc latest info', accLatestInfo)
 
     store.dispatch(
       updateAccount({
@@ -358,6 +363,8 @@ const AccountController = (actions: {
         assets: accLatestInfo.assets
       })
     );
+
+    store.dispatch(updateSwitchNetwork(false))
   };
 
   const getPrimaryAccount = (pwd: string, sjs: any) => {
@@ -373,8 +380,13 @@ const AccountController = (actions: {
 
     if (!account && accounts) {
       account = accounts.find(element => element.id === activeAccountId) || accounts[activeAccountId];
+
       store.dispatch(updateStatus());
+
+      console.log('account', account)
     }
+
+    console.log('account', account)
   };
 
   const watchMemPool = () => {
