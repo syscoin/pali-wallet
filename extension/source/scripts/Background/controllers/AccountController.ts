@@ -937,15 +937,11 @@ const AccountController = (actions: {
     const xpub: any = await sysjs.HDSigner.getAccountXpub();
     console.log("Root xpub: " + xpub);
 
-    const sharesData = await getAssetSharesData(8);
-
-    console.log("Asset shares Data: " + sharesData)
-
     const txOpts: any = { rbf };
 
     const feeRate = new sys.utils.BN(fee * 1e8)
 
-    const sysChangeAddress = null;
+    // const sysChangeAddress = null;
 
     console.log('asset opts parent child', assetOpts, fee, feeRate)
 
@@ -1127,17 +1123,17 @@ const AccountController = (actions: {
       throw new Error('trezor does not support nft creation')
     }
 
-    const feeRate = new sys.utils.BN(fee * 1e8);
 
     let assetOpts = {
       precision: 8,
       symbol,
-      maxsupply: new sys.utils.BN(1 * 1e8),
+      maxsupply: new sys.utils.BN(1),
       description,
       // updatecapabilityflags: 127
     }
-
+    // console.log("feeRate to parent:", feeRate)
     const newParentAsset = await createParentAsset(assetOpts, fee, rbf, issuer);
+
 
     // assetOpts = {
     //   ...assetOpts,
@@ -1145,10 +1141,13 @@ const AccountController = (actions: {
     // }
 
     if (newParentAsset?.asset_guid) {
+      console.log("Checking new parent asset id")
+      console.log(newParentAsset?.asset_guid)
       const assetId = sys.utils.getBaseAssetID(newParentAsset?.asset_guid);
-      const nftIdParentAsset = sys.utils.createAssetID('1', newParentAsset?.asset_guid);
-
-      console.log(nftIdParentAsset, newParentAsset, newParentAsset?.asset_guid, assetId, nftIdParentAsset, issuer, fee, rbf)
+      const txOpts = { rbf: true }
+      let childNFTTx: any = null
+      let parentConfirmed = false
+      // console.log(childAssetId, newParentAsset, newParentAsset?.asset_guid, assetId, childAssetId, issuer, fee, rbf)
 
       try {
         return new Promise((resolve) => {
@@ -1156,23 +1155,93 @@ const AccountController = (actions: {
 
           interval = setInterval(async () => {
             const newParentTx = await getTransactionInfoByTxId(newParentAsset.txid);
-
-            if (newParentTx.confirmations > 0) {
-              const onChainChildAssetGuid = await issueBlankChildNFTs(newParentAsset?.asset_guid, 1, nftIdParentAsset, issuer, fee, rbf);
+            const childAssetId = sys.utils.createAssetID('1', newParentAsset?.asset_guid);
+            const feeRate = new sys.utils.BN(fee * 1e8);
+            if (newParentTx.confirmations > 0 && !parentConfirmed) {
+              parentConfirmed = true
+              console.log("newParentAsset: ", newParentAsset)
+              console.log("childAsset on parent: ", childAssetId)
+              console.log("issuer ", issuer)
+              // let secondInterval: any;
+              // const onChainChildAssetGuid = await issueBlankChildNFTs(newParentAsset!.asset_guid, 1, childAssetId, issuer, fee, rbf);
 
               // await sendChildNFTtoCreator(onChainChildAssetGuid, issuer, feeRate, rbf);
+              const assetChangeAddress = null
+              console.log('child asset id: ', childAssetId)
+              const assetMap = new Map([
+                [childAssetId, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1), address: issuer }] }]
+              ])
 
-              console.log(onChainChildAssetGuid)
+              console.log('mint nft map', JSON.stringify(assetMap))
+              console.log('fee rate', feeRate)
+              let sysChangeAddress = null;
 
-              clearInterval(interval)
+              try {
+                const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
+                if (!pendingTx) {
+                  console.log('Could not create transaction, not enough funds?')
+                }
 
-              resolve('transaction ok')
+                const txInfo = pendingTx.extractTransaction().getId();
+                console.log("Transaction sucess", txInfo)
+                updateTransactionData('issuingNFT', txInfo);
+                childNFTTx = await getTransactionInfoByTxId(txInfo);
+                console.log(childNFTTx)
+              }
+              catch (error) {
+                console.log("error creating nft" + error)
+                console.log("trying again...")
+                parentConfirmed = false
+              }
 
-              return;
+
+
+              // secondInterval = setInterval(async () => {
+              //   if (childNFTTx.confirmations > 0) {
+              //     clearInterval(secondInterval)
+
+
+
+              //     return;
+              //   }
+
+              // }, 3000)
+
+
+            }
+            else if (childNFTTx) {
+              if (childNFTTx.confirmations > 0) {
+                console.log("child tx time bb")
+                const feeRate = new sys.utils.BN(10)
+                const txOpts = { rbf: true }
+                const assetGuid = newParentAsset!.asset_guid
+                // update capability flags, update description and update eth smart contract address
+                const assetOpts = { updatecapabilityflags: 0 }
+                // send asset back to ourselves as well as any change
+                const assetChangeAddress = null
+                // send change back to ourselves as well as recipient to ourselves
+                const assetMap = new Map([
+                  [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(0), address: assetChangeAddress }] }]
+                ])
+                // if SYS need change sent, set this address. null to let HDSigner find a new address for you
+                const sysChangeAddress = null
+                const psbt = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate)
+                if (!psbt) {
+                  console.log('Could not create transaction, not enough funds?')
+                }
+                clearInterval(interval)
+                resolve('transaction ok')
+              }
+              else {
+                console.log('confirming child transactions', childNFTTx, childNFTTx.confirmations)
+
+              }
             }
 
-            console.log('confirming transactions', newParentTx, newParentTx.confirmations)
-          }, 3000);
+            else {
+              console.log('confirming transactions', newParentTx, newParentTx.confirmations)
+            }
+          }, 6000);
         })
       } catch (error) {
         console.log('error sending child nft to creator', error)
@@ -1561,32 +1630,44 @@ const AccountController = (actions: {
 
     const feeRate = new sys.utils.BN(fee * 1e8);
     console.log('fee', fee, fee * 1e8)
-
-    const txOpts = {
-      rbf: rbf || true,
-      assetWhiteList: assetWhiteList || null,
+    let txOpts: any = {
+      rbf: rbf || true
     };
+    let assetOpts: any = {
+      updatecapabilityflags: capabilityflags,
+      description: 'lasldskd'
+    };
+
+    if (assetWhiteList) {
+      txOpts = {
+        ...txOpts,
+        assetWhiteList: assetWhiteList,
+      };
+    }
+
 
     const assetGuid = item.assetGuid;
 
     console.log('data confirm update asset  item, feeRate, txOpts, assetGuid', item, feeRate, txOpts, assetGuid)
-
-    let assetOpts = {
-      updatecapabilityflags: capabilityflags,
-      description: 'lasldskd',
-      contract,
-      notarydetails,
-      auxfeedetails,
-      notarykeyid: null
-    };
-
-    if (contract) {
+    if (notarydetails) {
       assetOpts = {
         ...assetOpts,
-        // @ts-ignore
-        contract: Buffer.from(contract, 'hex')
-      };
+        // contract,
+        notarydetails,
+        auxfeedetails,
+        notarykeyid: null
+      }
+
     }
+
+
+    // if (contract) {
+    //   assetOpts = {
+    //     ...assetOpts,
+    //     // @ts-ignore
+    //     contract: Buffer.from(contract, 'hex')
+    //   };
+    // }
 
     if (auxfeedetails) {
       const scalarPct = 1000;
@@ -1629,21 +1710,23 @@ const AccountController = (actions: {
 
     const assetChangeAddress = null;
 
-    const assetMap = new Map([
-      [Number(assetGuid), {
-        changeAddress: assetChangeAddress,
+    const thisAssetMap = new Map([
+      [assetGuid, {
+        changeAddress: null,
         outputs: [{
-          value: new sys.utils.BN(1),
-          address: assetChangeAddress
+          value: new sys.utils.BN(0), //Asset value when updating must always be equal 0
+          address: null
         }]
       }]
     ]);
 
-    console.log('asset map update asset', assetMap)
+    console.log('this asset map update asset', thisAssetMap)
+    console.log('asset tx opts update asset', txOpts)
+    console.log("this fee update", new sys.utils.BN(fee * 1e8))
 
     const sysChangeAddress = null;
 
-    const pendingTx = await sysjs.assetUpdate(assetGuid, {}, txOpts, assetMap, sysChangeAddress, new sys.utils.BN(fee * 1e8));
+    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, thisAssetMap, null, new sys.utils.BN(fee * 1e8));
 
     const txInfo = pendingTx.extractTransaction().getId();
     console.log('pendingTx', pendingTx)
