@@ -73,8 +73,7 @@ const CreatePass = () => {
               variant={styles.repass}
             />
             <span className={styles.warning}>
-              At least 8 characters, 1 lower-case, 1 upper-case, 1 numeral and 1
-              special character.
+              At least 8 characters, 1 lower-case, 1 numeral.
             </span>
             {(errors.password || errors.repassword) && (
               <span className={styles.error}>
