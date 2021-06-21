@@ -232,8 +232,8 @@ const WalletController = (): IWalletController => {
     if (accounts.length > 1000) {
       return false;
     }
-    
-    for (let i = 1; i <= accounts.length; i++) {
+
+    for (let i = 0; i <= accounts.length; i++) {
       if (accounts[i] === undefined || accounts[i] === null) break;
 
       if (accounts[i].isTrezorWallet) {
@@ -251,18 +251,25 @@ const WalletController = (): IWalletController => {
 
         return;
       }
+      if (i !== 0) {
 
-      const child = sjs.HDSigner.deriveAccount(i);
-      let derived = new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
+        const child = sjs.HDSigner.deriveAccount(i);
+        let derived = new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
+        sjs.HDSigner.accounts.push(derived);
+        sjs.HDSigner.accountIndex = activeAccountId;
+        account.setNewXpub(i, derived.getAccountPublicKey());
+      }
+      else {
+        account.setNewXpub(i, sjs.HDSigner.accounts[i].getAccountPublicKey());
+      }
 
-      account.setNewXpub(i, derived.getAccountPublicKey());
-      
-      sjs.HDSigner.accounts.push(derived);
-      sjs.HDSigner.accountIndex = activeAccountId;
+
+
+
     }
 
     account.getPrimaryAccount(password, sjs);
-    
+
     return;
   }
 
@@ -333,7 +340,7 @@ const WalletController = (): IWalletController => {
           }
         })
       }
-      
+
       address = account0.getAddress(receivingIndex + 1);
 
       console.log("New address")

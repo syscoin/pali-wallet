@@ -101,7 +101,7 @@ const Home = () => {
             )}
 
             {isOpenModal && (!isConnected) && (
-              <Modal title={currentURL} message="This account is not connected this site. To connect to a web3 site, find the connect button on their site." callback={handleSetModalIsOpen} />
+              <Modal title={currentURL} message="This account is not connected to this site. To connect to a sys plataform site, find the connect button on their site." callback={handleSetModalIsOpen} />
             )}
 
             {changingNetwork ? (
