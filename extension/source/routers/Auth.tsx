@@ -56,7 +56,7 @@ const Auth = () => {
   useEffect(() => {
     const redirectRoute = controller.appRoute();
 
-    if (redirectRoute == '/send/confirm' && !controller.wallet.account.getTempTx()) {
+    if (redirectRoute == '/send/confirm' && !controller.wallet.account.getTransactionItem().tempTx) {
       history.push('/home');
 
       return;
@@ -68,7 +68,7 @@ const Auth = () => {
       return;
     }
 
-    if (confirmingTransaction && controller.wallet.account.getTempTx() && isUnlocked) {
+    if (confirmingTransaction && controller.wallet.account.getTransactionItem().tempTx && isUnlocked) {
       history.push('/send/confirm');
 
       return;
@@ -104,7 +104,7 @@ const Auth = () => {
       return;
     }
 
-    if (!confirmingTransaction && controller.wallet.account.getTempTx()) {
+    if (!confirmingTransaction && controller.wallet.account.getTransactionItem().tempTx) {
       history.push('/home');
 
       return;

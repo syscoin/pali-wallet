@@ -26,7 +26,7 @@ const UpdateAsset = () => {
     (state: RootState) => state.wallet
   );
 
-  const updateAsset = controller.wallet.account.getNewUpdateAsset();
+  const updateAsset = controller.wallet.account.getTransactionItem().updateAssetItem;
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0);

@@ -65,37 +65,6 @@
     }
   }
 
-  // .input {
-  //   font-weight: 500;
-  //   font-size: 16px;
-  //   line-height: 24px;
-  //   height: 48px;
-  //   padding: 0 16px;
-  //   background: $white;
-  //   transition: all 0.3s;
-
-  //   input {
-  //     text-overflow: ellipsis;
-  //     overflow: hidden;
-  //     font-weight: 500;
-  //     font-size: 12px;
-  //     line-height: 18px;
-  //     transition: all 0.3s;
-  //   }
-
-  //   &.amount {
-  //     input {
-  //       padding-right: 48px;
-  //     }
-  //   }
-
-  //   &.fee {
-  //     input {
-  //       padding-right: 92px;
-  //     }
-  //   }
-  // }
-
   section.content {
     width: 100%;
 
@@ -117,6 +86,11 @@
       .formBlock {
         display: flex;
         align-items: center;
+      }
+      
+      .formBlockOne {
+        display: flex;
+        align-items: flex-start;
       }
 
       .zDag {
@@ -145,6 +119,19 @@
           }
         }
       }
+      
+      li.noAsset {
+        display: none;
+      }
+      
+      li.noAssetItem {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        flex: 1;
+        margin: 0.4rem 0;
+      }
 
       li.item {
         position: relative;
@@ -153,7 +140,6 @@
         align-items: flex-end;
         flex: 1;
         margin: 0.4rem 0;
-
 
         & svg {
           color: $royalBlue;
@@ -332,6 +318,7 @@
         overflow: auto;
         max-height: 150px;
         z-index: 3;
+        border-radius: 1rem;
     
         &::-webkit-scrollbar {
           width: 5px;

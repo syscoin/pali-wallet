@@ -26,7 +26,7 @@ const TransferOwnership = () => {
     (state: RootState) => state.wallet
   );
 
-  const ownership = controller.wallet.account.getNewOwnership();
+  const ownership = controller.wallet.account.getTransactionItem().transferOwnershipData;
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0);

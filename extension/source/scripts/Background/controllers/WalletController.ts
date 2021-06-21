@@ -12,32 +12,13 @@ import {
   removeAccount,
   updateSwitchNetwork
 } from 'state/wallet';
-import AccountController, { IAccountController } from './AccountController';
+import AccountController from './AccountController';
 import IWalletState, {
   IAccountState
 } from 'state/wallet/types';
 import { sys, SYS_NETWORK } from 'constants/index';
 import CryptoJS from 'crypto-js';
-// var TrezorConnect = window.trezorConnect;
 import { fromZPub } from 'bip84';
-
-export interface IWalletController {
-  account: Readonly<IAccountController>;
-  setWalletPassword: (pwd: string) => void;
-  isLocked: () => boolean;
-  generatePhrase: () => string | null;
-  createWallet: (isUpdated?: boolean) => void;
-  createHardwareWallet: () => void;
-  unLock: (pwd: string) => boolean;
-  checkPassword: (pwd: string) => boolean;
-  getPhrase: (pwd: string) => string | null;
-  deleteWallet: (pwd: string) => void;
-  importPhrase: (phr: string) => boolean;
-  switchWallet: (id: number) => void;
-  switchNetwork: (networkId: string) => void;
-  getNewAddress: () => Promise<boolean>;
-  logOut: () => void;
-}
 
 const WalletController = (): IWalletController => {
   let password = '';
@@ -227,7 +208,7 @@ const WalletController = (): IWalletController => {
   };
 
   const _getAccountDataByNetwork = (sjs: any) => {
-    const { activeAccountId, accounts, activeNetwork } = store.getState().wallet;
+    const { activeAccountId, accounts } = store.getState().wallet;
 
     if (accounts.length > 1000) {
       return false;

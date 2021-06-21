@@ -27,7 +27,7 @@ const Create = () => {
     (state: RootState) => state.wallet
   );
 
-  const newSPT = controller.wallet.account.getNewSPT();
+  const newSPT = controller.wallet.account.getTransactionItem().newSPT;
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0);

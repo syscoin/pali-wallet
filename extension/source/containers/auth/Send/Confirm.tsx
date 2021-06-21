@@ -32,7 +32,7 @@ const SendConfirm = () => {
       return url === getHost(currentSenderURL);
     });
   });
-  const tempTx = controller.wallet.account.getTempTx();
+  const tempTx = controller.wallet.account.getTransactionItem().tempTx;
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const alert = useAlert();

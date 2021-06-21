@@ -1,8 +1,13 @@
-import store from 'state/store';
-import { bech32 } from 'bech32';
 import TrezorConnect from 'trezor-connect';
+import store from 'state/store';
 import axios from 'axios';
 import https from 'https';
+import IWalletState, {
+  IAccountState
+} from 'state/wallet/types';
+import { bech32 } from 'bech32';
+import { sys } from 'constants/index';
+import { fromZPub } from 'bip84';
 import {
   createAccount,
   updateStatus,
@@ -14,9 +19,6 @@ import {
   updateAccountXpub,
   updateSwitchNetwork
 } from 'state/wallet';
-import IWalletState, {
-  IAccountState
-} from 'state/wallet/types';
 import {
   IAccountInfo,
   ITransactionInfo,
@@ -36,73 +38,10 @@ import {
   UpdateTokenPageInfo,
   UpdateTokenWalletInfo
 } from '../../types';
-import { sys } from 'constants/index';
-import { fromZPub } from 'bip84';
 
 const bjs = require('bitcoinjs-lib');
 const bitcoinops = require('bitcoin-ops');
 const syscointx = require('syscointx-js');
-
-export interface IAccountController {
-  subscribeAccount: (isHardwareWallet: boolean, sjs?: any, label?: string, walletCreation?: boolean) => Promise<string | null>;
-  getPrimaryAccount: (pwd: string, sjs: any) => void;
-  unsubscribeAccount: (index: number, pwd: string) => boolean;
-  updateAccountLabel: (id: number, label: string) => void;
-  addNewAccount: (label: string) => Promise<string | null>;
-  watchMemPool: () => void;
-  getLatestUpdate: () => void;
-  isNFT: (guid: number) => boolean;
-  isValidSYSAddress: (address: string, network: string) => boolean | undefined;
-  getRecommendFee: () => Promise<number>;
-  updateTxs: () => void;
-  getTempTx: () => ITransactionInfo | null;
-  getNewSPT: () => ISPTInfo | null;
-  getIssueSPT: () => ISPTIssue | null;
-  getIssueNFT: () => INFTIssue | null;
-  getNewUpdateAsset: () => any | null;
-  getNewOwnership: () => any | null;
-  updateTempTx: (tx: ITransactionInfo) => void;
-  createSPT: (spt: ISPTInfo) => void;
-  issueSPT: (spt: ISPTIssue) => void;
-  issueNFT: (nft: INFTIssue) => void;
-  confirmNewSPT: () => Promise<any>;
-  confirmIssueSPT: () => Promise<any>;
-  confirmIssueNFT: () => Promise<any>;
-  confirmTempTx: () => Promise<any>;
-  setNewAddress: (addr: string) => boolean;
-  setNewXpub: (id: number, xpub: string) => boolean;
-  getUserMintedTokens: () => any;
-  createCollection: (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string) => void;
-  getCollection: () => any;
-  getTransactionInfoByTxId: (txid: any) => any;
-  getSysExplorerSearch: () => string;
-  setDataFromPageToCreateNewSPT: (data: any) => void;
-  getDataFromPageToCreateNewSPT: () => any | null;
-  setDataFromWalletToCreateSPT: (data: any) => void;
-  getDataFromWalletToCreateSPT: () => any | null;
-  setDataFromPageToMintSPT: (data: any) => void;
-  getDataFromPageToMintSPT: () => any | null;
-  setDataFromWalletToMintSPT: (data: any) => void;
-  getDataFromWalletToMintSPT: () => any | null;
-  setDataFromPageToMintNFT: (data: any) => void;
-  getDataFromPageToMintNFT: () => any | null;
-  setDataFromWalletToMintNFT: (data: any) => void;
-  getDataFromWalletToMintNFT: () => any | null;
-  setDataFromPageToUpdateAsset: (data: any) => void;
-  getDataFromPageToUpdateAsset: () => any;
-  setDataFromWalletToUpdateAsset: (data: any) => void;
-  getDataFromWalletToUpdateAsset: () => any;
-  setDataFromPageToTransferOwnership: (data: any) => void;
-  getDataFromPageToTransferOwnership: () => any;
-  setDataFromWalletToTransferOwnership: (data: any) => void;
-  getDataFromWalletToTransferOwnership: () => any;
-  confirmUpdateAssetTransaction: () => any;
-  confirmTransferOwnership: () => any;
-  setUpdateAsset: (asset: any) => any;
-  setNewOwnership: (data: any) => any;
-  getHoldingsData: () => any;
-  getDataAsset: (assetGuid: any) => any;
-}
 
 const AccountController = (actions: {
   checkPassword: (pwd: string) => boolean;
@@ -116,6 +55,7 @@ const AccountController = (actions: {
   let updateAssetItem: UpdateToken | null;
   let transferOwnershipData: any;
   let mintNFT: INFTIssue | null;
+  let newIssueNFT: any;
   let collection: any;
   let dataFromPageToCreateSPT: ISPTPageInfo;
   let dataFromWalletToCreateSPT: ISPTWalletInfo;
@@ -125,12 +65,24 @@ const AccountController = (actions: {
   let dataFromWalletToMintNFT: INFTWalletInfo;
   let dataFromWalletToUpdateAsset: UpdateTokenWalletInfo;
   let dataFromPageToUpdateAsset: UpdateTokenPageInfo;
+  let dataFromWalletToTransferOwnership: any;
+  let dataFromPageToTransferOwnership: any;
   let resAddress: any;
   let encode: any;
 
   const agent = new https.Agent({
     rejectUnauthorized: false,
   });
+  
+  const _coventPendingType = (txid: string) => {
+    return {
+      txid: txid,
+      value: 0,
+      confirmations: 0,
+      fees: 0,
+      blockTime: Date.now() / 1e3,
+    } as Transaction;
+  };
 
   const updateTransactionData = (item: string, txinfo: any) => {
     const connectedAccountId = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
@@ -155,7 +107,7 @@ const AccountController = (actions: {
       res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, xpub, 'tokens=nonzero&details=txs', true);
 
       const account0: any = new fromZPub(xpub, sysjs.HDSigner.pubTypes, sysjs.HDSigner.networks);
-      let receivingIndex: number = -1
+      let receivingIndex: number = -1;
 
       if (res.tokens) {
         res.tokens.forEach((token: any) => {
@@ -293,17 +245,6 @@ const AccountController = (actions: {
     return account!.xpub;
   };
 
-  const unsubscribeAccount = (index: number, pwd: string) => {
-    if (actions.checkPassword(pwd)) {
-      store.dispatch(removeAccount(index));
-      store.dispatch(updateStatus());
-
-      return true;
-    }
-
-    return false;
-  };
-
   const updateAccountLabel = (id: number, label: string, isHardwareWallet?: boolean) => {
     if (isHardwareWallet) {
       return;
@@ -350,8 +291,6 @@ const AccountController = (actions: {
 
     if (!accLatestInfo) return;
 
-    console.log('acc latest info', accLatestInfo)
-
     store.dispatch(
       updateAccount({
         id: activeAccountId,
@@ -388,7 +327,6 @@ const AccountController = (actions: {
 
   const watchMemPool = () => {
     if (intervalId) {
-      console.log('interval id', intervalId)
       return true;
     }
 
@@ -449,16 +387,6 @@ const AccountController = (actions: {
     return await sys.utils.fetchEstimateFee(sysjs.blockbookURL, 1) / 10 ** 8;
   };
 
-  const _coventPendingType = (txid: string) => {
-    return {
-      txid: txid,
-      value: 0,
-      confirmations: 0,
-      fees: 0,
-      blockTime: Date.now() / 1e3,
-    } as Transaction;
-  };
-
   const updateTxs = () => {
     if (!account) {
       return;
@@ -466,6 +394,17 @@ const AccountController = (actions: {
 
     getLatestUpdate();
   };
+  
+  const getTransactionItem = () => {
+    return {
+      tempTx: tempTx || null,
+      newSPT: newSPT || null,
+      mintSPT: mintSPT || null,
+      mintNFT: mintNFT || null,
+      updateAssetItem: updateAssetItem || null,
+      transferOwnershipData: transferOwnershipData || null
+    };
+  }
 
   const getTempTx = () => {
     return tempTx || null;
@@ -520,84 +459,65 @@ const AccountController = (actions: {
 
     return true;
   }
+  
+  const setDataFromPageToInitTransaction = (data: any, variableItem: any) => {
+    variableItem = data;
+  }
+  
+  const getDataFromPageToInitTransaction = () => {
+    return {
+      dataFromPageToCreateSPT: dataFromPageToCreateSPT || null,
+      dataFromWalletToCreateSPT: dataFromWalletToCreateSPT || null,
+      dataFromPageToMintSPT: dataFromPageToMintSPT || null,
+      dataFromWalletToMintSPT: dataFromWalletToMintSPT || null,
+      dataFromPageToMintNFT: dataFromPageToMintNFT || null,
+      dataFromWalletToMintNFT: dataFromWalletToMintNFT || null,
+      dataFromPageToUpdateAsset: dataFromPageToUpdateAsset || null,
+      dataFromWalletToUpdateAsset: dataFromWalletToUpdateAsset || null,
+      dataFromPageToTransferOwnership: dataFromPageToTransferOwnership || null,
+      dataFromWalletToTransferOwnership: dataFromWalletToTransferOwnership || null
+    }
+  }
 
   const setDataFromPageToCreateNewSPT = (data: ISPTPageInfo) => {
     console.log('data from page to create spt', data)
     dataFromPageToCreateSPT = data;
   }
 
-  const getDataFromPageToCreateNewSPT = () => {
-    return dataFromPageToCreateSPT || null;
-  }
-
   const setDataFromWalletToCreateSPT = (data: ISPTWalletInfo) => {
     dataFromWalletToCreateSPT = data;
-  }
-
-  const getDataFromWalletToCreateSPT = () => {
-    return dataFromWalletToCreateSPT || null;
   }
 
   const setDataFromPageToMintSPT = (data: ISPTIssuePage) => {
     dataFromPageToMintSPT = data;
   }
 
-  const getDataFromPageToMintSPT = () => {
-    return dataFromPageToMintSPT || null;
-  }
-
   const setDataFromWalletToMintSPT = (data: ISPTIssueWallet) => {
     dataFromWalletToMintSPT = data;
   }
 
-  const getDataFromWalletToMintSPT = () => {
-    return dataFromWalletToMintSPT || null;
-  }
-
   const setDataFromPageToMintNFT = (data: INFTPageInfo) => {
     dataFromPageToMintNFT = data;
-  }
-  const getDataFromPageToMintNFT = () => {
-    return dataFromPageToMintNFT || null;
   }
 
   const setDataFromWalletToMintNFT = (data: INFTWalletInfo) => {
     dataFromWalletToMintNFT = data;
   }
 
-  const getDataFromWalletToMintNFT = () => {
-    return dataFromWalletToMintNFT || null;
-  }
-
   const setDataFromPageToUpdateAsset = (data: UpdateTokenPageInfo) => {
     dataFromPageToUpdateAsset = data;
-  }
-
-  const getDataFromPageToUpdateAsset = () => {
-    return dataFromPageToUpdateAsset || null;
   }
 
   const setDataFromWalletToUpdateAsset = (data: UpdateTokenWalletInfo) => {
     dataFromWalletToUpdateAsset = data;
   }
 
-  const getDataFromWalletToUpdateAsset = () => {
-    return dataFromWalletToUpdateAsset || null;
-  }
-
   const setDataFromPageToTransferOwnership = (data: any) => {
-    dataFromPageToCreateSPT = data;
-  }
-  const getDataFromPageToTransferOwnership = () => {
-    return dataFromPageToCreateSPT || null;
+    dataFromPageToTransferOwnership = data;
   }
 
   const setDataFromWalletToTransferOwnership = (data: any) => {
-    dataFromWalletToCreateSPT = data;
-  }
-
-  const getDataFromWalletToTransferOwnership = () => {
-    return dataFromWalletToCreateSPT || null;
+    dataFromWalletToTransferOwnership = data;
   }
 
   const createSPT = (spt: ISPTInfo) => {
@@ -628,6 +548,12 @@ const AccountController = (actions: {
     transferOwnershipData = asset;
 
     return true;
+  }
+  
+  const setNewIssueNFT = (data: any) => {
+    newIssueNFT = data;
+    
+    return;
   }
 
   const confirmSPTCreation = async (item: any) => {
@@ -1882,7 +1808,6 @@ const AccountController = (actions: {
   return {
     subscribeAccount,
     getPrimaryAccount,
-    unsubscribeAccount,
     updateAccountLabel,
     addNewAccount,
     getLatestUpdate,
@@ -1892,10 +1817,12 @@ const AccountController = (actions: {
     confirmTempTx,
     isValidSYSAddress,
     updateTxs,
+    getTransactionItem,
     getRecommendFee,
     setNewAddress,
     setNewXpub,
     isNFT,
+    getDataFromPageToInitTransaction,
     createSPT,
     getNewSPT,
     confirmNewSPT,
@@ -1913,25 +1840,15 @@ const AccountController = (actions: {
     getTransactionInfoByTxId,
     getSysExplorerSearch,
     setDataFromPageToCreateNewSPT,
-    getDataFromPageToCreateNewSPT,
     setDataFromWalletToCreateSPT,
-    getDataFromWalletToCreateSPT,
     setDataFromPageToMintSPT,
-    getDataFromPageToMintSPT,
     setDataFromWalletToMintSPT,
-    getDataFromWalletToMintSPT,
     setDataFromPageToMintNFT,
-    getDataFromPageToMintNFT,
     setDataFromWalletToMintNFT,
-    getDataFromWalletToMintNFT,
     setDataFromPageToUpdateAsset,
-    getDataFromPageToUpdateAsset,
     setDataFromWalletToUpdateAsset,
-    getDataFromWalletToUpdateAsset,
     setDataFromPageToTransferOwnership,
-    getDataFromPageToTransferOwnership,
     setDataFromWalletToTransferOwnership,
-    getDataFromWalletToTransferOwnership,
     confirmUpdateAssetTransaction,
     confirmTransferOwnership,
     setUpdateAsset,

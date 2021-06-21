@@ -227,8 +227,8 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               />
             </li>
 
-            <div className={styles.formBlock}>
-              <li className={styles.item}>
+            <div className={!selectedAsset ? styles.formBlockOne : styles.formBlock}>
+              <li className={!selectedAsset ? styles.noAssetItem : styles.item}>
                 <div
                   className={styles.select}
                   id="asset"
@@ -275,7 +275,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 </div>
               </li>
 
-              <li className={styles.item}>
+              <li className={!selectedAsset ? styles.noAsset : styles.item}>
                 <div className={styles.zDag}>
                   <label htmlFor="rbf">Z-DAG</label>
 

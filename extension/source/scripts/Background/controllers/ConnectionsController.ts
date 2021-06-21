@@ -66,8 +66,8 @@ export interface IConnectionsController {
     auxfeedetails?: {
       auxfeekeyid: string,
       auxfees: [{
-      bound: any | 0,
-      percent: any | 0
+        bound: any | 0,
+        percent: any | 0
       }]
     },
     notaryAddress?: string
