@@ -37,7 +37,7 @@ import {
 } from '../../types';
 import { sys } from 'constants/index';
 import { fromZPub } from 'bip84';
-
+import { SingleEntryPlugin } from 'webpack';
 const bjs = require('bitcoinjs-lib');
 const bitcoinops = require('bitcoin-ops');
 const syscointx = require('syscointx-js');
@@ -1139,10 +1139,9 @@ const AccountController = (actions: {
     if (newParentAsset?.asset_guid) {
       console.log("Checking new parent asset id")
       console.log(newParentAsset?.asset_guid)
-      // const assetId = sys.utils.getBaseAssetID(newParentAsset?.asset_guid);
-      const txOpts = { rbf: true }
       let childNFTTx: any = null
       let parentConfirmed = false
+      let txInfo: any = null
       // console.log(childAssetId, newParentAsset, newParentAsset?.asset_guid, assetId, childAssetId, issuer, fee, rbf)
 
       try {
@@ -1151,13 +1150,15 @@ const AccountController = (actions: {
 
           interval = setInterval(async () => {
             const newParentTx = await getTransactionInfoByTxId(newParentAsset.txid);
-            const childAssetId = sys.utils.createAssetID('1', newParentAsset?.asset_guid);
-            const feeRate = new sys.utils.BN(fee * 1e8);
-            if (newParentTx.confirmations > 0 && !parentConfirmed) {
+            const childAssetId = sys.utils.createAssetID('1', newParentAsset!.asset_guid);
+            const feeRate = new sys.utils.BN(10);
+            const txOpts = { rbf: true, }
+            if (newParentTx.confirmations > 1 && !parentConfirmed) {
               parentConfirmed = true
               console.log("newParentAsset: ", newParentAsset)
-              console.log("childAsset on parent: ", childAssetId)
+              console.log("childAsset on parent: ", typeof childAssetId, childAssetId)
               console.log("issuer ", issuer)
+              console.log(txOpts)
               // let secondInterval: any;
               // const onChainChildAssetGuid = await issueBlankChildNFTs(newParentAsset!.asset_guid, 1, childAssetId, issuer, fee, rbf);
 
@@ -1165,10 +1166,10 @@ const AccountController = (actions: {
               const assetChangeAddress = null
               console.log('child asset id: ', childAssetId)
               const assetMap = new Map([
-                [childAssetId, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1), address: issuer }] }]
+                [childAssetId, { changeAddress: null, outputs: [{ value: new sys.utils.BN(1), address: issuer }] }]
               ])
 
-              console.log('mint nft map', JSON.stringify(assetMap))
+              console.log('mint nft map', (assetMap))
               console.log('fee rate', feeRate)
               let sysChangeAddress = null;
 
@@ -1178,10 +1179,10 @@ const AccountController = (actions: {
                   console.log('Could not create transaction, not enough funds?')
                 }
 
-                const txInfo = pendingTx.extractTransaction().getId();
+                txInfo = pendingTx.extractTransaction().getId();
                 console.log("Transaction sucess", txInfo)
                 updateTransactionData('issuingNFT', txInfo);
-                childNFTTx = await getTransactionInfoByTxId(txInfo);
+                childNFTTx = txInfo;
                 console.log(childNFTTx)
               }
               catch (error) {
@@ -1191,22 +1192,10 @@ const AccountController = (actions: {
               }
 
 
-
-              // secondInterval = setInterval(async () => {
-              //   if (childNFTTx.confirmations > 0) {
-              //     clearInterval(secondInterval)
-
-
-
-              //     return;
-              //   }
-
-              // }, 3000)
-
-
             }
-            else if (childNFTTx) {
-              if (childNFTTx.confirmations > 0) {
+            else if (childNFTTx && txInfo) {
+              childNFTTx = await getTransactionInfoByTxId(txInfo);
+              if (childNFTTx.confirmations > 1) {
                 console.log("child tx time bb")
                 const feeRate = new sys.utils.BN(10)
                 const txOpts = { rbf: true }
