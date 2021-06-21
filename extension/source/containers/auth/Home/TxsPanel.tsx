@@ -72,7 +72,9 @@ const TxsPanel: FC<ITxsPanel> = ({transactions, assets}) => {
     const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
 
     if(scrollOffset === event.target.clientHeight) {
-      handleFetchMoreTxs();
+      if (!changingNetwork) {
+        handleFetchMoreTxs();
+      }
     }
   }, []);
 
@@ -153,7 +155,7 @@ const TxsPanel: FC<ITxsPanel> = ({transactions, assets}) => {
       )}
 
       {isActivity ?
-        transactions.length ? (
+        transactions.length && !changingNetwork ? (
           <>
             <ul>
               {transactions.map((tx: Transaction, idx: number) => {
@@ -197,16 +199,19 @@ const TxsPanel: FC<ITxsPanel> = ({transactions, assets}) => {
             <span className={styles.noTxComment}>
               You have no transaction history, send or receive SYS to register
               your first transaction.
-          </span>
-            <img
-              src={SyscoinIcon}
-              className={styles.syscoin}
-              alt="syscoin"
-              height="167"
-              width="auto"
-            />
+            </span>
+
+            {!changingNetwork && (
+              <img
+                src={SyscoinIcon}
+                className={styles.syscoin}
+                alt="syscoin"
+                height="167"
+                width="auto"
+              />
+            )}
           </>
-        ) : assets.length ?
+        ) : assets.length && !changingNetwork ?
           <>
             <ul>
               {assets.map((asset: Assets, idx: number) => {
@@ -240,13 +245,16 @@ const TxsPanel: FC<ITxsPanel> = ({transactions, assets}) => {
             <span className={styles.noTxComment}>
               You have no Assets, receive SPTs to register.
             </span>
-            <img
-              src={SyscoinIcon}
-              className={styles.syscoin}
-              alt="syscoin"
-              height="167"
-              width="auto"
-            />
+            
+            {!changingNetwork && (
+              <img
+                src={SyscoinIcon}
+                className={styles.syscoin}
+                alt="syscoin"
+                height="167"
+                width="auto"
+              />
+            )}
           </>
 
       }
