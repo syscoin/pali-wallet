@@ -1,7 +1,7 @@
 /** 
   * Fonts 
 **/
-$roboto:'Roboto', sans-serif;
+$roboto: 'Roboto', sans-serif;
 
 /**
  * Font weights
@@ -12,8 +12,6 @@ $medium: 500;
 $semibold: 600;
 $bold: 700;
 
-
-
 /**
  * Colors
 **/
@@ -21,23 +19,23 @@ $bold: 700;
 $black: #000;
 $white: #fff;
 
-$navy: #122036; 
-$navy-darker: #111E33;
-$navy-dark: #1B2E4D;
-$navy-medium: #1E365C;
-$navy-light: #233F6C;
+$navy: #122036;
+$navy-darker: #111e33;
+$navy-dark: #1b2e4d;
+$navy-medium: #1e365c;
+$navy-light: #233f6c;
 
 $navy-border: #162742;
 
-$royalBlue: #4D76B8;
-$royalBlue-medium: #4CA1CF;
+$royalBlue: #4d76b8;
+$royalBlue-medium: #4ca1cf;
 
-$deepPink: #CB2C70;
-$deepPink-100: #FF3E91;
+$deepPink: #cb2c70;
+$deepPink-100: #ff3e91;
 
-$yellowGreen: #7D992E;
+$yellowGreen: #7d992e;
 
-$gold: #FF9900;
+$gold: #ff9900;
 
 $gray: #808080;
 $gray-100: #888888;
@@ -51,14 +49,11 @@ $gray-medium: #979797;
 $gray-hover: #dedede;
 $gray-disabled: #dadada;
 
-
-
 /**
  * Shadows
  **/
 $shadow-btn: 0px 1px 5px rgba(0, 0, 0, 0.25);
 $shadow-tooltip: 0px 0px 5px rgba(0, 0, 0, 0.25);
-
 
 /**
  * Other variables

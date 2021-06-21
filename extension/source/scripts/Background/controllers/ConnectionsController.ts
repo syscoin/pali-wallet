@@ -1,5 +1,4 @@
 import { sendMessage } from 'containers/auth/helpers';
-import store from 'state/store';
 
 export interface IConnectionsController {
   connectWallet: () => any;

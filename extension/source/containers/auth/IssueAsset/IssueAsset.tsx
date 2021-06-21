@@ -9,7 +9,6 @@ import CheckIcon from '@material-ui/icons/CheckCircle';
 
 import TextInput from 'components/TextInput';
 import { RootState } from 'state/store';
-import { ellipsis } from '../helpers';
 import { getHost } from 'scripts/Background/helpers';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
@@ -17,15 +16,13 @@ import CircularProgress from '@material-ui/core/CircularProgress';
 
 import styles from './IssueAsset.scss';
 import { browser } from 'webextension-polyfill-ts';
-import ReactTooltip from 'react-tooltip';
-import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import Switch from "react-switch";
 
 const IssueAsset = () => {
   const controller = useController();
   const alert = useAlert();
 
-  const { accounts, activeAccountId, currentSenderURL, activeNetwork, currentURL }: IWalletState = useSelector(
+  const { accounts, currentSenderURL, currentURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -57,7 +54,7 @@ const IssueAsset = () => {
           setTimeout(() => {
             handleCancelTransactionOnSite();
           }, 4000);
-            
+
           return;
         }
 
@@ -122,7 +119,7 @@ const IssueAsset = () => {
 
   return confirmed ? (
     <Layout title="Your transaction is underway" showLogo>
-      <CheckIcon className={ styles.checked } />
+      <CheckIcon className={styles.checked} />
 
       <div
         className="body-description"
@@ -133,9 +130,9 @@ const IssueAsset = () => {
       <Button
         type="button"
         theme="btn-gradient-primary"
-        variant={ styles.next }
+        variant={styles.next}
         linkTo="/home"
-        onClick={ handleClosePopup }
+        onClick={handleClosePopup}
       >
         Ok
       </Button>
@@ -144,47 +141,47 @@ const IssueAsset = () => {
     <div>
       {mintSPT ? (
         <Layout title="Issue Token" showLogo>
-          <div className={ styles.wrapper }>
+          <div className={styles.wrapper}>
             <div>
-              <section className={ styles.data }>
-                <div className={ styles.flex }>
+              <section className={styles.data}>
+                <div className={styles.flex}>
                   <p>Amount</p>
-                  <p>{ mintSPT?.amount }</p>
+                  <p>{mintSPT?.amount}</p>
                 </div>
 
-                <div className={ styles.flex }>
+                <div className={styles.flex}>
                   <p>Z-DAG</p>
-                  <p>{ rbf ? 'Yes' : 'No' }</p>
+                  <p>{rbf ? 'Yes' : 'No'}</p>
                 </div>
 
-                <div className={ styles.flex }>
+                <div className={styles.flex}>
                   <p>Fee</p>
-                  <p>{ fee }</p>
+                  <p>{fee}</p>
                 </div>
 
-                <div className={ styles.flex }>
+                <div className={styles.flex}>
                   <p>Asset guid</p>
-                  <p>{ mintSPT?.assetGuid }</p>
+                  <p>{mintSPT?.assetGuid}</p>
                 </div>
 
-                <div className={ styles.flex }>
+                <div className={styles.flex}>
                   <p>Site</p>
-                  <p>{ currentSenderURL }</p>
+                  <p>{currentSenderURL}</p>
                 </div>
 
-                <div className={ styles.flex }>
+                <div className={styles.flex}>
                   <p>Max total</p>
-                  <p>{ fee }</p>
+                  <p>{fee}</p>
                 </div>
               </section>
 
-              <section className={ styles.confirm }>
-                <div className={ styles.actions }>
+              <section className={styles.confirm}>
+                <div className={styles.actions}>
                   <Button
                     type="button"
                     theme="btn-outline-secondary"
-                    variant={ clsx(styles.button, styles.close) }
-                    onClick={ handleCancelTransactionOnSite }
+                    variant={clsx(styles.button, styles.close)}
+                    onClick={handleCancelTransactionOnSite}
                   >
                     Reject
                   </Button>
@@ -192,8 +189,8 @@ const IssueAsset = () => {
                   <Button
                     type="submit"
                     theme="btn-outline-primary"
-                    variant={ styles.button }
-                    onClick={ handleConfirm }
+                    variant={styles.button}
+                    onClick={handleConfirm}
                   >
                     Confirm
                   </Button>
@@ -206,57 +203,57 @@ const IssueAsset = () => {
         <div>
           {issuingSPT && loading ? (
             <Layout title="" showLogo>
-              <div className={ styles.wrapper }>
-                <section className={ clsx(styles.mask) }>
-                  <CircularProgress className={ styles.loader } />
+              <div className={styles.wrapper}>
+                <section className={clsx(styles.mask)}>
+                  <CircularProgress className={styles.loader} />
                 </section>
               </div>
             </Layout>
           ) : (
             <div>
               <Layout title="Mint token" showLogo>
-                <div className={ styles.wrapper }>
+                <div className={styles.wrapper}>
                   <label htmlFor="fee">Fee</label>
 
-                  <section className={ styles.fee }>
+                  <section className={styles.fee}>
                     <TextInput
                       type="number"
                       placeholder="Enter fee"
                       fullWidth
                       name="fee"
-                      value={ fee }
-                      onChange={ (event) => setFee(Number(event.target.value)) }
+                      value={fee}
+                      onChange={(event) => setFee(Number(event.target.value))}
                     />
                     <Button
                       type="button"
-                      variant={ styles.textBtn }
-                      onClick={ handleGetFee }
+                      variant={styles.textBtn}
+                      onClick={handleGetFee}
                     >
                       Recommend
                     </Button>
                   </section>
 
-                  <p className={ styles.description }>With current network conditions, we recommend a fee of { recommend } SYS.</p>
+                  <p className={styles.description}>With current network conditions, we recommend a fee of {recommend} SYS.</p>
 
-                  <div className={ styles.rbf }>
+                  <div className={styles.rbf}>
                     <label htmlFor="rbf">Z-DAG</label>
 
                     <Switch
                       offColor="#333f52"
-                      height={ 20 }
-                      width={ 60 }
-                      checked={ rbf }
-                      onChange={ handleTypeChanged }
+                      height={20}
+                      width={60}
+                      checked={rbf}
+                      onChange={handleTypeChanged}
                     />
                   </div>
 
-                  <section className={ styles.confirm }>
-                    <div className={ styles.actions }>
+                  <section className={styles.confirm}>
+                    <div className={styles.actions}>
                       <Button
                         type="button"
                         theme="btn-outline-secondary"
-                        variant={ clsx(styles.button, styles.close) }
-                        onClick={ handleCancelTransactionOnSite }
+                        variant={clsx(styles.button, styles.close)}
+                        onClick={handleCancelTransactionOnSite}
                       >
                         Reject
                       </Button>
@@ -264,9 +261,9 @@ const IssueAsset = () => {
                       <Button
                         type="submit"
                         theme="btn-outline-primary"
-                        variant={ styles.button }
-                        onClick={ handleMessageToMintSPT }
-                        disabled={ !fee }
+                        variant={styles.button}
+                        onClick={handleMessageToMintSPT}
+                        disabled={!fee}
                       >
                         Next
                       </Button>
@@ -275,9 +272,9 @@ const IssueAsset = () => {
                 </div>
               </Layout>
             </div>
-          ) }
+          )}
         </div>
-      ) }
+      )}
     </div>
   );
 }

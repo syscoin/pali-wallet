@@ -18,7 +18,7 @@ const CreatePass = () => {
   const history = useHistory();
   const controller = useController();
   const [passed, setPassed] = useState<boolean>(false);
-  const {handleSubmit, register, errors} = useForm({
+  const { handleSubmit, register, errors } = useForm({
     validationSchema: consts.schema,
   });
   const title = passed ? consts.CREATE_PASS_TITLE2 : consts.CREATE_PASS_TITLE1;
@@ -90,7 +90,7 @@ const CreatePass = () => {
           theme="btn-gradient-primary"
           variant={styles.next}
           onClick={nextHandler}>
-            Next
+          Next
         </Button>
       </form>
     </Layout>

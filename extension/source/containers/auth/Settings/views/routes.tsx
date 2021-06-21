@@ -4,7 +4,6 @@ export const GENERAL_VIEW = '#general';
 export const PHRASE_VIEW = '#phrase';
 export const DELETE_WALLET_VIEW = '#delete_wallet';
 export const NEW_ACCOUNT_VIEW = '#new_account';
-export const REMOVE_ACCOUNT_VIEW = '#remove_account';
 export const PRIV_KEY_VIEW = '#private_key';
 export const ABOUT_VIEW = '#about';
 export const CONNECT_HARDWARE_WALLET_VIEW = '#connect_hardware_wallet_view';

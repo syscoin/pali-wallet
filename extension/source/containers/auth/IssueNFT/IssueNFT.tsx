@@ -9,7 +9,6 @@ import CheckIcon from '@material-ui/icons/CheckCircle';
 
 import TextInput from 'components/TextInput';
 import { RootState } from 'state/store';
-import { ellipsis } from '../helpers';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 
@@ -23,7 +22,7 @@ const IssueNFT = () => {
   const controller = useController();
   const alert = useAlert();
 
-  const { accounts, activeAccountId, currentSenderURL, activeNetwork }: IWalletState = useSelector(
+  const { accounts, currentSenderURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -65,7 +64,7 @@ const IssueNFT = () => {
           setTimeout(() => {
             handleCancelTransactionOnSite();
           }, 4000);
-            
+
           return;
         }
 

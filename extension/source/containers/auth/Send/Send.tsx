@@ -233,7 +233,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                   className={styles.select}
                   id="asset"
                 >
-                  <label 
+                  <label
                     htmlFor="asset"
                     style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                   >
@@ -289,7 +289,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                       getContent={() =>
                         <div style={{ backgroundColor: 'white' }}>
                           <small style={{ fontWeight: 'bold' }}>
-                            OFF for Replace-by-fee (RBF) and ON for Z-DAG <br /> 
+                            OFF for Replace-by-fee (RBF) and ON for Z-DAG <br />
                             Z-DAG: a exclusive Syscoin feature.
                             <br />
                             <strong>To know more:</strong>
@@ -361,7 +361,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               </li>
 
               <li className={styles.item}>
-                <label 
+                <label
                   htmlFor="fee"
                   style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >

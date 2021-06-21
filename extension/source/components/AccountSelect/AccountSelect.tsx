@@ -5,8 +5,6 @@ import DownArrowIcon from '@material-ui/icons/ExpandMore';
 import styles from './AccountSelect.scss';
 
 interface IOptions {
-  // key => value of Option
-  // value => label of Option
   [key: string]: any;
 }
 

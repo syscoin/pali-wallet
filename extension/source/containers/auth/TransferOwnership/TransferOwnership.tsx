@@ -16,8 +16,6 @@ import CircularProgress from '@material-ui/core/CircularProgress';
 
 import styles from './TransferOwnership.scss';
 import { browser } from 'webextension-polyfill-ts';
-import ReactTooltip from 'react-tooltip';
-import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import Switch from "react-switch";
 
 const TransferOwnership = () => {
@@ -55,7 +53,7 @@ const TransferOwnership = () => {
           setTimeout(() => {
             handleCancelTransactionOnSite();
           }, 4000);
-            
+
           return;
         }
 
@@ -132,7 +130,7 @@ const TransferOwnership = () => {
             <div>
               <section className={styles.data}>
                 <div className={styles.flex}>
-                  <p>RBF</p>
+                  <p>Z-DAG</p>
                   <p>{rbf ? 'Yes' : 'No'}</p>
                 </div>
 

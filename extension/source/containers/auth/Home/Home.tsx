@@ -1,6 +1,6 @@
-import React, {useEffect, useState} from 'react';
+import React, { useEffect, useState } from 'react';
 import clsx from 'clsx';
-import {useSelector} from 'react-redux';
+import { useSelector } from 'react-redux';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import Spinner from '@material-ui/core/CircularProgress';
 import IconButton from '@material-ui/core/IconButton';
@@ -10,20 +10,20 @@ import Header from 'containers/common/Header';
 import Button from 'components/Button';
 import FullSelect from 'components/FullSelect';
 import Modal from 'components/Modal';
-import {useController} from 'hooks/index';
-import {useFiat} from 'hooks/usePrice';
-import {RootState} from 'state/store';
+import { useController } from 'hooks/index';
+import { useFiat } from 'hooks/usePrice';
+import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import TxsPanel from './TxsPanel';
 
 import styles from './Home.scss';
-import {formatNumber} from '../helpers';
-import {getHost} from '../../../scripts/Background/helpers';
+import { formatNumber } from '../helpers';
+import { getHost } from '../../../scripts/Background/helpers';
 
 const Home = () => {
   const controller = useController();
   const getFiatAmount = useFiat();
-  const {accounts, activeAccountId, currentURL, changingNetwork, activeNetwork}: IWalletState = useSelector(
+  const { accounts, activeAccountId, currentURL, changingNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
@@ -36,7 +36,7 @@ const Home = () => {
   };
 
   useEffect(() => {
-    if(!controller.wallet.isLocked() && accounts.length > 0 && accounts.find(element => element.id === activeAccountId)) {
+    if (!controller.wallet.isLocked() && accounts.length > 0 && accounts.find(element => element.id === activeAccountId)) {
       handleRefresh();
     }
   }, [
@@ -47,8 +47,8 @@ const Home = () => {
   useEffect(() => {
     let acc = accounts.find(element => element.id === activeAccountId);
 
-    if(acc && acc.connectedTo !== undefined) {
-      if(acc.connectedTo.length > 0) {
+    if (acc && acc.connectedTo !== undefined) {
+      if (acc.connectedTo.length > 0) {
         setIsConnected(acc.connectedTo.findIndex((url: any) => {
           return url == getHost(currentURL);
         }) > -1);
@@ -118,7 +118,7 @@ const Home = () => {
             ) : (
               <small>{getFiatAmount(accounts.find(element => element.id === activeAccountId)?.balance || 0)}</small>
             )}
-            
+
             <IconButton className={styles.refresh} onClick={handleRefresh}>
               <RefreshIcon />
             </IconButton>

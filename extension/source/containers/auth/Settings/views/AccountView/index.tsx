@@ -3,16 +3,11 @@ import  { FC } from 'react';
 import Icon from 'components/Icon';
 import ExportIcon from '@material-ui/icons/ImportExport';
 import LinkIcon from '@material-ui/icons/CallMissedOutgoing';
-// import DeleteIcon from '@material-ui/icons/Delete';
 import { useSettingsView, useController } from 'hooks/index';
 import { useSelector } from 'react-redux';
 import IWalletState from 'state/wallet/types';
 import { RootState } from 'state/store';
-
-// import { PRIV_KEY_VIEW, REMOVE_ACCOUNT_VIEW } from '../routes';
 import { PRIV_KEY_VIEW } from '../routes';
-import { SYS_EXPLORER_SEARCH } from 'constants/index';
-import store from 'state/store';
 
 import styles from './index.scss';
 
@@ -29,7 +24,6 @@ const AccountView: FC<IAccountView> = ({ id }) => {
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
   const handleOpenExplorer = () => {
     window.open(sysExplorer + '/xpub/' + accounts[id].xpub);
-
   };
 
   return (
@@ -43,10 +37,6 @@ const AccountView: FC<IAccountView> = ({ id }) => {
           <Icon Component={LinkIcon} />
           View on explorer
         </li>
-        {/* <li onClick={() => showView(REMOVE_ACCOUNT_VIEW)}>
-          <Icon Component={DeleteIcon} />
-          Remove account
-        </li> */}
       </ul>
     </div>
   );

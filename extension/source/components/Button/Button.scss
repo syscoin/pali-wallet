@@ -9,7 +9,7 @@ body {
     letter-spacing: 0.03em;
     line-height: 20px;
 
-    padding: .5rem 3rem;
+    padding: 0.5rem 3rem;
     border-radius: 20px;
     cursor: pointer;
 
@@ -63,17 +63,16 @@ body {
         color: $navy;
       }
     }
-    &.selected{
+    &.selected {
       background: $navy;
       color: $white;
-
     }
     // Button - Assets, Activity
     &.btn-rectangle-primary {
       color: $white;
       border-radius: 0;
       justify-content: space-evenly;
-      margin: 2rem 0 .5rem 1.2rem;
+      margin: 2rem 0 0.5rem 1.2rem;
       background: $navy;
 
       // &:hover {
@@ -89,7 +88,7 @@ body {
       color: $white;
       border-radius: 0;
       justify-content: space-evenly;
-      margin: 2rem 0 .5rem 1.2rem;
+      margin: 2rem 0 0.5rem 1.2rem;
       background: $navy;
       border-bottom: 1px solid $deepPink;
       color: $white;
@@ -101,18 +100,11 @@ body {
 
     // Primary button.
     &.btn-gradient-primary {
-      color: #4CA1CF;
+      color: #4ca1cf;
       border: solid 1px transparent;
       border-radius: 100rem;
-      background-image: 
-        linear-gradient(
-          rgba(255, 255, 255, 0), 
-          rgba(255, 255, 255, 0)), 
-          linear-gradient(
-            30deg, 
-            $deepPink 20%, 
-            $royalBlue 50%
-          );
+      background-image: linear-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 0)),
+        linear-gradient(30deg, $deepPink 20%, $royalBlue 50%);
       background-origin: border-box;
       background-clip: content-box, border-box;
       box-shadow: 2px 1000px 1px $navy inset;
@@ -126,21 +118,14 @@ body {
         transform: scale(0.95);
       }
     }
-    
+
     // Outline buttons
     &.btn-outline-primary {
-      color: #4CA1CF;
+      color: #4ca1cf;
       border: solid 1px transparent;
       border-radius: 100rem;
-      background-image: 
-        linear-gradient(
-          rgba(255, 255, 255, 0), 
-          rgba(255, 255, 255, 0)), 
-          linear-gradient(
-            30deg, 
-            $navy-border 10%,
-            $royalBlue 50%
-          );
+      background-image: linear-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 0)),
+        linear-gradient(30deg, $navy-border 10%, $royalBlue 50%);
       background-origin: border-box;
       background-clip: content-box, border-box;
       box-shadow: 2px 1000px 1px $navy inset;
@@ -159,15 +144,8 @@ body {
       color: $deepPink;
       border: solid 1px transparent;
       border-radius: 100rem;
-      background-image: 
-        linear-gradient(
-          rgba(255, 255, 255, 0), 
-          rgba(255, 255, 255, 0)), 
-          linear-gradient(
-            30deg, 
-            #8C1F4E 10%,
-            $deepPink-100 50%
-          );
+      background-image: linear-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 0)),
+        linear-gradient(30deg, #8c1f4e 10%, $deepPink-100 50%);
       background-origin: border-box;
       background-clip: content-box, border-box;
       box-shadow: 2px 1000px 1px $navy inset;
@@ -186,15 +164,8 @@ body {
       color: $yellowGreen;
       border: solid 1px transparent;
       border-radius: 100rem;
-      background-image: 
-        linear-gradient(
-          rgba(255, 255, 255, 0), 
-          rgba(255, 255, 255, 0)), 
-          linear-gradient(
-            30deg, 
-            #49591B 10%,
-            $yellowGreen 50%
-          );
+      background-image: linear-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 0)),
+        linear-gradient(30deg, #49591b 10%, $yellowGreen 50%);
       background-origin: border-box;
       background-clip: content-box, border-box;
       box-shadow: 2px 1000px 1px $navy inset;

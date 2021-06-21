@@ -82,8 +82,6 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
         return 'Delete wallet';
       case routes.NEW_ACCOUNT_VIEW:
         return 'Create account';
-      case routes.REMOVE_ACCOUNT_VIEW:
-        return 'Remove account';
       case routes.PRIV_KEY_VIEW:
         return 'Export private key';
       case routes.ABOUT_VIEW:
@@ -107,8 +105,6 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
         return <Views.DeleteWalletView />;
       case routes.NEW_ACCOUNT_VIEW:
         return <Views.NewAccountView />;
-      case routes.REMOVE_ACCOUNT_VIEW:
-        return <Views.RemoveAccountView id={Number(showedId)} />;
       case routes.PRIV_KEY_VIEW:
         return <Views.PrivateKeyView id={showedId} />;
       case routes.ABOUT_VIEW:

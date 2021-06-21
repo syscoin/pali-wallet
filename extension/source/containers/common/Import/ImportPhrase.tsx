@@ -13,7 +13,7 @@ interface IImportPhrase {
   onRegister: () => void;
 }
 
-const ImportPhrase: FC<IImportPhrase> = ({onRegister}) => {
+const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
   const controller = useController();
   const { handleSubmit, register } = useForm({
     validationSchema: yup.object().shape({

@@ -36,17 +36,16 @@
     font-size: 2.7rem;
     font-family: $roboto;
     text-align: center;
-    letter-spacing: .1em;
-    line-height: .2em;
+    letter-spacing: 0.1em;
+    line-height: 0.2em;
     color: $royalBlue;
-    
-    
+
     p {
       text-align: center;
       color: $navy-light;
       font-size: 1rem;
       font-weight: $regular;
-      letter-spacing: .5em;
+      letter-spacing: 0.5em;
       text-transform: uppercase;
     }
   }
@@ -70,7 +69,7 @@
 
   .body-comment {
     font-family: $roboto;
-    font-size: .8rem;
+    font-size: 0.8rem;
     font-weight: $regular;
     font-style: normal;
     text-align: justify;

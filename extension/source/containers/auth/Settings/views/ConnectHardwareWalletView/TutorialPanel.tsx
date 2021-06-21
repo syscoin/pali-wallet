@@ -7,10 +7,9 @@ import IconButton from '@material-ui/core/IconButton';
 import styles from './index.scss';
 
 const TutorialPanel: FC = () => {
-  // const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
   const [learnMore, setLearnMore] = useState<boolean>(false)
- 
+
   const handleScroll = useCallback((event) => {
     event.persist();
     if (event.target.scrollTop) {

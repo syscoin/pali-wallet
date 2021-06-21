@@ -53,7 +53,7 @@ const SendConfirm = () => {
               handleCancelTransactionOnSite();
             }, 4000);
           }
-            
+
           return;
         }
 
@@ -61,27 +61,6 @@ const SendConfirm = () => {
         setLoading(false);
       });
     }
-
-    
-    // if (accounts.find(element => element.id === activeAccountId)!.balance > 0) {
-    //   setLoading(true);
-
-    //   try {
-    //     controller.wallet.account.confirmTempTx();
-
-    //     setConfirmed(true);
-    //     setLoading(false);
-    //   } catch (error) {
-    //     alert.removeAll();
-    //     alert.error('Error confirming transaction.');
-        
-    //     if (confirmingTransaction) {
-    //       handleCancelTransactionOnSite();
-
-    //       return;
-    //     }
-    //   }
-    // }
   };
 
   const handleCancel = () => {

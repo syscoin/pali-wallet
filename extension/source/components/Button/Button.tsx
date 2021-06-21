@@ -8,7 +8,6 @@ import styles from './Button.scss';
 
 interface IButton {
   blockHeight?: number;
-  // height of block button if fullWidth = true
   children: ReactNode;
   disabled?: boolean;
   fullWidth?: boolean;

@@ -85,7 +85,7 @@ const Auth = () => {
 
       return;
     }
- 
+
     if (issuingNFT && isUnlocked) {
       history.push('/issueNFT');
 

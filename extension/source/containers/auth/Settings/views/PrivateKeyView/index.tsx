@@ -50,7 +50,7 @@ const PrivateKeyView: FC<IPrivateKeyView> = ({ id }) => {
 
       return;
     }
-    
+
     alert.removeAll();
     alert.error('Error: Invalid password');
   };

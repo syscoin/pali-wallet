@@ -47,7 +47,7 @@ const ConfirmPhrase = () => {
       setPassed(true);
     } else {
       controller.wallet.createWallet();
-      console.log('Checking variable',passed)
+      console.log('Checking variable', passed)
       history.push('/app.html');
     }
   };

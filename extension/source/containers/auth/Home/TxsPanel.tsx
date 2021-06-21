@@ -1,20 +1,20 @@
 import * as React from 'react';
-import {FC, Fragment, useCallback, useState} from 'react';
+import { FC, Fragment, useCallback, useState } from 'react';
 import clsx from 'clsx';
-import {v4 as uuid} from 'uuid';
+import { v4 as uuid } from 'uuid';
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
 import GoTopIcon from '@material-ui/icons/VerticalAlignTop';
 import IconButton from '@material-ui/core/IconButton';
 import Spinner from '@material-ui/core/CircularProgress';
 import Button from 'components/Button';
 
-import {useController} from 'hooks/index';
-import {formatDistanceDate} from '../helpers';
+import { useController } from 'hooks/index';
+import { formatDistanceDate } from '../helpers';
 import SyscoinIcon from 'assets/images/logosys.svg';
-import {Transaction, Assets} from '../../../scripts/types';
-import {RootState} from 'state/store';
+import { Transaction, Assets } from '../../../scripts/types';
+import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
-import {useSelector} from 'react-redux';
+import { useSelector } from 'react-redux';
 
 import styles from './Home.scss';
 
@@ -24,14 +24,14 @@ interface ITxsPanel {
   assets: Assets[];
 }
 
-const TxsPanel: FC<ITxsPanel> = ({transactions, assets}) => {
+const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
   const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
   const [isActivity, setActivity] = useState<boolean>(true);
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
-  const {changingNetwork}: IWalletState = useSelector(
+  const { changingNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -57,7 +57,7 @@ const TxsPanel: FC<ITxsPanel> = ({transactions, assets}) => {
   );
 
   const handleFetchMoreTxs = () => {
-    if(transactions.length) {
+    if (transactions.length) {
       controller.wallet.account.updateTxs();
     }
   };
@@ -65,13 +65,13 @@ const TxsPanel: FC<ITxsPanel> = ({transactions, assets}) => {
   const handleScroll = useCallback((event) => {
     event.persist();
 
-    if(event.target.scrollTop) setShowed(true);
+    if (event.target.scrollTop) setShowed(true);
 
     setScrollArea(event.target);
 
     const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
 
-    if(scrollOffset === event.target.clientHeight) {
+    if (scrollOffset === event.target.clientHeight) {
       if (!changingNetwork) {
         handleFetchMoreTxs();
       }
@@ -87,16 +87,16 @@ const TxsPanel: FC<ITxsPanel> = ({transactions, assets}) => {
   };
 
   const handleGoTop = () => {
-    scrollArea!.scrollTo({top: 0, behavior: 'smooth'});
+    scrollArea!.scrollTo({ top: 0, behavior: 'smooth' });
     setShowed(false);
   };
 
   const getTxType = (tx: Transaction) => {
-    if(tx.tokenType === "SPTAssetActivate") {
+    if (tx.tokenType === "SPTAssetActivate") {
       return 'SPT creation';
     }
 
-    if(tx.tokenType === "SPTAssetSend") {
+    if (tx.tokenType === "SPTAssetSend") {
       return 'SPT mint';
     }
 
@@ -105,7 +105,7 @@ const TxsPanel: FC<ITxsPanel> = ({transactions, assets}) => {
 
   return (
     <section
-      className={clsx(styles.activity, {[styles.expanded]: isShowed})}
+      className={clsx(styles.activity, { [styles.expanded]: isShowed })}
       onScroll={handleScroll}
     >
       {!!(!isShowed) ?
@@ -115,7 +115,7 @@ const TxsPanel: FC<ITxsPanel> = ({transactions, assets}) => {
               type="button"
               theme={isActivity ? "btn-rectangle-primary" : "btn-rectangle-selected"}
               variant={styles.button}
-              onClick={() => {setActivity(false)}}
+              onClick={() => { setActivity(false) }}
             >
               Assets
             </Button>
@@ -124,7 +124,7 @@ const TxsPanel: FC<ITxsPanel> = ({transactions, assets}) => {
               type="button"
               theme={isActivity ? "btn-rectangle-selected" : "btn-rectangle-primary"}
               variant={styles.button}
-              onClick={() => {setActivity(true)}}
+              onClick={() => { setActivity(true) }}
             >
               Activity
             </Button>
@@ -215,7 +215,7 @@ const TxsPanel: FC<ITxsPanel> = ({transactions, assets}) => {
           <>
             <ul>
               {assets.map((asset: Assets, idx: number) => {
-                if(asset.assetGuid !== undefined) {
+                if (asset.assetGuid !== undefined) {
                   return (
                     <Fragment key={uuid()}>
                       {TokenTypeGroupBar(asset, idx) && (
@@ -245,7 +245,7 @@ const TxsPanel: FC<ITxsPanel> = ({transactions, assets}) => {
             <span className={styles.noTxComment}>
               You have no Assets, receive SPTs to register.
             </span>
-            
+
             {!changingNetwork && (
               <img
                 src={SyscoinIcon}

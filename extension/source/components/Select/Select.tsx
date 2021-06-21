@@ -6,8 +6,6 @@ import ArrowDownIcon from '@material-ui/icons/KeyboardArrowDown';
 
 import styles from './Select.scss';
 interface IOption {
-  // key => value of Option
-  // value => label of Option
   [key: string]: string;
 }
 

@@ -16,8 +16,6 @@ import CircularProgress from '@material-ui/core/CircularProgress';
 
 import styles from './Create.scss';
 import { browser } from 'webextension-polyfill-ts';
-import ReactTooltip from 'react-tooltip';
-import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import Switch from "react-switch";
 import { getHost } from 'scripts/Background/helpers';
 
@@ -25,7 +23,7 @@ const Create = () => {
   const controller = useController();
   const alert = useAlert();
 
-  const { accounts, activeAccountId, currentSenderURL, activeNetwork }: IWalletState = useSelector(
+  const { accounts, currentSenderURL, activeNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -58,7 +56,7 @@ const Create = () => {
       if (!controller.wallet.account.isValidSYSAddress(String(newSPT?.receiver), activeNetwork)) {
         alert.removeAll();
         alert.error('Recipient\'s address is not valid.');
-  
+
         setTimeout(() => {
           handleCancelTransactionOnSite();
         }, 4000);
@@ -87,7 +85,7 @@ const Create = () => {
           setTimeout(() => {
             handleCancelTransactionOnSite();
           }, 4000);
-            
+
           return;
         }
 
@@ -113,7 +111,6 @@ const Create = () => {
   }
 
   const handleTypeChanged = useCallback((rbf: boolean) => {
-    console.log(rbf)
     setRbf(rbf);
   }, []);
 

@@ -51,7 +51,7 @@ const Modal: FC<IModal> = ({
       </div>
 
       <p>{message}</p>
-      
+
       {!connected && (
         <div className={styles.close}>
           <button

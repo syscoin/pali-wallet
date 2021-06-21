@@ -41,7 +41,7 @@ const ConnectedAccounts = () => {
         id: accountId,
         url: currentSenderURL
       });
-  
+
       browser.runtime.sendMessage({
         type: "CLOSE_POPUP",
         target: "background"
@@ -80,8 +80,8 @@ const ConnectedAccounts = () => {
                     {account.id === activeAccountId && <small>(active)</small>}
                     {account.id === accountId && <img src={checkGreen} alt="check" />}
                   </li>
-                  )
-                })
+                )
+              })
               }
             </ul>
 
