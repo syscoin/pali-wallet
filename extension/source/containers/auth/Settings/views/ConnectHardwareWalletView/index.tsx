@@ -10,6 +10,7 @@ const ConnectHardwareWalletView: FC = () => {
   const onclick = async () => {
     controller.wallet.createHardwareWallet();
   }
+  
   return (
     <div className={styles.wrapper} style={{ color: "white", textAlign: "center" }}>
       <p style={{ textAlign: "center" }}>Select a hardware wallet you'd like to use with Pali Wallet</p>
@@ -28,6 +29,7 @@ const ConnectHardwareWalletView: FC = () => {
         theme="btn-gradient-primary"
         variant={styles.button}
         onClick={onclick}
+        disabled={!selected}
       >
         Connect
       </Button>

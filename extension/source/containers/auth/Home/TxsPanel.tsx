@@ -15,8 +15,11 @@ import { Transaction, Assets } from '../../../scripts/types';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { useSelector } from 'react-redux';
+import ReactTooltip from 'react-tooltip';
+import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 
 import styles from './Home.scss';
+import ModalBlock from 'components/ModalBlock';
 
 interface ITxsPanel {
   address: string;
@@ -29,6 +32,8 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
   const [isShowed, setShowed] = useState<boolean>(false);
   const [isActivity, setActivity] = useState<boolean>(true);
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
+  const [openBlockExplorer, setOpenBlockExplorer] = useState(false);
+  const [txidSelected, setTxidSelected] = useState('');
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   const { changingNetwork }: IWalletState = useSelector(
@@ -153,6 +158,12 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
           />
         </>
       )}
+      
+      {openBlockExplorer && (
+        <div className={styles.background} onClick={() => setOpenBlockExplorer(false)}></div>
+      )}
+
+      {openBlockExplorer && <ModalBlock title="Open block explorer" message="Go to view transaction in Sys Block Explorer" setCallback={() => setOpenBlockExplorer(false)} callback={() => handleOpenExplorer(txidSelected)} />}
 
       {isActivity ?
         transactions.length && !changingNetwork ? (
@@ -168,12 +179,20 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                         {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}
                       </li>
                     )}
-                    <li onClick={() => handleOpenExplorer(tx.txid)}>
+                    <li
+                      onClick={() => {
+                        setOpenBlockExplorer(true);
+                        setTxidSelected(tx.txid);
+                      }}
+                      onBlur={() => {
+                        setOpenBlockExplorer(false);
+                        setTxidSelected('');
+                      }}>
                       <div>
                         {isConfirmed ? null : <Spinner size={25} className={styles.spinner} />}
                       </div>
                       <div>
-                        <span>
+                        <span title="Click here to go to view transaction in sys block explorer">
                           <span>
                             {new Date(tx.blockTime * 1000).toLocaleTimeString(navigator.language, {
                               hour: '2-digit',
@@ -225,7 +244,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                       )}
                       <li onClick={() => handleOpenAssetExplorer(asset.assetGuid)}>
                         <div>
-                          <span>
+                          <span title="Click here to go to view transaction in sys block explorer">
                             <span>{controller.wallet.account.isNFT(asset.assetGuid) ? asset.balance : (asset.balance / 10 ** asset.decimals).toFixed(8)}  {asset.symbol} </span>
                           </span>
                           <div className={styles.linkIcon}>

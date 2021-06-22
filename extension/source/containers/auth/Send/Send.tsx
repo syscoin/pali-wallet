@@ -172,6 +172,10 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
     setSelectedAsset(null);
   };
+  
+  useEffect(() => {
+    console.log(amount, amount.replace(',', '.'))
+  }, [])
 
   useEffect(handleGetFee, []);
 
@@ -420,7 +424,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 variant={styles.button}
                 disabled={
                   accounts.find(element => element.id === activeAccountId)!.balance === 0 ||
-                  accounts.find(element => element.id === activeAccountId)!.balance < Number(amount) ||
+                  // accounts.find(element => element.id === activeAccountId)!.balance < Number(amount) ||
                   !isValidAddress ||
                   !amount ||
                   !fee ||
