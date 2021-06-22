@@ -402,6 +402,7 @@ const AccountController = (actions: {
   }
 
   const getTempTx = () => {
+    console.log('temptx', tempTx)
     return tempTx || null;
   };
 
@@ -1365,7 +1366,7 @@ const AccountController = (actions: {
       updateTransactionData('confirmingTransaction', txInfo);
     }
 
-    item = null;
+    tempTx = null;
 
     watchMemPool();
   }
@@ -1373,8 +1374,6 @@ const AccountController = (actions: {
   const confirmTempTx = () => {
     return new Promise((resolve) => {
       resolve(handleTransactions(tempTx, confirmTransactionTx));
-
-      tempTx = null;
     });
   };
 
