@@ -15,6 +15,8 @@ import { Transaction, Assets } from '../../../scripts/types';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { useSelector } from 'react-redux';
+import ReactTooltip from 'react-tooltip';
+import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 
 import styles from './Home.scss';
 
@@ -168,6 +170,33 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                         {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}
                       </li>
                     )}
+                    <div className={styles.tooltip}>
+                      <HelpOutlineIcon
+                        style={{ width: '17px', height: '17px', color: 'white' }}
+                        data-tip
+                        data-for="block_explorer_info"
+                      />
+                      <ReactTooltip id="block_explorer_info"
+                        getContent={() =>
+                          <div style={{ backgroundColor: 'white' }}>
+                            <small style={{ fontWeight: 'bold' }}>
+                              See transaction on block explorer
+                            </small>
+                          </div>
+                        }
+                        backgroundColor="white"
+                        textColor="black"
+                        borderColor="#4d76b8"
+                        effect='solid'
+                        delayHide={300}
+                        delayShow={300}
+                        delayUpdate={300}
+                        place={'top'}
+                        border={true}
+                        type={'info'}
+                        multiline={true}
+                      />
+                    </div>
                     <li onClick={() => handleOpenExplorer(tx.txid)}>
                       <div>
                         {isConfirmed ? null : <Spinner size={25} className={styles.spinner} />}

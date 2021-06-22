@@ -1,4 +1,4 @@
-import WalletController from './WalletController';
+import WalletController, { IWalletController } from './WalletController';
 import ControllerUtils from './ControllerUtils';
 import ConnectionsController, { IConnectionsController } from './ConnectionsController';
 export interface IMasterController {

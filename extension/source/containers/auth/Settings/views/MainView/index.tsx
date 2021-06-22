@@ -66,7 +66,7 @@ const MainView: FC<IMainView> = ({ onChange }) => {
         onClick={() => showView(NEW_ACCOUNT_VIEW)}
       >
         <Icon Component={AddIcon} />
-        Create new account
+        Derive account
       </section>
 
       <section

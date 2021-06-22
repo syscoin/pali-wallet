@@ -26,7 +26,7 @@ const IssueAsset = () => {
     (state: RootState) => state.wallet
   );
 
-  const mintSPT = controller.wallet.account.getTransactionItem().mintSPT;
+  const mintSPT = controller.wallet.account.getIssueSPT();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0);
