@@ -172,12 +172,20 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
     setSelectedAsset(null);
   };
-  
+
   useEffect(() => {
     console.log(amount, amount.replace(',', '.'))
   }, [])
 
   useEffect(handleGetFee, []);
+
+  const checkAssetBalance = () => {
+    return Number(selectedAsset ?
+      controller.wallet.account.isNFT(selectedAsset.assetGuid) ?
+        selectedAsset.balance :
+        (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
+      accounts.find(element => element.id === activeAccountId)!.balance)
+  }
 
   return (
     <div className={styles.wrapper}>
@@ -188,11 +196,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
         <section className={styles.balance}>
           <div>
             Balance:{' '}
-            <span>{selectedAsset ?
-              controller.wallet.account.isNFT(selectedAsset.assetGuid) ?
-                selectedAsset.balance :
-                (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
-              accounts.find(element => element.id === activeAccountId)!.balance}
+            <span>{checkAssetBalance()}
             </span>
 
             {selectedAsset ? selectedAsset.symbol : "SYS"}
@@ -361,7 +365,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                   }
                 >
                   Max
-              </Button>
+                </Button>
               </li>
 
               <li className={styles.item}>
@@ -388,7 +392,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                   onClick={handleGetFee}
                 >
                   Recommend
-              </Button>
+                </Button>
               </li>
             </div>
 
@@ -416,7 +420,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 linkTo="/home"
               >
                 Close
-            </Button>
+              </Button>
 
               <Button
                 type="submit"
@@ -424,7 +428,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 variant={styles.button}
                 disabled={
                   accounts.find(element => element.id === activeAccountId)!.balance === 0 ||
-                  // accounts.find(element => element.id === activeAccountId)!.balance < Number(amount) ||
+                  checkAssetBalance() < Number(amount) ||
                   !isValidAddress ||
                   !amount ||
                   !fee ||
@@ -433,7 +437,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 }
               >
                 Send
-            </Button>
+              </Button>
             </div>
           </ul>
 
