@@ -172,10 +172,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
     setSelectedAsset(null);
   };
-  
-  useEffect(() => {
-    console.log(amount, amount.replace(',', '.'))
-  }, [])
 
   useEffect(handleGetFee, []);
 

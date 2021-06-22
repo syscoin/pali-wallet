@@ -362,8 +362,8 @@ browser.runtime.onInstalled.addListener(async () => {
 
       if (type == 'DATA_FROM_WALLET_TO_CREATE_TOKEN' && target == 'background') {
         window.controller.wallet.account.createSPT({
-          ...window.controller.wallet.account.getDataFromPageToCreateNewSPT(),
-          ...window.controller.wallet.account.getDataFromWalletToCreateSPT()
+          ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToCreateSPT,
+          ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToCreateSPT
         });
       }
 
@@ -393,8 +393,8 @@ browser.runtime.onInstalled.addListener(async () => {
 
       if (type == 'DATA_FROM_WALLET_TO_MINT_TOKEN' && target == 'background') {
         window.controller.wallet.account.issueSPT({
-          ...window.controller.wallet.account.getDataFromPageToMintSPT(),
-          ...window.controller.wallet.account.getDataFromWalletToMintSPT()
+          ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToMintSPT,
+          ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToMintSPT
         });
       }
 
@@ -440,8 +440,8 @@ browser.runtime.onInstalled.addListener(async () => {
 
       if (type == 'DATA_FROM_WALLET_TO_MINT_NFT' && target == 'background') {
         window.controller.wallet.account.issueNFT({
-          ...window.controller.wallet.account.getDataFromPageToMintNFT(),
-          ...window.controller.wallet.account.getDataFromWalletToMintNFT()
+          ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToMintNFT,
+          ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToMintNFT
         });
       }
 
@@ -483,8 +483,8 @@ browser.runtime.onInstalled.addListener(async () => {
 
       if (type == 'DATA_FROM_WALLET_TO_UPDATE_TOKEN' && target == 'background') {
         window.controller.wallet.account.setUpdateAsset({
-          ...window.controller.wallet.account.getDataFromPageToUpdateAsset(),
-          ...window.controller.wallet.account.getDataFromWalletToUpdateAsset()
+          ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToUpdateAsset,
+          ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToUpdateAsset
         });
       }
 
@@ -514,8 +514,8 @@ browser.runtime.onInstalled.addListener(async () => {
 
       if (type == 'DATA_FROM_WALLET_TO_TRANSFER_OWNERSHIP' && target == 'background') {
         window.controller.wallet.account.setNewOwnership({
-          ...window.controller.wallet.account.getDataFromPageToTransferOwnership(),
-          ...window.controller.wallet.account.getDataFromWalletToTransferOwnership()
+          ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToTransferOwnership,
+          ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToTransferOwnership
         });
       }
 
