@@ -68,7 +68,7 @@ const AccountController = (actions: {
   let dataFromPageToTransferOwnership: any;
   let resAddress: any;
   let encode: any;
-  
+
   const _coventPendingType = (txid: string) => {
     return {
       txid: txid,
@@ -389,7 +389,7 @@ const AccountController = (actions: {
 
     getLatestUpdate();
   };
-  
+
   const getTransactionItem = () => {
     return {
       tempTx: tempTx || null,
@@ -402,6 +402,7 @@ const AccountController = (actions: {
   }
 
   const getTempTx = () => {
+    console.log('temptx', tempTx)
     return tempTx || null;
   };
 
@@ -454,11 +455,11 @@ const AccountController = (actions: {
 
     return true;
   }
-  
+
   // const setDataFromPageToInitTransaction = (data: any, variableItem: any) => {
   //   variableItem = data;
   // }
-  
+
   const getDataFromPageToInitTransaction = () => {
     return {
       dataFromPageToCreateSPT: dataFromPageToCreateSPT || null,
@@ -544,10 +545,10 @@ const AccountController = (actions: {
 
     return true;
   }
-  
+
   // const setNewIssueNFT = (data: any) => {
   //   newIssueNFT = data;
-    
+
   //   return;
   // }
 
@@ -1015,6 +1016,10 @@ const AccountController = (actions: {
   //   }
   // }
 
+
+
+  //This function executs do multiples transactions in sys blockchain  which must be executed in series
+  // WARNING: It might take a few minutes to execute it be carefull when using it
   const confirmMintNFT = async (item: any) => {
     const {
       fee,
@@ -1045,18 +1050,13 @@ const AccountController = (actions: {
     let assetOpts = {
       precision: 8,
       symbol,
-      maxsupply: new sys.utils.BN(1),
-      description,
-      // updatecapabilityflags: 127
+      maxsupply: new sys.utils.BN(totalShares),
+      description
     }
+    console.log("total shares: ", totalShares)
+    console.log("creating parent asset:, ", assetOpts)
     // console.log("feeRate to parent:", feeRate)
     const newParentAsset = await createParentAsset(assetOpts, fee, rbf);
-
-
-    // assetOpts = {
-    //   ...assetOpts,
-    //   // updatecapabilityflags: 0
-    // }
 
     if (newParentAsset?.asset_guid) {
       console.log("Checking new parent asset id")
@@ -1064,8 +1064,6 @@ const AccountController = (actions: {
       let childNFTTx: any = null
       let parentConfirmed = false
       let txInfo: any = null
-      // console.log(childAssetId, newParentAsset, newParentAsset?.asset_guid, assetId, childAssetId, issuer, fee, rbf)
-
       try {
         return new Promise((resolve) => {
           let interval: any;
@@ -1080,15 +1078,11 @@ const AccountController = (actions: {
               console.log("newParentAsset: ", newParentAsset)
               console.log("childAsset on parent: ", typeof childAssetId, childAssetId)
               console.log("issuer ", issuer)
-              console.log(txOpts)
-              // let secondInterval: any;
-              // const onChainChildAssetGuid = await issueBlankChildNFTs(newParentAsset!.asset_guid, 1, childAssetId, issuer, fee, rbf);
-
-              // await sendChildNFTtoCreator(onChainChildAssetGuid, issuer, feeRate, rbf);
               const assetChangeAddress = null
               console.log('child asset id: ', childAssetId)
+              console.log('the total shares amount: ', totalShares)
               const assetMap = new Map([
-                [childAssetId, { changeAddress: null, outputs: [{ value: new sys.utils.BN(1), address: issuer }] }]
+                [childAssetId, { changeAddress: null, outputs: [{ value: new sys.utils.BN(totalShares), address: issuer }] }]
               ])
 
               console.log('mint nft map', (assetMap))
@@ -1116,7 +1110,13 @@ const AccountController = (actions: {
 
             }
             else if (childNFTTx && txInfo) {
-              childNFTTx = await getTransactionInfoByTxId(txInfo);
+              try {
+                childNFTTx = await getTransactionInfoByTxId(txInfo);
+              }
+              catch (error) {
+                console.log("Transaction still not indexed by explorer: ", error)
+                return
+              }
               if (childNFTTx.confirmations > 1) {
                 console.log("child tx time bb")
                 const feeRate = new sys.utils.BN(10)
@@ -1138,6 +1138,7 @@ const AccountController = (actions: {
                 }
                 clearInterval(interval)
                 resolve('transaction ok')
+                return
               }
               else {
                 console.log('confirming child transactions', childNFTTx, childNFTTx.confirmations)
@@ -1148,7 +1149,7 @@ const AccountController = (actions: {
             else {
               console.log('confirming transactions', newParentTx, newParentTx.confirmations)
             }
-          }, 6000);
+          }, 16000);
         })
       } catch (error) {
         console.log('error sending child nft to creator', error)
@@ -1365,7 +1366,7 @@ const AccountController = (actions: {
       updateTransactionData('confirmingTransaction', txInfo);
     }
 
-    item = null;
+    tempTx = null;
 
     watchMemPool();
   }
@@ -1373,8 +1374,6 @@ const AccountController = (actions: {
   const confirmTempTx = () => {
     return new Promise((resolve) => {
       resolve(handleTransactions(tempTx, confirmTransactionTx));
-
-      tempTx = null;
     });
   };
 

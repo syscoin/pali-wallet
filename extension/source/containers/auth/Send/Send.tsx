@@ -50,7 +50,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   );
   const [address, setAddress] = useState<string>(initAddress);
   const [amount, setAmount] = useState<string>('');
-  const [fee, setFee] = useState<string>('0');
+  const [fee, setFee] = useState<string>('0.00001');
   const [recommend, setRecommend] = useState<number>(0);
   const [checked, setChecked] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
