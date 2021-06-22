@@ -214,7 +214,11 @@ export default function CreateNFT() {
               <div className="fileupload">
                 {document.queryCommandSupported("copy") && (
                   <div>
-                    <button className="copy" onClick={copyToClipboard}>
+                    <button
+                      className="copy"
+                      onClick={copyToClipboard}
+                      type="button"
+                    >
                       Copy
                     </button>
                     {copySuccess}
