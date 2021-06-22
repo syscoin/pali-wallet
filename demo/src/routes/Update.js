@@ -112,7 +112,7 @@ export default function Update() {
                   type="file"
                   id="logo"
                 />
-                <img src={file ? URL.createObjectURL(file) : assetImg} />
+                <img src={file ? URL.createObjectURL(file) : assetImg} alt="" />
               </div>
             </div>
           </div>
