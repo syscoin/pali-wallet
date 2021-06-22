@@ -26,7 +26,7 @@ const IssueNFT = () => {
     (state: RootState) => state.wallet
   );
 
-  const mintNFT = controller.wallet.account.getTransactionItem().mintNFT;
+  const mintNFT = controller.wallet.account.getIssueNFT();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0);

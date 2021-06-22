@@ -319,22 +319,6 @@ window.addEventListener('message', (event) => {
 
     return;
   }
-  
-  if (type == 'ISSUE_NFT' && target == 'contentScript') {
-    const {
-      amount,
-      assetGuid
-    } = event.data;
-    
-    browser.runtime.sendMessage({
-      type: 'ISSUE_NFT',
-      target: 'background',
-      amount,
-      assetGuid
-    });
-
-    return;
-  }
 
   if (type == 'CREATE_COLLECTION' && target == 'contentScript') {
     const {
@@ -544,15 +528,6 @@ browser.runtime.onMessage.addListener((request) => {
       type: 'CREATE_COLLECTION',
       target: 'connectionsController',
       createCollection
-    }, '*');
-    return;
-  }
-  
-  if (type == 'ISSUE_NFT' && target == 'contentScript') {
-    window.postMessage({
-      type: 'ISSUE_NFT',
-      target: 'connectionsController',
-      complete
     }, '*');
     return;
   }
