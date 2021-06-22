@@ -393,7 +393,7 @@ browser.runtime.onInstalled.addListener(async () => {
 
       if (type == 'DATA_FROM_WALLET_TO_MINT_TOKEN' && target == 'background') {
         window.controller.wallet.account.issueSPT({
-          ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToMintSPT,
+          ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToMintSPT,
           ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToMintSPT
         });
       }

@@ -485,10 +485,12 @@ const AccountController = (actions: {
   }
 
   const setDataFromPageToMintSPT = (data: ISPTIssuePage) => {
+    console.log('new mint page spt', data)
     dataFromPageToMintSPT = data;
   }
 
   const setDataFromWalletToMintSPT = (data: ISPTIssueWallet) => {
+    console.log('new  wallet spt', data)
     dataFromWalletToMintSPT = data;
   }
 
@@ -524,6 +526,7 @@ const AccountController = (actions: {
   }
 
   const issueSPT = (spt: ISPTIssue) => {
+    console.log('new mint spt', spt)
     mintSPT = spt;
 
     return true;
