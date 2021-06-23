@@ -63,11 +63,9 @@ export default function CreateNFT() {
         // "audio/x-m4a",
       ].includes(_file.type)
     ) {
-      //notify the user that the file type is not supported
       setError("Error: Only Imagem")
       return;
     }
-
     setFile(_file);
     setIsUploading(true);
     setError("");
