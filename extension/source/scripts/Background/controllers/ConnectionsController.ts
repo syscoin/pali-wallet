@@ -294,7 +294,7 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const handleUpdateAsset = async (assetGuid: string, contract?: string | null, capabilityflags?: number | 127, description?: string | null, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean } | null, auxfeedetails?: { auxfeekeyid?: any, auxfees?: [{ bound?: any | 0, percent?: any | 0 }] } | null, notaryAddress?: string | null, payoutAddress?: string | null) => {
+  const handleUpdateAsset = async (assetGuid: string, contract?: string | null, capabilityflags?: number | 0, description?: string | null, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean } | null, auxfeedetails?: { auxfeekeyid?: any, auxfees?: [{ bound?: any | 0, percent?: any | 0 }] } | null, notaryAddress?: string | null, payoutAddress?: string | null) => {
     return await sendMessage({
       type: 'UPDATE_ASSET',
       target: 'connectionsController',

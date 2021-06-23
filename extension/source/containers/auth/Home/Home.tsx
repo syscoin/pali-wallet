@@ -10,6 +10,7 @@ import Header from 'containers/common/Header';
 import Button from 'components/Button';
 import FullSelect from 'components/FullSelect';
 import Modal from 'components/Modal';
+import ModalBlock from 'components/ModalBlock';
 import { useController } from 'hooks/index';
 import { useFiat } from 'hooks/usePrice';
 import { RootState } from 'state/store';
@@ -27,7 +28,10 @@ const Home = () => {
     (state: RootState) => state.wallet
   );
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
+  const [openBlockExplorer, setOpenBlockExplorer] = useState<boolean>(false);
   const [isConnected, setIsConnected] = useState<boolean>(false);
+  const [txidSelected, setTxidSelected] = useState('');
+  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();
@@ -36,6 +40,7 @@ const Home = () => {
   };
 
   useEffect(() => {
+    console.log('home block', openBlockExplorer)
     if (!controller.wallet.isLocked() && accounts.length > 0 && accounts.find(element => element.id === activeAccountId)) {
       handleRefresh();
     }
@@ -62,6 +67,10 @@ const Home = () => {
     activeAccountId,
     currentURL
   ]);
+  
+  const handleOpenExplorer = (txid: string) => {
+    window.open(sysExplorer + '/tx/' + txid);
+  };
 
   const handleSetModalIsOpen = () => {
     setIsOpenModal(!isOpenModal);
@@ -72,6 +81,12 @@ const Home = () => {
       {isOpenModal && (
         <div className={styles.background} onClick={() => setIsOpenModal(false)}></div>
       )}
+      
+      {openBlockExplorer && (
+        <div className={styles.background} onClick={() => setOpenBlockExplorer(false)}></div>
+      )}
+      
+      {openBlockExplorer && <ModalBlock title="Open block explorer" message="Would you like to go to view transaction in Sys Block Explorer?" setCallback={() => setOpenBlockExplorer(false)} callback={() => handleOpenExplorer(txidSelected)} />}
 
       {accounts.find(element => element.id === activeAccountId) ? (
         <>
@@ -142,6 +157,10 @@ const Home = () => {
             </div>
           </section>
           <TxsPanel
+            txidSelected={txidSelected}
+            setTxidSelected={setTxidSelected}
+            openBlockExplorer={openBlockExplorer}
+            setOpenBlockExplorer={setOpenBlockExplorer}
             address={accounts.find(element => element.id === activeAccountId)?.address.main || 'no addr'}
             transactions={accounts.find(element => element.id === activeAccountId)?.transactions || []}
             assets={accounts.find(element => element.id === activeAccountId)?.assets || []}

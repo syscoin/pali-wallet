@@ -37,7 +37,7 @@ const Create = () => {
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
 
   const handleGetFee = () => {
-    controller.wallet.account.getRecommendFee().then(response => {
+    controller.wallet.account.getRecommendFee().then((response: any) => {
       setRecommend(response);
       setFee(response);
     });

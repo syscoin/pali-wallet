@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { FC, Fragment, useCallback, useState } from 'react';
+import { FC, Fragment, useCallback, useState, useEffect } from 'react';
 import clsx from 'clsx';
 import { v4 as uuid } from 'uuid';
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
@@ -15,31 +15,32 @@ import { Transaction, Assets } from '../../../scripts/types';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { useSelector } from 'react-redux';
-import ReactTooltip from 'react-tooltip';
-import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 
 import styles from './Home.scss';
 import ModalBlock from 'components/ModalBlock';
 
 interface ITxsPanel {
+  txidSelected: any;
+  setTxidSelected: any;
+  openBlockExplorer: any;
+  setOpenBlockExplorer: any;
   address: string;
   transactions: Transaction[];
   assets: Assets[];
 }
 
-const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
+const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, openBlockExplorer, setOpenBlockExplorer, txidSelected, setTxidSelected }) => {
   const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
   const [isActivity, setActivity] = useState<boolean>(true);
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
-  const [openBlockExplorer, setOpenBlockExplorer] = useState(false);
-  const [txidSelected, setTxidSelected] = useState('');
+  // const [txidSelected, setTxidSelected] = useState('');
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   const { changingNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
-
+  
   const isShowedGroupBar = useCallback(
     (tx: Transaction, idx: number) => {
       return (
@@ -83,9 +84,9 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
     }
   }, []);
 
-  const handleOpenExplorer = (txid: string) => {
-    window.open(sysExplorer + '/tx/' + txid);
-  };
+  // const handleOpenExplorer = (txid: string) => {
+  //   window.open(sysExplorer + '/tx/' + txid);
+  // };
 
   const handleOpenAssetExplorer = (txid: number) => {
     window.open(sysExplorer + '/asset/' + txid);
@@ -159,11 +160,11 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
         </>
       )}
       
-      {openBlockExplorer && (
-        <div className={styles.background} onClick={() => setOpenBlockExplorer(false)}></div>
-      )}
+      {/* {openBlockExplorer && (
+        <div className={styles.backgroundModalBlock} onClick={() => setOpenBlockExplorer(false)}></div>
+      )} */}
 
-      {openBlockExplorer && <ModalBlock title="Open block explorer" message="Go to view transaction in Sys Block Explorer" setCallback={() => setOpenBlockExplorer(false)} callback={() => handleOpenExplorer(txidSelected)} />}
+      {/* {openBlockExplorer && <ModalBlock title="Open block explorer" message="Go to view transaction in Sys Block Explorer" setCallback={() => setOpenBlockExplorer(false)} callback={() => handleOpenExplorer(txidSelected)} />} */}
 
       {isActivity ?
         transactions.length && !changingNetwork ? (
@@ -183,10 +184,6 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
                       onClick={() => {
                         setOpenBlockExplorer(true);
                         setTxidSelected(tx.txid);
-                      }}
-                      onBlur={() => {
-                        setOpenBlockExplorer(false);
-                        setTxidSelected('');
                       }}>
                       <div>
                         {isConfirmed ? null : <Spinner size={25} className={styles.spinner} />}

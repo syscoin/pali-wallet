@@ -11,10 +11,11 @@ import { useTransition, animated } from 'react-spring';
 import Start from 'containers/auth/Start';
 import Home from 'containers/auth/Home';
 import Send, { SendConfirm } from 'containers/auth/Send';
+import UpdateAsset, { UpdateConfirm } from 'containers/auth/UpdateAsset';
 import Create from 'containers/auth/Create';
 import IssueAsset from 'containers/auth/IssueAsset';
 import IssueNFT from 'containers/auth/IssueNFT';
-import UpdateAsset from 'containers/auth/UpdateAsset';
+// import UpdateAsset from 'containers/auth/UpdateAsset';
 import Receive from 'containers/auth/Receive';
 import Import from 'containers/common/Import';
 import ConnectWallet from 'containers/auth/ConnectWallet';
@@ -57,6 +58,26 @@ const Auth = () => {
     const redirectRoute = controller.appRoute();
 
     if (redirectRoute == '/send/confirm' && !controller.wallet.account.getTempTx()) {
+      history.push('/home');
+
+      return;
+    }
+    
+    if (redirectRoute == '/updateAsset/confirm' && !controller.wallet.account.getNewUpdateAsset()) {
+      history.push('/home');
+
+      return;
+    }
+    
+    if (updatingAsset && controller.wallet.account.getNewUpdateAsset() && isUnlocked) {
+      console.log('updatingAsset && controller.wallet.account.getNewUpdateAsset() && isUnlocke')
+      history.push('/updateAsset/confirm');
+
+      return;
+    }
+    
+    if (!updatingAsset && controller.wallet.account.getNewUpdateAsset() ) {
+      console.log('!updatingAsset && controller.wallet.account.getTransactionItem().updateAssetItem ')
       history.push('/home');
 
       return;
@@ -133,6 +154,12 @@ const Auth = () => {
 
       return;
     }
+    
+    if (updatingAsset && !canConnect && isUnlocked) {
+      history.push('/updateAsset/confirm');
+
+      return;
+    }
 
     if (confirmingTransaction && !canConnect && isUnlocked) {
       history.push('/send/confirm');
@@ -146,7 +173,8 @@ const Auth = () => {
   }, [
     canConnect,
     isUnlocked,
-    confirmingTransaction
+    confirmingTransaction,
+    updatingAsset
   ]);
 
   useEffect(() => {
@@ -182,6 +210,9 @@ const Auth = () => {
             {isUnlocked && <Route path="/issueAsset" component={IssueAsset} exact />}
             {isUnlocked && <Route path="/issueNFT" component={IssueNFT} exact />}
             {isUnlocked && <Route path="/updateAsset" component={UpdateAsset} exact />}
+            {isUnlocked && (
+              <Route path="/updateAsset/confirm" component={UpdateConfirm} exact />
+            )}
             {isUnlocked && <Route path="/transferOwnership" component={TransferOwnership} exact />}
             {isUnlocked && <Route path="/send" component={Send} exact />}
             {isUnlocked && (

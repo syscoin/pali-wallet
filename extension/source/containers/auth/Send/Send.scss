@@ -5,7 +5,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   justify-content: start;
   background: $navy;
   border-bottom: 3px solid;
@@ -98,10 +98,19 @@
 
   section.content {
     width: 100%;
+    // display: flex;
+    // justify-content: center;
+    // align-items: center;
+    // position: absolute;
+    
+    ul {
+      padding: 0;
+      margin: 0;
+    }
 
     ul.form {
       list-style: none;
-      padding: 0 30px;
+      padding: 0;
       margin: 0;
       background: $navy;
 
@@ -115,11 +124,13 @@
       }
 
       .formBlock {
+        width: 100%;
         display: flex;
         align-items: center;
       }
       
       .formBlockOne {
+        width: 100%;
         display: flex;
         align-items: flex-start;
       }
@@ -161,6 +172,7 @@
         flex-direction: column;
         align-items: flex-start;
         flex: 1;
+        width: 85vw;
         margin: 0.4rem 0;
       }
 
@@ -170,6 +182,7 @@
         flex-direction: column;
         align-items: flex-end;
         flex: 1;
+        width: 100%;
         margin: 0.4rem 0;
 
 
@@ -285,6 +298,7 @@
         position: absolute;
         width: 300px;
         bottom: 24px;
+        left: 35px;
         justify-content: space-between;
 
         .button {

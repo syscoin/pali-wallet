@@ -224,7 +224,7 @@ const AccountController = (actions: {
     const res: IAccountInfo | null = await getAccountInfo();
 
     account = {
-      id: sysjs.HDSigner.accountIndex,
+      id: sysjs.HDSigner.accountIndex === 0 ? 0 : sysjs.HDSigner.accountIndex + 1,
       label: label || `Account ${sysjs.HDSigner.accountIndex + 1}`,
       balance: res.balance,
       transactions: res.transactions,
@@ -419,6 +419,7 @@ const AccountController = (actions: {
   };
 
   const getNewUpdateAsset = () => {
+    console.log('update asset item', updateAssetItem)
     return updateAssetItem || null;
   }
 
@@ -503,10 +504,12 @@ const AccountController = (actions: {
   }
 
   const setDataFromPageToUpdateAsset = (data: UpdateTokenPageInfo) => {
+    console.log('data from page update asset item', data)
     dataFromPageToUpdateAsset = data;
   }
 
   const setDataFromWalletToUpdateAsset = (data: UpdateTokenWalletInfo) => {
+    console.log('data from wallet update asset item', data)
     dataFromWalletToUpdateAsset = data;
   }
 
@@ -1544,7 +1547,7 @@ const AccountController = (actions: {
     };
 
     let assetOpts: any = {
-      updatecapabilityflags: capabilityflags,
+      updatecapabilityflags: String(capabilityflags),
       description
     };
 
@@ -1604,6 +1607,8 @@ const AccountController = (actions: {
         notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
       }
     }
+    
+    console.log('asset opts update asset', assetOpts)
 
     const thisAssetMap = new Map([
       [assetGuid, {

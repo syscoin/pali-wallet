@@ -4,19 +4,19 @@
   z-index: 19;
   background-color: rgba(0,0,0,0.6);
   width: 100%;
-  position: fixed;
+  position: absolute;
   top: 0;
-  bottom: 0;
   height: 100%;
   transition: .3s all;
 }
 
 .modal {
   width: 70%;
-  top: 200px;
+  top: 185px;
+  left: 23px;
   z-index: 20;
   transition: .3s all;
-  position: fixed;
+  position: absolute;
   padding: 1rem 2rem;
   border-radius: 1rem;
   border: 1px solid $deepPink;
@@ -24,7 +24,6 @@
   color: $royalBlue-medium;
   font-family: 'Poppins', sans-serif;
   background-color: $navy-darker;
-  text-align: center;
 
   margin-top: 1em;
 

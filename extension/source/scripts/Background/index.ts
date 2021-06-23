@@ -17,6 +17,7 @@ import {
   issueNFT,
   setUpdateAsset,
   setTransferOwnership,
+  cleanAllTransactions
 } from 'state/wallet';
 
 import MasterController, { IMasterController } from './controllers';
@@ -118,7 +119,7 @@ browser.runtime.onInstalled.addListener(async () => {
       browser.tabs.query({ active: true })
       .then(async (tabs) => {
         tabs.map(async (tab) => {
-          if (tab.title === 'Pali Wallet' && tab.width === 372 && tab.height === 600) {
+          if (tab.title === 'Pali Wallet') {
             paliCheck = {
               ...paliCheck,
               alreadyOpen: true,
@@ -584,12 +585,16 @@ browser.runtime.onInstalled.addListener(async () => {
       store.dispatch(issueNFT(false));
       store.dispatch(issueAsset(false));
       store.dispatch(setTransferOwnership(false));
+      
+      console.log('WALLET DISCONNECTED ON DISCONNECT')
 
       browser.tabs.query({ active: true })
         .then(async (tabs) => {
           tabs.map(async (tab) => {
-            if (tab.title === 'Pali Wallet' && tab.width === 372 && tab.height === 600) {
+            if (tab.title === 'Pali Wallet') {
               await browser.windows.remove(Number(tab.windowId));
+              
+              browser.runtime.reload();
             }
 
             return;
@@ -605,5 +610,6 @@ wrapStore(store, { portName: STORE_PORT });
 // remove this in production
 
 chrome.runtime.onStartup.addListener(() => {
+  console.log('on startup')
   chrome.runtime.reload();
 })
