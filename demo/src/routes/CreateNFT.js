@@ -66,6 +66,7 @@ export default function CreateNFT() {
       setError("Error: Only Imagem")
       return;
     }
+    
     setFile(_file);
     setIsUploading(true);
     setError("");
