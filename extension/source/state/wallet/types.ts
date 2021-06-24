@@ -9,6 +9,7 @@ export interface IAccountState {
   id: number;
   label: string;
   xpub: string;
+  xprv: string;
   assets: Assets[];
   address: { [assetId: string]: string };
   balance: number;
@@ -33,6 +34,7 @@ export interface IAccountUpdateAddress {
 export interface IAccountUpdateXpub {
   id: number;
   xpub: string;
+  xprv: string;
 }
 
 export interface Keystore {

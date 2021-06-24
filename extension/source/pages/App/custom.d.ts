@@ -56,7 +56,7 @@ declare interface IAccountController {
   getNewOwnership: () => any | null;
   updateTempTx: (tx: ITransactionInfo) => void;
   setNewAddress: (addr: string) => boolean;
-  setNewXpub: (id: number, xpub: string) => boolean;
+  setNewXpub: (id: number, xpub: string, xprv: string) => boolean;
   getDataFromPageToInitTransaction: () => any;
   createSPT: (spt: ISPTInfo) => void;
   issueSPT: (spt: ISPTIssue) => void;
@@ -86,4 +86,4 @@ declare interface IAccountController {
   setNewOwnership: (data: any) => any;
   getHoldingsData: () => any;
   getDataAsset: (assetGuid: any) => any;
-} 
+}

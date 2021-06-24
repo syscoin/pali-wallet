@@ -32,7 +32,7 @@ const PrivateKeyView: FC<IPrivateKeyView> = ({ id }) => {
   const [isCopied, copyText] = useCopyClipboard();
   const [checked, setChecked] = useState<boolean>(false);
   const [isCopiedAddress, copyAddress] = useState<boolean>(false);
-  const [privKey] = useState<string>(
+  const [privKey, setPrivKey] = useState<string>(
     '*************************************************************'
   );
 
@@ -46,8 +46,8 @@ const PrivateKeyView: FC<IPrivateKeyView> = ({ id }) => {
 
   const onSubmit = (data: any) => {
     if (controller.wallet.checkPassword(data.password)) {
+      setPrivKey(accounts[Number(id)].xprv);
       setChecked(true);
-
       return;
     }
 

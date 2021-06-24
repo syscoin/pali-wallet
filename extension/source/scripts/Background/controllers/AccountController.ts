@@ -198,6 +198,7 @@ const AccountController = (actions: {
           balance: sjs.availableBalance / (10 ** 8),
           transactions: trezorinfo.transactions,
           xpub: sjs.descriptor,
+          xprv: "",
           address: { 'main': trezorinfo.address },
           assets: trezorinfo.assets,
           connectedTo: [],
@@ -229,6 +230,7 @@ const AccountController = (actions: {
       balance: res.balance,
       transactions: res.transactions,
       xpub: sysjs.HDSigner.getAccountXpub(),
+      xprv: sysjs.HDSigner.accounts[sysjs.HDSigner.accountIndex].getAccountPrivateKey(),
       address: { 'main': await sysjs.HDSigner.getNewReceivingAddress() },
       assets: res.assets,
       connectedTo: [],
@@ -445,11 +447,12 @@ const AccountController = (actions: {
     return true;
   }
 
-  const setNewXpub = (id: number, xpub: string) => {
+  const setNewXpub = (id: number, xpub: string, xprv: string) => {
     store.dispatch(
       updateAccountXpub({
         id: id,
         xpub: xpub,
+        xprv: xprv
       })
     );
 
