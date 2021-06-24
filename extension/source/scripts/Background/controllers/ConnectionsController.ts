@@ -23,14 +23,14 @@ export interface IConnectionsController {
       auxfees: [{
         bound: any | 0,
         percent: any | 0
-      }] 
+      }]
     }
   ) => any;
   handleIssueSPT: (amount: number, assetGuid: string) => any;
   handleCreateNFT: (
-    symbol: string, 
-    issuer: string, 
-    totalShares: number, 
+    symbol: string,
+    issuer: string,
+    totalShares: number,
     description: string,
     notary?: boolean,
     notarydetails?: {
@@ -56,7 +56,7 @@ export interface IConnectionsController {
   handleUpdateAsset: (
     assetGuid: string,
     contract?: string,
-    capabilityflags?: number | 0,
+    capabilityflags?: string | '127',
     description?: string,
     notarydetails?: {
       endpoint?: string,
@@ -66,8 +66,8 @@ export interface IConnectionsController {
     auxfeedetails?: {
       auxfeekeyid: string,
       auxfees: [{
-      bound: any | 0,
-      percent: any | 0
+        bound: any | 0,
+        percent: any | 0
       }]
     },
     notaryAddress?: string
@@ -215,7 +215,7 @@ const ConnectionsController = (): IConnectionsController => {
       payoutAddress
     });
   }
-  
+
   const handleIssueNFT = async (amount: number, assetGuid: string) => {
     return await sendMessage({
       type: 'ISSUE_NFT',
@@ -294,7 +294,7 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const handleUpdateAsset = async (assetGuid: string, contract?: string | null, capabilityflags?: number | 127, description?: string | null, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean } | null, auxfeedetails?: { auxfeekeyid?: any, auxfees?: [{ bound?: any | 0, percent?: any | 0 }] } | null, notaryAddress?: string | null, payoutAddress?: string | null) => {
+  const handleUpdateAsset = async (assetGuid: string, contract?: string | null, capabilityflags?: string | '127', description?: string | null, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean } | null, auxfeedetails?: { auxfeekeyid?: any, auxfees?: [{ bound?: any | 0, percent?: any | 0 }] } | null, notaryAddress?: string | null, payoutAddress?: string | null) => {
     return await sendMessage({
       type: 'UPDATE_ASSET',
       target: 'connectionsController',
@@ -305,7 +305,7 @@ const ConnectionsController = (): IConnectionsController => {
       target: 'contentScript',
       assetGuid,
       contract: contract || null,
-      capabilityflags: capabilityflags || 0,
+      capabilityflags: capabilityflags || '0',
       description: description || null,
       notarydetails: notarydetails || null,
       auxfeedetails: auxfeedetails || null,
