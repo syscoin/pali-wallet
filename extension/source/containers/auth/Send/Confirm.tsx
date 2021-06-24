@@ -54,6 +54,7 @@ const SendConfirm = () => {
               target: 'background',
               transactionError: true,
               invalidParams: false,
+              message: `TransactionError: ${error}`
             });
           
             setTimeout(() => {
@@ -63,6 +64,14 @@ const SendConfirm = () => {
 
           return;
         }
+        
+        browser.runtime.sendMessage({
+          type: 'WALLET_ERROR',
+          target: 'background',
+          transactionError: false,
+          invalidParams: false,
+          message: 'Everything is fine, transaction completed.'
+        });
 
         setConfirmed(true);
         setLoading(false);

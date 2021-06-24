@@ -55,6 +55,7 @@ const TransferOwnership = () => {
             target: 'background',
             transactionError: true,
             invalidParams: false,
+            message: `TransactionError: ${error}`
           });
 
           setTimeout(() => {
@@ -63,6 +64,14 @@ const TransferOwnership = () => {
 
           return;
         }
+        
+        browser.runtime.sendMessage({
+          type: 'WALLET_ERROR',
+          target: 'background',
+          transactionError: false,
+          invalidParams: false,
+          message: 'Everything is fine, transaction completed.'
+        });
 
         setConfirmed(true);
         setLoading(false);

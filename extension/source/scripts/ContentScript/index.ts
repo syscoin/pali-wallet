@@ -234,6 +234,8 @@ window.addEventListener('message', (event) => {
       auxfeedetails,
       notaryAddress,
       payoutAddress
+    }).then((response) => {
+      console.log('response create token', response)
     });
 
     return;
@@ -250,6 +252,8 @@ window.addEventListener('message', (event) => {
       target: 'background',
       amount,
       assetGuid
+    }).then((response) => {
+      console.log('response issue token', response)
     });
 
     return;
@@ -282,7 +286,9 @@ window.addEventListener('message', (event) => {
       auxfeedetails,
       notaryAddress,
       payoutAddress,
-    });
+    }).then((response) => {
+      console.log('response create and issue nft', response)
+    })
 
     return;
   }
@@ -310,6 +316,8 @@ window.addEventListener('message', (event) => {
       auxfeedetails,
       notaryAddress,
       payoutAddress
+    }).then((response) => {
+      console.log('response update', response)
     });
 
     return;
@@ -326,6 +334,8 @@ window.addEventListener('message', (event) => {
       target: 'background',
       assetGuid,
       newOwner,
+    }).then((response) => {
+      console.log('response transfer ownership', response)
     });
 
     return;
@@ -398,7 +408,8 @@ browser.runtime.onMessage.addListener((request) => {
     holdingsData,
     assetData,
     transactionError,
-    invalidParams
+    invalidParams,
+    message
   } = request;
   
     
@@ -407,7 +418,8 @@ browser.runtime.onMessage.addListener((request) => {
       detail: {
         SysWalletErrors: {
           transactionError,
-          invalidParams
+          invalidParams,
+          message
         }
       }
     }));

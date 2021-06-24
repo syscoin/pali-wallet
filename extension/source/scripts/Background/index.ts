@@ -347,6 +347,18 @@ browser.runtime.onInstalled.addListener(async () => {
           notaryAddress,
           payoutAddress
         } = request;
+        
+        if (precision < 0 || precision > 8) {
+          throw new Error('invalid precision value');
+        }
+        
+        if (maxsupply < 0) {
+          throw new Error('invalid max supply value');
+        }
+        
+        if (!window.controller.wallet.account.isValidSYSAddress(receiver, store.getState().wallet.activeNetwork)) {
+          throw new Error('invalid receiver address');
+        }
 
         window.controller.wallet.account.setDataFromPageToCreateNewSPT({
           precision,
@@ -386,7 +398,15 @@ browser.runtime.onInstalled.addListener(async () => {
           amount,
           assetGuid
         } = request;
-
+        
+        const assetFromAssetGuid = window.controller.wallet.account.getDataAsset(assetGuid);
+        
+        console.log('asset data', assetFromAssetGuid)
+        
+        if (amount < 0 || amount >= assetFromAssetGuid.balance) {
+          throw new Error('invalid amount value');
+        }
+        
         window.controller.wallet.account.setDataFromPageToMintSPT({
           assetGuid,
           amount: Number(amount)
@@ -425,6 +445,14 @@ browser.runtime.onInstalled.addListener(async () => {
           notaryAddress,
           payoutAddress,
         } = request;
+        
+        if (totalShares < 0 || totalShares > 8) {
+          throw new Error('invalid total shares value');
+        }
+        
+        if (!window.controller.wallet.account.isValidSYSAddress(issuer, store.getState().wallet.activeNetwork)) {
+          throw new Error('invalid receiver address');
+        }
 
         window.controller.wallet.account.setDataFromPageToMintNFT({
           symbol,
@@ -507,6 +535,10 @@ browser.runtime.onInstalled.addListener(async () => {
           assetGuid,
           newOwner
         } = request;
+        
+        if (!window.controller.wallet.account.isValidSYSAddress(newOwner, store.getState().wallet.activeNetwork)) {
+          throw new Error('invalid new owner address');
+        }
 
         window.controller.wallet.account.setDataFromPageToTransferOwnership({
           assetGuid,
