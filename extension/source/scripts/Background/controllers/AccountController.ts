@@ -390,11 +390,25 @@ const AccountController = (actions: {
     getLatestUpdate();
   };
   
-  const clearTransactionItem = (item: any) => {
-    let newItem = item;
-    
-    if (newItem) {
-      newItem = null;
+  const clearTransactionItem = (item: string) => {
+    switch (item) {
+      case 'newSPT':
+        newSPT = null;
+        break;
+      case 'mintNFT':
+        mintNFT = null;
+        break;
+      case 'mintSPT':
+        mintSPT = null;
+        break;
+      case 'transferOwnershipData':
+        transferOwnershipData = null;
+        break;
+      case 'updateAssetItem':
+        updateAssetItem = null;
+        break;
+      default:
+        item = null;
     }
   }
 

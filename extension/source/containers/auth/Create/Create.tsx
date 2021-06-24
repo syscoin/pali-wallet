@@ -141,7 +141,7 @@ const Create = () => {
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
       target: "background",
-      item: newSPT ? newSPT : null
+      item: newSPT ? 'newSPT' : null
     });
 
     browser.runtime.sendMessage({
