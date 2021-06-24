@@ -12,7 +12,7 @@ const ConnectHardwareWalletView: FC = () => {
   const onclick = async () => {
     // controller.wallet.createHardwareWallet();
     alert.removeAll();
-    alert.error('Trezor just has added to connect support for syscoin, as soon as they release it officially we will enable this feature.');
+    alert.error('Trezor just has added syscoin support to connect, as soon as they release it officially we will enable this feature.');
   }
 
   return (
