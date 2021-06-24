@@ -123,7 +123,7 @@ const UpdateAsset = () => {
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
       target: "background",
-      item: updateAsset ? updateAsset : null
+      item: updateAsset ? 'updateAssetItem' : null
     });
 
     browser.runtime.sendMessage({

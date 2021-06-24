@@ -407,9 +407,14 @@ const AccountController = (actions: {
       case 'updateAssetItem':
         updateAssetItem = null;
         break;
+      case 'tempTx':
+        tempTx = null;
+        break;
       default:
-        item = null;
+        return null;
     }
+    
+    return;
   }
 
   const getTransactionItem = () => {

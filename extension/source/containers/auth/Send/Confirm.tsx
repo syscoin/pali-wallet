@@ -94,7 +94,7 @@ const SendConfirm = () => {
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
       target: "background",
-      item: tempTx ? tempTx : null
+      item: tempTx ? 'tempTx' : null
     });
 
     browser.runtime.sendMessage({

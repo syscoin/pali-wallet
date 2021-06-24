@@ -100,7 +100,7 @@ const IssueNFT = () => {
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
       target: "background",
-      item: mintNFT ? mintNFT : null
+      item: mintNFT ? 'mintNFT' : null
     });
 
     browser.runtime.sendMessage({

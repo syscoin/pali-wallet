@@ -110,7 +110,7 @@ const TransferOwnership = () => {
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
       target: "background",
-      item: ownership ? ownership : null
+      item: ownership ? 'transferOwnershipData' : null
     });
 
     browser.runtime.sendMessage({
