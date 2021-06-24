@@ -158,7 +158,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
           />
         </>
       )}
-      
+
       {openBlockExplorer && (
         <div className={styles.background} onClick={() => setOpenBlockExplorer(false)}></div>
       )}
@@ -262,7 +262,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets }) => {
           :
           <>
             <span className={styles.noTxComment}>
-              You have no Assets, receive SPTs to register.
+              You have no Assets, receive SPTs or NFTs to register.
             </span>
 
             {!changingNetwork && (
