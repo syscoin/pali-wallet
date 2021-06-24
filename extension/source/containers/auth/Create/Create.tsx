@@ -74,6 +74,13 @@ const Create = () => {
         if (error) {
           alert.removeAll();
           alert.error('Can\'t create token. Try again later.');
+          
+          browser.runtime.sendMessage({
+            type: 'WALLET_ERROR',
+            target: 'background',
+            transactionError: true,
+            invalidParams: false,
+          });
 
           if (newSPT) {
             if (!controller.wallet.account.isValidSYSAddress(String(newSPT?.receiver), activeNetwork)) {

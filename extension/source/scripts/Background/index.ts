@@ -16,8 +16,7 @@ import {
   issueAsset,
   issueNFT,
   setUpdateAsset,
-  setTransferOwnership,
-  cleanAllTransactions
+  setTransferOwnership
 } from 'state/wallet';
 
 import MasterController, { IMasterController } from './controllers';
@@ -149,6 +148,20 @@ browser.runtime.onInstalled.addListener(async () => {
     };
 
     if (typeof request == 'object') {
+      if (type == 'WALLET_ERROR' && target == 'background') {
+        const {
+          transactionError,
+          invalidParams
+        } = request;
+        
+        browser.tabs.sendMessage(tabId, {
+          type: 'WALLET_ERROR',
+          target: 'contentScript',
+          transactionError,
+          invalidParams
+        });
+      }
+      
       if (type == 'CONNECT_WALLET' && target == 'background') {
         const url = browser.runtime.getURL('app.html');
 

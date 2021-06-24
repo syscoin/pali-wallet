@@ -48,7 +48,14 @@ const TransferOwnership = () => {
       controller.wallet.account.confirmTransferOwnership().then((error: any) => {
         if (error) {
           alert.removeAll();
-          alert.error('Can\'t transfer token. Try again later.');
+          alert.error('Can\'t transfer token. Try again later.');  
+          
+          browser.runtime.sendMessage({
+            type: 'WALLET_ERROR',
+            target: 'background',
+            transactionError: true,
+            invalidParams: false,
+          });
 
           setTimeout(() => {
             handleCancelTransactionOnSite();

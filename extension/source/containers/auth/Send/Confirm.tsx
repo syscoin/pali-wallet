@@ -49,6 +49,13 @@ const SendConfirm = () => {
           alert.error('Can\'t complete transaction. Try again later.');
 
           if (confirmingTransaction) {
+            browser.runtime.sendMessage({
+              type: 'WALLET_ERROR',
+              target: 'background',
+              transactionError: true,
+              invalidParams: false,
+            });
+          
             setTimeout(() => {
               handleCancelTransactionOnSite();
             }, 4000);

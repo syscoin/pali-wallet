@@ -60,6 +60,13 @@ const IssueNFT = () => {
           alert.error('Can\'t issue token. Try again later.');
 
           console.log('error', error)
+          
+          browser.runtime.sendMessage({
+            type: 'WALLET_ERROR',
+            target: 'background',
+            transactionError: true,
+            invalidParams: false,
+          });
 
           setTimeout(() => {
             handleCancelTransactionOnSite();

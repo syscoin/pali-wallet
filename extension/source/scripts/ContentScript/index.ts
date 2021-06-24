@@ -109,7 +109,7 @@ function injectScriptFile(file: string) {
 if (shouldInjectProvider()) {
   injectScript("window.SyscoinWallet = 'Syscoin Wallet is installed! :)'");
 
-  window.dispatchEvent(new CustomEvent('SyscoinStatus', { detail: { SyscoinInstalled: true, ConnectionsController: false } }));
+  window.dispatchEvent(new CustomEvent('SyscoinStatus', { detail: { SyscoinInstalled: true, ConnectionsController: false, SysWalletErrors: { transactionError: false, invalidParams: false } } }));
 
   injectScriptFile('js/inpage.bundle.js');
 }
@@ -122,6 +122,17 @@ window.addEventListener('message', (event) => {
 
   if (event.source != window) {
     return;
+  }
+  
+  if (type == 'WALLET_ERROR' && target == 'contentScript') {
+    window.dispatchEvent(new CustomEvent('SysWalletErrors', { 
+      detail: {
+        SysWalletErrors: {
+          transactionError: false,
+          invalidParams: false
+        }
+      }
+    }));
   }
 
   if (type == "CONNECT_WALLET" && target == 'contentScript') {
@@ -385,8 +396,22 @@ browser.runtime.onMessage.addListener((request) => {
     connectionConfirmed,
     isValidSYSAddress,
     holdingsData,
-    assetData
+    assetData,
+    transactionError,
+    invalidParams
   } = request;
+  
+    
+  if (type == 'WALLET_ERROR' && target == 'contentScript') {
+    window.dispatchEvent(new CustomEvent('SysWalletErrors', { 
+      detail: {
+        SysWalletErrors: {
+          transactionError,
+          invalidParams
+        }
+      }
+    }));
+  }
 
   if (type == 'DATA_FOR_SPT' && target == 'contentScript') {
     window.postMessage({

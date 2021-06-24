@@ -73,6 +73,13 @@ const UpdateConfirm = () => {
         if (error) {
           alert.removeAll();
           alert.error('Can\'t update token. Try again later.');
+            
+          browser.runtime.sendMessage({
+            type: 'WALLET_ERROR',
+            target: 'background',
+            transactionError: true,
+            invalidParams: false,
+          });
 
           setTimeout(() => {
             handleCancelTransactionOnSite();

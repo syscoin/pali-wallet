@@ -59,7 +59,14 @@ const UpdateAsset = () => {
       controller.wallet.account.confirmUpdateAssetTransaction().then((error: any) => {
         if (error) {
           alert.removeAll();
-          alert.error('Can\'t update token. Try again later.');
+          alert.error('Can\'t update token. Try again later.'); 
+           
+          browser.runtime.sendMessage({
+            type: 'WALLET_ERROR',
+            target: 'background',
+            transactionError: true,
+            invalidParams: false,
+          });
 
           setTimeout(() => {
             handleCancelTransactionOnSite();
