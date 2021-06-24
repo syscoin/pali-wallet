@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
+import * as yup from 'yup';
 
 import assetImg from "../images/asset.svg";
 import AdvancedPanel from "../components/AdvancedPanel";
@@ -21,8 +22,20 @@ export default function Update() {
     return () => setTokens([]);
   }, []);
 
-  const handleUpdateAsset = (event) => {
+  const dataYup = {
+    assetGuid,
+    description,
+  }
+  
+  const schema = yup.object().shape({
+      assetGuid: yup.string().required(),
+      description: yup.string().required(),
+    });
+
+  const handleUpdateAsset = async (event) => {
     event.preventDefault();
+
+    await schema.validate(dataYup, { abortEarly: false, })
 
     controller &&
       controller.handleUpdateAsset(
@@ -112,7 +125,7 @@ export default function Update() {
                   type="file"
                   id="logo"
                 />
-                <img src={file ? URL.createObjectURL(file) : assetImg} />
+                <img src={file ? URL.createObjectURL(file) : assetImg} alt="" />
               </div>
             </div>
           </div>

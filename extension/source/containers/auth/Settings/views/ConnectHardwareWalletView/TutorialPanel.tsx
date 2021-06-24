@@ -57,13 +57,8 @@ const TutorialPanel: FC = () => {
             </li>
 
             <li>
-              <h2>Select an account</h2>
-              <small>Select the account you want to view. You can only choose one at a time.</small>
-            </li>
-
-            <li>
-              <h2>Start using web3 sites and more!</h2>
-              <small>Use your hardware account like you would with any Ethereum account. Connect to web3 sites, send ETH, buy and store ERC20 tokens and non-fungible tokens like CryptoKitties.</small>
+              <h2>Start using sys powered sites and more!</h2>
+              <small>Use your hardware account like you would with any SYS account. Connect to SYS web3 sites, send SYS, buy and store SPT tokens.</small>
             </li>
           </ol>
         </div>

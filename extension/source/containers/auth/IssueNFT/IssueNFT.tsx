@@ -55,7 +55,7 @@ const IssueNFT = () => {
 
     if ((acc ? acc.balance : -1) > 0) {
       controller.wallet.account.confirmIssueNFT().then((error: any) => {
-        if (error) {
+        if (error) {handl
           alert.removeAll();
           alert.error('Can\'t issue token. Try again later.');
 

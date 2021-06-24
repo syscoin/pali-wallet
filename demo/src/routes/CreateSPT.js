@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
-
+import * as yup from 'yup'; 
 import assetImg from "../images/asset.svg";
 import AdvancedPanel from "../components/AdvancedPanel";
 
@@ -16,9 +16,26 @@ export default function CreateSPT() {
   const { connectedAccountAddress } = useSelector(
     (state) => state.connectedAccountData
   );
+  const dataYup = {
+    precision,
+    symbol,
+    maxSupply,
+    description,
+    receiver, 
+  }
+  
+  const schema = yup.object().shape({
+      precision: yup.number().required(),
+      symbol: yup.string().required(),
+      maxSupply: yup.number().required(),
+      description: yup.string().required(),
+      receiver: yup.string(),
+    });
 
   const handleCreateToken = async (event) => {
     event.preventDefault();
+
+    await schema.validate(dataYup, { abortEarly: false, })
 
     if (controller) {
       await controller.handleCreateToken(
@@ -33,7 +50,7 @@ export default function CreateSPT() {
       event.target.reset();
     }
   };
-
+  
   const handleInputChange = (setState) => {
     return (event) => {
       setState(event.target.value);
@@ -86,12 +103,11 @@ export default function CreateSPT() {
               </label>
               <input
                 onChange={handleInputChange(setSymbol)}
-                required
                 type="text"
                 className="form-control"
                 id="symbol"
                 placeholder=""
-                autocomplete="off"
+                autoComplete="off"
               />
               <p className="help-block">Max length: 8 alpha-numeric</p>
             </div>
@@ -122,7 +138,6 @@ export default function CreateSPT() {
               </label>
               <input
                 onChange={handleInputChange(setPrecision)}
-                required
                 type="range"
                 id="precision"
                 name="points"
@@ -180,7 +195,6 @@ export default function CreateSPT() {
                 id="description"
                 name="description"
                 autocomplete="off"
-                required
               />
 
               <p className="help-block">Max length: 256 bytes</p>
