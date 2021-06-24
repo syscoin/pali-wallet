@@ -2,8 +2,19 @@ import React, { FC } from 'react';
 
 import clsx from 'clsx';
 import styles from './index.scss';
+import { useAlert } from 'react-alert';
+
 
 const AboutView: FC = () => {
+  const alert = useAlert();
+  const handleSupportClick = () => {
+    alert.removeAll();
+    alert.error('We are currently building the support channels.');
+  }
+  const handleDocsClick = () => {
+    alert.removeAll();
+    alert.error('We are currently building the API docs.')
+  }
   return (
     <div className={styles.about}>
       <span>Pali Wallet Chrome Extension v1.2</span>
@@ -15,11 +26,11 @@ const AboutView: FC = () => {
           href="#"
           target="_blank"
         >
-          support syscoin
+          pali support
         </a>
       </span>
       <span>
-        Terms and Conditions:
+        API Docs
         <a
           className={clsx(styles.link, styles.terms)}
           href="#"
