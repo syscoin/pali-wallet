@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import { NFTStorage, File } from "nft.storage";
-
+import * as yup from 'yup';
 import assetImg from "../images/asset.svg";
 import loaderImg from "../images/spinner.svg";
 import { token } from "../config";
@@ -25,8 +25,24 @@ export default function CreateNFT() {
     (state) => state.connectedAccountData
   );
 
+  const dataYup = {
+    symbol,
+    issuer,
+    totalShares,
+    metadataDescription,
+  }
+  
+  const schema = yup.object().shape({
+      symbol: yup.string().required(),
+      totalShares: yup.number().required(),
+      metadataDescription: yup.string().required(),
+      issuer: yup.string(),
+    });
+
   const handleCreateNFT = async (event) => {
     event.preventDefault();
+
+    await schema.validate(dataYup, { abortEarly: false, })
 
     if (controller) {
       controller.handleCreateNFT(
@@ -89,6 +105,7 @@ export default function CreateNFT() {
     e.target.focus();
     setCopySuccess("Copied!");
   }
+
 
   return (
     <section>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
+import * as yup from 'yup';
 
 export default function Transfer() {
   const [tokens, setTokens] = useState([]);
@@ -19,6 +20,16 @@ export default function Transfer() {
     return () => setTokens([]);
   }, []);
 
+  const dataYup = {
+    assetGuid,
+    newOwner,
+  }
+  
+  const schema = yup.object().shape({
+      assetGuid: yup.string().required(),
+      newOwner: yup.string().required(),
+    });
+    
   const handleInputChange = (setState) => {
     return (event) => {
       setState(event.target.value);
@@ -27,6 +38,8 @@ export default function Transfer() {
 
   const handleTransferOwnership = async (event) => {
     event.preventDefault();
+
+    await schema.validate(dataYup, { abortEarly: false, })
 
     controller &&
       (await controller.handleTransferOwnership(assetGuid, newOwner));

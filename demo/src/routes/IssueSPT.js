@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
+import * as yup from 'yup'; 
 
 export default function IssueSPT() {
   const [assetGuid, setAssetGuid] = useState("");
@@ -29,8 +30,20 @@ export default function IssueSPT() {
     }
   }, [assetGuid]);
 
+  const dataYup = {
+    amount,
+    assetGuid
+  }
+  
+  const schema = yup.object().shape({
+      amount: yup.number().required(),
+      assetGuid: yup.string().required(),
+    });
+
   const handleIssueSPT = async (event) => {
     event.preventDefault();
+
+    await schema.validate(dataYup, { abortEarly: false, })
 
     controller && (await controller.handleIssueSPT(amount, assetGuid));
   };
@@ -40,6 +53,11 @@ export default function IssueSPT() {
       setState(event.target.value);
     };
   };
+
+  // const handleConfirm = async () => {
+  //   controller && (  await controller.handleConfirm());
+  //   console.log("handleconfirmerrorororor")
+  // }
 
   return (
     <section>
@@ -93,7 +111,7 @@ export default function IssueSPT() {
                 onChange={handleInputChange(setAmount)}
                 type="number"
                 className="form-control"
-                id="quantity"
+                id="amount"
               />
               <p className="help-block">
                 Ceiling: Max Supply

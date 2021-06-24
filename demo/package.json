@@ -37,7 +37,8 @@
     "syscoinjs-lib": "^1.0.126",
     "tailwindcss": "^2.1.1",
     "web-vitals": "^1.0.1",
-    "webextension-polyfill": "^0.7.0"
+    "webextension-polyfill": "^0.7.0",
+    "yup": "^0.32.9"
   },
   "scripts": {
     "start": "react-scripts start",
