@@ -1,9 +1,9 @@
 {
-  "name": "syscoin-wallet-ext",
+  "name": "Pali Wallet",
   "version": "1.2.1",
   "description": "Extension wallet for SYS tokens.",
   "private": true,
-  "repository": "https://github.com/quan-digital/sys_new_wallet.git",
+  "repository": "https://github.com/syscoin/pali_wallet",
   "license": "MIT",
   "engines": {
     "node": ">=10.0.0",

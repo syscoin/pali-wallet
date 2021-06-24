@@ -1,6 +1,6 @@
 {
   "manifest_version": 2,
-  "name": "Syscoin Wallet",
+  "name": "Pali Wallet",
   "version": "1.0.0",
   "icons": {
     "16": "assets/icons/favicon-16.png",
@@ -9,7 +9,7 @@
     "128": "assets/icons/favicon-128.png"
   },
   "description": "Extension wallet for SYS blockchain.",
-  "short_name": "syscoin-wallet-ext",
+  "short_name": "pali",
   "permissions": [
     "http://*/*",
     "https://*/*",
@@ -20,9 +20,9 @@
     "activeTab"
   ],
   "content_security_policy": "script-src 'self'; object-src 'self'",
-  "__chrome|firefox__author": "Quan Sys Teams",
+  "__chrome|firefox__author": "Pollum Sys Teams",
   "__opera__developer": {
-    "name": "devsys"
+    "name": "pollum labs"
   },
   "__firefox__applications": {
     "gecko": {
@@ -39,7 +39,7 @@
       "48": "assets/icons/favicon-48.png",
       "128": "assets/icons/favicon-128.png"
     },
-    "default_title": "Sys Wallet",
+    "default_title": "Pali Wallet",
     "__chrome|opera__chrome_style": false,
     "__firefox__browser_style": false
   },
