@@ -24,7 +24,9 @@ export interface IConnectionsController {
         bound: any | 0,
         percent: any | 0
       }] 
-    }
+    },
+    notaryAddress?: string,
+    payoutAddress?: string
   ) => any;
   handleIssueSPT: (amount: number, assetGuid: string) => any;
   handleCreateNFT: (

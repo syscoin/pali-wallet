@@ -2,16 +2,16 @@ import React, { useState, useEffect } from 'react';
 import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 
-import Header from 'containers/common/Header';
+// import Header from 'containers/common/Header';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
-import { useFiat } from 'hooks/usePrice';
-import { useHistory } from 'react-router-dom';
+// import { useFiat } from 'hooks/usePrice';
+// import { useHistory } from 'react-router-dom';
 import CheckIcon from '@material-ui/icons/CheckCircle';
-import UpArrowIcon from '@material-ui/icons/ArrowUpward';
+// import UpArrowIcon from '@material-ui/icons/ArrowUpward';
 import { RootState } from 'state/store';
-import { ellipsis } from '../helpers';
+// import { ellipsis } from '../helpers';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 
@@ -21,17 +21,10 @@ import { getHost } from '../../../scripts/Background/helpers';
 
 const UpdateConfirm = () => {
   const controller = useController();
-  const getFiatAmount = useFiat();
-  const history = useHistory();
 
-  const { accounts, activeAccountId, currentSenderURL, confirmingTransaction }: IWalletState = useSelector(
+  const { accounts, currentSenderURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
-  const connectedAccount = accounts.find((account: IAccountState) => {
-    return account.connectedTo.find((url: any) => {
-      return url === getHost(currentSenderURL);
-    });
-  });
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
   const updateAsset = controller.wallet.account.getNewUpdateAsset();
   const [confirmed, setConfirmed] = useState<boolean>(false);
@@ -176,6 +169,7 @@ const UpdateConfirm = () => {
                       theme="btn-outline-primary"
                       variant={styles.button}
                       onClick={handleConfirm}
+                      loading={loading}
                     >
                       Confirm
                      </Button>

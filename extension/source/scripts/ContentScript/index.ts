@@ -414,6 +414,7 @@ browser.runtime.onMessage.addListener((request) => {
   
     
   if (type == 'WALLET_ERROR' && target == 'contentScript') {
+    console.log('wallet error', request)
     window.dispatchEvent(new CustomEvent('SysWalletErrors', { 
       detail: {
         SysWalletErrors: {

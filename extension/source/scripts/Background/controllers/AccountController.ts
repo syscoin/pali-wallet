@@ -1,6 +1,6 @@
 import TrezorConnect from 'trezor-connect';
 import store from 'state/store';
-import https from 'https';
+// import https from 'https';
 import IWalletState, {
   IAccountState
 } from 'state/wallet/types';
@@ -1111,7 +1111,7 @@ const AccountController = (actions: {
               console.log("newParentAsset: ", newParentAsset)
               console.log("childAsset on parent: ", typeof childAssetId, childAssetId)
               console.log("issuer ", issuer)
-              const assetChangeAddress = null
+              // const assetChangeAddress = null
               console.log('child asset id: ', childAssetId)
               console.log('the total shares amount: ', totalShares)
               const assetMap = new Map([

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { FC, Fragment, useCallback, useState, useEffect } from 'react';
+import { FC, Fragment, useCallback, useState } from 'react';
 import clsx from 'clsx';
 import { v4 as uuid } from 'uuid';
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
@@ -29,7 +29,7 @@ interface ITxsPanel {
   assets: Assets[];
 }
 
-const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, openBlockExplorer, setOpenBlockExplorer, txidSelected, setTxidSelected }) => {
+const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, setTxidSelected }) => {
   const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
   const [isActivity, setActivity] = useState<boolean>(true);

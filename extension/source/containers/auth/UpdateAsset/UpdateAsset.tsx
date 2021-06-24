@@ -12,7 +12,7 @@ import { RootState } from 'state/store';
 import { getHost } from 'scripts/Background/helpers';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
-import CircularProgress from '@material-ui/core/CircularProgress';
+// import CircularProgress from '@material-ui/core/CircularProgress';
 
 import styles from './UpdateAsset.scss';
 import { browser } from 'webextension-polyfill-ts';
@@ -52,43 +52,43 @@ const UpdateAsset = () => {
     }))
   }, []);
 
-  const handleConfirm = () => {
-    let acc = accounts.find(element => element.id === connectedAccountId)
+  // const handleConfirm = () => {
+  //   let acc = accounts.find(element => element.id === connectedAccountId)
 
-    if ((acc ? acc.balance : -1) > 0) {
-      controller.wallet.account.confirmUpdateAssetTransaction().then((error: any) => {
-        if (error) {
-          alert.removeAll();
-          alert.error('Can\'t update token. Try again later.'); 
+  //   if ((acc ? acc.balance : -1) > 0) {
+  //     controller.wallet.account.confirmUpdateAssetTransaction().then((error: any) => {
+  //       if (error) {
+  //         alert.removeAll();
+  //         alert.error('Can\'t update token. Try again later.'); 
            
-          browser.runtime.sendMessage({
-            type: 'WALLET_ERROR',
-            target: 'background',
-            transactionError: true,
-            invalidParams: false,
-            message: `TransactionError: ${error}`
-          });
+  //         browser.runtime.sendMessage({
+  //           type: 'WALLET_ERROR',
+  //           target: 'background',
+  //           transactionError: true,
+  //           invalidParams: false,
+  //           message: `TransactionError: ${error}`
+  //         });
 
-          setTimeout(() => {
-            handleCancelTransactionOnSite();
-          }, 4000);
+  //         setTimeout(() => {
+  //           handleCancelTransactionOnSite();
+  //         }, 4000);
 
-          return;
-        }
+  //         return;
+  //       }
         
-        browser.runtime.sendMessage({
-          type: 'WALLET_ERROR',
-          target: 'background',
-          transactionError: false,
-          invalidParams: false,
-          message: 'Everything is fine, transaction completed.'
-        });
+  //       browser.runtime.sendMessage({
+  //         type: 'WALLET_ERROR',
+  //         target: 'background',
+  //         transactionError: false,
+  //         invalidParams: false,
+  //         message: 'Everything is fine, transaction completed.'
+  //       });
 
-        setConfirmed(true);
-        setLoading(false);
-      });
-    }
-  }
+  //       setConfirmed(true);
+  //       setLoading(false);
+  //     });
+  //   }
+  // }
 
   const handleMessageToUpdateAsset = () => {
     controller.wallet.account.setDataFromWalletToUpdateAsset({

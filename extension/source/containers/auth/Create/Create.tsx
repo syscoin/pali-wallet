@@ -18,6 +18,7 @@ import styles from './Create.scss';
 import { browser } from 'webextension-polyfill-ts';
 import Switch from "react-switch";
 import { getHost } from 'scripts/Background/helpers';
+import DownArrowIcon from '@material-ui/icons/ExpandMore';
 
 const Create = () => {
   const controller = useController();
@@ -27,7 +28,7 @@ const Create = () => {
     (state: RootState) => state.wallet
   );
 
-  const newSPT = controller.wallet.account.getNewSPT();
+  const newSPT = controller.wallet.account.getTransactionItem().newSPT;
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0);
@@ -35,6 +36,7 @@ const Create = () => {
   const [recommend, setRecommend] = useState(0.00001);
   const [creatingSPT, setCreatingSPT] = useState(false);
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
+  const [expanded, setExpanded] = useState<boolean>(false);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then((response: any) => {
@@ -50,9 +52,9 @@ const Create = () => {
       })
     }))
 
-    console.log('string new spt', String(newSPT?.receiver), newSPT?.receiver)
-
+    
     if (newSPT) {
+      console.log('string new spt', newSPT, controller.wallet.account.getTransactionItem())
       if (!controller.wallet.account.isValidSYSAddress(String(newSPT?.receiver), activeNetwork)) {
         alert.removeAll();
         alert.error('Recipient\'s address is not valid.');
@@ -205,6 +207,83 @@ const Create = () => {
                 <div className={styles.flex}>
                   <p>Description</p>
                   <p>{newSPT?.description}</p>
+                </div>
+                
+                <div
+                  className={styles.select}
+                  id="asset"
+                >
+                  <div
+                    className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
+                    onClick={() => setExpanded(!expanded)}
+                  >
+                    <span className={styles.selected}>
+                      Advanced options
+                       <DownArrowIcon className={styles.arrow} />
+                    </span>
+                    <ul className={styles.options}>
+                      {newSPT?.capabilityflags && (
+                        <div className={styles.flex}>
+                          <p>Capability</p>
+                          <p>{newSPT?.capabilityflags}</p>
+                        </div>
+                      )}
+                      
+                      {newSPT?.notaryAddress && (
+                        <div className={styles.flex}>
+                          <p>Notary address</p>
+                          <p>{newSPT?.notaryAddress}</p>
+                        </div>
+                      )}
+                      
+                      {newSPT?.payoutAddress && (
+                        <div className={styles.flex}>
+                          <p>Payout address</p>
+                          <p>{newSPT?.payoutAddress}</p>
+                        </div>
+                      )}
+                      
+                      {newSPT?.notarydetails && (
+                        <div>
+                          <p>Notary details</p>
+                          <div className={styles.flex}>
+                            <p>Endpoint</p>
+                            <p>{newSPT?.notarydetails.endpoint}</p>
+                          </div>
+                          
+                          <div className={styles.flex}>
+                            <p>Instant transfers</p>
+                            <p>{newSPT?.notarydetails.instanttransfers}</p>
+                          </div>
+                          
+                          <div className={styles.flex}>
+                            <p>HD required</p>
+                            <p>{newSPT?.notarydetails.hdrequired}</p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {newSPT?.auxfeedeetails && (
+                        <div>
+                          <p>Aux fee details</p>
+                          <div className={styles.flex}>
+                            <p>Aux fee key id</p>
+                            <p>{newSPT?.auxfeedeetails.auxfeekeyid ? newSPT?.auxfeedeetails.auxfeekeyid : 'None'}</p>
+                          </div>
+                          
+                          <div className={styles.flex}>
+                            <p>Bound</p>
+                            <p>{newSPT?.auxfeedeetails.auxfees[0].bound ? newSPT?.auxfeedeetails.auxfees[0].bound : 0}</p>
+                          </div>
+                          
+                          <div className={styles.flex}>
+                            <p>Percent</p>
+                            <p>{newSPT?.auxfeedeetails.auxfees[0].percent ? newSPT?.auxfeedeetails.auxfees[0].percent : 0}</p>
+                          </div>
+                        </div>
+                      )}
+                    </ul>
+                  </div>
                 </div>
 
                 <div className={styles.flex}>
