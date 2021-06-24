@@ -594,7 +594,7 @@ browser.runtime.onInstalled.addListener(async () => {
             if (tab.title === 'Pali Wallet') {
               await browser.windows.remove(Number(tab.windowId));
               
-              browser.runtime.reload();
+              // browser.runtime.reload();
             }
 
             return;
@@ -610,6 +610,5 @@ wrapStore(store, { portName: STORE_PORT });
 // remove this in production
 
 chrome.runtime.onStartup.addListener(() => {
-  console.log('on startup')
   chrome.runtime.reload();
 })

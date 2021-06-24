@@ -181,6 +181,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, openBlockExplorer, setO
                       </li>
                     )}
                     <li
+                      className={styles.transactionItem}
                       onClick={() => {
                         setOpenBlockExplorer(true);
                         setTxidSelected(tx.txid);
@@ -235,20 +236,20 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, openBlockExplorer, setO
                   return (
                     <Fragment key={uuid()}>
                       {TokenTypeGroupBar(asset, idx) && (
-                        <li className={styles.groupbar}>
+                        <div className={styles.groupbar}>
                           {controller.wallet.account.isNFT(asset.assetGuid) ? "NFT" : "SPT"}
-                        </li>
+                        </div>
                       )}
-                      <li onClick={() => handleOpenAssetExplorer(asset.assetGuid)}>
+                      <div className={styles.assetItem} onClick={() => handleOpenAssetExplorer(asset.assetGuid)}>
                         <div>
                           <span title="Click here to go to view transaction in sys block explorer">
-                            <span>{controller.wallet.account.isNFT(asset.assetGuid) ? asset.balance : (asset.balance / 10 ** asset.decimals).toFixed(8)}  {asset.symbol} </span>
+                            <span>{controller.wallet.account.isNFT(asset.assetGuid) ? asset.balance : (asset.balance / 10 ** asset.decimals).toFixed(2)}  {asset.symbol} </span>
                           </span>
                           <div className={styles.linkIcon}>
                             <UpArrowIcon />
                           </div>
                         </div>
-                      </li>
+                      </div>
                     </Fragment>
                   );
                 }

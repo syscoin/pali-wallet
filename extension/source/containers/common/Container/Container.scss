@@ -1,7 +1,9 @@
 @import '../../../assets/styles/variables';
 
 .container {
-  width: 372px;
+  width: 100%;
+  min-width: 372px;
+  max-width: 600px;
   height: 600px;
   font-size: 20px;
   min-width: 372px;
