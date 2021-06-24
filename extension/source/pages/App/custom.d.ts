@@ -86,4 +86,5 @@ declare interface IAccountController {
   setNewOwnership: (data: any) => any;
   getHoldingsData: () => any;
   getDataAsset: (assetGuid: any) => any;
+  clearTransactionItem: (item: any) => void;
 } 

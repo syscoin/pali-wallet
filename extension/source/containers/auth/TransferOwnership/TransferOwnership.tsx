@@ -109,7 +109,8 @@ const TransferOwnership = () => {
   const handleCancelTransactionOnSite = () => {
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
-      target: "background"
+      target: "background",
+      item: ownership ? ownership : null
     });
 
     browser.runtime.sendMessage({

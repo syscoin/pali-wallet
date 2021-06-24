@@ -56,7 +56,8 @@ const UpdateConfirm = () => {
   const handleCancelTransactionOnSite = () => {
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
-      target: "background"
+      target: "background",
+      item: updateAsset ? updateAsset : null
     });
 
     browser.runtime.sendMessage({

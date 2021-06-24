@@ -105,7 +105,8 @@ const IssueAsset = () => {
   const handleCancelTransactionOnSite = () => {
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
-      target: "background"
+      target: "background",
+      item: mintSPT ? mintSPT : null
     });
 
     browser.runtime.sendMessage({

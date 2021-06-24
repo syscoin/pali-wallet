@@ -140,7 +140,8 @@ const Create = () => {
   const handleCancelTransactionOnSite = () => {
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
-      target: "background"
+      target: "background",
+      item: newSPT ? newSPT : null
     });
 
     browser.runtime.sendMessage({

@@ -230,12 +230,16 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'CANCEL_TRANSACTION' && target == 'background') {
+        const item = request.item;
+        
         store.dispatch(updateCanConfirmTransaction(false));
         store.dispatch(createAsset(false));
         store.dispatch(issueAsset(false));
         store.dispatch(issueNFT(false));
         store.dispatch(setUpdateAsset(false));
         store.dispatch(setTransferOwnership(false));
+        
+        window.controller.wallet.account.clearTransactionItem(item);
 
         return;
       }

@@ -389,6 +389,14 @@ const AccountController = (actions: {
 
     getLatestUpdate();
   };
+  
+  const clearTransactionItem = (item: any) => {
+    let newItem = item;
+    
+    if (newItem) {
+      newItem = null;
+    }
+  }
 
   const getTransactionItem = () => {
     return {
@@ -1844,7 +1852,8 @@ const AccountController = (actions: {
     setUpdateAsset,
     setNewOwnership,
     getHoldingsData,
-    getDataAsset
+    getDataAsset,
+    clearTransactionItem
   };
 };
 
