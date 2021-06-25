@@ -4,7 +4,7 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   justify-content: start;
   transition: 0.3s all;
 
@@ -135,6 +135,12 @@
     position: relative;
     background: $navy;
     transition: 0.3s all;
+    
+    .buttonActivity {
+      margin-top: 18px;
+      width: 100%;
+      flex: 1;
+    }
 
     .notConnected {
       width: 98%;

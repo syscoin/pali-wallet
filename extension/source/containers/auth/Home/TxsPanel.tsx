@@ -116,7 +116,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
             <Button
               type="button"
               theme={isActivity ? "btn-rectangle-primary" : "btn-rectangle-selected"}
-              variant={styles.button}
+              variant={styles.buttonActivity}
               onClick={() => { setActivity(false) }}
             >
               Assets
@@ -125,7 +125,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
             <Button
               type="button"
               theme={isActivity ? "btn-rectangle-selected" : "btn-rectangle-primary"}
-              variant={styles.button}
+              variant={styles.buttonActivity}
               onClick={() => { setActivity(true) }}
             >
               Activity

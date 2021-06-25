@@ -269,12 +269,14 @@
   .actions {
     display: flex;
     position: absolute;
-    width: 300px;
+    width: 100%;
     bottom: 24px;
     justify-content: space-between;
+    align-items: center;
 
     .button {
       width: 144px;
+      flex: 1;
     }
     
     .spinner {
