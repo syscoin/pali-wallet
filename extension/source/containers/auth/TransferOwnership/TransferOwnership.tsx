@@ -17,6 +17,7 @@ import CircularProgress from '@material-ui/core/CircularProgress';
 import styles from './TransferOwnership.scss';
 import { browser } from 'webextension-polyfill-ts';
 import Switch from "react-switch";
+import Spinner from '@material-ui/core/CircularProgress';
 
 const TransferOwnership = () => {
   const controller = useController();
