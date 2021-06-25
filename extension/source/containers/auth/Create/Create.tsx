@@ -20,12 +20,14 @@ import { browser } from 'webextension-polyfill-ts';
 import Switch from "react-switch";
 import { getHost } from 'scripts/Background/helpers';
 import DownArrowIcon from '@material-ui/icons/ExpandMore';
+import { useHistory } from 'react-router';
 
 const Create = () => {
   const controller = useController();
   const alert = useAlert();
+  const history = useHistory();
 
-  const { accounts, currentSenderURL, activeNetwork }: IWalletState = useSelector(
+  const { accounts, currentSenderURL, activeNetwork, creatingAsset }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -156,6 +158,10 @@ const Create = () => {
       target: "background"
     });
   }
+  
+  const goHome = () => {
+    return history.push('/home');
+  }
 
   return confirmed ? (
     <Layout title="Your transaction is underway" showLogo>
@@ -172,7 +178,7 @@ const Create = () => {
         theme="btn-gradient-primary"
         variant={styles.next}
         linkTo="/home"
-        onClick={handleClosePopup}
+        onClick={creatingAsset ? handleClosePopup : goHome}
       >
         Ok
       </Button>

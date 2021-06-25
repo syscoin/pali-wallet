@@ -265,25 +265,33 @@
       border-bottom: 1px solid $gray-100;
     }
   }
-
-  .actions {
+  
+  .confirm {
     display: flex;
-    position: absolute;
-    width: 100%;
-    bottom: 24px;
-    justify-content: space-between;
     align-items: center;
-
-    .button {
-      width: 144px;
-      flex: 1;
-    }
+    justify-content: center;
+    width: 100%;    
     
-    .spinner {
-      svg {
-        color: $white;
+    
+    .actions {
+      display: flex;
+      position: absolute;
+      width: 100%;
+      bottom: 24px;
+      justify-content: space-between;
+      align-items: center;
+  
+      .button {
+        width: 144px;
+        margin: 0 1rem;
       }
-    }
+      
+      .spinner {
+        svg {
+          color: $white;
+        }
+      }
+    } 
   }
 
   .mask {

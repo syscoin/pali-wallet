@@ -266,22 +266,33 @@
     }
   }
 
-  .actions {
+  
+  .confirm {
     display: flex;
-    position: absolute;
-    width: 300px;
-    bottom: 24px;
-    justify-content: space-between;
-
-    .button {
-      width: 144px;
-    }
+    align-items: center;
+    justify-content: center;
+    width: 100%;    
     
-    .spinner {
-      svg {
-        color: $white;
+    
+    .actions {
+      display: flex;
+      position: absolute;
+      width: 100%;
+      bottom: 24px;
+      justify-content: space-between;
+      align-items: center;
+  
+      .button {
+        width: 144px;
+        margin: 0 1rem;
       }
-    }
+      
+      .spinner {
+        svg {
+          color: $white;
+        }
+      }
+    } 
   }
 
   .mask {

@@ -18,12 +18,14 @@ import Spinner from '@material-ui/core/CircularProgress';
 import styles from './IssueAsset.scss';
 import { browser } from 'webextension-polyfill-ts';
 import Switch from "react-switch";
+import { useHistory } from 'react-router-dom';
 
 const IssueAsset = () => {
   const controller = useController();
   const alert = useAlert();
+  const history = useHistory();
 
-  const { accounts, currentSenderURL, currentURL }: IWalletState = useSelector(
+  const { accounts, currentSenderURL, currentURL, issuingAsset }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -138,6 +140,10 @@ const IssueAsset = () => {
   const handleTypeChanged = useCallback((rbf: boolean) => {
     setRbf(rbf);
   }, []);
+  
+  const goHome = () => {
+    return history.push('/home');
+  }
 
   return confirmed ? (
     <Layout title="Your transaction is underway" showLogo>
@@ -154,7 +160,7 @@ const IssueAsset = () => {
         theme="btn-gradient-primary"
         variant={styles.next}
         linkTo="/home"
-        onClick={handleClosePopup}
+        onClick={issuingAsset ? handleClosePopup : goHome}
       >
         Ok
       </Button>
