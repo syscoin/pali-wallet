@@ -1,5 +1,4 @@
 export const sys = require('syscoinjs-lib');
-export const trezor = require('@trezor/utxo-lib');
 export const STORE_PORT = 'SYSCOIN';
 
 export const SYS_NETWORK: {

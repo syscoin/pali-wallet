@@ -11,13 +11,15 @@ import { useController } from 'hooks/index';
 import CheckIcon from '@material-ui/icons/CheckCircle';
 // import UpArrowIcon from '@material-ui/icons/ArrowUpward';
 import { RootState } from 'state/store';
-// import { ellipsis } from '../helpers';
+import { ellipsis, formatURL } from '../helpers';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 
 import styles from './UpdateAsset.scss';
 import { browser } from 'webextension-polyfill-ts';
 import { getHost } from '../../../scripts/Background/helpers';
+import DownArrowIcon from '@material-ui/icons/ExpandMore';
+import Spinner from '@material-ui/core/CircularProgress';
 
 const UpdateConfirm = () => {
   const controller = useController();
@@ -29,6 +31,8 @@ const UpdateConfirm = () => {
   const updateAsset = controller.wallet.account.getNewUpdateAsset();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [expanded, setExpanded] = useState<boolean>(false);
+  const [loadingConfirm, setLoadingConfirm] = useState<boolean>(false);
   const alert = useAlert();
 
   useEffect(() => {
@@ -63,11 +67,13 @@ const UpdateConfirm = () => {
     let acc = accounts.find(element => element.id === connectedAccountId)
 
     if ((acc ? acc.balance : -1) > 0) {
+      setLoadingConfirm(true);
+
       controller.wallet.account.confirmUpdateAssetTransaction().then((error: any) => {
         if (error) {
           alert.removeAll();
           alert.error('Can\'t update token. Try again later.');
-            
+
           browser.runtime.sendMessage({
             type: 'WALLET_ERROR',
             target: 'background',
@@ -82,7 +88,7 @@ const UpdateConfirm = () => {
 
           return;
         }
-        
+
         browser.runtime.sendMessage({
           type: 'WALLET_ERROR',
           target: 'background',
@@ -93,6 +99,7 @@ const UpdateConfirm = () => {
 
         setConfirmed(true);
         setLoading(false);
+        setLoadingConfirm(false);
       });
     }
   }
@@ -150,6 +157,84 @@ const UpdateConfirm = () => {
                     <p>Max total</p>
                     <p>{updateAsset?.fee} SYS</p>
                   </div>
+
+
+                  <div
+                    className={styles.select}
+                    id="asset"
+                  >
+                    <div
+                      className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
+                      onClick={() => setExpanded(!expanded)}
+                    >
+                      <span className={styles.selected}>
+                        Advanced options
+                      <DownArrowIcon className={styles.arrow} />
+                      </span>
+                      <ul className={styles.options}>
+                        {updateAsset?.capabilityflags && (
+                          <div className={styles.flex}>
+                            <p>Capability</p>
+                            <p>{updateAsset?.capabilityflags}</p>
+                          </div>
+                        )}
+
+                        {updateAsset?.notaryAddress && (
+                          <div className={styles.flex}>
+                            <p>Notary address</p>
+                            <p>{ellipsis(updateAsset?.notaryAddress)}</p>
+                          </div>
+                        )}
+
+                        {updateAsset?.payoutAddress && (
+                          <div className={styles.flex}>
+                            <p>Payout address</p>
+                            <p>{ellipsis(updateAsset?.payoutAddress)}</p>
+                          </div>
+                        )}
+
+                        {updateAsset?.notarydetails && (
+                          <div>
+                            <p>Notary details</p>
+                            <div className={styles.flex}>
+                              <p>Endpoint</p>
+                              <p>{formatURL(updateAsset?.notarydetails.endpoint) || 'None'}</p>
+                            </div>
+
+                            <div className={styles.flex}>
+                              <p>Instant transfers</p>
+                              <p>{updateAsset?.notarydetails.instanttransfers || 0}</p>
+                            </div>
+
+                            <div className={styles.flex}>
+                              <p>HD required</p>
+                              <p>{updateAsset?.notarydetails.hdrequired ? 'Yes' : 'No'}</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {updateAsset?.auxfeedeetails && (
+                          <div>
+                            <p>Aux fee details</p>
+                            <div className={styles.flex}>
+                              <p>Aux fee key id</p>
+                              <p>{updateAsset?.auxfeedeetails.auxfeekeyid ? updateAsset?.auxfeedeetails.auxfeekeyid : 'None'}</p>
+                            </div>
+
+                            <div className={styles.flex}>
+                              <p>Bound</p>
+                              <p>{updateAsset?.auxfeedeetails.auxfees[0].bound ? updateAsset?.auxfeedeetails.auxfees[0].bound : 0}</p>
+                            </div>
+
+                            <div className={styles.flex}>
+                              <p>Percent</p>
+                              <p>{updateAsset?.auxfeedeetails.auxfees[0].percent ? updateAsset?.auxfeedeetails.auxfees[0].percent : 0}</p>
+                            </div>
+                          </div>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
                 </section>
 
                 <section className={styles.confirm}>
@@ -171,8 +256,8 @@ const UpdateConfirm = () => {
                       onClick={handleConfirm}
                       loading={loading}
                     >
-                      Confirm
-                     </Button>
+                      {loadingConfirm ? <Spinner size={15} className={styles.spinner} /> : 'Confirm'}
+                    </Button>
                   </div>
                 </section>
               </div>

@@ -6,10 +6,11 @@ import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
 import CheckIcon from '@material-ui/icons/CheckCircle';
+import Spinner from '@material-ui/core/CircularProgress';
 
 import TextInput from 'components/TextInput';
 import { RootState } from 'state/store';
-import { ellipsis } from '../helpers';
+import { ellipsis, formatURL } from '../helpers';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 import CircularProgress from '@material-ui/core/CircularProgress';
@@ -37,6 +38,7 @@ const Create = () => {
   const [creatingSPT, setCreatingSPT] = useState(false);
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
   const [expanded, setExpanded] = useState<boolean>(false);
+  const [loadingConfirm, setLoadingConfirm] = useState<boolean>(false);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then((response: any) => {
@@ -52,7 +54,7 @@ const Create = () => {
       })
     }))
 
-    
+
     if (newSPT) {
       console.log('string new spt', newSPT, controller.wallet.account.getTransactionItem())
       if (!controller.wallet.account.isValidSYSAddress(String(newSPT?.receiver), activeNetwork)) {
@@ -72,11 +74,13 @@ const Create = () => {
     let acc = accounts.find(element => element.id === connectedAccountId)
 
     if ((acc ? acc.balance : -1) > 0) {
+      setLoadingConfirm(true);
+      
       controller.wallet.account.confirmNewSPT().then((error: any) => {
         if (error) {
           alert.removeAll();
           alert.error('Can\'t create token. Try again later.');
-          
+
           browser.runtime.sendMessage({
             type: 'WALLET_ERROR',
             target: 'background',
@@ -98,7 +102,7 @@ const Create = () => {
 
           return;
         }
-        
+
         browser.runtime.sendMessage({
           type: 'WALLET_ERROR',
           target: 'background',
@@ -109,6 +113,7 @@ const Create = () => {
 
         setConfirmed(true);
         setLoading(false);
+        setLoadingConfirm(false);
       });
     }
   }
@@ -208,7 +213,18 @@ const Create = () => {
                   <p>Description</p>
                   <p>{newSPT?.description}</p>
                 </div>
-                
+
+
+                <div className={styles.flex}>
+                  <p>Site</p>
+                  <p>{currentSenderURL}</p>
+                </div>
+
+                <div className={styles.flex}>
+                  <p>Max total</p>
+                  <p>{fee}</p>
+                </div>
+
                 <div
                   className={styles.select}
                   id="asset"
@@ -219,8 +235,9 @@ const Create = () => {
                   >
                     <span className={styles.selected}>
                       Advanced options
-                       <DownArrowIcon className={styles.arrow} />
+                      <DownArrowIcon className={styles.arrow} />
                     </span>
+
                     <ul className={styles.options}>
                       {newSPT?.capabilityflags && (
                         <div className={styles.flex}>
@@ -228,41 +245,41 @@ const Create = () => {
                           <p>{newSPT?.capabilityflags}</p>
                         </div>
                       )}
-                      
+
                       {newSPT?.notaryAddress && (
                         <div className={styles.flex}>
                           <p>Notary address</p>
-                          <p>{newSPT?.notaryAddress}</p>
+                          <p>{ellipsis(newSPT?.notaryAddress)}</p>
                         </div>
                       )}
-                      
+
                       {newSPT?.payoutAddress && (
                         <div className={styles.flex}>
                           <p>Payout address</p>
-                          <p>{newSPT?.payoutAddress}</p>
+                          <p>{ellipsis(newSPT?.payoutAddress)}</p>
                         </div>
                       )}
-                      
+
                       {newSPT?.notarydetails && (
                         <div>
                           <p>Notary details</p>
                           <div className={styles.flex}>
                             <p>Endpoint</p>
-                            <p>{newSPT?.notarydetails.endpoint}</p>
+                            <p>{formatURL(newSPT?.notarydetails.endpoint) || 'None'}</p>
                           </div>
-                          
+
                           <div className={styles.flex}>
                             <p>Instant transfers</p>
-                            <p>{newSPT?.notarydetails.instanttransfers}</p>
+                            <p>{newSPT?.notarydetails.instanttransfers || 0}</p>
                           </div>
-                          
+
                           <div className={styles.flex}>
                             <p>HD required</p>
-                            <p>{newSPT?.notarydetails.hdrequired}</p>
+                            <p>{newSPT?.notarydetails.hdrequired ? 'Yes' : 'No'}</p>
                           </div>
                         </div>
                       )}
-                      
+
                       {newSPT?.auxfeedeetails && (
                         <div>
                           <p>Aux fee details</p>
@@ -270,12 +287,12 @@ const Create = () => {
                             <p>Aux fee key id</p>
                             <p>{newSPT?.auxfeedeetails.auxfeekeyid ? newSPT?.auxfeedeetails.auxfeekeyid : 'None'}</p>
                           </div>
-                          
+
                           <div className={styles.flex}>
                             <p>Bound</p>
                             <p>{newSPT?.auxfeedeetails.auxfees[0].bound ? newSPT?.auxfeedeetails.auxfees[0].bound : 0}</p>
                           </div>
-                          
+
                           <div className={styles.flex}>
                             <p>Percent</p>
                             <p>{newSPT?.auxfeedeetails.auxfees[0].percent ? newSPT?.auxfeedeetails.auxfees[0].percent : 0}</p>
@@ -284,16 +301,6 @@ const Create = () => {
                       )}
                     </ul>
                   </div>
-                </div>
-
-                <div className={styles.flex}>
-                  <p>Site</p>
-                  <p>{currentSenderURL}</p>
-                </div>
-
-                <div className={styles.flex}>
-                  <p>Max total</p>
-                  <p>{fee}</p>
                 </div>
               </section>
 
@@ -314,7 +321,7 @@ const Create = () => {
                     variant={styles.button}
                     onClick={handleConfirm}
                   >
-                    Confirm
+                    {loadingConfirm ? <Spinner size={15} className={styles.spinner} /> : 'Confirm'}
                     </Button>
                 </div>
               </section>

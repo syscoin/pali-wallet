@@ -13,6 +13,7 @@ import { getHost } from 'scripts/Background/helpers';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 import CircularProgress from '@material-ui/core/CircularProgress';
+import Spinner from '@material-ui/core/CircularProgress';
 
 import styles from './IssueAsset.scss';
 import { browser } from 'webextension-polyfill-ts';
@@ -34,6 +35,7 @@ const IssueAsset = () => {
   const [rbf, setRbf] = useState(false);
   const [issuingSPT, setIssuingSPT] = useState(false);
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
+  const [loadingConfirm, setLoadingConfirm] = useState<boolean>(false);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => {
@@ -46,6 +48,8 @@ const IssueAsset = () => {
     let acc = accounts.find(element => element.id === connectedAccountId)
 
     if ((acc ? acc.balance : -1) > 0) {
+      setLoadingConfirm(true);
+      
       controller.wallet.account.confirmIssueSPT().then((error: any) => {
         if (error) {
           alert.removeAll();
@@ -76,6 +80,7 @@ const IssueAsset = () => {
 
         setConfirmed(true);
         setLoading(false);
+        setLoadingConfirm(false);
       });
 
       console.log('account conne mint spt', mintSPT)
@@ -209,7 +214,7 @@ const IssueAsset = () => {
                     variant={styles.button}
                     onClick={handleConfirm}
                   >
-                    Confirm
+                        {loadingConfirm ? <Spinner size={15} className={styles.spinner} /> : 'Confirm'}
                   </Button>
                 </div>
               </section>

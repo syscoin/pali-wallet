@@ -17,30 +17,34 @@ import IWalletState from 'state/wallet/types';
 import { useSelector } from 'react-redux';
 
 import styles from './Home.scss';
-import ModalBlock from 'components/ModalBlock';
+// import ModalBlock from 'components/ModalBlock';
 
 interface ITxsPanel {
   txidSelected: any;
   setTxidSelected: any;
+  assetSelected: any;
+  setAssetSelected: any;
   openBlockExplorer: any;
   setOpenBlockExplorer: any;
+  openAssetBlockExplorer: any;
+  setOpenAssetBlockExplorer: any;
   address: string;
   transactions: Transaction[];
   assets: Assets[];
 }
 
-const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, setTxidSelected }) => {
+const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, setTxidSelected, setAssetSelected, setOpenAssetBlockExplorer }) => {
   const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
   const [isActivity, setActivity] = useState<boolean>(true);
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
   // const [txidSelected, setTxidSelected] = useState('');
-  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
+  // const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   const { changingNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
-  
+
   const isShowedGroupBar = useCallback(
     (tx: Transaction, idx: number) => {
       return (
@@ -83,14 +87,6 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
       }
     }
   }, []);
-
-  // const handleOpenExplorer = (txid: string) => {
-  //   window.open(sysExplorer + '/tx/' + txid);
-  // };
-
-  const handleOpenAssetExplorer = (txid: number) => {
-    window.open(sysExplorer + '/asset/' + txid);
-  };
 
   const handleGoTop = () => {
     scrollArea!.scrollTo({ top: 0, behavior: 'smooth' });
@@ -159,7 +155,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
           />
         </>
       )}
-      
+
       {/* {openBlockExplorer && (
         <div className={styles.backgroundModalBlock} onClick={() => setOpenBlockExplorer(false)}></div>
       )} */}
@@ -240,7 +236,14 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                           {controller.wallet.account.isNFT(asset.assetGuid) ? "NFT" : "SPT"}
                         </div>
                       )}
-                      <div className={styles.assetItem} onClick={() => handleOpenAssetExplorer(asset.assetGuid)}>
+                      <div
+                        className={styles.assetItem}
+                        onClick={() => {
+                          console.log('ola asset', asset)
+                          setOpenAssetBlockExplorer(true);
+                          setAssetSelected(asset.assetGuid);
+                        }}
+                      >
                         <div>
                           <span title="Click here to go to view transaction in sys block explorer">
                             <span>{controller.wallet.account.isNFT(asset.assetGuid) ? asset.balance : (asset.balance / 10 ** asset.decimals).toFixed(2)}  {asset.symbol} </span>
@@ -260,7 +263,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
           :
           <>
             <span className={styles.noTxComment}>
-              You have no Assets, receive SPTs to register.
+              You have no Assets, receive SPTs or NFTs to register.
             </span>
 
             {!changingNetwork && (

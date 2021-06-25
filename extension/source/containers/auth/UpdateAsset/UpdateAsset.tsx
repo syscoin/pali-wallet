@@ -1,17 +1,17 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import clsx from 'clsx';
-import { useSelector } from 'react-redux';
+// import { useSelector } from 'react-redux';
 
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
-import CheckIcon from '@material-ui/icons/CheckCircle';
+// import CheckIcon from '@material-ui/icons/CheckCircle';
 
 import TextInput from 'components/TextInput';
-import { RootState } from 'state/store';
-import { getHost } from 'scripts/Background/helpers';
-import IWalletState, { IAccountState } from 'state/wallet/types';
-import { useAlert } from 'react-alert';
+// import { RootState } from 'state/store';
+// import { getHost } from 'scripts/Background/helpers';
+// import IWalletState, { IAccountState } from 'state/wallet/types';
+// import { useAlert } from 'react-alert';
 // import CircularProgress from '@material-ui/core/CircularProgress';
 
 import styles from './UpdateAsset.scss';
@@ -21,21 +21,21 @@ import { useHistory } from 'react-router-dom';
 
 const UpdateAsset = () => {
   const controller = useController();
-  const alert = useAlert();
+  // const alert = useAlert();
   const history = useHistory()
 
-  const { accounts, currentSenderURL }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
+  // const { accounts, currentSenderURL }: IWalletState = useSelector(
+  //   (state: RootState) => state.wallet
+  // );
 
   const updateAsset = controller.wallet.account.getNewUpdateAsset();
-  const [confirmed, setConfirmed] = useState<boolean>(false);
+  // const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0);
   const [rbf, setRbf] = useState(false);
   const [recommend, setRecommend] = useState(0.00001);
   const [updatingAsset, setUpdatingAsset] = useState(false);
-  const [connectedAccountId, setConnectedAccountId] = useState(-1);
+  // const [connectedAccountId, setConnectedAccountId] = useState(-1);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then((response: any) => {
@@ -44,13 +44,13 @@ const UpdateAsset = () => {
     });
   };
 
-  useEffect(() => {
-    setConnectedAccountId(accounts.findIndex((account: IAccountState) => {
-      return account.connectedTo.filter((url: string) => {
-        return url === getHost(currentSenderURL);
-      })
-    }))
-  }, []);
+  // useEffect(() => {
+  //   setConnectedAccountId(accounts.findIndex((account: IAccountState) => {
+  //     return account.connectedTo.filter((url: string) => {
+  //       return url === getHost(currentSenderURL);
+  //     })
+  //   }))
+  // }, []);
 
   // const handleConfirm = () => {
   //   let acc = accounts.find(element => element.id === connectedAccountId)
@@ -112,12 +112,12 @@ const UpdateAsset = () => {
     setRbf(rbf);
   }, []);
 
-  const handleClosePopup = () => {
-    browser.runtime.sendMessage({
-      type: "CLOSE_POPUP",
-      target: "background"
-    });
-  }
+  // const handleClosePopup = () => {
+  //   browser.runtime.sendMessage({
+  //     type: "CLOSE_POPUP",
+  //     target: "background"
+  //   });
+  // }
 
   const handleCancelTransactionOnSite = () => {
     browser.runtime.sendMessage({
@@ -132,27 +132,7 @@ const UpdateAsset = () => {
     });
   }
 
-  return confirmed ? (
-    <Layout title="Your transaction is underway" showLogo>
-      <CheckIcon className={styles.checked} />
-
-      <div
-        className="body-description"
-      >
-        Your Tokens is in update process, you can check the transaction under your history.
-      </div>
-
-      <Button
-        type="button"
-        theme="btn-gradient-primary"
-        variant={styles.next}
-        linkTo="/home"
-        onClick={handleClosePopup}
-      >
-        Ok
-      </Button>
-    </Layout>
-  ) : (
+  return (
     <div>
       <div>
         <div>

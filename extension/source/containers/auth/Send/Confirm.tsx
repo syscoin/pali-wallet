@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 import Header from 'containers/common/Header';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
+import Spinner from '@material-ui/core/CircularProgress';
 import { useController } from 'hooks/index';
 import { useFiat } from 'hooks/usePrice';
 import { useHistory } from 'react-router-dom';
@@ -183,9 +184,8 @@ const SendConfirm = () => {
             theme="btn-outline-confirm"
             variant={styles.button}
             onClick={handleConfirm}
-            loading={loading}
           >
-            Confirm
+            {loading ? <Spinner size={15} className={styles.spinner} /> : 'Confirm'}
           </Button>
         </div>
       </section>

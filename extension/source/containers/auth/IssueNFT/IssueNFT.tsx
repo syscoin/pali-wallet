@@ -15,8 +15,11 @@ import { useAlert } from 'react-alert';
 import styles from './IssueNFT.scss';
 import { browser } from 'webextension-polyfill-ts';
 import { getHost } from '../../../scripts/Background/helpers';
+import { ellipsis, formatURL } from '../helpers';
 import Switch from "react-switch";
 import CircularProgress from '@material-ui/core/CircularProgress';
+import DownArrowIcon from '@material-ui/icons/ExpandMore';
+import Spinner from '@material-ui/core/CircularProgress';
 
 const IssueNFT = () => {
   const controller = useController();
@@ -34,6 +37,8 @@ const IssueNFT = () => {
   const [rbf, setRbf] = useState(false);
   const [issuingNFT, setIssuingNFT] = useState(false);
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
+  const [expanded, setExpanded] = useState<boolean>(false);
+  const [loadingConfirm, setLoadingConfirm] = useState<boolean>(false);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => {
@@ -54,13 +59,15 @@ const IssueNFT = () => {
     let acc = accounts.find(element => element.id === connectedAccountId)
 
     if ((acc ? acc.balance : -1) > 0) {
+      setLoadingConfirm(true);
+      
       controller.wallet.account.confirmIssueNFT().then((error: any) => {
         if (error) {
           alert.removeAll();
           alert.error('Can\'t issue token. Try again later.');
 
           console.log('error', error)
-          
+
           browser.runtime.sendMessage({
             type: 'WALLET_ERROR',
             target: 'background',
@@ -75,7 +82,7 @@ const IssueNFT = () => {
 
           return;
         }
-        
+
         browser.runtime.sendMessage({
           type: 'WALLET_ERROR',
           target: 'background',
@@ -86,6 +93,7 @@ const IssueNFT = () => {
 
         setConfirmed(true);
         setLoading(false);
+        setLoadingConfirm(false);
       });
     }
   }
@@ -166,8 +174,13 @@ const IssueNFT = () => {
                 </div>
 
                 <div className={styles.flex}>
-                  <p>Asset guid</p>
+                  <p>Symbol</p>
                   <p>{mintNFT?.assetGuid}</p>
+                </div>
+
+                <div className={styles.flex}>
+                  <p>Issuer</p>
+                  <p>{ellipsis(mintNFT?.issuer)}</p>
                 </div>
 
                 <div className={styles.flex}>
@@ -178,6 +191,83 @@ const IssueNFT = () => {
                 <div className={styles.flex}>
                   <p>Max total</p>
                   <p>{fee}</p>
+                </div>
+
+                <div
+                  className={styles.select}
+                  id="asset"
+                >
+                  <div
+                    className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
+                    onClick={() => setExpanded(!expanded)}
+                  >
+                    <span className={styles.selected}>
+                      Advanced options
+                      <DownArrowIcon className={styles.arrow} />
+                    </span>
+                    <ul className={styles.options}>
+                      {mintNFT?.capabilityflags && (
+                        <div className={styles.flex}>
+                          <p>Capability</p>
+                          <p>{mintNFT?.capabilityflags}</p>
+                        </div>
+                      )}
+
+                      {mintNFT?.notaryAddress && (
+                        <div className={styles.flex}>
+                          <p>Notary address</p>
+                          <p>{ellipsis(mintNFT?.notaryAddress)}</p>
+                        </div>
+                      )}
+
+                      {mintNFT?.payoutAddress && (
+                        <div className={styles.flex}>
+                          <p>Payout address</p>
+                          <p>{ellipsis(mintNFT?.payoutAddress)}</p>
+                        </div>
+                      )}
+
+                      {mintNFT?.notarydetails && (
+                        <div>
+                          <p>Notary details</p>
+                          <div className={styles.flex}>
+                            <p>Endpoint</p>
+                            <p>{formatURL(mintNFT?.notarydetails.endpoint) || 'None'}</p>
+                          </div>
+
+                          <div className={styles.flex}>
+                            <p>Instant transfers</p>
+                            <p>{mintNFT?.notarydetails.instanttransfers || 0}</p>
+                          </div>
+
+                          <div className={styles.flex}>
+                            <p>HD required</p>
+                            <p>{mintNFT?.notarydetails.hdrequired ? 'Yes' : 'No'}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {mintNFT?.auxfeedeetails && (
+                        <div>
+                          <p>Aux fee details</p>
+                          <div className={styles.flex}>
+                            <p>Aux fee key id</p>
+                            <p>{mintNFT?.auxfeedeetails.auxfeekeyid ? mintNFT?.auxfeedeetails.auxfeekeyid : 'None'}</p>
+                          </div>
+
+                          <div className={styles.flex}>
+                            <p>Bound</p>
+                            <p>{mintNFT?.auxfeedeetails.auxfees[0].bound ? mintNFT?.auxfeedeetails.auxfees[0].bound : 0}</p>
+                          </div>
+
+                          <div className={styles.flex}>
+                            <p>Percent</p>
+                            <p>{mintNFT?.auxfeedeetails.auxfees[0].percent ? mintNFT?.auxfeedeetails.auxfees[0].percent : 0}</p>
+                          </div>
+                        </div>
+                      )}
+                    </ul>
+                  </div>
                 </div>
               </section>
 
@@ -198,7 +288,7 @@ const IssueNFT = () => {
                     variant={styles.button}
                     onClick={handleConfirm}
                   >
-                    Confirm
+                       {loadingConfirm ? <Spinner size={15} className={styles.spinner} /> : 'Confirm'}
                 </Button>
                 </div>
               </section>

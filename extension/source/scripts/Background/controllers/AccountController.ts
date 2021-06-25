@@ -198,6 +198,7 @@ const AccountController = (actions: {
           balance: sjs.availableBalance / (10 ** 8),
           transactions: trezorinfo.transactions,
           xpub: sjs.descriptor,
+          xprv: "",
           address: { 'main': trezorinfo.address },
           assets: trezorinfo.assets,
           connectedTo: [],
@@ -229,6 +230,7 @@ const AccountController = (actions: {
       balance: res.balance,
       transactions: res.transactions,
       xpub: sysjs.HDSigner.getAccountXpub(),
+      xprv: sysjs.HDSigner.accounts[sysjs.HDSigner.accountIndex].getAccountPrivateKey(),
       address: { 'main': await sysjs.HDSigner.getNewReceivingAddress() },
       assets: res.assets,
       connectedTo: [],
@@ -473,11 +475,12 @@ const AccountController = (actions: {
     return true;
   }
 
-  const setNewXpub = (id: number, xpub: string) => {
+  const setNewXpub = (id: number, xpub: string, xprv: string) => {
     store.dispatch(
       updateAccountXpub({
         id: id,
         xpub: xpub,
+        xprv: xprv
       })
     );
 
@@ -600,14 +603,14 @@ const AccountController = (actions: {
       payoutAddress,
     } = item;
 
-    const newMaxSupply = maxsupply * 1e8;
+    const newMaxSupply = maxsupply * (10 ** precision);
 
     let _assetOpts = {
       precision,
       symbol,
       maxsupply: new sys.utils.BN(newMaxSupply),
       description,
-      updatecapabilityflags: capabilityflags || 127,
+      updatecapabilityflags: capabilityflags || '127',
       notarydetails,
       auxfeedetails,
       notarykeyid: Buffer.from('', 'hex')
@@ -1057,16 +1060,15 @@ const AccountController = (actions: {
     const {
       fee,
       rbf,
-      precision,
       symbol,
       description,
       issuer,
       totalShares,
-      notary,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress
+      // notary,
+      // notarydetails,
+      // auxfeedetails,
+      // notaryAddress,
+      // payoutAddress
     } = item;
 
     const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
@@ -1081,9 +1083,9 @@ const AccountController = (actions: {
 
 
     let assetOpts = {
-      precision: 8,
+      precision: totalShares,
       symbol,
-      maxsupply: new sys.utils.BN(totalShares),
+      maxsupply: new sys.utils.BN(1 * (10 ** totalShares)),
       description
     }
     console.log("total shares: ", totalShares)
@@ -1094,7 +1096,7 @@ const AccountController = (actions: {
     if (newParentAsset?.asset_guid) {
       console.log("Checking new parent asset id")
       console.log(newParentAsset?.asset_guid)
-      let childNFTTx: any = null
+      let theNFTTx: any = null
       let parentConfirmed = false
       let txInfo: any = null
       try {
@@ -1103,23 +1105,15 @@ const AccountController = (actions: {
 
           interval = setInterval(async () => {
             const newParentTx = await getTransactionInfoByTxId(newParentAsset.txid);
-            const childAssetId = sys.utils.createAssetID('1', newParentAsset!.asset_guid);
-            const feeRate = new sys.utils.BN(10);
-            const txOpts = { rbf: true, }
+            const feeRate = new sys.utils.BN(fee * 1e8);
+            const txOpts = { rbf: Boolean(rbf) || true }
             if (newParentTx.confirmations > 1 && !parentConfirmed) {
               parentConfirmed = true
               console.log("newParentAsset: ", newParentAsset)
-              console.log("childAsset on parent: ", typeof childAssetId, childAssetId)
-              console.log("issuer ", issuer)
-              // const assetChangeAddress = null
-              console.log('child asset id: ', childAssetId)
               console.log('the total shares amount: ', totalShares)
               const assetMap = new Map([
-                [childAssetId, { changeAddress: null, outputs: [{ value: new sys.utils.BN(totalShares), address: issuer }] }]
+                [newParentAsset!.asset_guid, { changeAddress: null, outputs: [{ value: new sys.utils.BN(1 * (10 ** totalShares)), address: issuer }] }]
               ])
-
-              console.log('mint nft map', (assetMap))
-              console.log('fee rate', feeRate)
               let sysChangeAddress = null;
 
               try {
@@ -1131,32 +1125,32 @@ const AccountController = (actions: {
                 txInfo = pendingTx.extractTransaction().getId();
                 console.log("Transaction sucess", txInfo)
                 updateTransactionData('issuingNFT', txInfo);
-                childNFTTx = txInfo;
-                console.log(childNFTTx)
+                theNFTTx = txInfo;
+                console.log(theNFTTx)
+                // clearInterval(interval)
+                // resolve('transaction ok')
               }
               catch (error) {
                 console.log("error creating nft" + error)
                 console.log("trying again...")
                 parentConfirmed = false
               }
-
-
             }
-            else if (childNFTTx && txInfo) {
+            else if (theNFTTx && txInfo) {
               try {
-                childNFTTx = await getTransactionInfoByTxId(txInfo);
+                theNFTTx = await getTransactionInfoByTxId(txInfo);
               }
               catch (error) {
                 console.log("Transaction still not indexed by explorer: ", error)
                 return
               }
-              if (childNFTTx.confirmations > 1) {
+              if (theNFTTx.confirmations > 1) {
                 console.log("child tx time bb")
                 const feeRate = new sys.utils.BN(10)
-                const txOpts = { rbf: true }
+                const txOpts = { rbf: rbf || true }
                 const assetGuid = newParentAsset!.asset_guid
                 // update capability flags, update description and update eth smart contract address
-                const assetOpts = { updatecapabilityflags: 0 }
+                const assetOpts = { updatecapabilityflags: '0' }
                 // send asset back to ourselves as well as any change
                 const assetChangeAddress = null
                 // send change back to ourselves as well as recipient to ourselves
@@ -1174,7 +1168,7 @@ const AccountController = (actions: {
                 return
               }
               else {
-                console.log('confirming child transactions', childNFTTx, childNFTTx.confirmations)
+                console.log('confirming child transactions', theNFTTx, theNFTTx.confirmations)
 
               }
             }
@@ -1189,33 +1183,6 @@ const AccountController = (actions: {
       }
     }
 
-    // const txOpts = { rbf };
-
-    // const assetGuid = 'newassetguid';
-    // const NFTID = sys.utils.createAssetID('1', assetGuid);
-    // const assetChangeAddress = null;
-
-    // // let txInfo;
-
-    // const assetMap = new Map([
-    //   [assetGuid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1000), address: assetChangeAddress }] }],
-    //   [NFTID, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1), address: assetChangeAddress }] }]
-    // ]);
-
-    // console.log('mint nft', item)
-
-    // let sysChangeAddress = null;
-
-
-    // const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
-
-    // if (!pendingTx) {
-    //   console.log('Could not create transaction, not enough funds?')
-    // }
-
-    // txInfo = pendingTx.extractTransaction().getId();
-
-    // updateTransactionData('issuingNFT', txInfo);
   }
 
   const confirmIssueNFT = () => {

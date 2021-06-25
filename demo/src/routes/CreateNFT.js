@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import { NFTStorage, File } from "nft.storage";
-
+import * as yup from 'yup';
 import assetImg from "../images/asset.svg";
 import loaderImg from "../images/spinner.svg";
 import { token } from "../config";
@@ -19,13 +19,30 @@ export default function CreateNFT() {
   const [copySuccess, setCopySuccess] = useState("");
   const textAreaRef = useRef(null);
   const [advancedOptions, setAdvancedOptions] = useState({});
+  const [error, setError] = useState("");
   const controller = useSelector((state) => state.controller);
   const { connectedAccountAddress } = useSelector(
     (state) => state.connectedAccountData
   );
 
+  const dataYup = {
+    symbol,
+    issuer,
+    totalShares,
+    metadataDescription,
+  }
+  
+  const schema = yup.object().shape({
+      symbol: yup.string().required(),
+      totalShares: yup.number().required(),
+      metadataDescription: yup.string().required(),
+      issuer: yup.string(),
+    });
+
   const handleCreateNFT = async (event) => {
     event.preventDefault();
+
+    await schema.validate(dataYup, { abortEarly: false, })
 
     if (controller) {
       controller.handleCreateNFT(
@@ -62,14 +79,14 @@ export default function CreateNFT() {
         // "audio/x-m4a",
       ].includes(_file.type)
     ) {
-      //notify the user that the file type is not supported
-
+      setError("Error: Only Imagem")
       return;
     }
-
+    
     setFile(_file);
     setIsUploading(true);
-
+    setError("");
+    
     const metadata = await client.store({
       name: symbol,
       description,
@@ -88,6 +105,7 @@ export default function CreateNFT() {
     e.target.focus();
     setCopySuccess("Copied!");
   }
+
 
   return (
     <section>
@@ -191,6 +209,9 @@ export default function CreateNFT() {
                 ) : (
                   <img src={loaderImg} alt="" />
                 )}
+              <p className="help-block-2">
+              {error}
+              </p> 
               </div>
             </div>
           </div>

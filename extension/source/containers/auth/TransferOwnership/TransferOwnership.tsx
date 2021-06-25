@@ -33,6 +33,7 @@ const TransferOwnership = () => {
   const [rbf, setRbf] = useState(false);
   const [recommend, setRecommend] = useState(0.00001);
   const [transferringOwnership, setTransferringOwnership] = useState(false);
+  const [loadingConfirm, setLoadingConfirm] = useState<boolean>(false);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then(response => {
@@ -45,11 +46,13 @@ const TransferOwnership = () => {
     let acc = accounts.find(element => element.id === activeAccountId)
 
     if ((acc ? acc.balance : -1) > 0) {
+      setLoadingConfirm(true);
+      
       controller.wallet.account.confirmTransferOwnership().then((error: any) => {
         if (error) {
           alert.removeAll();
-          alert.error('Can\'t transfer token. Try again later.');  
-          
+          alert.error('Can\'t transfer token. Try again later.');
+
           browser.runtime.sendMessage({
             type: 'WALLET_ERROR',
             target: 'background',
@@ -64,7 +67,7 @@ const TransferOwnership = () => {
 
           return;
         }
-        
+
         browser.runtime.sendMessage({
           type: 'WALLET_ERROR',
           target: 'background',
@@ -75,6 +78,7 @@ const TransferOwnership = () => {
 
         setConfirmed(true);
         setLoading(false);
+        setLoadingConfirm(false);
       });
     }
   }
@@ -194,8 +198,8 @@ const TransferOwnership = () => {
                     variant={styles.button}
                     onClick={handleConfirm}
                   >
-                    Confirm
-                    </Button>
+                    {loadingConfirm ? <Spinner size={15} className={styles.spinner} /> : 'Confirm'}
+                  </Button>
                 </div>
               </section>
             </div>

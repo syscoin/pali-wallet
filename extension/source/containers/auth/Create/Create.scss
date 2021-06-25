@@ -65,7 +65,7 @@
     color: white;
     background: transparent;
   }
-  
+
   .data {
     display: flex;
     width: 100%;
@@ -75,8 +75,8 @@
     color: white;
     border-top: 1px solid $gray-100;
     height: 387px;
-    overflow: auto;
-    padding-top: 1rem;
+    overflow-y: auto;
+    overflow-x: hidden;
     
     &::-webkit-scrollbar {
       width: 5px;
@@ -94,19 +94,19 @@
     &::-webkit-scrollbar-thumb {
       border-radius: 2rem;
       background-color: #c9c9c9;
-      transition: all .3s;
+      transition: all 0.3s;
     }
-    
+
     .select {
       flex: 1;
-  
+
       .fullselect {
         position: relative;
         width: 230px;
-        display: flex;
-        align-items: center;
-        text-align: center;
-        flex-direction: column;
+        // display: flex;
+        // align-items: center;
+        // text-align: center;
+        // flex-direction: column;
         transition: all 300ms;
         cursor: pointer;
         /* margin-right: 2rem; */
@@ -114,8 +114,9 @@
         border: 1px solid #122036;
         color: #fff;
         border-radius: 5rem;
-        z-index: 2; 
-      
+        z-index: 2;
+        height: 20px;
+
         .selected {
           width: 100%;
           height: 36px;
@@ -124,8 +125,10 @@
           justify-content: center;
           position: relative;
           padding-right: 2rem;
-          font-size: 16px;
-      
+          font-weight: $semibold;
+          font-size: 0.8rem;
+          color: white;
+
           .arrow {
             position: absolute;
             right: 36px;
@@ -135,7 +138,7 @@
             color: $white;
           }
         }
-      
+
         ul.options {
           margin: 0;
           padding: 0;
@@ -151,92 +154,104 @@
           -webkit-backdrop-filter: blur(10px);
           backdrop-filter: blur(10px);
           // border-bottom: 1px solid #474747;
-          overflow: auto;
+          overflow-y: auto;
+          overflow-x: hidden;
           max-height: 300px;
           z-index: 3;
           border-radius: 1rem;
-      
+          width: 296px;
+          /* padding: 0 30px; */
+          position: absolute;
+          left: -33px;
+          font-weight: $semibold;
+          font-size: 0.8rem;
+          color: white;
+          
+          & p {
+            padding: 0 .4rem;
+          }
+
           &::-webkit-scrollbar {
             width: 5px;
           }
-      
+
           &::-webkit-scrollbar-track-piece {
             background-color: #f1f1f1;
             border-radius: 2rem;
           }
-      
+
           &::-webkit-scrollbar-button {
             display: none;
           }
-      
+
           &::-webkit-scrollbar-thumb {
             border-radius: 2rem;
             background-color: #c9c9c9;
-            transition: all .3s;
+            transition: all 0.3s;
           }
-      
+
           li.option {
             height: 36px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             transition: all 300ms;
-            padding: 0 .6rem;
+            padding: 0 0.6rem;
             color: $white;
             font-size: 14px;
-      
+
             &:hover {
               background: $gray-light;
               color: $navy;
             }
           }
         }
-      
+
         &.expanded {
           ul.options {
             transform: scaleY(1);
           }
-      
+
           .arrow {
             transform: rotateZ(180deg);
           }
         }
       }
-  
+
       :global(.MuiInputBase-root) {
         width: 6rem;
         transition: all 0.3s;
         background-color: #333f52;
         border: 1px solid #465162;
         color: $white;
-  
+
         &::before,
         &::after {
           border-bottom: none !important;
         }
       }
-  
+
       :global(.MuiSelect-root) {
         transition: all 0.3s;
         font-size: 0.8rem;
         background: $white;
         color: $navy-dark;
-  
+
         & optgroup {
           color: turquoise;
         }
       }
-  
+
       :global .MuiSelect-icon {
         transition: all 0.3s;
         color: $royalBlue;
       }
-  
+
       :global .MuiSelect-iconOpen {
         transform: rotateZ(180deg);
       }
     }
-    
+
     .flex {
       display: flex;
       justify-content: space-between;
@@ -260,6 +275,12 @@
 
     .button {
       width: 144px;
+    }
+    
+    .spinner {
+      svg {
+        color: $white;
+      }
     }
   }
 

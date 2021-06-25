@@ -108,6 +108,12 @@
     .button {
       width: 144px;
     }
+
+    .spinner {
+      svg {
+        color: $white;
+      }
+    }
   }
 
   .mask {

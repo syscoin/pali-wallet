@@ -238,15 +238,11 @@ const WalletController = (): IWalletController => {
         let derived = new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
         sjs.HDSigner.accounts.push(derived);
         sjs.HDSigner.accountIndex = activeAccountId;
-        account.setNewXpub(i, derived.getAccountPublicKey());
+        account.setNewXpub(i, derived.getAccountPublicKey(), derived.getAccountPrivateKey());
       }
       else {
-        account.setNewXpub(i, sjs.HDSigner.accounts[i].getAccountPublicKey());
+        account.setNewXpub(i, sjs.HDSigner.accounts[i].getAccountPublicKey(), sjs.HDSigner.accounts[i].getAccountPrivateKey());
       }
-
-
-
-
     }
 
     account.getPrimaryAccount(password, sjs);

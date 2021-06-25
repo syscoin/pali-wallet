@@ -294,7 +294,8 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                         <div style={{ backgroundColor: 'white' }}>
                           <small style={{ fontWeight: 'bold' }}>
                             OFF for Replace-by-fee (RBF) and ON for Z-DAG <br />
-                            Z-DAG: a exclusive Syscoin feature.
+                            Z-DAG: a exclusive Syscoin feature.<br />
+                            Z-DAG enable faster transactions but should not be used for high amounts
                             <br />
                             <strong>To know more:</strong>
                             <span
