@@ -3,6 +3,8 @@ import { useSelector } from "react-redux";
 import * as yup from 'yup'; 
 import assetImg from "../images/asset.svg";
 import AdvancedPanel from "../components/AdvancedPanel";
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.min.css'; 
 
 export default function CreateSPT() {
   const [precision, setPrecision] = useState(8);
@@ -26,19 +28,19 @@ export default function CreateSPT() {
   
   const schema = yup.object().shape({
       precision: yup.number().required(),
-      symbol: yup.string().required(),
+      symbol: yup.string().required("Symbol is required!"),
       maxSupply: yup.number().required(),
-      description: yup.string().required(),
+      description: yup.string().required("Description is required!"),
       receiver: yup.string(),
     });
 
   const handleCreateToken = async (event) => {
     event.preventDefault();
 
-    await schema.validate(dataYup, { abortEarly: false, })
-
-    if (controller) {
-      await controller.handleCreateToken(
+    await schema
+    .validate(dataYup, { abortEarly: false })
+    .then(() => {
+       controller.handleCreateToken(
         Number(precision),
         symbol,
         Number(maxSupply),
@@ -47,8 +49,13 @@ export default function CreateSPT() {
         ...Object.values(advancedOptions)
       );
 
-      event.target.reset();
-    }
+      event.target.reset();  
+    })
+    .catch( (err) => {
+      err.errors.forEach((error) => {
+        toast.error(error);
+      });
+    });
   };
   
   const handleInputChange = (setState) => {
@@ -94,7 +101,7 @@ export default function CreateSPT() {
           <div className="row">
             <div className="spacer col-100"></div>
           </div>
-
+          <ToastContainer />
           <div className="form-line">
             <div className="form-group col-33 col-xs-100">
               <label htmlFor="symbol">
@@ -160,7 +167,7 @@ export default function CreateSPT() {
                 placeholder=""
                 autocomplete="off"
               />
-              <p className="help-block">Ceiling:</p>
+              <p className="help-block">Ceiling: (default 1)</p>
             </div>
             <div className="form-group col-33 col-lg-100 lg-spaced-top">
               <label htmlFor="initialsupply">
