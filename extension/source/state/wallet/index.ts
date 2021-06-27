@@ -35,7 +35,7 @@ const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
-    cleanAllTransactions(state: IWalletState) {
+    clearAllTransactions(state: IWalletState) {
       return {
         ...state,
         confirmingTransaction: false,
@@ -278,7 +278,7 @@ export const {
   setTransferOwnership,
   updateSendingSys,
   updateSwitchNetwork,
-  cleanAllTransactions
+  clearAllTransactions
 } = WalletState.actions;
 
 export default WalletState.reducer;

@@ -436,15 +436,6 @@ browser.runtime.onMessage.addListener((request) => {
     return;
   }
 
-  if (type == 'DISCONNECT' && target == 'contentScript') {
-    const id = browser.runtime.id;
-    const port = browser.runtime.connect(id, { name: 'SYSCOIN' });
-
-    port.disconnect();
-
-    return;
-  }
-
   if (type == 'SEND_STATE_TO_PAGE' && target == 'contentScript') {
     window.postMessage({
       type: 'SEND_STATE_TO_PAGE',

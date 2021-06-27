@@ -28,7 +28,7 @@ import store, { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { getHost } from '../scripts/Background/helpers';
 import TransferOwnership from 'containers/auth/TransferOwnership';
-import { cleanAllTransactions } from 'state/wallet';
+import { clearAllTransactions } from 'state/wallet';
 
 const Auth = () => {
   const location = useLocation();
@@ -59,7 +59,7 @@ const Auth = () => {
     const redirectRoute = controller.appRoute();
     
     if (redirectRoute == 'app.html' && isUnlocked) {
-      store.dispatch(cleanAllTransactions());
+      store.dispatch(clearAllTransactions());
       history.push('/home')
     }
 

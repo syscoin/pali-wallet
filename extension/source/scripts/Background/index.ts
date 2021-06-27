@@ -16,7 +16,8 @@ import {
   issueAsset,
   issueNFT,
   setUpdateAsset,
-  setTransferOwnership
+  setTransferOwnership,
+  clearAllTransactions
 } from 'state/wallet';
 
 import MasterController, { IMasterController } from './controllers';
@@ -232,12 +233,7 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'CANCEL_TRANSACTION' && target == 'background') {
         const item = request.item;
         
-        store.dispatch(updateCanConfirmTransaction(false));
-        store.dispatch(createAsset(false));
-        store.dispatch(issueAsset(false));
-        store.dispatch(issueNFT(false));
-        store.dispatch(setUpdateAsset(false));
-        store.dispatch(setTransferOwnership(false));
+        store.dispatch(clearAllTransactions());
         
         window.controller.wallet.account.clearTransactionItem(item);
 
@@ -246,16 +242,17 @@ browser.runtime.onInstalled.addListener(async () => {
 
       if (type == 'CLOSE_POPUP' && target == 'background') {
         store.dispatch(updateCanConnect(false));
-        store.dispatch(updateCanConfirmTransaction(false));
-        store.dispatch(createAsset(false));
-        store.dispatch(issueAsset(false));
-        store.dispatch(issueNFT(false));
-        store.dispatch(setUpdateAsset(false));
-        store.dispatch(setTransferOwnership(false));
+        store.dispatch(clearAllTransactions());
+        
+        browser.tabs.query({ active: true })
+        .then(async (tabs) => {
+          tabs.map(async (tab) => {
+            if (tab.title === 'Pali Wallet') {
+              await browser.windows.remove(Number(tab.windowId));
+            }
 
-        browser.tabs.sendMessage(tabId, {
-          type: 'DISCONNECT',
-          target: 'contentScript'
+            return;
+          });
         });
 
         return;
@@ -625,31 +622,6 @@ browser.runtime.onInstalled.addListener(async () => {
       .then((tabs) => {
         store.dispatch(updateCurrentURL(`${tabs[0].url}`));
       });
-
-    port.onDisconnect.addListener(async () => {
-      store.dispatch(updateCanConnect(false));
-      store.dispatch(updateCanConfirmTransaction(false));
-      store.dispatch(createAsset(false));
-      store.dispatch(setUpdateAsset(false));
-      store.dispatch(issueNFT(false));
-      store.dispatch(issueAsset(false));
-      store.dispatch(setTransferOwnership(false));
-      
-      console.log('WALLET DISCONNECTED ON DISCONNECT')
-
-      browser.tabs.query({ active: true })
-        .then(async (tabs) => {
-          tabs.map(async (tab) => {
-            if (tab.title === 'Pali Wallet') {
-              await browser.windows.remove(Number(tab.windowId));
-              
-              // browser.runtime.reload();
-            }
-
-            return;
-          });
-        });
-    })
   });
 });
 
