@@ -7,7 +7,7 @@ import 'react-toastify/dist/ReactToastify.min.css';
 export default function IssueSPT() {
   const [assetGuid, setAssetGuid] = useState("");
   const [asset, setAsset] = useState({ maxSupply: "", totalSupply: "" });
-  const [amount, setAmount] = useState(0);
+  const [amount, setAmount] = useState(1);
   const [tokens, setTokens] = useState([]);
   const controller = useSelector((state) => state.controller);
 
@@ -38,7 +38,10 @@ export default function IssueSPT() {
   }
   
   const schema = yup.object().shape({
-      amount: yup.number("Quantity to Issue is required!").required("Quantity to Issue is required!"),
+      amount: yup.number()
+      .typeError('Quantity to Issue is required!')
+      .min(1)
+      .required("Quantity to Issue is required!"),
       assetGuid: yup.string().required("Standard Token is required!"),
     });
 
@@ -48,7 +51,9 @@ export default function IssueSPT() {
       await schema
         .validate(dataYup, { abortEarly: false })
         .then(() => {
-          controller && controller.handleIssueSPT(amount, assetGuid);
+          controller && controller.handleIssueSPT(
+            Number(amount),
+             assetGuid);
         })
         .catch((err) => {
           err.errors.forEach((error) => {
