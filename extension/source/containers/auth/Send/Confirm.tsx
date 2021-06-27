@@ -9,7 +9,6 @@ import Spinner from '@material-ui/core/CircularProgress';
 import { useController } from 'hooks/index';
 import { useFiat } from 'hooks/usePrice';
 import { useHistory } from 'react-router-dom';
-import CheckIcon from '@material-ui/icons/CheckCircle';
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
 import { RootState } from 'state/store';
 import { ellipsis } from '../helpers';
@@ -110,7 +109,6 @@ const SendConfirm = () => {
 
   return confirmed ? (
     <Layout title="Your transaction is underway" linkTo="/remind" showLogo>
-      <CheckIcon className={styles.checked} />
       <div className="body-description">
         You can follow your transaction under activity on your account screen.
       </div>

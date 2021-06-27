@@ -1,18 +1,10 @@
 import React, { useState, useCallback } from 'react';
 import clsx from 'clsx';
-// import { useSelector } from 'react-redux';
 
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
-// import CheckIcon from '@material-ui/icons/CheckCircle';
-
 import TextInput from 'components/TextInput';
-// import { RootState } from 'state/store';
-// import { getHost } from 'scripts/Background/helpers';
-// import IWalletState, { IAccountState } from 'state/wallet/types';
-// import { useAlert } from 'react-alert';
-// import CircularProgress from '@material-ui/core/CircularProgress';
 
 import styles from './UpdateAsset.scss';
 import { browser } from 'webextension-polyfill-ts';
@@ -21,21 +13,14 @@ import { useHistory } from 'react-router-dom';
 
 const UpdateAsset = () => {
   const controller = useController();
-  // const alert = useAlert();
   const history = useHistory()
 
-  // const { accounts, currentSenderURL }: IWalletState = useSelector(
-  //   (state: RootState) => state.wallet
-  // );
-
   const updateAsset = controller.wallet.account.getNewUpdateAsset();
-  // const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0);
   const [rbf, setRbf] = useState(false);
   const [recommend, setRecommend] = useState(0.00001);
   const [updatingAsset, setUpdatingAsset] = useState(false);
-  // const [connectedAccountId, setConnectedAccountId] = useState(-1);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then((response: any) => {
@@ -43,53 +28,7 @@ const UpdateAsset = () => {
       setFee(response);
     });
   };
-
-  // useEffect(() => {
-  //   setConnectedAccountId(accounts.findIndex((account: IAccountState) => {
-  //     return account.connectedTo.filter((url: string) => {
-  //       return url === getHost(currentSenderURL);
-  //     })
-  //   }))
-  // }, []);
-
-  // const handleConfirm = () => {
-  //   let acc = accounts.find(element => element.id === connectedAccountId)
-
-  //   if ((acc ? acc.balance : -1) > 0) {
-  //     controller.wallet.account.confirmUpdateAssetTransaction().then((error: any) => {
-  //       if (error) {
-  //         alert.removeAll();
-  //         alert.error('Can\'t update token. Try again later.'); 
-           
-  //         browser.runtime.sendMessage({
-  //           type: 'WALLET_ERROR',
-  //           target: 'background',
-  //           transactionError: true,
-  //           invalidParams: false,
-  //           message: `TransactionError: ${error}`
-  //         });
-
-  //         setTimeout(() => {
-  //           handleCancelTransactionOnSite();
-  //         }, 4000);
-
-  //         return;
-  //       }
-        
-  //       browser.runtime.sendMessage({
-  //         type: 'WALLET_ERROR',
-  //         target: 'background',
-  //         transactionError: false,
-  //         invalidParams: false,
-  //         message: 'Everything is fine, transaction completed.'
-  //       });
-
-  //       setConfirmed(true);
-  //       setLoading(false);
-  //     });
-  //   }
-  // }
-
+  
   const handleMessageToUpdateAsset = () => {
     controller.wallet.account.setDataFromWalletToUpdateAsset({
       fee,
@@ -111,13 +50,6 @@ const UpdateAsset = () => {
     console.log(rbf)
     setRbf(rbf);
   }, []);
-
-  // const handleClosePopup = () => {
-  //   browser.runtime.sendMessage({
-  //     type: "CLOSE_POPUP",
-  //     target: "background"
-  //   });
-  // }
 
   const handleCancelTransactionOnSite = () => {
     browser.runtime.sendMessage({

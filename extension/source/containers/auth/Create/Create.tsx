@@ -5,7 +5,6 @@ import { useSelector } from 'react-redux';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
-import CheckIcon from '@material-ui/icons/CheckCircle';
 import Spinner from '@material-ui/core/CircularProgress';
 
 import TextInput from 'components/TextInput';
@@ -41,6 +40,7 @@ const Create = () => {
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
   const [expanded, setExpanded] = useState<boolean>(false);
   const [loadingConfirm, setLoadingConfirm] = useState<boolean>(false);
+  // const [isPending, setIsPending] = useState<boolean>(false);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then((response: any) => {
@@ -74,9 +74,11 @@ const Create = () => {
 
   const handleConfirm = () => {
     let acc = accounts.find(element => element.id === connectedAccountId)
+    let isPending = false;
 
     if ((acc ? acc.balance : -1) > 0) {
       setLoadingConfirm(true);
+      isPending = true;
       
       controller.wallet.account.confirmNewSPT().then((error: any) => {
         if (error) {
@@ -113,10 +115,23 @@ const Create = () => {
           message: 'Everything is fine, transaction completed.'
         });
 
+        isPending = false;
+        
         setConfirmed(true);
         setLoading(false);
         setLoadingConfirm(false);
       });
+      
+      setTimeout(() => {
+        if (isPending && !confirmed) {
+          alert.removeAll();
+          alert.error('Can\'t create token. Please, try again later.');
+          
+          setTimeout(() => {
+            handleCancelTransactionOnSite();
+          }, 4000);
+        }
+      }, 90000);
     }
   }
 
@@ -165,12 +180,10 @@ const Create = () => {
 
   return confirmed ? (
     <Layout title="Your transaction is underway" showLogo>
-      <CheckIcon className={styles.checked} />
-
       <div
         className="body-description"
       >
-        Your Tokens is in creation process, you can check the transaction under your history.
+        Your token is in creation process, you can check the transaction under your history.
       </div>
 
       <Button

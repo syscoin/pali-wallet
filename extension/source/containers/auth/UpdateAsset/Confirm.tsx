@@ -6,10 +6,6 @@ import { useSelector } from 'react-redux';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
-// import { useFiat } from 'hooks/usePrice';
-// import { useHistory } from 'react-router-dom';
-import CheckIcon from '@material-ui/icons/CheckCircle';
-// import UpArrowIcon from '@material-ui/icons/ArrowUpward';
 import { RootState } from 'state/store';
 import { ellipsis, formatURL } from '../helpers';
 import IWalletState, { IAccountState } from 'state/wallet/types';
@@ -65,9 +61,11 @@ const UpdateConfirm = () => {
 
   const handleConfirm = () => {
     let acc = accounts.find(element => element.id === connectedAccountId)
+    let isPending = false;
 
     if ((acc ? acc.balance : -1) > 0) {
       setLoadingConfirm(true);
+      isPending = true;
 
       controller.wallet.account.confirmUpdateAssetTransaction().then((error: any) => {
         if (error) {
@@ -96,17 +94,29 @@ const UpdateConfirm = () => {
           invalidParams: false,
           message: 'Everything is fine, transaction completed.'
         });
+        
+        isPending = false;
 
         setConfirmed(true);
         setLoading(false);
         setLoadingConfirm(false);
       });
+      
+      setTimeout(() => {
+        if (isPending && !confirmed) {
+          alert.removeAll();
+          alert.error('Can\'t update token. Please, try again later.');
+          
+          setTimeout(() => {
+            handleCancelTransactionOnSite();
+          }, 4000);
+        }
+      }, 90000);
     }
   }
 
   return confirmed ? (
     <Layout title="Your transaction is underway" linkTo="/remind" showLogo>
-      <CheckIcon className={styles.checked} />
       <div className="body-description">
         You can follow your transaction under activity on your account screen.
       </div>

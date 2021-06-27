@@ -5,7 +5,6 @@ import { useSelector } from 'react-redux';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
-import CheckIcon from '@material-ui/icons/CheckCircle';
 
 import TextInput from 'components/TextInput';
 import { RootState } from 'state/store';
@@ -45,9 +44,11 @@ const TransferOwnership = () => {
 
   const handleConfirm = () => {
     let acc = accounts.find(element => element.id === activeAccountId)
+    let isPending = false;
 
     if ((acc ? acc.balance : -1) > 0) {
       setLoadingConfirm(true);
+      isPending = true;
       
       controller.wallet.account.confirmTransferOwnership().then((error: any) => {
         if (error) {
@@ -76,11 +77,24 @@ const TransferOwnership = () => {
           invalidParams: false,
           message: 'Everything is fine, transaction completed.'
         });
+        
+        isPending = false;
 
         setConfirmed(true);
         setLoading(false);
         setLoadingConfirm(false);
       });
+      
+      setTimeout(() => {
+        if (isPending && !confirmed) {
+          alert.removeAll();
+          alert.error('Can\'t transfer token. Please, try again later.');
+          
+          setTimeout(() => {
+            handleCancelTransactionOnSite();
+          }, 4000);
+        }
+      }, 90000);
     }
   }
 
@@ -126,8 +140,6 @@ const TransferOwnership = () => {
 
   return confirmed ? (
     <Layout title="Your transaction is underway" showLogo>
-      <CheckIcon className={styles.checked} />
-
       <div
         className="body-description"
       >

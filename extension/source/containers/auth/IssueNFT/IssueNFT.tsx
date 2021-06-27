@@ -5,7 +5,6 @@ import { useSelector } from 'react-redux';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
-import CheckIcon from '@material-ui/icons/CheckCircle';
 
 import TextInput from 'components/TextInput';
 import { RootState } from 'state/store';
@@ -56,10 +55,12 @@ const IssueNFT = () => {
   }, []);
 
   const handleConfirm = () => {
-    let acc = accounts.find(element => element.id === connectedAccountId)
+    let acc = accounts.find(element => element.id === connectedAccountId);
+    let isPending = false;
 
     if ((acc ? acc.balance : -1) > 0) {
       setLoadingConfirm(true);
+      isPending = true;
       
       controller.wallet.account.confirmIssueNFT().then((error: any) => {
         if (error) {
@@ -90,11 +91,24 @@ const IssueNFT = () => {
           invalidParams: false,
           message: 'Everything is fine, transaction completed.'
         });
+        
+        isPending = false;
 
         setConfirmed(true);
         setLoading(false);
         setLoadingConfirm(false);
       });
+      
+      setTimeout(() => {
+        if (isPending && !confirmed) {
+          alert.removeAll();
+          alert.error('Can\'t create and issue NFT. Please, try again later.');
+          
+          setTimeout(() => {
+            handleCancelTransactionOnSite();
+          }, 4000);
+        }
+      }, 360000);
     }
   }
   const handleClosePopup = () => {
@@ -138,12 +152,10 @@ const IssueNFT = () => {
 
   return confirmed ? (
     <Layout title="Your transaction is underway" showLogo>
-      <CheckIcon className={styles.checked} />
-
       <div
         className="body-description"
       >
-        Your Tokens is in creating and minting process, you can check the transaction under your history.
+        Your token is in creating and minting process, you can check the transaction under your history.
       </div>
 
       <Button

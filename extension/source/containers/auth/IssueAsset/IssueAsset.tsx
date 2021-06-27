@@ -5,7 +5,6 @@ import { useSelector } from 'react-redux';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
-import CheckIcon from '@material-ui/icons/CheckCircle';
 
 import TextInput from 'components/TextInput';
 import { RootState } from 'state/store';
@@ -47,10 +46,12 @@ const IssueAsset = () => {
   };
 
   const handleConfirm = () => {
-    let acc = accounts.find(element => element.id === connectedAccountId)
+    let acc = accounts.find(element => element.id === connectedAccountId);
+    let isPending = false;
 
     if ((acc ? acc.balance : -1) > 0) {
       setLoadingConfirm(true);
+      isPending = true;
       
       controller.wallet.account.confirmIssueSPT().then((error: any) => {
         if (error) {
@@ -79,13 +80,24 @@ const IssueAsset = () => {
           invalidParams: false,
           message: 'Everything is fine, transaction completed.'
         });
-
+        
+        isPending = false;
+        
         setConfirmed(true);
         setLoading(false);
         setLoadingConfirm(false);
       });
 
-      console.log('account conne mint spt', mintSPT)
+      setTimeout(() => {
+        if (isPending && !confirmed) {
+          alert.removeAll();
+          alert.error('Can\'t issue token. Please, try again later.');
+          
+          setTimeout(() => {
+            handleCancelTransactionOnSite();
+          }, 4000);
+        }
+      }, 90000);
     }
   }
 
@@ -147,12 +159,10 @@ const IssueAsset = () => {
 
   return confirmed ? (
     <Layout title="Your transaction is underway" showLogo>
-      <CheckIcon className={styles.checked} />
-
       <div
         className="body-description"
       >
-        Your Tokens is in minting process, you can check the transaction under your history.
+        Your token is in minting process, you can check the transaction under your history.
       </div>
 
       <Button
