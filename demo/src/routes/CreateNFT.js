@@ -7,6 +7,8 @@ import loaderImg from "../images/spinner.svg";
 import { token } from "../config";
 import AdvancedPanel from "../components/AdvancedPanel";
 import PreviewFile from "../components/PreviewFile";
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.min.css'; 
 
 export default function CreateNFT() {
   const [symbol, setSymbol] = useState("");
@@ -33,29 +35,33 @@ export default function CreateNFT() {
   }
   
   const schema = yup.object().shape({
-      symbol: yup.string().required(),
+      symbol: yup.string().required("Symbol is required!"),
       totalShares: yup.number().required(),
-      metadataDescription: yup.string().required(),
+      metadataDescription: yup.string().required("Metadata URL is required!"),
       issuer: yup.string(),
     });
 
   const handleCreateNFT = async (event) => {
     event.preventDefault();
 
-    await schema.validate(dataYup, { abortEarly: false, })
-
-    if (controller) {
+    await schema
+    .validate(dataYup, { abortEarly: false })
+    .then(() => {
       controller.handleCreateNFT(
         symbol,
         issuer || connectedAccountAddress,
         Number(totalShares),
         description,
         ...Object.values(advancedOptions)
-      );
-
-      event.target.reset();
-    }
-  };
+      ); 
+       event.target.reset();   
+    })
+    .catch( (err) => {
+      err.errors.forEach((error) => {
+        toast.error(error);
+      });
+    });
+};
 
   const handleInputChange = (setState) => {
     return (event) => {
@@ -130,7 +136,7 @@ export default function CreateNFT() {
           <div className="row">
             <div className="spacer col-100"></div>
           </div>
-
+          <ToastContainer />
           <div className="form-line">
             <div className="form-group col-25 col-md-50 col-sm-100">
               <label htmlFor="symbol">

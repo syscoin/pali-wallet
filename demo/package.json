@@ -13,6 +13,7 @@
     "autoprefixer": "^10.2.5",
     "axios": "^0.21.1",
     "bootstrap": "^4.6.0",
+    "formik": "^2.2.9",
     "hoist-non-react-statics": "^3.3.2",
     "ipfs": "^0.54.4",
     "ipld": "^0.30.0",
@@ -32,6 +33,7 @@
     "react-router-dom": "^5.2.0",
     "react-scripts": "4.0.3",
     "react-switch": "^6.0.0",
+    "react-toast-notifications": "^2.4.4",
     "react-tooltip": "^4.2.18",
     "redux-logger": "^3.0.6",
     "syscoinjs-lib": "^1.0.126",
@@ -63,5 +65,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "react-toastify": "^7.0.4"
   }
 }

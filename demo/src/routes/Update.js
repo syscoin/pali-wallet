@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import * as yup from 'yup';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.min.css'; 
 
 import assetImg from "../images/asset.svg";
 import AdvancedPanel from "../components/AdvancedPanel";
@@ -28,22 +30,32 @@ export default function Update() {
   }
   
   const schema = yup.object().shape({
-      assetGuid: yup.string().required(),
-      description: yup.string().required(),
+      assetGuid: yup.string().required("Token is required!"),
+      description: yup.string().required("Description is required!"),
     });
 
   const handleUpdateAsset = async (event) => {
     event.preventDefault();
 
-    await schema.validate(dataYup, { abortEarly: false, })
-
-    controller &&
-      controller.handleUpdateAsset(
+    await schema
+    .validate(dataYup, { abortEarly: false })
+    .then(() => {
+      controller &&
+      (  controller.handleUpdateAsset(
         assetGuid,
         description,
         ...Object.values(advancedOptions)
-      );
-  };
+      ));
+
+   event.target.reset();
+
+    })
+    .catch((err) => {
+      err.errors.forEach((error) => {
+        toast.error(error);
+      });
+    });
+}
 
   const handleInputChange = (setState) => {
     return (event) => {
@@ -84,7 +96,7 @@ export default function Update() {
           <div className="row">
             <div className="spacer col-100"></div>
           </div>
-
+          <ToastContainer />
           <div className="form-line">
             <div className="form-group col-100">
               <label htmlFor="token">Token</label>

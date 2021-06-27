@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import * as yup from 'yup';
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.min.css";
+import * as yup from "yup";
 
 export default function Transfer() {
   const [tokens, setTokens] = useState([]);
@@ -23,13 +25,13 @@ export default function Transfer() {
   const dataYup = {
     assetGuid,
     newOwner,
-  }
-  
+  };
+
   const schema = yup.object().shape({
-      assetGuid: yup.string().required(),
-      newOwner: yup.string().required(),
-    });
-    
+    assetGuid: yup.string().required("Standard Token is required!"),
+    newOwner: yup.string().required("New Issuer is required!"),
+  });
+
   const handleInputChange = (setState) => {
     return (event) => {
       setState(event.target.value);
@@ -39,13 +41,18 @@ export default function Transfer() {
   const handleTransferOwnership = async (event) => {
     event.preventDefault();
 
-    await schema.validate(dataYup, { abortEarly: false, })
-
-    controller &&
-      (await controller.handleTransferOwnership(assetGuid, newOwner));
-
-    event.target.reset();
-  };
+    await schema
+    .validate(dataYup, { abortEarly: false })
+    .then(() => {
+       controller && controller.handleTransferOwnership(assetGuid, newOwner);
+      event.target.reset();
+    })
+    .catch((err) => {
+      err.errors.forEach((error) => {
+        toast.error(error);
+      });
+    });
+  }
 
   return (
     <section>
@@ -116,7 +123,7 @@ export default function Transfer() {
               <p className="help-block">Current Issuer/Owner</p>
             </div>
           </div>
-
+          <ToastContainer />
           <div className="btn-center">
             <button>Transfer Ownership</button>
           </div>

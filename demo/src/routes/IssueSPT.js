@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import * as yup from 'yup'; 
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.min.css'; 
 
 export default function IssueSPT() {
   const [assetGuid, setAssetGuid] = useState("");
   const [asset, setAsset] = useState({ maxSupply: "", totalSupply: "" });
-  const [amount, setAmount] = useState(0);
+  const [amount, setAmount] = useState(1);
   const [tokens, setTokens] = useState([]);
   const controller = useSelector((state) => state.controller);
 
@@ -36,28 +38,35 @@ export default function IssueSPT() {
   }
   
   const schema = yup.object().shape({
-      amount: yup.number().required(),
-      assetGuid: yup.string().required(),
+      amount: yup.number()
+      .typeError('Quantity to Issue is required!')
+      .min(1)
+      .required("Quantity to Issue is required!"),
+      assetGuid: yup.string().required("Standard Token is required!"),
     });
 
-  const handleIssueSPT = async (event) => {
-    event.preventDefault();
-
-    await schema.validate(dataYup, { abortEarly: false, })
-
-    controller && (await controller.handleIssueSPT(amount, assetGuid));
-  };
+    const handleIssueSPT = async (event) => {
+      event.preventDefault();
+  
+      await schema
+        .validate(dataYup, { abortEarly: false })
+        .then(() => {
+          controller && controller.handleIssueSPT(
+            Number(amount),
+             assetGuid);
+        })
+        .catch((err) => {
+          err.errors.forEach((error) => {
+            toast.error(error);
+          });
+        });
+    };
 
   const handleInputChange = (setState) => {
     return (event) => {
       setState(event.target.value);
     };
   };
-
-  // const handleConfirm = async () => {
-  //   controller && (  await controller.handleConfirm());
-  //   console.log("handleconfirmerrorororor")
-  // }
 
   return (
     <section>
@@ -82,7 +91,7 @@ export default function IssueSPT() {
           <div className="row">
             <div className="spacer col-100"></div>
           </div>
-
+          <ToastContainer />
           <div className="form-line">
             <div className="form-group col-100">
               <label htmlFor="token">Standard Token</label>
@@ -112,6 +121,7 @@ export default function IssueSPT() {
                 type="number"
                 className="form-control"
                 id="amount"
+                value={amount}
               />
               <p className="help-block">
                 Ceiling: Max Supply
