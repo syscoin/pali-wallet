@@ -6,6 +6,7 @@ import 'react-toastify/dist/ReactToastify.min.css';
 
 import assetImg from "../images/asset.svg";
 import AdvancedPanel from "../components/AdvancedPanel";
+import loaderImg from "../images/spinner.svg";
 
 export default function Update() {
   const controller = useSelector((state) => state.controller);
@@ -14,6 +15,7 @@ export default function Update() {
   const [assetGuid, setAssetGuid] = useState();
   const [description, setDescription] = useState("");
   const [advancedOptions, setAdvancedOptions] = useState({});
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     controller &&
@@ -23,6 +25,10 @@ export default function Update() {
 
     return () => setTokens([]);
   }, []);
+
+  useEffect(() => {  
+    tokens.length && setIsLoading(false)
+  },[tokens])
 
   const dataYup = {
     assetGuid,
@@ -99,7 +105,9 @@ export default function Update() {
           <ToastContainer />
           <div className="form-line">
             <div className="form-group col-100">
-              <label htmlFor="token">Token</label>
+              <label htmlFor="token">Standard Token&nbsp;
+               {isLoading && <img className="loaderTokens" src={loaderImg}/>}
+              </label>
               <select
                 onChange={handleInputChange(setAssetGuid)}
                 className="form-control"
