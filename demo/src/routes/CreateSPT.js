@@ -152,7 +152,7 @@ export default function CreateSPT() {
                 max="8"
                 value={precision}
               />
-              <p className="help-block">0 - 8 (default 8)</p>
+              <p className="help-block">{precision} - 8 (default 8)</p>
             </div>
             <div className="form-group col-33 col-lg-50 col-xs-100 xs-spaced-top">
               <label htmlFor="supply">
