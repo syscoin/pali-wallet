@@ -218,14 +218,18 @@ const AccountController = (actions: {
       sysjs = sjs;
     }
 
+    console.log("Sys HDSigner account index before call")
+    console.log(sysjs.HDSigner.accountIndex)
+
     if (!walletCreation) {
       sysjs.HDSigner.createAccount();
     }
 
     const res: IAccountInfo | null = await getAccountInfo();
-
+    console.log("Sys HDSigner account index after call")
+    console.log(sysjs.HDSigner.accountIndex)
     account = {
-      id: sysjs.HDSigner.accountIndex === 0 ? 0 : sysjs.HDSigner.accountIndex + 1,
+      id: sysjs.HDSigner.accountIndex === 0 ? 0 : sysjs.HDSigner.accountIndex,
       label: label || `Account ${sysjs.HDSigner.accountIndex + 1}`,
       balance: res.balance,
       transactions: res.transactions,
@@ -391,7 +395,7 @@ const AccountController = (actions: {
 
     getLatestUpdate();
   };
-  
+
   const clearTransactionItem = (item: string) => {
     switch (item) {
       case 'newSPT':
@@ -415,7 +419,7 @@ const AccountController = (actions: {
       default:
         return null;
     }
-    
+
     return;
   }
 
@@ -1601,7 +1605,7 @@ const AccountController = (actions: {
         notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
       }
     }
-    
+
     console.log('asset opts update asset', assetOpts)
 
     const thisAssetMap = new Map([
