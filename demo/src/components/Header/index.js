@@ -9,7 +9,9 @@ const Header = () => {
   const accountData = useSelector((state) => state.connectedAccountData);
   const controller = useSelector((state) => state.controller);
   const isInstalled = useSelector((state) => state.isInstalled);
-
+  const { connectedAccountAddress } = useSelector(
+    (state) => state.connectedAccountData
+  );
   const handleMessageExtension = async () => {
     controller
       ? await controller.connectWallet()
@@ -37,6 +39,10 @@ const Header = () => {
       );
   }, []);
 
+  const trucate = (str) => {
+    return str.substr(0, 5) + "..." + str.substr(-12);
+  };
+
   return (
     <header>
       <nav>
@@ -54,7 +60,6 @@ const Header = () => {
               <embed src={logo} />
             </Link>
             <h1>Token Creation Tool</h1>
-
             <ul>
               <li>
                 <Link to="/dashboard" className="active">
@@ -92,12 +97,25 @@ const Header = () => {
                   </li>
                 </ul>
               </li>
+
               <li>
                 <Link to="/about">About</Link>
               </li>
             </ul>
           </div>
+          <div className="nav-address">
+              <a
+              rel="noopener noreferrer"
+              target="_blank"
+              title={accountData.connectedAccountAddress}
+              onClick={handleMessageExtension}
+              disabled={!isInstalled}
+            >
+              { trucate(accountData.connectedAccountAddress)}
+            </a>
+          </div>
           <div className="navbottom">
+
             <a
               href="https://syscoin.org"
               rel="noopener noreferrer"

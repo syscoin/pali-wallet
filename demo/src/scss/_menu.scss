@@ -94,6 +94,25 @@ header {
         }
       }
     }
+
+    .nav-address {
+      flex-shrink: 0;
+      z-index: 4;
+      margin: 20px 0 10px;
+
+      a {
+        color: rgba($white, 0.6);
+        margin: 5px 20px;
+        width: 100%;
+        display: block;
+        text-decoration: none;
+        @include transition(color, 0.25s, ease-in);
+        font-size: 20px;
+        &:hover {
+          color: rgba($white, 1);
+        }
+      }
+    }
   }
 }
 
