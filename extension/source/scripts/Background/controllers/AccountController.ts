@@ -135,6 +135,8 @@ const AccountController = (actions: {
     const balance = res.balance / 1e8;
     let transactions: Transaction[] = [];
     let assets: Assets[] = [];
+    
+    console.log('res get account info', res)
 
     if (res.transactions) {
       transactions = res.transactions.map((transaction: Transaction) => {

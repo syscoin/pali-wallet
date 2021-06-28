@@ -95,12 +95,26 @@ browser.runtime.onInstalled.addListener(async () => {
   });
 
   window.trezorConnect = TrezorConnect;
+  
+  browser.tabs.query({ active: true }).then((tabs) => {
+    console.log('tabs on the window', tabs)
+  })
+  
+  console.log(browser.extension.getViews())
+
+
 
   browser.runtime.onMessage.addListener(async (request, sender) => {
     const {
       type,
       target
     } = request;
+    
+    const views = browser.extension.getViews();
+  
+    for (let view of views) {
+      console.log('view', view)
+    }
 
     const tabs = await browser.tabs.query({
       active: true,
