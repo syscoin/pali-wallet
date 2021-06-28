@@ -4,11 +4,14 @@ import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.min.css";
 import * as yup from "yup";
 
+import loaderImg from "../images/spinner.svg";
+
 export default function Transfer() {
   const [tokens, setTokens] = useState([]);
   const [assetGuid, setAssetGuid] = useState("");
   const [newOwner, setNewOwner] = useState("");
   const controller = useSelector((state) => state.controller);
+  const [isLoading, setIsLoading] = useState(true);
   const { connectedAccountAddress } = useSelector(
     (state) => state.connectedAccountData
   );
@@ -21,6 +24,10 @@ export default function Transfer() {
 
     return () => setTokens([]);
   }, []);
+
+  useEffect(() => {  
+    tokens.length && setIsLoading(false)
+  },[tokens])
 
   const dataYup = {
     assetGuid,
@@ -80,7 +87,9 @@ export default function Transfer() {
 
           <div className="form-line">
             <div className="form-group col-100">
-              <label htmlFor="token">Standard Token</label>
+            <label htmlFor="token">Standard Token&nbsp;
+               {isLoading && <img className="loaderTokens" src={loaderImg}/>}
+              </label>
               <select
                 onChange={handleInputChange(setAssetGuid)}
                 className="form-control"
