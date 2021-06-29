@@ -136,6 +136,8 @@ const AccountController = (actions: {
     const balance = res.balance / 1e8;
     let transactions: Transaction[] = [];
     let assets: Assets[] = [];
+    
+    console.log('res get account info', res)
 
     if (res.transactions) {
       transactions = res.transactions.map((transaction: Transaction) => {
@@ -271,6 +273,7 @@ const AccountController = (actions: {
       console.log("checking new account index")
       console.log(sysjs)
       const accLatestInfo = await getAccountInfo();
+      console.log('ac latest info', accLatestInfo)
 
       if (!accLatestInfo) return;
 
@@ -289,6 +292,8 @@ const AccountController = (actions: {
     }
 
     const accLatestInfo = await getAccountInfo(true, account.xpub);
+    
+    console.log('ac latest info', accLatestInfo)
 
     if (!accLatestInfo) return;
 

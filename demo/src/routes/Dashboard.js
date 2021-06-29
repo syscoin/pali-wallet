@@ -21,8 +21,8 @@ export default function Dashboard() {
 
     return (
       <>
-        {Intl.NumberFormat().format(_balance[0])}
-        <span className="decimal">{_balance[1] && `,${_balance[1]}`}</span>
+        {Intl.NumberFormat("en" ).format(_balance[0])}
+        <span className="decimal">{_balance[1] && `.${_balance[1]}`}</span>
       </>
     );
   };

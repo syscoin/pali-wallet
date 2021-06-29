@@ -19,10 +19,12 @@ import Switch from "react-switch";
 import CircularProgress from '@material-ui/core/CircularProgress';
 import DownArrowIcon from '@material-ui/icons/ExpandMore';
 import Spinner from '@material-ui/core/CircularProgress';
+import { useHistory } from 'react-router-dom';
 
 const IssueNFT = () => {
   const controller = useController();
   const alert = useAlert();
+  const history = useHistory();
 
   const { accounts, currentSenderURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
@@ -112,6 +114,8 @@ const IssueNFT = () => {
     }
   }
   const handleClosePopup = () => {
+    history.push('/home');
+    
     browser.runtime.sendMessage({
       type: "CLOSE_POPUP",
       target: "background"
@@ -119,6 +123,8 @@ const IssueNFT = () => {
   }
 
   const handleCancelTransactionOnSite = () => {
+    history.push('/home');
+    
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
       target: "background",

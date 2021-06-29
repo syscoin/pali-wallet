@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import * as yup from 'yup'; 
 import { toast, ToastContainer } from 'react-toastify';
+import * as yup from 'yup'; 
+
 import 'react-toastify/dist/ReactToastify.min.css'; 
+import loaderImg from "../images/spinner.svg";
 
 export default function IssueSPT() {
   const [assetGuid, setAssetGuid] = useState("");
   const [asset, setAsset] = useState({ maxSupply: "", totalSupply: "" });
   const [amount, setAmount] = useState(1);
   const [tokens, setTokens] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const controller = useSelector((state) => state.controller);
 
   useEffect(() => {
@@ -31,6 +34,10 @@ export default function IssueSPT() {
       });
     }
   }, [assetGuid]);
+
+  useEffect(() => {  
+    tokens.length && setIsLoading(false)
+  },[tokens])
 
   const dataYup = {
     amount,
@@ -94,12 +101,14 @@ export default function IssueSPT() {
           <ToastContainer />
           <div className="form-line">
             <div className="form-group col-100">
-              <label htmlFor="token">Standard Token</label>
+              <label htmlFor="token">Standard Token &nbsp;
+               {isLoading && <img className="loaderTokens" src={loaderImg}/>}</label>
               <select
                 onChange={handleInputChange(setAssetGuid)}
                 className="form-control"
                 id="token"
               >
+             
                 <option></option>
                 {tokens.map((token) => (
                   <option value={token.assetGuid} key={token.assetGuid}>
@@ -107,6 +116,7 @@ export default function IssueSPT() {
                   </option>
                 ))}
               </select>
+
             </div>
           </div>
 
@@ -136,7 +146,7 @@ export default function IssueSPT() {
                 type="text"
                 className="form-control"
                 disabled
-                value={asset.totalSupply}
+                value={Intl.NumberFormat("en", { minimumFractionDigits: 2 } ).format(asset.totalSupply)}
               />
               <p className="help-block">Current Circulating Supply</p>
             </div>
@@ -146,8 +156,7 @@ export default function IssueSPT() {
                 type="text"
                 className="form-control"
                 disabled
-                value={asset.maxSupply}
-              />
+                value={Intl.NumberFormat("en", { minimumFractionDigits: 2 } ).format(asset.maxSupply)}/>
               <p className="help-block">Max Supply</p>
             </div>
           </div>

@@ -58,7 +58,7 @@ const Auth = () => {
   useEffect(() => {
     const redirectRoute = controller.appRoute();
     
-    if (redirectRoute == 'app.html' && isUnlocked) {
+    if (redirectRoute == 'home' && isUnlocked) {
       store.dispatch(clearAllTransactions());
       history.push('/home')
     }

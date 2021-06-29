@@ -95,12 +95,18 @@ browser.runtime.onInstalled.addListener(async () => {
   });
 
   window.trezorConnect = TrezorConnect;
-
+  
   browser.runtime.onMessage.addListener(async (request, sender) => {
     const {
       type,
       target
     } = request;
+    
+    const views = browser.extension.getViews();
+  
+    for (let view of views) {
+      console.log('view', view)
+    }
 
     const tabs = await browser.tabs.query({
       active: true,
@@ -115,7 +121,7 @@ browser.runtime.onInstalled.addListener(async () => {
         alreadyOpen: false,
         windowId: -1
       };
-
+      
       browser.tabs.query({ active: true })
       .then(async (tabs) => {
         tabs.map(async (tab) => {
@@ -136,15 +142,13 @@ browser.runtime.onInstalled.addListener(async () => {
 
           return;
         }
-
-        await browser.windows.create({
-          url,
-          type: 'popup',
-          width: 372,
-          height: 600,
-          left: 900,
-          top: 90
-        });
+        
+        let windowpopup: any = window.open(url, "Pali Wallet", "width=372, height=600, left=900, top=90");
+        
+        // @ts-ignore
+        windowpopup.onbeforeunload = () => {
+          store.dispatch(clearAllTransactions());
+        }
       });
     };
 
