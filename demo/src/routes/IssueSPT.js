@@ -146,7 +146,7 @@ export default function IssueSPT() {
                 type="text"
                 className="form-control"
                 disabled
-                value={asset.totalSupply}
+                value={Intl.NumberFormat("en", { minimumFractionDigits: 2 } ).format(asset.totalSupply)}
               />
               <p className="help-block">Current Circulating Supply</p>
             </div>
@@ -156,8 +156,7 @@ export default function IssueSPT() {
                 type="text"
                 className="form-control"
                 disabled
-                value={asset.maxSupply}
-              />
+                value={Intl.NumberFormat("en", { minimumFractionDigits: 2 } ).format(asset.maxSupply)}/>
               <p className="help-block">Max Supply</p>
             </div>
           </div>
