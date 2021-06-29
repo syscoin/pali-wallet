@@ -155,6 +155,8 @@ const Create = () => {
   }, []);
 
   const handleClosePopup = () => {
+    history.push('/home');
+    
     browser.runtime.sendMessage({
       type: "CLOSE_POPUP",
       target: "background"
@@ -162,6 +164,8 @@ const Create = () => {
   }
 
   const handleCancelTransactionOnSite = () => {
+    history.push('/home');
+    
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
       target: "background",

@@ -273,6 +273,7 @@ const AccountController = (actions: {
       sysjs.HDSigner.accountIndex = activeAccountId;
 
       const accLatestInfo = await getAccountInfo();
+      console.log('ac latest info', accLatestInfo)
 
       if (!accLatestInfo) return;
 
@@ -291,6 +292,8 @@ const AccountController = (actions: {
     }
 
     const accLatestInfo = await getAccountInfo(true, account.xpub);
+    
+    console.log('ac latest info', accLatestInfo)
 
     if (!accLatestInfo) return;
 

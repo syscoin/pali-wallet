@@ -12,8 +12,11 @@ import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
+import { useHistory } from 'react-router';
 
 const ConnectWallet = () => {
+  const history = useHistory();
+  
   const { accounts, activeAccountId, currentSenderURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
@@ -30,6 +33,8 @@ const ConnectWallet = () => {
   };
 
   const handleCancelConnection = () => {
+    history.push('/home');
+    
     browser.runtime.sendMessage({
       type: "RESET_CONNECTION_INFO",
       target: "background",
@@ -63,7 +68,6 @@ const ConnectWallet = () => {
               </div>
 
               {acc.id === accountId && <img src={checkGreen} alt="check" />}
-
             </li>
           ))}
         </ul>
@@ -81,7 +85,7 @@ const ConnectWallet = () => {
           theme="btn-outline-secondary"
           variant={clsx(styles.button, styles.cancel)}
           onClick={handleCancelConnection}
-          linkTo="/app.html"
+          linkTo="/home"
         >
           Cancel
         </Button>

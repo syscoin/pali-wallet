@@ -52,6 +52,8 @@ const UpdateAsset = () => {
   }, []);
 
   const handleCancelTransactionOnSite = () => {
+    history.push('/home');
+    
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
       target: "background",

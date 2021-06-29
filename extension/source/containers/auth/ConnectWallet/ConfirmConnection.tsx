@@ -12,9 +12,12 @@ import IWalletState from 'state/wallet/types';
 import { ellipsis } from '../helpers';
 import { getHost } from '../../../scripts/Background/helpers';
 import { useAlert } from 'react-alert';
+import { useHistory } from 'react-router-dom';
 
 const ConfirmConnection = () => {
   const alert = useAlert();
+  const history = useHistory();
+  
   const { accounts, currentSenderURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
@@ -26,6 +29,8 @@ const ConfirmConnection = () => {
   });
 
   const handleCancelConnection = () => {
+    history.push('/home');
+    
     browser.runtime.sendMessage({
       type: "RESET_CONNECTION_INFO",
       target: "background",
@@ -45,6 +50,8 @@ const ConfirmConnection = () => {
         type: "CONFIRM_CONNECTION",
         target: "background"
       }).then(() => {
+        history.push('/home');
+        
         browser.runtime.sendMessage({
           type: "CLOSE_POPUP",
           target: "background"
@@ -84,7 +91,7 @@ const ConfirmConnection = () => {
           theme="btn-outline-secondary"
           variant={clsx(styles.button, styles.cancel)}
           onClick={handleCancelConnection}
-          linkTo="/app.html"
+          linkTo="/home"
           fullWidth
         >
           Cancel

@@ -16,9 +16,11 @@ import { browser } from 'webextension-polyfill-ts';
 import { getHost } from '../../../scripts/Background/helpers';
 import DownArrowIcon from '@material-ui/icons/ExpandMore';
 import Spinner from '@material-ui/core/CircularProgress';
+import { useHistory } from 'react-router';
 
 const UpdateConfirm = () => {
   const controller = useController();
+  const history = useHistory();
 
   const { accounts, currentSenderURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
@@ -40,6 +42,8 @@ const UpdateConfirm = () => {
   }, []);
 
   const handleClosePopup = () => {
+    history.push('/home');
+    
     browser.runtime.sendMessage({
       type: "CLOSE_POPUP",
       target: "background"
@@ -47,6 +51,8 @@ const UpdateConfirm = () => {
   }
 
   const handleCancelTransactionOnSite = () => {
+    history.push('/home');
+    
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
       target: "background",

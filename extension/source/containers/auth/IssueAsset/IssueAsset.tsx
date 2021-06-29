@@ -115,6 +115,8 @@ const IssueAsset = () => {
   }, []);
 
   const handleClosePopup = () => {
+    history.push('/home');
+    
     browser.runtime.sendMessage({
       type: "CLOSE_POPUP",
       target: "background"
@@ -122,6 +124,8 @@ const IssueAsset = () => {
   }
 
   const handleCancelTransactionOnSite = () => {
+    history.push('/home');
+    
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
       target: "background",

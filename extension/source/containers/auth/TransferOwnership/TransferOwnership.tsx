@@ -17,10 +17,12 @@ import styles from './TransferOwnership.scss';
 import { browser } from 'webextension-polyfill-ts';
 import Switch from "react-switch";
 import Spinner from '@material-ui/core/CircularProgress';
+import { useHistory } from 'react-router';
 
 const TransferOwnership = () => {
   const controller = useController();
   const alert = useAlert();
+  const history = useHistory();
 
   const { accounts, activeAccountId, currentSenderURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
@@ -119,6 +121,8 @@ const TransferOwnership = () => {
   }, []);
 
   const handleClosePopup = () => {
+    history.push('/home');
+    
     browser.runtime.sendMessage({
       type: "CLOSE_POPUP",
       target: "background"
@@ -126,6 +130,8 @@ const TransferOwnership = () => {
   }
 
   const handleCancelTransactionOnSite = () => {
+    history.push('/home');
+    
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
       target: "background",
