@@ -49,6 +49,45 @@
       font-weight: bold;
     }
   }
+
+  .listAccounts {
+    width: 75%;
+    border-radius: 6px;
+    text-align: center;
+    overflow: auto;
+    margin: 0;
+    padding: 0;
+    height: 180px;
+    overflow-x: auto;
+    padding: 0rem 0 0 0;
+    overflow-y: auto;
+    
+    &::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    &::-webkit-scrollbar-track-piece {
+      background-color: #f1f1f1;
+      border-radius: 10px;
+    }
+
+    &::-webkit-scrollbar-button {
+      display: none;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      border-radius: 10px;
+      background-color: #c9c9c9;
+      transition: all 0.3s;
+    }
+
+    & > p {
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+    }
+  }
+  
   .accounts,
   .confirm {
     width: 100%;

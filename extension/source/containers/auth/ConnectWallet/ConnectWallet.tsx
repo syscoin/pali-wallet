@@ -59,7 +59,7 @@ const ConnectWallet = () => {
       <p>Choose account</p>
 
       {accounts.length > 0 ? (
-        <ul className={styles.list}>
+        <ul className={styles.listAccounts}>
           {accounts.map((acc: any) => (
             <li key={acc.id} onClick={() => handleSelectAccount(acc.id)} className={styles.account}>
               <div className={styles.label}>
