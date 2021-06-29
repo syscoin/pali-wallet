@@ -159,7 +159,8 @@ const WalletController = (): IWalletController => {
           const child = sjs.HDSigner.deriveAccount(i);
 
           sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
-          sjs.HDSigner.accountIndex = activeAccountId;
+          // sjs.HDSigner.accountIndex = activeAccountId;
+          sjs.HDSigner.setAccountIndex(activeAccountId)
         }
       }
 
@@ -237,7 +238,8 @@ const WalletController = (): IWalletController => {
         const child = sjs.HDSigner.deriveAccount(i);
         let derived = new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
         sjs.HDSigner.accounts.push(derived);
-        sjs.HDSigner.accountIndex = activeAccountId;
+        // sjs.HDSigner.accountIndex = activeAccountId;
+        sjs.HDSigner.setAccountIndex(activeAccountId)
         account.setNewXpub(i, derived.getAccountPublicKey(), derived.getAccountPrivateKey());
       }
       else {

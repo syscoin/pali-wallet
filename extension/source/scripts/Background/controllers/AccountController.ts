@@ -129,7 +129,8 @@ const AccountController = (actions: {
 
       address = account0.getAddress(receivingIndex + 1);
     } else {
-      res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
+      // res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
+      res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true);
     }
 
     const balance = res.balance / 1e8;
@@ -218,16 +219,12 @@ const AccountController = (actions: {
       sysjs = sjs;
     }
 
-    console.log("Sys HDSigner account index before call")
-    console.log(sysjs.HDSigner.accountIndex)
 
     if (!walletCreation) {
-      sysjs.HDSigner.createAccount();
+      await sysjs.HDSigner.createAccount();
     }
 
     const res: IAccountInfo | null = await getAccountInfo();
-    console.log("Sys HDSigner account index after call")
-    console.log(sysjs.HDSigner.accountIndex)
     account = {
       id: sysjs.HDSigner.accountIndex === 0 ? 0 : sysjs.HDSigner.accountIndex,
       label: label || `Account ${sysjs.HDSigner.accountIndex + 1}`,
@@ -268,8 +265,11 @@ const AccountController = (actions: {
     account = accounts.find(element => element.id === activeAccountId)!;
 
     if (!account.isTrezorWallet) {
-      sysjs.HDSigner.accountIndex = activeAccountId;
-
+      // sysjs.HDSigner.accountIndex = activeAccountId;
+      // sysjs.HDSigner.changeIndex = -1;
+      sysjs.HDSigner.setAccountIndex(activeAccountId)
+      console.log("checking new account index")
+      console.log(sysjs)
       const accLatestInfo = await getAccountInfo();
 
       if (!accLatestInfo) return;
