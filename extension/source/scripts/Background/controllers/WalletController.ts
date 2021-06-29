@@ -8,7 +8,6 @@ import {
   updateStatus,
   setEncriptedMnemonic,
   removeAccounts,
-  updateBlockbookURL,
   removeAccount,
   updateSwitchNetwork
 } from 'state/wallet';
@@ -62,8 +61,7 @@ const WalletController = (): IWalletController => {
     const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic, password);
 
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
-    store.dispatch(updateBlockbookURL(SYS_NETWORK.main.beUrl));
-
+    
     account.subscribeAccount(false, sjs, undefined, true).then(() => {
       account.getPrimaryAccount(password, sjs);
     })
@@ -140,8 +138,6 @@ const WalletController = (): IWalletController => {
 
         HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, isTestnet);
         sjs = new sys.SyscoinJSLib(HDsigner, backendURl);
-
-        store.dispatch(updateBlockbookURL(backendURl));
 
         const { activeAccountId, accounts } = store.getState().wallet;
 
@@ -266,7 +262,6 @@ const WalletController = (): IWalletController => {
       HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, false);
       sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.main.beUrl);
 
-      store.dispatch(updateBlockbookURL(SYS_NETWORK.main.beUrl));
       store.dispatch(updateSwitchNetwork(true));
 
       _getAccountDataByNetwork(sjs);
@@ -277,7 +272,6 @@ const WalletController = (): IWalletController => {
     HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, true);
     sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.testnet.beUrl);
 
-    store.dispatch(updateBlockbookURL(SYS_NETWORK.testnet.beUrl));
     store.dispatch(updateSwitchNetwork(true));
 
     _getAccountDataByNetwork(sjs);

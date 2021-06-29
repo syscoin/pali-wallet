@@ -572,31 +572,6 @@ browser.runtime.onInstalled.addListener(async () => {
         });
       }
 
-      if (type == 'CREATE_COLLECTION' && target == 'background') {
-        const {
-          collectionName,
-          description,
-          sysAddress,
-          symbol,
-          property1,
-          property2,
-          property3,
-          attribute1,
-          attribute2,
-          attribute3
-        } = request;
-
-        window.controller.wallet.account.createCollection(collectionName, description, sysAddress, symbol, property1, property2, property3, attribute1, attribute2, attribute3)
-
-        const createCollection: string = 'create collection is working';
-
-        browser.tabs.sendMessage(tabId, {
-          type: 'CREATE_COLLECTION',
-          target: 'contentScript',
-          createCollection
-        });
-      }
-
       if (type == 'GET_USER_MINTED_TOKENS' && target == 'background') {
         const tokensMinted = await window.controller.wallet.account.getUserMintedTokens();
 

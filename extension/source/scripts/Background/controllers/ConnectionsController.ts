@@ -54,7 +54,6 @@ export interface IConnectionsController {
   handleIssueNFT: (amount: number, assetGuid: string) => any;
   isNFT: (guid: number) => boolean;
   getUserMintedTokens: () => Promise<any>;
-  handleCreateCollection: (state: any) => void;
   handleUpdateAsset: (
     assetGuid: string,
     contract?: string,
@@ -308,45 +307,6 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const handleCreateCollection = async (state: { collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string }) => {
-    const {
-      collectionName,
-      description,
-      sysAddress,
-      symbol,
-      property1,
-      property2,
-      property3,
-      attribute1,
-      attribute2,
-      attribute3
-    } = state;
-
-    console.log('[connectionsController]: state', state)
-
-    return await sendMessage({
-      // check if the message received (from contentScript after contentScript receives the message from background (where it all starts)) has this type and target and set the eventResult
-      type: 'CREATE_COLLECTION',
-      target: 'connectionsController',
-      freeze: true,
-      eventResult: 'createCollection'
-    }, {
-      // send the data to contentScript through this message
-      type: 'CREATE_COLLECTION',
-      target: 'contentScript',
-      collectionName,
-      description,
-      sysAddress,
-      symbol,
-      property1,
-      property2,
-      property3,
-      attribute1,
-      attribute2,
-      attribute3
-    });
-  }
-
   const handleUpdateAsset = async (assetGuid: string, contract?: string | null, capabilityflags?: string | '0', description?: string | null, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean } | null, auxfeedetails?: { auxfeekeyid?: any, auxfees?: [{ bound?: any | 0, percent?: any | 0 }] } | null, notaryAddress?: string | null, payoutAddress?: string | null) => {
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
@@ -463,7 +423,6 @@ const ConnectionsController = (): IConnectionsController => {
     handleIssueSPT,
     handleCreateNFT,
     getUserMintedTokens,
-    handleCreateCollection,
     handleUpdateAsset,
     handleTransferOwnership,
     isValidSYSAddress,

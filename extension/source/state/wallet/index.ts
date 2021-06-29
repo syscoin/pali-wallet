@@ -26,8 +26,6 @@ const initialState: IWalletState = {
   issuingNFT: false,
   updatingAsset: false,
   transferringOwnership: false,
-  blockbookURL: '',
-  sendingSys: false,
   changingNetwork: false,
 };
 
@@ -46,22 +44,10 @@ const WalletState = createSlice({
         transferringOwnership: false,
       }
     },
-    updateSendingSys(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        sendingSys: action.payload
-      }
-    },
     updateSwitchNetwork(state: IWalletState, action: PayloadAction<boolean>) {
       return {
         ...state,
         changingNetwork: action.payload
-      }
-    },
-    updateBlockbookURL(state: IWalletState, action: PayloadAction<string>) {
-      return {
-        ...state,
-        blockbookURL: action.payload
       }
     },
     updateCanConfirmTransaction(state: IWalletState, action: PayloadAction<boolean>) {
@@ -273,10 +259,8 @@ export const {
   createAsset,
   issueAsset,
   issueNFT,
-  updateBlockbookURL,
   setUpdateAsset,
   setTransferOwnership,
-  updateSendingSys,
   updateSwitchNetwork,
   clearAllTransactions
 } = WalletState.actions;

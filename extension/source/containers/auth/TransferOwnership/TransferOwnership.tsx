@@ -18,6 +18,7 @@ import { browser } from 'webextension-polyfill-ts';
 import Switch from "react-switch";
 import Spinner from '@material-ui/core/CircularProgress';
 import { useHistory } from 'react-router';
+import { getHost } from 'scripts/Background/helpers';
 
 const TransferOwnership = () => {
   const controller = useController();
@@ -184,7 +185,7 @@ const TransferOwnership = () => {
 
                 <div className={styles.flex}>
                   <p>Site</p>
-                  <p>{currentSenderURL}</p>
+                  <p>{getHost(`${currentSenderURL}`)}</p>
                 </div>
 
                 <div className={styles.flex}>

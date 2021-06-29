@@ -4,7 +4,6 @@ declare global {
   interface Window {
     SyscoinWallet: any;
     connectionConfirmed: boolean;
-    SysWalletError: any;
   }
 }
 
@@ -64,7 +63,7 @@ const blockedDomainCheck = () => {
   }
 
   return false;
-}
+} 
 
 export const shouldInjectProvider = () => {
   return (
@@ -75,7 +74,7 @@ export const shouldInjectProvider = () => {
   );
 }
 
-function injectScript(content: any) {
+function injectScript(content: string) {
   try {
     const container = document.head || document.documentElement;
     const scriptTag = document.createElement('script');
@@ -110,7 +109,7 @@ function injectScriptFile(file: string) {
 if (shouldInjectProvider()) {
   injectScript("window.SyscoinWallet = 'Syscoin Wallet is installed! :)'");
 
-  window.dispatchEvent(new CustomEvent('SyscoinStatus', { detail: { SyscoinInstalled: true, ConnectionsController: false, SysWalletErrors: { transactionError: false, invalidParams: false } } }));
+  window.dispatchEvent(new CustomEvent('SyscoinStatus', { detail: { SyscoinInstalled: true, ConnectionsController: false } }));
 
   injectScriptFile('js/inpage.bundle.js');
 }
@@ -125,21 +124,6 @@ window.addEventListener('message', (event) => {
     return;
   }
   
-  if (type == 'WALLET_ERROR' && target == 'contentScript') {
-    console.log('error event', event.data)
-    
-    throw new Error('transactionerrror')
-    
-    window.dispatchEvent(new CustomEvent('SysWalletErrors', { 
-      detail: {
-        SysWalletErrors: {
-          transactionError: false,
-          invalidParams: false
-        }
-      }
-    }));
-  }
-
   if (type == "CONNECT_WALLET" && target == 'contentScript') {
     browser.runtime.sendMessage({
       type: 'CONNECT_WALLET',
@@ -239,10 +223,8 @@ window.addEventListener('message', (event) => {
       auxfeedetails,
       notaryAddress,
       payoutAddress
-    }).then((response) => {
-      console.log('response create token', response)
     });
-
+    
     return;
   }
 
@@ -257,8 +239,6 @@ window.addEventListener('message', (event) => {
       target: 'background',
       amount,
       assetGuid
-    }).then((response) => {
-      console.log('response issue token', response)
     });
 
     return;
@@ -291,9 +271,7 @@ window.addEventListener('message', (event) => {
       auxfeedetails,
       notaryAddress,
       payoutAddress,
-    }).then((response) => {
-      console.log('response create and issue nft', response)
-    })
+    });
 
     return;
   }
@@ -321,11 +299,6 @@ window.addEventListener('message', (event) => {
       auxfeedetails,
       notaryAddress,
       payoutAddress
-    }).then((response) => {
-      console.log('response update', response)
-    }).catch((error) => {
-      console.log('error message update token', error)
-      throw new Error(error)
     });
 
     return;
@@ -342,40 +315,6 @@ window.addEventListener('message', (event) => {
       target: 'background',
       assetGuid,
       newOwner,
-    }).then((response) => {
-      console.log('response transfer ownership', response)
-    });
-
-    return;
-  }
-
-  if (type == 'CREATE_COLLECTION' && target == 'contentScript') {
-    const {
-      collectionName,
-      description,
-      sysAddress,
-      symbol,
-      property1,
-      property2,
-      property3,
-      attribute1,
-      attribute2,
-      attribute3
-    } = event.data;
-
-    browser.runtime.sendMessage({
-      type: 'CREATE_COLLECTION',
-      target: 'background',
-      collectionName,
-      description,
-      sysAddress,
-      symbol,
-      property1,
-      property2,
-      property3,
-      attribute1,
-      attribute2,
-      attribute3
     });
 
     return;
@@ -409,14 +348,12 @@ browser.runtime.onMessage.addListener((request) => {
     connected,
     state,
     connectedAccount,
-    createCollection,
     userTokens,
     connectionConfirmed,
     isValidSYSAddress,
     holdingsData,
     assetData,
   } = request;
-  
     
   if (type == 'WALLET_ERROR' && target == 'contentScript') {
     console.log('error event', request)
@@ -427,16 +364,6 @@ browser.runtime.onMessage.addListener((request) => {
       error: request.message
     }, '*');
     
-    return;
-  }
-
-  if (type == 'DATA_FOR_SPT' && target == 'contentScript') {
-    window.postMessage({
-      type: 'DATA_FOR_SPT',
-      target: 'createComponent',
-      lala: 'ebebe'
-    }, '*');
-
     return;
   }
 
@@ -469,7 +396,6 @@ browser.runtime.onMessage.addListener((request) => {
 
     return;
   }
-
 
   if (type == 'GET_HOLDINGS_DATA' && target == 'contentScript') {
     window.postMessage({
@@ -556,23 +482,12 @@ browser.runtime.onMessage.addListener((request) => {
     return;
   }
 
-  if (type == 'CREATE_COLLECTION' && target == 'contentScript') {
-    window.postMessage({
-      type: 'CREATE_COLLECTION',
-      target: 'connectionsController',
-      createCollection
-    }, '*');
-    return;
-  }
-
   if (type == 'WALLET_CONNECTION_CONFIRMED' && target == 'contentScript') {
     window.postMessage({
       type: 'WALLET_CONNECTION_CONFIRMED',
       target: 'connectionsController',
       connectionConfirmed
     }, '*');
-
-    injectScript(`window.connectionConfirmed = ${connectionConfirmed}`);
   }
 
   return;

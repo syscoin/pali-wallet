@@ -24,11 +24,10 @@ import ConnectedAccounts from 'containers/auth/ConnectWallet/ConnectedAccounts';
 import { useController } from 'hooks/index';
 import { SendMatchProps } from './types';
 import { useSelector } from 'react-redux';
-import store, { RootState } from 'state/store';
+import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { getHost } from '../scripts/Background/helpers';
 import TransferOwnership from 'containers/auth/TransferOwnership';
-import { clearAllTransactions } from 'state/wallet';
 
 const Auth = () => {
   const location = useLocation();
@@ -57,11 +56,6 @@ const Auth = () => {
 
   useEffect(() => {
     const redirectRoute = controller.appRoute();
-    
-    if (redirectRoute == 'home' && isUnlocked) {
-      store.dispatch(clearAllTransactions());
-      history.push('/home')
-    }
 
     if (redirectRoute == '/send/confirm' && !controller.wallet.account.getTempTx()) {
       history.push('/home');

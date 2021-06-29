@@ -13,6 +13,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { useHistory } from 'react-router';
+import { getHost } from 'scripts/Background/helpers';
 
 const ConnectWallet = () => {
   const history = useHistory();
@@ -55,11 +56,11 @@ const ConnectWallet = () => {
       <h1>Connect with <b>Pali Wallet</b></h1>
 
       <p>1/2</p>
-      <p>{currentSenderURL}</p>
+      <p>{getHost(`${currentSenderURL}`)}</p>
       <p>Choose account</p>
 
       {accounts.length > 0 ? (
-        <ul className={styles.list}>
+        <ul className={styles.listAccounts}>
           {accounts.map((acc: any) => (
             <li key={acc.id} onClick={() => handleSelectAccount(acc.id)} className={styles.account}>
               <div className={styles.label}>

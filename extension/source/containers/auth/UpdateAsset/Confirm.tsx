@@ -159,7 +159,7 @@ const UpdateConfirm = () => {
 
                   <div className={styles.flex}>
                     <p>Site</p>
-                    <p>{currentSenderURL}</p>
+                    <p>{getHost(`${currentSenderURL}`)}</p>
                   </div>
 
                   <div className={styles.flex}>

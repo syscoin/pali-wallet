@@ -69,7 +69,7 @@ const ConnectedAccounts = () => {
               Choose your account
             </p>
 
-            <ul className={styles.list}>
+            <ul className={styles.listAccounts}>
               {accounts.map((account) => {
                 return (
                   <li key={account.id} className={styles.account} onClick={() => handleChangeAccount(account.id)}>
