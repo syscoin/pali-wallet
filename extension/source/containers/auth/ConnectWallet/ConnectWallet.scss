@@ -29,18 +29,22 @@
     width: calc(100% - 112px);
     bottom: 132px;
   }
-  
-  .listAccounts {
+
+  .list {
     width: 75%;
     border-radius: 6px;
     text-align: center;
     overflow: auto;
     margin: 0;
+    margin-bottom: 2rem;
     padding: 0;
-    height: 180px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    
     overflow-x: auto;
-    padding: 0rem 0 0 0;
-    overflow-y: auto;
+    overflow-y: hidden;
     
     &::-webkit-scrollbar {
       width: 5px;
@@ -68,21 +72,17 @@
     }
   }
 
-  .list {
+  .listAccounts {
     width: 75%;
     border-radius: 6px;
     text-align: center;
     overflow: auto;
     margin: 0;
-    margin-bottom: 2rem;
     padding: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    
+    height: 180px;
     overflow-x: auto;
-    overflow-y: hidden;
+    padding: 0rem 0 0 0;
+    overflow-y: auto;
     
     &::-webkit-scrollbar {
       width: 5px;
