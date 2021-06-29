@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useSelector } from "react-redux";
 import { Link } from "react-router-dom";
+import useOnlineStatus from '@rehooks/online-status';
 
 import logo from "../../images/logo.svg";
 import { elementEventHandler } from "../../utils/elementEventHandler";
@@ -9,6 +10,8 @@ const Header = () => {
   const accountData = useSelector((state) => state.connectedAccountData);
   const controller = useSelector((state) => state.controller);
   const isInstalled = useSelector((state) => state.isInstalled);
+  const isConnected = useSelector((state) => state.connected);
+  const onlineStatus = useOnlineStatus();
   const { connectedAccountAddress } = useSelector(
     (state) => state.connectedAccountData
   );
@@ -40,7 +43,7 @@ const Header = () => {
   }, []);
 
   const trucate = (str) => {
-    return str.substr(0, 5) + "..." + str.substr(-12);
+    return str.substr(0, 5) + "..." + str.substr(-13);
   };
 
   return (
@@ -55,11 +58,49 @@ const Header = () => {
           </Link>
         </div>
         <div className="desktopmenu">
+          
           <div className="menu">
             <Link to="/" className="logo">
               <embed src={logo} />
             </Link>
             <h1>Token Creation Tool</h1>
+            <div className="nav-address">
+            <h1>{isConnected ?
+            <>
+            <div class="bubble">
+              <span class="bubble-outer-dot">
+              <span class="bubble-inner-dot">
+              </span>
+              </span>
+            </div>
+            <px
+              className="accountName"
+              rel="noopener noreferrer"
+              target="_blank"
+              title={accountData.connectedAccountAddress}
+              onClick={handleMessageExtension}
+              disabled={!isInstalled} >
+              { accountData.connectedAccount.label}
+            </px>
+            <px
+              className="accountAddress"
+              title={accountData.connectedAccountAddress}
+              onClick={handleMessageExtension}
+              disabled={!isInstalled}>
+              { trucate(accountData.connectedAccountAddress)}
+            </px>
+            </>
+            :
+            <>
+              <div class="bubble-off">
+            <span class="bubble-outer-dot-off">
+            <span class="bubble-inner-dot-off">
+            </span>
+            </span>
+          </div> 
+            Disconnected</>}</h1>
+
+          </div>
             <ul>
               <li>
                 <Link to="/dashboard" className="active">
@@ -102,17 +143,6 @@ const Header = () => {
                 <Link to="/about">About</Link>
               </li>
             </ul>
-          </div>
-          <div className="nav-address">
-              <a
-              rel="noopener noreferrer"
-              target="_blank"
-              title={accountData.connectedAccountAddress}
-              onClick={handleMessageExtension}
-              disabled={!isInstalled}
-            >
-              { trucate(accountData.connectedAccountAddress)}
-            </a>
           </div>
           <div className="navbottom">
 
