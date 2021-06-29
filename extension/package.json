@@ -1,6 +1,6 @@
 {
   "name": "PaliWallet",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Extension wallet for SYS tokens.",
   "private": true,
   "repository": "https://github.com/syscoin/pali_wallet",
@@ -63,7 +63,7 @@
     "redux-watch": "^1.2.0",
     "saas": "^1.0.0",
     "sass": "^1.32.12",
-    "syscoinjs-lib": "^1.0.126",
+    "syscoinjs-lib": "^1.0.142",
     "syscointx-js": "^1.0.90",
     "trezor-connect": "^8.1.27",
     "uuid": "^8.3.2",
