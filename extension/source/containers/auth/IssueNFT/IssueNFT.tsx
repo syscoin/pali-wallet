@@ -76,7 +76,7 @@ const IssueNFT = () => {
             target: 'background',
             transactionError: true,
             invalidParams: false,
-            message: `TransactionError: ${error}`
+            message: "Can't create and issue NFT. Try again later"
           });
 
           setTimeout(() => {
@@ -85,14 +85,6 @@ const IssueNFT = () => {
 
           return;
         }
-
-        browser.runtime.sendMessage({
-          type: 'WALLET_ERROR',
-          target: 'background',
-          transactionError: false,
-          invalidParams: false,
-          message: 'Everything is fine, transaction completed.'
-        });
         
         isPending = false;
 
@@ -193,7 +185,7 @@ const IssueNFT = () => {
 
                 <div className={styles.flex}>
                   <p>Symbol</p>
-                  <p>{mintNFT?.assetGuid}</p>
+                  <p>{mintNFT?.symbol}</p>
                 </div>
 
                 <div className={styles.flex}>

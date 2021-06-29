@@ -63,7 +63,7 @@ const IssueAsset = () => {
             target: 'background',
             transactionError: true,
             invalidParams: false,
-            message: `TransactionError: ${error}`
+            message: "Can't issue token. Try again later"
           });
 
           setTimeout(() => {
@@ -72,14 +72,6 @@ const IssueAsset = () => {
 
           return;
         }
-        
-        browser.runtime.sendMessage({
-          type: 'WALLET_ERROR',
-          target: 'background',
-          transactionError: false,
-          invalidParams: false,
-          message: 'Everything is fine, transaction completed.'
-        });
         
         isPending = false;
         

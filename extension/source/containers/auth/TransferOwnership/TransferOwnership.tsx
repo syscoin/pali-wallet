@@ -54,6 +54,7 @@ const TransferOwnership = () => {
       
       controller.wallet.account.confirmTransferOwnership().then((error: any) => {
         if (error) {
+          console.log('error', error)
           alert.removeAll();
           alert.error('Can\'t transfer token. Try again later.');
 
@@ -62,7 +63,7 @@ const TransferOwnership = () => {
             target: 'background',
             transactionError: true,
             invalidParams: false,
-            message: `TransactionError: ${error}`
+            message: "Can't transfer ownership. Try again later"
           });
 
           setTimeout(() => {
@@ -71,14 +72,6 @@ const TransferOwnership = () => {
 
           return;
         }
-
-        browser.runtime.sendMessage({
-          type: 'WALLET_ERROR',
-          target: 'background',
-          transactionError: false,
-          invalidParams: false,
-          message: 'Everything is fine, transaction completed.'
-        });
         
         isPending = false;
 

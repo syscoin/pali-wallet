@@ -720,7 +720,7 @@ const AccountController = (actions: {
       resolve(handleTransactions(newSPT, confirmSPTCreation));
 
       newSPT = null;
-    })
+    });
   }
 
   const confirmMintSPT = async (item: any) => {
@@ -1637,8 +1637,16 @@ const AccountController = (actions: {
   }
 
   const confirmUpdateAssetTransaction = () => {
-    return new Promise((resolve) => {
-      resolve(handleTransactions(updateAssetItem, confirmUpdateAsset));
+    return new Promise((resolve, reject) => {
+      handleTransactions(updateAssetItem, confirmUpdateAsset).then((response) => {
+        console.log('transaction ok response', response)
+        
+        resolve(response)
+      }).catch((error) => {
+        console.log('error', error)
+        
+        reject(error)
+      });
 
       updateAssetItem = null;
     });

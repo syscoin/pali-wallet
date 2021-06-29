@@ -23,7 +23,7 @@ export interface IConnectionsController {
       auxfees: [{
         bound: any | 0,
         percent: any | 0
-      }] 
+      }]
     },
     notaryAddress?: string,
     payoutAddress?: string
@@ -161,60 +161,111 @@ const ConnectionsController = (): IConnectionsController => {
   }
 
   const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, description: string, receiver: string, capabilityflags?: number, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notaryAddress?: string, payoutAddress?: string) => {
-    return await sendMessage({
-      type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
-      target: 'connectionsController',
-      freeze: true,
-      eventResult: 'complete'
-    }, {
-      type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
-      target: 'contentScript',
-      precision,
-      symbol,
-      maxsupply,
-      description,
-      receiver,
-      capabilityflags,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress
+    return new Promise(async (resolve, reject) => {
+      const callback = (event: any) => {
+        if (event.data.type === 'TRANSACTION_ERROR' && event.data.target === 'connectionsController') {
+          console.log('event data', event.data, event.data.error)
+          reject(event.data.error);
+        }
+  
+        return null;
+      }
+      
+      window.addEventListener('message', callback);
+      
+      await sendMessage({
+        type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
+        target: 'connectionsController',
+        freeze: true,
+        eventResult: 'complete'
+      }, {
+        type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
+        target: 'contentScript',
+        precision,
+        symbol,
+        maxsupply,
+        description,
+        receiver,
+        capabilityflags,
+        notarydetails,
+        auxfeedetails,
+        notaryAddress,
+        payoutAddress
+      });
+      
+      resolve('ok connections update')
+  
+      window.removeEventListener('message', callback);
     });
   }
 
   const handleIssueSPT = async (amount: number, assetGuid: string) => {
-    return await sendMessage({
-      type: 'ISSUE_SPT',
-      target: 'connectionsController',
-      freeze: true,
-      eventResult: 'complete'
-    }, {
-      type: 'ISSUE_SPT',
-      target: 'contentScript',
-      amount,
-      assetGuid
+    return new Promise(async (resolve, reject) => {
+      const callback = (event: any) => {
+        if (event.data.type === 'TRANSACTION_ERROR' && event.data.target === 'connectionsController') {
+          console.log('event data', event.data, event.data.error)
+          reject(event.data.error);
+        }
+  
+        return null;
+      }
+      
+      window.addEventListener('message', callback);
+      
+      await sendMessage({
+        type: 'ISSUE_SPT',
+        target: 'connectionsController',
+        freeze: true,
+        eventResult: 'complete'
+      }, {
+        type: 'ISSUE_SPT',
+        target: 'contentScript',
+        amount,
+        assetGuid
+      });
+      
+      resolve('ok connections update')
+  
+      window.removeEventListener('message', callback);
     });
   }
 
   const handleCreateNFT = async (symbol: string, issuer: string, totalShares: number, description: string, notary?: boolean, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfee?: boolean, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notaryAddress?: string, payoutAddress?: string) => {
-    return await sendMessage({
-      type: 'CREATE_AND_ISSUE_NFT',
-      target: 'connectionsController',
-      freeze: true,
-      eventResult: 'complete'
-    }, {
-      type: 'CREATE_AND_ISSUE_NFT',
-      target: 'contentScript',
-      symbol,
-      issuer,
-      totalShares,
-      description,
-      notary,
-      notarydetails,
-      auxfee,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress
+    return new Promise(async (resolve, reject) => {
+      const callback = (event: any) => {
+        if (event.data.type === 'TRANSACTION_ERROR' && event.data.target === 'connectionsController') {
+          console.log('event data', event.data, event.data.error)
+          reject(event.data.error);
+        }
+  
+        return null;
+      }
+      
+      window.addEventListener('message', callback);
+      
+      await sendMessage({
+        type: 'CREATE_AND_ISSUE_NFT',
+        target: 'connectionsController',
+        freeze: true,
+        eventResult: 'complete'
+      }, {
+        type: 'CREATE_AND_ISSUE_NFT',
+        target: 'contentScript',
+        symbol,
+        issuer,
+        totalShares,
+        description,
+        notary,
+        notarydetails,
+        auxfee,
+        auxfeedetails,
+        notaryAddress,
+        payoutAddress
+      });
+      
+      resolve('ok connections update')
+  
+      window.removeEventListener('message', callback);
     });
   }
 
@@ -297,37 +348,83 @@ const ConnectionsController = (): IConnectionsController => {
   }
 
   const handleUpdateAsset = async (assetGuid: string, contract?: string | null, capabilityflags?: string | '0', description?: string | null, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean } | null, auxfeedetails?: { auxfeekeyid?: any, auxfees?: [{ bound?: any | 0, percent?: any | 0 }] } | null, notaryAddress?: string | null, payoutAddress?: string | null) => {
-    return await sendMessage({
-      type: 'UPDATE_ASSET',
-      target: 'connectionsController',
-      freeze: true,
-      eventResult: 'complete'
-    }, {
-      type: 'UPDATE_ASSET',
-      target: 'contentScript',
-      assetGuid,
-      contract: contract || null,
-      capabilityflags: capabilityflags || '0',
-      description: description || null,
-      notarydetails: notarydetails || null,
-      auxfeedetails: auxfeedetails || null,
-      notaryAddress: notaryAddress || null,
-      payoutAddress: payoutAddress || null
+    return new Promise(async (resolve, reject) => {
+      const callback = (event: any) => {
+        if (event.data.type === 'TRANSACTION_ERROR' && event.data.target === 'connectionsController') {
+          console.log('event data', event.data, event.data.error)
+          reject(event.data.error);
+        }
+  
+        return null;
+      }
+      
+      window.addEventListener('message', callback);
+      
+      await sendMessage({
+        type: 'UPDATE_ASSET',
+        target: 'connectionsController',
+        freeze: true,
+        eventResult: 'complete'
+      }, {
+        type: 'UPDATE_ASSET',
+        target: 'contentScript',
+        assetGuid,
+        contract: contract || null,
+        capabilityflags: capabilityflags || '0',
+        description: description || null,
+        notarydetails: notarydetails || null,
+        auxfeedetails: auxfeedetails || null,
+        notaryAddress: notaryAddress || null,
+        payoutAddress: payoutAddress || null
+      });
+      
+      resolve('ok connections update')
+  
+      window.removeEventListener('message', callback);
     });
   }
 
+
   const handleTransferOwnership = async (assetGuid: string, newOwner: string) => {
-    return await sendMessage({
-      type: 'TRANSFER_OWNERSHIP',
-      target: 'connectionsController',
-      freeze: true,
-      eventResult: 'complete'
-    }, {
-      type: 'TRANSFER_OWNERSHIP',
-      target: 'contentScript',
-      assetGuid,
-      newOwner
+    return new Promise(async (resolve, reject) => {
+      const callback = (event: any) => {
+        if (event.data.type === 'TRANSACTION_ERROR' && event.data.target === 'connectionsController') {
+          console.log('event data', event.data, event.data.error)
+          reject(event.data.error);
+        }
+  
+        return null;
+      }
+      
+      window.addEventListener('message', callback);
+      
+      await sendMessage({
+        type: 'TRANSFER_OWNERSHIP',
+        target: 'connectionsController',
+        freeze: true,
+        eventResult: 'complete'
+      }, {
+        type: 'TRANSFER_OWNERSHIP',
+        target: 'contentScript',
+        assetGuid,
+        newOwner
+      });
+      
+      resolve('ok connections update')
+  
+      window.removeEventListener('message', callback);
     });
+    // return await sendMessage({
+    //   type: 'TRANSFER_OWNERSHIP',
+    //   target: 'connectionsController',
+    //   freeze: true,
+    //   eventResult: 'complete'
+    // }, {
+    //   type: 'TRANSFER_OWNERSHIP',
+    //   target: 'contentScript',
+    //   assetGuid,
+    //   newOwner
+    // });
   }
 
   const isValidSYSAddress = async (address: string) => {

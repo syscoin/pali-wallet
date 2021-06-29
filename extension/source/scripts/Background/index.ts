@@ -156,14 +156,16 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'WALLET_ERROR' && target == 'background') {
         const {
           transactionError,
-          invalidParams
+          invalidParams,
+          message
         } = request;
         
         browser.tabs.sendMessage(tabId, {
           type: 'WALLET_ERROR',
           target: 'contentScript',
           transactionError,
-          invalidParams
+          invalidParams,
+          message
         });
       }
       

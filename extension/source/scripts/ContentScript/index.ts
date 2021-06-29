@@ -4,6 +4,7 @@ declare global {
   interface Window {
     SyscoinWallet: any;
     connectionConfirmed: boolean;
+    SysWalletError: any;
   }
 }
 
@@ -125,6 +126,10 @@ window.addEventListener('message', (event) => {
   }
   
   if (type == 'WALLET_ERROR' && target == 'contentScript') {
+    console.log('error event', event.data)
+    
+    throw new Error('transactionerrror')
+    
     window.dispatchEvent(new CustomEvent('SysWalletErrors', { 
       detail: {
         SysWalletErrors: {
@@ -318,6 +323,9 @@ window.addEventListener('message', (event) => {
       payoutAddress
     }).then((response) => {
       console.log('response update', response)
+    }).catch((error) => {
+      console.log('error message update token', error)
+      throw new Error(error)
     });
 
     return;
@@ -407,23 +415,19 @@ browser.runtime.onMessage.addListener((request) => {
     isValidSYSAddress,
     holdingsData,
     assetData,
-    transactionError,
-    invalidParams,
-    message
   } = request;
   
     
   if (type == 'WALLET_ERROR' && target == 'contentScript') {
-    console.log('wallet error', request)
-    window.dispatchEvent(new CustomEvent('SysWalletErrors', { 
-      detail: {
-        SysWalletErrors: {
-          transactionError,
-          invalidParams,
-          message
-        }
-      }
-    }));
+    console.log('error event', request)
+    
+    window.postMessage({
+      type: 'TRANSACTION_ERROR',
+      target: 'connectionsController',
+      error: request.message
+    }, '*');
+    
+    return;
   }
 
   if (type == 'DATA_FOR_SPT' && target == 'contentScript') {

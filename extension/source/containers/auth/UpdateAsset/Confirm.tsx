@@ -75,6 +75,7 @@ const UpdateConfirm = () => {
 
       controller.wallet.account.confirmUpdateAssetTransaction().then((error: any) => {
         if (error) {
+          console.log('error', error)
           alert.removeAll();
           alert.error('Can\'t update token. Try again later.');
 
@@ -83,23 +84,15 @@ const UpdateConfirm = () => {
             target: 'background',
             transactionError: true,
             invalidParams: false,
-            message: `TransactionError: ${error}`
+            message: "Can't update token. Try again later"
           });
-
+          
           setTimeout(() => {
             handleCancelTransactionOnSite();
           }, 4000);
-
+          
           return;
         }
-
-        browser.runtime.sendMessage({
-          type: 'WALLET_ERROR',
-          target: 'background',
-          transactionError: false,
-          invalidParams: false,
-          message: 'Everything is fine, transaction completed.'
-        });
         
         isPending = false;
 

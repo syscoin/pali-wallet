@@ -90,7 +90,7 @@ const Create = () => {
             target: 'background',
             transactionError: true,
             invalidParams: false,
-            message: `TransactionError: ${error}`
+            message: "Can't create token. Try again later"
           });
 
           if (newSPT) {
@@ -106,14 +106,6 @@ const Create = () => {
 
           return;
         }
-
-        browser.runtime.sendMessage({
-          type: 'WALLET_ERROR',
-          target: 'background',
-          transactionError: false,
-          invalidParams: false,
-          message: 'Everything is fine, transaction completed.'
-        });
 
         isPending = false;
         
