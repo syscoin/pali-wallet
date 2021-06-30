@@ -57,10 +57,13 @@ export default function IssueSPT() {
   
       await schema
         .validate(dataYup, { abortEarly: false })
-        .then(() => {
+        .then(async () => {
+          if(amount < (asset.maxSupply - asset.totalSupply)) {
           controller && controller.handleIssueSPT(
             Number(amount),
              assetGuid)
+            return}
+            toast.error("Invalid Quantity to Issue")
         })
         .catch((err) => {
           err.errors.forEach((error) => {
