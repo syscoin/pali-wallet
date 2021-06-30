@@ -51,7 +51,9 @@ export default function Update() {
         assetGuid,
         description,
         ...Object.values(advancedOptions)
-      ));
+      )).catch((error) => {
+        toast.error(error);
+       });
 
    event.target.reset();
 

@@ -60,7 +60,9 @@ export default function IssueSPT() {
         .then(() => {
           controller && controller.handleIssueSPT(
             Number(amount),
-             assetGuid);
+             assetGuid).catch((error) => {
+              toast.error(error);
+             });
         })
         .catch((err) => {
           err.errors.forEach((error) => {

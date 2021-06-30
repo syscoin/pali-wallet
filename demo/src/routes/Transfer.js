@@ -51,7 +51,10 @@ export default function Transfer() {
     await schema
     .validate(dataYup, { abortEarly: false })
     .then(() => {
-       controller && controller.handleTransferOwnership(assetGuid, newOwner);
+       controller && controller.handleTransferOwnership(assetGuid, newOwner)
+       .catch((error) => {
+        toast.error(error);
+       });
       event.target.reset();
     })
     .catch((err) => {

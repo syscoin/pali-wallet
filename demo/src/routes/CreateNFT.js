@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { useSelector } from "react-redux";
 import { NFTStorage, File } from "nft.storage";
 import * as yup from 'yup';
@@ -9,6 +9,7 @@ import AdvancedPanel from "../components/AdvancedPanel";
 import PreviewFile from "../components/PreviewFile";
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.min.css'; 
+import ipfsUpload from "../utils/ipfsUpload";
 
 export default function CreateNFT() {
   const [symbol, setSymbol] = useState("");
@@ -53,7 +54,9 @@ export default function CreateNFT() {
         Number(totalShares),
         description,
         ...Object.values(advancedOptions)
-      ); 
+      ).catch((error) => {
+        toast.error(error);
+       }); 
        event.target.reset();   
     })
     .catch( (err) => {
@@ -69,41 +72,52 @@ export default function CreateNFT() {
     };
   };
 
-  const handleInputFile = async (event) => {
-    const client = new NFTStorage({ token });
-    const _file = event.target.files[0];
-
-    if (
-      ![
-        "image/svg+xml",
-        "image/gif",
-        "image/jpg",
-        "image/png",
-        "image/jpeg",
-        // "video/mp4",
-        // "audio/mpeg",
-        // "audio/x-m4a",
-      ].includes(_file.type)
-    ) {
-      setError("Error: Only Imagem")
-      return;
+  async function upload(file) {
+    const dataIpfs = {
+      symbol,
     }
-    
-    setFile(_file);
-    setIsUploading(true);
-    setError("");
-    
-    const metadata = await client.store({
+    const schemaIpfs = yup.object().shape({
+        symbol: yup.string().required("Symbol is required, upload again!"),
+      });
+
+      await schemaIpfs
+      .validate(dataIpfs, { abortEarly: false })
+      .then(async () => {
+ 
+
+    const fileData = await ipfsUpload(file);
+
+    const metadata = JSON.stringify({
       name: symbol,
-      description,
-      image: new File([_file], _file.name, { type: _file.type }),
+      description: description,
+      file: `https://ipfs.io/ipfs/${fileData.value.cid}`,
     });
 
-    setIsUploading(false);
-    setMetadataDescription(
-      `https://ipfs.io/ipfs/${metadata.ipnft}/metadata.json`
-    );
-  };
+    const jsonFile = new File([metadata], "metadata.json", {
+      type: "application/json",
+    });
+
+    const metaData = await ipfsUpload(jsonFile);
+
+    setMetadataDescription(`https://ipfs.io/ipfs/${metaData.value.cid}`);
+
+      })
+      .catch( (err) => {
+        err.errors.forEach((error) => {
+          toast.error(error);
+        });
+      });
+
+
+
+
+
+  }
+
+  useEffect(() => {
+    file && upload(file);
+  }, [file]);
+
 
   function copyToClipboard(e) {
     textAreaRef.current.select();
@@ -205,7 +219,7 @@ export default function CreateNFT() {
             <div className="form-group col-33 col-md-50 col-sm-100">
               <div className="fileupload">
                 <label htmlFor="logo">Upload to IPFS</label>
-                <input onChange={handleInputFile} type="file" id="logo" />
+                <input onChange={(e) => setFile(e.target.files[0])} type="file" id="logo" />
                 {!isUploading ? (
                   file ? (
                     <PreviewFile file={file} />
@@ -235,6 +249,7 @@ export default function CreateNFT() {
                 id="metadataDescription"
                 readOnly
                 ref={textAreaRef}
+                
               />
             </div>
             <div className="form-group col-33 col-md-50 col-sm-100">

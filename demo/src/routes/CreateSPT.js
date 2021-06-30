@@ -30,7 +30,7 @@ export default function CreateSPT() {
       precision: yup.number().required(),
       symbol: yup.string().required("Symbol is required!"),
       maxSupply: yup.number().required(),
-      description: yup.string().required("Description is required!"),
+      // description: yup.string().required("Description is required!"),
       receiver: yup.string(),
     });
 
@@ -47,7 +47,9 @@ export default function CreateSPT() {
         description,
         receiver || connectedAccountAddress,
         ...Object.values(advancedOptions)
-      );
+      ).catch((error) => {
+        toast.error(error);
+       });
 
       event.target.reset();  
     })
