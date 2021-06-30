@@ -47,17 +47,19 @@ export default function CreateNFT() {
 
     await schema
     .validate(dataYup, { abortEarly: false })
-    .then(() => {
+    .then(async() => {
+      if (await controller.isValidSYSAddress(issuer || connectedAccountAddress)) {
       controller.handleCreateNFT(
         symbol,
         issuer || connectedAccountAddress,
         Number(totalShares),
         description,
         ...Object.values(advancedOptions)
-      ).catch((error) => {
-        toast.error(error);
-       }); 
-       event.target.reset();   
+      )
+         event.target.reset();
+        return
+      }
+      toast.error("Invalid Address")
     })
     .catch( (err) => {
       err.errors.forEach((error) => {

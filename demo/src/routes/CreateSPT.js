@@ -39,19 +39,20 @@ export default function CreateSPT() {
 
     await schema
     .validate(dataYup, { abortEarly: false })
-    .then(() => {
+    .then(async() => {
+      if (await controller.isValidSYSAddress(receiver|| connectedAccountAddress)) {
        controller.handleCreateToken(
         Number(precision),
         symbol,
         Number(maxSupply),
         description,
         receiver || connectedAccountAddress,
-        ...Object.values(advancedOptions)
-      ).catch((error) => {
-        toast.error(error);
-       });
-
-      event.target.reset();  
+        ...Object.values(advancedOptions));
+ 
+        event.target.reset();
+        return
+      }
+      toast.error("Invalid Address")
     })
     .catch( (err) => {
       err.errors.forEach((error) => {
