@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, FC } from 'react';
 import clsx from 'clsx';
 
 import Layout from 'containers/common/Layout';
@@ -6,22 +6,34 @@ import Button from 'components/Button';
 import { useController } from 'hooks/index';
 import TextInput from 'components/TextInput';
 
-import styles from './UpdateAsset.scss';
+import styles from './SiteTransaction.scss';
 import { browser } from 'webextension-polyfill-ts';
 import Switch from "react-switch";
 import { useHistory } from 'react-router-dom';
-import SiteTransaction from '../SiteTransaction';
 
-const UpdateAsset = () => {
+interface ISiteTransaction {
+  callbackToSetDataFromWallet: any;
+  messageToSetDataFromWallet: string;
+  confirmRoute: string;
+  itemStringToClearData: string;
+  layoutTitle: string;
+}
+
+const SiteTransaction: FC<ISiteTransaction> = ({
+  callbackToSetDataFromWallet,
+  messageToSetDataFromWallet,
+  confirmRoute,
+  itemStringToClearData,
+  layoutTitle
+}) => {
   const controller = useController();
-  const history = useHistory()
+  const history = useHistory();
 
-  const updateAsset = controller.wallet.account.getNewUpdateAsset();
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0);
   const [rbf, setRbf] = useState(false);
   const [recommend, setRecommend] = useState(0.00001);
-  const [updatingAsset, setUpdatingAsset] = useState(false);
+  const [transacting, setTransacting] = useState(false);
 
   const handleGetFee = () => {
     controller.wallet.account.getRecommendFee().then((response: any) => {
@@ -30,21 +42,21 @@ const UpdateAsset = () => {
     });
   };
   
-  const handleMessageToUpdateAsset = () => {
-    controller.wallet.account.setDataFromWalletToUpdateAsset({
+  const handleMessageToSetDataFromWallet = () => {
+    callbackToSetDataFromWallet({
       fee,
       rbf
-    });
+    })
 
     browser.runtime.sendMessage({
-      type: 'DATA_FROM_WALLET_TO_UPDATE_TOKEN',
+      type: messageToSetDataFromWallet,
       target: 'background'
     });
 
-    setUpdatingAsset(true);
+    setTransacting(true);
     setLoading(true);
 
-    history.push('/updateAsset/confirm');
+    history.push(confirmRoute);
   }
 
   const handleTypeChanged = useCallback((rbf: boolean) => {
@@ -58,7 +70,7 @@ const UpdateAsset = () => {
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
       target: "background",
-      item: updateAsset ? 'updateAssetItem' : null
+      item: transacting ? itemStringToClearData : null
     });
 
     browser.runtime.sendMessage({
@@ -69,16 +81,9 @@ const UpdateAsset = () => {
 
   return (
     <div>
-      <SiteTransaction
-        callbackToSetDataFromWallet={controller.wallet.account.setDataFromWalletToUpdateAsset}
-        messageToSetDataFromWallet="DATA_FROM_WALLET_TO_UPDATE_TOKEN"
-        confirmRoute="/updateAsset/confirm"
-        itemStringToClearData="updateAssetItem"
-        layoutTitle="Update token"
-      />
-      {/* <div>
+      <div>
         <div>
-          <Layout title="Update Token" showLogo>
+          <Layout title={layoutTitle} showLogo>
             <form className={styles.wrapper}>
               <label htmlFor="fee">Fee</label>
 
@@ -130,9 +135,9 @@ const UpdateAsset = () => {
                     type="button"
                     theme="btn-outline-primary"
                     variant={styles.button}
-                    onClick={handleMessageToUpdateAsset}
+                    onClick={handleMessageToSetDataFromWallet}
                     disabled={!fee}
-                    loading={(updatingAsset && loading)}
+                    loading={(transacting && loading)}
                   >
                     Next
                   </Button>
@@ -141,9 +146,9 @@ const UpdateAsset = () => {
             </form>
           </Layout>
         </div>
-      </div> */}
+      </div>
     </div>
   );
 }
 
-export default UpdateAsset;
+export default SiteTransaction;

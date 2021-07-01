@@ -12,7 +12,7 @@ import Start from 'containers/auth/Start';
 import Home from 'containers/auth/Home';
 import Send, { SendConfirm } from 'containers/auth/Send';
 import UpdateAsset, { UpdateConfirm } from 'containers/auth/UpdateAsset';
-import Create from 'containers/auth/Create';
+import Create, { CreateTokenConfirm } from 'containers/auth/Create';
 import IssueAsset from 'containers/auth/IssueAsset';
 import IssueNFT from 'containers/auth/IssueNFT';
 // import UpdateAsset from 'containers/auth/UpdateAsset';
@@ -207,6 +207,9 @@ const Auth = () => {
               <Route path="/send/confirm" component={SendConfirm} exact />
             )}
             {isUnlocked && <Route path="/create" component={Create} exact />}
+            {isUnlocked && (
+              <Route path="/create/confirm" component={CreateTokenConfirm} exact />
+            )}
             {isUnlocked && <Route path="/issueAsset" component={IssueAsset} exact />}
             {isUnlocked && <Route path="/issueNFT" component={IssueNFT} exact />}
             {isUnlocked && <Route path="/updateAsset" component={UpdateAsset} exact />}

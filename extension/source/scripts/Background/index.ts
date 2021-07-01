@@ -101,12 +101,6 @@ browser.runtime.onInstalled.addListener(async () => {
       type,
       target
     } = request;
-    
-    const views = browser.extension.getViews();
-  
-    for (let view of views) {
-      console.log('view', view)
-    }
 
     const tabs = await browser.tabs.query({
       active: true,

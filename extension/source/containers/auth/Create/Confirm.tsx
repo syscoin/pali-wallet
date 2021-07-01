@@ -11,7 +11,7 @@ import { ellipsis, formatURL } from '../helpers';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 
-import styles from './UpdateAsset.scss';
+import styles from './Create.scss';
 import { browser } from 'webextension-polyfill-ts';
 import { getHost } from '../../../scripts/Background/helpers';
 import DownArrowIcon from '@material-ui/icons/ExpandMore';
@@ -19,7 +19,7 @@ import Spinner from '@material-ui/core/CircularProgress';
 import { useHistory } from 'react-router';
 import { ConfirmTransaction } from '../SiteTransaction';
 
-const UpdateConfirm = () => {
+const CreateTokenConfirm = () => {
   const controller = useController();
   const history = useHistory();
 
@@ -27,11 +27,12 @@ const UpdateConfirm = () => {
     (state: RootState) => state.wallet
   );
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
-  const updateAsset = controller.wallet.account.getTransactionItem().updateAssetItem;
+  const newSPT = controller.wallet.account.getTransactionItem().newSPT;
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [expanded, setExpanded] = useState<boolean>(false);
   const [loadingConfirm, setLoadingConfirm] = useState<boolean>(false);
+  const [dataToRender, setDataToRender] = useState<Array<any>>([]);
   const alert = useAlert();
 
   useEffect(() => {
@@ -44,7 +45,7 @@ const UpdateConfirm = () => {
 
   const handleClosePopup = () => {
     history.push('/home');
-    
+
     browser.runtime.sendMessage({
       type: "CLOSE_POPUP",
       target: "background"
@@ -53,11 +54,11 @@ const UpdateConfirm = () => {
 
   const handleCancelTransactionOnSite = () => {
     history.push('/home');
-    
+
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
       target: "background",
-      item: updateAsset ? 'updateAssetItem' : null
+      item: newSPT ? 'newSPT' : null
     });
 
     browser.runtime.sendMessage({
@@ -74,39 +75,39 @@ const UpdateConfirm = () => {
       setLoadingConfirm(true);
       isPending = true;
 
-      controller.wallet.account.confirmUpdateAssetTransaction().then((error: any) => {
+      controller.wallet.account.confirmNewSPT().then((error: any) => {
         if (error) {
           console.log('error', error)
           alert.removeAll();
-          alert.error('Can\'t update token. Try again later.');
+          alert.error('Can\'t create token. Try again later.');
 
           browser.runtime.sendMessage({
             type: 'WALLET_ERROR',
             target: 'background',
             transactionError: true,
             invalidParams: false,
-            message: "Can't update token. Try again later"
+            message: "Can't create token. Try again later"
           });
-          
+
           setTimeout(() => {
             handleCancelTransactionOnSite();
           }, 4000);
-          
+
           return;
         }
-        
+
         isPending = false;
 
         setConfirmed(true);
         setLoading(false);
         setLoadingConfirm(false);
       });
-      
+
       setTimeout(() => {
         if (isPending && !confirmed) {
           alert.removeAll();
-          alert.error('Can\'t update token. Please, try again later.');
-          
+          alert.error('Can\'t create token. Please, try again later.');
+
           setTimeout(() => {
             handleCancelTransactionOnSite();
           }, 4000);
@@ -115,19 +116,53 @@ const UpdateConfirm = () => {
     }
   }
   
-  return (
-    <div>
-      <ConfirmTransaction
-        transactionItem="updateAssetItem"
-        itemStringToClearData="updateAssetItem"
-        confirmTransaction={controller.wallet.account.confirmUpdateAssetTransaction}
-        errorMessage="Can\'t update token. Try again later."
-        layoutTitle="Confirm token update"
-        // data={dataToRender}
-        data={updateAsset}
-      />
-    </div>
-  )
+  // useEffect(() => {
+    // console.log('dat to render useeffect', dataToRender)
+    // if (newSPT) {
+    //   Object.entries(newSPT).map(([key, value]) => {
+    //     console.log('key', key, 'value', value)
+    //     console.log('data to render before', dataToRender)
+        
+    //     if (!dataToRender.includes({ label: key, value })) {
+    //       setDataToRender([
+    //         ...dataToRender,
+    //         dataToRender.push({
+    //           label: key,
+    //           value
+    //         }),
+    //       ]);
+    //     }
+        
+    //     for (let item of dataToRender) {
+    //       console.log('item from data to render', item)
+    //     }
+        
+    //     console.log('data to render after', dataToRender)
+        
+    //     return;
+        
+        
+        
+    //   });
+      
+//       uxfeedetails: undefined
+// capabilityflags: 127
+// description: "new description to test 9"
+// fee: 0.00001
+// maxsupply: 10
+// notaryAddress: undefined
+// notarydetails: undefined
+// payoutAddress: undefined
+// precision: 8
+// rbf: false
+// receiver: "tsys1qrmf32mnr9k6kar76nee2hrgc5znnj8slq4n9ju"
+// symbol: "banana"
+
+      
+  //   }
+  // }, [
+  //   newSPT
+  // ]);
 
   // return confirmed ? (
   //   <Layout title="Your transaction is underway" linkTo="/remind" showLogo>
@@ -146,31 +181,42 @@ const UpdateConfirm = () => {
   //   </Layout>
   // ) : (
   //   <div>
-  //     {updateAsset && (
+  //     {newSPT && (
   //       <div>
-  //         <Layout title="Update Token" showLogo>
+  //         <Layout title="Create Token" showLogo>
   //           <div className={styles.wrapper}>
   //             <div>
   //               <section className={styles.data}>
   //                 <div className={styles.flex}>
-  //                   <p>Asset GUID</p>
-  //                   <p>{updateAsset?.assetGuid}</p>
+  //                   <p>Precision</p>
+  //                   <p>{newSPT?.precision}</p>
+  //                 </div>
+
+  //                 <div className={styles.flex}>
+  //                   <p>Symbol</p>
+  //                   <p>{newSPT?.symbol}</p>
   //                 </div>
 
   //                 <div className={styles.flex}>
   //                   <p>Z-DAG</p>
-  //                   <p>{updateAsset?.rbf ? 'Yes' : 'No'}</p>
+  //                   <p>{newSPT?.rbf ? 'Yes' : 'No'}</p>
+  //                 </div>
+
+  //                 <div className={styles.flex}>
+  //                   <p>Receiver</p>
+  //                   <p>{ellipsis(newSPT?.receiver)}</p>
   //                 </div>
 
   //                 <div className={styles.flex}>
   //                   <p>Fee</p>
-  //                   <p>{updateAsset?.fee}</p>
+  //                   <p>{newSPT?.fee}</p>
   //                 </div>
 
   //                 <div className={styles.flex}>
   //                   <p>Description</p>
-  //                   <p>{updateAsset?.description}</p>
+  //                   <p>{newSPT?.description}</p>
   //                 </div>
+
 
   //                 <div className={styles.flex}>
   //                   <p>Site</p>
@@ -179,9 +225,8 @@ const UpdateConfirm = () => {
 
   //                 <div className={styles.flex}>
   //                   <p>Max total</p>
-  //                   <p>{updateAsset?.fee} SYS</p>
+  //                   <p>{newSPT?.fee}</p>
   //                 </div>
-
 
   //                 <div
   //                   className={styles.select}
@@ -195,64 +240,65 @@ const UpdateConfirm = () => {
   //                       Advanced options
   //                     <DownArrowIcon className={styles.arrow} />
   //                     </span>
+
   //                     <ul className={styles.options}>
-  //                       {updateAsset?.capabilityflags && (
+  //                       {newSPT?.capabilityflags && (
   //                         <div className={styles.flex}>
   //                           <p>Capability</p>
-  //                           <p>{updateAsset?.capabilityflags}</p>
+  //                           <p>{newSPT?.capabilityflags}</p>
   //                         </div>
   //                       )}
 
-  //                       {updateAsset?.notaryAddress && (
+  //                       {newSPT?.notaryAddress && (
   //                         <div className={styles.flex}>
   //                           <p>Notary address</p>
-  //                           <p>{ellipsis(updateAsset?.notaryAddress)}</p>
+  //                           <p>{ellipsis(newSPT?.notaryAddress)}</p>
   //                         </div>
   //                       )}
 
-  //                       {updateAsset?.payoutAddress && (
+  //                       {newSPT?.payoutAddress && (
   //                         <div className={styles.flex}>
   //                           <p>Payout address</p>
-  //                           <p>{ellipsis(updateAsset?.payoutAddress)}</p>
+  //                           <p>{ellipsis(newSPT?.payoutAddress)}</p>
   //                         </div>
   //                       )}
 
-  //                       {updateAsset?.notarydetails && (
+  //                       {newSPT?.notarydetails && (
   //                         <div>
   //                           <p>Notary details</p>
   //                           <div className={styles.flex}>
   //                             <p>Endpoint</p>
-  //                             <p>{formatURL(updateAsset?.notarydetails.endpoint) || 'None'}</p>
+  //                             <p>{formatURL(newSPT?.notarydetails.endpoint) || 'None'}</p>
   //                           </div>
 
   //                           <div className={styles.flex}>
   //                             <p>Instant transfers</p>
-  //                             <p>{updateAsset?.notarydetails.instanttransfers || 0}</p>
+  //                             <p>{newSPT?.notarydetails.instanttransfers || 0}</p>
   //                           </div>
 
   //                           <div className={styles.flex}>
   //                             <p>HD required</p>
-  //                             <p>{updateAsset?.notarydetails.hdrequired ? 'Yes' : 'No'}</p>
+  //                             <p>{newSPT?.notarydetails.hdrequired ? 'Yes' : 'No'}</p>
   //                           </div>
   //                         </div>
   //                       )}
 
-  //                       {updateAsset?.auxfeedeetails && (
+  //                       {newSPT?.auxfeedeetails && (
   //                         <div>
   //                           <p>Aux fee details</p>
   //                           <div className={styles.flex}>
   //                             <p>Aux fee key id</p>
-  //                             <p>{updateAsset?.auxfeedeetails.auxfeekeyid ? updateAsset?.auxfeedeetails.auxfeekeyid : 'None'}</p>
+  //                             <p>{newSPT?.auxfeedeetails.auxfeekeyid ? newSPT?.auxfeedeetails.auxfeekeyid : 'None'}</p>
   //                           </div>
 
   //                           <div className={styles.flex}>
   //                             <p>Bound</p>
-  //                             <p>{updateAsset?.auxfeedeetails.auxfees[0].bound ? updateAsset?.auxfeedeetails.auxfees[0].bound : 0}</p>
+  //                             <p>{newSPT?.auxfeedeetails.auxfees[0].bound ? newSPT?.auxfeedeetails.auxfees[0].bound : 0}</p>
   //                           </div>
 
   //                           <div className={styles.flex}>
   //                             <p>Percent</p>
-  //                             <p>{updateAsset?.auxfeedeetails.auxfees[0].percent ? updateAsset?.auxfeedeetails.auxfees[0].percent : 0}</p>
+  //                             <p>{newSPT?.auxfeedeetails.auxfees[0].percent ? newSPT?.auxfeedeetails.auxfees[0].percent : 0}</p>
   //                           </div>
   //                         </div>
   //                       )}
@@ -291,6 +337,20 @@ const UpdateConfirm = () => {
   //     )}
   //   </div>
   // );
+  
+  return (
+    <div>
+      <ConfirmTransaction
+        transactionItem="newSPT"
+        itemStringToClearData="newSPT"
+        confirmTransaction={controller.wallet.account.confirmNewSPT}
+        errorMessage="Can\'t create token. Try again later."
+        layoutTitle="Confirm token creation"
+        // data={dataToRender}
+        data={newSPT}
+      />
+    </div>
+  )
 };
 
-export default UpdateConfirm;
+export default CreateTokenConfirm;
