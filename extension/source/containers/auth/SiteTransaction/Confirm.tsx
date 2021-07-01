@@ -75,6 +75,14 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
         
       });
       
+      setDataToRender([
+        ...dataToRender,
+        dataToRender.push({
+          label: "last",
+          value: "value"
+        }),
+      ]);
+      
       console.log('data to render after push', dataToRender)
       
       // Object.freeze(dataToRender)
@@ -97,16 +105,6 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   }, [
     data
   ]);
-  
-  const RenderData = () => {
-    return dataToRender.map((item: any) => {
-       return <div key={item.label} className={styles.flex}>
-       <p>{item.label}</p>
-       <p>{item.value}</p>
-     </div>
-     
-    })
-  }
 
   const handleClosePopup = () => {
     history.push('/home');
@@ -204,34 +202,46 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
             <div className={styles.wrapper}>
               <div>
                 <section className={styles.data}>
-                  {RenderData()}
                   {dataToRender.map((item: any) => {
-                    console.log(item)
-                     return (<div key={item.label} className={styles.flex}>
-                     <p>{item.label}</p>
-                     <p>{item.value}</p>
-                   </div>)
-                    // if (item.label) {
-                    //   if (item.label === "receiver") {
-                    //     return (
-                    //       <div key={item.label} className={styles.flex}>
-                    //         <p>{item.label}</p>
-                    //         <p>{ellipsis(item.value)}</p>
-                    //       </div>
-                    //     )
-                    //   }
+                    if (item.label) {
+                      if (item.label === "receiver") {
+                        return (
+                          <div key={item.label} className={styles.flex}>
+                            <p>{item.label}</p>
+                            <p>{ellipsis(item.value)}</p>
+                          </div>
+                        )
+                      }
                       
-                    //   if (item.value !== undefined) {
-                    //     return (
-                    //       <div key={item.label} className={styles.flex}>
-                    //         <p>{item.label}</p>
-                    //         <p>{item.value}</p>
-                    //       </div>
-                    //     )
-                    //   }
+                      if (item.label === "rbf") {
+                        return (
+                          <div key={item.label} className={styles.flex}>
+                            <p>{item.label}</p>
+                            <p>{item.value ? 'Yes' : 'No'}</p>
+                          </div>
+                        )
+                      }
                       
-                    //   return null;
-                    // }
+                      if (item.label == "endpoint") {
+                        return (
+                          <div key={item.label} className={styles.flex}>
+                            <p>{item.label}</p>
+                            <p>{formatURL(item.value)}</p>
+                          </div>
+                        )
+                      }
+                      
+                      if (item.value !== null) {
+                        return (
+                          <div key={item.label} className={styles.flex}>
+                            <p>{item.label}</p>
+                            <p>{item.value}</p>
+                          </div>
+                        )
+                      }
+                      
+                      return null;
+                    }
                   })}
 
                   <div className={styles.flex}>

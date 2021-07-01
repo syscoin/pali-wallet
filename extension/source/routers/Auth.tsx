@@ -13,8 +13,8 @@ import Home from 'containers/auth/Home';
 import Send, { SendConfirm } from 'containers/auth/Send';
 import UpdateAsset, { UpdateConfirm } from 'containers/auth/UpdateAsset';
 import Create, { CreateTokenConfirm } from 'containers/auth/Create';
-import IssueAsset from 'containers/auth/IssueAsset';
-import IssueNFT from 'containers/auth/IssueNFT';
+import IssueAsset, { IssueTokenConfirm } from 'containers/auth/IssueAsset';
+import IssueNFT, { CreateAndIssueNFTConfirm } from 'containers/auth/IssueNFT';
 // import UpdateAsset from 'containers/auth/UpdateAsset';
 import Receive from 'containers/auth/Receive';
 import Import from 'containers/common/Import';
@@ -27,7 +27,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { getHost } from '../scripts/Background/helpers';
-import TransferOwnership from 'containers/auth/TransferOwnership';
+import TransferOwnership, { TransferOwnershipConfirm } from 'containers/auth/TransferOwnership';
 
 const Auth = () => {
   const location = useLocation();
@@ -211,12 +211,21 @@ const Auth = () => {
               <Route path="/create/confirm" component={CreateTokenConfirm} exact />
             )}
             {isUnlocked && <Route path="/issueAsset" component={IssueAsset} exact />}
+            {isUnlocked && (
+              <Route path="/issueAsset/confirm" component={IssueTokenConfirm} exact />
+            )}
             {isUnlocked && <Route path="/issueNFT" component={IssueNFT} exact />}
+            {isUnlocked && (
+              <Route path="/issueNFT/confirm" component={CreateAndIssueNFTConfirm} exact />
+            )}
             {isUnlocked && <Route path="/updateAsset" component={UpdateAsset} exact />}
             {isUnlocked && (
               <Route path="/updateAsset/confirm" component={UpdateConfirm} exact />
             )}
             {isUnlocked && <Route path="/transferOwnership" component={TransferOwnership} exact />}
+            {isUnlocked && (
+              <Route path="/transferOwnership/confirm" component={TransferOwnershipConfirm} exact />
+            )}
             {isUnlocked && <Route path="/send" component={Send} exact />}
             {isUnlocked && (
               <Route
