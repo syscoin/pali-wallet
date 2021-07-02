@@ -1469,7 +1469,8 @@ const AccountController = (actions: {
           type,
           decimals,
           symbol,
-          assetGuid
+          assetGuid,
+          description
         } = asset;
 
         const assetId = sys.utils.getBaseAssetID(assetGuid);
@@ -1480,6 +1481,7 @@ const AccountController = (actions: {
           decimals,
           symbol,
           assetGuid,
+          description,
           baseAssetID: assetId,
           nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null
         }

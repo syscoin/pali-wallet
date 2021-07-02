@@ -95,20 +95,28 @@ export default function CreateSPT() {
       <div className="inner wider">
         <h1>Create a Standard Token (Fungible)</h1>
         <p>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus quam
-          ex, suscipit sagittis orci tincidunt, maximus posuere dui. Morbi porta
-          magna hendrerit velit molestie ultricies. Sed a tellus est. Quisque ut
-          velit quis orci rutrum congue ut euismod odio. Nunc non ipsum lacus.
-          Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
+        This tool helps you create a fungible token on Syscoin.
         </p>
         <p>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus quam
-          ex, suscipit sagittis orci tincidunt, maximus posuere dui. Morbi porta
-          magna hendrerit velit molestie ultricies. Sed a tellus est. Quisque ut
-          velit quis orci rutrum congue ut euismod odio. Nunc non ipsum lacus.
-          Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
+        A fungible token can be interchanged with other individual goods or assets of the same type. Each unit of a fungible token has the same value, and one coin of the asset is not distinguishable from another. Examples: SYS, BTC, stablecoins tokens like AUX and USDT, and currencies in general.
         </p>
-
+        <p>
+        Familiarize yourself with the backend process this tool uses, if you wish.
+        </p>
+        <p>
+        (backend process)
+        </p>
+        <p>
+        SysMint automatically follows this logic to create your fungible token:
+        </p>
+        <p>
+        1. `assetNew` is executed to create your token according to the specs you provided in the form. Ownership (management) of the asset is assigned to you by using a newly derived address within your wallet’s current selected account.
+        </p>     <p>
+        2. Once the transaction from step 1 settles onchain, `assetSend` is then executed to mint the quantity of tokens you specified in the field “Initial Circulating Supply”. These tokens are sent to the same address derived in step 1. If you left this field 0 (zero), this step will not be performed.
+        </p>
+        <p>
+        This process requires you to approve up to two transactions in your wallet. The first is for creating the asset, and the second is for issuing the initial quantity of tokens into circulation if you specified an “Initial Circulating Supply” greater than zero.
+        </p>
         <form onSubmit={handleCreateToken}>
           <div className="row">
             <div className="spacer col-100"></div>
@@ -177,11 +185,12 @@ export default function CreateSPT() {
                 className="form-control"
                 id="supply"
                 placeholder=""
-                autocomplete="off"
+                autoComplete="off"
               />
               <p className="help-block">Ceiling: (default 1)</p>
             </div>
-            <div className="form-group col-33 col-lg-100 lg-spaced-top">
+            
+            <div className="form-group col-33 col-lg-100 lg-spaced-top">{}
               <label htmlFor="initialsupply">
                 Initial Circulating Supply{" "}
                 <i className="icon-info-circled" title="help goes here"></i>
@@ -192,7 +201,7 @@ export default function CreateSPT() {
                 className="form-control"
                 id="initialsupply"
                 placeholder=""
-                autocomplete="off"
+                autoComplete="off"
               />
               <p className="help-block">
                 Ceiling: Max Supply. This value will be minted and sent to the
@@ -213,7 +222,7 @@ export default function CreateSPT() {
                 type="text"
                 id="description"
                 name="description"
-                autocomplete="off"
+                autoComplete="off"
               />
 
               <p className="help-block">Max length: 256 bytes</p>

@@ -128,8 +128,22 @@ export default function CreateNFT() {
     <section>
       <div className="inner wider">
         <h1>Create and Issue a NFT (Non-Fungible)</h1>
-        <p></p>
-        <p></p>
+        <p>This tool helps you create a non-fungible token on Syscoin.</p>
+        <p>A non-fungible token represents a unique digital asset. Examples include a specific piece of art, music, a collectible, a serialized gold bar, a land deed or other certificate, or anything else unique.</p>
+        <p>Syscoin gives you the option to make your NFT’s value divisible (fractional) on the blockchain. You do this by specifying that the NFT will have more than one share. This means more than one person can own a portion of the NFT’s value on the blockchain. One share will be represented as the smallest unit of precision (decimal place). To create a typical non-shared NFT, leave “Shares” set to 1.
+</p>
+        <p>Familiarize yourself with the backend process this tool uses, if you wish.
+(backend process)
+</p>
+        <p>SysMint automatically follows this logic to create your non-fungible token:
+</p>
+        <p>1. `assetNew` is executed to create your NFT according to the specs you provided in the form. Ownership (management) of the asset is assigned to you by using a newly derived address within your wallet’s current selected account. The asset’s precision is assigned according to your “Shares” selection (default 1 share = 0 precision). The URL to your digital asset is stored on-chain in your asset’s Description field.
+</p>
+        <p>2. `assetSend` is executed to issue your NFT into circulation. This issues and sends the NFT (always quantity 1) to the same address used in Step 1 of this process.
+
+</p>
+        <p>This process requires you to approve two transactions in your wallet. The first is for creating the NFT, and the second is for issuing it into circulation.
+</p>
 
         <form onSubmit={handleCreateNFT}>
           <div className="row">
@@ -137,7 +151,7 @@ export default function CreateNFT() {
           </div>
           <ToastContainer />
           <div className="form-line">
-            <div className="form-group col-25 col-md-50 col-sm-100">
+            <div className="form-group col-33 col-xs-100">
               <label htmlFor="symbol">
                 Symbol{" "}
                 <i className="icon-info-circled" title="help goes here"></i>
@@ -151,24 +165,10 @@ export default function CreateNFT() {
               />
               <p className="help-block">Max length: 8 alpha-numeric</p>
             </div>
-            <div className="form-group col-50 col-md-50 col-sm-100 sm-spaced-top">
-              <label htmlFor="owneraddr">
-                Issuer/Owner Address{" "}
-                <i className="icon-info-circled" title="help goes here"></i>
-              </label>
-              <input
-                onChange={handleInputChange(setIssuer)}
-                type="text"
-                className="form-control"
-                id="owneraddr"
-                placeholder=""
-              />
-              <p className="help-block">
-                Optional: If blank, the token will be assigned to new address in
-                your connected wallet
-              </p>
+            <div className="form-group col-50 col-sm-100 sm-spaced-top">
+   
             </div>
-            <div className="form-group col-25 col-md-100 md-spaced-top">
+            <div className="form-group col-67 col-xs-100 xs-spaced-top">
               <label htmlFor="shares">
                 Total Shares{" "}
                 <i className="icon-info-circled" title="help goes here"></i>
