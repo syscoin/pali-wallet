@@ -1,14 +1,14 @@
 import React, { useRef, useState, useEffect } from "react";
 import { useSelector } from "react-redux";
 import { NFTStorage, File } from "nft.storage";
-import * as yup from 'yup';
+import * as yup from "yup";
 import assetImg from "../images/asset.svg";
 import loaderImg from "../images/spinner.svg";
 import { token } from "../config";
 import AdvancedPanel from "../components/AdvancedPanel";
 import PreviewFile from "../components/PreviewFile";
-import { toast, ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.min.css'; 
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.min.css";
 import ipfsUpload from "../utils/ipfsUpload";
 
 export default function CreateNFT() {
@@ -33,40 +33,46 @@ export default function CreateNFT() {
     issuer,
     totalShares,
     metadataDescription,
-  }
-  
+  };
+
   const schema = yup.object().shape({
-      symbol: yup.string().required("Symbol is required!"),
-      totalShares: yup.number().required(),
-      metadataDescription: yup.string().required("Metadata URL is required!"),
-      issuer: yup.string(),
-    });
+    symbol: yup.string().required("Symbol is required!"),
+    totalShares: yup.number().required(),
+    metadataDescription: yup.string().required("Metadata URL is required!"),
+    issuer: yup.string(),
+  });
 
   const handleCreateNFT = async (event) => {
     event.preventDefault();
 
     await schema
-    .validate(dataYup, { abortEarly: false })
-    .then(async() => {
-      if (await controller.isValidSYSAddress(issuer || connectedAccountAddress)) {
-      controller.handleCreateNFT(
-        symbol,
-        issuer || connectedAccountAddress,
-        Number(totalShares),
-        description,
-        ...Object.values(advancedOptions)
-      )
-         event.target.reset();
-        return
-      }
-      toast.error("Invalid Address")
-    })
-    .catch( (err) => {
-      err.errors.forEach((error) => {
-        toast.error(error);
+      .validate(dataYup, { abortEarly: false })
+      .then(async () => {
+        if (
+          await controller.isValidSYSAddress(issuer || connectedAccountAddress)
+        ) {
+          controller
+            .handleCreateNFT(
+              symbol,
+              issuer || connectedAccountAddress,
+              Number(totalShares),
+              description,
+              ...Object.values(advancedOptions)
+            )
+            .catch((err) => {
+              toast.error(err);
+            });
+          event.target.reset();
+          return;
+        }
+        toast.error("Invalid Address");
+      })
+      .catch((err) => {
+        err.errors.forEach((error) => {
+          toast.error(error);
+        });
       });
-    });
-};
+  };
 
   const handleInputChange = (setState) => {
     return (event) => {
@@ -77,49 +83,40 @@ export default function CreateNFT() {
   async function upload(file) {
     const dataIpfs = {
       symbol,
-    }
+    };
     const schemaIpfs = yup.object().shape({
-        symbol: yup.string().required("Symbol is required, upload again!"),
-      });
+      symbol: yup.string().required("Symbol is required, upload again!"),
+    });
 
-      await schemaIpfs
+    await schemaIpfs
       .validate(dataIpfs, { abortEarly: false })
       .then(async () => {
- 
+        const fileData = await ipfsUpload(file);
 
-    const fileData = await ipfsUpload(file);
+        const metadata = JSON.stringify({
+          name: symbol,
+          description: description,
+          file: `https://ipfs.io/ipfs/${fileData.value.cid}`,
+        });
 
-    const metadata = JSON.stringify({
-      name: symbol,
-      description: description,
-      file: `https://ipfs.io/ipfs/${fileData.value.cid}`,
-    });
+        const jsonFile = new File([metadata], "metadata.json", {
+          type: "application/json",
+        });
 
-    const jsonFile = new File([metadata], "metadata.json", {
-      type: "application/json",
-    });
+        const metaData = await ipfsUpload(jsonFile);
 
-    const metaData = await ipfsUpload(jsonFile);
-
-    setMetadataDescription(`https://ipfs.io/ipfs/${metaData.value.cid}`);
-
+        setMetadataDescription(`https://ipfs.io/ipfs/${metaData.value.cid}`);
       })
-      .catch( (err) => {
+      .catch((err) => {
         err.errors.forEach((error) => {
           toast.error(error);
         });
       });
-
-
-
-
-
   }
 
   useEffect(() => {
     file && upload(file);
   }, [file]);
-
 
   function copyToClipboard(e) {
     textAreaRef.current.select();
@@ -128,25 +125,12 @@ export default function CreateNFT() {
     setCopySuccess("Copied!");
   }
 
-
   return (
     <section>
       <div className="inner wider">
         <h1>Create and Issue a NFT (Non-Fungible)</h1>
-        <p>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus quam
-          ex, suscipit sagittis orci tincidunt, maximus posuere dui. Morbi porta
-          magna hendrerit velit molestie ultricies. Sed a tellus est. Quisque ut
-          velit quis orci rutrum congue ut euismod odio. Nunc non ipsum lacus.
-          Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
-        </p>
-        <p>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus quam
-          ex, suscipit sagittis orci tincidunt, maximus posuere dui. Morbi porta
-          magna hendrerit velit molestie ultricies. Sed a tellus est. Quisque ut
-          velit quis orci rutrum congue ut euismod odio. Nunc non ipsum lacus.
-          Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
-        </p>
+        <p></p>
+        <p></p>
 
         <form onSubmit={handleCreateNFT}>
           <div className="row">
@@ -221,7 +205,11 @@ export default function CreateNFT() {
             <div className="form-group col-33 col-md-50 col-sm-100">
               <div className="fileupload">
                 <label htmlFor="logo">Upload to IPFS</label>
-                <input onChange={(e) => setFile(e.target.files[0])} type="file" id="logo" />
+                <input
+                  onChange={(e) => setFile(e.target.files[0])}
+                  type="file"
+                  id="logo"
+                />
                 {!isUploading ? (
                   file ? (
                     <PreviewFile file={file} />
@@ -231,9 +219,7 @@ export default function CreateNFT() {
                 ) : (
                   <img src={loaderImg} alt="" />
                 )}
-              <p className="help-block-2">
-              {error}
-              </p> 
+                <p className="help-block-2">{error}</p>
               </div>
             </div>
           </div>
@@ -251,7 +237,6 @@ export default function CreateNFT() {
                 id="metadataDescription"
                 readOnly
                 ref={textAreaRef}
-                
               />
             </div>
             <div className="form-group col-33 col-md-50 col-sm-100">

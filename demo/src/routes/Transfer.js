@@ -52,13 +52,18 @@ export default function Transfer() {
       .validate(dataYup, { abortEarly: false })
       .then(async () => {
         if (await controller.isValidSYSAddress(newOwner)) {
-          controller && controller.handleTransferOwnership(assetGuid, newOwner);
+          controller &&
+            controller
+              .handleTransferOwnership(assetGuid, newOwner)
+              .catch((err) => {
+                toast.error(err);
+              });
           event.target.reset();
-          return
+          return;
         }
-        toast.error("Invalid Address")
-
-      }).catch((err) => {
+        toast.error("Invalid Address");
+      })
+      .catch((err) => {
         err.errors.forEach((error) => {
           toast.error(error);
         });

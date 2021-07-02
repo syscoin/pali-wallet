@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
-import * as yup from 'yup'; 
+import * as yup from "yup";
 import assetImg from "../images/asset.svg";
 import AdvancedPanel from "../components/AdvancedPanel";
-import { toast, ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.min.css'; 
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.min.css";
 
 export default function CreateSPT() {
   const [precision, setPrecision] = useState(8);
@@ -23,44 +23,53 @@ export default function CreateSPT() {
     symbol,
     maxSupply,
     description,
-    receiver, 
-  }
-  
+    receiver,
+  };
+
   const schema = yup.object().shape({
-      precision: yup.number().required(),
-      symbol: yup.string().required("Symbol is required!"),
-      maxSupply: yup.number().required(),
-      // description: yup.string().required("Description is required!"),
-      receiver: yup.string(),
-    });
+    precision: yup.number().required(),
+    symbol: yup.string().required("Symbol is required!"),
+    maxSupply: yup.number().required(),
+    // description: yup.string().required("Description is required!"),
+    receiver: yup.string(),
+  });
 
   const handleCreateToken = async (event) => {
     event.preventDefault();
 
     await schema
-    .validate(dataYup, { abortEarly: false })
-    .then(async() => {
-      if (await controller.isValidSYSAddress(receiver|| connectedAccountAddress)) {
-       controller.handleCreateToken(
-        Number(precision),
-        symbol,
-        Number(maxSupply),
-        description,
-        receiver || connectedAccountAddress,
-        ...Object.values(advancedOptions));
- 
-        event.target.reset();
-        return
-      }
-      toast.error("Invalid Address")
-    })
-    .catch( (err) => {
-      err.errors.forEach((error) => {
-        toast.error(error);
+      .validate(dataYup, { abortEarly: false })
+      .then(async () => {
+        if (
+          await controller.isValidSYSAddress(
+            receiver || connectedAccountAddress
+          )
+        ) {
+          controller
+            .handleCreateToken(
+              Number(precision),
+              symbol,
+              Number(maxSupply),
+              description,
+              receiver || connectedAccountAddress,
+              ...Object.values(advancedOptions)
+            )
+            .catch((err) => {
+              toast.error(err);
+            });
+
+          event.target.reset();
+          return;
+        }
+        toast.error("Invalid Address");
+      })
+      .catch((err) => {
+        err.errors.forEach((error) => {
+          toast.error(error);
+        });
       });
-    });
   };
-  
+
   const handleInputChange = (setState) => {
     return (event) => {
       setState(event.target.value);
