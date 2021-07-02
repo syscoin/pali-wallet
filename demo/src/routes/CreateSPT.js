@@ -190,8 +190,24 @@ export default function CreateSPT() {
               <p className="help-block">Ceiling: (default 1)</p>
             </div>
             
-            <div className="form-group col-33 col-lg-100 lg-spaced-top">{}
-              <label htmlFor="initialsupply">
+            <div className="form-group col-33 col-lg-100 lg-spaced-top">
+              { receiver && connectedAccountAddress ? <>  
+                <label htmlFor="initialsupply">
+                Initial Circulating Supply{" "}
+                <i className="icon-info-circled" title="help goes here"></i>
+              </label>
+              <input
+                onClick={() => {toast.error("Invalid Address")}}
+                type="number"
+                className="form-control"
+                id="initialsupply"
+                placeholder="You can only create a initial circulating supply for SPTs that you're the owner"
+                autoComplete="off"
+                disabled
+              /></>
+              :
+              <>
+           <label htmlFor="initialsupply">
                 Initial Circulating Supply{" "}
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
@@ -203,6 +219,8 @@ export default function CreateSPT() {
                 placeholder=""
                 autoComplete="off"
               />
+              </>}
+           
               <p className="help-block">
                 Ceiling: Max Supply. This value will be minted and sent to the
                 issuer/owner address for further distribution.{" "}
