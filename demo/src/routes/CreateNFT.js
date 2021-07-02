@@ -1,6 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
 import { useSelector } from "react-redux";
-import { NFTStorage, File } from "nft.storage";
 import * as yup from "yup";
 import assetImg from "../images/asset.svg";
 import loaderImg from "../images/spinner.svg";
