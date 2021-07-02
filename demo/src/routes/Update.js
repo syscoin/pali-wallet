@@ -54,14 +54,14 @@ export default function Update() {
               ...Object.values(advancedOptions)
             )
             .catch((err) => {
-              toast.error(err);
+              toast.error(err, {position: "bottom-right"});
             });
 
         event.target.reset();
       })
       .catch((err) => {
         err.errors.forEach((error) => {
-          toast.error(error);
+          toast.error(error, {position: "bottom-right"});
         });
       });
   };

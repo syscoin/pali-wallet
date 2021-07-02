@@ -56,16 +56,16 @@ export default function Transfer() {
             controller
               .handleTransferOwnership(assetGuid, newOwner)
               .catch((err) => {
-                toast.error(err);
+                toast.error(err, {position: "bottom-right"});
               });
           event.target.reset();
           return;
         }
-        toast.error("Invalid Address");
+        toast.error("Invalid Address", {position: "bottom-right"});
       })
       .catch((err) => {
         err.errors.forEach((error) => {
-          toast.error(error);
+          toast.error(error, {position: "bottom-right"});
         });
       });
   };

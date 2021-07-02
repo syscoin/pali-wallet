@@ -60,16 +60,16 @@ export default function CreateNFT() {
               ...Object.values(advancedOptions)
             )
             .catch((err) => {
-              toast.error(err);
+              toast.error(err, {position: "bottom-right"});
             });
           event.target.reset();
           return;
         }
-        toast.error("Invalid Address");
+        toast.error("Invalid Address", {position: "bottom-right"});
       })
       .catch((err) => {
         err.errors.forEach((error) => {
-          toast.error(error);
+          toast.error(error, {position: "bottom-right"});
         });
       });
   };
@@ -109,7 +109,7 @@ export default function CreateNFT() {
       })
       .catch((err) => {
         err.errors.forEach((error) => {
-          toast.error(error);
+          toast.error(error, {position: "bottom-right"});
         });
       });
   }
@@ -122,7 +122,7 @@ export default function CreateNFT() {
     textAreaRef.current.select();
     document.execCommand("copy");
     e.target.focus();
-    setCopySuccess("Copied!");
+    toast.dark("Copied!", {position: "bottom-right", autoClose: 3000,});
   }
 
   return (
@@ -250,7 +250,6 @@ export default function CreateNFT() {
                     >
                       Copy
                     </button>
-                    {copySuccess}
                   </div>
                 )}
               </div>

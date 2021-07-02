@@ -64,15 +64,16 @@ export default function IssueSPT() {
             controller
               .handleIssueSPT(Number(amount), assetGuid)
               .catch((err) => {
-                toast.error(err);
+                toast.dismiss();
+                toast.error(err, {position: "bottom-right"});
               });
           return;
         }
-        toast.error("Invalid Quantity to Issue");
+        toast.error("Invalid Quantity to Issue", {position: "bottom-right"});
       })
       .catch((err) => {
         err.errors.forEach((error) => {
-          toast.error(error);
+          toast.error(error, {position: "bottom-right"});
         });
       });
   };
