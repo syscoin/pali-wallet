@@ -23,7 +23,7 @@ const TransferOwnershipConfirm = () => {
   const controller = useController();
   const history = useHistory();
 
-  const { accounts, currentSenderURL }: IWalletState = useSelector(
+  const { accounts, currentSenderURL, transferringOwnership }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
@@ -348,6 +348,7 @@ const TransferOwnershipConfirm = () => {
         layoutTitle="Confirm transfer ownership"
         // data={dataToRender}
         data={transferOwnershipData}
+        transactingStateItem={transferringOwnership}
       />
     </div>
   )

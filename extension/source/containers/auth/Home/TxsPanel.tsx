@@ -9,7 +9,7 @@ import Spinner from '@material-ui/core/CircularProgress';
 import Button from 'components/Button';
 
 import { useController } from 'hooks/index';
-import { formatDistanceDate } from '../helpers';
+import { formatDistanceDate, formatNumber , formatCurrency} from '../helpers';
 import SyscoinIcon from 'assets/images/logosys.svg';
 import { Transaction, Assets } from '../../../scripts/types';
 import { RootState } from 'state/store';
@@ -17,7 +17,6 @@ import IWalletState from 'state/wallet/types';
 import { useSelector } from 'react-redux';
 
 import styles from './Home.scss';
-// import ModalBlock from 'components/ModalBlock';
 
 interface ITxsPanel {
   txidSelected: any;
@@ -246,7 +245,9 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                       >
                         <div>
                           <span title="Click here to go to view transaction in sys block explorer">
-                            <span>{controller.wallet.account.isNFT(asset.assetGuid) ? asset.balance : (asset.balance / 10 ** asset.decimals).toFixed(2)}  {asset.symbol} </span>
+                            <span>
+                              {controller.wallet.account.isNFT(asset.assetGuid) ? formatCurrency(String(asset.balance), asset.decimals) : formatCurrency(String((asset.balance / 10 ** asset.decimals)), asset.decimals)}  {asset.symbol}
+                            </span>
                           </span>
                           <div className={styles.linkIcon}>
                             <UpArrowIcon />

@@ -23,7 +23,7 @@ const CreateTokenConfirm = () => {
   const controller = useController();
   const history = useHistory();
 
-  const { accounts, currentSenderURL }: IWalletState = useSelector(
+  const { accounts, currentSenderURL, creatingAsset }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
@@ -344,10 +344,10 @@ const CreateTokenConfirm = () => {
         transactionItem="newSPT"
         itemStringToClearData="newSPT"
         confirmTransaction={controller.wallet.account.confirmNewSPT}
-        errorMessage="Can\'t create token. Try again later."
+        errorMessage="Can't create token. Try again later."
         layoutTitle="Confirm token creation"
-        // data={dataToRender}
         data={newSPT}
+        transactingStateItem={creatingAsset}
       />
     </div>
   )

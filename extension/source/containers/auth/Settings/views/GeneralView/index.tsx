@@ -22,34 +22,9 @@ const GeneralView = () => {
     (state: RootState) => state.wallet!.activeNetwork
   );
 
-  const handleChangeNetwork = (
-    event: ChangeEvent<{
-      name?: string | undefined;
-      value: unknown;
-    }>
-  ) => {
-    controller.wallet.switchNetwork(event.target.value as string);
-    controller.wallet.getNewAddress();
-  };
-
   return (
     <div className={styles.general}>
       <ul>
-        <li className={styles.network}>
-          <Icon Component={NetworkIcon} variant={styles.icon} />
-          <span>
-            Network
-            <Select
-              value={network || SYS_NETWORK.main.id}
-              fullWidth
-              onChange={handleChangeNetwork}
-              options={[
-                { [SYS_NETWORK.main.id]: SYS_NETWORK.main.label },
-                { [SYS_NETWORK.testnet.id]: SYS_NETWORK.testnet.label },
-              ]}
-            />
-          </span>
-        </li>
         <li onClick={() => showView(PHRASE_VIEW)}>
           <Icon Component={ListIcon} />
           Wallet seed phrase

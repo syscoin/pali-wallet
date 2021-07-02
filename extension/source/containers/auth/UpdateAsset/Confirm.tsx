@@ -23,7 +23,7 @@ const UpdateConfirm = () => {
   const controller = useController();
   const history = useHistory();
 
-  const { accounts, currentSenderURL }: IWalletState = useSelector(
+  const { accounts, currentSenderURL, updatingAsset }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
@@ -125,6 +125,7 @@ const UpdateConfirm = () => {
         layoutTitle="Confirm token update"
         // data={dataToRender}
         data={updateAsset}
+        transactingStateItem={updatingAsset}
       />
     </div>
   )

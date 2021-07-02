@@ -23,7 +23,7 @@ const IssueAssetConfirm = () => {
   const controller = useController();
   const history = useHistory();
 
-  const { accounts, currentSenderURL }: IWalletState = useSelector(
+  const { accounts, currentSenderURL, issuingAsset }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
@@ -348,6 +348,7 @@ const IssueAssetConfirm = () => {
         layoutTitle="Confirm token issue"
         // data={dataToRender}
         data={mintSPT}
+        transactingStateItem={issuingAsset}
       />
     </div>
   )

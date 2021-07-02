@@ -1,12 +1,33 @@
 @import '~assets/styles/variables';
 
+.network {
+  height: auto;
+  margin-right: 19px;
+  margin-top: 5px;
+  
+  .icon {
+    margin-bottom: 48px;
+  }
+  
+  span {
+    display: flex;
+    width: calc(100% - 144px);
+    flex-direction: column;
+  }
+
+  &:hover {
+    background: initial;
+    cursor: initial;
+  }
+}
+
 .header {
   width: 100%;
   height: 72px;
   position: fixed;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   top: 0px;
   left: 0px;
   right: 0px;

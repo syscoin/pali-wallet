@@ -17,7 +17,7 @@ const WalletReceive = () => {
   const [isCopied, copyText] = useCopyClipboard();
   const controller = useController();
   const [loaded, setLoaded] = useState<boolean>(false);
-  const { accounts, activeAccountId }: IWalletState = useSelector(
+  const { accounts, activeAccountId, activeNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -29,7 +29,7 @@ const WalletReceive = () => {
 
   return (
     <div className={styles.wrapper}>
-      <Header backLink="/home" />
+      <Header backLink="/home" showName={false}/>
       <section className={styles.subheading}>Receive SYS</section>
       <section className={styles.content}>
         {loaded ? (

@@ -27,6 +27,7 @@ import { RootState } from 'state/store';
 import ReactTooltip from 'react-tooltip';
 import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import DownArrowIcon from '@material-ui/icons/ExpandMore';
+import Spinner from '@material-ui/core/CircularProgress';
 
 import styles from './Send.scss';
 
@@ -45,7 +46,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const getFiatAmount = useFiat();
   const controller = useController();
   const alert = useAlert();
-  const { accounts, activeAccountId, activeNetwork }: IWalletState = useSelector(
+  const { accounts, activeAccountId, activeNetwork, changingNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
   const [address, setAddress] = useState<string>(initAddress);
@@ -185,15 +186,18 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
   return (
     <div className={styles.wrapper}>
-      <Header backLink="/home" />
+      <Header backLink="/home" showName={false} />
 
       <form onSubmit={handleSubmit(onSubmit)}>
         <section className={styles.subheading}>Send {selectedAsset ? selectedAsset.symbol : "SYS"}</section>
         <section className={styles.balance}>
           <div>
             Balance:{' '}
-            <span>{checkAssetBalance()}
-            </span>
+            {changingNetwork ? (
+              <Spinner size={20} className={styles.spinner} />
+            ) : (
+              <span>{checkAssetBalance()}</span>
+            )}
 
             {selectedAsset ? selectedAsset.symbol : "SYS"}
           </div>

@@ -1,4 +1,5 @@
 import format from 'date-fns/format';
+import currency from 'currency.js';
 
 export const ellipsis = (str: any, start = 7, end = 4) => {
   if (typeof str !== 'string') {
@@ -35,7 +36,15 @@ export const formatNumber = (num: number, min = 4, max = 4, maxSig = 12) => {
     maximumFractionDigits: max,
     maximumSignificantDigits: maxSig,
   });
-};
+}
+
+export const formatCurrency = (number: string, precision: number) => {
+  if (Number(number) % 1 == 0) {
+    return currency(number, { separator: ',', symbol: '', precision: 0}).format();
+  }
+  
+  return currency(number, { separator: ',', symbol: '', precision }).format()
+}
 
 export const formatURL = (url: string) => {
   if (url.length > 30) {

@@ -20,12 +20,21 @@ import TxsPanel from './TxsPanel';
 import styles from './Home.scss';
 import { formatNumber } from '../helpers';
 import { getHost } from '../../../scripts/Background/helpers';
+import { ChangeEvent } from 'react';
+import NetworkIcon from '@material-ui/icons/Timeline';
+
+import Select from 'components/Select';
+import Icon from 'components/Icon';
+import { SYS_NETWORK } from 'constants/index';
 
 const Home = () => {
   const controller = useController();
   const getFiatAmount = useFiat();
   const { accounts, activeAccountId, currentURL, changingNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
+  );
+  const network = useSelector(
+    (state: RootState) => state.wallet!.activeNetwork
   );
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
   const [openBlockExplorer, setOpenBlockExplorer] = useState<boolean>(false);
@@ -82,6 +91,16 @@ const Home = () => {
     setIsOpenModal(!isOpenModal);
   }
 
+  const handleChangeNetwork = (
+    event: ChangeEvent<{
+      name?: string | undefined;
+      value: unknown;
+    }>
+  ) => {
+    controller.wallet.switchNetwork(event.target.value as string);
+    controller.wallet.getNewAddress();
+  };
+
   return (
     <div className={styles.wrapper}>
       {isOpenModal && (
@@ -93,7 +112,7 @@ const Home = () => {
           setOpenBlockExplorer(false);
         }}></div>
       )}
-      
+
       {openAssetBlockExplorer && (
         <div className={styles.background} onClick={() => {
           setOpenAssetBlockExplorer(false);
@@ -106,7 +125,7 @@ const Home = () => {
 
       {accounts.find(element => element.id === activeAccountId) ? (
         <>
-          <Header showLogo />
+          <Header showLogo showName={false} />
           <section className={styles.account}>
             {accounts.length > 1 ? (
               <FullSelect

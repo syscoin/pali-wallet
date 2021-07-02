@@ -2,18 +2,23 @@
 
 .select {
   :global(.MuiInputBase-root) {
-    background: $white;
-    border: 1px solid $gray-200 !important;
+    background: transparent;
+    border: 1px solid $royalBlue !important;
     box-sizing: border-box;
     border-radius: 6px;
     padding: 0;
     height: 36px;
     transition: all 0.3s;
+    color: $white;
 
     &::before,
     &::after {
       border-bottom: none !important;
     }
+  }
+  
+  :global(.MuiSelect-select.MuiSelect-select) {
+    padding-right: 37px;
   }
 
   :global(.MuiSelect-select) {
@@ -29,6 +34,8 @@
   :global .MuiSelect-icon {
     transition: all 0.3s;
     margin-right: 6px;
+    margin-top: -1px;
+    color: $white;
   }
 
   :global .MuiSelect-iconOpen {
@@ -41,8 +48,8 @@
 }
 
 :global(.MuiMenu-list) {
-  background: $white;
-  border: 1px solid $gray-200;
+  background: $navy;
+  border: 1px solid $royalBlue;
   // box-sizing: border-box;
   border-radius: 6px;
   border-top-width: 0;
@@ -54,7 +61,7 @@
     display: flex;
     align-items: center;
     letter-spacing: 0.03em;
-    color: $gray-dark;
+    color: $white;
     font-family: $roboto;
     min-height: initial;
     height: 24px;

@@ -17,6 +17,7 @@ import { getHost } from '../../../scripts/Background/helpers';
 import DownArrowIcon from '@material-ui/icons/ExpandMore';
 import Spinner from '@material-ui/core/CircularProgress';
 import { useHistory } from 'react-router';
+import CircularProgress from '@material-ui/core/CircularProgress';
 
 interface IConfirmTransaction {
   transactionItem: any;
@@ -25,6 +26,7 @@ interface IConfirmTransaction {
   errorMessage: string;
   layoutTitle: string;
   data: any[];
+  transactingStateItem: boolean;
 }
 
 const ConfirmTransaction: FC<IConfirmTransaction> = ({
@@ -33,7 +35,8 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   confirmTransaction,
   errorMessage,
   layoutTitle,
-  data
+  data,
+  transactingStateItem
 }) => {
   const controller = useController();
   const history = useHistory();
@@ -179,6 +182,8 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
     if ((acc ? acc.balance : -1) > 0) {
       setLoadingConfirm(true);
       isPending = true;
+      
+      console.log('error message', errorMessage)
 
       confirmTransaction().then((error: any) => {
         if (error) {
@@ -196,7 +201,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 
           setTimeout(() => {
             handleCancelTransactionOnSite();
-          }, 4000);
+          }, 9000);
 
           return;
         }
@@ -222,94 +227,48 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   }
 
   const renderAdvancedDetails = (items: any, itemName: string) => {
-    console.log('render advanced details', items, itemName)
-    // return items.map(({ label, value }) => {
     return (
       <div>
-        {/* {itemName == "notarydetails" && (
-            <div>
-              <p>Notary details:</p>
-              
-              <div className={styles.flex}>
-                <p>Endpoint</p>
-                <p>{formatURL(items.endpoint) || 'None'}</p>
-              </div>
-
-              <div className={styles.flex}>
-                <p>Instant transfers</p>
-                <p>{items.instanttransfers || 0}</p>
-              </div>
-
-              <div className={styles.flex}>
-                <p>HD required</p>
-                <p>{items.hdrequired ? 'Yes' : 'No'}</p>
-              </div>
+        {itemName == "notarydetails" && items && (
+          <div>
+            <div className={styles.flex}>
+              <p>Endpoint</p>
+              <p>{formatURL(items.endpoint) || 'None'}</p>
             </div>
-          )} */}
 
-        {itemName == "notarydetails" && (
-          <div className={styles.select}>
-            <div
-              className={clsx(styles.fullselect, { [styles.expanded]: expandedDetail })}
-              onClick={() => setExpandedDetail(!expandedDetail)}
-            >
-              <span className={styles.selected}>
-                Notary details
-              <DownArrowIcon className={styles.arrow} />
-              </span>
-              <ul className={styles.options}>
-                <div className={styles.flex}>
-                  <p>Endpoint</p>
-                  <p>{formatURL(items.endpoint) || 'None'}</p>
-                </div>
+            <div className={styles.flex}>
+              <p>Instant transfers</p>
+              <p>{items.instanttransfers || 0}</p>
+            </div>
 
-                <div className={styles.flex}>
-                  <p>Instant transfers</p>
-                  <p>{items.instanttransfers || 0}</p>
-                </div>
-
-                <div className={styles.flex}>
-                  <p>HD required</p>
-                  <p>{items.hdrequired ? 'Yes' : 'No'}</p>
-                </div>
-              </ul>
+            <div className={styles.flex}>
+              <p>HD required</p>
+              <p>{items.hdrequired ? 'Yes' : 'No'}</p>
             </div>
           </div>
         )}
 
-        {itemName == "auxfeedetails" && (
+        {itemName == "auxfeedetails" && items && (
           <div>
-            <p>Aux fee details:</p>
+            {items.auxfees.map((auxfee: any, index: number) => {
+              return (
+                <div key={index} className={styles.options}>
+                  <div className={styles.flex}>
+                    <p>Bound</p>
+                    <p>{auxfee.bound}</p>
+                  </div>
 
-            <div className={styles.flex}>
-              <p>{items.auxfeekeyid}</p>
-            </div>
-
-            <div className={styles.flex}>
-              <p>Aux fees</p>
-              <p>
-                {items.auxfees.map((auxfee: any) => {
-                  return (
-                    <div className={styles.options}>
-                      <div className={styles.flex}>
-                        <p>Bound</p>
-                        <p>{auxfee.bound}</p>
-                      </div>
-
-                      <div className={styles.flex}>
-                        <p>Bound</p>
-                        <p>{auxfee.percent}</p>
-                      </div>
-                    </div>
-                  )
-                }) || 0}
-              </p>
-            </div>
+                  <div className={styles.flex}>
+                    <p>Percent</p>
+                    <p>{auxfee.percent}</p>
+                  </div>
+                </div>
+              )
+            }) || 0}
           </div>
         )}
       </div>
     )
-    // })
   }
 
   return confirmed ? (
@@ -329,251 +288,150 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
     </Layout>
   ) : (
     <div>
-      {transactionItemData && (
+      {transactingStateItem && loading ? (
+        <Layout title="" showLogo>
+          <div className={styles.wrapper}>
+            <section className={clsx(styles.mask)}>
+              <CircularProgress className={styles.loader} />
+            </section>
+          </div>
+        </Layout>
+      ) : (
         <div>
-          <Layout title={layoutTitle} showLogo>
-            <div className={styles.wrapper}>
-              <div>
-                <section className={styles.data}>
-                  {dataToRender.map((item: any) => {
-                    if (item.label) {
-                      if (item.label === "receiver") {
-                        return (
-                          <div key={item.label} className={styles.flex}>
-                            <p>{item.label}</p>
-                            <p>{ellipsis(item.value)}</p>
-                          </div>
-                        )
-                      }
+          {transactionItemData && data && (
+            <div>
+              <Layout title={layoutTitle} showLogo>
+                <div className={styles.wrapper}>
+                  <div>
+                    <section className={styles.data}>
+                      {dataToRender.map((item: any) => {
+                        if (item.label) {
+                          if (item.label === "receiver") {
+                            return (
+                              <div key={item.label} className={styles.flex}>
+                                <p>{item.label}</p>
+                                <p>{ellipsis(item.value)}</p>
+                              </div>
+                            )
+                          }
 
-                      if (item.label === "rbf") {
-                        return (
-                          <div key={item.label} className={styles.flex}>
-                            <p>{item.label}</p>
-                            <p>{item.value ? 'Yes' : 'No'}</p>
-                          </div>
-                        )
-                      }
+                          if (item.label === "rbf") {
+                            return (
+                              <div key={item.label} className={styles.flex}>
+                                <p>{item.label}</p>
+                                <p>{item.value ? 'Yes' : 'No'}</p>
+                              </div>
+                            )
+                          }
 
-                      if (advancedOptionsArray.includes(item.label)) {
-                        return;
-                      }
+                          if (advancedOptionsArray.includes(item.label)) {
+                            return;
+                          }
 
-                      if (item.value !== null) {
-                        return (
-                          <div key={item.label} className={styles.flex}>
-                            <p>{item.label}</p>
-                            <p>{item.value}</p>
-                          </div>
-                        )
-                      }
+                          if (item.value !== null) {
+                            return (
+                              <div key={item.label} className={styles.flex}>
+                                <p>{item.label}</p>
+                                <p>{item.value}</p>
+                              </div>
+                            )
+                          }
 
-                      return null;
-                    }
-                  })}
+                          return null;
+                        }
+                      })}
 
-                  <div className={styles.flex}>
-                    <p>Site</p>
-                    <p>{getHost(`${currentSenderURL}`)}</p>
-                  </div>
+                      <div className={styles.flex}>
+                        <p>Site</p>
+                        <p>{getHost(`${currentSenderURL}`)}</p>
+                      </div>
 
-                  <div className={styles.select}>
-                    <div
-                      className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
-                      onClick={() => setExpanded(!expanded)}
-                    >
-                      <span className={styles.selected}>
-                        Advanced options
+                      <div className={styles.select}>
+                        <div
+                          className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
+                        >
+                          <span onClick={() => setExpanded(!expanded)} className={styles.selected}>
+                            Advanced options
                       <DownArrowIcon className={styles.arrow} />
-                      </span>
-                      <ul className={styles.options}>
-                        {advancedOptions && (
-                          advancedOptions.map(({ label, value }) => {
-                            if (label) {
-                              if (label && value !== undefined && value !== null && value !== "0" && label !== "notarydetails" && label !== "auxfeedetails") {
-                                return (
-                                  <div key={label} className={styles.flex}>
-                                    <p>{label}</p>
-                                    <p>{value}</p>
-                                  </div>
-                                )
-                              }
+                          </span>
+                          <ul className={styles.options}>
+                            {advancedOptions && (
+                              advancedOptions.map(({ label, value }) => {
+                                console.log('advanced options', advancedOptions, label === "notaryAddress")
+                                if (label && value !== undefined && value !== null) {
+                                  if (label && value !== undefined && value !== null && value !== "0" && label !== "notarydetails" && label !== "auxfeedetails" && label !== "notaryAddress" && label !== "payoutAdress") {
+                                    return (
+                                      <div key={label} className={styles.flex}>
+                                        <p>{label}</p>
+                                        <p>{value}</p>
+                                      </div>
+                                    )
+                                  }
+                                  
+                                  if (label == "contract") {
+                                    return (
+                                      <div key={label} className={styles.flex}>
+                                        <p>{label}</p>
+                                        <p>{formatURL(value)}</p>
+                                      </div>
+                                    )
+                                  }
+                                  
+                                  if (label == "notaryAddress" || label == "payoutAddress") {
+                                    console.log('ellipsis', ellipsis(value), value)
+                                    return (
+                                      <div key={label} className={styles.flex}>
+                                        <p>{label}</p>
+                                        <p>{ellipsis(value)}</p>
+                                      </div>
+                                    )
+                                  }
 
-                              if (label == "notaryAddress" || label == "payoutAddress") {
-                                return (
-                                  <div key={label} className={styles.flex}>
-                                    <p>{label}</p>
-                                    <p>{ellipsis(value)}</p>
-                                  </div>
-                                )
-                              }
+                                  if (label == "notarydetails" || label == "auxfeedetails" && value !== null && value !== undefined) {
+                                    return (
+                                      <div key={label}>
+                                        {renderAdvancedDetails(value, label)}
+                                      </div>
+                                    )
+                                  }
+                                }
 
-                              if (label == "notarydetails" || label == "auxfeedetails") {
-                                console.log('value label details', value, label)
-                                return (
-                                  <div>
-                                    {renderAdvancedDetails(value, label)}
-                                  </div>
-                                )
-                              }
-                            }
-
-                            return null;
-                          })
-                        )}
-                      </ul>
-                    </div>
-                  </div>
-
-                  {/* {advancedOptions && (
-                    advancedOptions.map((option: any) => {
-                      console.log('option', option)
-                      return (
-                        <div key={option.label} className={styles.select}>
-                          <p>{option.label}</p>
-                          <p>{option.value}</p>
+                                return null;
+                              })
+                            )}
+                          </ul>
                         </div>
-                      )
-                    })
-                  )} */}
+                      </div>
+                    </section>
 
-
-
-                  {/* <div className={styles.flex}>
-                    <p>Asset GUID</p>
-                    <p>{transactionItemData?.assetGuid}</p>
-                  </div>
-
-                  <div className={styles.flex}>
-                    <p>Z-DAG</p>
-                    <p>{transactionItemData?.rbf ? 'Yes' : 'No'}</p>
-                  </div>
-
-                  <div className={styles.flex}>
-                    <p>Fee</p>
-                    <p>{transactionItemData?.fee}</p>
-                  </div>
-
-                  <div className={styles.flex}>
-                    <p>Description</p>
-                    <p>{transactionItemData?.description}</p>
-                  </div>
-
-                  <div className={styles.flex}>
-                    <p>Site</p>
-                    <p>{getHost(`${currentSenderURL}`)}</p>
-                  </div>
-
-                  <div className={styles.flex}>
-                    <p>Max total</p>
-                    <p>{transactionItemData?.fee} SYS</p>
-                  </div>
-
-
-                  <div
-                    className={styles.select}
-                    id="asset"
-                  >
-                    <div
-                      className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
-                      onClick={() => setExpanded(!expanded)}
-                    >
-                      <span className={styles.selected}>
-                        Advanced options
-                      <DownArrowIcon className={styles.arrow} />
-                      </span>
-                      <ul className={styles.options}>
-                        {transactionItemData?.capabilityflags && (
-                          <div className={styles.flex}>
-                            <p>Capability</p>
-                            <p>{transactionItemData?.capabilityflags}</p>
-                          </div>
-                        )}
-
-                        {transactionItemData?.notaryAddress && (
-                          <div className={styles.flex}>
-                            <p>Notary address</p>
-                            <p>{ellipsis(transactionItemData?.notaryAddress)}</p>
-                          </div>
-                        )}
-
-                        {transactionItemData?.payoutAddress && (
-                          <div className={styles.flex}>
-                            <p>Payout address</p>
-                            <p>{ellipsis(transactionItemData?.payoutAddress)}</p>
-                          </div>
-                        )}
-
-                        {transactionItemData?.notarydetails && (
-                          <div>
-                            <p>Notary details</p>
-                            <div className={styles.flex}>
-                              <p>Endpoint</p>
-                              <p>{formatURL(transactionItemData?.notarydetails.endpoint) || 'None'}</p>
-                            </div>
-
-                            <div className={styles.flex}>
-                              <p>Instant transfers</p>
-                              <p>{transactionItemData?.notarydetails.instanttransfers || 0}</p>
-                            </div>
-
-                            <div className={styles.flex}>
-                              <p>HD required</p>
-                              <p>{transactionItemData?.notarydetails.hdrequired ? 'Yes' : 'No'}</p>
-                            </div>
-                          </div>
-                        )}
-
-                        {transactionItemData?.auxfeedeetails && (
-                          <div>
-                            <p>Aux fee details</p>
-                            <div className={styles.flex}>
-                              <p>Aux fee key id</p>
-                              <p>{transactionItemData?.auxfeedeetails.auxfeekeyid ? transactionItemData?.auxfeedeetails.auxfeekeyid : 'None'}</p>
-                            </div>
-
-                            <div className={styles.flex}>
-                              <p>Bound</p>
-                              <p>{transactionItemData?.auxfeedeetails.auxfees[0].bound ? transactionItemData?.auxfeedeetails.auxfees[0].bound : 0}</p>
-                            </div>
-
-                            <div className={styles.flex}>
-                              <p>Percent</p>
-                              <p>{transactionItemData?.auxfeedeetails.auxfees[0].percent ? transactionItemData?.auxfeedeetails.auxfees[0].percent : 0}</p>
-                            </div>
-                          </div>
-                        )}
-                      </ul>
-                    </div>
-                  </div> */}
-                </section>
-
-                <section className={styles.confirm}>
-                  <div className={styles.actions}>
-                    <Button
-                      type="button"
-                      theme="btn-outline-secondary"
-                      variant={clsx(styles.button, styles.close)}
-                      linkTo="/home"
-                      onClick={handleCancelTransactionOnSite}
-                    >
-                      Reject
+                    <section className={styles.confirm}>
+                      <div className={styles.actions}>
+                        <Button
+                          type="button"
+                          theme="btn-outline-secondary"
+                          variant={clsx(styles.button, styles.close)}
+                          linkTo="/home"
+                          onClick={handleCancelTransactionOnSite}
+                        >
+                          Reject
                      </Button>
 
-                    <Button
-                      type="submit"
-                      theme="btn-outline-primary"
-                      variant={styles.button}
-                      onClick={handleConfirm}
-                      loading={loading}
-                    >
-                      {loadingConfirm ? <Spinner size={15} className={styles.spinner} /> : 'Confirm'}
-                    </Button>
+                        <Button
+                          type="submit"
+                          theme="btn-outline-primary"
+                          variant={styles.button}
+                          onClick={handleConfirm}
+                          loading={loading}
+                        >
+                          {loadingConfirm ? <Spinner size={15} className={styles.spinner} /> : 'Confirm'}
+                        </Button>
+                      </div>
+                    </section>
                   </div>
-                </section>
-              </div>
+                </div>
+              </Layout>
             </div>
-          </Layout>
+          )}
         </div>
       )}
     </div>

@@ -43,6 +43,7 @@
     "bech32": "^2.0.0",
     "clsx": "^1.1.1",
     "crypto-js": "^4.0.0",
+    "currency.js": "^2.0.4",
     "date-fns": "^2.16.1",
     "emoji-log": "^1.0.2",
     "graceful-fs": "^4.2.6",

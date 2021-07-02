@@ -23,7 +23,7 @@ const CreateAndIssueNFTConfirm = () => {
   const controller = useController();
   const history = useHistory();
 
-  const { accounts, currentSenderURL }: IWalletState = useSelector(
+  const { accounts, currentSenderURL, issuingNFT }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
@@ -348,6 +348,7 @@ const CreateAndIssueNFTConfirm = () => {
         layoutTitle="Confirm NFT creation"
         // data={dataToRender}
         data={mintNFT}
+        transactingStateItem={issuingNFT}
       />
     </div>
   )
