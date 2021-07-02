@@ -96,9 +96,13 @@ export default function Transfer() {
 
           <div className="form-line">
             <div className="form-group col-100">
-              <label htmlFor="token">
-                Standard Token&nbsp;
-                {isLoading && <img className="loaderTokens" src={loaderImg} />}
+            <label htmlFor="token" className="loaderTokens">
+                <span >
+                  Standard Token{" "}
+                  {isLoading && (
+                    <img  src={loaderImg} alt="" />
+                  )}
+                </span>
               </label>
               <select
                 onChange={handleInputChange(setAssetGuid)}

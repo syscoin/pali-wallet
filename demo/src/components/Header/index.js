@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { useSelector } from "react-redux";
 import { Link } from "react-router-dom";
-import useOnlineStatus from '@rehooks/online-status';
 
 import logo from "../../images/logo.svg";
 import { elementEventHandler } from "../../utils/elementEventHandler";
@@ -11,7 +10,6 @@ const Header = () => {
   const controller = useSelector((state) => state.controller);
   const isInstalled = useSelector((state) => state.isInstalled);
   const isConnected = useSelector((state) => state.connected);
-  const onlineStatus = useOnlineStatus();
   const { connectedAccountAddress } = useSelector(
     (state) => state.connectedAccountData
   );
@@ -73,22 +71,22 @@ const Header = () => {
               </span>
               </span>
             </div>
-            <px
+            <span
               className="accountName"
               rel="noopener noreferrer"
               target="_blank"
               title={accountData.connectedAccountAddress}
               onClick={handleMessageExtension}
               disabled={!isInstalled} >
-              { accountData.connectedAccount.label}
-            </px>
-            <px
+              { accountData.connectedAccount?.label }
+            </span>
+            <span
               className="accountAddress"
               title={accountData.connectedAccountAddress}
               onClick={handleMessageExtension}
               disabled={!isInstalled}>
               { trucate(accountData.connectedAccountAddress)}
-            </px>
+            </span>
             </>
             :
             <>

@@ -64,8 +64,7 @@ export default function IssueSPT() {
             controller
               .handleIssueSPT(Number(amount), assetGuid)
               .catch((err) => {
-                toast.dismiss();
-                toast.error(err, {position: "bottom-right"});
+            toast.error(err, {position: "bottom-right"});
               });
           return;
         }
@@ -73,6 +72,7 @@ export default function IssueSPT() {
       })
       .catch((err) => {
         err.errors.forEach((error) => {
+          toast.dismiss()
           toast.error(error, {position: "bottom-right"});
         });
       });
@@ -110,9 +110,13 @@ export default function IssueSPT() {
           <ToastContainer />
           <div className="form-line">
             <div className="form-group col-100">
-              <label htmlFor="token">
-                Standard Token &nbsp;
-                {isLoading && <img className="loaderTokens" src={loaderImg} />}
+            <label htmlFor="token" className="loaderTokens">
+                <span >
+                  Standard Token{" "}
+                  {isLoading && (
+                    <img  src={loaderImg} alt="" />
+                  )}
+                </span>
               </label>
               <select
                 onChange={handleInputChange(setAssetGuid)}

@@ -288,10 +288,14 @@ nav > ul {
     }
   }
 }
-    .loaderTokens {
-      position: relative;
-      width: 17px;
-    }
+.loaderTokens {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 25px;
+  img {
+    width: 17px;
+  }}
 
     .bubble {
       display: block; 
