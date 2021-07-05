@@ -49,13 +49,11 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [expanded, setExpanded] = useState<boolean>(false);
-  const [expandedDetail, setExpandedDetail] = useState<boolean>(false);
   const [loadingConfirm, setLoadingConfirm] = useState<boolean>(false);
   const [dataToRender, setDataToRender] = useState<any[]>([]);
   const advancedOptionsArray = ['notarydetails', 'notaryAddress', 'auxfeedetails', 'payoutAddress', 'capabilityflags', 'contract']
   const alert = useAlert();
   const [advancedOptions, setAdvancedOptions] = useState<any[]>([]);
-  // let dataToRender: any[] = [];
 
   useEffect(() => {
     if (data) {
@@ -68,18 +66,8 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
               value
             }),
           ]);
-          // dataToRender.push({
-          //   label: key,
-          //   value
-          // })
-
+          
           if (advancedOptionsArray.includes(key) && !advancedOptions.includes({ label: key, value })) {
-            // const item = {
-            //   label: key,
-            //   value
-            // };
-
-
             setAdvancedOptions([
               ...advancedOptions,
               advancedOptions.push({
@@ -87,30 +75,10 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
                 value
               })
             ]);
-
-            // advancedOptions.push({ label: key, value })
-
-            // console.log('includes', advancedOptions, dataToRender)
-
-            // console.log(item)
-
-            // if (dataToRender.includes(item)) {
-            //   console.log('includes advanced')
-            //   const index = dataToRender.indexOf({ label: key, value });
-
-            //   console.log('data to render', dataToRender)
-
-            //   dataToRender.splice(1, index);
-            // }
-
-            console.log('data to render and advanced options', dataToRender, advancedOptions)
           }
 
           return;
-
         }
-
-
       });
 
       setDataToRender([
@@ -128,25 +96,13 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
           value: null
         })
       ]);
-
-      console.log('advanced options ok', advancedOptions)
-      // Object.freeze(dataToRender)
-
-
-      // setDataToRender([
-      //   ...dataToRender,
-      //   dataToRender.push({
-      //     label: 'foo',
-      //     value: 'bar'
-      //   })
-      // ])
     }
 
     setConnectedAccountId(accounts.findIndex((account: IAccountState) => {
       return account.connectedTo.filter((url: string) => {
         return url === getHost(currentSenderURL);
       })
-    }))
+    }));
   }, [
     data
   ]);
@@ -181,6 +137,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 
     if ((acc ? acc.balance : -1) > 0) {
       setLoadingConfirm(true);
+      setLoading(true)
       isPending = true;
       
       console.log('error message', errorMessage)
@@ -201,7 +158,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 
           setTimeout(() => {
             handleCancelTransactionOnSite();
-          }, 9000);
+          }, 4000);
 
           return;
         }
@@ -229,11 +186,11 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   const renderAdvancedDetails = (items: any, itemName: string) => {
     return (
       <div>
-        {itemName == "notarydetails" && items && (
+        {itemName == "notarydetails" && items && items.endpoint !== "" && (
           <div>
             <div className={styles.flex}>
               <p>Endpoint</p>
-              <p>{formatURL(items.endpoint) || 'None'}</p>
+              <p>{formatURL(items.endpoint)}</p>
             </div>
 
             <div className={styles.flex}>
@@ -298,7 +255,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
         </Layout>
       ) : (
         <div>
-          {transactionItemData && data && (
+          {transactionItemData && data && !loading && (
             <div>
               <Layout title={layoutTitle} showLogo>
                 <div className={styles.wrapper}>

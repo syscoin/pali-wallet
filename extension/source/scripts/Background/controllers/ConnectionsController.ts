@@ -36,7 +36,7 @@ export interface IConnectionsController {
     description: string,
     notary?: boolean,
     notarydetails?: {
-      endpoint?: string,
+      endpoint?: string | null,
       instanttransfers?: boolean,
       hdrequired?: boolean
     },
@@ -60,7 +60,7 @@ export interface IConnectionsController {
     capabilityflags?: string | '127',
     description?: string,
     notarydetails?: {
-      endpoint?: string,
+      endpoint?: string | null,
       instanttransfers?: boolean,
       hdrequired?: boolean
     },
@@ -159,7 +159,7 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, description: string, receiver: string, capabilityflags?: number, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notaryAddress?: string, payoutAddress?: string) => {
+  const handleCreateToken = async (precision: number, symbol: string, maxsupply: number, description: string, receiver: string, capabilityflags?: number, notarydetails?: { endpoint?: string | null, instanttransfers?: boolean, hdrequired?: boolean }, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notaryAddress?: string, payoutAddress?: string) => {
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
         if (event.data.type === 'TRANSACTION_ERROR' && event.data.target === 'connectionsController') {
@@ -183,13 +183,13 @@ const ConnectionsController = (): IConnectionsController => {
         precision,
         symbol,
         maxsupply,
-        description,
+        description: description || null,
         receiver,
-        capabilityflags,
-        notarydetails,
-        auxfeedetails,
-        notaryAddress,
-        payoutAddress
+        capabilityflags: capabilityflags || '0',
+        notarydetails: notarydetails || null,
+        auxfeedetails: auxfeedetails || null,
+        notaryAddress: notaryAddress || null,
+        payoutAddress: payoutAddress || null
       });
       
       resolve('ok connections update')
@@ -229,7 +229,7 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const handleCreateNFT = async (symbol: string, issuer: string, totalShares: number, description: string, notary?: boolean, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean }, auxfee?: boolean, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notaryAddress?: string, payoutAddress?: string) => {
+  const handleCreateNFT = async (symbol: string, issuer: string, totalShares: number, description: string, notary?: boolean, notarydetails?: { endpoint?: string | null, instanttransfers?: boolean, hdrequired?: boolean }, auxfee?: boolean, auxfeedetails?: { auxfeekeyid: string, auxfees: [{ bound: any | 0, percent: any | 0 }] }, notaryAddress?: string, payoutAddress?: string) => {
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
         if (event.data.type === 'TRANSACTION_ERROR' && event.data.target === 'connectionsController') {
@@ -252,14 +252,14 @@ const ConnectionsController = (): IConnectionsController => {
         target: 'contentScript',
         symbol,
         issuer,
-        totalShares,
-        description,
-        notary,
-        notarydetails,
-        auxfee,
-        auxfeedetails,
-        notaryAddress,
-        payoutAddress
+        totalShares: totalShares || 0,
+        description: description || null,
+        notary: notary || false,
+        notarydetails: notarydetails || null,
+        auxfee: auxfee || false,
+        auxfeedetails: auxfeedetails || null,
+        notaryAddress: notaryAddress || null,
+        payoutAddress: payoutAddress || null
       });
       
       resolve('ok connections update')
@@ -307,7 +307,7 @@ const ConnectionsController = (): IConnectionsController => {
     });
   }
 
-  const handleUpdateAsset = async (assetGuid: string, contract?: string | null, capabilityflags?: string | '0', description?: string | null, notarydetails?: { endpoint?: string, instanttransfers?: boolean, hdrequired?: boolean } | null, auxfeedetails?: { auxfeekeyid?: any, auxfees?: [{ bound?: any | 0, percent?: any | 0 }] } | null, notaryAddress?: string | null, payoutAddress?: string | null) => {
+  const handleUpdateAsset = async (assetGuid: string, contract?: string | null, capabilityflags?: string | '0', description?: string | null, notarydetails?: { endpoint?: string | null, instanttransfers?: boolean, hdrequired?: boolean } | null, auxfeedetails?: { auxfeekeyid?: any, auxfees?: [{ bound?: any | 0, percent?: any | 0 }] } | null, notaryAddress?: string | null, payoutAddress?: string | null) => {
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
         if (event.data.type === 'TRANSACTION_ERROR' && event.data.target === 'connectionsController') {

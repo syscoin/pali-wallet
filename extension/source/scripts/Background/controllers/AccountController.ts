@@ -1471,6 +1471,8 @@ const AccountController = (actions: {
           symbol,
           assetGuid
         } = asset;
+        
+        console.log('asset holdings data', asset)
 
         const assetId = sys.utils.getBaseAssetID(assetGuid);
 
