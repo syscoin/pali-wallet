@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useSelector } from "react-redux";
 import * as yup from "yup";
-import assetImg from "../images/asset.svg";
-import AdvancedPanel from "../components/AdvancedPanel";
 import { toast, ToastContainer } from "react-toastify";
+
+import AdvancedPanel from "../components/AdvancedPanel";
+import assetImg from "../images/asset.svg";
 import "react-toastify/dist/ReactToastify.min.css";
 
 export default function CreateSPT() {
@@ -12,6 +13,7 @@ export default function CreateSPT() {
   const [description, setDescription] = useState("");
   const [symbol, setSymbol] = useState("");
   const [receiver, setReceiver] = useState("");
+  const [initialSupply, setInitialSupply] = useState(0);
   const [file, setFile] = useState();
   const [advancedOptions, setAdvancedOptions] = useState({});
   const controller = useSelector((state) => state.controller);
@@ -30,7 +32,6 @@ export default function CreateSPT() {
     precision: yup.number().required(),
     symbol: yup.string().required("Symbol is required!"),
     maxSupply: yup.number().required(),
-    // description: yup.string().required("Description is required!"),
     receiver: yup.string(),
   });
 
@@ -52,20 +53,21 @@ export default function CreateSPT() {
               Number(maxSupply),
               description,
               receiver || connectedAccountAddress,
+              // initialSupply,
               ...Object.values(advancedOptions)
             )
             .catch((err) => {
-              toast.error(err, {position: "bottom-right"});
+              toast.error(err, { position: "bottom-right" });
             });
 
           event.target.reset();
           return;
         }
-        toast.error("Invalid Address", {position: "bottom-right"});
+        toast.error("Invalid Address", { position: "bottom-right" });
       })
       .catch((err) => {
         err.errors.forEach((error) => {
-          toast.error(error, {position: "bottom-right"});
+          toast.error(error, { position: "bottom-right" });
         });
       });
   };
@@ -94,28 +96,41 @@ export default function CreateSPT() {
     <section>
       <div className="inner wider">
         <h1>Create a Standard Token (Fungible)</h1>
+        <p>This tool helps you create a fungible token on Syscoin.</p>
         <p>
-        This tool helps you create a fungible token on Syscoin.
+          A fungible token can be interchanged with other individual goods or
+          assets of the same type. Each unit of a fungible token has the same
+          value, and one coin of the asset is not distinguishable from another.
+          Examples: SYS, BTC, stablecoins tokens like AUX and USDT, and
+          currencies in general.
         </p>
         <p>
-        A fungible token can be interchanged with other individual goods or assets of the same type. Each unit of a fungible token has the same value, and one coin of the asset is not distinguishable from another. Examples: SYS, BTC, stablecoins tokens like AUX and USDT, and currencies in general.
+          Familiarize yourself with the backend process this tool uses, if you
+          wish.
+        </p>
+        <p>(backend process)</p>
+        <p>
+          SysMint automatically follows this logic to create your fungible
+          token:
         </p>
         <p>
-        Familiarize yourself with the backend process this tool uses, if you wish.
+          1. `assetNew` is executed to create your token according to the specs
+          you provided in the form. Ownership (management) of the asset is
+          assigned to you by using a newly derived address within your wallet’s
+          current selected account.
+        </p>{" "}
+        <p>
+          2. Once the transaction from step 1 settles onchain, `assetSend` is
+          then executed to mint the quantity of tokens you specified in the
+          field “Initial Circulating Supply”. These tokens are sent to the same
+          address derived in step 1. If you left this field 0 (zero), this step
+          will not be performed.
         </p>
         <p>
-        (backend process)
-        </p>
-        <p>
-        SysMint automatically follows this logic to create your fungible token:
-        </p>
-        <p>
-        1. `assetNew` is executed to create your token according to the specs you provided in the form. Ownership (management) of the asset is assigned to you by using a newly derived address within your wallet’s current selected account.
-        </p>     <p>
-        2. Once the transaction from step 1 settles onchain, `assetSend` is then executed to mint the quantity of tokens you specified in the field “Initial Circulating Supply”. These tokens are sent to the same address derived in step 1. If you left this field 0 (zero), this step will not be performed.
-        </p>
-        <p>
-        This process requires you to approve up to two transactions in your wallet. The first is for creating the asset, and the second is for issuing the initial quantity of tokens into circulation if you specified an “Initial Circulating Supply” greater than zero.
+          This process requires you to approve up to two transactions in your
+          wallet. The first is for creating the asset, and the second is for
+          issuing the initial quantity of tokens into circulation if you
+          specified an “Initial Circulating Supply” greater than zero.
         </p>
         <form onSubmit={handleCreateToken}>
           <div className="row">
@@ -189,38 +204,26 @@ export default function CreateSPT() {
               />
               <p className="help-block">Ceiling: (default 1)</p>
             </div>
-            
+
             <div className="form-group col-33 col-lg-100 lg-spaced-top">
-              { receiver && connectedAccountAddress ? <>  
-                <label htmlFor="initialsupply">
+              <label htmlFor="initialsupply">
                 Initial Circulating Supply{" "}
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
-                onClick={() => {toast.error("Invalid Address")}}
+                onChange={handleInputChange(setInitialSupply)}
                 type="number"
                 className="form-control"
                 id="initialsupply"
-                placeholder="You can only create a initial circulating supply for SPTs that you're the owner"
                 autoComplete="off"
-                disabled
-              /></>
-              :
-              <>
-           <label htmlFor="initialsupply">
-                Initial Circulating Supply{" "}
-                <i className="icon-info-circled" title="help goes here"></i>
-              </label>
-              <input
-                onChange={() => {}}
-                type="number"
-                className="form-control"
-                id="initialsupply"
-                placeholder=""
-                autoComplete="off"
+                disabled={receiver && receiver !== connectedAccountAddress}
+                placeholder={
+                  receiver && receiver !== connectedAccountAddress
+                    ? "You can only create a initial circulating supply for SPTs that you're the owner"
+                    : ""
+                }
               />
-              </>}
-           
+
               <p className="help-block">
                 Ceiling: Max Supply. This value will be minted and sent to the
                 issuer/owner address for further distribution.{" "}
@@ -249,12 +252,16 @@ export default function CreateSPT() {
               <div className="fileupload">
                 <label htmlFor="logo">Upload logo</label>
                 <input onChange={handleInputFile} type="file" id="logo" />
-                <img src={file ? URL.createObjectURL(file) : assetImg} />
+                <img src={file ? URL.createObjectURL(file) : assetImg} alt="" />
               </div>
             </div>
           </div>
 
-          <AdvancedPanel onChange={setAdvancedOptions} toggleButton />
+          <AdvancedPanel
+            onChange={setAdvancedOptions}
+            toggleButton
+            enableIssueSupplyIntoCirculation={Boolean(initialSupply)}
+          />
 
           <div className="btn-center">
             <button>Create Token</button>

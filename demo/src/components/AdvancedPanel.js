@@ -6,6 +6,7 @@ export default function AdvancedPanel({
   onChange,
   renderContractField = false,
   toggleButton = false,
+  enableIssueSupplyIntoCirculation = false
 }) {
   const [contract, setContract] = useState("");
   const [capabilityFlags, setCapabilityFlags] = useState(0);
@@ -187,6 +188,7 @@ export default function AdvancedPanel({
             <div className="checkbox small">
               <label>
                 <input
+                  disabled={enableIssueSupplyIntoCirculation}
                   onChange={handleCapabilityFlags}
                   type="checkbox"
                   value={4}
