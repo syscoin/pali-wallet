@@ -1,14 +1,14 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { useSelector } from "react-redux";
-import { NFTStorage, File } from "nft.storage";
-import * as yup from 'yup';
+import * as yup from "yup";
 import assetImg from "../images/asset.svg";
 import loaderImg from "../images/spinner.svg";
 import { token } from "../config";
 import AdvancedPanel from "../components/AdvancedPanel";
 import PreviewFile from "../components/PreviewFile";
-import { toast, ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.min.css'; 
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.min.css";
+import ipfsUpload from "../utils/ipfsUpload";
 
 export default function CreateNFT() {
   const [symbol, setSymbol] = useState("");
@@ -32,36 +32,46 @@ export default function CreateNFT() {
     issuer,
     totalShares,
     metadataDescription,
-  }
-  
+  };
+
   const schema = yup.object().shape({
-      symbol: yup.string().required("Symbol is required!"),
-      totalShares: yup.number().required(),
-      metadataDescription: yup.string().required("Metadata URL is required!"),
-      issuer: yup.string(),
-    });
+    symbol: yup.string().required("Symbol is required!"),
+    totalShares: yup.number().required(),
+    metadataDescription: yup.string().required("Metadata URL is required!"),
+    issuer: yup.string(),
+  });
 
   const handleCreateNFT = async (event) => {
     event.preventDefault();
 
     await schema
-    .validate(dataYup, { abortEarly: false })
-    .then(() => {
-      controller.handleCreateNFT(
-        symbol,
-        issuer || connectedAccountAddress,
-        Number(totalShares),
-        description,
-        ...Object.values(advancedOptions)
-      ); 
-       event.target.reset();   
-    })
-    .catch( (err) => {
-      err.errors.forEach((error) => {
-        toast.error(error);
+      .validate(dataYup, { abortEarly: false })
+      .then(async () => {
+        if (
+          await controller.isValidSYSAddress(issuer || connectedAccountAddress)
+        ) {
+          controller
+            .handleCreateNFT(
+              symbol,
+              issuer || connectedAccountAddress,
+              Number(totalShares),
+              description,
+              ...Object.values(advancedOptions)
+            )
+            .catch((err) => {
+              toast.error(err, {position: "bottom-right"});
+            });
+          event.target.reset();
+          return;
+        }
+        toast.error("Invalid Address", {position: "bottom-right"});
+      })
+      .catch((err) => {
+        err.errors.forEach((error) => {
+          toast.error(error, {position: "bottom-right"});
+        });
       });
-    });
-};
+  };
 
   const handleInputChange = (setState) => {
     return (event) => {
@@ -69,76 +79,70 @@ export default function CreateNFT() {
     };
   };
 
-  const handleInputFile = async (event) => {
-    const client = new NFTStorage({ token });
-    const _file = event.target.files[0];
-
-    if (
-      ![
-        "image/svg+xml",
-        "image/gif",
-        "image/jpg",
-        "image/png",
-        "image/jpeg",
-        // "video/mp4",
-        // "audio/mpeg",
-        // "audio/x-m4a",
-      ].includes(_file.type)
-    ) {
-      setError("Error: Only Imagem")
-      return;
-    }
-    
-    setFile(_file);
-    setIsUploading(true);
-    setError("");
-    
-    const metadata = await client.store({
-      name: symbol,
-      description,
-      image: new File([_file], _file.name, { type: _file.type }),
+  async function upload(file) {
+    const dataIpfs = {
+      symbol,
+    };
+    const schemaIpfs = yup.object().shape({
+      symbol: yup.string().required("Symbol is required, upload again!"),
     });
 
-    setIsUploading(false);
-    setMetadataDescription(
-      `https://ipfs.io/ipfs/${metadata.ipnft}/metadata.json`
-    );
-  };
+    await schemaIpfs
+      .validate(dataIpfs, { abortEarly: false })
+      .then(async () => {
+        const fileData = await ipfsUpload(file);
+
+        const metadata = JSON.stringify({
+          name: symbol,
+          description: description,
+          file: `https://ipfs.io/ipfs/${fileData.value.cid}`,
+        });
+
+        const jsonFile = new File([metadata], "metadata.json", {
+          type: "application/json",
+        });
+
+        const metaData = await ipfsUpload(jsonFile);
+
+        setMetadataDescription(`https://ipfs.io/ipfs/${metaData.value.cid}`);
+      })
+      .catch((err) => {
+        err.errors.forEach((error) => {
+          toast.error(error, {position: "bottom-right"});
+        });
+      });
+  }
+
+  useEffect(() => {
+    file && upload(file);
+  }, [file]);
 
   function copyToClipboard(e) {
     textAreaRef.current.select();
     document.execCommand("copy");
     e.target.focus();
-    setCopySuccess("Copied!");
+    toast.dark("Copied!", {position: "bottom-right", autoClose: 3000,});
   }
-
 
   return (
     <section>
       <div className="inner wider">
         <h1>Create and Issue a NFT (Non-Fungible)</h1>
-        <p>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus quam
-          ex, suscipit sagittis orci tincidunt, maximus posuere dui. Morbi porta
-          magna hendrerit velit molestie ultricies. Sed a tellus est. Quisque ut
-          velit quis orci rutrum congue ut euismod odio. Nunc non ipsum lacus.
-          Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
-        </p>
-        <p>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus quam
-          ex, suscipit sagittis orci tincidunt, maximus posuere dui. Morbi porta
-          magna hendrerit velit molestie ultricies. Sed a tellus est. Quisque ut
-          velit quis orci rutrum congue ut euismod odio. Nunc non ipsum lacus.
-          Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
-        </p>
-
+        <p>This tool helps you create a non-fungible token on Syscoin.</p>
+        <p>A non-fungible token represents a unique digital asset. Examples include a specific piece of art, music, a collectible, a serialized gold bar, a land deed or other certificate, or anything else unique.</p>
+        <p>Syscoin gives you the option to make your NFT’s value divisible (fractional) on the blockchain. You do this by specifying that the NFT will have more than one share. This means more than one person can own a portion of the NFT’s value on the blockchain. One share will be represented as the smallest unit of precision (decimal place). To create a typical non-shared NFT, leave “Shares” set to 1.</p>
+        <p>Familiarize yourself with the backend process this tool uses, if you wish.(backend process)</p>
+        <p>SysMint automatically follows this logic to create your non-fungible token:</p>
+        <p>1. `assetNew` is executed to create your NFT according to the specs you provided in the form. Ownership (management) of the asset is assigned to you by using a newly derived address within your wallet’s current selected account. The asset’s precision is assigned according to your “Shares” selection (default 1 share = 0 precision). The URL to your digital asset is stored on-chain in your asset’s Description field.</p>
+        <p>2. `assetSend` is executed to issue your NFT into circulation. This issues and sends the NFT (always quantity 1) to the same address used in Step 1 of this process.</p>
+        <p>This process requires you to approve two transactions in your wallet. The first is for creating the NFT, and the second is for issuing it into circulation.</p>
         <form onSubmit={handleCreateNFT}>
           <div className="row">
             <div className="spacer col-100"></div>
           </div>
           <ToastContainer />
           <div className="form-line">
-            <div className="form-group col-25 col-md-50 col-sm-100">
+            <div className="form-group col-33 col-xs-100">
               <label htmlFor="symbol">
                 Symbol{" "}
                 <i className="icon-info-circled" title="help goes here"></i>
@@ -152,24 +156,10 @@ export default function CreateNFT() {
               />
               <p className="help-block">Max length: 8 alpha-numeric</p>
             </div>
-            <div className="form-group col-50 col-md-50 col-sm-100 sm-spaced-top">
-              <label htmlFor="owneraddr">
-                Issuer/Owner Address{" "}
-                <i className="icon-info-circled" title="help goes here"></i>
-              </label>
-              <input
-                onChange={handleInputChange(setIssuer)}
-                type="text"
-                className="form-control"
-                id="owneraddr"
-                placeholder=""
-              />
-              <p className="help-block">
-                Optional: If blank, the token will be assigned to new address in
-                your connected wallet
-              </p>
+            <div className="form-group col-50 col-sm-100 sm-spaced-top">
+   
             </div>
-            <div className="form-group col-25 col-md-100 md-spaced-top">
+            <div className="form-group col-67 col-xs-100 xs-spaced-top">
               <label htmlFor="shares">
                 Total Shares{" "}
                 <i className="icon-info-circled" title="help goes here"></i>
@@ -205,7 +195,11 @@ export default function CreateNFT() {
             <div className="form-group col-33 col-md-50 col-sm-100">
               <div className="fileupload">
                 <label htmlFor="logo">Upload to IPFS</label>
-                <input onChange={handleInputFile} type="file" id="logo" />
+                <input
+                  onChange={(e) => setFile(e.target.files[0])}
+                  type="file"
+                  id="logo"
+                />
                 {!isUploading ? (
                   file ? (
                     <PreviewFile file={file} />
@@ -215,9 +209,7 @@ export default function CreateNFT() {
                 ) : (
                   <img src={loaderImg} alt="" />
                 )}
-              <p className="help-block-2">
-              {error}
-              </p> 
+                <p className="help-block-2">{error}</p>
               </div>
             </div>
           </div>
@@ -248,7 +240,6 @@ export default function CreateNFT() {
                     >
                       Copy
                     </button>
-                    {copySuccess}
                   </div>
                 )}
               </div>

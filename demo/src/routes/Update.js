@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import * as yup from 'yup';
-import { toast, ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.min.css'; 
+import * as yup from "yup";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.min.css";
 
 import assetImg from "../images/asset.svg";
 import AdvancedPanel from "../components/AdvancedPanel";
@@ -26,42 +26,45 @@ export default function Update() {
     return () => setTokens([]);
   }, []);
 
-  useEffect(() => {  
-    tokens.length && setIsLoading(false)
-  },[tokens])
+  useEffect(() => {
+    tokens.length && setIsLoading(false);
+  }, [tokens]);
 
   const dataYup = {
     assetGuid,
     description,
-  }
-  
+  };
+
   const schema = yup.object().shape({
-      assetGuid: yup.string().required("Token is required!"),
-      description: yup.string().required("Description is required!"),
-    });
+    assetGuid: yup.string().required("Token is required!"),
+    description: yup.string(),
+  });
 
   const handleUpdateAsset = async (event) => {
     event.preventDefault();
 
     await schema
-    .validate(dataYup, { abortEarly: false })
-    .then(() => {
-      controller &&
-      (  controller.handleUpdateAsset(
-        assetGuid,
-        description,
-        ...Object.values(advancedOptions)
-      ));
+      .validate(dataYup, { abortEarly: false })
+      .then(() => {
+        controller &&
+          controller
+            .handleUpdateAsset(
+              assetGuid,
+              description,
+              ...Object.values(advancedOptions)
+            )
+            .catch((err) => {
+              toast.error(err, {position: "bottom-right"});
+            });
 
-   event.target.reset();
-
-    })
-    .catch((err) => {
-      err.errors.forEach((error) => {
-        toast.error(error);
+        event.target.reset();
+      })
+      .catch((err) => {
+        err.errors.forEach((error) => {
+          toast.error(error, {position: "bottom-right"});
+        });
       });
-    });
-}
+  };
 
   const handleInputChange = (setState) => {
     return (event) => {
@@ -105,8 +108,13 @@ export default function Update() {
           <ToastContainer />
           <div className="form-line">
             <div className="form-group col-100">
-              <label htmlFor="token">Standard Token&nbsp;
-               {isLoading && <img className="loaderTokens" src={loaderImg}/>}
+            <label htmlFor="token" className="loaderTokens">
+                <span >
+                  Standard Token{" "}
+                  {isLoading && (
+                    <img  src={loaderImg} alt="" />
+                  )}
+                </span>
               </label>
               <select
                 onChange={handleInputChange(setAssetGuid)}

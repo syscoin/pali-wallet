@@ -11,7 +11,7 @@ export default function Dashboard() {
   );
 
   useEffect(() => {
-    connectedAccount && setAssets(connectedAccount.assets);
+    connectedAccount?.assets && setAssets(connectedAccount.assets);
   }, [connectedAccount]);
 
   const RenderBalance = ({ balance, decimals }) => {
@@ -49,8 +49,10 @@ export default function Dashboard() {
               </div>
               <div className="symbol">{asset.symbol}</div>
               <div className="asset-id">Asset ID: {asset.assetGuid}</div>
-              {isNFT(asset.assetGuid) && (
+              {/* // se tiver esse campo child nft e se for ipfs o link na descricao e vai se chamar parent nft */}
+              {isNFT(asset.assetGuid) && (<>
                 <div className="nft-id">NFT ID: {asset.nftAssetID}</div>
+                <div className="nft-id">NFT ID: {asset.description}</div></>
               )}
             </div>
           ))}

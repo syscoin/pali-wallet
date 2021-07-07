@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import { toast, ToastContainer } from 'react-toastify';
-import * as yup from 'yup'; 
+import { toast, ToastContainer } from "react-toastify";
+import * as yup from "yup";
 
-import 'react-toastify/dist/ReactToastify.min.css'; 
+import "react-toastify/dist/ReactToastify.min.css";
 import loaderImg from "../images/spinner.svg";
 
 export default function IssueSPT() {
@@ -35,39 +35,48 @@ export default function IssueSPT() {
     }
   }, [assetGuid]);
 
-  useEffect(() => {  
-    tokens.length && setIsLoading(false)
-  },[tokens])
+  useEffect(() => {
+    tokens.length && setIsLoading(false);
+  }, [tokens]);
 
   const dataYup = {
     amount,
-    assetGuid
-  }
-  
+    assetGuid,
+  };
+
   const schema = yup.object().shape({
-      amount: yup.number()
-      .typeError('Quantity to Issue is required!')
+    amount: yup
+      .number()
+      .typeError("Quantity to Issue is required!")
       .min(1)
       .required("Quantity to Issue is required!"),
-      assetGuid: yup.string().required("Standard Token is required!"),
-    });
+    assetGuid: yup.string().required("Standard Token is required!"),
+  });
 
-    const handleIssueSPT = async (event) => {
-      event.preventDefault();
-  
-      await schema
-        .validate(dataYup, { abortEarly: false })
-        .then(() => {
-          controller && controller.handleIssueSPT(
-            Number(amount),
-             assetGuid);
-        })
-        .catch((err) => {
-          err.errors.forEach((error) => {
-            toast.error(error);
-          });
+  const handleIssueSPT = async (event) => {
+    event.preventDefault();
+
+    await schema
+      .validate(dataYup, { abortEarly: false })
+      .then(async () => {
+        if (amount < asset.maxSupply - asset.totalSupply) {
+          controller &&
+            controller
+              .handleIssueSPT(Number(amount), assetGuid)
+              .catch((err) => {
+            toast.error(err, {position: "bottom-right"});
+              });
+          return;
+        }
+        toast.error("Invalid Quantity to Issue", {position: "bottom-right"});
+      })
+      .catch((err) => {
+        err.errors.forEach((error) => {
+          toast.dismiss()
+          toast.error(error, {position: "bottom-right"});
         });
-    };
+      });
+  };
 
   const handleInputChange = (setState) => {
     return (event) => {
@@ -101,14 +110,19 @@ export default function IssueSPT() {
           <ToastContainer />
           <div className="form-line">
             <div className="form-group col-100">
-              <label htmlFor="token">Standard Token &nbsp;
-               {isLoading && <img className="loaderTokens" src={loaderImg}/>}</label>
+            <label htmlFor="token" className="loaderTokens">
+                <span >
+                  Standard Token{" "}
+                  {isLoading && (
+                    <img  src={loaderImg} alt="" />
+                  )}
+                </span>
+              </label>
               <select
                 onChange={handleInputChange(setAssetGuid)}
                 className="form-control"
                 id="token"
               >
-             
                 <option></option>
                 {tokens.map((token) => (
                   <option value={token.assetGuid} key={token.assetGuid}>
@@ -116,7 +130,6 @@ export default function IssueSPT() {
                   </option>
                 ))}
               </select>
-
             </div>
           </div>
 
@@ -146,7 +159,9 @@ export default function IssueSPT() {
                 type="text"
                 className="form-control"
                 disabled
-                value={Intl.NumberFormat("en", { minimumFractionDigits: 2 } ).format(asset.totalSupply)}
+                value={Intl.NumberFormat("en", {
+                  minimumFractionDigits: 2,
+                }).format(asset.totalSupply)}
               />
               <p className="help-block">Current Circulating Supply</p>
             </div>
@@ -156,7 +171,10 @@ export default function IssueSPT() {
                 type="text"
                 className="form-control"
                 disabled
-                value={Intl.NumberFormat("en", { minimumFractionDigits: 2 } ).format(asset.maxSupply)}/>
+                value={Intl.NumberFormat("en", {
+                  minimumFractionDigits: 2,
+                }).format(asset.maxSupply)}
+              />
               <p className="help-block">Max Supply</p>
             </div>
           </div>

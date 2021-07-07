@@ -25,9 +25,9 @@ export default function Transfer() {
     return () => setTokens([]);
   }, []);
 
-  useEffect(() => {  
-    tokens.length && setIsLoading(false)
-  },[tokens])
+  useEffect(() => {
+    tokens.length && setIsLoading(false);
+  }, [tokens]);
 
   const dataYup = {
     assetGuid,
@@ -49,17 +49,26 @@ export default function Transfer() {
     event.preventDefault();
 
     await schema
-    .validate(dataYup, { abortEarly: false })
-    .then(() => {
-       controller && controller.handleTransferOwnership(assetGuid, newOwner);
-      event.target.reset();
-    })
-    .catch((err) => {
-      err.errors.forEach((error) => {
-        toast.error(error);
+      .validate(dataYup, { abortEarly: false })
+      .then(async () => {
+        if (await controller.isValidSYSAddress(newOwner)) {
+          controller &&
+            controller
+              .handleTransferOwnership(assetGuid, newOwner)
+              .catch((err) => {
+                toast.error(err, {position: "bottom-right"});
+              });
+          event.target.reset();
+          return;
+        }
+        toast.error("Invalid Address", {position: "bottom-right"});
+      })
+      .catch((err) => {
+        err.errors.forEach((error) => {
+          toast.error(error, {position: "bottom-right"});
+        });
       });
-    });
-  }
+  };
 
   return (
     <section>
@@ -87,8 +96,13 @@ export default function Transfer() {
 
           <div className="form-line">
             <div className="form-group col-100">
-            <label htmlFor="token">Standard Token&nbsp;
-               {isLoading && <img className="loaderTokens" src={loaderImg}/>}
+            <label htmlFor="token" className="loaderTokens">
+                <span >
+                  Standard Token{" "}
+                  {isLoading && (
+                    <img  src={loaderImg} alt="" />
+                  )}
+                </span>
               </label>
               <select
                 onChange={handleInputChange(setAssetGuid)}
