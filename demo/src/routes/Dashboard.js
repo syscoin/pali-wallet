@@ -11,8 +11,7 @@ export default function Dashboard() {
   );
 
   useEffect(() => {
-    console.log(connectedAccount.assets)
-    connectedAccount && setAssets(connectedAccount.assets);
+    connectedAccount?.assets && setAssets(connectedAccount.assets);
   }, [connectedAccount]);
 
   const RenderBalance = ({ balance, decimals }) => {
