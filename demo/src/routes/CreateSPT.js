@@ -222,14 +222,16 @@ export default function CreateSPT() {
               </label>
               <input
                 onChange={handleInputChange(setInitialSupply)}
+                
                 type="number"
-                // value={initialSupply}
+                 value={issueSupplyIntoCirculation ?
+                 initialSupply : null}
                 className="form-control"
                 id="initialsupply"
                 autoComplete="off"
                 disabled={
                   (receiver && receiver !== connectedAccountAddress) ||
-                  issueSupplyIntoCirculation
+                  issueSupplyIntoCirculation 
                 }
                 placeholder={
                   receiver && receiver !== connectedAccountAddress
