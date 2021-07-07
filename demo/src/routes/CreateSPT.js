@@ -223,7 +223,7 @@ export default function CreateSPT() {
               <input
                 onChange={handleInputChange(setInitialSupply)}
                 type="number"
-                value={initialSupply}
+                // value={initialSupply}
                 className="form-control"
                 id="initialsupply"
                 autoComplete="off"
