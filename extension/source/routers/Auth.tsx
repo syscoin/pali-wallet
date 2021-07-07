@@ -15,7 +15,6 @@ import UpdateAsset, { UpdateConfirm } from 'containers/auth/UpdateAsset';
 import Create, { CreateTokenConfirm } from 'containers/auth/Create';
 import IssueAsset, { IssueTokenConfirm } from 'containers/auth/IssueAsset';
 import IssueNFT, { CreateAndIssueNFTConfirm } from 'containers/auth/IssueNFT';
-// import UpdateAsset from 'containers/auth/UpdateAsset';
 import Receive from 'containers/auth/Receive';
 import Import from 'containers/common/Import';
 import ConnectWallet from 'containers/auth/ConnectWallet';
@@ -57,26 +56,26 @@ const Auth = () => {
   useEffect(() => {
     const redirectRoute = controller.appRoute();
 
-    if (redirectRoute == '/send/confirm' && !controller.wallet.account.getTempTx()) {
+    if (redirectRoute == '/send/confirm' && !controller.wallet.account.getTransactionItem().newSPT) {
       history.push('/home');
 
       return;
     }
     
-    if (redirectRoute == '/updateAsset/confirm' && !controller.wallet.account.getNewUpdateAsset()) {
+    if (redirectRoute == '/updateAsset/confirm' && !controller.wallet.account.getTransactionItem().updateAssetItem) {
       history.push('/home');
 
       return;
     }
     
-    if (updatingAsset && controller.wallet.account.getNewUpdateAsset() && isUnlocked) {
-      console.log('updatingAsset && controller.wallet.account.getNewUpdateAsset() && isUnlocke')
+    if (updatingAsset && controller.wallet.account.getTransactionItem().updateAssetItem && isUnlocked) {
+      console.log('updatingAsset && controller.wallet.account.getTransactionItem().updateAssetItem && isUnlocke')
       history.push('/updateAsset/confirm');
 
       return;
     }
     
-    if (!updatingAsset && controller.wallet.account.getNewUpdateAsset() ) {
+    if (!updatingAsset && controller.wallet.account.getTransactionItem().updateAssetItem ) {
       console.log('!updatingAsset && controller.wallet.account.getTransactionItem().updateAssetItem ')
       history.push('/home');
 
@@ -89,7 +88,7 @@ const Auth = () => {
       return;
     }
 
-    if (confirmingTransaction && controller.wallet.account.getTempTx() && isUnlocked) {
+    if (confirmingTransaction && controller.wallet.account.getTransactionItem().newSPT && isUnlocked) {
       history.push('/send/confirm');
 
       return;
@@ -125,7 +124,7 @@ const Auth = () => {
       return;
     }
 
-    if (!confirmingTransaction && controller.wallet.account.getTempTx()) {
+    if (!confirmingTransaction && controller.wallet.account.getTransactionItem().newSPT) {
       history.push('/home');
 
       return;

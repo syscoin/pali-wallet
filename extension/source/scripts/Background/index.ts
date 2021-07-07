@@ -342,6 +342,7 @@ browser.runtime.onInstalled.addListener(async () => {
           maxsupply,
           description,
           receiver,
+          initialSupply,
           capabilityflags,
           notarydetails,
           auxfeedetails,
@@ -356,6 +357,10 @@ browser.runtime.onInstalled.addListener(async () => {
         if (maxsupply < 0) {
           throw new Error('invalid max supply value');
         }
+
+        if (initialSupply < 0) {
+          throw new Error('invalid initial supply value');
+        }
         
         if (!window.controller.wallet.account.isValidSYSAddress(receiver, store.getState().wallet.activeNetwork)) {
           throw new Error('invalid receiver address');
@@ -367,6 +372,7 @@ browser.runtime.onInstalled.addListener(async () => {
           maxsupply,
           description,
           receiver,
+          initialSupply,
           capabilityflags,
           notarydetails,
           auxfeedetails,
@@ -413,6 +419,8 @@ browser.runtime.onInstalled.addListener(async () => {
           amount: Number(amount)
         });
 
+        console.log('sending data asset', amount, assetGuid)
+
         store.dispatch(issueAsset(true));
 
         const appURL = browser.runtime.getURL('app.html');
@@ -439,9 +447,7 @@ browser.runtime.onInstalled.addListener(async () => {
           issuer,
           totalShares,
           description,
-          notary,
           notarydetails,
-          auxfee,
           auxfeedetails,
           notaryAddress,
           payoutAddress,
@@ -460,9 +466,7 @@ browser.runtime.onInstalled.addListener(async () => {
           issuer,
           totalShares,
           description,
-          notary,
           notarydetails,
-          auxfee,
           auxfeedetails,
           notaryAddress,
           payoutAddress,

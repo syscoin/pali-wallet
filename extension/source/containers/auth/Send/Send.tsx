@@ -188,7 +188,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     <div className={styles.wrapper}>
       <Header backLink="/home" showName={false} />
 
-      <form onSubmit={handleSubmit(onSubmit)}>
+      <form onSubmit={handleSubmit(onSubmit)} autoComplete="off">
         <section className={styles.subheading}>Send {selectedAsset ? selectedAsset.symbol : "SYS"}</section>
         <section className={styles.balance}>
           <div>
@@ -221,6 +221,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               <img
                 src={Close}
                 alt="checked"
+                onClick={() => setAddress("")}
                 className={address && !isValidAddress ? styles.statusIsNotValidClass : styles.hideCloseIcon}
               />
 

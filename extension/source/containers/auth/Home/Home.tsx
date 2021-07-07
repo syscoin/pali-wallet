@@ -20,22 +20,15 @@ import TxsPanel from './TxsPanel';
 import styles from './Home.scss';
 import { formatNumber } from '../helpers';
 import { getHost } from '../../../scripts/Background/helpers';
-import { ChangeEvent } from 'react';
-import NetworkIcon from '@material-ui/icons/Timeline';
-
-import Select from 'components/Select';
-import Icon from 'components/Icon';
-import { SYS_NETWORK } from 'constants/index';
 
 const Home = () => {
   const controller = useController();
   const getFiatAmount = useFiat();
+
   const { accounts, activeAccountId, currentURL, changingNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
-  const network = useSelector(
-    (state: RootState) => state.wallet!.activeNetwork
-  );
+
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
   const [openBlockExplorer, setOpenBlockExplorer] = useState<boolean>(false);
   const [openAssetBlockExplorer, setOpenAssetBlockExplorer] = useState<boolean>(false);
@@ -91,16 +84,6 @@ const Home = () => {
     setIsOpenModal(!isOpenModal);
   }
 
-  const handleChangeNetwork = (
-    event: ChangeEvent<{
-      name?: string | undefined;
-      value: unknown;
-    }>
-  ) => {
-    controller.wallet.switchNetwork(event.target.value as string);
-    controller.wallet.getNewAddress();
-  };
-
   return (
     <div className={styles.wrapper}>
       {isOpenModal && (
@@ -151,7 +134,7 @@ const Home = () => {
             )}
 
             {isOpenModal && (!isConnected) && (
-              <Modal title={currentURL} message="This account is not connected to this site. To connect to a sys plataform site, find the connect button on their site." callback={handleSetModalIsOpen} />
+              <Modal title={currentURL} message="This account is not connected to this site. To connect to a sys platform site, find the connect button on their site." callback={handleSetModalIsOpen} />
             )}
 
             {changingNetwork ? (

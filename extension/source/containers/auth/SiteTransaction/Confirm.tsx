@@ -1,23 +1,21 @@
-import React, { useState, useEffect, FC, useRef } from 'react';
-import clsx from 'clsx';
-import { useSelector } from 'react-redux';
+import React, { useState, useEffect, FC } from "react";
+import clsx from "clsx";
+import { useSelector } from "react-redux";
+import Layout from "containers/common/Layout";
+import Button from "components/Button";
+import { useController } from "hooks/index";
+import { RootState } from "state/store";
+import { ellipsis, formatURL } from "../helpers";
+import IWalletState, { IAccountState } from "state/wallet/types";
+import { useAlert } from "react-alert";
 
-// import Header from 'containers/common/Header';
-import Layout from 'containers/common/Layout';
-import Button from 'components/Button';
-import { useController } from 'hooks/index';
-import { RootState } from 'state/store';
-import { ellipsis, formatURL } from '../helpers';
-import IWalletState, { IAccountState } from 'state/wallet/types';
-import { useAlert } from 'react-alert';
-
-import styles from './SiteTransaction.scss';
-import { browser } from 'webextension-polyfill-ts';
-import { getHost } from '../../../scripts/Background/helpers';
-import DownArrowIcon from '@material-ui/icons/ExpandMore';
-import Spinner from '@material-ui/core/CircularProgress';
-import { useHistory } from 'react-router';
-import CircularProgress from '@material-ui/core/CircularProgress';
+import styles from "./SiteTransaction.scss";
+import { browser } from "webextension-polyfill-ts";
+import { getHost } from "../../../scripts/Background/helpers";
+import DownArrowIcon from "@material-ui/icons/ExpandMore";
+import Spinner from "@material-ui/core/CircularProgress";
+import { useHistory } from "react-router";
+import CircularProgress from "@material-ui/core/CircularProgress";
 
 interface IConfirmTransaction {
   transactionItem: any;
@@ -40,10 +38,12 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 }) => {
   const controller = useController();
   const history = useHistory();
+  const alert = useAlert();
 
   const { accounts, currentSenderURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
+
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
   const transactionItemData = controller.wallet.account.getTransactionItem()[transactionItem];
   const [confirmed, setConfirmed] = useState<boolean>(false);
@@ -51,9 +51,8 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   const [expanded, setExpanded] = useState<boolean>(false);
   const [loadingConfirm, setLoadingConfirm] = useState<boolean>(false);
   const [dataToRender, setDataToRender] = useState<any[]>([]);
-  const advancedOptionsArray = ['notarydetails', 'notaryAddress', 'auxfeedetails', 'payoutAddress', 'capabilityflags', 'contract']
-  const alert = useAlert();
   const [advancedOptions, setAdvancedOptions] = useState<any[]>([]);
+  const advancedOptionsArray = ["notarydetails", "notaryAddress", "auxfeedetails", "payoutAddress", "capabilityflags", "contract"];
 
   useEffect(() => {
     if (data) {
@@ -66,7 +65,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
               value
             }),
           ]);
-          
+
           if (advancedOptionsArray.includes(key) && !advancedOptions.includes({ label: key, value })) {
             setAdvancedOptions([
               ...advancedOptions,
@@ -108,7 +107,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   ]);
 
   const handleClosePopup = () => {
-    history.push('/home');
+    history.push("/home");
 
     browser.runtime.sendMessage({
       type: "CLOSE_POPUP",
@@ -117,7 +116,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   }
 
   const handleCancelTransactionOnSite = () => {
-    history.push('/home');
+    history.push("/home");
 
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
@@ -139,18 +138,15 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
       setLoadingConfirm(true);
       setLoading(true)
       isPending = true;
-      
-      console.log('error message', errorMessage)
 
       confirmTransaction().then((error: any) => {
         if (error) {
-          console.log('error', error)
           alert.removeAll();
           alert.error(errorMessage);
 
           browser.runtime.sendMessage({
-            type: 'WALLET_ERROR',
-            target: 'background',
+            type: "WALLET_ERROR",
+            target: "background",
             transactionError: true,
             invalidParams: false,
             message: errorMessage
@@ -179,8 +175,86 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
             handleCancelTransactionOnSite();
           }, 4000);
         }
-      }, 90000);
+      }, 290000);
     }
+  }
+
+  const renderData = () => {
+    return dataToRender.map(({ label, value }) => {
+      if (label && value) {
+        if (label === "receiver" || label === "issuer" || label === "newOwner") {
+          return (
+            <div key={label} className={styles.flex}>
+              <p>{label}</p>
+              <p>{ellipsis(value)}</p>
+            </div>
+          )
+        }
+
+        if (label === "rbf") {
+          return (
+            <div key={label} className={styles.flex}>
+              <p>{label}</p>
+              <p>{value ? "Yes" : "No"}</p>
+            </div>
+          )
+        }
+
+        if (advancedOptionsArray.includes(label)) {
+          return;
+        }
+
+        return (
+          <div key={label} className={styles.flex}>
+            <p>{label}</p>
+            <p>{value}</p>
+          </div>
+        )
+      }
+
+      return null;
+    })
+  }
+
+  const renderOptions = () => {
+    return advancedOptions.map(({ label, value }) => {
+      if (label && value) {
+        if (label == "contract") {
+          return (
+            <div key={label} className={styles.flex}>
+              <p>{label}</p>
+              <p>{formatURL(value)}</p>
+            </div>
+          )
+        }
+
+        if (label == "notaryAddress" || label == "payoutAddress") {
+          return (
+            <div key={label} className={styles.flex}>
+              <p>{label}</p>
+              <p>{ellipsis(value)}</p>
+            </div>
+          )
+        }
+
+        if (label == "notarydetails" || label == "auxfeedetails") {
+          return (
+            <div key={label}>
+              {renderAdvancedDetails(value, label)}
+            </div>
+          )
+        }
+
+        return (
+          <div key={label} className={styles.flex}>
+            <p>{label}</p>
+            <p>{value}</p>
+          </div>
+        )
+      }
+
+      return null;
+    })
   }
 
   const renderAdvancedDetails = (items: any, itemName: string) => {
@@ -200,7 +274,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 
             <div className={styles.flex}>
               <p>HD required</p>
-              <p>{items.hdrequired ? 'Yes' : 'No'}</p>
+              <p>{items.hdrequired ? "Yes" : "No"}</p>
             </div>
           </div>
         )}
@@ -244,155 +318,78 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
       </Button>
     </Layout>
   ) : (
-    <div>
-      {transactingStateItem && loading ? (
-        <Layout title="" showLogo>
-          <div className={styles.wrapper}>
-            <section className={clsx(styles.mask)}>
-              <CircularProgress className={styles.loader} />
-            </section>
-          </div>
-        </Layout>
-      ) : (
-        <div>
-          {transactionItemData && data && !loading && (
+      <div>
+        {transactingStateItem && loading ? (
+          <Layout title="" showLogo>
+            <div className={styles.wrapper}>
+              <section className={clsx(styles.mask)}>
+                <CircularProgress className={styles.loader} />
+              </section>
+            </div>
+          </Layout>
+        ) : (
             <div>
-              <Layout title={layoutTitle} showLogo>
-                <div className={styles.wrapper}>
-                  <div>
-                    <section className={styles.data}>
-                      {dataToRender.map((item: any) => {
-                        if (item.label) {
-                          if (item.label === "receiver") {
-                            return (
-                              <div key={item.label} className={styles.flex}>
-                                <p>{item.label}</p>
-                                <p>{ellipsis(item.value)}</p>
-                              </div>
-                            )
-                          }
+              {transactionItemData && data && !loading && (
+                <div>
+                  <Layout title={layoutTitle} showLogo>
+                    <div className={styles.wrapper}>
+                      <div>
+                        <section className={styles.data}>
+                          {renderData()}
 
-                          if (item.label === "rbf") {
-                            return (
-                              <div key={item.label} className={styles.flex}>
-                                <p>{item.label}</p>
-                                <p>{item.value ? 'Yes' : 'No'}</p>
-                              </div>
-                            )
-                          }
+                          <div className={styles.flex}>
+                            <p>Site</p>
+                            <p>{getHost(`${currentSenderURL}`)}</p>
+                          </div>
 
-                          if (advancedOptionsArray.includes(item.label)) {
-                            return;
-                          }
+                          <div className={styles.select}>
+                            <div
+                              className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
+                            >
+                              <span onClick={() => setExpanded(!expanded)} className={styles.selected}>
+                                Advanced options
+                                <DownArrowIcon className={styles.arrow} />
+                              </span>
 
-                          if (item.value !== null) {
-                            return (
-                              <div key={item.label} className={styles.flex}>
-                                <p>{item.label}</p>
-                                <p>{item.value}</p>
-                              </div>
-                            )
-                          }
+                              <ul className={styles.options}>
+                                {renderOptions()}
+                              </ul>
+                            </div>
+                          </div>
+                        </section>
 
-                          return null;
-                        }
-                      })}
-
-                      <div className={styles.flex}>
-                        <p>Site</p>
-                        <p>{getHost(`${currentSenderURL}`)}</p>
-                      </div>
-
-                      <div className={styles.select}>
-                        <div
-                          className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
-                        >
-                          <span onClick={() => setExpanded(!expanded)} className={styles.selected}>
-                            Advanced options
-                      <DownArrowIcon className={styles.arrow} />
-                          </span>
-                          <ul className={styles.options}>
-                            {advancedOptions && (
-                              advancedOptions.map(({ label, value }) => {
-                                console.log('advanced options', advancedOptions, label === "notaryAddress")
-                                if (label && value !== undefined && value !== null) {
-                                  if (label && value !== undefined && value !== null && value !== "0" && label !== "notarydetails" && label !== "auxfeedetails" && label !== "notaryAddress" && label !== "payoutAdress") {
-                                    return (
-                                      <div key={label} className={styles.flex}>
-                                        <p>{label}</p>
-                                        <p>{value}</p>
-                                      </div>
-                                    )
-                                  }
-                                  
-                                  if (label == "contract") {
-                                    return (
-                                      <div key={label} className={styles.flex}>
-                                        <p>{label}</p>
-                                        <p>{formatURL(value)}</p>
-                                      </div>
-                                    )
-                                  }
-                                  
-                                  if (label == "notaryAddress" || label == "payoutAddress") {
-                                    console.log('ellipsis', ellipsis(value), value)
-                                    return (
-                                      <div key={label} className={styles.flex}>
-                                        <p>{label}</p>
-                                        <p>{ellipsis(value)}</p>
-                                      </div>
-                                    )
-                                  }
-
-                                  if (label == "notarydetails" || label == "auxfeedetails" && value !== null && value !== undefined) {
-                                    return (
-                                      <div key={label}>
-                                        {renderAdvancedDetails(value, label)}
-                                      </div>
-                                    )
-                                  }
-                                }
-
-                                return null;
-                              })
-                            )}
-                          </ul>
-                        </div>
-                      </div>
-                    </section>
-
-                    <section className={styles.confirm}>
-                      <div className={styles.actions}>
-                        <Button
-                          type="button"
-                          theme="btn-outline-secondary"
-                          variant={clsx(styles.button, styles.close)}
-                          linkTo="/home"
-                          onClick={handleCancelTransactionOnSite}
-                        >
-                          Reject
-                     </Button>
-
-                        <Button
-                          type="submit"
-                          theme="btn-outline-primary"
-                          variant={styles.button}
-                          onClick={handleConfirm}
-                          loading={loading}
-                        >
-                          {loadingConfirm ? <Spinner size={15} className={styles.spinner} /> : 'Confirm'}
+                        <section className={styles.confirm}>
+                          <div className={styles.actions}>
+                            <Button
+                              type="button"
+                              theme="btn-outline-secondary"
+                              variant={clsx(styles.button, styles.close)}
+                              linkTo="/home"
+                              onClick={handleCancelTransactionOnSite}
+                            >
+                              Reject
                         </Button>
+
+                            <Button
+                              type="submit"
+                              theme="btn-outline-primary"
+                              variant={styles.button}
+                              onClick={handleConfirm}
+                              loading={loading}
+                            >
+                              {loadingConfirm ? <Spinner size={15} className={styles.spinner} /> : "Confirm"}
+                            </Button>
+                          </div>
+                        </section>
                       </div>
-                    </section>
-                  </div>
+                    </div>
+                  </Layout>
                 </div>
-              </Layout>
+              )}
             </div>
           )}
-        </div>
-      )}
-    </div>
-  );
+      </div>
+    );
 };
 
 export default ConfirmTransaction;

@@ -203,6 +203,7 @@ window.addEventListener('message', (event) => {
       maxsupply,
       description,
       receiver,
+      initialSupply,
       capabilityflags,
       notarydetails,
       auxfeedetails,
@@ -218,6 +219,7 @@ window.addEventListener('message', (event) => {
       maxsupply,
       description,
       receiver,
+      initialSupply,
       capabilityflags,
       notarydetails,
       auxfeedetails,
@@ -229,6 +231,7 @@ window.addEventListener('message', (event) => {
   }
 
   if (type == 'ISSUE_SPT' && target == 'contentScript') {
+    console.log('items content script issue spt', event.data)
     const {
       amount,
       assetGuid
@@ -250,9 +253,7 @@ window.addEventListener('message', (event) => {
       issuer,
       totalShares,
       description,
-      notary,
       notarydetails,
-      auxfee,
       auxfeedetails,
       notaryAddress,
       payoutAddress,
@@ -265,9 +266,7 @@ window.addEventListener('message', (event) => {
       issuer,
       totalShares,
       description,
-      notary,
       notarydetails,
-      auxfee,
       auxfeedetails,
       notaryAddress,
       payoutAddress,
@@ -287,6 +286,8 @@ window.addEventListener('message', (event) => {
       notaryAddress,
       payoutAddress
     } = event.data;
+
+    console.log('event data', event.data)
 
     browser.runtime.sendMessage({
       type: 'UPDATE_ASSET',

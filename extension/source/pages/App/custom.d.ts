@@ -17,7 +17,6 @@ declare module 'react-alert';
 
 declare module 'bip84';
 
-
 declare interface IWalletController {
   account: Readonly<IAccountController>;
   setWalletPassword: (pwd: string) => void;
@@ -48,12 +47,6 @@ declare interface IAccountController {
   getRecommendFee: () => Promise<number>;
   updateTxs: () => void;
   getTransactionItem: () => any | null;
-  getTempTx: () => ITransactionInfo | null;
-  getNewSPT: () => ISPTInfo | null;
-  getIssueSPT: () => ISPTIssue | null;
-  getIssueNFT: () => INFTIssue | null;
-  getNewUpdateAsset: () => any | null;
-  getNewOwnership: () => any | null;
   updateTempTx: (tx: ITransactionInfo) => void;
   setNewAddress: (addr: string) => boolean;
   setNewXpub: (id: number, xpub: string, xprv: string) => boolean;
@@ -66,8 +59,6 @@ declare interface IAccountController {
   confirmIssueNFT: () => Promise<any>;
   confirmTempTx: () => Promise<any>;
   getUserMintedTokens: () => any;
-  createCollection: (collectionName: string, description: string, sysAddress: string, symbol: any, property1?: string, property2?: string, property3?: string, attribute1?: string, attribute2?: string, attribute3?: string) => void;
-  getCollection: () => any;
   getTransactionInfoByTxId: (txid: any) => any;
   getSysExplorerSearch: () => string;
   setDataFromPageToCreateNewSPT: (data: any) => void;
@@ -87,4 +78,109 @@ declare interface IAccountController {
   getHoldingsData: () => any;
   getDataAsset: (assetGuid: any) => any;
   clearTransactionItem: (item: any) => void;
-} 
+}
+
+declare type CreateTokenItems = {
+  precision: number | 8,
+  symbol: string,
+  maxsupply: number,
+  description: string,
+  receiver: string,
+  initialSupply?: number | 0,
+  capabilityflags?: string,
+  notarydetails?: {
+    endpoint?: string | null,
+    instanttransfers?: boolean,
+    hdrequired?: boolean
+  },
+  auxfeedetails?: {
+    auxfeekeyid: string,
+    auxfees: [{
+      bound: any | 0,
+      percent: any | 0
+    }]
+  },
+  notaryAddress?: string,
+  payoutAddress?: string
+}
+
+declare type SendTokenItems = {
+  sender: string,
+  receiver: string,
+  amount: number,
+  fee: number,
+  token: any,
+  isToken: boolean,
+  rbf: boolean
+}
+
+declare type IssueTokenItems = {
+  amount: number,
+  assetGuid: string
+}
+
+declare type CreateAndIssueNFTItems = {
+  symbol: string,
+  issuer: string,
+  totalShares: number,
+  description: string,
+  notarydetails?: {
+    endpoint?: string | null,
+    instanttransfers?: boolean,
+    hdrequired?: boolean
+  },
+  auxfeedetails?: {
+    auxfeekeyid: string,
+    auxfees: [{
+      bound: any | 0,
+      percent: any | 0
+    }]
+  },
+  notaryAddress?: string,
+  payoutAddress?: string
+}
+
+declare type UpdateAssetItems = {
+  assetGuid: string,
+  contract?: string,
+  capabilityflags?: string | '127',
+  description?: string,
+  notarydetails?: {
+    endpoint?: string | null,
+    instanttransfers?: boolean,
+    hdrequired?: boolean
+  },
+  auxfeedetails?: {
+    auxfeekeyid: string,
+    auxfees: [{
+      bound: any | 0,
+      percent: any | 0
+    }]
+  },
+  notaryAddress?: string,
+  payoutAddress?: string
+}
+
+declare type TransferOwnershipItems = {
+  assetGuid: string,
+  newOwner: string
+}
+
+declare interface IConnectionsController {
+  connectWallet: () => any;
+  onWalletUpdate: (callback: any) => any;
+  getWalletState: () => any;
+  getConnectedAccount: () => any;
+  handleSendToken: (items: SendTokenItems) => any;
+  handleCreateToken: (items: CreateTokenItems) => any;
+  handleIssueSPT: (items: IssueTokenItems) => any;
+  handleCreateNFT: (items: CreateAndIssueNFTItems) => any;
+  handleIssueNFT: (amount: number, assetGuid: string) => any;
+  isNFT: (guid: number) => boolean;
+  getUserMintedTokens: () => Promise<any>;
+  handleUpdateAsset: (items: UpdateAssetItems) => any;
+  handleTransferOwnership: (items: TransferOwnershipItems) => any;
+  isValidSYSAddress: (address: string) => any;
+  getHoldingsData: () => any;
+  getDataAsset: (assetGuid: any) => any;
+}
