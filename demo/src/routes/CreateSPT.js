@@ -14,6 +14,7 @@ export default function CreateSPT() {
   const [symbol, setSymbol] = useState("");
   const [receiver, setReceiver] = useState("");
   const [initialSupply, setInitialSupply] = useState(0);
+  const [issueSupplyIntoCirculation, setIssueSupplyIntoCirculation] = useState(false);
   const [file, setFile] = useState();
   const [advancedOptions, setAdvancedOptions] = useState({});
   const controller = useSelector((state) => state.controller);
@@ -91,6 +92,15 @@ export default function CreateSPT() {
 
     setFile(_file);
   };
+
+  const handleInitialSupply = (isActive) => {
+    if(isActive) {
+      setInitialSupply(0);
+      setIssueSupplyIntoCirculation(isActive);
+    } else {
+      setIssueSupplyIntoCirculation(isActive);
+    }
+  } 
 
   return (
     <section>
@@ -213,10 +223,14 @@ export default function CreateSPT() {
               <input
                 onChange={handleInputChange(setInitialSupply)}
                 type="number"
+                value={initialSupply}
                 className="form-control"
                 id="initialsupply"
                 autoComplete="off"
-                disabled={receiver && receiver !== connectedAccountAddress}
+                disabled={
+                  (receiver && receiver !== connectedAccountAddress) ||
+                  issueSupplyIntoCirculation
+                }
                 placeholder={
                   receiver && receiver !== connectedAccountAddress
                     ? "You can only create a initial circulating supply for SPTs that you're the owner"
@@ -260,7 +274,7 @@ export default function CreateSPT() {
           <AdvancedPanel
             onChange={setAdvancedOptions}
             toggleButton
-            enableIssueSupplyIntoCirculation={Boolean(initialSupply)}
+            onIssueSupplyIntoCirculationChange={handleInitialSupply}
           />
 
           <div className="btn-center">

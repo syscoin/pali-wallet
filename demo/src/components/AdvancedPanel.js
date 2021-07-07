@@ -6,7 +6,7 @@ export default function AdvancedPanel({
   onChange,
   renderContractField = false,
   toggleButton = false,
-  enableIssueSupplyIntoCirculation = false
+  onIssueSupplyIntoCirculationChange = () => {}
 }) {
   const [contract, setContract] = useState("");
   const [capabilityFlags, setCapabilityFlags] = useState(0);
@@ -64,6 +64,9 @@ export default function AdvancedPanel({
     setCapabilityFlags((prevValue) => {
       return isChecked ? prevValue + value : prevValue - value;
     });
+
+    event.target.id === "issue-supply" &&
+      onIssueSupplyIntoCirculationChange(isChecked);
   };
 
   const handleAddFee = (event) => {
@@ -188,7 +191,7 @@ export default function AdvancedPanel({
             <div className="checkbox small">
               <label>
                 <input
-                  disabled={enableIssueSupplyIntoCirculation}
+                  id="issue-supply"
                   onChange={handleCapabilityFlags}
                   type="checkbox"
                   value={4}
