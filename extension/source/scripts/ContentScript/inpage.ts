@@ -1,4 +1,3 @@
-import { IConnectionsController } from '../Background/controllers/ConnectionsController';
 import MasterController from '../Background/controllers/index';
 
 declare global {

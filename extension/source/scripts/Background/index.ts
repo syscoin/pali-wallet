@@ -162,6 +162,14 @@ browser.runtime.onInstalled.addListener(async () => {
           message
         });
       }
+
+      if (type == 'TRANSACTION_RESPONSE' && target == 'background') {
+        browser.tabs.sendMessage(tabId, {
+          type: 'TRANSACTION_RESPONSE',
+          target: 'contentScript',
+          response: request.response
+        });
+      }
       
       if (type == 'CONNECT_WALLET' && target == 'background') {
         const url = browser.runtime.getURL('app.html');

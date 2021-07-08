@@ -199,7 +199,9 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               <span>{checkAssetBalance()}</span>
             )}
 
-            {selectedAsset ? selectedAsset.symbol : "SYS"}
+            {selectedAsset 
+              ? selectedAsset.symbol 
+              : <small>{activeNetwork == "testnet" ? "TSYS" : "SYS"}</small>}
           </div>
         </section>
 

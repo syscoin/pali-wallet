@@ -9,7 +9,7 @@ import Spinner from '@material-ui/core/CircularProgress';
 import Button from 'components/Button';
 
 import { useController } from 'hooks/index';
-import { formatDistanceDate, formatNumber , formatCurrency} from '../helpers';
+import { formatDistanceDate, formatCurrency } from '../helpers';
 import SyscoinIcon from 'assets/images/logosys.svg';
 import { Transaction, Assets } from '../../../scripts/types';
 import { RootState } from 'state/store';
@@ -207,23 +207,23 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
             </ul>
           </>
         ) : (
-          <>
-            <span className={styles.noTxComment}>
-              You have no transaction history, send or receive SYS to register
-              your first transaction.
+            <>
+              <span className={styles.noTxComment}>
+                You have no transaction history, send or receive SYS to register
+                your first transaction.
             </span>
 
-            {!changingNetwork && (
-              <img
-                src={SyscoinIcon}
-                className={styles.syscoin}
-                alt="syscoin"
-                height="167"
-                width="auto"
-              />
-            )}
-          </>
-        ) : assets.length && !changingNetwork ?
+              {!changingNetwork && (
+                <img
+                  src={SyscoinIcon}
+                  className={styles.syscoin}
+                  alt="syscoin"
+                  height="167"
+                  width="auto"
+                />
+              )}
+            </>
+          ) : assets.length && !changingNetwork ?
           <>
             <ul>
               {assets.map((asset: Assets, idx: number) => {
@@ -246,7 +246,10 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                         <div>
                           <span title="Click here to go to view transaction in sys block explorer">
                             <span>
-                              {controller.wallet.account.isNFT(asset.assetGuid) ? formatCurrency(String(asset.balance), asset.decimals) : formatCurrency(String((asset.balance / 10 ** asset.decimals)), asset.decimals)}  {asset.symbol}
+                              {(asset.balance <= 10) && (asset.decimals > 6)
+                                ? formatCurrency(String(asset.balance), 0)
+                                : formatCurrency(String(asset.balance / 10 ** asset.decimals), asset.decimals)
+                              }  {asset.symbol}
                             </span>
                           </span>
                           <div className={styles.linkIcon}>

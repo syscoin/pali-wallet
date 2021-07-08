@@ -231,7 +231,6 @@ window.addEventListener('message', (event) => {
   }
 
   if (type == 'ISSUE_SPT' && target == 'contentScript') {
-    console.log('items content script issue spt', event.data)
     const {
       amount,
       assetGuid
@@ -286,8 +285,6 @@ window.addEventListener('message', (event) => {
       notaryAddress,
       payoutAddress
     } = event.data;
-
-    console.log('event data', event.data)
 
     browser.runtime.sendMessage({
       type: 'UPDATE_ASSET',
@@ -353,16 +350,24 @@ browser.runtime.onMessage.addListener((request) => {
     connectionConfirmed,
     isValidSYSAddress,
     holdingsData,
-    assetData,
+    assetData
   } = request;
     
   if (type == 'WALLET_ERROR' && target == 'contentScript') {
-    console.log('error event', request)
-    
     window.postMessage({
       type: 'TRANSACTION_ERROR',
       target: 'connectionsController',
       error: request.message
+    }, '*');
+    
+    return;
+  }
+
+  if (type == 'TRANSACTION_RESPONSE' && target == 'contentScript') {
+    window.postMessage({
+      type: 'TRANSACTION_RESPONSE',
+      target: 'connectionsController',
+      response: request.response
     }, '*');
     
     return;

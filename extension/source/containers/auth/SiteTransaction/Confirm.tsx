@@ -139,7 +139,24 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
       setLoading(true)
       isPending = true;
 
-      confirmTransaction().then((error: any) => {
+      confirmTransaction().then((response: any) => {
+        console.log('response confirm transaction', response)
+        isPending = false;
+
+        setConfirmed(true);
+        setLoading(false);
+        setLoadingConfirm(false);
+
+        if (response) {
+          browser.runtime.sendMessage({
+            type: "TRANSACTION_RESPONSE",
+            target: "background",
+            response
+          });
+        }
+      }).catch((error: any) => {
+        console.log(error);
+        
         if (error) {
           alert.removeAll();
           alert.error(errorMessage);
@@ -158,12 +175,6 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 
           return;
         }
-
-        isPending = false;
-
-        setConfirmed(true);
-        setLoading(false);
-        setLoadingConfirm(false);
       });
 
       setTimeout(() => {
@@ -175,7 +186,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
             handleCancelTransactionOnSite();
           }, 4000);
         }
-      }, 340000);
+      }, 380000);
     }
   }
 

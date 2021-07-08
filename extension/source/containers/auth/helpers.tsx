@@ -43,7 +43,7 @@ export const formatCurrency = (number: string, precision: number) => {
     return currency(number, { separator: ',', symbol: '', precision: 0}).format();
   }
   
-  return currency(number, { separator: ',', symbol: '', precision }).format()
+  return currency(number, { separator: ',', symbol: '', precision }).format();
 }
 
 export const formatURL = (url: string) => {

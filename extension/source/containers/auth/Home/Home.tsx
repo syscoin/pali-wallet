@@ -25,7 +25,7 @@ const Home = () => {
   const controller = useController();
   const getFiatAmount = useFiat();
 
-  const { accounts, activeAccountId, currentURL, changingNetwork }: IWalletState = useSelector(
+  const { accounts, activeAccountId, currentURL, changingNetwork, activeNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
@@ -142,7 +142,7 @@ const Home = () => {
             ) : (
               <h3>
                 {formatNumber(accounts.find(element => element.id === activeAccountId)?.balance || 0)}{' '}
-                <small>SYS</small>
+                <small>{activeNetwork == "testnet" ? "TSYS" : "SYS"}</small>
               </h3>
             )}
 

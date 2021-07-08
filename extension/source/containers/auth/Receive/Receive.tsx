@@ -17,7 +17,7 @@ const WalletReceive = () => {
   const [isCopied, copyText] = useCopyClipboard();
   const controller = useController();
   const [loaded, setLoaded] = useState<boolean>(false);
-  const { accounts, activeAccountId, activeNetwork }: IWalletState = useSelector(
+  const { accounts, activeAccountId }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 

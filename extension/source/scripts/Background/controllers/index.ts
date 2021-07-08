@@ -1,6 +1,7 @@
 import WalletController from './WalletController';
 import ControllerUtils from './ControllerUtils';
-import ConnectionsController, { IConnectionsController } from './ConnectionsController';
+import ConnectionsController from './ConnectionsController';
+
 export interface IMasterController {
   wallet: Readonly<IWalletController>;
   connections: Readonly<IConnectionsController>;
@@ -12,7 +13,6 @@ const MasterController = (): IMasterController => {
   const wallet = Object.freeze(WalletController());
   const utils = Object.freeze(ControllerUtils());
   const connections = Object.freeze(ConnectionsController());
-
 
   const stateUpdater = () => {
     utils.updateFiat();

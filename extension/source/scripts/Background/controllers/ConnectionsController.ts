@@ -62,11 +62,12 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const handleSendToken = async (items: SendTokenItems) => {
-    return new Promise(async (resolve, reject) => {
+    return new Promise(async (_, reject) => {
       const callback = (event: any) => {
         if (event.data.type === 'TRANSACTION_ERROR' && event.data.target === 'connectionsController') {
-          console.log('event data', event.data, event.data.error)
           reject(event.data.error);
+
+          window.removeEventListener('message', callback);
         }
 
         return null;
@@ -100,10 +101,6 @@ const ConnectionsController = (): IConnectionsController => {
         isToken,
         rbf
       });
-
-      resolve('ok connections update')
-
-      window.removeEventListener('message', callback);
     });
   };
 
@@ -111,8 +108,15 @@ const ConnectionsController = (): IConnectionsController => {
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
         if (event.data.type === 'TRANSACTION_ERROR' && event.data.target === 'connectionsController') {
-          console.log('event data', event.data, event.data.error)
           reject(event.data.error);
+
+          window.removeEventListener('message', callback);
+        }
+
+        if (event.data.type === 'TRANSACTION_RESPONSE' && event.data.target === 'connectionsController') {
+          resolve(event.data.response);
+
+          window.removeEventListener('message', callback);
         }
 
         return null;
@@ -154,19 +158,16 @@ const ConnectionsController = (): IConnectionsController => {
         notaryAddress: notaryAddress || null,
         payoutAddress: payoutAddress || null
       });
-
-      resolve('ok connections update')
-
-      window.removeEventListener('message', callback);
     });
   }
 
   const handleIssueSPT = async (items: IssueTokenItems) => {
-    return new Promise(async (resolve, reject) => {
+    return new Promise(async (_, reject) => {
       const callback = (event: any) => {
         if (event.data.type === 'TRANSACTION_ERROR' && event.data.target === 'connectionsController') {
-          console.log('event data', event.data, event.data.error)
           reject(event.data.error);
+
+          window.removeEventListener('message', callback);
         }
 
         return null;
@@ -190,19 +191,16 @@ const ConnectionsController = (): IConnectionsController => {
         amount,
         assetGuid
       });
-
-      resolve('ok connections update')
-
-      window.removeEventListener('message', callback);
     });
   }
 
   const handleCreateNFT = async (items: CreateAndIssueNFTItems) => {
-    return new Promise(async (resolve, reject) => {
+    return new Promise(async (_, reject) => {
       const callback = (event: any) => {
         if (event.data.type === 'TRANSACTION_ERROR' && event.data.target === 'connectionsController') {
-          console.log('event data', event.data, event.data.error)
           reject(event.data.error);
+
+          window.removeEventListener('message', callback);
         }
 
         return null;
@@ -238,10 +236,6 @@ const ConnectionsController = (): IConnectionsController => {
         notaryAddress: notaryAddress || null,
         payoutAddress: payoutAddress || null
       });
-
-      resolve('ok connections update')
-
-      window.removeEventListener('message', callback);
     });
   }
 
@@ -285,11 +279,12 @@ const ConnectionsController = (): IConnectionsController => {
   }
 
   const handleUpdateAsset = async (items: UpdateAssetItems) => {
-    return new Promise(async (resolve, reject) => {
+    return new Promise(async (_, reject) => {
       const callback = (event: any) => {
         if (event.data.type === 'TRANSACTION_ERROR' && event.data.target === 'connectionsController') {
-          console.log('event data', event.data, event.data.error)
           reject(event.data.error);
+
+          window.removeEventListener('message', callback);
         }
 
         return null;
@@ -325,20 +320,16 @@ const ConnectionsController = (): IConnectionsController => {
         notaryAddress: notaryAddress || null,
         payoutAddress: payoutAddress || null
       });
-
-      resolve('ok connections update')
-
-      window.removeEventListener('message', callback);
     });
   }
 
-
   const handleTransferOwnership = async (items: TransferOwnershipItems) => {
-    return new Promise(async (resolve, reject) => {
+    return new Promise(async (_, reject) => {
       const callback = (event: any) => {
         if (event.data.type === 'TRANSACTION_ERROR' && event.data.target === 'connectionsController') {
-          console.log('event data', event.data, event.data.error)
           reject(event.data.error);
+
+          window.removeEventListener('message', callback);
         }
 
         return null;
@@ -362,10 +353,6 @@ const ConnectionsController = (): IConnectionsController => {
         assetGuid,
         newOwner
       });
-
-      resolve('ok connections update')
-
-      window.removeEventListener('message', callback);
     });
   }
 
