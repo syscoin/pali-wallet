@@ -59,6 +59,9 @@ export default function CreateSPT() {
               auxfeedetails: advancedOptions.auxfeedetails
 
             })
+            .then((response) => {
+              console.log("response create spt", response)
+            })
             .catch((err) => {
               toast.error(err, { position: "bottom-right" });
             });

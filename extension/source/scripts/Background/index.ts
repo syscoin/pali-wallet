@@ -222,7 +222,7 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'CONFIRM_CONNECTION' && target == 'background') {
-        if (getHost(window.senderURL) == getHost(store.getState().wallet.currentURL)) {
+        if (getHost(window.senderURL)) {
           store.dispatch(updateCanConnect(false));
 
           browser.tabs.sendMessage(tabId, {
