@@ -56,8 +56,7 @@ export default function CreateNFT() {
               issuer: issuer || connectedAccountAddress,
               totalShares: Number(totalShares),
               description,
-              notarydetails: advancedOptions.notarydetails,
-              auxfeedetails: advancedOptions.auxfeedetails          
+              ...advancedOptions         
             })
             .catch((err) => {
               toast.error(err, {position: "bottom-right"});

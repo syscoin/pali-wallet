@@ -55,9 +55,7 @@ export default function CreateSPT() {
               description,
               receiver: receiver || connectedAccountAddress,
               initialSupply: Number(initialSupply),
-              notarydetails: advancedOptions.notarydetails,
-              auxfeedetails: advancedOptions.auxfeedetails
-
+              ...advancedOptions
             })
             .then((response) => {
               console.log("response create spt", response)
@@ -242,7 +240,7 @@ export default function CreateSPT() {
                     : ""
                 }
               />
-
+ 
               <p className="help-block">
                 Ceiling: Max Supply. This value will be minted and sent to the
                 issuer/owner address for further distribution.{" "}

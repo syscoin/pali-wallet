@@ -51,8 +51,7 @@ export default function Update() {
             .handleUpdateAsset({
               assetGuid: assetGuid,
               description: description,
-              notarydetails: advancedOptions.notarydetails,
-              auxfeedetails: advancedOptions.auxfeedetails
+              ...advancedOptions
             })
             .catch((err) => {
               toast.dismiss()
