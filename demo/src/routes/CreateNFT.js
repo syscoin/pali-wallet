@@ -51,13 +51,14 @@ export default function CreateNFT() {
           await controller.isValidSYSAddress(issuer || connectedAccountAddress)
         ) {
           controller
-            .handleCreateNFT(
+            .handleCreateNFT({
               symbol,
-              issuer || connectedAccountAddress,
-              Number(totalShares),
+              issuer: issuer || connectedAccountAddress,
+              totalShares: Number(totalShares),
               description,
-              ...Object.values(advancedOptions)
-            )
+              notarydetails: advancedOptions.notarydetails,
+              auxfeedetails: advancedOptions.auxfeedetails          
+            })
             .catch((err) => {
               toast.error(err, {position: "bottom-right"});
             });
