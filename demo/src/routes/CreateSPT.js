@@ -54,7 +54,7 @@ export default function CreateSPT() {
               maxsupply: Number(maxSupply),
               description,
               receiver: receiver || connectedAccountAddress,
-              initialSupply: initialSupply,
+              initialSupply: Number(initialSupply),
               notarydetails: advancedOptions.notarydetails,
               auxfeedetails: advancedOptions.auxfeedetails
 
@@ -224,9 +224,8 @@ export default function CreateSPT() {
               </label>
               <input
                 onChange={handleInputChange(setInitialSupply)}
-                
                 type="number"
-    
+                value={initialSupply}
                 className="form-control"
                 id="initialsupply"
                 autoComplete="off"
