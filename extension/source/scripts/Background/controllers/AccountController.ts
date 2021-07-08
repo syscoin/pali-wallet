@@ -170,7 +170,8 @@ const AccountController = (actions: {
     });
 
     if (connectedAccountAssetsData) {
-      connectedAccountAssetsData.assets.map((asset: any) => {
+      console.log(connectedAccountAssetsData.assets, connectedAccountAssetsData.transactions)
+      await Promise.all(connectedAccountAssetsData.assets.map(async (asset: any) => {
         const {
           balance,
           type,
@@ -180,6 +181,7 @@ const AccountController = (actions: {
         } = asset;
 
         const assetId = sys.utils.getBaseAssetID(assetGuid);
+        const dataAsset = await getDataAsset(assetGuid);
 
         const assetData = {
           balance,
@@ -188,7 +190,8 @@ const AccountController = (actions: {
           symbol,
           assetGuid,
           baseAssetID: assetId,
-          nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null
+          nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null,
+          description: atob(dataAsset.pubData.desc)
         }
 
         if (assetsData.indexOf(assetData) === -1) {
@@ -196,7 +199,7 @@ const AccountController = (actions: {
         }
 
         return assetsData;
-      });
+      }));
     }
 
     return assetsData;
