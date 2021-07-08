@@ -36,7 +36,7 @@ export default function CreateNFT() {
 
   const schema = yup.object().shape({
     symbol: yup.string().required("Symbol is required!"),
-    totalShares: yup.number().required(),
+    totalShares: yup.number(0,1,2,3,4,5,6,7,8).required(),
     metadataDescription: yup.string().required("Metadata URL is required!"),
     issuer: yup.string(),
   });
@@ -51,13 +51,14 @@ export default function CreateNFT() {
           await controller.isValidSYSAddress(issuer || connectedAccountAddress)
         ) {
           controller
-            .handleCreateNFT(
+            .handleCreateNFT({
               symbol,
-              issuer || connectedAccountAddress,
-              Number(totalShares),
+              issuer: issuer || connectedAccountAddress,
+              totalShares: Number(totalShares),
               description,
-              ...Object.values(advancedOptions)
-            )
+              notarydetails: advancedOptions.notarydetails,
+              auxfeedetails: advancedOptions.auxfeedetails          
+            })
             .catch((err) => {
               toast.error(err, {position: "bottom-right"});
             });
@@ -169,9 +170,15 @@ export default function CreateNFT() {
                 id="shares"
                 onChange={handleInputChange(setTotalShares)}
               >
+                <option>0</option>
                 <option>1</option>
                 <option>2</option>
                 <option>3</option>
+                <option>4</option>
+                <option>5</option>
+                <option>6</option>
+                <option>7</option>
+                <option>8</option>
               </select>
               <p className="help-block">Default 1</p>
             </div>

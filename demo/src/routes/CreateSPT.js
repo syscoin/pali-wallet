@@ -48,15 +48,17 @@ export default function CreateSPT() {
           )
         ) {
           controller
-            .handleCreateToken(
-              Number(precision),
+            .handleCreateToken({
+              precision: Number(precision),
               symbol,
-              Number(maxSupply),
+              maxsupply: Number(maxSupply),
               description,
-              receiver || connectedAccountAddress,
-              // initialSupply,
-              ...Object.values(advancedOptions)
-            )
+              receiver: receiver || connectedAccountAddress,
+              initialSupply: Number(initialSupply),
+              notarydetails: advancedOptions.notarydetails,
+              auxfeedetails: advancedOptions.auxfeedetails
+
+            })
             .catch((err) => {
               toast.error(err, { position: "bottom-right" });
             });
@@ -222,10 +224,8 @@ export default function CreateSPT() {
               </label>
               <input
                 onChange={handleInputChange(setInitialSupply)}
-                
                 type="number"
-                 value={issueSupplyIntoCirculation ?
-                 initialSupply : null}
+                value={initialSupply}
                 className="form-control"
                 id="initialsupply"
                 autoComplete="off"

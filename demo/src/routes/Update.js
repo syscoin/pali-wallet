@@ -48,12 +48,14 @@ export default function Update() {
       .then(() => {
         controller &&
           controller
-            .handleUpdateAsset(
-              assetGuid,
-              description,
-              ...Object.values(advancedOptions)
-            )
+            .handleUpdateAsset({
+              assetGuid: assetGuid,
+              description: description,
+              notarydetails: advancedOptions.notarydetails,
+              auxfeedetails: advancedOptions.auxfeedetails
+            })
             .catch((err) => {
+              toast.dismiss()
               toast.error(err, {position: "bottom-right"});
             });
 

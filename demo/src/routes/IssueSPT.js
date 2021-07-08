@@ -62,8 +62,9 @@ export default function IssueSPT() {
         if (amount < asset.maxSupply - asset.totalSupply) {
           controller &&
             controller
-              .handleIssueSPT(Number(amount), assetGuid)
+              .handleIssueSPT({amount: Number(amount), assetGuid})
               .catch((err) => {
+            toast.dismiss();
             toast.error(err, {position: "bottom-right"});
               });
           return;

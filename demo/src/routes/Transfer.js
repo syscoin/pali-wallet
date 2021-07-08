@@ -54,8 +54,9 @@ export default function Transfer() {
         if (await controller.isValidSYSAddress(newOwner)) {
           controller &&
             controller
-              .handleTransferOwnership(assetGuid, newOwner)
+              .handleTransferOwnership({assetGuid, newOwner})
               .catch((err) => {
+                
                 toast.error(err, {position: "bottom-right"});
               });
           event.target.reset();
