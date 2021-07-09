@@ -55,7 +55,7 @@ export default function CreateNFT() {
               symbol,
               issuer: issuer || connectedAccountAddress,
               totalShares: Number(totalShares),
-              description,
+              description: metadataDescription,
               ...advancedOptions         
             })
             .catch((err) => {
