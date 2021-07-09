@@ -4,7 +4,10 @@ import * as yup from "yup";
 import { toast, ToastContainer } from "react-toastify";
 
 import AdvancedPanel from "../components/AdvancedPanel";
+import { uploadLogo } from "../utils/logoService";
 import assetImg from "../images/asset.svg";
+import loaderImg from "../images/spinner.svg";
+
 import "react-toastify/dist/ReactToastify.min.css";
 
 export default function CreateSPT() {
@@ -16,11 +19,13 @@ export default function CreateSPT() {
   const [initialSupply, setInitialSupply] = useState(0);
   const [issueSupplyIntoCirculation, setIssueSupplyIntoCirculation] = useState(false);
   const [file, setFile] = useState();
+  const [isUploading, setIsUploading] = useState(false);
   const [advancedOptions, setAdvancedOptions] = useState({});
   const controller = useSelector((state) => state.controller);
   const { connectedAccountAddress } = useSelector(
     (state) => state.connectedAccountData
   );
+
   const dataYup = {
     precision,
     symbol,
@@ -37,43 +42,46 @@ export default function CreateSPT() {
   });
 
   const handleCreateToken = async (event) => {
-    event.preventDefault();
+    try {      
+      event.preventDefault();
 
-    await schema
-      .validate(dataYup, { abortEarly: false })
-      .then(async () => {
-        if (
-          await controller.isValidSYSAddress(
-            receiver || connectedAccountAddress
-          )
-        ) {
-          controller
-            .handleCreateToken({
-              precision: Number(precision),
-              symbol,
-              maxsupply: Number(maxSupply),
-              description,
-              receiver: receiver || connectedAccountAddress,
-              initialSupply: Number(initialSupply),
-              ...advancedOptions
-            })
-            .then((response) => {
-              console.log("response create spt", response)
-            })
-            .catch((err) => {
-              toast.error(err, { position: "bottom-right" });
-            });
+      await schema.validate(dataYup, { abortEarly: false });
 
-          event.target.reset();
-          return;
-        }
-        toast.error("Invalid Address", { position: "bottom-right" });
-      })
-      .catch((err) => {
-        err.errors.forEach((error) => {
-          toast.error(error, { position: "bottom-right" });
-        });
-      });
+      if (
+        await controller.isValidSYSAddress(receiver || connectedAccountAddress)
+      ) {
+        controller
+          .handleCreateToken({
+            precision: Number(precision),
+            symbol,
+            maxsupply: Number(maxSupply),
+            description,
+            receiver: receiver || connectedAccountAddress,
+            initialSupply: Number(initialSupply),
+            ...advancedOptions,
+          }).then(async (tx) => {
+            if(file) {
+              setIsUploading(true);
+
+              await uploadLogo(tx.transactionData.tokenTransfers[1].token, file);
+                
+              setIsUploading(false);
+
+              event.target.reset();
+            }
+          })
+          .catch((err) => {
+            toast.error(err, { position: "bottom-right" });
+            event.target.reset();
+          });
+
+        return;
+      }
+
+      toast.error("Invalid Address", { position: "bottom-right" });
+    } catch (error) {
+      toast.error(error.errors[0], { position: "bottom-right" });
+    }
   };
 
   const handleInputChange = (setState) => {
@@ -82,14 +90,18 @@ export default function CreateSPT() {
     };
   };
 
-  const handleInputFile = async (event) => {
+  const handleInputFileChange = async (event) => {
     const _file = event.target.files[0];
 
     if (!_file) return;
 
     if (!["image/jpg", "image/png", "image/jpeg"].includes(_file.type)) {
-      //notify the user that the file type is not supported
-
+      toast.dark(
+        `File type ${_file.type} is not supported, just .jpg and .png files`,
+        { position: "bottom-right" }
+      );
+      
+      event.target.value = "";
       return;
     }
 
@@ -268,8 +280,17 @@ export default function CreateSPT() {
             <div className="form-group col-33 col-md-50 col-sm-100">
               <div className="fileupload">
                 <label htmlFor="logo">Upload logo</label>
-                <input onChange={handleInputFile} type="file" id="logo" />
-                <img src={file ? URL.createObjectURL(file) : assetImg} alt="" />
+                <input onChange={handleInputFileChange} type="file" id="logo" />
+                {!isUploading ? (
+                  file ? (
+                    <img src={URL.createObjectURL(file)} alt="" />
+                  ) : (
+                    <img src={assetImg} alt="" />
+                  )
+                ) : (
+                  <img src={loaderImg} alt="" />
+                )}
+               
               </div>
             </div>
           </div>

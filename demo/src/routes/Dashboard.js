@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 
 import AssetCard from "../components/AssetCard";
+import { getAllLogo } from "../utils/logoService";
+import loaderImg from "../images/spinner.svg";
 
 export default function Dashboard() {
   const [assets, setAssets] = useState([]);
@@ -14,7 +16,26 @@ export default function Dashboard() {
   , [assets]);
 
   useEffect(() => {
-    connectedAccount?.assets && setAssets(connectedAccount.assets);
+    (async function () {
+      try {
+        if (connectedAccount?.assets) {
+          const allAssets = connectedAccount.assets;
+          const assetsIds = allAssets.map((a) => a.assetGuid);
+          const images = await getAllLogo(assetsIds);
+
+          const newAssets = allAssets.reduce((acc, cur) => {
+            const logo = images.urls.find((i) => i[0] === cur.assetGuid);
+            return logo
+              ? (acc = [...acc, { ...cur, logoUrl: logo[1] }])
+              : (acc = [...acc, cur]);
+          }, []);
+
+          setAssets(newAssets);
+        }
+      } catch (error) {
+        setAssets(connectedAccount.assets);
+      }
+    })();
   }, [connectedAccount]);
 
   const RenderBalance = ({ balance, decimals }) => {
@@ -40,7 +61,20 @@ export default function Dashboard() {
             <RenderBalance balance={balance} /> <em>SYS</em>
           </div>
         </div>
-        <div className="assets">{assetCards}</div>
+        {assets.length ? (
+          <div className="assets">{assetCards}</div>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              width: "100%",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <img src={loaderImg} alt="" />
+          </div>
+        )}
       </div>
     </section>
   );

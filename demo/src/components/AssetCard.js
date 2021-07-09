@@ -23,7 +23,7 @@ function AssetCard({ asset }) {
   const SPTCard = () => {
     return (
       <div className="asset" key={asset.assetGuid}>
-        <img src={assetLogo2} alt="" />
+        <img src={asset?.logoUrl || assetLogo2} alt="" />
         <div className="balance">
           <RenderBalance balance={asset.balance} decimals={asset.decimals} />
         </div>
