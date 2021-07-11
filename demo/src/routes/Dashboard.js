@@ -6,6 +6,7 @@ import { getAllLogo } from "../utils/logoService";
 import loaderImg from "../images/spinner.svg";
 
 export default function Dashboard() {
+  const [originalAssets, setOriginalAssets] = useState([]);
   const [assets, setAssets] = useState([]);
   const { balance, connectedAccount } = useSelector(
     (state) => state.connectedAccountData
@@ -15,20 +16,47 @@ export default function Dashboard() {
     assets.map((asset) => <AssetCard key={asset.assetGuid} asset={asset} />)
   , [assets]);
 
+  async function setAssetsWithLogo(assetsArray) {
+    const assetsIds = assetsArray.map((a) => a.assetGuid);
+    const images = await getAllLogo(assetsIds);
+
+    const newAssets = assetsArray.reduce((acc, cur) => {
+      const logo = images.urls.find((i) => i[0] === cur.assetGuid);
+      return logo
+        ? (acc = [...acc, { ...cur, logoUrl: logo[1] }])
+        : (acc = [...acc, cur]);
+    }, []);
+
+    return newAssets;
+  }
+
   useEffect(() => {
     (async function () {
       try {
         if (connectedAccount?.assets) {
-          const allAssets = connectedAccount.assets;
-          const assetsIds = allAssets.map((a) => a.assetGuid);
-          const images = await getAllLogo(assetsIds);
+          if (connectedAccount.assets.length !== assets.length) {
+            const newAssets = await setAssetsWithLogo(connectedAccount.assets);
 
-          const newAssets = allAssets.reduce((acc, cur) => {
-            const logo = images.urls.find((i) => i[0] === cur.assetGuid);
-            return logo
-              ? (acc = [...acc, { ...cur, logoUrl: logo[1] }])
-              : (acc = [...acc, cur]);
+            setOriginalAssets(connectedAccount.assets);
+
+            setAssets(newAssets);
+            return;
+          }
+
+          const accountAssets = connectedAccount.assets.reduce((acc, cur) => {
+            const idx = assets.findIndex((i) => i.assetGuid === cur.assetGuid);
+
+            acc[idx] = cur;
+            return [...acc];
           }, []);
+
+          if (JSON.stringify(accountAssets) === JSON.stringify(originalAssets)) {
+            return;
+          }
+
+          setOriginalAssets(connectedAccount.assets);
+          
+          const newAssets = await setAssetsWithLogo(accountAssets);
 
           setAssets(newAssets);
         }
