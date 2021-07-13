@@ -29,7 +29,7 @@ export default function Home() {
         <p>
         To get started, authorize SysMint to connect to an account in your 
         Syscoin web extension wallet, such as Pali Wallet. When you select 
-        “Connect To Wallet”, your wallet will receive a connection request 
+        “Connect To Pali Wallet”, your wallet will receive a connection request 
         which you can approve for your selected account.
         </p>
         <form onSubmit={handleConnect}>

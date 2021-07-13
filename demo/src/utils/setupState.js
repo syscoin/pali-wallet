@@ -10,14 +10,22 @@ export default async function setupState(store) {
 
   if (window.ConnectionsController) {
     const controller = window.ConnectionsController;
-    const holdingsData = await controller.getHoldingsData();
-
+    
+    if(await controller.isLocked()) {
+      store.dispatch(setController(controller));
+      store.dispatch(setIsInstalled(true));
+      
+      return isConnected;
+    }
+    
     const connectedAccount = await controller.getConnectedAccount();
-
+    
     store.dispatch(setController(controller));
     store.dispatch(setIsInstalled(true));
-
+    
     if (connectedAccount) {
+      const holdingsData = await controller.getHoldingsData();
+      
       isConnected = true;
 
       store.dispatch(setIsConnected(true));
