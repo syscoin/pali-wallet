@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 
 import AssetCard from "../components/AssetCard";
-import { getAllLogo } from "../utils/logoService";
+import { getAllLogo } from "../services/logoService";
 import loaderImg from "../images/spinner.svg";
+import paliLogo from "../images/pali_logo.svg";
 
 export default function Dashboard() {
   const [originalAssets, setOriginalAssets] = useState([]);
   const [assets, setAssets] = useState([]);
+  const [isLoading, setIsloading] = useState(true);
   const { balance, connectedAccount } = useSelector(
     (state) => state.connectedAccountData
   );
@@ -38,8 +40,14 @@ export default function Dashboard() {
             const newAssets = await setAssetsWithLogo(connectedAccount.assets);
 
             setOriginalAssets(connectedAccount.assets);
-
             setAssets(newAssets);
+            setIsloading(false);
+
+            return;
+          }
+
+          if(!connectedAccount.assets.length) {
+            setIsloading(false);
             return;
           }
 
@@ -59,6 +67,7 @@ export default function Dashboard() {
           const newAssets = await setAssetsWithLogo(accountAssets);
 
           setAssets(newAssets);
+          setIsloading(false);
         }
       } catch (error) {
         setAssets(connectedAccount.assets);
@@ -100,7 +109,11 @@ export default function Dashboard() {
               justifyContent: "center",
             }}
           >
-            <img src={loaderImg} alt="" />
+            {!isLoading && !assets.length ? (
+              <img src={paliLogo} alt="" width="200px"/>
+            ) : (
+              <img src={loaderImg} alt="" width="70px"/>
+            )}
           </div>
         )}
       </div>

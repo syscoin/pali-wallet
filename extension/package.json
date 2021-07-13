@@ -1,6 +1,6 @@
 {
   "name": "PaliWallet",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Extension wallet for SYS tokens.",
   "private": true,
   "repository": "https://github.com/syscoin/pali_wallet",
