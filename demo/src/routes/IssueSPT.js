@@ -95,7 +95,7 @@ export default function IssueSPT() {
     <section>
       <div className="inner">
         <h1>Issue Fungible Tokens into Circulation</h1>
-        <p>Issue more tokens of your fungible asset (a standard SPT) into circulation.
+        <p className="c">Issue more tokens of your fungible asset (a standard SPT) into circulation.
           The maximum total quantity of tokens that you can issue is limited by the Max Supply value set in the token definition.
         </p>
         <p>

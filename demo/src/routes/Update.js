@@ -87,14 +87,14 @@ export default function Update() {
     <section>
       <div className="inner wider">
         <h1>Update Token Specifications</h1>
-        <p>Change certain properties of an asset if the asset definition allows 
+        <p className="c">Change certain properties of an asset if the asset definition allows 
           the Issuer/Owner to do so. This process uses `assetUpdate`.</p>
-        <p>
+        <p className="c">
         Please exercise caution when updating asset properties, especially
          [Issuer Rights]. You should fully understand the functionality
           associated with a field before changing it.
         </p>
-        <p>
+        <p className="c">
         NOTE: This tool cannot be used to update NFTs created with SysMint 
         because SysMint renders an NFT definition unchangeable upon creation 
         (all [Issuer Rights] fields are permanently OFF).

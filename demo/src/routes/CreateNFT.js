@@ -131,12 +131,12 @@ export default function CreateNFT() {
       <div className="inner wider">
         <h1>Create and Issue a NFT (Non-Fungible)</h1>
         <p>This tool helps you create a non-fungible token on Syscoin.</p>
-        <p>
+        <p className="c">
           A non-fungible token represents a unique digital asset. Examples
           include a specific piece of art, music, a collectible, a serialized
           gold bar, a land deed or other certificate, or anything else unique.
         </p>
-        <p>
+        <p className="c">
           Syscoin gives you the option to make your NFT’s value divisible
           (fractional) on the blockchain. You do this by specifying that the NFT
           will have more than one share. This means more than one person can own
@@ -144,7 +144,7 @@ export default function CreateNFT() {
           represented as the smallest unit of precision (decimal place). To
           create a typical non-shared NFT, leave “Shares” set to 1.
         </p>
-        <p>
+        <p className="c">
         NOTE: The token creation process does not use Z-DAG;
          creation requires on-chain settlement.
           Each settlement takes approximately 60 seconds.
@@ -161,7 +161,7 @@ export default function CreateNFT() {
           
         </p>
         <Modal open={open} onClose={onCloseModal} center>
-        <p>
+        <p className="c">
           SysMint automatically follows this logic to create your non-fungible
           token:
         </p>
@@ -184,7 +184,7 @@ export default function CreateNFT() {
           </tr>
           </tbody>
           <p>{" "}</p> 
-        <p>
+        <p className="c">
           This process requires you to approve two transactions in your wallet.
           The first is for creating the NFT, and the second is for issuing it
           into circulation.

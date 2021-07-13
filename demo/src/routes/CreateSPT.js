@@ -147,17 +147,21 @@ export default function CreateSPT() {
       <div className="inner wider">
         <h1>Create a Standard Token (Fungible)</h1>
         <p>This tool helps you create a fungible token on Syscoin.</p>
-        <p>
+        <p className="c">
           A fungible token can be interchanged with other individual goods or
           assets of the same type. Each unit of a fungible token has the same
           value, and one coin of the asset is not distinguishable from another.
           Examples: SYS, BTC, stablecoins tokens like AUX and USDT, and
           currencies in general.
         </p>
-        <p>
-        NOTE: The token creation process does not use Z-DAG; creation requires on-chain settlement. Each settlement takes approximately 60 seconds. SysMint’s entire process for creating a token involves more than one transaction. It might take 2 to 5 minutes total before all transactions are settled and your new token is ready.
+        <p className="c">
+        NOTE: The token creation process does not use Z-DAG; creation requires 
+        on-chain settlement. Each settlement takes approximately 60 seconds. 
+        SysMint’s entire process for creating a token involves more than one 
+        transaction. It might take 2 to 5 minutes total before all transactions
+        are settled and your new token is ready.
         </p>
-        <p>
+        <p className="c">
           Familiarize yourself with the{" "}
            <span
            className="modalOpen"
@@ -166,7 +170,7 @@ export default function CreateSPT() {
           wish.
         </p>
         <Modal open={open} onClose={onCloseModal} center>
-        <p>
+        <p className="c">
           SysMint automatically follows this logic to create your fungible
           token:
         </p>
@@ -190,7 +194,7 @@ export default function CreateSPT() {
           </tr>
           </tbody>
         <p>{" "}</p> 
-        <p>
+        <p className="c">
           This process requires you to approve up to two transactions in your
           wallet. The first is for creating the asset, and the second is for
           issuing the initial quantity of tokens into circulation if you
