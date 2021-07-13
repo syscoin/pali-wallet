@@ -6,7 +6,8 @@ export default function AdvancedPanel({
   onChange,
   renderContractField = false,
   toggleButton = false,
-  onIssueSupplyIntoCirculationChange = () => {}
+  onIssueSupplyIntoCirculationChange = () => {},
+  renderIssuerRightsField = true
 }) {
   const [contract, setContract] = useState("");
   const [capabilityFlags, setCapabilityFlags] = useState(127);
@@ -181,88 +182,90 @@ export default function AdvancedPanel({
           </div>
         </div>
 
-        <div className="form-line half">
-          <div className="form-group col-100">
-            <div className="label-spacing">
-              <label>Issuer Rights</label>
+        {renderIssuerRightsField && (
+          <div className="form-line half">
+            <div className="form-group col-100">
+              <div className="label-spacing">
+                <label>Issuer Rights</label>
+              </div>
+            </div>
+            <div className="form-group col-100">
+              <div className="checkbox small">
+                <label>
+                  <input
+                    id="issue-supply"
+                    onChange={handleCapabilityFlags}
+                    type="checkbox"
+                    value={4}
+                  />
+                  Issue supply into circulation (LOCKED - ALWAYS ON)
+                </label>
+              </div>
+              <div className="checkbox small">
+                <label>
+                  <input
+                    onChange={handleCapabilityFlags}
+                    type="checkbox"
+                    value={1}
+                  />
+                  Edit field value: [public_value]
+                </label>
+              </div>
+              <div className="checkbox small">
+                <label>
+                  <input
+                    onChange={handleCapabilityFlags}
+                    type="checkbox"
+                    value={2}
+                  />
+                  Edit field value: [contract]
+                </label>
+              </div>
+              <div className="checkbox small">
+                <label>
+                  <input
+                    onChange={handleCapabilityFlags}
+                    type="checkbox"
+                    value={8}
+                  />
+                  Edit field value: [notary_address]
+                </label>
+              </div>
+              <div className="checkbox small">
+                <label>
+                  <input
+                    onChange={handleCapabilityFlags}
+                    type="checkbox"
+                    value={16}
+                  />
+                  Edit field value: [notary_details]
+                </label>
+              </div>
+              <div className="checkbox small">
+                <label>
+                  <input
+                    onChange={handleCapabilityFlags}
+                    type="checkbox"
+                    value={32}
+                  />
+                  Edit field value: [auxfee]
+                </label>
+              </div>
+              <div className="checkbox small">
+                <label>
+                  <input
+                    onChange={handleCapabilityFlags}
+                    type="checkbox"
+                    value={64}
+                  />
+                  Edit field value: [capability_flags]
+                </label>
+              </div>
             </div>
           </div>
-          <div className="form-group col-100">
-            <div className="checkbox small">
-              <label>
-                <input
-                  id="issue-supply"
-                  onChange={handleCapabilityFlags}
-                  type="checkbox"
-                  value={4}
-                />
-                Issue supply into circulation (LOCKED - ALWAYS ON)
-              </label>
-            </div>
-            <div className="checkbox small">
-              <label>
-                <input
-                  onChange={handleCapabilityFlags}
-                  type="checkbox"
-                  value={1}
-                />
-                Edit field value: [public_value]
-              </label>
-            </div>
-            <div className="checkbox small">
-              <label>
-                <input
-                  onChange={handleCapabilityFlags}
-                  type="checkbox"
-                  value={2}
-                />
-                Edit field value: [contract]
-              </label>
-            </div>
-            <div className="checkbox small">
-              <label>
-                <input
-                  onChange={handleCapabilityFlags}
-                  type="checkbox"
-                  value={8}
-                />
-                Edit field value: [notary_address]
-              </label>
-            </div>
-            <div className="checkbox small">
-              <label>
-                <input
-                  onChange={handleCapabilityFlags}
-                  type="checkbox"
-                  value={16}
-                />
-                Edit field value: [notary_details]
-              </label>
-            </div>
-            <div className="checkbox small">
-              <label>
-                <input
-                  onChange={handleCapabilityFlags}
-                  type="checkbox"
-                  value={32}
-                />
-                Edit field value: [auxfee]
-              </label>
-            </div>
-            <div className="checkbox small">
-              <label>
-                <input
-                  onChange={handleCapabilityFlags}
-                  type="checkbox"
-                  value={64}
-                />
-                Edit field value: [capability_flags]
-              </label>
-            </div>
-          </div>
-        </div>
+        )}
 
-        <div className="form-line half right">
+        <div className={`form-line half ${renderIssuerRightsField ? "right" : "left"}`}>
           <div className="form-group col-100">
             <div className="label-spacing">
               <label>Auxiliary Fees</label>

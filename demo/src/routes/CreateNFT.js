@@ -228,11 +228,7 @@ export default function CreateNFT() {
             <div className="form-group col-33 col-md-50 col-sm-100">
               <div className="fileupload">
                 <label htmlFor="logo">Upload to IPFS</label>
-                <input
-                  onChange={handleInputFileChange}
-                  type="file"
-                  id="logo"
-                />
+                <input onChange={handleInputFileChange} type="file" id="logo" />
                 {!isUploading ? (
                   file ? (
                     <PreviewFile file={file} />
@@ -285,7 +281,11 @@ export default function CreateNFT() {
             </div>
           </div>
 
-          <AdvancedPanel onChange={setAdvancedOptions} toggleButton />
+          <AdvancedPanel
+            onChange={setAdvancedOptions}
+            toggleButton
+            renderIssuerRightsField={false}
+          />
 
           <div className="btn-center">
             <button type="submit">Create Token</button>
