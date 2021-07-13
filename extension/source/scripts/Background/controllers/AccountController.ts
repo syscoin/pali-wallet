@@ -85,6 +85,14 @@ const AccountController = (actions: {
   };
 
   const updateTransactionData = (item: string, txinfo: any) => {
+    // const txFailed = {
+    //   txid: '',
+    //   value: 0,
+    //   confirmations: 0,
+    //   fees: 0,
+    //   blockTime: Date.now() / 1e3,
+    // } as Transaction;
+
     store.dispatch(
       updateTransactions({
         id: store.getState().wallet[item] ? getConnectedAccount().id : account.id,
@@ -329,41 +337,46 @@ const AccountController = (actions: {
 
   const getHoldingsData = async () => {
     const assetsData: any = [];
-    const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, getConnectedAccount().xpub, 'tokens=nonzero&details=txs', true);
 
-    if (tokensAsset) {
-      await Promise.all(tokensAsset.map(async (asset: any) => {
-        const {
-          balance,
-          type,
-          decimals,
-          symbol,
-          assetGuid
-        } = asset;
+    if (getConnectedAccount().xpub) {
+      const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, getConnectedAccount().xpub, 'tokens=nonzero&details=txs', true);
 
-        const assetId = sys.utils.getBaseAssetID(assetGuid);
-        const { pubData } = await getDataAsset(assetGuid);
-
-        const assetData = {
-          balance,
-          type,
-          decimals,
-          symbol: symbol ? atob(String(symbol)) : '',
-          assetGuid,
-          baseAssetID: assetId,
-          nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null,
-          description: pubData !== null ? atob(pubData.desc) : ''
-        }
-
-        if (assetsData.indexOf(assetData) === -1) {
-          assetsData.push(assetData);
-        }
-
-        return assetsData;
-      }));
+      if (tokensAsset) {
+        await Promise.all(tokensAsset.map(async (asset: any) => {
+          const {
+            balance,
+            type,
+            decimals,
+            symbol,
+            assetGuid
+          } = asset;
+  
+          const assetId = sys.utils.getBaseAssetID(assetGuid);
+          const { pubData } = await getDataAsset(assetGuid);
+  
+          const assetData = {
+            balance,
+            type,
+            decimals,
+            symbol: symbol ? atob(String(symbol)) : '',
+            assetGuid,
+            baseAssetID: assetId,
+            nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null,
+            description: pubData !== null ? atob(pubData.desc) : ''
+          }
+  
+          if (assetsData.indexOf(assetData) === -1) {
+            assetsData.push(assetData);
+          }
+  
+          return assetsData;
+        }));
+      }
+  
+      return assetsData;
     }
 
-    return assetsData;
+    return [];
   };
 
   // const splitTokensPath = (response: any, address: any, TrezorAccount: any) => {
@@ -889,6 +902,10 @@ const AccountController = (actions: {
 
     const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, null, new sys.utils.BN(fee * 1e8));
 
+    // if (!pendingTx) {
+    //   updateTransactionData('creatingAsset', '');
+    // }
+
     const txInfoNew = pendingTx.extractTransaction().getId();
 
     updateTransactionData('creatingAsset', txInfoNew);
@@ -920,7 +937,9 @@ const AccountController = (actions: {
                 const pendingTx = await sysjs.assetSend(txOpts, assetMap, null, new sys.utils.BN(fee * 1e8));
 
                 if (!pendingTx) {
-                  console.log('Could not create transaction, not enough funds?')
+                  console.log('Could not create transaction, not enough funds?');
+
+                  // updateTransactionData('issuingSPT', '');
                 }
 
                 const txInfo = pendingTx.extractTransaction().getId();
@@ -1584,8 +1603,14 @@ const AccountController = (actions: {
 
     const txInfo = pendingTx.extractTransaction().getId();
 
-    if (!pendingTx) {
+    if (!pendingTx || !txInfo) {
       console.log('Could not create transaction, not enough funds?');
+
+      // updateTransactionData('updatingAsset', '');
+
+      // watchMemPool();
+
+      // return;
     }
 
     updateTransactionData('updatingAsset', txInfo);

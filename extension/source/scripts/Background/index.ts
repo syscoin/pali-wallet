@@ -148,6 +148,7 @@ browser.runtime.onInstalled.addListener(async () => {
 
     if (typeof request === 'object') {
       if (type == 'WALLET_ERROR' && target == 'background') {
+        console.log('response error', request)
         const {
           transactionError,
           invalidParams,
@@ -164,6 +165,7 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'TRANSACTION_RESPONSE' && target == 'background') {
+        console.log('response trancaiton', request)
         browser.tabs.sendMessage(tabId, {
           type: 'TRANSACTION_RESPONSE',
           target: 'contentScript',
@@ -237,6 +239,8 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'CANCEL_TRANSACTION' && target == 'background') {
+        console.log('request cancel transaction', request)
+
         const {item} = request;
         
         store.dispatch(clearAllTransactions());
@@ -295,7 +299,9 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'CHECK_ADDRESS' && target == 'background') {
-        const isValidSYSAddress = window.controller.wallet.account.isValidSYSAddress(request.address, store.getState().wallet.activeNetwork);
+        const isValidSYSAddress = window.controller.wallet.account.isValidSYSAddress(request.messageData, store.getState().wallet.activeNetwork);
+
+        console.log('is valid sys address', isValidSYSAddress, request.address, store.getState().wallet.activeNetwork)
 
         browser.tabs.sendMessage(tabId, {
           type: 'CHECK_ADDRESS',
