@@ -293,7 +293,7 @@ const AccountController = (actions: {
 
               allTokens.push({
                 assetGuid: token.token,
-                symbol: atob(String(token.symbol)),
+                symbol: token.symbol ? atob(String(token.symbol)) : '',
                 maxSupply: Number(assetData.maxSupply),
                 totalSupply: Number(assetData.totalSupply)
               });
@@ -348,7 +348,7 @@ const AccountController = (actions: {
           balance,
           type,
           decimals,
-          symbol,
+          symbol: symbol ? atob(String(symbol)) : '',
           assetGuid,
           baseAssetID: assetId,
           nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null,
@@ -527,7 +527,7 @@ const AccountController = (actions: {
         response[assetGuid] = <Assets>{
           type,
           assetGuid,
-          symbol: atob(symbol),
+          symbol: symbol ? atob(String(symbol)) : '',
           balance: (response[assetGuid] ? response[assetGuid].balance : 0) + Number(balance),
           decimals,
         };
