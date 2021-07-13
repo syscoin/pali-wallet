@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState,useEffect } from "react";
 import { useSelector } from "react-redux";
 import * as yup from "yup";
 import { toast, ToastContainer } from "react-toastify";
+import 'react-responsive-modal/styles.css';
+import { Modal } from 'react-responsive-modal';
 
 import AdvancedPanel from "../components/AdvancedPanel";
 import { uploadLogo } from "../services/logoService";
@@ -21,6 +23,8 @@ export default function CreateSPT() {
   const [file, setFile] = useState();
   const [isUploading, setIsUploading] = useState(false);
   const [advancedOptions, setAdvancedOptions] = useState({});
+  const [open, setOpen] = useState(false);
+  const [ network, setNetwork] = useState(true); /// true -> mainnet | false ->testnet
   const controller = useSelector((state) => state.controller);
   const { connectedAccountAddress } = useSelector(
     (state) => state.connectedAccountData
@@ -41,6 +45,18 @@ export default function CreateSPT() {
     receiver: yup.string(),
   });
 
+//   const activeNetwork =  async () => {
+//  await controller.getWalletState().then((data) => {
+//    console.log(data)
+//   data && setNetwork(data);
+// });
+//    activeNetwork()
+//   }
+
+//   useEffect(() => {
+//     activeNetwork()
+//   })
+
   const handleCreateToken = async (event) => {
     try {      
       event.preventDefault();
@@ -50,6 +66,14 @@ export default function CreateSPT() {
       if (
         await controller.isValidSYSAddress(receiver || connectedAccountAddress)
       ) {
+        if( maxSupply < initialSupply){
+          toast.error("Max supply must be greater than initial supply", { position: "bottom-right" });
+          return;
+        }
+        // if( await controller.getWalletState()){
+        //   toast.error("Max supply must be greater than initial supply", { position: "bottom-right" });
+        //   return;
+        // }
         controller
           .handleCreateToken({
             precision: Number(precision),
@@ -62,11 +86,9 @@ export default function CreateSPT() {
           }).then(async (tx) => {
             if(file) {
               setIsUploading(true);
-
               await uploadLogo(tx.transactionData.tokenTransfers[1].token, file);
                 
               setIsUploading(false);
-
               event.target.reset();
             }
           })
@@ -115,7 +137,10 @@ export default function CreateSPT() {
     } else {
       setIssueSupplyIntoCirculation(isActive);
     }
-  } 
+  }
+
+  const onOpenModal = () => setOpen(true);
+  const onCloseModal = () => setOpen(false);
 
   return (
     <section>
@@ -130,14 +155,22 @@ export default function CreateSPT() {
           currencies in general.
         </p>
         <p>
-          Familiarize yourself with the backend process this tool uses, if you
+        NOTE: The token creation process does not use Z-DAG; creation requires on-chain settlement. Each settlement takes approximately 60 seconds. SysMint’s entire process for creating a token involves more than one transaction. It might take 2 to 5 minutes total before all transactions are settled and your new token is ready.
+        </p>
+        <p>
+          Familiarize yourself with the{" "}
+           <span
+           className="modalOpen"
+           onClick={onOpenModal} >backend process</span>
+           {" "} this tool uses, if you
           wish.
         </p>
-        <p>(backend process)</p>
+        <Modal open={open} onClose={onCloseModal} center>
         <p>
           SysMint automatically follows this logic to create your fungible
           token:
         </p>
+
         <p>
           1. `assetNew` is executed to create your token according to the specs
           you provided in the form. Ownership (management) of the asset is
@@ -149,7 +182,7 @@ export default function CreateSPT() {
           then executed to mint the quantity of tokens you specified in the
           field “Initial Circulating Supply”. These tokens are sent to the same
           address derived in step 1. If you left this field 0 (zero), this step
-          will not be performed.
+          is skipped.
         </p>
         <p>
           This process requires you to approve up to two transactions in your
@@ -157,6 +190,7 @@ export default function CreateSPT() {
           issuing the initial quantity of tokens into circulation if you
           specified an “Initial Circulating Supply” greater than zero.
         </p>
+        </Modal>
         <form onSubmit={handleCreateToken}>
           <div className="row">
             <div className="spacer col-100"></div>
@@ -309,3 +343,4 @@ export default function CreateSPT() {
     </section>
   );
 }
+ 
