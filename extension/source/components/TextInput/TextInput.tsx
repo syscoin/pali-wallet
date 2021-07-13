@@ -12,7 +12,6 @@ import styles from './TextInput.scss';
 
 interface ITextInput extends Partial<OutlinedInputProps> {
   endAdornment?: ReactNode;
-  pattern?: string;
   type?: 'text' | 'password' | 'number';
   variant?: string;
   visiblePassword?: boolean;
@@ -23,7 +22,6 @@ const TextInput: FC<ITextInput> = ({
   visiblePassword = false,
   variant = '',
   endAdornment,
-  pattern,
   ...otherProps
 }) => {
   const [showed, setShowed] = useState<boolean>(false);

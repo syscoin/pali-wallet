@@ -82,10 +82,8 @@ const SiteTransaction: FC<ISiteTransaction> = ({
               placeholder="Enter fee"
               fullWidth
               name="fee"
-              lang="en"
-              pattern="[0-9]+([\.][0-9]+)?"
               value={fee}
-              onChange={(event) => setFee(Number(event.target.value))}
+              onChange={(event) => setFee(Number(event.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1')))}
             />
 
             <Button
