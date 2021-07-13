@@ -239,9 +239,7 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'CANCEL_TRANSACTION' && target == 'background') {
-        console.log('request cancel transaction', request)
-
-        const {item} = request;
+        const { item } = request;
         
         store.dispatch(clearAllTransactions());
         

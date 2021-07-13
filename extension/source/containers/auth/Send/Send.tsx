@@ -1,5 +1,4 @@
 import * as React from 'react';
-// import * as Yup from 'yup';
 import {
   ChangeEvent,
   useState,
@@ -28,8 +27,6 @@ import ReactTooltip from 'react-tooltip';
 import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import DownArrowIcon from '@material-ui/icons/ExpandMore';
 import Spinner from '@material-ui/core/CircularProgress';
-// import InputMask from "react-input-mask";
-// import CurrencyInput from "react-currency-input-field";
 
 import { Assets } from '../../../scripts/types';
 
@@ -131,7 +128,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
   const handleFeeChange = useCallback(
     (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setFee(event.target.value);
+      setFee(event.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'));
     },
     []
   );
@@ -384,7 +381,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                   fullWidth
                   inputRef={register}
                   name="fee"
-                  pattern={`${decimalNumberMask}`}
                   title="Must be a integer or decimal number"
                   onChange={handleFeeChange}
                   value={fee}
