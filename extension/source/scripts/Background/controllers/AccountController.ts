@@ -88,7 +88,7 @@ const AccountController = (actions: {
     // const txFailed = {
     //   txid: '',
     //   value: 0,
-    //   confirmations: 0,
+    //   confirmations: -1,
     //   fees: 0,
     //   blockTime: Date.now() / 1e3,
     // } as Transaction;
@@ -925,7 +925,7 @@ const AccountController = (actions: {
 
               try {
                 const assetMap = new Map([
-                  [String(sptCreated!.tokenTransfers[1].token), {
+                  [String(sptCreated!.tokenTransfers[0].token), {
                     changeAddress: null,
                     outputs: [{
                       value: new sys.utils.BN(initialSupply * (10 ** precision)),
