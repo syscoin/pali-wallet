@@ -83,7 +83,7 @@ const SiteTransaction: FC<ISiteTransaction> = ({
               fullWidth
               name="fee"
               lang="en"
-              pattern="[0-9]+([\.,][0-9]+)?"
+              pattern="[0-9]+([\.][0-9]+)?"
               value={fee}
               onChange={(event) => setFee(Number(event.target.value))}
             />
