@@ -21,12 +21,16 @@ import ConnectWallet from 'containers/auth/ConnectWallet';
 import ConfirmConnection from 'containers/auth/ConnectWallet/ConfirmConnection';
 import ConnectedAccounts from 'containers/auth/ConnectWallet/ConnectedAccounts';
 import { useController } from 'hooks/index';
-import { SendMatchProps } from './types';
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
+import TransferOwnership, {
+  TransferOwnershipConfirm,
+} from 'containers/auth/TransferOwnership';
+
 import { getHost } from '../scripts/Background/helpers';
-import TransferOwnership, { TransferOwnershipConfirm } from 'containers/auth/TransferOwnership';
+
+import { SendMatchProps } from './types';
 
 const Auth = () => {
   const location = useLocation();
@@ -43,40 +47,67 @@ const Auth = () => {
     config: { duration: 200 },
   });
 
-  const { canConnect, accounts, currentURL, confirmingTransaction, creatingAsset, issuingNFT, issuingAsset, updatingAsset, transferringOwnership }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
+  const {
+    canConnect,
+    accounts,
+    currentURL,
+    confirmingTransaction,
+    creatingAsset,
+    issuingNFT,
+    issuingAsset,
+    updatingAsset,
+    transferringOwnership,
+  }: IWalletState = useSelector((state: RootState) => state.wallet);
 
-  const connectedAccounts = accounts.filter(account => {
-    return account.connectedTo.findIndex((url: any) => {
-      return url == getHost(currentURL);
-    }) > -1;
+  const connectedAccounts = accounts.filter((account) => {
+    return (
+      account.connectedTo.findIndex((url: any) => {
+        return url == getHost(currentURL);
+      }) > -1
+    );
   });
 
   useEffect(() => {
     const redirectRoute = controller.appRoute();
 
-    if (redirectRoute == '/send/confirm' && !controller.wallet.account.getTransactionItem().newSPT) {
+    if (
+      redirectRoute == '/send/confirm' &&
+      !controller.wallet.account.getTransactionItem().newSPT
+    ) {
       history.push('/home');
 
       return;
     }
-    
-    if (redirectRoute == '/updateAsset/confirm' && !controller.wallet.account.getTransactionItem().updateAssetItem) {
+
+    if (
+      redirectRoute == '/updateAsset/confirm' &&
+      !controller.wallet.account.getTransactionItem().updateAssetItem
+    ) {
       history.push('/home');
 
       return;
     }
-    
-    if (updatingAsset && controller.wallet.account.getTransactionItem().updateAssetItem && isUnlocked) {
-      console.log('updatingAsset && controller.wallet.account.getTransactionItem().updateAssetItem && isUnlocke')
+
+    if (
+      updatingAsset &&
+      controller.wallet.account.getTransactionItem().updateAssetItem &&
+      isUnlocked
+    ) {
+      console.log(
+        'updatingAsset && controller.wallet.account.getTransactionItem().updateAssetItem && isUnlocke'
+      );
       history.push('/updateAsset/confirm');
 
       return;
     }
-    
-    if (!updatingAsset && controller.wallet.account.getTransactionItem().updateAssetItem ) {
-      console.log('!updatingAsset && controller.wallet.account.getTransactionItem().updateAssetItem ')
+
+    if (
+      !updatingAsset &&
+      controller.wallet.account.getTransactionItem().updateAssetItem
+    ) {
+      console.log(
+        '!updatingAsset && controller.wallet.account.getTransactionItem().updateAssetItem '
+      );
       history.push('/home');
 
       return;
@@ -88,7 +119,11 @@ const Auth = () => {
       return;
     }
 
-    if (confirmingTransaction && controller.wallet.account.getTransactionItem().newSPT && isUnlocked) {
+    if (
+      confirmingTransaction &&
+      controller.wallet.account.getTransactionItem().newSPT &&
+      isUnlocked
+    ) {
       history.push('/send/confirm');
 
       return;
@@ -124,7 +159,10 @@ const Auth = () => {
       return;
     }
 
-    if (!confirmingTransaction && controller.wallet.account.getTransactionItem().newSPT) {
+    if (
+      !confirmingTransaction &&
+      controller.wallet.account.getTransactionItem().newSPT
+    ) {
       history.push('/home');
 
       return;
@@ -153,7 +191,7 @@ const Auth = () => {
 
       return;
     }
-    
+
     if (updatingAsset && !canConnect && isUnlocked) {
       history.push('/updateAsset/confirm');
 
@@ -169,12 +207,7 @@ const Auth = () => {
     if (redirectRoute !== '/app.html') {
       history.push(redirectRoute);
     }
-  }, [
-    canConnect,
-    isUnlocked,
-    confirmingTransaction,
-    updatingAsset
-  ]);
+  }, [canConnect, isUnlocked, confirmingTransaction, updatingAsset]);
 
   useEffect(() => {
     alert.removeAll();
@@ -199,31 +232,77 @@ const Auth = () => {
             </Route>
             {!isUnlocked && <Route path="/import" component={Import} exact />}
             {isUnlocked && <Route path="/home" component={Home} exact />}
-            {isUnlocked && canConnect && <Route path="/connect-wallet" component={ConnectWallet} exact />}
-            {isUnlocked && canConnect && <Route path="/confirm-connection" component={ConfirmConnection} exact />}
-            {isUnlocked && canConnect && (connectedAccounts.length > 0) && <Route path="/connected-accounts" component={ConnectedAccounts} exact />}
+            {isUnlocked && canConnect && (
+              <Route path="/connect-wallet" component={ConnectWallet} exact />
+            )}
+            {isUnlocked && canConnect && (
+              <Route
+                path="/confirm-connection"
+                component={ConfirmConnection}
+                exact
+              />
+            )}
+            {isUnlocked && canConnect && connectedAccounts.length > 0 && (
+              <Route
+                path="/connected-accounts"
+                component={ConnectedAccounts}
+                exact
+              />
+            )}
             {isUnlocked && (
               <Route path="/send/confirm" component={SendConfirm} exact />
             )}
             {isUnlocked && <Route path="/create" component={Create} exact />}
             {isUnlocked && (
-              <Route path="/create/confirm" component={CreateTokenConfirm} exact />
+              <Route
+                path="/create/confirm"
+                component={CreateTokenConfirm}
+                exact
+              />
             )}
-            {isUnlocked && <Route path="/issueAsset" component={IssueAsset} exact />}
             {isUnlocked && (
-              <Route path="/issueAsset/confirm" component={IssueTokenConfirm} exact />
+              <Route path="/issueAsset" component={IssueAsset} exact />
             )}
-            {isUnlocked && <Route path="/issueNFT" component={IssueNFT} exact />}
             {isUnlocked && (
-              <Route path="/issueNFT/confirm" component={CreateAndIssueNFTConfirm} exact />
+              <Route
+                path="/issueAsset/confirm"
+                component={IssueTokenConfirm}
+                exact
+              />
             )}
-            {isUnlocked && <Route path="/updateAsset" component={UpdateAsset} exact />}
             {isUnlocked && (
-              <Route path="/updateAsset/confirm" component={UpdateConfirm} exact />
+              <Route path="/issueNFT" component={IssueNFT} exact />
             )}
-            {isUnlocked && <Route path="/transferOwnership" component={TransferOwnership} exact />}
             {isUnlocked && (
-              <Route path="/transferOwnership/confirm" component={TransferOwnershipConfirm} exact />
+              <Route
+                path="/issueNFT/confirm"
+                component={CreateAndIssueNFTConfirm}
+                exact
+              />
+            )}
+            {isUnlocked && (
+              <Route path="/updateAsset" component={UpdateAsset} exact />
+            )}
+            {isUnlocked && (
+              <Route
+                path="/updateAsset/confirm"
+                component={UpdateConfirm}
+                exact
+              />
+            )}
+            {isUnlocked && (
+              <Route
+                path="/transferOwnership"
+                component={TransferOwnership}
+                exact
+              />
+            )}
+            {isUnlocked && (
+              <Route
+                path="/transferOwnership/confirm"
+                component={TransferOwnershipConfirm}
+                exact
+              />
             )}
             {isUnlocked && <Route path="/send" component={Send} exact />}
             {isUnlocked && (

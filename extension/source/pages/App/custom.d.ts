@@ -19,99 +19,98 @@ declare module 'bip84';
 
 declare interface IWalletController {
   account: Readonly<IAccountController>;
-  setWalletPassword: (pwd: string) => void;
-  isLocked: () => boolean;
-  generatePhrase: () => string | null;
-  createWallet: (isUpdated?: boolean) => void;
-  createHardwareWallet: () => void;
-  unLock: (pwd: string) => boolean;
   checkPassword: (pwd: string) => boolean;
-  getPhrase: (pwd: string) => string | null;
+  createHardwareWallet: () => void;
+  createWallet: (isUpdated?: boolean) => void;
   deleteWallet: (pwd: string) => void;
-  importPhrase: (phr: string) => boolean;
-  switchWallet: (id: number) => void;
-  switchNetwork: (networkId: string) => void;
+  generatePhrase: () => string | null;
   getNewAddress: () => Promise<boolean>;
+  getPhrase: (pwd: string) => string | null;
+  importPhrase: (phr: string) => boolean;
+  isLocked: () => boolean;
   logOut: () => void;
+  setWalletPassword: (pwd: string) => void;
+  switchNetwork: (networkId: string) => void;
+  switchWallet: (id: number) => void;
+  unLock: (pwd: string) => boolean;
 }
 
 declare interface IAccountController {
-  subscribeAccount: (isHardwareWallet: boolean, sjs?: any, label?: string, walletCreation?: boolean) => Promise<string | null>;
-  updateAccountLabel: (id: number, label: string) => void;
   addNewAccount: (label: string) => Promise<string | null>;
+  clearTransactionItem: (item: any) => void;
+  confirmIssueNFT: () => Promise<any>;
+  confirmIssueSPT: () => Promise<any>;
+  confirmNewSPT: () => Promise<any>;
+  confirmTempTx: () => Promise<any>;
+  confirmTransferOwnership: () => any;
+  confirmUpdateAssetTransaction: () => any;
+  createSPT: (spt: ISPTInfo) => void;
+  getDataAsset: (assetGuid: any) => any;
+  getDataFromPageToInitTransaction: () => any;
+  getHoldingsData: () => any;
   getLatestUpdate: () => void;
   getPrimaryAccount: (pwd: string, sjs: any) => void;
-  watchMemPool: () => void;
-  isValidSYSAddress: (address: string, network: string) => boolean | undefined;
-  isNFT: (guid: number) => boolean;
   getRecommendFee: () => Promise<number>;
-  updateTxs: () => void;
-  getTransactionItem: () => any | null;
-  updateTempTx: (tx: ITransactionInfo) => void;
-  setNewAddress: (addr: string) => boolean;
-  setNewXpub: (id: number, xpub: string, xprv: string) => boolean;
-  getDataFromPageToInitTransaction: () => any;
-  createSPT: (spt: ISPTInfo) => void;
-  issueSPT: (spt: ISPTIssue) => void;
-  issueNFT: (nft: INFTIssue) => void;
-  confirmNewSPT: () => Promise<any>;
-  confirmIssueSPT: () => Promise<any>;
-  confirmIssueNFT: () => Promise<any>;
-  confirmTempTx: () => Promise<any>;
-  getUserMintedTokens: () => any;
-  getTransactionInfoByTxId: (txid: any) => any;
   getSysExplorerSearch: () => string;
+  getTransactionInfoByTxId: (txid: any) => any;
+  getTransactionItem: () => any | null;
+  getUserMintedTokens: () => any;
+  isNFT: (guid: number) => boolean;
+  isValidSYSAddress: (address: string, network: string) => boolean | undefined;
+  issueNFT: (nft: INFTIssue) => void;
+  issueSPT: (spt: ISPTIssue) => void;
   setDataFromPageToCreateNewSPT: (data: any) => void;
-  setDataFromWalletToCreateSPT: (data: any) => void;
-  setDataFromPageToMintSPT: (data: any) => void;
-  setDataFromWalletToMintSPT: (data: any) => void;
   setDataFromPageToMintNFT: (data: any) => void;
-  setDataFromWalletToMintNFT: (data: any) => void;
-  setDataFromPageToUpdateAsset: (data: any) => void;
-  setDataFromWalletToUpdateAsset: (data: any) => void;
+  setDataFromPageToMintSPT: (data: any) => void;
   setDataFromPageToTransferOwnership: (data: any) => void;
+  setDataFromPageToUpdateAsset: (data: any) => void;
+  setDataFromWalletToCreateSPT: (data: any) => void;
+  setDataFromWalletToMintNFT: (data: any) => void;
+  setDataFromWalletToMintSPT: (data: any) => void;
   setDataFromWalletToTransferOwnership: (data: any) => void;
-  confirmUpdateAssetTransaction: () => any;
-  confirmTransferOwnership: () => any;
-  setUpdateAsset: (asset: any) => any;
+  setDataFromWalletToUpdateAsset: (data: any) => void;
+  setNewAddress: (addr: string) => boolean;
   setNewOwnership: (data: any) => any;
-  getHoldingsData: () => any;
-  getDataAsset: (assetGuid: any) => any;
-  clearTransactionItem: (item: any) => void;
+  setNewXpub: (id: number, xpub: string, xprv: string) => boolean;
+  setUpdateAsset: (asset: any) => any;
+  subscribeAccount: (isHardwareWallet: boolean, sjs?: any, label?: string, walletCreation?: boolean) => Promise<string | null>;
+  updateAccountLabel: (id: number, label: string) => void;
+  updateTempTx: (tx: ITransactionInfo) => void;
+  updateTxs: () => void;
+  watchMemPool: () => void;
 }
 
 declare type CreateTokenItems = {
-  precision: number | 8,
-  symbol: string,
-  maxsupply: number,
-  description: string,
-  receiver: string,
-  initialSupply?: number | 0,
-  capabilityflags?: string,
-  notarydetails?: {
-    endpoint?: string | null,
-    instanttransfers?: boolean,
-    hdrequired?: boolean
-  },
   auxfeedetails?: {
-    auxfeekeyid: string,
     auxfees: [{
       bound: any | 0,
       percent: any | 0
     }]
   },
+  capabilityflags?: string,
+  description: string,
+  initialSupply?: number | 0,
+  maxsupply: number,
   notaryAddress?: string,
-  payoutAddress?: string
+  notarydetails?: {
+    endpoint?: string | null,
+    hdrequired?: boolean,
+    instanttransfers?: boolean
+  },
+  payoutAddress?: string,
+  precision: number | 8,
+  receiver: string,
+  symbol: string
 }
 
 declare type SendTokenItems = {
-  sender: string,
-  receiver: string,
   amount: number,
   fee: number,
-  token: any,
   isToken: boolean,
-  rbf: boolean
+  rbf: boolean,
+  receiver: string,
+  sender: string,
+  token: any
 }
 
 declare type IssueTokenItems = {
@@ -120,44 +119,42 @@ declare type IssueTokenItems = {
 }
 
 declare type CreateAndIssueNFTItems = {
-  symbol: string,
-  issuer: string,
-  totalShares: number,
-  description: string,
-  notarydetails?: {
-    endpoint?: string | null,
-    instanttransfers?: boolean,
-    hdrequired?: boolean
-  },
   auxfeedetails?: {
-    auxfeekeyid: string,
     auxfees: [{
       bound: any | 0,
       percent: any | 0
     }]
   },
+  description: string,
+  issuer: string,
   notaryAddress?: string,
-  payoutAddress?: string
+  notarydetails?: {
+    endpoint?: string | null,
+    hdrequired?: boolean,
+    instanttransfers?: boolean
+  },
+  payoutAddress?: string,
+  symbol: string,
+  totalShares: number
 }
 
 declare type UpdateAssetItems = {
   assetGuid: string,
-  contract?: string,
-  capabilityflags?: string | '127',
-  description?: string,
-  notarydetails?: {
-    endpoint?: string | null,
-    instanttransfers?: boolean,
-    hdrequired?: boolean
-  },
   auxfeedetails?: {
-    auxfeekeyid: string,
     auxfees: [{
       bound: any | 0,
       percent: any | 0
     }]
   },
+  capabilityflags?: string | '127',
+  contract?: string,
+  description?: string,
   notaryAddress?: string,
+  notarydetails?: {
+    endpoint?: string | null,
+    hdrequired?: boolean,
+    instanttransfers?: boolean
+  },
   payoutAddress?: string
 }
 
@@ -168,19 +165,20 @@ declare type TransferOwnershipItems = {
 
 declare interface IConnectionsController {
   connectWallet: () => any;
-  onWalletUpdate: (callback: any) => any;
-  getWalletState: () => any;
   getConnectedAccount: () => any;
-  handleSendToken: (items: SendTokenItems) => any;
-  handleCreateToken: (items: CreateTokenItems) => any;
-  handleIssueSPT: (items: IssueTokenItems) => any;
-  handleCreateNFT: (items: CreateAndIssueNFTItems) => any;
-  handleIssueNFT: (amount: number, assetGuid: string) => any;
-  isNFT: (guid: number) => boolean;
-  getUserMintedTokens: () => Promise<any>;
-  handleUpdateAsset: (items: UpdateAssetItems) => any;
-  handleTransferOwnership: (items: TransferOwnershipItems) => any;
-  isValidSYSAddress: (address: string) => any;
-  getHoldingsData: () => any;
   getDataAsset: (assetGuid: any) => any;
+  getHoldingsData: () => any;
+  getUserMintedTokens: () => Promise<any>;
+  getWalletState: () => any;
+  handleCreateNFT: (items: CreateAndIssueNFTItems) => any;
+  handleCreateToken: (items: CreateTokenItems) => any;
+  handleIssueNFT: (amount: number, assetGuid: string) => any;
+  handleIssueSPT: (items: IssueTokenItems) => any;
+  isLocked: () => any;
+  handleSendToken: (items: SendTokenItems) => any;
+  handleTransferOwnership: (items: TransferOwnershipItems) => any;
+  handleUpdateAsset: (items: UpdateAssetItems) => any;
+  isNFT: (guid: number) => boolean;
+  isValidSYSAddress: (address: string) => any;
+  onWalletUpdate: (callback: any) => any;
 }

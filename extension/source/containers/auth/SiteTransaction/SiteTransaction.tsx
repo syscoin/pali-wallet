@@ -1,20 +1,20 @@
-import React, { useState, useCallback, FC } from 'react';
+import React, { useState, FC } from 'react';
 import clsx from 'clsx';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
 import TextInput from 'components/TextInput';
-import styles from './SiteTransaction.scss';
-import Switch from "react-switch";
 import { useHistory } from 'react-router-dom';
 import { useController } from 'hooks/index';
 import { browser } from 'webextension-polyfill-ts';
 
+import styles from './SiteTransaction.scss';
+
 interface ISiteTransaction {
   callbackToSetDataFromWallet: any;
-  messageToSetDataFromWallet: string;
   confirmRoute: string;
   itemStringToClearData: string;
   layoutTitle: string;
+  messageToSetDataFromWallet: string;
 }
 
 const SiteTransaction: FC<ISiteTransaction> = ({
@@ -22,14 +22,13 @@ const SiteTransaction: FC<ISiteTransaction> = ({
   messageToSetDataFromWallet,
   confirmRoute,
   itemStringToClearData,
-  layoutTitle
+  layoutTitle,
 }) => {
   const controller = useController();
   const history = useHistory();
 
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState(0);
-  const [rbf, setRbf] = useState(false);
   const [recommend, setRecommend] = useState(0.00001);
   const [transacting, setTransacting] = useState(false);
 
@@ -43,38 +42,33 @@ const SiteTransaction: FC<ISiteTransaction> = ({
   const handleMessageToSetDataFromWallet = () => {
     callbackToSetDataFromWallet({
       fee,
-      rbf
     });
 
     browser.runtime.sendMessage({
       type: messageToSetDataFromWallet,
-      target: 'background'
+      target: 'background',
     });
 
     setTransacting(true);
     setLoading(true);
 
     history.push(confirmRoute);
-  }
-
-  const handleTypeChanged = useCallback((rbf: boolean) => {
-    setRbf(rbf);
-  }, []);
+  };
 
   const handleCancelTransactionOnSite = () => {
     history.push('/home');
 
     browser.runtime.sendMessage({
-      type: "CANCEL_TRANSACTION",
-      target: "background",
-      item: transacting ? itemStringToClearData : null
+      type: 'CANCEL_TRANSACTION',
+      target: 'background',
+      item: transacting ? itemStringToClearData : null,
     });
 
     browser.runtime.sendMessage({
-      type: "CLOSE_POPUP",
-      target: "background"
+      type: 'CLOSE_POPUP',
+      target: 'background',
     });
-  }
+  };
 
   return (
     <div>
@@ -84,10 +78,12 @@ const SiteTransaction: FC<ISiteTransaction> = ({
 
           <section className={styles.fee}>
             <TextInput
-              type="number"
+              type="text"
               placeholder="Enter fee"
               fullWidth
               name="fee"
+              lang="en"
+              pattern="[0-9]+([\.,][0-9]+)?"
               value={fee}
               onChange={(event) => setFee(Number(event.target.value))}
             />
@@ -101,19 +97,10 @@ const SiteTransaction: FC<ISiteTransaction> = ({
             </Button>
           </section>
 
-          <p className={styles.description}>With current network conditions, we recommend a fee of {recommend} SYS.</p>
-
-          <div className={styles.rbf}>
-            <label htmlFor="rbf">Z-DAG</label>
-
-            <Switch
-              offColor="#333f52"
-              height={20}
-              width={60}
-              checked={rbf}
-              onChange={handleTypeChanged}
-            />
-          </div>
+          <p className={styles.description}>
+            With current network conditions, we recommend a fee of {recommend}{' '}
+            SYS.
+          </p>
 
           <section className={styles.confirm}>
             <div className={styles.actions}>
@@ -143,6 +130,6 @@ const SiteTransaction: FC<ISiteTransaction> = ({
       </Layout>
     </div>
   );
-}
+};
 
 export default SiteTransaction;

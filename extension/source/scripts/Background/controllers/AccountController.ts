@@ -1,8 +1,9 @@
+import { sys } from 'constants/index';
+
 import TrezorConnect from 'trezor-connect';
 import store from 'state/store';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { bech32 } from 'bech32';
-import { sys } from 'constants/index';
 import { fromZPub } from 'bip84';
 import {
   createAccount,
@@ -14,6 +15,7 @@ import {
   updateAccountXpub,
   updateSwitchNetwork
 } from 'state/wallet';
+
 import {
   IAccountInfo,
   ITransactionInfo,
@@ -29,7 +31,6 @@ import {
   INFTWalletInfo,
   ISPTIssuePage,
   ISPTIssueWallet,
-  UpdateToken,
   UpdateTokenPageInfo,
   UpdateTokenWalletInfo
 } from '../../types';
@@ -47,7 +48,7 @@ const AccountController = (actions: {
   let sysjs: any;
   let newSPT: ISPTInfo | null;
   let mintSPT: ISPTIssue | null;
-  let updateAssetItem: UpdateToken | null;
+  let updateAssetItem: any | null;
   let transferOwnershipData: any;
   let mintNFT: INFTIssue | null;
   let dataFromPageToCreateSPT: ISPTPageInfo;
@@ -63,9 +64,19 @@ const AccountController = (actions: {
   let resAddress: any;
   let encode: any;
 
+  const getConnectedAccount = (): IAccountState => {
+    const { accounts, currentURL }: IWalletState = store.getState().wallet;
+
+    return accounts.find((account: IAccountState) => {
+      return account.connectedTo.find((url: string) => {
+        return url == new URL(currentURL).host;
+      });
+    }) as IAccountState;
+  };
+
   const _coventPendingType = (txid: string) => {
     return {
-      txid: txid,
+      txid,
       value: 0,
       confirmations: 0,
       fees: 0,
@@ -73,14 +84,176 @@ const AccountController = (actions: {
     } as Transaction;
   };
 
+  const updateTransactionData = (item: string, txinfo: any) => {
+    store.dispatch(
+      updateTransactions({
+        id: store.getState().wallet[item] ? getConnectedAccount().id : account.id,
+        txs: [_coventPendingType(txinfo), ...account.transactions],
+      })
+    );
+  };
+
+  const getTransactionInfoByTxId = async (txid: any) => {
+    return await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
+  };
+
+  const getDataAsset = async (assetGuid: any) => {
+    return await sys.utils.fetchBackendAsset(sysjs.blockbookURL, assetGuid);
+  };
+
+  const getSysExplorerSearch = () => {
+    return sysjs.blockbookURL;
+  };
+
+  const updateAccountLabel = (id: number, label: string, isHardwareWallet?: boolean) => {
+    if (isHardwareWallet) {
+      return;
+    }
+
+    store.dispatch(updateLabel({ id, label }));
+  };
+
+  const addNewAccount = async (label: string) => {
+    return await subscribeAccount(false, null, label);
+  };
+
+  const isNFT = (guid: number) => {
+    const assetGuid = BigInt.asUintN(64, BigInt(guid));
+
+    return (assetGuid >> BigInt(32)) > 0;
+  };
+
+  const getRecommendFee = async () => {
+    return await sys.utils.fetchEstimateFee(sysjs.blockbookURL, 1) / 10 ** 8;
+  };
+
+  const updateTxs = () => {
+    if (!account) {
+      return;
+    }
+
+    getLatestUpdate();
+  };
+
+  const clearTransactionItem = (item: string) => {
+    switch (item) {
+      case 'newSPT':
+        newSPT = null;
+        break;
+      case 'mintNFT':
+        mintNFT = null;
+        break;
+      case 'mintSPT':
+        mintSPT = null;
+        break;
+      case 'transferOwnershipData':
+        transferOwnershipData = null;
+        break;
+      case 'updateAssetItem':
+        updateAssetItem = null;
+        break;
+      case 'tempTx':
+        tempTx = null;
+        break;
+    }
+  }
+
+  const updateTempTx = (tx: ITransactionInfo) => {
+    tempTx = { ...tx };
+    tempTx.fromAddress = tempTx.fromAddress.trim();
+    tempTx.toAddress = tempTx.toAddress.trim();
+  };
+
+  const setNewAddress = (addr: string) => {
+    const { activeAccountId }: IWalletState = store.getState().wallet;
+
+    store.dispatch(
+      updateAccountAddress({
+        id: activeAccountId,
+        address: { main: addr },
+      })
+    );
+
+    return true;
+  }
+
+  const setNewXpub = (id: number, xpub: string, xprv: string) => {
+    store.dispatch(
+      updateAccountXpub({
+        id,
+        xpub,
+        xprv
+      })
+    );
+
+    return true;
+  }
+
+  const getPrimaryAccount = (pwd: string, sjs: any) => {
+    const { accounts, activeAccountId }: IWalletState = store.getState().wallet;
+
+    if (sjs) {
+      sysjs = sjs;
+    }
+
+    if (!actions.checkPassword(pwd)) return;
+
+    getLatestUpdate();
+
+    if (!account && accounts) {
+      account = accounts.find((account: IAccountState) => account.id === activeAccountId) || accounts[activeAccountId];
+
+      store.dispatch(updateStatus());
+    }
+  };
+
+  const watchMemPool = () => {
+    if (intervalId) {
+      return true;
+    }
+
+    intervalId = setInterval(() => {
+      getLatestUpdate();
+
+      const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
+
+      const activeAccount = accounts.find((account: IAccountState) => account.id === activeAccountId);
+
+      if (
+        !activeAccount ||
+        !activeAccount?.transactions ||
+        !activeAccount!.transactions.filter(
+          (tx: Transaction) => tx.confirmations > 0
+        ).length
+      ) {
+        clearInterval(intervalId);
+
+        return false;
+      }
+    }, 30 * 1000);
+
+    return true;
+  };
+
+  const getTransactionItem = () => {
+    return {
+      tempTx: tempTx || null,
+      newSPT: newSPT || null,
+      mintSPT: mintSPT || null,
+      mintNFT: mintNFT || null,
+      updateAssetItem: updateAssetItem || null,
+      transferOwnershipData: transferOwnershipData || null
+    };
+  };
+
   const convertToBip32Path = (address: string) => {
-    let addressArray: String[] = address.replace(/'/g, '').split('/');
+    const addressArray: string[] = address.replace(/'/g, '').split('/');
 
     addressArray.shift();
 
-    let addressItem: Number[] = [];
+    const addressItem: number[] = [];
 
-    for (let index in addressArray) {
+    for (const index in addressArray) {
       if (Number(index) <= 2 && Number(index) >= 0) {
         addressItem[Number(index)] = Number(addressArray[index]) | 0x80000000;
 
@@ -93,40 +266,36 @@ const AccountController = (actions: {
     return addressItem;
   };
 
+  const fetchBackendConnectedAccount = async (connectedAccount: IAccountState) => {
+    if (connectedAccount.isTrezorWallet) {
+      return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=nonzero&details=txs', true);
+    }
+
+    return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
+  };
+
   const getUserMintedTokens = async () => {
-    let res;
-
-    const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
-      return account.connectedTo.find((url: any) => {
-        return url == new URL(store.getState().wallet.currentURL).host;
-      });
-    });
-
     if (!sysjs) {
       throw new Error('Error: no signed account exists.');
     }
 
-    if (connectedAccount.isTrezorWallet) {
-      res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=nonzero&details=txs', true);
-    } else {
-      res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
-    }
+    const connectedAccountResponse = await fetchBackendConnectedAccount(getConnectedAccount());
 
-    if (res.transactions) {
+    if (connectedAccountResponse.transactions) {
       const allTokens: any[] = [];
-      let mintedTokens: MintedToken[] = [];
+      const mintedTokens: MintedToken[] = [];
 
-      await Promise.all(res.transactions.map(async (transaction: any) => {
+      await Promise.all(connectedAccountResponse.transactions.map(async (transaction: any) => {
         if (transaction.tokenType === 'SPTAssetActivate') {
-          for (let token of transaction.tokenTransfers) {
+          for (const token of transaction.tokenTransfers) {
             try {
-              const response = await getDataAsset(token.token);
+              const assetData = await getDataAsset(token.token);
 
               allTokens.push({
                 assetGuid: token.token,
-                symbol: atob(token.symbol),
-                maxSupply: Number(response.maxSupply),
-                totalSupply: Number(response.totalSupply)
+                symbol: atob(String(token.symbol)),
+                maxSupply: Number(assetData.maxSupply),
+                totalSupply: Number(assetData.totalSupply)
               });
             } catch (error) {
               console.log('Get data asset error: ');
@@ -140,7 +309,7 @@ const AccountController = (actions: {
 
       allTokens.filter(function (el: any) {
         if (el != null) {
-          let tokenExists: boolean = false;
+          let tokenExists = false;
 
           mintedTokens.forEach((element: any) => {
             if (element.assetGuid === el.assetGuid) {
@@ -156,22 +325,14 @@ const AccountController = (actions: {
 
       return mintedTokens;
     }
-
-    return;
-  }
+  };
 
   const getHoldingsData = async () => {
-    let assetsData: any = [];
+    const assetsData: any = [];
+    const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, getConnectedAccount().xpub, 'tokens=nonzero&details=txs', true);
 
-    const connectedAccountAssetsData = store.getState().wallet.accounts.find((account: IAccountState) => {
-      return account.connectedTo.find((url: any) => {
-        return url == new URL(store.getState().wallet.currentURL).host;
-      });
-    });
-
-    if (connectedAccountAssetsData) {
-      console.log(connectedAccountAssetsData.assets, connectedAccountAssetsData.transactions)
-      await Promise.all(connectedAccountAssetsData.assets.map(async (asset: any) => {
+    if (tokensAsset) {
+      await Promise.all(tokensAsset.map(async (asset: any) => {
         const {
           balance,
           type,
@@ -181,7 +342,7 @@ const AccountController = (actions: {
         } = asset;
 
         const assetId = sys.utils.getBaseAssetID(assetGuid);
-        const dataAsset = await getDataAsset(assetGuid);
+        const { pubData } = await getDataAsset(assetGuid);
 
         const assetData = {
           balance,
@@ -191,7 +352,7 @@ const AccountController = (actions: {
           assetGuid,
           baseAssetID: assetId,
           nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null,
-          description: atob(dataAsset.pubData.desc)
+          description: pubData !== null ? atob(pubData.desc) : ''
         }
 
         if (assetsData.indexOf(assetData) === -1) {
@@ -203,35 +364,53 @@ const AccountController = (actions: {
     }
 
     return assetsData;
-  }
+  };
 
-  const getTransactionInfoByTxId = async (txid: any) => {
-    return await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
-  }
+  // const splitTokensPath = (response: any, address: any, TrezorAccount: any) => {
+  //   let receivingIndex = -1;
+  //   let changeIndex = -1;
 
-  const getDataAsset = async (assetGuid: any) => {
-    return await sys.utils.fetchBackendAsset(sysjs.blockbookURL, assetGuid);
-  }
+  //   if (response.tokens) {
+  //     response.tokens.forEach((token: any) => {
+  //       if (token.path) {
+  //         const splitPath = token.path.split('/');
 
-  const getSysExplorerSearch = () => {
-    return sysjs.blockbookURL;
-  }
+  //         if (splitPath.length >= 6) {
+  //           const change = parseInt(splitPath[4], 10);
+  //           const index = parseInt(splitPath[5], 10);
+
+  //           if (change === 1) {
+  //             changeIndex = index;
+
+  //             return;
+  //           }
+
+  //           if (index > receivingIndex) {
+  //             receivingIndex = index;
+  //           }
+  //         }
+  //       }
+  //     });
+  //   }
+
+  //   address = TrezorAccount.getAddress(changeIndex + 1, true);
+  // }
 
   const getNewChangeAddress = async () => {
-    const { activeAccountId, accounts } = store.getState().wallet;
+    const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
+    const userAccount: IAccountState = accounts.find((account: IAccountState) => account.id === activeAccountId) as IAccountState;
 
-    let address: string = '';
-    let userAccount: IAccountState = accounts.find((el: IAccountState) => el.id === activeAccountId);
+    let address = '';
 
     if (userAccount!.isTrezorWallet) {
-      const res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, userAccount.xpub, 'tokens=nonzero&details=txs', true);
+      const response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, userAccount.xpub, 'tokens=nonzero&details=txs', true);
 
-      let TrezorAccount = new fromZPub(userAccount.xpub, sysjs.HDSigner.pubTypes, sysjs.HDSigner.networks);
-      let receivingIndex: number = -1;
-      let changeIndex: number = -1;
+      const TrezorAccount = new fromZPub(userAccount.xpub, sysjs.HDSigner.pubTypes, sysjs.HDSigner.networks);
+      let receivingIndex = -1;
+      let changeIndex = -1;
 
-      if (res.tokens) {
-        res.tokens.forEach((token: any) => {
+      if (response.tokens) {
+        response.tokens.forEach((token: any) => {
           if (token.path) {
             const splitPath = token.path.split('/');
 
@@ -258,38 +437,21 @@ const AccountController = (actions: {
       return address;
     }
 
-    console.error('Let HDsignet handle change address for non trezor wallets');
-
     return null;
   }
 
-  const updateTransactionData = (item: string, txinfo: any) => {
-    const connectedAccountId = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
-      return account.connectedTo.filter((url: string) => {
-        return url === new URL(store.getState().wallet.currentSenderURL).host;
-      });
-    });
-
-    store.dispatch(
-      updateTransactions({
-        id: store.getState().wallet[item] ? connectedAccountId : account.id,
-        txs: [_coventPendingType(txinfo), ...account.transactions],
-      })
-    );
-  };
-
-  const getAccountInfo = async (isHardwareWallet?: boolean, xpub?: any): Promise<IAccountInfo> => {
-    let res: any = null;
+  const fetchAccountInfo = async (isHardwareWallet?: boolean, xpub?: any) => {
+    let response: any = null;
     let address: any = null;
 
     if (isHardwareWallet) {
-      res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, xpub, 'tokens=nonzero&details=txs', true);
+      response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, xpub, 'tokens=nonzero&details=txs', true);
 
       const account0: any = new fromZPub(xpub, sysjs.HDSigner.pubTypes, sysjs.HDSigner.networks);
-      let receivingIndex: number = -1;
+      let receivingIndex = -1;
 
-      if (res.tokens) {
-        res.tokens.forEach((token: any) => {
+      if (response.tokens) {
+        response.tokens.forEach((token: any) => {
           if (token.path) {
             const splitPath = token.path.split('/');
 
@@ -303,8 +465,6 @@ const AccountController = (actions: {
 
               if (index > receivingIndex) {
                 receivingIndex = index;
-
-                return;
               }
             }
           }
@@ -312,42 +472,70 @@ const AccountController = (actions: {
       }
 
       address = account0.getAddress(receivingIndex + 1);
-    } else {
-      res = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true);
+
+      return {
+        address,
+        response
+      };
     }
 
-    const balance = res.balance / 1e8;
-    let transactions: Transaction[] = [];
-    let assets: Assets[] = [];
+    response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true);
 
-    if (res.transactions) {
-      transactions = res.transactions.map((transaction: Transaction) => {
+    return {
+      address,
+      response
+    };
+  }
+
+  const getAccountInfo = async (isHardwareWallet?: boolean, xpub?: any): Promise<IAccountInfo> => {
+    const { address, response } = await fetchAccountInfo(isHardwareWallet, xpub);
+
+    const balance = response.balance / 1e8;
+    const assets: Assets[] = [];
+    let transactions: Transaction[] = [];
+
+    if (response.transactions) {
+      transactions = response.transactions.map(({
+        txid,
+        value,
+        confirmations,
+        fees,
+        blockTime,
+        tokenType
+      }: Transaction
+      ) => {
         return <Transaction>
           {
-            txid: transaction.txid,
-            value: transaction.value,
-            confirmations: transaction.confirmations,
-            fees: transaction.fees,
-            blockTime: transaction.blockTime,
-            tokenType: transaction.tokenType,
+            txid,
+            value,
+            confirmations,
+            fees,
+            blockTime,
+            tokenType,
           }
       }).slice(0, 10);
     }
 
-    if (res.tokensAsset) {
-      let transform = res.tokensAsset.reduce((res: any, val: any) => {
-        res[val.assetGuid] = <Assets>{
-          type: val.type,
-          assetGuid: val.assetGuid,
-          symbol: atob(val.symbol),
-          balance: (res[val.assetGuid] ? res[val.assetGuid].balance : 0) + Number(val.balance),
-          decimals: val.decimals,
+    if (response.tokensAsset) {
+      const transform = response.tokensAsset.reduce((response: any, {
+        type,
+        assetGuid,
+        symbol,
+        balance,
+        decimals
+      }: any) => {
+        response[assetGuid] = <Assets>{
+          type,
+          assetGuid,
+          symbol: atob(symbol),
+          balance: (response[assetGuid] ? response[assetGuid].balance : 0) + Number(balance),
+          decimals,
         };
 
-        return res;
+        return response;
       }, {});
 
-      for (let key in transform) {
+      for (const key in transform) {
         assets.push(transform[key]);
       }
     }
@@ -368,10 +556,10 @@ const AccountController = (actions: {
     };
   };
 
-  const subscribeAccount = async (isHardwareWallet: boolean = false, sjs?: any, label?: string, walletCreation?: boolean) => {
+  const subscribeAccount = async (isHardwareWallet = false, sjs?: any, label?: string, walletCreation?: boolean) => {
     if (isHardwareWallet) {
-      const { accounts } = store.getState().wallet;
-      let trezorID: number = accounts.reduce((trezorID: number, account: IAccountState) => (account.trezorId) ? trezorID = trezorID > account.trezorId ? trezorID : account.trezorId : trezorID, 0);
+      const { accounts }: IWalletState = store.getState().wallet;
+      const trezorID: number = accounts.reduce((trezorID: number, account: IAccountState) => (account.trezorId) ? trezorID = trezorID > account.trezorId ? trezorID : account.trezorId : trezorID, 0);
 
       const trezorinfo: IAccountInfo | null = await getAccountInfo(isHardwareWallet, sjs.descriptor);
 
@@ -426,26 +614,16 @@ const AccountController = (actions: {
     return account!.xpub;
   };
 
-  const updateAccountLabel = (id: number, label: string, isHardwareWallet?: boolean) => {
-    if (isHardwareWallet) {
-      return;
-    }
 
-    store.dispatch(updateLabel({ id, label }));
-  };
-
-  const addNewAccount = async (label: string) => {
-    return await subscribeAccount(false, null, label);
-  };
 
   const getLatestUpdate = async () => {
     const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
 
-    if (!accounts.find(element => element.id === activeAccountId)) {
+    if (!accounts.find((account: IAccountState) => account.id === activeAccountId)) {
       return;
     }
 
-    account = accounts.find(element => element.id === activeAccountId)!;
+    account = accounts.find((account: IAccountState) => account.id === activeAccountId)!;
 
     if (!account.isTrezorWallet) {
       sysjs.HDSigner.setAccountIndex(activeAccountId);
@@ -454,12 +632,14 @@ const AccountController = (actions: {
 
       if (!accLatestInfo) return;
 
+      const { balance, transactions, assets } = accLatestInfo;
+
       store.dispatch(
         updateAccount({
           id: activeAccountId,
-          balance: accLatestInfo.balance,
-          transactions: accLatestInfo.transactions,
-          assets: accLatestInfo.assets
+          balance,
+          transactions,
+          assets
         })
       );
 
@@ -472,66 +652,23 @@ const AccountController = (actions: {
 
     if (!accLatestInfo) return;
 
+    const { balance, transactions, assets } = accLatestInfo;
+
     store.dispatch(
       updateAccount({
         id: activeAccountId,
-        balance: accLatestInfo.balance,
-        transactions: accLatestInfo.transactions,
-        assets: accLatestInfo.assets
+        balance,
+        transactions,
+        assets
       })
     );
 
     store.dispatch(updateSwitchNetwork(false))
   };
 
-  const getPrimaryAccount = (pwd: string, sjs: any) => {
-    const { accounts, activeAccountId }: IWalletState = store.getState().wallet;
-
-    if (sjs) {
-      sysjs = sjs;
-    }
-
-    if (!actions.checkPassword(pwd)) return;
-
-    getLatestUpdate();
-
-    if (!account && accounts) {
-      account = accounts.find(element => element.id === activeAccountId) || accounts[activeAccountId];
-
-      store.dispatch(updateStatus());
-    }
-  };
-
-  const watchMemPool = () => {
-    if (intervalId) {
-      return true;
-    }
-
-    intervalId = setInterval(() => {
-      getLatestUpdate();
-
-      const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
-
-      if (
-        !accounts.find(element => element.id === activeAccountId) ||
-        !accounts.find(element => element.id === activeAccountId)?.transactions ||
-        !accounts.find(element => element.id === activeAccountId)!.transactions.filter(
-          (tx: Transaction) => tx.confirmations > 0
-        ).length
-      ) {
-        clearInterval(intervalId);
-
-        return false;
-      }
-
-      return;
-    }, 30 * 1000);
-
-    return true;
-  };
 
   const isValidSYSAddress = (address: string, network: string) => {
-    if (address) {
+    if (address && typeof address === 'string') {
       try {
         resAddress = bech32.decode(address);
 
@@ -553,93 +690,6 @@ const AccountController = (actions: {
 
     return false;
   };
-
-  const isNFT = (guid: number) => {
-    let assetGuid = BigInt.asUintN(64, BigInt(guid));
-
-    return (assetGuid >> BigInt(32)) > 0;
-  };
-
-  const getRecommendFee = async () => {
-    return await sys.utils.fetchEstimateFee(sysjs.blockbookURL, 1) / 10 ** 8;
-  };
-
-  const updateTxs = () => {
-    if (!account) {
-      return;
-    }
-
-    getLatestUpdate();
-  };
-
-  const clearTransactionItem = (item: string) => {
-    switch (item) {
-      case 'newSPT':
-        newSPT = null;
-        break;
-      case 'mintNFT':
-        mintNFT = null;
-        break;
-      case 'mintSPT':
-        mintSPT = null;
-        break;
-      case 'transferOwnershipData':
-        transferOwnershipData = null;
-        break;
-      case 'updateAssetItem':
-        updateAssetItem = null;
-        break;
-      case 'tempTx':
-        tempTx = null;
-        break;
-      default:
-        return null;
-    }
-
-    return;
-  }
-
-  const getTransactionItem = () => {
-    return {
-      tempTx: tempTx || null,
-      newSPT: newSPT || null,
-      mintSPT: mintSPT || null,
-      mintNFT: mintNFT || null,
-      updateAssetItem: updateAssetItem || null,
-      transferOwnershipData: transferOwnershipData || null
-    };
-  };
-
-  const updateTempTx = (tx: ITransactionInfo) => {
-    tempTx = { ...tx };
-    tempTx.fromAddress = tempTx.fromAddress.trim();
-    tempTx.toAddress = tempTx.toAddress.trim();
-  };
-
-  const setNewAddress = (addr: string) => {
-    const { activeAccountId } = store.getState().wallet;
-
-    store.dispatch(
-      updateAccountAddress({
-        id: activeAccountId,
-        address: { main: addr },
-      })
-    );
-
-    return true;
-  }
-
-  const setNewXpub = (id: number, xpub: string, xprv: string) => {
-    store.dispatch(
-      updateAccountXpub({
-        id: id,
-        xpub: xpub,
-        xprv: xprv
-      })
-    );
-
-    return true;
-  }
 
   const getDataFromPageToInitTransaction = () => {
     return {
@@ -720,7 +770,7 @@ const AccountController = (actions: {
 
     return true;
   }
-  const setUpdateAsset = (asset: UpdateToken) => {
+  const setUpdateAsset = (asset: any) => {
     updateAssetItem = asset;
 
     return true;
@@ -765,7 +815,6 @@ const AccountController = (actions: {
       symbol,
       description,
       initialSupply,
-      rbf,
       maxsupply,
       fee,
       notaryAddress,
@@ -832,21 +881,15 @@ const AccountController = (actions: {
       }
     }
 
-    const txOpts = { rbf: Boolean(rbf) || true };
+    const txOpts = { rbf: true };
 
-    const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
-      return account.connectedTo.find((url: any) => {
-        return url == new URL(store.getState().wallet.currentURL).host;
-      });
-    });
-
-    if (connectedAccount.isTrezorWallet) {
+    if (getConnectedAccount().isTrezorWallet) {
       throw new Error('Trezor don\'t support burning of coins');
     }
 
     const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, null, new sys.utils.BN(fee * 1e8));
 
-    let txInfoNew = pendingTx.extractTransaction().getId();
+    const txInfoNew = pendingTx.extractTransaction().getId();
 
     updateTransactionData('creatingAsset', txInfoNew);
 
@@ -930,13 +973,12 @@ const AccountController = (actions: {
   const confirmMintSPT = async (item: any) => {
     const {
       fee,
-      rbf,
       assetGuid,
       amount
     } = item;
 
     const feeRate = new sys.utils.BN(fee * 1e8);
-    const txOpts = { rbf };
+    const txOpts = { rbf: true };
     const assetChangeAddress = null;
 
     let txInfo;
@@ -953,13 +995,7 @@ const AccountController = (actions: {
 
     let sysChangeAddress = null;
 
-    const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
-      return account.connectedTo.find((url: any) => {
-        return url == new URL(store.getState().wallet.currentURL).host;
-      });
-    });
-
-    if (connectedAccount.isTrezorWallet) {
+    if (getConnectedAccount().isTrezorWallet) {
       sysChangeAddress = await getNewChangeAddress();
       // @ts-ignore: Unreachable code error
       assetMap.get(assetGuid)!.changeAddress = sysChangeAddress;
@@ -970,7 +1006,7 @@ const AccountController = (actions: {
         console.log('Could not create transaction, not enough funds?')
       }
 
-      let trezortx: any = {};
+      const trezortx: any = {};
 
       trezortx.coin = 'sys';
       trezortx.version = psbt.res.txVersion;
@@ -979,7 +1015,7 @@ const AccountController = (actions: {
 
       for (let i = 0; i < psbt.res.inputs.length; i++) {
         const input = psbt.res.inputs[i];
-        let inputItem: any = {};
+        const inputItem: any = {};
 
         inputItem.address_n = convertToBip32Path(input.path);
         inputItem.prev_index = input.vout;
@@ -995,7 +1031,7 @@ const AccountController = (actions: {
 
       for (let i = 0; i < psbt.res.outputs.length; i++) {
         const output = psbt.res.outputs[i];
-        let outputItem: any = {};
+        const outputItem: any = {};
 
         outputItem.amount = output.value.toString();
 
@@ -1047,8 +1083,8 @@ const AccountController = (actions: {
     });
   };
 
-  const createParentAsset = async (assetOpts: any, fee: number, rbf: boolean) => {
-    const txOpts: any = { rbf };
+  const createParentAsset = async (assetOpts: any, fee: number) => {
+    const txOpts: any = { rbf: true };
     const feeRate = new sys.utils.BN(fee * 1e8);
 
     const psbt = await sysjs.assetNew(assetOpts, txOpts, null, null, feeRate);
@@ -1076,40 +1112,82 @@ const AccountController = (actions: {
   const confirmMintNFT = async (item: any) => {
     const {
       fee,
-      rbf,
       symbol,
       description,
       issuer,
       totalShares,
-      // notary,
       // notarydetails,
       // auxfeedetails,
       // notaryAddress,
       // payoutAddress
     } = item;
 
-    const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
-      return account.connectedTo.find((url: any) => {
-        return url == new URL(store.getState().wallet.currentURL).host;
-      });
-    });
-
-    if (connectedAccount.isTrezorWallet) {
+    if (getConnectedAccount().isTrezorWallet) {
       throw new Error('trezor does not support nft creation');
     }
 
-    let assetOpts = {
+    const assetOpts = {
       precision: totalShares,
       symbol,
       maxsupply: new sys.utils.BN(1 * (10 ** totalShares)),
-      description
+      description,
+      // notarydetails,
+      // auxfeedetails,
+      // notarykeyid: Buffer.from('', 'hex')
     }
 
-    const newParentAsset = await createParentAsset(assetOpts, fee, rbf);
+    // if (notaryAddress) {
+    //   const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
+    //     address: notaryAddress,
+    //     network: sysjs.HDSigner.network
+    //   });
+
+    //   assetOpts = {
+    //     ...assetOpts,
+    //     notarydetails: {
+    //       ...notarydetails,
+    //       endpoint: Buffer.from(syscointx.utils.encodeToBase64(notarydetails.endpoint))
+    //     },
+    //     notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
+    //   }
+    // }
+
+    // if (notarydetails) {
+    //   assetOpts = {
+    //     ...assetOpts,
+    //     notarydetails
+    //   }
+    // }
+
+    // if (payoutAddress) {
+    //   const payment = sys.utils.bitcoinjs.payments.p2wpkh({
+    //     address: payoutAddress,
+    //     network: sysjs.HDSigner.network
+    //   });
+
+    //   const auxFeeKeyID = Buffer.from(payment.hash.toString('hex'), 'hex');
+
+    //   assetOpts = {
+    //     ...assetOpts,
+    //     auxfeedetails: {
+    //       ...assetOpts.auxfeedetails,
+    //       auxfeekeyid: auxFeeKeyID
+    //     }
+    //   }
+    // }
+
+    // if (auxfeedetails) {
+    //   assetOpts = {
+    //     ...assetOpts,
+    //     auxfeedetails
+    //   }
+    // }
+
+    const newParentAsset = await createParentAsset(assetOpts, fee);
 
     if (newParentAsset?.asset_guid) {
       let theNFTTx: any = null;
-      let parentConfirmed: boolean = false;
+      let parentConfirmed = false;
       let txInfo: any = null;
 
       try {
@@ -1119,7 +1197,7 @@ const AccountController = (actions: {
           interval = setInterval(async () => {
             const newParentTx = await getTransactionInfoByTxId(newParentAsset.txid);
             const feeRate = new sys.utils.BN(fee * 1e8);
-            const txOpts = { rbf: Boolean(rbf) || true };
+            const txOpts = { rbf: true };
 
             if (newParentTx.confirmations > 1 && !parentConfirmed) {
               parentConfirmed = true;
@@ -1135,7 +1213,7 @@ const AccountController = (actions: {
                 }]
               ]);
 
-              let sysChangeAddress = null;
+              const sysChangeAddress = null;
 
               try {
                 const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
@@ -1169,7 +1247,7 @@ const AccountController = (actions: {
 
               if (theNFTTx.confirmations > 1) {
                 const feeRate = new sys.utils.BN(10);
-                const txOpts = { rbf: rbf || true };
+                const txOpts = { rbf: true };
                 const assetGuid = newParentAsset!.asset_guid;
                 const assetOpts = { updatecapabilityflags: '0' };
                 const assetChangeAddress = null;
@@ -1223,13 +1301,13 @@ const AccountController = (actions: {
 
   const confirmTransactionTx = async (
     items: {
-      fromAddress: string,
-      toAddress: string,
       amount: number,
       fee: number,
-      token: any,
+      fromAddress: string,
       isToken: boolean,
-      rbf: boolean
+      rbf: boolean,
+      toAddress: string,
+      token: any
     }
   ) => {
     const {
@@ -1251,7 +1329,7 @@ const AccountController = (actions: {
         [token.assetGuid, {
           changeAddress: null,
           outputs: [{
-            value: value,
+            value,
             address: toAddress
           }]
         }]
@@ -1268,7 +1346,7 @@ const AccountController = (actions: {
           console.log('Could not create transaction, not enough funds?')
         }
 
-        let trezortx: any = {};
+        const trezortx: any = {};
 
         trezortx.coin = 'sys';
         trezortx.version = psbt.res.txVersion;
@@ -1277,7 +1355,7 @@ const AccountController = (actions: {
 
         for (let i = 0; i < psbt.res.inputs.length; i++) {
           const input = psbt.res.inputs[i];
-          let inputItem: any = {};
+          const inputItem: any = {};
 
           inputItem.address_n = convertToBip32Path(input.path);
           inputItem.prev_index = input.vout;
@@ -1293,7 +1371,7 @@ const AccountController = (actions: {
 
         for (let i = 0; i < psbt.res.outputs.length; i++) {
           const output = psbt.res.outputs[i];
-          let outputItem: any = {};
+          const outputItem: any = {};
 
           outputItem.amount = output.value.toString();
 
@@ -1330,9 +1408,9 @@ const AccountController = (actions: {
 
       updateTransactionData('confirmingTransaction', txInfo);
     } else {
-      const outputsArray = [{ 
-        address: toAddress, 
-        value: new sys.utils.BN(amount * 1e8) 
+      const outputsArray = [{
+        address: toAddress,
+        value: new sys.utils.BN(amount * 1e8)
       }];
 
       const txOpts = { rbf };
@@ -1346,7 +1424,7 @@ const AccountController = (actions: {
           console.log('Could not create transaction, not enough funds?')
         }
 
-        let trezortx: any = {};
+        const trezortx: any = {};
 
         trezortx.coin = 'sys';
         trezortx.version = psbt.res.txVersion;
@@ -1355,7 +1433,7 @@ const AccountController = (actions: {
 
         for (let i = 0; i < psbt.res.inputs.length; i++) {
           const input = psbt.res.inputs[i];
-          let inputItem: any = {};
+          const inputItem: any = {};
 
           inputItem.address_n = convertToBip32Path(input.path);
           inputItem.prev_index = input.vout;
@@ -1371,7 +1449,7 @@ const AccountController = (actions: {
 
         for (let i = 0; i < psbt.res.outputs.length; i++) {
           const output = psbt.res.outputs[i];
-          let outputItem: any = {};
+          const outputItem: any = {};
 
           outputItem.address = output.address;
           outputItem.amount = output.value.toString();
@@ -1410,7 +1488,7 @@ const AccountController = (actions: {
     });
   };
 
-  const confirmUpdateAsset = async (item: UpdateToken) => {
+  const confirmUpdateAsset = async (item: any) => {
     const {
       fee,
       assetGuid,
@@ -1418,7 +1496,6 @@ const AccountController = (actions: {
       capabilityflags,
       contract,
       description,
-      rbf,
       notarydetails,
       auxfeedetails,
       notaryAddress,
@@ -1426,7 +1503,7 @@ const AccountController = (actions: {
     } = item;
 
     let txOpts: any = {
-      rbf: rbf || true
+      rbf: true
     };
 
     let assetOpts: any = {
@@ -1437,7 +1514,7 @@ const AccountController = (actions: {
     if (assetWhiteList) {
       txOpts = {
         ...txOpts,
-        assetWhiteList: assetWhiteList,
+        assetWhiteList,
       };
     }
 
@@ -1535,13 +1612,12 @@ const AccountController = (actions: {
   const transferAsset = async (item: any) => {
     const {
       fee,
-      rbf,
       assetGuid,
       newOwner
     } = item;
 
     const feeRate = new sys.utils.BN(fee * 1e8);
-    const txOpts = { rbf };
+    const txOpts = { rbf: true };
     const assetOpts = {};
 
     let txInfo = null;
@@ -1556,14 +1632,14 @@ const AccountController = (actions: {
       }]
     ]);
 
-    const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
-      return account.connectedTo.find((url: any) => {
-        return url == new URL(store.getState().wallet.currentURL).host;
-      });
-    });
+    // const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
+    //   return account.connectedTo.find((url: any) => {
+    //     return url == new URL(store.getState().wallet.currentURL).host;
+    //   });
+    // });
 
-    if (connectedAccount.isTrezorWallet) {
-      let sysChangeAddress = await getNewChangeAddress();
+    if (getConnectedAccount().isTrezorWallet) {
+      const sysChangeAddress = await getNewChangeAddress();
 
       assetMap.get(assetGuid)!.changeAddress = sysChangeAddress;
 
@@ -1573,7 +1649,7 @@ const AccountController = (actions: {
         console.log('Could not create transaction, not enough funds?')
       }
 
-      let trezortx: any = {};
+      const trezortx: any = {};
 
       trezortx.coin = 'sys';
       trezortx.version = psbt.res.txVersion;
@@ -1582,7 +1658,7 @@ const AccountController = (actions: {
 
       for (let i = 0; i < psbt.res.inputs.length; i++) {
         const input = psbt.res.inputs[i];
-        let inputItem: any = {};
+        const inputItem: any = {};
 
         inputItem.address_n = convertToBip32Path(input.path);
         inputItem.prev_index = input.vout;
@@ -1598,7 +1674,7 @@ const AccountController = (actions: {
 
       for (let i = 0; i < psbt.res.outputs.length; i++) {
         const output = psbt.res.outputs[i];
-        let outputItem: any = {};
+        const outputItem: any = {};
 
         outputItem.amount = output.value.toString();
 

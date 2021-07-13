@@ -1,30 +1,31 @@
-import React, { useState, useEffect, FC } from "react";
-import clsx from "clsx";
-import { useSelector } from "react-redux";
-import Layout from "containers/common/Layout";
-import Button from "components/Button";
-import { useController } from "hooks/index";
-import { RootState } from "state/store";
-import { ellipsis, formatURL } from "../helpers";
-import IWalletState, { IAccountState } from "state/wallet/types";
-import { useAlert } from "react-alert";
+import React, { useState, useEffect, FC } from 'react';
+import clsx from 'clsx';
+import { useSelector } from 'react-redux';
+import Layout from 'containers/common/Layout';
+import Button from 'components/Button';
+import { useController } from 'hooks/index';
+import { RootState } from 'state/store';
+import IWalletState, { IAccountState } from 'state/wallet/types';
+import { useAlert } from 'react-alert';
+import { browser } from 'webextension-polyfill-ts';
+import DownArrowIcon from '@material-ui/icons/ExpandMore';
+import Spinner from '@material-ui/core/CircularProgress';
+import { useHistory } from 'react-router';
+import CircularProgress from '@material-ui/core/CircularProgress';
 
-import styles from "./SiteTransaction.scss";
-import { browser } from "webextension-polyfill-ts";
-import { getHost } from "../../../scripts/Background/helpers";
-import DownArrowIcon from "@material-ui/icons/ExpandMore";
-import Spinner from "@material-ui/core/CircularProgress";
-import { useHistory } from "react-router";
-import CircularProgress from "@material-ui/core/CircularProgress";
+import { getHost } from '../../../scripts/Background/helpers';
+import { ellipsis, formatURL } from '../helpers';
+
+import styles from './SiteTransaction.scss';
 
 interface IConfirmTransaction {
-  transactionItem: any;
-  itemStringToClearData: string;
   confirmTransaction: any;
-  errorMessage: string;
-  layoutTitle: string;
   data: any[];
+  errorMessage: string;
+  itemStringToClearData: string;
+  layoutTitle: string;
   transactingStateItem: boolean;
+  transactionItem: any;
 }
 
 const ConfirmTransaction: FC<IConfirmTransaction> = ({
@@ -34,7 +35,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   errorMessage,
   layoutTitle,
   data,
-  transactingStateItem
+  transactingStateItem,
 }) => {
   const controller = useController();
   const history = useHistory();
@@ -45,14 +46,22 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   );
 
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
-  const transactionItemData = controller.wallet.account.getTransactionItem()[transactionItem];
+  const transactionItemData =
+    controller.wallet.account.getTransactionItem()[transactionItem];
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [expanded, setExpanded] = useState<boolean>(false);
   const [loadingConfirm, setLoadingConfirm] = useState<boolean>(false);
   const [dataToRender, setDataToRender] = useState<any[]>([]);
   const [advancedOptions, setAdvancedOptions] = useState<any[]>([]);
-  const advancedOptionsArray = ["notarydetails", "notaryAddress", "auxfeedetails", "payoutAddress", "capabilityflags", "contract"];
+  const advancedOptionsArray = [
+    'notarydetails',
+    'notaryAddress',
+    'auxfeedetails',
+    'payoutAddress',
+    'capabilityflags',
+    'contract',
+  ];
 
   useEffect(() => {
     if (data) {
@@ -62,21 +71,22 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
             ...dataToRender,
             dataToRender.push({
               label: key,
-              value
+              value,
             }),
           ]);
 
-          if (advancedOptionsArray.includes(key) && !advancedOptions.includes({ label: key, value })) {
+          if (
+            advancedOptionsArray.includes(key) &&
+            !advancedOptions.includes({ label: key, value })
+          ) {
             setAdvancedOptions([
               ...advancedOptions,
               advancedOptions.push({
                 label: key,
-                value
-              })
+                value,
+              }),
             ]);
           }
-
-          return;
         }
       });
 
@@ -84,7 +94,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
         ...dataToRender,
         dataToRender.push({
           label: null,
-          value: null
+          value: null,
         }),
       ]);
 
@@ -92,90 +102,90 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
         ...advancedOptions,
         advancedOptions.push({
           label: null,
-          value: null
-        })
+          value: null,
+        }),
       ]);
     }
 
-    setConnectedAccountId(accounts.findIndex((account: IAccountState) => {
-      return account.connectedTo.filter((url: string) => {
-        return url === getHost(currentSenderURL);
+    setConnectedAccountId(
+      accounts.findIndex((account: IAccountState) => {
+        return account.connectedTo.filter((url: string) => {
+          return url === getHost(currentSenderURL);
+        });
       })
-    }));
-  }, [
-    data
-  ]);
+    );
+  }, [data]);
 
   const handleClosePopup = () => {
-    history.push("/home");
+    history.push('/home');
 
     browser.runtime.sendMessage({
-      type: "CLOSE_POPUP",
-      target: "background"
+      type: 'CLOSE_POPUP',
+      target: 'background',
     });
-  }
+  };
 
   const handleCancelTransactionOnSite = () => {
-    history.push("/home");
+    history.push('/home');
 
     browser.runtime.sendMessage({
-      type: "CANCEL_TRANSACTION",
-      target: "background",
-      item: itemStringToClearData ? itemStringToClearData : null
+      type: 'CANCEL_TRANSACTION',
+      target: 'background',
+      item: itemStringToClearData || null,
     });
 
     browser.runtime.sendMessage({
-      type: "CLOSE_POPUP",
-      target: "background"
+      type: 'CLOSE_POPUP',
+      target: 'background',
     });
-  }
+  };
 
   const handleConfirm = () => {
-    let acc = accounts.find(element => element.id === connectedAccountId)
+    const acc = accounts.find((element) => element.id === connectedAccountId);
     let isPending = false;
 
     if ((acc ? acc.balance : -1) > 0) {
       setLoadingConfirm(true);
-      setLoading(true)
+      setLoading(true);
       isPending = true;
 
-      confirmTransaction().then((response: any) => {
-        console.log('response confirm transaction', response)
-        isPending = false;
+      confirmTransaction()
+        .then((response: any) => {
+          console.log('response confirm transaction', response);
+          isPending = false;
 
-        setConfirmed(true);
-        setLoading(false);
-        setLoadingConfirm(false);
+          setConfirmed(true);
+          setLoading(false);
+          setLoadingConfirm(false);
 
-        if (response) {
-          browser.runtime.sendMessage({
-            type: "TRANSACTION_RESPONSE",
-            target: "background",
-            response
-          });
-        }
-      }).catch((error: any) => {
-        console.log(error);
-        
-        if (error) {
-          alert.removeAll();
-          alert.error(errorMessage);
+          if (response) {
+            browser.runtime.sendMessage({
+              type: 'TRANSACTION_RESPONSE',
+              target: 'background',
+              response,
+            });
+          }
+        })
+        .catch((error: any) => {
+          console.log(error);
 
-          browser.runtime.sendMessage({
-            type: "WALLET_ERROR",
-            target: "background",
-            transactionError: true,
-            invalidParams: false,
-            message: errorMessage
-          });
+          if (error) {
+            alert.removeAll();
+            alert.error(errorMessage);
 
-          setTimeout(() => {
-            handleCancelTransactionOnSite();
-          }, 4000);
+            browser.runtime.sendMessage({
+              type: 'WALLET_ERROR',
+              target: 'background',
+              transactionError: true,
+              invalidParams: false,
+              message: errorMessage,
+            });
 
-          return;
-        }
-      });
+            setTimeout(() => {
+              handleCancelTransactionOnSite();
+            }, 4000);
+          }
+        });
 
       setTimeout(() => {
         if (isPending && !confirmed) {
@@ -188,27 +198,22 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
         }
       }, 380000);
     }
-  }
+  };
 
   const renderData = () => {
     return dataToRender.map(({ label, value }) => {
       if (label && value) {
-        if (label === "receiver" || label === "issuer" || label === "newOwner") {
+        if (
+          label === 'receiver' ||
+          label === 'issuer' ||
+          label === 'newOwner'
+        ) {
           return (
             <div key={label} className={styles.flex}>
               <p>{label}</p>
               <p>{ellipsis(value)}</p>
             </div>
-          )
-        }
-
-        if (label === "rbf") {
-          return (
-            <div key={label} className={styles.flex}>
-              <p>{label}</p>
-              <p>{value ? "Yes" : "No"}</p>
-            </div>
-          )
+          );
         }
 
         if (advancedOptionsArray.includes(label)) {
@@ -220,40 +225,36 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
             <p>{label}</p>
             <p>{value}</p>
           </div>
-        )
+        );
       }
 
       return null;
-    })
-  }
+    });
+  };
 
   const renderOptions = () => {
     return advancedOptions.map(({ label, value }) => {
       if (label && value) {
-        if (label == "contract") {
+        if (label == 'contract') {
           return (
             <div key={label} className={styles.flex}>
               <p>{label}</p>
               <p>{formatURL(value)}</p>
             </div>
-          )
+          );
         }
 
-        if (label == "notaryAddress" || label == "payoutAddress") {
+        if (label == 'notaryAddress' || label == 'payoutAddress') {
           return (
             <div key={label} className={styles.flex}>
               <p>{label}</p>
               <p>{ellipsis(value)}</p>
             </div>
-          )
+          );
         }
 
-        if (label == "notarydetails" || label == "auxfeedetails") {
-          return (
-            <div key={label}>
-              {renderAdvancedDetails(value, label)}
-            </div>
-          )
+        if (label == 'notarydetails' || label == 'auxfeedetails') {
+          return <div key={label}>{renderAdvancedDetails(value, label)}</div>;
         }
 
         return (
@@ -261,17 +262,17 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
             <p>{label}</p>
             <p>{value}</p>
           </div>
-        )
+        );
       }
 
       return null;
-    })
-  }
+    });
+  };
 
   const renderAdvancedDetails = (items: any, itemName: string) => {
     return (
       <div>
-        {itemName == "notarydetails" && items && items.endpoint !== "" && (
+        {itemName == 'notarydetails' && items && items.endpoint !== '' && (
           <div>
             <div className={styles.flex}>
               <p>Endpoint</p>
@@ -285,12 +286,12 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 
             <div className={styles.flex}>
               <p>HD required</p>
-              <p>{items.hdrequired ? "Yes" : "No"}</p>
+              <p>{items.hdrequired ? 'Yes' : 'No'}</p>
             </div>
           </div>
         )}
 
-        {itemName == "auxfeedetails" && items && (
+        {itemName == 'auxfeedetails' && items && (
           <div>
             {items.auxfees.map((auxfee: any, index: number) => {
               return (
@@ -305,13 +306,13 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
                     <p>{auxfee.percent}</p>
                   </div>
                 </div>
-              )
+              );
             }) || 0}
           </div>
         )}
       </div>
-    )
-  }
+    );
+  };
 
   return confirmed ? (
     <Layout title="Your transaction is underway" linkTo="/remind" showLogo>
@@ -329,78 +330,85 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
       </Button>
     </Layout>
   ) : (
-      <div>
-        {transactingStateItem && loading ? (
-          <Layout title="" showLogo>
-            <div className={styles.wrapper}>
-              <section className={clsx(styles.mask)}>
-                <CircularProgress className={styles.loader} />
-              </section>
-            </div>
-          </Layout>
-        ) : (
+    <div>
+      {transactingStateItem && loading ? (
+        <Layout title="" showLogo>
+          <div className={styles.wrapper}>
+            <section className={clsx(styles.mask)}>
+              <CircularProgress className={styles.loader} />
+            </section>
+          </div>
+        </Layout>
+      ) : (
+        <div>
+          {transactionItemData && data && !loading && (
             <div>
-              {transactionItemData && data && !loading && (
-                <div>
-                  <Layout title={layoutTitle} showLogo>
-                    <div className={styles.wrapper}>
-                      <div>
-                        <section className={styles.data}>
-                          {renderData()}
+              <Layout title={layoutTitle} showLogo>
+                <div className={styles.wrapper}>
+                  <div>
+                    <section className={styles.data}>
+                      {renderData()}
 
-                          <div className={styles.flex}>
-                            <p>Site</p>
-                            <p>{getHost(`${currentSenderURL}`)}</p>
-                          </div>
+                      <div className={styles.flex}>
+                        <p>Site</p>
+                        <p>{getHost(`${currentSenderURL}`)}</p>
+                      </div>
 
-                          <div className={styles.select}>
-                            <div
-                              className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
-                            >
-                              <span onClick={() => setExpanded(!expanded)} className={styles.selected}>
-                                Advanced options
-                                <DownArrowIcon className={styles.arrow} />
-                              </span>
+                      <div className={styles.select}>
+                        <div
+                          className={clsx(styles.fullselect, {
+                            [styles.expanded]: expanded,
+                          })}
+                        >
+                          <span
+                            onClick={() => setExpanded(!expanded)}
+                            className={styles.selected}
+                          >
+                            Advanced options
+                            <DownArrowIcon className={styles.arrow} />
+                          </span>
 
-                              <ul className={styles.options}>
-                                {renderOptions()}
-                              </ul>
-                            </div>
-                          </div>
-                        </section>
+                          <ul className={styles.options}>{renderOptions()}</ul>
+                        </div>
+                      </div>
+                    </section>
 
-                        <section className={styles.confirm}>
-                          <div className={styles.actions}>
-                            <Button
-                              type="button"
-                              theme="btn-outline-secondary"
-                              variant={clsx(styles.button, styles.close)}
-                              linkTo="/home"
-                              onClick={handleCancelTransactionOnSite}
-                            >
-                              Reject
+                    <section className={styles.confirm}>
+                      <div className={styles.actions}>
+                        <Button
+                          type="button"
+                          theme="btn-outline-secondary"
+                          variant={clsx(styles.button, styles.close)}
+                          linkTo="/home"
+                          onClick={handleCancelTransactionOnSite}
+                        >
+                          Reject
                         </Button>
 
-                            <Button
-                              type="submit"
-                              theme="btn-outline-primary"
-                              variant={styles.button}
-                              onClick={handleConfirm}
-                              loading={loading}
-                            >
-                              {loadingConfirm ? <Spinner size={15} className={styles.spinner} /> : "Confirm"}
-                            </Button>
-                          </div>
-                        </section>
+                        <Button
+                          type="submit"
+                          theme="btn-outline-primary"
+                          variant={styles.button}
+                          onClick={handleConfirm}
+                          loading={loading}
+                        >
+                          {loadingConfirm ? (
+                            <Spinner size={15} className={styles.spinner} />
+                          ) : (
+                            'Confirm'
+                          )}
+                        </Button>
                       </div>
-                    </div>
-                  </Layout>
+                    </section>
+                  </div>
                 </div>
-              )}
+              </Layout>
             </div>
           )}
-      </div>
-    );
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default ConfirmTransaction;

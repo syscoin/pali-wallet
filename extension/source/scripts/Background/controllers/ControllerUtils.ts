@@ -1,10 +1,11 @@
-import store from 'state/store';
-import { updateFiatPrice } from 'state/price';
 import {
   ASSET_PRICE_API,
   DEFAULT_CURRENCY,
   PRICE_SYS_ID,
 } from 'constants/index';
+
+import store from 'state/store';
+import { updateFiatPrice } from 'state/price';
 
 export interface IControllerUtils {
   appRoute: (newRoute?: string) => string;
@@ -27,13 +28,11 @@ const ControllerUtils = (): IControllerUtils => {
   ) => {
     try {
       const data = await (
-        await fetch(
-          `${ASSET_PRICE_API}?currency=${currency}`
-        )
+        await fetch(`${ASSET_PRICE_API}?currency=${currency}`)
       ).json();
       if (data) {
         store.dispatch(
-          updateFiatPrice({ assetId, price: data['rates'][currency] })
+          updateFiatPrice({ assetId, price: data.rates[currency] })
         );
       }
     } catch (error) {

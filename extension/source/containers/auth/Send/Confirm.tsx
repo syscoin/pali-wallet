@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import clsx from 'clsx';
 import { useSelector } from 'react-redux';
-
 import Header from 'containers/common/Header';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
@@ -11,13 +10,14 @@ import { useFiat } from 'hooks/usePrice';
 import { useHistory } from 'react-router-dom';
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
 import { RootState } from 'state/store';
-import { ellipsis } from '../helpers';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
+import { browser } from 'webextension-polyfill-ts';
+
+import { ellipsis } from '../helpers';
+import { getHost } from '../../../scripts/Background/helpers';
 
 import styles from './Confirm.scss';
-import { browser } from 'webextension-polyfill-ts';
-import { getHost } from '../../../scripts/Background/helpers';
 
 const SendConfirm = () => {
   const controller = useController();
@@ -32,13 +32,13 @@ const SendConfirm = () => {
       return url === getHost(currentSenderURL);
     });
   });
-  const tempTx = controller.wallet.account.getTransactionItem().tempTx;
+  const {tempTx} = controller.wallet.account.getTransactionItem();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const alert = useAlert();
 
   const handleConfirm = () => {
-    let acc = accounts.find(element => element.id === activeAccountId)
+    const acc = accounts.find(element => element.id === activeAccountId)
 
     if ((acc ? acc.balance : -1) > 0) {
       setLoading(true);
@@ -130,7 +130,7 @@ const SendConfirm = () => {
         <div className={styles.iconWrapper}>
           <UpArrowIcon />
         </div>
-        {tempTx?.isToken ? String(tempTx.amount) + " " + String(tempTx.token?.symbol) : ((tempTx?.amount || 0) + (tempTx?.fee || 0)) + " SYS"}
+        {tempTx?.isToken ? `${String(tempTx.amount)  } ${  String(tempTx.token?.symbol)}` : `${(tempTx?.amount || 0) + (tempTx?.fee || 0)  } SYS`}
       </section>
       <section className={styles.transaction}>
         <div className={styles.row}>
@@ -158,7 +158,7 @@ const SendConfirm = () => {
             {!tempTx?.isToken ? getFiatAmount(
               Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0),
               8
-            ) : String(tempTx?.amount) + " " + String(tempTx?.token?.symbol)}
+            ) : `${String(tempTx?.amount)  } ${  String(tempTx?.token?.symbol)}`}
           </span>
         </div>
 

@@ -5,8 +5,8 @@ import styles from './FileSelect.scss';
 
 interface IFileSelect {
   accept?: string;
-  onChange: (val: File | null) => void;
   disabled?: boolean;
+  onChange: (val: File | null) => void;
 }
 
 const FileSelect: FC<IFileSelect> = ({

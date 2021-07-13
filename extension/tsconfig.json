@@ -17,6 +17,8 @@
     "noResolve": false,
     "moduleResolution": "node",
     "resolveJsonModule": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": false,
     "baseUrl": ".",
     "paths": {
       "assets/*": [

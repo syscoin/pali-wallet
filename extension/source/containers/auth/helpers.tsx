@@ -5,12 +5,11 @@ export const ellipsis = (str: any, start = 7, end = 4) => {
   if (typeof str !== 'string') {
     return str;
   }
-  
-  return (
-    str.substring(0, start) +
-    '...' +
-    str.substring(str.length - end, str.length)
-  );
+
+  return `${str.substring(0, start)}...${str.substring(
+    str.length - end,
+    str.length
+  )}`;
 };
 
 const getYesterday = () => {
@@ -36,15 +35,19 @@ export const formatNumber = (num: number, min = 4, max = 4, maxSig = 12) => {
     maximumFractionDigits: max,
     maximumSignificantDigits: maxSig,
   });
-}
+};
 
 export const formatCurrency = (number: string, precision: number) => {
   if (Number(number) % 1 == 0) {
-    return currency(number, { separator: ',', symbol: '', precision: 0}).format();
+    return currency(number, {
+      separator: ',',
+      symbol: '',
+      precision: 0,
+    }).format();
   }
-  
+
   return currency(number, { separator: ',', symbol: '', precision }).format();
-}
+};
 
 export const formatURL = (url: string) => {
   if (url.length > 30) {
@@ -52,19 +55,29 @@ export const formatURL = (url: string) => {
   }
 
   return url;
-}
+};
 
-export const sendMessage = (eventReceivedDetails: any, postMessageDetails: any) => {
+export const sendMessage = (
+  eventReceivedDetails: any,
+  postMessageDetails: any
+) => {
   return new Promise((resolve) => {
     const callback = (event: any) => {
-      if (event.data.type === eventReceivedDetails.type && event.data.target === eventReceivedDetails.target) {
+      if (
+        event.data.type === eventReceivedDetails.type &&
+        event.data.target === eventReceivedDetails.target
+      ) {
         resolve(
           eventReceivedDetails.freeze
-          ? Object.freeze(event.data[eventReceivedDetails.eventResult])
-          : event.data[eventReceivedDetails.eventResult]
+            ? Object.freeze(event.data[eventReceivedDetails.eventResult])
+            : event.data[eventReceivedDetails.eventResult]
         );
 
-        console.log('event result', eventReceivedDetails, event.data[eventReceivedDetails.eventResult]);
+        console.log(
+          'event result',
+          eventReceivedDetails,
+          event.data[eventReceivedDetails.eventResult]
+        );
 
         window.removeEventListener('message', callback);
 
@@ -75,9 +88,9 @@ export const sendMessage = (eventReceivedDetails: any, postMessageDetails: any) 
     };
 
     window.addEventListener('message', callback);
-      
+
     window.postMessage(postMessageDetails, '*');
 
     return true;
   });
-}
+};

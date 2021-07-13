@@ -1,5 +1,5 @@
 import * as React from 'react';
-import  { FC } from 'react';
+import { FC } from 'react';
 import Icon from 'components/Icon';
 import ExportIcon from '@material-ui/icons/ImportExport';
 import LinkIcon from '@material-ui/icons/CallMissedOutgoing';
@@ -7,6 +7,7 @@ import { useSettingsView, useController } from 'hooks/index';
 import { useSelector } from 'react-redux';
 import IWalletState from 'state/wallet/types';
 import { RootState } from 'state/store';
+
 import { PRIV_KEY_VIEW } from '../routes';
 
 import styles from './index.scss';
@@ -23,7 +24,7 @@ const AccountView: FC<IAccountView> = ({ id }) => {
   );
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
   const handleOpenExplorer = () => {
-    window.open(sysExplorer + '/xpub/' + accounts[id].xpub);
+    window.open(`${sysExplorer}/xpub/${accounts[id].xpub}`);
   };
 
   return (

@@ -2,15 +2,15 @@ import React, { useState } from 'react';
 import clsx from 'clsx';
 import { useForm } from 'react-hook-form';
 import * as yup from 'yup';
-
 import TextInput from 'components/TextInput';
 import Button from 'components/Button';
 import { useController, useCopyClipboard, useSettingsView } from 'hooks/index';
+import { ellipsis } from 'containers/auth/helpers';
+import Spinner from '@material-ui/core/CircularProgress';
+
+import { MAIN_VIEW } from '../routes';
 
 import styles from './index.scss';
-import { ellipsis } from 'containers/auth/helpers';
-import { MAIN_VIEW } from '../routes';
-import Spinner from '@material-ui/core/CircularProgress';
 
 const NewAccountView = () => {
   const [address, setAddress] = useState<string | undefined>();

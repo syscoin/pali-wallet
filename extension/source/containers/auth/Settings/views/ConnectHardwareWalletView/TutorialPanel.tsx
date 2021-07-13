@@ -8,7 +8,7 @@ import styles from './index.scss';
 
 const TutorialPanel: FC = () => {
   const [isShowed, setShowed] = useState<boolean>(false);
-  const [learnMore, setLearnMore] = useState<boolean>(false)
+  const [learnMore, setLearnMore] = useState<boolean>(false);
 
   const handleScroll = useCallback((event) => {
     event.persist();
@@ -25,45 +25,51 @@ const TutorialPanel: FC = () => {
 
   const handleGoBottom = () => {
     setLearnMore(true);
-    setShowed(true)
-  }
+    setShowed(true);
+  };
 
   return (
     <section
       className={clsx(styles.activity, { [styles.expanded]: isShowed })}
       onScroll={handleScroll}
     >
-      {!!(!isShowed) ?
+      {!isShowed ? (
         <div className={styles.wrapper}>
           <div className={styles.heading}>
-            <p style={{ cursor: "pointer" }} onClick={handleGoBottom}>Learn more</p>
+            <p style={{ cursor: 'pointer' }} onClick={handleGoBottom}>
+              Learn more
+            </p>
           </div>
         </div>
-        :
+      ) : (
         <div className={styles.heading}>
           <p>Learn more</p>
           <IconButton className={styles.goTop} onClick={handleGoTop}>
             <GoTopIcon />
           </IconButton>
         </div>
-      }
+      )}
 
       {learnMore && (
         <div>
           <ol>
             <li>
               <h2>Connect a hardware wallet</h2>
-              <small>Connect your hardware wallet directly to your computer.</small>
+              <small>
+                Connect your hardware wallet directly to your computer.
+              </small>
             </li>
 
             <li>
               <h2>Start using sys powered sites and more!</h2>
-              <small>Use your hardware account like you would with any SYS account. Connect to SYS web3 sites, send SYS, buy and store SPT tokens.</small>
+              <small>
+                Use your hardware account like you would with any SYS account.
+                Connect to SYS web3 sites, send SYS, buy and store SPT tokens.
+              </small>
             </li>
           </ol>
         </div>
       )}
-
     </section>
   );
 };

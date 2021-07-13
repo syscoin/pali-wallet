@@ -6,7 +6,6 @@ import { Provider } from 'react-redux';
 import { Store } from 'webext-redux';
 import watch from 'redux-watch';
 import { transitions, positions, Provider as AlertProvider } from 'react-alert';
-
 import ToastAlert from 'components/ToastAlert';
 import appStore from 'state/store';
 

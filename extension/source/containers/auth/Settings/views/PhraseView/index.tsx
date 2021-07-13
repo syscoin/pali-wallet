@@ -64,8 +64,9 @@ const PhraseView = () => {
         {phrase}
       </div>
       <span>
-        <b>Warning:</b> Keep your seed phrase secret! Anyone with your seed phrase can
-        access any account connected to this wallet and steal your assets.
+        <b>Warning:</b> Keep your seed phrase secret! Anyone with your seed
+        phrase can access any account connected to this wallet and steal your
+        assets.
       </span>
     </div>
   );

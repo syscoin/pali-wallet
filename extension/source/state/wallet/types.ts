@@ -1,63 +1,58 @@
 import { Transaction, Assets } from '../../scripts/types';
 
-export enum AccountType {
-  Seed,
-  PrivKey,
-}
-
 export interface IAccountState {
-  id: number;
-  label: string;
-  xpub: string;
-  xprv: string;
-  assets: Assets[];
   address: { [assetId: string]: string };
+  assets: Assets[];
   balance: number;
-  transactions: Transaction[];
   connectedTo: any[];
+  id: number;
   isTrezorWallet: boolean;
+  label: string;
+  transactions: Transaction[];
   trezorId?: number;
+  xprv: string;
+  xpub: string;
 }
 
 export interface IAccountUpdateState {
-  id: number;
+  assets: Assets[],
   balance: number;
+  id: number;
   transactions: Transaction[];
-  assets: Assets[]
 }
 
 export interface IAccountUpdateAddress {
-  id: number;
   address: { [assetId: string]: string };
+  id: number;
 }
 
 export interface IAccountUpdateXpub {
   id: number;
-  xpub: string;
   xprv: string;
+  xpub: string;
 }
 
 export interface Keystore {
-  id: number,
   address: string,
+  id: number,
   phrase: string
 }
 
 export default interface IWalletState {
-  status: number;
   accounts: IAccountState[];
   activeAccountId: number;
   activeNetwork: string;
-  encriptedMnemonic: any;
+  canConnect: boolean;
+  changingNetwork: boolean;
+  confirmingTransaction: boolean;
+  connections: any[];
+  creatingAsset: boolean;
   currentSenderURL: string;
   currentURL: string;
-  canConnect: boolean;
-  connections: any[];
-  confirmingTransaction: boolean;
-  creatingAsset: boolean;
+  encriptedMnemonic: any;
   issuingAsset: boolean;
   issuingNFT: boolean;
-  updatingAsset: boolean;
+  status: number;
   transferringOwnership: boolean;
-  changingNetwork: boolean;
+  updatingAsset: boolean;
 }

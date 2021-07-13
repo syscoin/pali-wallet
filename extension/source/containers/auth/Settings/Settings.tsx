@@ -15,19 +15,18 @@ import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import CloseIcon from '@material-ui/icons/Close';
 import EditIcon from '@material-ui/icons/Create';
 import CheckIcon from '@material-ui/icons/Check';
-
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
-import * as Views from './views';
-import * as routes from './views/routes';
-
 import TextInput from 'components/TextInput';
 import { useController } from 'hooks/index';
+
+import * as Views from './views';
+import * as routes from './views/routes';
 import styles from './Settings.scss';
 
 interface ISettings {
-  open: boolean;
   onClose?: () => void;
+  open: boolean;
 }
 
 const Settings: FC<ISettings> = ({ open, onClose }) => {
@@ -62,8 +61,9 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
           <TextInput
             value={showedLabel}
             variant={styles.accLabel}
-            onChange={(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setShowedLabel(event.target.value)
-            }
+            onChange={(
+              event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+            ) => setShowedLabel(event.target.value)}
             onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
               if (event.key === 'Enter') {
                 setShowedLabel(event.currentTarget.value);
@@ -124,7 +124,10 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
     if (!editable) {
       setShowedLabel(accounts[Number(showedId)].label);
     } else {
-      controller.wallet.account.updateAccountLabel(Number(showedId), showedLabel);
+      controller.wallet.account.updateAccountLabel(
+        Number(showedId),
+        showedLabel
+      );
     }
     setEditable(!editable);
   };

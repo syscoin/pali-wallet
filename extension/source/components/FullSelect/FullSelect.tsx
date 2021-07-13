@@ -9,21 +9,20 @@ interface IOptions {
 }
 
 interface IFullSelect {
+  onChange: (value: string) => void;
   options: IOptions;
   value: string;
-  onChange: (value: string) => void;
 }
 
 const FullSelect: FC<IFullSelect> = ({ options, value, onChange }) => {
   const [expanded, setExpanded] = useState<boolean>(false);
-  (options).map((option: any) => { console.log(option) })
+
   return (
     <div
       className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
       onClick={() => setExpanded(!expanded)}
     >
       <span className={styles.selected}>
-        {/* {options[value]!.label} */}
         {options.find((el: any) => el.id === Number(value))!.label}
         <DownArrowIcon className={styles.arrow} />
       </span>

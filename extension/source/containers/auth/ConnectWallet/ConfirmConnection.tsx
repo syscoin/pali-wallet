@@ -2,27 +2,27 @@ import React from 'react';
 import { browser } from 'webextension-polyfill-ts';
 import Button from 'components/Button';
 import Header from 'containers/common/Header';
-
-import styles from './ConnectWallet.scss';
 import clsx from 'clsx';
-
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
-import { ellipsis } from '../helpers';
-import { getHost } from '../../../scripts/Background/helpers';
 import { useAlert } from 'react-alert';
 import { useHistory } from 'react-router-dom';
+
+import { ellipsis } from '../helpers';
+import { getHost } from '../../../scripts/Background/helpers';
+
+import styles from './ConnectWallet.scss';
 
 const ConfirmConnection = () => {
   const alert = useAlert();
   const history = useHistory();
-  
+
   const { accounts, currentSenderURL }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
-  const connectedAccount = accounts.filter(account => {
+  const connectedAccount = accounts.filter((account) => {
     return account.connectedTo.find((url: any) => {
       return url == getHost(currentSenderURL);
     });
@@ -30,35 +30,39 @@ const ConfirmConnection = () => {
 
   const handleCancelConnection = () => {
     history.push('/home');
-    
-    browser.runtime.sendMessage({
-      type: "RESET_CONNECTION_INFO",
-      target: "background",
-      id: connectedAccount[0].id,
-      url: currentSenderURL
-    }).then(() => {
-      browser.runtime.sendMessage({
-        type: "CLOSE_POPUP",
-        target: "background"
+
+    browser.runtime
+      .sendMessage({
+        type: 'RESET_CONNECTION_INFO',
+        target: 'background',
+        id: connectedAccount[0].id,
+        url: currentSenderURL,
+      })
+      .then(() => {
+        browser.runtime.sendMessage({
+          type: 'CLOSE_POPUP',
+          target: 'background',
+        });
       });
-    });
-  }
+  };
 
   const handleConfirmConnection = () => {
     try {
-      browser.runtime.sendMessage({
-        type: "CONFIRM_CONNECTION",
-        target: "background"
-      }).then(() => {
-        history.push('/home');
-        
-        browser.runtime.sendMessage({
-          type: "CLOSE_POPUP",
-          target: "background"
-        });
+      browser.runtime
+        .sendMessage({
+          type: 'CONFIRM_CONNECTION',
+          target: 'background',
+        })
+        .then(() => {
+          history.push('/home');
 
-        return true;
-      });
+          browser.runtime.sendMessage({
+            type: 'CLOSE_POPUP',
+            target: 'background',
+          });
+
+          return true;
+        });
 
       return true;
     } catch (error) {
@@ -67,13 +71,15 @@ const ConfirmConnection = () => {
 
       return false;
     }
-  }
+  };
 
   return (
     <div className={styles.wrapper}>
       <Header showLogo />
 
-      <h1>Connect with <b>Pali Wallet</b></h1>
+      <h1>
+        Connect with <b>Pali Wallet</b>
+      </h1>
 
       <p>2/2</p>
 
@@ -83,7 +89,9 @@ const ConfirmConnection = () => {
         <p>{ellipsis(connectedAccount[0].address.main)}</p>
       </div>
 
-      <small>Only connect with sites you trust. <a href="#">Learn more.</a></small>
+      <small>
+        Only connect with sites you trust. <a href="#">Learn more.</a>
+      </small>
 
       <div className={styles.actions}>
         <Button

@@ -9,7 +9,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 
-import Layout from '../../common/Layout';
+import Layout from '../Layout';
 
 import * as consts from './consts';
 import styles from './CreatePass.scss';
@@ -89,7 +89,8 @@ const CreatePass = () => {
           type={passed ? 'button' : 'submit'}
           theme="btn-gradient-primary"
           variant={styles.next}
-          onClick={nextHandler}>
+          onClick={nextHandler}
+        >
           Next
         </Button>
       </form>

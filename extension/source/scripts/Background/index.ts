@@ -19,12 +19,13 @@ import {
   setTransferOwnership,
   clearAllTransactions
 } from 'state/wallet';
+import { IAccountState } from 'state/wallet/types';
+import TrezorConnect from 'trezor-connect';
 
 import MasterController, { IMasterController } from './controllers';
-import { IAccountState } from 'state/wallet/types';
 import { getHost } from './helpers';
+
 // var TrezorConnect = require('trezor-connect').default;
-import TrezorConnect from 'trezor-connect';
 
 declare global {
   interface Window {
@@ -43,7 +44,7 @@ const observeStore = async (store: any) => {
   let currentState: any;
 
   const handleChange = async () => {
-    let nextState = store.getState();
+    const nextState = store.getState();
 
     if (nextState !== currentState) {
       currentState = nextState;
@@ -66,12 +67,12 @@ const observeStore = async (store: any) => {
           connected: false
         });
 
-        return;
+        
       }
     }
   }
 
-  let unsubscribe = store.subscribe(handleChange);
+  const unsubscribe = store.subscribe(handleChange);
 
   await handleChange();
 
@@ -137,16 +138,15 @@ browser.runtime.onInstalled.addListener(async () => {
           return;
         }
         
-        let windowpopup: any = window.open(url, "Pali Wallet", "width=372, height=600, left=900, top=90");
+        const windowpopup: any = window.open(url, "Pali Wallet", "width=372, height=600, left=900, top=90");
         
-        // @ts-ignore
         windowpopup.onbeforeunload = () => {
           store.dispatch(clearAllTransactions());
         }
       });
     };
 
-    if (typeof request == 'object') {
+    if (typeof request === 'object') {
       if (type == 'WALLET_ERROR' && target == 'background') {
         const {
           transactionError,
@@ -231,15 +231,13 @@ browser.runtime.onInstalled.addListener(async () => {
             connectionConfirmed: true,
             state: store.getState().wallet
           });
-
-          return;
         }
 
         return;
       }
 
       if (type == 'CANCEL_TRANSACTION' && target == 'background') {
-        const item = request.item;
+        const {item} = request;
         
         store.dispatch(clearAllTransactions());
         
@@ -258,8 +256,6 @@ browser.runtime.onInstalled.addListener(async () => {
             if (tab.title === 'Pali Wallet') {
               await browser.windows.remove(Number(tab.windowId));
             }
-
-            return;
           });
         });
 
@@ -271,6 +267,16 @@ browser.runtime.onInstalled.addListener(async () => {
           type: 'SEND_STATE_TO_PAGE',
           target: 'contentScript',
           state: store.getState().wallet
+        });
+      }
+
+      if (type == 'CHECK_IS_LOCKED' && target == 'background') {
+        const isLocked = window.controller.wallet.isLocked();
+        
+        browser.tabs.sendMessage(tabId, {
+          type: 'CHECK_IS_LOCKED',
+          target: 'contentScript',
+          isLocked
         });
       }
 
@@ -318,7 +324,7 @@ browser.runtime.onInstalled.addListener(async () => {
           token,
           isToken,
           rbf
-        } = request;
+        } = request.messageData;
 
         window.controller.wallet.account.updateTempTx({
           fromAddress: fromConnectedAccount,
@@ -356,7 +362,7 @@ browser.runtime.onInstalled.addListener(async () => {
           auxfeedetails,
           notaryAddress,
           payoutAddress
-        } = request;
+        } = request.messageData;
         
         if (precision < 0 || precision > 8) {
           throw new Error('invalid precision value');
@@ -412,7 +418,7 @@ browser.runtime.onInstalled.addListener(async () => {
         const {
           amount,
           assetGuid
-        } = request;
+        } = request.messageData;
         
         const assetFromAssetGuid = window.controller.wallet.account.getDataAsset(assetGuid);
         
@@ -459,7 +465,7 @@ browser.runtime.onInstalled.addListener(async () => {
           auxfeedetails,
           notaryAddress,
           payoutAddress,
-        } = request;
+        } = request.messageData;
         
         if (totalShares < 0 || totalShares > 8) {
           throw new Error('invalid total shares value');
@@ -510,7 +516,7 @@ browser.runtime.onInstalled.addListener(async () => {
           auxfeedetails,
           notaryAddress,
           payoutAddress
-        } = request;
+        } = request.messageData;
 
         window.controller.wallet.account.setDataFromPageToUpdateAsset({
           assetGuid,
@@ -547,7 +553,7 @@ browser.runtime.onInstalled.addListener(async () => {
         const {
           assetGuid,
           newOwner
-        } = request;
+        } = request.messageData;
         
         if (!window.controller.wallet.account.isValidSYSAddress(newOwner, store.getState().wallet.activeNetwork)) {
           throw new Error('invalid new owner address');
@@ -565,7 +571,7 @@ browser.runtime.onInstalled.addListener(async () => {
         await createPopup(appURL);
 
         browser.tabs.sendMessage(tabId, {
-          type: 'UPDATE_ASSET',
+          type: 'TRANSFER_OWNERSHIP',
           target: 'contentScript',
           complete: true
         });
@@ -589,7 +595,7 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'GET_ASSET_DATA' && target == 'background') {
-        const assetData = await window.controller.wallet.account.getDataAsset(request.assetGuid);
+        const assetData = await window.controller.wallet.account.getDataAsset(request.messageData);
 
         browser.tabs.sendMessage(tabId, {
           type: 'GET_ASSET_DATA',

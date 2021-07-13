@@ -1,12 +1,13 @@
 export const sys = require('syscoinjs-lib');
+
 export const STORE_PORT = 'SYSCOIN';
 
 export const SYS_NETWORK: {
   [networkId: string]: {
-    id: string;
-    label: string;
-    beUrl: string;
-  };
+    beUrl: string,
+    id: string,
+    label: string,
+  },
 } = {
   main: {
     id: 'main',
@@ -17,10 +18,11 @@ export const SYS_NETWORK: {
     id: 'testnet',
     label: 'Test Network',
     beUrl: 'https://blockbook-dev.elint.services/',
-  }
+  },
 };
 
-export const ASSET_PRICE_API = 'https://blockbook-dev.elint.services/api/v2/tickers/';
+export const ASSET_PRICE_API =
+  'https://blockbook-dev.elint.services/api/v2/tickers/';
 export const SYS_EXPLORER_SEARCH = 'https://blockbook-dev.elint.services/';
 
 export const PRICE_SYS_ID = 'syscoin';

@@ -1,28 +1,23 @@
-import React, { FC } from "react";
+import React, { FC } from 'react';
 import { browser } from 'webextension-polyfill-ts';
-
-import styles from './Modal.scss';
-
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
-import { getHost } from '../../scripts/Background/helpers';
-import { ellipsis, formatURL } from '../../containers/auth/helpers';
 import IWalletState from 'state/wallet/types';
 import trash from 'assets/images/svg/trash.svg';
 
+import { getHost } from '../../scripts/Background/helpers';
+import { ellipsis, formatURL } from '../../containers/auth/helpers';
+
+import styles from './Modal.scss';
+
 interface IModal {
-  title: any,
-  message?: any,
-  connected?: boolean,
-  callback?: any
+  callback?: any;
+  connected?: boolean;
+  message?: any;
+  title: any;
 }
 
-const Modal: FC<IModal> = ({
-  title,
-  message,
-  connected,
-  callback
-}) => {
+const Modal: FC<IModal> = ({ title, message, connected, callback }) => {
   const { accounts }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
@@ -32,11 +27,11 @@ const Modal: FC<IModal> = ({
       type: 'RESET_CONNECTION_INFO',
       target: 'background',
       id,
-      url: title
+      url: title,
     });
-  }
+  };
 
-  const connectedAccounts = accounts.filter(account => {
+  const connectedAccounts = accounts.filter((account) => {
     return account.connectedTo.find((url: any) => url == getHost(title));
   });
 
@@ -46,7 +41,9 @@ const Modal: FC<IModal> = ({
         <small>{formatURL(title)}</small>
 
         {connected && (
-          <small>You have {connectedAccounts.length} account connected to this site</small>
+          <small>
+            You have {connectedAccounts.length} account connected to this site
+          </small>
         )}
       </div>
 
@@ -54,11 +51,7 @@ const Modal: FC<IModal> = ({
 
       {!connected && (
         <div className={styles.close}>
-          <button
-            onClick={() => callback()}
-          >
-            Close
-          </button>
+          <button onClick={() => callback()}>Close</button>
         </div>
       )}
 
@@ -77,24 +70,26 @@ const Modal: FC<IModal> = ({
                   onClick={() => handleDisconnect(item.id)}
                 />
               </div>
-            )
+            );
           })}
 
           <div className={styles.permissions}>
             <p>Permissions</p>
 
             <div>
-              <input disabled type="checkbox" name="permission" id="permission" checked />
+              <input
+                disabled
+                type="checkbox"
+                name="permission"
+                id="permission"
+                checked
+              />
               <small>View the adresses of your permitted accounts.</small>
             </div>
           </div>
 
           <div className={styles.close}>
-            <button
-              onClick={() => callback()}
-            >
-              Close
-            </button>
+            <button onClick={() => callback()}>Close</button>
           </div>
         </div>
       )}

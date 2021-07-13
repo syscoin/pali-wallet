@@ -9,10 +9,10 @@ interface IOptions {
 }
 
 interface IAccountSelect {
-  options: IOptions;
-  value: string;
   label: string | ReactNode;
   onChange: (value: string) => void;
+  options: IOptions;
+  value: string;
 }
 
 const AccountSelect: FC<IAccountSelect> = ({

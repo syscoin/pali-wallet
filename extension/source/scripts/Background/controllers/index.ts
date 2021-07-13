@@ -3,10 +3,10 @@ import ControllerUtils from './ControllerUtils';
 import ConnectionsController from './ConnectionsController';
 
 export interface IMasterController {
-  wallet: Readonly<IWalletController>;
+  appRoute: (newRoute?: string) => string;
   connections: Readonly<IConnectionsController>;
   stateUpdater: () => void;
-  appRoute: (newRoute?: string) => string;
+  wallet: Readonly<IWalletController>;
 }
 
 const MasterController = (): IMasterController => {

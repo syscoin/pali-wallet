@@ -4,7 +4,6 @@ import { useAlert } from 'react-alert';
 import { useSelector } from 'react-redux';
 import { useForm } from 'react-hook-form';
 import * as yup from 'yup';
-
 import TextInput from 'components/TextInput';
 import { useController, useCopyClipboard } from 'hooks/index';
 import { ellipsis } from 'containers/auth/helpers';
@@ -94,8 +93,8 @@ const PrivateKeyView: FC<IPrivateKeyView> = ({ id }) => {
               <span>{ellipsis(privKey)}</span>
             </div>
             <span>
-              <b>Warning:</b> Keep your keys secret! Anyone with your private keys can
-              steal your assets .
+              <b>Warning:</b> Keep your keys secret! Anyone with your private
+              keys can steal your assets .
             </span>
           </div>
         </>

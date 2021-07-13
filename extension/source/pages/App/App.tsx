@@ -1,7 +1,6 @@
 import React, { FC } from 'react';
 import { useSelector } from 'react-redux';
 import { BrowserRouter as Router } from 'react-router-dom';
- 
 import Container from 'containers/common/Container';
 import AuthRouter from 'routers/Auth';
 import UnAuthRouter from 'routers/UnAuth';
@@ -19,11 +18,7 @@ const App: FC = () => {
     <section id="app" style={{ minHeight: '300px' }}>
       <Container>
         <Router>
-          {encriptedMnemonic !== null ? (
-            <AuthRouter />
-          ) : (
-            <UnAuthRouter />
-          )}
+          {encriptedMnemonic !== null ? <AuthRouter /> : <UnAuthRouter />}
         </Router>
       </Container>
     </section>

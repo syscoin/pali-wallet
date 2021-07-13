@@ -1,4 +1,5 @@
 import * as React from 'react';
+import * as Yup from 'yup';
 import {
   ChangeEvent,
   useState,
@@ -13,7 +14,6 @@ import { useHistory } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { useSelector } from 'react-redux';
 import { useAlert } from 'react-alert';
-import { Assets } from '../../../scripts/types';
 import Header from 'containers/common/Header';
 import Button from 'components/Button';
 import Switch from "react-switch";
@@ -28,6 +28,10 @@ import ReactTooltip from 'react-tooltip';
 import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import DownArrowIcon from '@material-ui/icons/ExpandMore';
 import Spinner from '@material-ui/core/CircularProgress';
+import InputMask from "react-input-mask";
+import CurrencyInput from "react-currency-input-field";
+
+import { Assets } from '../../../scripts/types';
 
 import styles from './Send.scss';
 
@@ -82,13 +86,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       fee
     } = data;
 
-    if (accounts.find(element => element.id === activeAccountId)!.address.main === address) {
-      alert.removeAll();
-      alert.error('Error: cannot complete transaction. Check the recipient\'s address.');
-
-      return;
-    }
-
     if (selectedAsset) {
       try {
         controller.wallet.account.updateTempTx({
@@ -109,19 +106,21 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       }
 
       return;
-    } else {
-      controller.wallet.account.updateTempTx({
-        fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
-        toAddress: address,
-        amount,
-        fee,
-        token: null,
-        isToken: false,
-        rbf: true,
-      });
     }
+    controller.wallet.account.updateTempTx({
+      fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
+      toAddress: address,
+      amount,
+      fee,
+      token: null,
+      isToken: false,
+      rbf: true,
+    });
+
     history.push('/send/confirm');
   };
+
+  const decimalNumberMask = new RegExp('[0-9]+(\\.?[0-9]*)?', 'g');
 
   const handleAmountChange = useCallback(
     (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -132,6 +131,12 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
   const handleFeeChange = useCallback(
     (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      if (decimalNumberMask.test(event.target.value)) {
+        console.log('matches', event.target.value)
+      }
+
+
+
       setFee(event.target.value);
     },
     []
@@ -161,7 +166,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   };
 
   const handleAssetSelected = (item: any) => {
-    let selectedAsset = accounts.find(element => element.id === activeAccountId)!.assets.filter((asset: Assets) => asset.assetGuid == item.assetGuid);
+    const selectedAsset = accounts.find(element => element.id === activeAccountId)!.assets.filter((asset: Assets) => asset.assetGuid == item.assetGuid);
 
     console.log('item selected', item, selectedAsset)
 
@@ -184,6 +189,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       accounts.find(element => element.id === activeAccountId)!.balance)
   }
 
+
   return (
     <div className={styles.wrapper}>
       <Header backLink="/home" showName={false} />
@@ -196,11 +202,11 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             {changingNetwork ? (
               <Spinner size={20} className={styles.spinner} />
             ) : (
-              <span>{checkAssetBalance()}</span>
-            )}
+                <span>{checkAssetBalance()}</span>
+              )}
 
-            {selectedAsset 
-              ? selectedAsset.symbol 
+            {selectedAsset
+              ? selectedAsset.symbol
               : <small>{activeNetwork == "testnet" ? "TSYS" : "SYS"}</small>}
           </div>
         </section>
@@ -210,8 +216,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             <li className={styles.item}>
               <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <label htmlFor="address">Recipient Address</label>
-
-                {address === accounts.find(element => element.id === activeAccountId)!.address.main && <small className={styles.description} style={{ textAlign: 'left' }}>Please, check the recipient's address.</small>}
               </div>
 
               <img
@@ -323,10 +327,10 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                       delayHide={300}
                       delayShow={300}
                       delayUpdate={300}
-                      place={'top'}
-                      border={true}
-                      type={'info'}
-                      multiline={true}
+                      place="top"
+                      border
+                      type="info"
+                      multiline
                     />
                   </div>
                 </div>
@@ -338,7 +342,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                   width={60}
                   checked={checked}
                   onChange={handleTypeChanged}
-                ></Switch>
+                />
               </li>
             </div>
 
@@ -379,12 +383,15 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 >
                   Transaction Fee
                 </label>
+
                 <TextInput
-                  type="number"
+                  type="text"
                   placeholder="Enter transaction fee"
                   fullWidth
                   inputRef={register}
                   name="fee"
+                  pattern={`${decimalNumberMask}`}
+                  title="Must be a integer or decimal number"
                   onChange={handleFeeChange}
                   value={fee}
                   variant={clsx(styles.input, styles.fee)}
@@ -431,6 +438,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 theme="btn-outline-primary"
                 variant={styles.button}
                 disabled={
+                  !decimalNumberMask.test(fee) ||
                   accounts.find(element => element.id === activeAccountId)!.balance === 0 ||
                   checkAssetBalance() < Number(amount) ||
                   !isValidAddress ||

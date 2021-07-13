@@ -6,12 +6,12 @@ import SettingsIcon from '@material-ui/icons/Settings';
 import LogOutIcon from '@material-ui/icons/ExitToApp';
 import SettingsInputHdmiIcon from '@material-ui/icons/SettingsInputHdmi';
 import UserIcon from '@material-ui/icons/AccountCircleRounded';
-
 import Icon from 'components/Icon';
 import { useController, useSettingsView } from 'hooks/index';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import AccountSelect from 'components/AccountSelect';
+
 import {
   ACCOUNT_VIEW,
   CONNECT_HARDWARE_WALLET_VIEW,
@@ -34,7 +34,6 @@ const MainView: FC<IMainView> = ({ onChange }) => {
   );
 
   const handleSelectAccount = (id: string) => {
-    console.log("Checkign account id:", id)
     onChange(id);
     showView(ACCOUNT_VIEW);
   };

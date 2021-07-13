@@ -1,13 +1,12 @@
 import React, { FC, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import * as yup from 'yup';
-
 import Layout from 'containers/common/Layout';
 import TextInput from 'components/TextInput';
 import Button from 'components/Button';
+import { useController } from 'hooks/index';
 
 import styles from './ImportPhrase.scss';
-import { useController } from 'hooks/index';
 
 interface IImportPhrase {
   onRegister: () => void;
@@ -44,9 +43,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           variant={styles.input}
         />
 
-        {!isValid && (
-          <p>Seed phrase is not valid.</p>
-        )}
+        {!isValid && <p>Seed phrase is not valid.</p>}
 
         <span>
           Importing your wallet seed will automatically import a wallet
@@ -57,7 +54,8 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           <Button
             type="submit"
             theme="btn-gradient-primary"
-            variant={styles.button}>
+            variant={styles.button}
+          >
             Import
           </Button>
         </div>

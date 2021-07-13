@@ -3,16 +3,17 @@ import IWalletState from 'state/wallet/types';
 import { useSelector } from 'react-redux';
 import { useController } from 'hooks/index';
 import { RootState } from 'state/store';
+
 import { ConfirmTransaction } from '../SiteTransaction';
 
 const IssueAssetConfirm = () => {
   const controller = useController();
-  const mintSPT = controller.wallet.account.getTransactionItem().mintSPT;
+  const { mintSPT } = controller.wallet.account.getTransactionItem();
 
   const { issuingAsset }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
-  
+
   return (
     <div>
       <ConfirmTransaction
@@ -25,7 +26,7 @@ const IssueAssetConfirm = () => {
         transactingStateItem={issuingAsset}
       />
     </div>
-  )
+  );
 };
 
 export default IssueAssetConfirm;

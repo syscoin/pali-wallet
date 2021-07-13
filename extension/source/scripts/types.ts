@@ -1,150 +1,141 @@
 export type Transaction = {
-  txid: string;
-  value: number;
-  confirmations: number;
-  fees: number;
-  blockTime: number;
-  tokenType: string;
-}
+  blockTime: number,
+  confirmations: number,
+  fees: number,
+  tokenType: string,
+  txid: string,
+  value: number,
+};
 
 export type Assets = {
-  type: string;
-  assetGuid: number;
-  symbol: string;
-  balance: number;
-  decimals: number
-}
+  assetGuid: number,
+  balance: number,
+  decimals: number,
+  symbol: string,
+  type: string,
+};
 
 export interface IAccountInfo {
-  balance: number;
-  assets: Assets[];
-  transactions: Transaction[];
   address?: string;
+  assets: Assets[];
+  balance: number;
+  transactions: Transaction[];
 }
 
 export interface ITransactionInfo {
-  fromAddress: string;
-  toAddress: string;
   amount: number;
   fee: number;
-  token: Assets | null;
+  fromAddress: string;
   isToken: boolean;
   rbf: boolean;
+  toAddress: string;
+  token: Assets | null;
 }
 
 export interface ISPTInfo {
-  precision: number,
-  symbol: string,
-  maxsupply: number,
-  fee: number,
-  description: string,
-  receiver: string,
-  rbf: boolean
+  description: string;
+  fee: number;
+  maxsupply: number;
+  precision: number;
+  receiver: string;
+  symbol: string;
 }
 
 export interface ISPTPageInfo {
-  precision: number,
-  symbol: string,
-  maxsupply: number,
-  description: string,
-  receiver: string,
+  description: string;
+  maxsupply: number;
+  precision: number;
+  receiver: string;
+  symbol: string;
 }
 
 export interface ISPTWalletInfo {
-  fee: number,
-  rbf: boolean
+  fee: number;
 }
 
 export interface ISPTIssue {
-  assetGuid: string,
-  amount: number,
-  fee: number,
-  rbf: boolean
+  amount: number;
+  assetGuid: string;
+  fee: number;
 }
 
 export interface ISPTIssuePage {
-  assetGuid: string,
-  amount: number,
+  amount: number;
+  assetGuid: string;
 }
 
 export interface ISPTIssueWallet {
-  fee: number,
-  rbf: boolean
+  fee: number;
 }
 
 export interface INFTIssue {
-  assetGuid: string,
-  fee: number,
-  rbf: boolean
+  assetGuid: string;
+  fee: number;
 }
 
 export interface INFTPageInfo {
-  assetGuid: string,
+  assetGuid: string;
 }
 
 export interface INFTWalletInfo {
   fee: number;
-  rbf: boolean;
 }
 
 export type PendingTx = {
-  txid: string;
-  value: number;
-  confirmations: number;
-  fees: number;
-  blockTime: number;
-}
+  blockTime: number,
+  confirmations: number,
+  fees: number,
+  txid: string,
+  value: number,
+};
 
 export type MintedToken = {
-  assetGuid: string;
-  symbol: string;
+  assetGuid: string,
   maxSupply: number,
-  totalSupply: number
-}
+  symbol: string,
+  totalSupply: number,
+};
 
 export type UpdateToken = {
-  assetGuid: string;
-  contract?: string | null;
-  capabilityflags?: number | 0;
-  description: string | null;
-  notaryAddress?: string;
+  assetGuid: string,
+  assetWhiteList?: any | null,
+  auxfeedetails?: any,
+  capabilityflags?: number | 0,
+  contract?: string | null,
+  description: string | null,
+  fee: number,
+  notaryAddress?: string,
   notarydetails?: {
-    endpoint?: string;
-    instanttransfers?: boolean;
-    hdrequired?: boolean;
-  }
-  auxfeedetails?: any;
-  notarykeyid?: string;
-  fee: number;
-  rbf: boolean;
-  assetWhiteList?: any | null;
-  payoutAddress?: string | null;
-}
+    endpoint?: string,
+    hdrequired?: boolean,
+    instanttransfers?: boolean,
+  },
+  notarykeyid?: string,
+  payoutAddress?: string | null,
+};
 
 export interface UpdateTokenPageInfo {
-  contract?: string;
-  capabilityflags?: number | 127;
-  receiver?: string;
-  description: string | '';
-  notarydetails?: {
-    endpoint?: string;
-    instanttransfers?: boolean;
-    hdrequired?: boolean;
-  }
+  assetWhiteList?: any | null;
   auxfeedetails?: {
-    auxfeekeyid?: any,
     auxfees?: [
       {
         bound?: any | 0,
-        percent?: any | 0
+        percent?: any | 0,
       }
-    ]
+    ],
+  };
+  capabilityflags?: number | 127;
+  contract?: string;
+  description: string | '';
+  notarydetails?: {
+    endpoint?: string,
+    hdrequired?: boolean,
+    instanttransfers?: boolean,
   };
   notarykeyid?: string;
-  assetWhiteList?: any | null
+  receiver?: string;
 }
 
 export interface UpdateTokenWalletInfo {
   fee: number;
-  rbf: boolean;
 }

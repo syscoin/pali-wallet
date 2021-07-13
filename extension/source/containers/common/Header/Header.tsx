@@ -1,4 +1,6 @@
-import React, { FC, useState } from 'react';
+import { SYS_NETWORK } from 'constants/index';
+
+import React, { FC, useState , ChangeEvent } from 'react';
 import { useSelector } from 'react-redux';
 import { useHistory } from 'react-router-dom';
 import IconButton from '@material-ui/core/IconButton';
@@ -8,15 +10,13 @@ import Link from 'components/Link';
 import Settings from 'containers/auth/Settings';
 import { useController, useSettingsView } from 'hooks/index';
 import LogoImage from 'assets/images/logo-s.svg';
-
-import styles from './Header.scss';
 import { MAIN_VIEW } from 'containers/auth/Settings/views/routes';
 import IWalletState from 'state/wallet/types';
 import { RootState } from 'state/store';
-
 import Select from 'components/Select';
-import { SYS_NETWORK } from 'constants/index';
-import { ChangeEvent } from 'react';
+
+import styles from './Header.scss';
+
 
 interface IHeader {
   backLink?: string;

@@ -4,9 +4,8 @@ import MUITooltip from '@material-ui/core/Tooltip';
 import styles from './Tooltip.scss';
 
 interface ITooltip {
-  title: string | ReactElement;
-  children: ReactElement;
   arrow?: boolean;
+  children: ReactElement;
   placement?:
     | 'bottom-end'
     | 'bottom-start'
@@ -20,6 +19,7 @@ interface ITooltip {
     | 'top-end'
     | 'top-start'
     | 'top';
+  title: string | ReactElement;
 }
 
 const Tooltip: FC<ITooltip> = ({ title, children, arrow, placement }) => {

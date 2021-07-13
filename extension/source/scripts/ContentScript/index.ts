@@ -1,5 +1,10 @@
 import { browser } from 'webextension-polyfill-ts';
 
+import {
+  getMessagesToListenTo,
+  listenAndSendMessageFromPageToBackground
+} from './helpers';
+
 declare global {
   interface Window {
     SyscoinWallet: any;
@@ -120,381 +125,49 @@ window.addEventListener('message', (event) => {
     target
   } = event.data;
 
-  if (event.source != window) {
-    return;
-  }
-  
-  if (type == "CONNECT_WALLET" && target == 'contentScript') {
-    browser.runtime.sendMessage({
-      type: 'CONNECT_WALLET',
-      target: 'background'
-    });
-
+  if (event.source !== window) {
     return;
   }
 
-  if (type == 'SEND_STATE_TO_PAGE' && target == 'contentScript') {
-    browser.runtime.sendMessage({
-      type: 'SEND_STATE_TO_PAGE',
-      target: 'background'
-    });
+  const browserMessages = listenAndSendMessageFromPageToBackground(event);
 
-    return;
-  }
-
-  if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'contentScript') {
-    browser.runtime.sendMessage({
-      type: 'SEND_CONNECTED_ACCOUNT',
-      target: 'background'
-    });
-
-    return;
-  }
-
-  if (type == 'CHECK_ADDRESS' && target == 'contentScript') {
-    browser.runtime.sendMessage({
-      type: 'CHECK_ADDRESS',
-      target: 'background',
-      address: event.data.address
-    });
-
-    return;
-  }
-
-  if (type == 'GET_HOLDINGS_DATA' && target == 'contentScript') {
-    browser.runtime.sendMessage({
-      type: 'GET_HOLDINGS_DATA',
-      target: 'background',
-    });
-
-    return;
-  }
-
-
-  if (type == 'SEND_TOKEN' && target == 'contentScript') {
-    const {
-      fromConnectedAccount,
-      toAddress,
-      amount,
-      fee,
-      token,
-      isToken,
-      rbf
-    } = event.data;
-
-    browser.runtime.sendMessage({
-      type: 'SEND_TOKEN',
-      target: 'background',
-      fromConnectedAccount,
-      toAddress,
-      amount,
-      fee,
-      token,
-      isToken,
-      rbf
-    });
-
-    return;
-  }
-  if (type == 'DATA_FROM_PAGE_TO_CREATE_TOKEN' && target == 'contentScript') {
-    const {
-      precision,
-      symbol,
-      maxsupply,
-      description,
-      receiver,
-      initialSupply,
-      capabilityflags,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress
-    } = event.data;
-
-    browser.runtime.sendMessage({
-      type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
-      target: 'background',
-      precision,
-      symbol,
-      maxsupply,
-      description,
-      receiver,
-      initialSupply,
-      capabilityflags,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress
-    });
-    
-    return;
-  }
-
-  if (type == 'ISSUE_SPT' && target == 'contentScript') {
-    const {
-      amount,
-      assetGuid
-    } = event.data;
-
-    browser.runtime.sendMessage({
-      type: 'ISSUE_SPT',
-      target: 'background',
-      amount,
-      assetGuid
-    });
-
-    return;
-  }
-
-  if (type == 'CREATE_AND_ISSUE_NFT' && target == 'contentScript') {
-    const {
-      symbol,
-      issuer,
-      totalShares,
-      description,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress,
-    } = event.data;
-
-    browser.runtime.sendMessage({
-      type: 'CREATE_AND_ISSUE_NFT',
-      target: 'background',
-      symbol,
-      issuer,
-      totalShares,
-      description,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress,
-    });
-
-    return;
-  }
-
-  if (type == 'UPDATE_ASSET' && target == 'contentScript') {
-    const {
-      assetGuid,
-      contract,
-      capabilityflags,
-      description,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress
-    } = event.data;
-
-    browser.runtime.sendMessage({
-      type: 'UPDATE_ASSET',
-      target: 'background',
-      assetGuid,
-      contract,
-      capabilityflags,
-      description,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress
-    });
-
-    return;
-  }
-
-  if (type == 'TRANSFER_OWNERSHIP' && target == 'contentScript') {
-    const {
-      assetGuid,
-      newOwner
-    } = event.data;
-
-    browser.runtime.sendMessage({
-      type: 'TRANSFER_OWNERSHIP',
-      target: 'background',
-      assetGuid,
-      newOwner,
-    });
-
-    return;
-  }
-
-  if (type == 'GET_USER_MINTED_TOKENS' && target == 'contentScript') {
-    browser.runtime.sendMessage({
-      type: 'GET_USER_MINTED_TOKENS',
-      target: 'background',
-    });
-
-    return;
-  }
-
-  if (type == 'GET_ASSET_DATA' && target == 'contentScript') {
-    browser.runtime.sendMessage({
-      type: 'GET_ASSET_DATA',
-      target: 'background',
-      assetGuid: event.data.assetGuid
-    });
-
-    return;
-  }
+  browserMessages.map(({
+    messageType,
+    messageTarget,
+    messageNewTarget,
+    messageData
+  }) => {
+    if (type === messageType && target === messageTarget) {
+      browser.runtime.sendMessage({
+        type: messageType,
+        target: messageNewTarget,
+        messageData
+      });
+    }
+  });
 }, false);
 
 browser.runtime.onMessage.addListener((request) => {
   const {
     type,
-    target,
-    complete,
-    connected,
-    state,
-    connectedAccount,
-    userTokens,
-    connectionConfirmed,
-    isValidSYSAddress,
-    holdingsData,
-    assetData
+    target
   } = request;
-    
-  if (type == 'WALLET_ERROR' && target == 'contentScript') {
-    window.postMessage({
-      type: 'TRANSACTION_ERROR',
-      target: 'connectionsController',
-      error: request.message
-    }, '*');
-    
-    return;
-  }
 
-  if (type == 'TRANSACTION_RESPONSE' && target == 'contentScript') {
-    window.postMessage({
-      type: 'TRANSACTION_RESPONSE',
-      target: 'connectionsController',
-      response: request.response
-    }, '*');
-    
-    return;
-  }
+  const messages = getMessagesToListenTo(request);
 
-  if (type == 'SEND_STATE_TO_PAGE' && target == 'contentScript') {
-    window.postMessage({
-      type: 'SEND_STATE_TO_PAGE',
-      target: 'connectionsController',
-      state
-    }, '*');
-
-    return;
-  }
-
-  if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'contentScript') {
-    window.postMessage({
-      type: 'SEND_CONNECTED_ACCOUNT',
-      target: 'connectionsController',
-      connectedAccount
-    }, '*');
-
-    return;
-  }
-
-  if (type == 'CHECK_ADDRESS' && target == 'contentScript') {
-    window.postMessage({
-      type: 'CHECK_ADDRESS',
-      target: 'connectionsController',
-      isValidSYSAddress
-    }, '*');
-
-    return;
-  }
-
-  if (type == 'GET_HOLDINGS_DATA' && target == 'contentScript') {
-    window.postMessage({
-      type: 'GET_HOLDINGS_DATA',
-      target: 'connectionsController',
-      holdingsData
-    }, '*');
-
-    return;
-  }
-
-  if (type == 'SEND_TOKEN' && target == 'contentScript') {
-    window.postMessage({
-      type: 'SEND_TOKEN',
-      target: 'connectionsController',
-      complete
-    }, '*');
-
-    return;
-  }
-
-  if (type == 'CONNECT_WALLET' && target == 'contentScript') {
-    window.postMessage({
-      type: 'CONNECT_WALLET',
-      target: 'connectionsController',
-      eventResult: 'complete'
-    }, '*');
-
-    return;
-  }
-
-  if (type == 'WALLET_UPDATED' && target == 'contentScript') {
-    window.postMessage({
-      type: 'WALLET_UPDATED',
-      target: 'connectionsController',
-      connected
-    }, '*');
-
-    return Promise.resolve({ response: "wallet updated response from content script" });
-  }
-
-  if (type == 'GET_USER_MINTED_TOKENS' && target == 'contentScript') {
-    window.postMessage({
-      type: 'GET_USER_MINTED_TOKENS',
-      target: 'connectionsController',
-      userTokens,
-    }, '*');
-  }
-
-  if (type == 'GET_ASSET_DATA' && target == 'contentScript') {
-    window.postMessage({
-      type: 'GET_ASSET_DATA',
-      target: 'connectionsController',
-      assetData,
-    }, '*');
-
-    return;
-  }
-
-  if (type == 'DATA_FROM_PAGE_TO_CREATE_TOKEN' && target == 'contentScript') {
-    window.postMessage({
-      type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
-      target: 'connectionsController',
-      complete
-    }, '*');
-    return;
-  }
-
-  if (type == 'ISSUE_SPT' && target == 'contentScript') {
-    window.postMessage({
-      type: 'ISSUE_SPT',
-      target: 'connectionsController',
-      complete
-    }, '*');
-    return;
-  }
-
-  if (type == 'CREATE_AND_ISSUE_NFT' && target == 'contentScript') {
-    window.postMessage({
-      type: 'CREATE_AND_ISSUE_NFT',
-      target: 'connectionsController',
-      complete
-    }, '*');
-    return;
-  }
-
-  if (type == 'WALLET_CONNECTION_CONFIRMED' && target == 'contentScript') {
-    window.postMessage({
-      type: 'WALLET_CONNECTION_CONFIRMED',
-      target: 'connectionsController',
-      connectionConfirmed
-    }, '*');
-  }
-
-  return;
+  messages.map(({
+    messageType,
+    messageTarget,
+    messageNewTarget,
+    responseItem,
+    messageResponse 
+  }) => {
+    if (type === messageType && target === messageTarget) {
+      window.postMessage({
+        type: messageType,
+        target: messageNewTarget,
+        [responseItem]: messageResponse
+      }, '*');
+    }
+  });
 });

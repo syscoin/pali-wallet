@@ -3,11 +3,12 @@ import IWalletState from 'state/wallet/types';
 import { useSelector } from 'react-redux';
 import { useController } from 'hooks/index';
 import { RootState } from 'state/store';
+
 import { ConfirmTransaction } from '../SiteTransaction';
 
 const CreateTokenConfirm = () => {
   const controller = useController();
-  const newSPT = controller.wallet.account.getTransactionItem().newSPT;
+  const { newSPT } = controller.wallet.account.getTransactionItem();
 
   const { creatingAsset }: IWalletState = useSelector(
     (state: RootState) => state.wallet
@@ -25,7 +26,7 @@ const CreateTokenConfirm = () => {
         transactingStateItem={creatingAsset}
       />
     </div>
-  )
+  );
 };
 
 export default CreateTokenConfirm;

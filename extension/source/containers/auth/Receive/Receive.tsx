@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { useController } from 'hooks/index';
+import { useController , useCopyClipboard } from 'hooks/index';
 import clsx from 'clsx';
 import QRCode from 'qrcode.react';
 import IconButton from '@material-ui/core/IconButton';
 import CopyIcon from '@material-ui/icons/FileCopy';
 import Header from 'containers/common/Header';
-import { useCopyClipboard } from 'hooks/index';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import Spinner from '@material-ui/core/CircularProgress';
@@ -36,19 +35,19 @@ const WalletReceive = () => {
           <div>
             <div className={styles.address}>
               <QRCode
-                value={accounts.find(element => element.id === activeAccountId)!.address['main']}
+                value={accounts.find(element => element.id === activeAccountId)!.address.main}
                 bgColor="#fff"
                 fgColor="#000"
                 className={styles.qrcode}
                 size={180}
               />
-              {accounts.find(element => element.id === activeAccountId)!.address['main']}
+              {accounts.find(element => element.id === activeAccountId)!.address.main}
             </div>
             <div className={styles.copy}>
               <IconButton
                 className={clsx(styles.iconBtn, { [styles.active]: isCopied })}
                 onClick={() =>
-                  copyText(accounts.find(element => element.id === activeAccountId)!.address['main'])
+                  copyText(accounts.find(element => element.id === activeAccountId)!.address.main)
                 }
               >
                 <CopyIcon className={styles.icon} />

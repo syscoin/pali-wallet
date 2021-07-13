@@ -48,7 +48,8 @@ const Starter = () => {
         <Button
           type="submit"
           theme="btn-gradient-primary"
-          variant={styles.unlock}>
+          variant={styles.unlock}
+        >
           Unlock
         </Button>
       </form>

@@ -2,12 +2,12 @@ import React, { FC, useState } from 'react';
 import clsx from 'clsx';
 import { useHistory } from 'react-router-dom';
 import Button from 'components/Button';
+import { useController } from 'hooks/index';
 
 import Layout from '../../common/Layout';
 
 import * as consts from './consts';
 import styles from './index.scss';
-import { useController } from 'hooks/index';
 
 const CreatePhrase: FC = () => {
   const history = useHistory();

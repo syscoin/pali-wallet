@@ -1,6 +1,7 @@
 import React from 'react';
-import SiteTransaction from '../SiteTransaction';
 import { useController } from 'hooks/index';
+
+import SiteTransaction from '../SiteTransaction';
 
 const UpdateAsset = () => {
   const controller = useController();
@@ -8,7 +9,9 @@ const UpdateAsset = () => {
   return (
     <div>
       <SiteTransaction
-        callbackToSetDataFromWallet={controller.wallet.account.setDataFromWalletToUpdateAsset}
+        callbackToSetDataFromWallet={
+          controller.wallet.account.setDataFromWalletToUpdateAsset
+        }
         messageToSetDataFromWallet="DATA_FROM_WALLET_TO_UPDATE_TOKEN"
         confirmRoute="/updateAsset/confirm"
         itemStringToClearData="updateAssetItem"
@@ -16,6 +19,6 @@ const UpdateAsset = () => {
       />
     </div>
   );
-}
+};
 
 export default UpdateAsset;

@@ -7,29 +7,29 @@ import GoTopIcon from '@material-ui/icons/VerticalAlignTop';
 import IconButton from '@material-ui/core/IconButton';
 import Spinner from '@material-ui/core/CircularProgress';
 import Button from 'components/Button';
-
 import { useController } from 'hooks/index';
-import { formatDistanceDate, formatCurrency } from '../helpers';
 import SyscoinIcon from 'assets/images/logosys.svg';
-import { Transaction, Assets } from '../../../scripts/types';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { useSelector } from 'react-redux';
 
+import { Transaction, Assets } from '../../../scripts/types';
+import { formatDistanceDate, formatCurrency } from '../helpers';
+
 import styles from './Home.scss';
 
 interface ITxsPanel {
-  txidSelected: any;
-  setTxidSelected: any;
-  assetSelected: any;
-  setAssetSelected: any;
-  openBlockExplorer: any;
-  setOpenBlockExplorer: any;
-  openAssetBlockExplorer: any;
-  setOpenAssetBlockExplorer: any;
   address: string;
-  transactions: Transaction[];
+  assetSelected: any;
   assets: Assets[];
+  openAssetBlockExplorer: any;
+  openBlockExplorer: any;
+  setAssetSelected: any;
+  setOpenAssetBlockExplorer: any;
+  setOpenBlockExplorer: any;
+  setTxidSelected: any;
+  transactions: Transaction[];
+  txidSelected: any;
 }
 
 const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, setTxidSelected, setAssetSelected, setOpenAssetBlockExplorer }) => {
@@ -77,8 +77,9 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
     if (event.target.scrollTop) setShowed(true);
 
     setScrollArea(event.target);
-
     const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
+
+    console.log('scroll offset', scrollOffset, event.target.clientHeight)
 
     if (scrollOffset === event.target.clientHeight) {
       if (!changingNetwork) {
@@ -109,7 +110,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
       className={clsx(styles.activity, { [styles.expanded]: isShowed })}
       onScroll={handleScroll}
     >
-      {!!(!isShowed) ?
+      {!isShowed ?
         <div className={styles.wrapper}>
           <div className={styles.center}>
             <Button
@@ -153,13 +154,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
             width="auto"
           />
         </>
-      )}
-
-      {/* {openBlockExplorer && (
-        <div className={styles.backgroundModalBlock} onClick={() => setOpenBlockExplorer(false)}></div>
-      )} */}
-
-      {/* {openBlockExplorer && <ModalBlock title="Open block explorer" message="Go to view transaction in Sys Block Explorer" setCallback={() => setOpenBlockExplorer(false)} callback={() => handleOpenExplorer(txidSelected)} />} */}
+      )} 
 
       {isActivity ?
         transactions.length && !changingNetwork ? (
@@ -238,7 +233,6 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                       <div
                         className={styles.assetItem}
                         onClick={() => {
-                          console.log('ola asset', asset)
                           setOpenAssetBlockExplorer(true);
                           setAssetSelected(asset.assetGuid);
                         }}
@@ -260,14 +254,14 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                     </Fragment>
                   );
                 }
-                return
+                
               })}
             </ul>
           </>
           :
           <>
             <span className={styles.noTxComment}>
-              You have no Assets, receive SPTs or NFTs to register.
+              You have no assets, receive an asset to register.
             </span>
 
             {!changingNetwork && (

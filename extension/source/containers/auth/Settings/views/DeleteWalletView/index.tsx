@@ -4,7 +4,6 @@ import { useAlert } from 'react-alert';
 import { useHistory } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import * as yup from 'yup';
-
 import TextInput from 'components/TextInput';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
@@ -60,10 +59,11 @@ const DeleteWalletView = () => {
           >
             Close
           </Button>
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             theme="btn-outline-secondary"
-            variant={styles.button}>
+            variant={styles.button}
+          >
             Delete
           </Button>
         </div>

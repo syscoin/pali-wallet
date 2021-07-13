@@ -1,6 +1,7 @@
 import React from 'react';
-import SiteTransaction from '../SiteTransaction';
 import { useController } from 'hooks/index';
+
+import SiteTransaction from '../SiteTransaction';
 
 const Create = () => {
   const controller = useController();
@@ -8,14 +9,16 @@ const Create = () => {
   return (
     <div>
       <SiteTransaction
-        callbackToSetDataFromWallet={controller.wallet.account.setDataFromWalletToCreateSPT}
+        callbackToSetDataFromWallet={
+          controller.wallet.account.setDataFromWalletToCreateSPT
+        }
         messageToSetDataFromWallet="DATA_FROM_WALLET_TO_CREATE_TOKEN"
         confirmRoute="/create/confirm"
         itemStringToClearData="newSPT"
         layoutTitle="Create token"
       />
     </div>
-  )
-}
+  );
+};
 
 export default Create;

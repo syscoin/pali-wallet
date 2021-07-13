@@ -5,23 +5,24 @@ import MUIMenuItem from '@material-ui/core/MenuItem';
 import ArrowDownIcon from '@material-ui/icons/KeyboardArrowDown';
 
 import styles from './Select.scss';
+
 interface IOption {
   [key: string]: string;
 }
 
 interface ISelect {
-  options: Array<IOption>;
-  value?: unknown;
-  input?: ReactElement;
+  disabled?: boolean;
   fullWidth?: boolean;
+  input?: ReactElement;
   onChange?: (
     event: ChangeEvent<{
-      name?: string | undefined;
-      value: unknown;
+      name?: string | undefined,
+      value: unknown,
     }>,
     child: ReactNode
   ) => void;
-  disabled?: boolean;
+  options: Array<IOption>;
+  value?: unknown;
 }
 
 const Select: FC<ISelect> = ({

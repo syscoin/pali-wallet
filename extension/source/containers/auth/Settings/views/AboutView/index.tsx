@@ -1,20 +1,19 @@
 import React, { FC } from 'react';
-
 import clsx from 'clsx';
-import styles from './index.scss';
 import { useAlert } from 'react-alert';
 
+import styles from './index.scss';
 
 const AboutView: FC = () => {
   const alert = useAlert();
   const handleSupportClick = () => {
     alert.removeAll();
     alert.error('We are currently building the support channels.');
-  }
+  };
   const handleDocsClick = () => {
     alert.removeAll();
-    alert.error('We are currently building the API docs.')
-  }
+    alert.error('We are currently building the API docs.');
+  };
   return (
     <div className={styles.about}>
       <span>Pali Wallet Chrome Extension v1.0</span>

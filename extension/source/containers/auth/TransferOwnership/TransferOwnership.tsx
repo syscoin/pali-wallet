@@ -1,6 +1,7 @@
 import React from 'react';
-import SiteTransaction from '../SiteTransaction';
 import { useController } from 'hooks/index';
+
+import SiteTransaction from '../SiteTransaction';
 
 const TransferOwnership = () => {
   const controller = useController();
@@ -8,14 +9,16 @@ const TransferOwnership = () => {
   return (
     <div>
       <SiteTransaction
-        callbackToSetDataFromWallet={controller.wallet.account.setDataFromWalletToTransferOwnership}
+        callbackToSetDataFromWallet={
+          controller.wallet.account.setDataFromWalletToTransferOwnership
+        }
         messageToSetDataFromWallet="DATA_FROM_WALLET_TO_TRANSFER_OWNERSHIP"
         confirmRoute="/transferOwnership/confirm"
         itemStringToClearData="transferOwnershipData"
         layoutTitle="Transfer ownership"
       />
     </div>
-  )
-}
+  );
+};
 
 export default TransferOwnership;

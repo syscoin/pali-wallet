@@ -1,5 +1,7 @@
+import { sys, SYS_NETWORK } from 'constants/index';
+
 import { generateMnemonic, validateMnemonic } from 'bip39';
-import { fromZPrv } from 'bip84';
+import { fromZPrv , fromZPub } from 'bip84';
 import store from 'state/store';
 import {
   deleteWallet as deleteWalletState,
@@ -11,13 +13,12 @@ import {
   removeAccount,
   updateSwitchNetwork
 } from 'state/wallet';
-import AccountController from './AccountController';
 import IWalletState, {
   IAccountState
 } from 'state/wallet/types';
-import { sys, SYS_NETWORK } from 'constants/index';
 import CryptoJS from 'crypto-js';
-import { fromZPub } from 'bip84';
+
+import AccountController from './AccountController';
 
 const WalletController = (): IWalletController => {
   let password = '';
@@ -69,8 +70,8 @@ const WalletController = (): IWalletController => {
 
   const createHardwareWallet = () => {
     const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
-    let path: string = "m/84'/57'/0'";
-    let coin: string = "sys"
+    const path = "m/84'/57'/0'";
+    const coin = "sys"
     if (isTestnet) {
       const message = "Trezor doesn't support SYS testnet";
       chrome.notifications.create(new Date().getTime().toString(), {
@@ -83,8 +84,8 @@ const WalletController = (): IWalletController => {
     }
     console.log(window.trezorConnect)
     window.trezorConnect.getAccountInfo({
-      path: path,
-      coin: coin
+      path,
+      coin
     })
       .then((response: any) => {
         const message = response.success
@@ -232,7 +233,7 @@ const WalletController = (): IWalletController => {
       if (i !== 0) {
 
         const child = sjs.HDSigner.deriveAccount(i);
-        let derived = new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
+        const derived = new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
         sjs.HDSigner.accounts.push(derived);
         // sjs.HDSigner.accountIndex = activeAccountId;
         sjs.HDSigner.setAccountIndex(activeAccountId)
@@ -245,7 +246,7 @@ const WalletController = (): IWalletController => {
 
     account.getPrimaryAccount(password, sjs);
 
-    return;
+    
   }
 
   const switchNetwork = (networkId: string) => {
@@ -276,20 +277,20 @@ const WalletController = (): IWalletController => {
 
     _getAccountDataByNetwork(sjs);
 
-    return;
+    
   };
 
   const getNewAddress = async () => {
     const { activeAccountId, accounts } = store.getState().wallet;
-    let address: string = '';
-    let userAccount: IAccountState = accounts.find((el: IAccountState) => el.id === activeAccountId);
+    let address = '';
+    const userAccount: IAccountState = accounts.find((el: IAccountState) => el.id === activeAccountId);
 
     if (userAccount!.isTrezorWallet) {
       const res = await sys.utils.fetchBackendAccount(sjs.blockbookURL, userAccount.xpub, 'tokens=nonzero&details=txs', true);
 
-      let account0 = new fromZPub(userAccount.xpub, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
+      const account0 = new fromZPub(userAccount.xpub, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
 
-      let receivingIndex: number = -1;
+      let receivingIndex = -1;
 
       if (res.tokens) {
         res.tokens.forEach((token: any) => {
