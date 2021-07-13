@@ -165,20 +165,25 @@ export default function CreateNFT() {
           SysMint automatically follows this logic to create your non-fungible
           token:
         </p>
-        <p>
-          1. `assetNew` is executed to create your NFT according to the specs
+        <tbody border="2">
+          <tr>
+            <td className="tdb"> 1</td>
+            <td className="tdc">{"  "} `assetNew` is executed to create your NFT according to the specs
           you provided in the form. Ownership (management) of the asset is
           assigned to you by using a newly derived address within your wallet’s
           current selected account. The asset’s precision is assigned according
           to your “Shares” selection (default 1 share = 0 precision). The URL to
           your digital asset is stored on-chain in your asset’s Description
-          field.
-        </p>
-        <p>
-          2. `assetSend` is executed to issue your NFT into circulation. This
+          field. </td>
+          </tr>
+          <tr>
+          <td className="tdb"> 2</td>
+          <td className="tdc">  `assetSend` is executed to issue your NFT into circulation. This
           issues and sends the NFT (always quantity 1) to the same address used
-          in Step 1 of this process.
-        </p>
+          in Step 1 of this process.</td>
+          </tr>
+          </tbody>
+          <p>{" "}</p> 
         <p>
           This process requires you to approve two transactions in your wallet.
           The first is for creating the NFT, and the second is for issuing it

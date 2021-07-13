@@ -170,26 +170,35 @@ export default function CreateSPT() {
           SysMint automatically follows this logic to create your fungible
           token:
         </p>
-
-        <p>
-          1. `assetNew` is executed to create your token according to the specs
+        
+        <tbody border="2">
+          <tr>
+            <td className="tdb"> 1</td>
+            <td className="tdc">{"  "} `assetNew` is executed to create your 
+          token according to the specs
           you provided in the form. Ownership (management) of the asset is
           assigned to you by using a newly derived address within your wallet’s
-          current selected account.
-        </p>{" "}
-        <p>
-          2. Once the transaction from step 1 settles onchain, `assetSend` is
+          current selected account. </td>
+          </tr>
+          <tr>
+          <td className="tdb"> 2</td>
+          <td className="tdc">  Once the transaction from step 1 settles onchain, `assetSend` is
           then executed to mint the quantity of tokens you specified in the
           field “Initial Circulating Supply”. These tokens are sent to the same
           address derived in step 1. If you left this field 0 (zero), this step
-          is skipped.
-        </p>
+          is skipped.</td>
+          </tr>
+          </tbody>
+        <p>{" "}</p> 
         <p>
           This process requires you to approve up to two transactions in your
           wallet. The first is for creating the asset, and the second is for
           issuing the initial quantity of tokens into circulation if you
           specified an “Initial Circulating Supply” greater than zero.
         </p>
+
+
+
         </Modal>
         <form onSubmit={handleCreateToken}>
           <div className="row">
