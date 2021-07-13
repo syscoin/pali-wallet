@@ -4,78 +4,48 @@ export default function About() {
       <div className="inner">
         <h1>About / Documentation</h1>
         <p>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus quam
-          ex, suscipit sagittis orci tincidunt, maximus posuere dui. Morbi porta
-          magna hendrerit velit molestie ultricies. Sed a tellus est. Quisque ut
-          velit quis orci rutrum congue ut euismod odio. Nunc non ipsum lacus.
-          Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
+        SysMint was designed by Syscoin Foundation, and developed by Pollum Labs
+        (previously Quan Digital) - a company that has a long term relationship 
+        with Syscoin. The main goal for SysMint is to enable users to access the
+        token platform features of Syscoin LUX (4.2) easily. We built this 
+        application with a simple and secure user-experience in mind, to be a 
+        non-custodial portal enabling any SYS owner to harness many of these 
+        features without having to code, deeply understand the underlying 
+        blockchain, or be a “power user”. It also provides access to some more 
+        advanced features like Aux Fees and Notary. Use it as you desire, and 
+        enjoy!
         </p>
         <p>
-          Lorem ipsum dolor sit amet, <a href="#">consectetur adipiscing</a>{" "}
-          elit. Vivamus quam ex, suscipit sagittis orci tincidunt, maximus
-          posuere dui. Morbi porta magna hendrerit velit molestie ultricies. Sed
-          a tellus est. Quisque ut velit quis orci rutrum congue ut euismod
-          odio. Nunc non ipsum lacus. Pellentesque at urna sed arcu ultricies
-          fringilla sit amet a purus.
+        We are constantly improving this application. If you have questions, 
+        ideas to improve SysMint, or you believe you have identified a bug, 
+        reach-out to us in the official Syscoin Discord on {" "}
+        <a href="#">the xxxxx channel. </a> 
+        We appreciate your feedback!{" "}
         </p>
-
-        <table>
-          <tbody>
-            <tr>
-              <td>
-                <h2>First</h2>
-                <p>
-                  Vivamus quam ex, suscipit sagittis orci tincidunt, maximus
-                  posuere dui. Morbi porta magna hendrerit velit molestie
-                  ultricies. Sed a tellus est.{" "}
-                </p>
-              </td>
-              <td>
-                <h2>Second</h2>
-                <p>
-                  Quisque ut velit quis orci rutrum congue ut euismod odio. Nunc
-                  non ipsum lacus.
-                </p>
-              </td>
-              <td>
-                <h2>Third</h2>
-                <p>
-                  Ut odio metus, convallis id vulputate eu, tincidunt vitae ex.
-                  Integer aliquet turpis.
-                </p>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <h2>Ut odio metus, convallis id</h2>
-        <ul>
-          <li>Lorem ipsum dolor sit amet</li>
-          <li>Ut odio metus, convallis id</li>
-          <li>Lorem ipsum dolor sit amet</li>
-          <li>Ut odio metus, convallis id</li>
-        </ul>
-
+        <blockquote>
+        SysMint itself is pretty straightforward. An explanation of each 
+        functionality is available in its respective area. It's now possible to
+        easily create Syscoin Platform Tokens; Fungible tokens like points or 
+        currencies, NFT's, special fractional NFT's, and tools that make it 
+        easier for token issuers to manage their creations. Have fun exploring!
+        </blockquote>
+        <p>This application was built using the Pali Wallet API. To build your 
+          own DApp powered by Syscoin Core, refer to the Pali Wallet docs. The 
+          API was designed to be intuitive. The learning curve will be minimal 
+          if you're familiar with Web3Js and Metamask.
+        </p>
+        <h2>If you want to learn more about Syscoin Core and its SDK, 
+          syscoinjs-lib (the lower level base of the Pali Wallet API), refer to 
+          the following links.
+        </h2>
         <ol>
-          <li>Lorem ipsum dolor sit amets</li>
-          <li>Ut odio metus, convallis ids</li>
-          <li>Ut odio metus, convallis id</li>
-          <li>Lorem ipsum dolor sit amet</li>
+          <li><a href="https://syscoin.readme.io">Syscoin Core Documentation</a></li>
+          <li><a href="https://github.com/syscoin/syscoinjs-lib">syscoinjs-lib</a></li>
+          <li><a href="https://github.com/syscoin/syscoinjs-lib-examples">syscoinjs-lib-examples</a></li>
+          <li><a href="https://discord.gg/RkK2AXD">Official Syscoin Discord chat</a></li>
+          <li><a href="https://support.syscoin.org/">Syscoin Community Wiki</a></li>
         </ol>
 
-        <p>Use this:</p>
-        <pre>
-          {" "}
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut odio
-          metus, convallis id vulputate eu, tincidunt vitae ex. Integer aliquet
-          turpis ac consequat tempus. Vivamus sit amet lorem eros.{" "}
-        </pre>
-
-        <blockquote>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut odio
-          metus, convallis id vulputate eu, tincidunt vitae ex. Integer aliquet
-          turpis ac consequat tempus. Vivamus sit amet lorem eros.
-        </blockquote>
       </div>
     </section>
   );

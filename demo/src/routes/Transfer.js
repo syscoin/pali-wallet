@@ -76,18 +76,14 @@ export default function Transfer() {
       <div className="inner">
         <h1>Issue Fungible Tokens into Circulation</h1>
         <p>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus quam
-          ex, suscipit sagittis orci tincidunt, maximus posuere dui. Morbi porta
-          magna hendrerit velit molestie ultricies. Sed a tellus est. Quisque ut
-          velit quis orci rutrum congue ut euismod odio. Nunc non ipsum lacus.
-          Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
+        Transfer an asset definition you own/manage to another address that will
+         take over those rights. This process uses `assetTransfer`. This is not
+          for transferring value (use your wallet for that), it is for
+           transferring ownership of the asset definition itself.
         </p>
         <p>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus quam
-          ex, suscipit sagittis orci tincidunt, maximus posuere dui. Morbi porta
-          magna hendrerit velit molestie ultricies. Sed a tellus est. Quisque ut
-          velit quis orci rutrum congue ut euismod odio. Nunc non ipsum lacus.
-          Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
+        NOTE: If you transfer ownership of an asset definition to an address for
+         which you do not hold the key, you will no longer own nor manage it.
         </p>
 
         <form onSubmit={handleTransferOwnership}>

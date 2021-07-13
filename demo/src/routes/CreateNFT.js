@@ -2,6 +2,8 @@ import { useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import * as yup from "yup";
 import { toast, ToastContainer } from "react-toastify";
+import 'react-responsive-modal/styles.css';
+import { Modal } from 'react-responsive-modal';
 
 import assetImg from "../images/asset.svg";
 import loaderImg from "../images/spinner.svg";
@@ -19,6 +21,7 @@ export default function CreateNFT() {
   const [file, setFile] = useState();
   const [isUploading, setIsUploading] = useState(false);
   const textAreaRef = useRef(null);
+  const [open, setOpen] = useState(false);
   const [advancedOptions, setAdvancedOptions] = useState({});
   const controller = useSelector((state) => state.controller);
   const { connectedAccountAddress } = useSelector(
@@ -120,6 +123,9 @@ export default function CreateNFT() {
     toast.dark("Copied!", { position: "bottom-right", autoClose: 3000 });
   }
 
+  const onOpenModal = () => setOpen(true);
+  const onCloseModal = () => setOpen(false);
+
   return (
     <section>
       <div className="inner wider">
@@ -139,9 +145,22 @@ export default function CreateNFT() {
           create a typical non-shared NFT, leave “Shares” set to 1.
         </p>
         <p>
-          Familiarize yourself with the backend process this tool uses, if you
-          wish.(backend process)
+        NOTE: The token creation process does not use Z-DAG;
+         creation requires on-chain settlement.
+          Each settlement takes approximately 60 seconds.
+           SysMint’s entire process for creating a token involves more than one transaction.
+            It might take 2 to 5 minutes total before all transactions are settled and your new token is ready.
         </p>
+        <p>
+          Familiarize yourself with the {" "}
+           <span
+           className="modalOpen"
+           onClick={onOpenModal} >backend process</span>
+           {" "} this tool uses, if you
+          wish.
+          
+        </p>
+        <Modal open={open} onClose={onCloseModal} center>
         <p>
           SysMint automatically follows this logic to create your non-fungible
           token:
@@ -165,6 +184,7 @@ export default function CreateNFT() {
           The first is for creating the NFT, and the second is for issuing it
           into circulation.
         </p>
+        </Modal>
         <form onSubmit={handleCreateNFT}>
           <div className="row">
             <div className="spacer col-100"></div>

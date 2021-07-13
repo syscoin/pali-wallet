@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { toast, ToastContainer } from "react-toastify";
 import * as yup from "yup";
+import { Modal } from 'react-responsive-modal';
 
+import 'react-responsive-modal/styles.css';
 import "react-toastify/dist/ReactToastify.min.css";
 import loaderImg from "../images/spinner.svg";
 
@@ -12,6 +14,7 @@ export default function IssueSPT() {
   const [amount, setAmount] = useState(1);
   const [tokens, setTokens] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [open, setOpen] = useState(false);
   const controller = useSelector((state) => state.controller);
 
   useEffect(() => {
@@ -85,25 +88,35 @@ export default function IssueSPT() {
     };
   };
 
+  const onOpenModal = () => setOpen(true);
+  const onCloseModal = () => setOpen(false);
+
   return (
     <section>
       <div className="inner">
         <h1>Issue Fungible Tokens into Circulation</h1>
-        <p>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus quam
-          ex, suscipit sagittis orci tincidunt, maximus posuere dui. Morbi porta
-          magna hendrerit velit molestie ultricies. Sed a tellus est. Quisque ut
-          velit quis orci rutrum congue ut euismod odio. Nunc non ipsum lacus.
-          Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
+        <p>Issue more tokens of your fungible asset (a standard SPT) into circulation.
+          The maximum total quantity of tokens that you can issue is limited by the Max Supply value set in the token definition.
         </p>
         <p>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus quam
-          ex, suscipit sagittis orci tincidunt, maximus posuere dui. Morbi porta
-          magna hendrerit velit molestie ultricies. Sed a tellus est. Quisque ut
-          velit quis orci rutrum congue ut euismod odio. Nunc non ipsum lacus.
-          Pellentesque at urna sed arcu ultricies fringilla sit amet a purus.
+          Familiarize yourself with the{" "}
+           <span
+           className="modalOpen"
+           onClick={onOpenModal} >backend process</span>
+           {" "} this tool uses, if you
+          wish.
         </p>
+        <Modal open={open} onClose={onCloseModal} center>
+        <p>
+        SysMint automatically follows this process to issue more tokens into circulation.
+        </p>
+        <p>
+          1. `assetSend` is executed, issuing your specified quantity. These new
+           tokens are minted at your Owner/Issuer address, from which these
+            tokens can then be sent to recipients using your wallet.
+        </p>{" "}
 
+        </Modal>
         <form onSubmit={handleIssueSPT}>
           <div className="row">
             <div className="spacer col-100"></div>
