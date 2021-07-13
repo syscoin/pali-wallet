@@ -4,7 +4,7 @@ import * as yup from "yup";
 import { toast, ToastContainer } from "react-toastify";
 
 import AdvancedPanel from "../components/AdvancedPanel";
-import { uploadLogo } from "../utils/logoService";
+import { uploadLogo } from "../services/logoService";
 import assetImg from "../images/asset.svg";
 import loaderImg from "../images/spinner.svg";
 

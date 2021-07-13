@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 
 import AssetCard from "../components/AssetCard";
-import { getAllLogo } from "../utils/logoService";
+import { getAllLogo } from "../services/logoService";
 import loaderImg from "../images/spinner.svg";
 
 export default function Dashboard() {

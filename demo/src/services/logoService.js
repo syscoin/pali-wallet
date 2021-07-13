@@ -32,10 +32,10 @@ export async function getLogo(token_id) {
 export async function getAllLogo(ids) {
   try {
     const qs = ids.reduce((acc, cur) => {
-      return acc ? `${acc}&ids=${cur}` : `ids=${cur}`;
+      return acc ? `${acc}&token_id=${cur}` : `token_id=${cur}`;
     }, "");
   
-    const { data } = await api.get(`tokens?${qs}`);
+    const { data } = await api.get(`token?${qs}`);
 
     return data;
   } catch (error) {

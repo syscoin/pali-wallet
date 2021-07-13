@@ -9,7 +9,7 @@ export default function AdvancedPanel({
   onIssueSupplyIntoCirculationChange = () => {}
 }) {
   const [contract, setContract] = useState("");
-  const [capabilityFlags, setCapabilityFlags] = useState(0);
+  const [capabilityFlags, setCapabilityFlags] = useState(127);
   const [endpoint, setEndpoint] = useState();
   const [instanttransfers, setInstantTransfers] = useState(false);
   const [hdrequired, setHDRequired] = useState(false);
@@ -62,9 +62,9 @@ export default function AdvancedPanel({
     const isChecked = event.target.checked;
 
     setCapabilityFlags((prevValue) => {
-      return isChecked ? prevValue + value : prevValue - value;
+      return isChecked ? prevValue - value : prevValue + value;
     });
-
+    
     event.target.id === "issue-supply" &&
       onIssueSupplyIntoCirculationChange(isChecked);
   };

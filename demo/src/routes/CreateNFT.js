@@ -7,7 +7,7 @@ import assetImg from "../images/asset.svg";
 import loaderImg from "../images/spinner.svg";
 import AdvancedPanel from "../components/AdvancedPanel";
 import PreviewFile from "../components/PreviewFile";
-import ipfsUpload from "../utils/ipfsUpload";
+import ipfsUpload from "../services/ipfsUpload";
 
 import "react-toastify/dist/ReactToastify.min.css";
 
