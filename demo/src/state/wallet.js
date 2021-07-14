@@ -4,6 +4,7 @@ export const walletConnection = createSlice({
   name: "walletConnection",
   initialState: {
     isInstalled: false,
+    isLocked: true,
     canConnect: false,
     connectedAccountData: {
       balance: 0,
@@ -30,10 +31,10 @@ export const walletConnection = createSlice({
         },
       };
     },
-    updateCanConnect: (state, action) => {
+    setIsLocked: (state, action) => {
       return {
         ...state,
-        canConnect: action.payload,
+        isLocked: action.payload,
       };
     },
     setController: (state, action) => {
@@ -54,7 +55,7 @@ export const walletConnection = createSlice({
 export const {
   setIsInstalled,
   updateConnectedAccountData,
-  updateCanConnect,
+  setIsLocked,
   setController,
   setIsConnected,
 } = walletConnection.actions;

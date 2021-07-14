@@ -18,18 +18,22 @@ import setupState from "./utils/setupState";
 const App = () => {
   const [isLoading, setIsloading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
 
   window.onload = async function () {
-    const _isConnected = await setupState(store);
+    const { isConnected: _isConnected, isLocked: _isLocked } = await setupState(store);
     const controller = store.getState().controller;
 
-    setIsConnected(_isConnected);
+    _isConnected && setIsConnected(_isConnected);
+    setIsLocked(_isLocked);
     setIsloading(!isLoading);
 
-    _isConnected &&
-      controller.onWalletUpdate(async function () {
-        await setupState(store);
-      });
+    controller.onWalletUpdate(async function () {
+      const { isConnected: _isConnected, isLocked: _isLocked } = await setupState(store);
+
+      setIsLocked(_isLocked);
+      setIsConnected(_isConnected);
+    });
   };
 
   store.subscribe(() => {
@@ -50,7 +54,7 @@ const App = () => {
                 <Route
                   path="/"
                   exact
-                  component={!isConnected ? Home : Dashboard}
+                  component={!isConnected || isLocked ? Home : Dashboard}
                 />
                 {isConnected ? (
                   <Route path="/dashboard" component={Dashboard} />
