@@ -23,12 +23,13 @@ const App = () => {
   window.onload = async function () {
     const { isConnected: _isConnected, isLocked: _isLocked } = await setupState(store);
     const controller = store.getState().controller;
+    const isInstalled = store.getState().isInstalled;
 
     _isConnected && setIsConnected(_isConnected);
     setIsLocked(_isLocked);
     setIsloading(!isLoading);
 
-    controller.onWalletUpdate(async function () {
+    isInstalled && controller.onWalletUpdate(async function () {
       const { isConnected: _isConnected, isLocked: _isLocked } = await setupState(store);
 
       setIsLocked(_isLocked);
