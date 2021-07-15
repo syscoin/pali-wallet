@@ -350,10 +350,10 @@ const AccountController = (actions: {
             symbol,
             assetGuid
           } = asset;
-  
+
           const assetId = sys.utils.getBaseAssetID(assetGuid);
           const { pubData } = await getDataAsset(assetGuid);
-  
+
           const assetData = {
             balance,
             type,
@@ -364,15 +364,15 @@ const AccountController = (actions: {
             nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null,
             description: pubData !== null ? atob(pubData.desc) : ''
           }
-  
+
           if (assetsData.indexOf(assetData) === -1) {
             assetsData.push(assetData);
           }
-  
+
           return assetsData;
         }));
       }
-  
+
       return assetsData;
     }
 
@@ -1342,7 +1342,7 @@ const AccountController = (actions: {
       let txInfo;
 
       const txOpts = { rbf };
-      const value = isNFT(token.assetGuid) ? new sys.utils.BN(amount) : new sys.utils.BN(amount * 10 ** token.decimals);
+      const value = new sys.utils.BN(amount * 10 ** token.decimals);
 
       const assetMap = new Map([
         [token.assetGuid, {
