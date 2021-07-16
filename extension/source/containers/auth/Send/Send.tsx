@@ -173,7 +173,13 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const checkAssetBalance = () => {
     return Number(selectedAsset ?
       (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
-      accounts.find(element => element.id === activeAccountId)!.balance)
+      accounts.find(element => element.id === activeAccountId)!.balance.toFixed(8))
+  }
+
+  const showAssetBalance = () => {
+    return (selectedAsset ?
+      (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
+      accounts.find(element => element.id === activeAccountId)!.balance.toFixed(8))
   }
 
 
@@ -189,7 +195,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             {changingNetwork ? (
               <Spinner size={20} className={styles.spinner} />
             ) : (
-              <span>{checkAssetBalance()}</span>
+              <span>{showAssetBalance()}</span>
             )}
 
             {selectedAsset
