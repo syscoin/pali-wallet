@@ -449,48 +449,6 @@ const AccountController = (actions: {
     }
 
     return [];
-
-    // const assetsData: any = [];
-
-    // if (getConnectedAccount().xpub) {
-    //   const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, getConnectedAccount().xpub, 'tokens=nonzero&details=txs', true);
-
-    //   if (tokensAsset) {
-    //     await Promise.all(tokensAsset.map(async (asset: any) => {
-    //       const {
-    //         balance,
-    //         type,
-    //         decimals,
-    //         symbol,
-    //         assetGuid
-    //       } = asset;
-
-    //       const assetId = sys.utils.getBaseAssetID(assetGuid);
-    //       const { pubData } = await getDataAsset(assetGuid);
-
-    //       const assetData = {
-    //         balance,
-    //         type,
-    //         decimals,
-    //         symbol: symbol ? atob(String(symbol)) : '',
-    //         assetGuid,
-    //         baseAssetID: assetId,
-    //         nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null,
-    //         description: pubData !== null ? atob(pubData.desc) : ''
-    //       }
-
-    //       if (assetsData.indexOf(assetData) === -1) {
-    //         assetsData.push(assetData);
-    //       }
-
-    //       return assetsData;
-    //     }));
-    //   }
-
-    //   return assetsData;
-    // }
-
-    // return [];
   };
 
   const getConnectedAccountXpub = () => {
