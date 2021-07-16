@@ -158,6 +158,10 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
           setLoading(false);
           setLoadingConfirm(false);
 
+          controller.wallet.account.updateTokensState().then(() => {
+            console.log('tokens state updated after transaction')
+          })
+
           if (response) {
             browser.runtime.sendMessage({
               type: 'TRANSACTION_RESPONSE',

@@ -96,6 +96,8 @@ const AccountController = (actions: {
     //   blockTime: Date.now() / 1e3,
     // } as Transaction;
 
+    console.log('txinfo covent pending type', _coventPendingType(txinfo))
+
     store.dispatch(
       updateTransactions({
         id: store.getState().wallet[item] ? getConnectedAccount().id : account.id,
@@ -613,6 +615,8 @@ const AccountController = (actions: {
     const assets: Assets[] = [];
     let transactions: Transaction[] = [];
 
+    console.log('response get account indo', response)
+
     if (response.transactions) {
       transactions = response.transactions.map(({
         txid,
@@ -1007,6 +1011,8 @@ const AccountController = (actions: {
 
     // if (!pendingTx) {
     //   updateTransactionData('creatingAsset', '');
+
+    //   return;
     // }
 
     const txInfoNew = pendingTx.extractTransaction().getId();
@@ -1052,8 +1058,6 @@ const AccountController = (actions: {
                 watchMemPool();
 
                 clearInterval(interval);
-
-                await updateTokensState();
 
                 resolve({
                   sptCreated,
@@ -1197,8 +1201,6 @@ const AccountController = (actions: {
     updateTransactionData('issuingSPT', txInfo);
 
     watchMemPool();
-
-    await updateTokensState();
   };
 
   const confirmIssueSPT = () => {
@@ -1410,10 +1412,6 @@ const AccountController = (actions: {
 
             console.log('confirming transactions', newParentTx, newParentTx.confirmations);
           }, 16000);
-
-          updateTokensState().then(() => {
-            console.log('tokens state updated');
-          });
         });
       } catch (error) {
         console.log('error sending child nft to creator', error);
@@ -1610,8 +1608,6 @@ const AccountController = (actions: {
     tempTx = null;
 
     watchMemPool();
-
-    await updateTokensState();
   }
 
   const confirmTempTx = () => {
@@ -1729,8 +1725,6 @@ const AccountController = (actions: {
     updateTransactionData('updatingAsset', txInfo);
 
     watchMemPool();
-
-    await updateTokensState();
   }
 
   const confirmUpdateAssetTransaction = () => {
@@ -1860,8 +1854,6 @@ const AccountController = (actions: {
     updateTransactionData('transferringOwnership', txInfo);
 
     watchMemPool();
-
-    await updateTokensState();
   }
 
   const confirmTransferOwnership = () => {

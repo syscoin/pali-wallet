@@ -18,6 +18,7 @@ import { Transaction, Assets } from '../../../scripts/types';
 import { formatDistanceDate, formatCurrency } from '../helpers';
 
 import styles from './Home.scss';
+import { useEffect } from 'react';
 
 interface ITxsPanel {
   address: string;
@@ -105,6 +106,10 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
 
     return 'Transaction';
   }
+
+  useEffect(() => {
+    console.log('transactions info', transactions, transactions.findIndex((tx: any) => tx.txid === ''), transactions.findIndex((tx: any) => tx.txid === '') > -1, transactions.find((tx: any) => tx.txid === ''))
+  }, []);
 
   return (
     <section

@@ -43,8 +43,8 @@ const WalletController = (): IWalletController => {
     return mnemonic;
   };
 
-  const createWallet = (isUpdated = false) => {
-    if (!isUpdated && sjs !== null) {
+  const createWallet = async (isUpdated = false) => {
+    if (!isUpdated && sjs) {
       return;
     }
 
@@ -62,30 +62,31 @@ const WalletController = (): IWalletController => {
     const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic, password);
 
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
-    
-    account.subscribeAccount(false, sjs, undefined, true).then(() => {
-      account.getPrimaryAccount(password, sjs);
-      account.updateTokensState().then(() => {
-        console.log('update tokens state after create wallet')
-      })
-    })
+
+    await account.subscribeAccount(false, sjs, undefined, true);
+
+    account.getPrimaryAccount(password, sjs);
+
+    await account.updateTokensState();
   };
 
   const createHardwareWallet = () => {
-    const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
     const path = "m/84'/57'/0'";
-    const coin = "sys"
-    if (isTestnet) {
+    const coin = "sys";
+
+    if (store.getState().wallet.activeNetwork === 'testnet') {
       const message = "Trezor doesn't support SYS testnet";
+
       chrome.notifications.create(new Date().getTime().toString(), {
         type: 'basic',
         iconUrl: 'assets/icons/favicon-48.png',
         title: 'Cant create hardware wallet on testnet',
         message
       });
-      return
+
+      return;
     }
-    console.log(window.trezorConnect)
+
     window.trezorConnect.getAccountInfo({
       path,
       coin
@@ -94,12 +95,14 @@ const WalletController = (): IWalletController => {
         const message = response.success
           ? `Trezor Wallet Account Created`
           : `Error: ${response.payload.error}`;
+
         chrome.notifications.create(new Date().getTime().toString(), {
           type: 'basic',
           iconUrl: 'assets/icons/favicon-48.png',
           title: 'Hardware Wallet connected',
           message,
         });
+
         if (response.success) {
           account.subscribeAccount(true, response.payload);
         }
@@ -135,10 +138,10 @@ const WalletController = (): IWalletController => {
         throw new Error('password wrong');
       }
 
-      if (HDsigner === null || sjs === null) {
+      if (!HDsigner || !sjs) {
         const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
 
-        const backendURl: string = store.getState().wallet.activeNetwork === 'testnet' ? SYS_NETWORK.testnet.beUrl : SYS_NETWORK.main.beUrl;
+        const backendURl: string = isTestnet ? SYS_NETWORK.testnet.beUrl : SYS_NETWORK.main.beUrl;
 
         HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, isTestnet);
         sjs = new sys.SyscoinJSLib(HDsigner, backendURl);
@@ -159,8 +162,7 @@ const WalletController = (): IWalletController => {
           const child = sjs.HDSigner.deriveAccount(i);
 
           sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
-          // sjs.HDSigner.accountIndex = activeAccountId;
-          sjs.HDSigner.setAccountIndex(activeAccountId)
+          sjs.HDSigner.setAccountIndex(activeAccountId);
         }
       }
 
@@ -208,7 +210,7 @@ const WalletController = (): IWalletController => {
     store.dispatch(updateStatus());
   };
 
-  const _getAccountDataByNetwork = (sjs: any) => {
+  const _getAccountDataByNetwork = async (sjs: any) => {
     const { activeAccountId, accounts } = store.getState().wallet;
 
     if (accounts.length > 1000) {
@@ -249,9 +251,7 @@ const WalletController = (): IWalletController => {
 
     account.getPrimaryAccount(password, sjs);
 
-    account.updateTokensState().then(() => {
-      console.log('tokens state updated')
-    });
+    await account.updateTokensState();
   }
 
   const switchNetwork = async (networkId: string) => {
