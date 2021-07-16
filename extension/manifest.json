@@ -75,12 +75,6 @@
       ]
     }
   ],
-  "externally_connectable": {
-    "matches": [
-      "http://*/*",
-      "https://*/*"
-    ]
-  },
   "web_accessible_resources": [
     "app.html",
     "inpage.ts",
