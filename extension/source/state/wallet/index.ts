@@ -62,8 +62,6 @@ const WalletState = createSlice({
       }
 
       if (state.walletTokens.indexOf({ ...state.walletTokens[index], tokens: action.payload.tokens }) > -1) {
-        console.log('it includes item igual', action.payload.accountId)
-
         return;
       }
 

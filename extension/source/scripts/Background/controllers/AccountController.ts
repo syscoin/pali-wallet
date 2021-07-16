@@ -728,8 +728,6 @@ const AccountController = (actions: {
 
     store.dispatch(createAccount(account));
 
-    await updateTokensState();
-
     return account!.xpub;
   };
 
