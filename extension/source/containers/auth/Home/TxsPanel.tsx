@@ -1,3 +1,4 @@
+/* eslint-disable no-nested-ternary */
 import * as React from 'react';
 import { FC, Fragment, useCallback, useState } from 'react';
 import clsx from 'clsx';
@@ -154,7 +155,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
             width="auto"
           />
         </>
-      )} 
+      )}
 
       {isActivity ?
         transactions.length && !changingNetwork ? (
@@ -202,23 +203,22 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
             </ul>
           </>
         ) : (
-            <>
-              <span className={styles.noTxComment}>
-                You have no transaction history, send or receive SYS to register
-                your first transaction.
+          <>
+            <span className={styles.noTxComment}>
+              You have no transaction history.
             </span>
 
-              {!changingNetwork && (
-                <img
-                  src={SyscoinIcon}
-                  className={styles.syscoin}
-                  alt="syscoin"
-                  height="167"
-                  width="auto"
-                />
-              )}
-            </>
-          ) : assets.length && !changingNetwork ?
+            {!changingNetwork && (
+              <img
+                src={SyscoinIcon}
+                className={styles.syscoin}
+                alt="syscoin"
+                height="167"
+                width="auto"
+              />
+            )}
+          </>
+        ) : assets.length && !changingNetwork ?
           <>
             <ul>
               {assets.map((asset: Assets, idx: number) => {
@@ -240,9 +240,9 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                         <div>
                           <span title="Click here to go to view transaction in sys block explorer">
                             <span>
-                              {(asset.balance <= 10) && (asset.decimals > 6)
-                                ? formatCurrency(String(asset.balance), 0)
-                                : formatCurrency(String(asset.balance / 10 ** asset.decimals), asset.decimals)
+                              { //(asset.balance <= 10) && (asset.decimals > 6)
+                                //? formatCurrency(String(asset.balance), 0)
+                                formatCurrency(String(asset.balance / 10 ** asset.decimals), asset.decimals)
                               }  {asset.symbol}
                             </span>
                           </span>
@@ -254,14 +254,14 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                     </Fragment>
                   );
                 }
-                
+
               })}
             </ul>
           </>
           :
           <>
             <span className={styles.noTxComment}>
-              You have no assets, receive an asset to register.
+              You have no tokens or NFTs.
             </span>
 
             {!changingNetwork && (
