@@ -131,12 +131,12 @@ export default function CreateNFT() {
       <div className="inner wider">
         <h1>Create and Issue a NFT (Non-Fungible)</h1>
         <p>This tool helps you create a non-fungible token on Syscoin.</p>
-        <p>
+        <p className="c">
           A non-fungible token represents a unique digital asset. Examples
           include a specific piece of art, music, a collectible, a serialized
           gold bar, a land deed or other certificate, or anything else unique.
         </p>
-        <p>
+        <p className="c">
           Syscoin gives you the option to make your NFT’s value divisible
           (fractional) on the blockchain. You do this by specifying that the NFT
           will have more than one share. This means more than one person can own
@@ -144,7 +144,7 @@ export default function CreateNFT() {
           represented as the smallest unit of precision (decimal place). To
           create a typical non-shared NFT, leave “Shares” set to 1.
         </p>
-        <p>
+        <p className="c">
         NOTE: The token creation process does not use Z-DAG;
          creation requires on-chain settlement.
           Each settlement takes approximately 60 seconds.
@@ -161,25 +161,30 @@ export default function CreateNFT() {
           
         </p>
         <Modal open={open} onClose={onCloseModal} center>
-        <p>
+        <p className="c">
           SysMint automatically follows this logic to create your non-fungible
           token:
         </p>
-        <p>
-          1. `assetNew` is executed to create your NFT according to the specs
+        <tbody border="2">
+          <tr>
+            <td className="tdb"> 1</td>
+            <td className="tdc">{"  "} `assetNew` is executed to create your NFT according to the specs
           you provided in the form. Ownership (management) of the asset is
           assigned to you by using a newly derived address within your wallet’s
           current selected account. The asset’s precision is assigned according
           to your “Shares” selection (default 1 share = 0 precision). The URL to
           your digital asset is stored on-chain in your asset’s Description
-          field.
-        </p>
-        <p>
-          2. `assetSend` is executed to issue your NFT into circulation. This
+          field. </td>
+          </tr>
+          <tr>
+          <td className="tdb"> 2</td>
+          <td className="tdc">  `assetSend` is executed to issue your NFT into circulation. This
           issues and sends the NFT (always quantity 1) to the same address used
-          in Step 1 of this process.
-        </p>
-        <p>
+          in Step 1 of this process.</td>
+          </tr>
+          </tbody>
+          <p>{" "}</p> 
+        <p className="c">
           This process requires you to approve two transactions in your wallet.
           The first is for creating the NFT, and the second is for issuing it
           into circulation.

@@ -147,17 +147,21 @@ export default function CreateSPT() {
       <div className="inner wider">
         <h1>Create a Standard Token (Fungible)</h1>
         <p>This tool helps you create a fungible token on Syscoin.</p>
-        <p>
+        <p className="c">
           A fungible token can be interchanged with other individual goods or
           assets of the same type. Each unit of a fungible token has the same
           value, and one coin of the asset is not distinguishable from another.
           Examples: SYS, BTC, stablecoins tokens like AUX and USDT, and
           currencies in general.
         </p>
-        <p>
-        NOTE: The token creation process does not use Z-DAG; creation requires on-chain settlement. Each settlement takes approximately 60 seconds. SysMint’s entire process for creating a token involves more than one transaction. It might take 2 to 5 minutes total before all transactions are settled and your new token is ready.
+        <p className="c">
+        NOTE: The token creation process does not use Z-DAG; creation requires 
+        on-chain settlement. Each settlement takes approximately 60 seconds. 
+        SysMint’s entire process for creating a token involves more than one 
+        transaction. It might take 2 to 5 minutes total before all transactions
+        are settled and your new token is ready.
         </p>
-        <p>
+        <p className="c">
           Familiarize yourself with the{" "}
            <span
            className="modalOpen"
@@ -166,30 +170,39 @@ export default function CreateSPT() {
           wish.
         </p>
         <Modal open={open} onClose={onCloseModal} center>
-        <p>
+        <p className="c">
           SysMint automatically follows this logic to create your fungible
           token:
         </p>
-
-        <p>
-          1. `assetNew` is executed to create your token according to the specs
+        
+        <tbody border="2">
+          <tr>
+            <td className="tdb"> 1</td>
+            <td className="tdc">{"  "} `assetNew` is executed to create your 
+          token according to the specs
           you provided in the form. Ownership (management) of the asset is
           assigned to you by using a newly derived address within your wallet’s
-          current selected account.
-        </p>{" "}
-        <p>
-          2. Once the transaction from step 1 settles onchain, `assetSend` is
+          current selected account. </td>
+          </tr>
+          <tr>
+          <td className="tdb"> 2</td>
+          <td className="tdc">  Once the transaction from step 1 settles onchain, `assetSend` is
           then executed to mint the quantity of tokens you specified in the
           field “Initial Circulating Supply”. These tokens are sent to the same
           address derived in step 1. If you left this field 0 (zero), this step
-          is skipped.
-        </p>
-        <p>
+          is skipped.</td>
+          </tr>
+          </tbody>
+        <p>{" "}</p> 
+        <p className="c">
           This process requires you to approve up to two transactions in your
           wallet. The first is for creating the asset, and the second is for
           issuing the initial quantity of tokens into circulation if you
           specified an “Initial Circulating Supply” greater than zero.
         </p>
+
+
+
         </Modal>
         <form onSubmit={handleCreateToken}>
           <div className="row">

@@ -172,9 +172,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
   const checkAssetBalance = () => {
     return Number(selectedAsset ?
-      controller.wallet.account.isNFT(selectedAsset.assetGuid) ?
-        selectedAsset.balance :
-        (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
+      (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
       accounts.find(element => element.id === activeAccountId)!.balance)
   }
 
@@ -191,8 +189,8 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             {changingNetwork ? (
               <Spinner size={20} className={styles.spinner} />
             ) : (
-                <span>{checkAssetBalance()}</span>
-              )}
+              <span>{checkAssetBalance()}</span>
+            )}
 
             {selectedAsset
               ? selectedAsset.symbol

@@ -67,8 +67,6 @@ const observeStore = async (store: any) => {
           target: 'contentScript',
           connected: false
         });
-
-        
       }
     }
   }

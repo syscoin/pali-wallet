@@ -246,9 +246,9 @@ const WalletController = (): IWalletController => {
 
     account.getPrimaryAccount(password, sjs);
 
-    // account.updateTokensState().then(() => {
-    //   console.log('tokens state updated')
-    // });
+    account.updateTokensState().then(() => {
+      console.log('tokens state updated')
+    });
   }
 
   const switchNetwork = async (networkId: string) => {

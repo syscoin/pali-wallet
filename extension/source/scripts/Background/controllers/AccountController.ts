@@ -39,6 +39,7 @@ import {
 const bjs = require('bitcoinjs-lib');
 const bitcoinops = require('bitcoin-ops');
 const syscointx = require('syscointx-js');
+const { each } = require('neo-async');
 
 const AccountController = (actions: {
   checkPassword: (pwd: string) => boolean;
@@ -359,78 +360,84 @@ const AccountController = (actions: {
 
       let tokensMap: any = {};
 
-      if (tokensAsset) {
-        for (let token of tokensAsset) {
+      if (!tokensAsset) {
+        console.log('account has no tokens');
+
+        store.dispatch(updateAllTokens({
+          accountId: account.id,
+          accountXpub: account.xpub,
+          tokens: tokensMap,
+          holdings: Object.values(assetsData)
+        }));
+
+        return;
+      }
+
+      await new Promise((resolve) => {
+        each(tokensAsset, function (token: any, done: any) {
           if (walletTokens[accountIndex]) {
             if (walletTokens[accountIndex].tokens[token.assetGuid]) {
               console.log('not added')
               return;
             }
           }
-
+  
           console.log('added')
-
+  
           tokensMap[token.assetGuid] = token;
-        }
+  
+          done();
+        }, function () {
+          resolve('ok');
+        });
+      });
 
-        try {
-          await Promise.all(Object.values(tokensMap).map(async (value) => {
-            const {
-              balance,
-              type,
-              decimals,
-              symbol,
-              assetGuid
-            }: any = value;
+      try {
+        await Promise.all(Object.values(tokensMap).map(async (value) => {
+          const {
+            balance,
+            type,
+            decimals,
+            symbol,
+            assetGuid
+          }: any = value;
 
-            const assetId = sys.utils.getBaseAssetID(assetGuid);
-            const { pubData } = await getDataAsset(assetGuid);
+          const assetId = sys.utils.getBaseAssetID(assetGuid);
+          const { pubData } = await getDataAsset(assetGuid);
 
-            const assetData = {
-              balance,
-              type,
-              decimals,
-              symbol: symbol ? atob(String(symbol)) : '',
-              assetGuid,
-              baseAssetID: assetId,
-              nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null,
-              description: pubData && pubData.desc ? atob(pubData.desc) : ''
-            }
+          const assetData = {
+            balance,
+            type,
+            decimals,
+            symbol: symbol ? atob(String(symbol)) : '',
+            assetGuid,
+            baseAssetID: assetId,
+            nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null,
+            description: pubData && pubData.desc ? atob(pubData.desc) : ''
+          }
 
-            assetsData[assetData.assetGuid] = assetData;
-
-            return;
-          }));
-
-          store.dispatch(updateAllTokens({
-            accountId: account.id,
-            accountXpub: account.xpub,
-            tokens: tokensMap,
-            holdings: Object.values(assetsData)
-          }));
+          assetsData[assetData.assetGuid] = assetData;
 
           return;
-        } catch (error) {
-          console.log(error)
-        }
+        }));
+
+        store.dispatch(updateAllTokens({
+          accountId: account.id,
+          accountXpub: account.xpub,
+          tokens: tokensMap,
+          holdings: Object.values(assetsData)
+        }));
+
+        return;
+      } catch (error) {
+        console.log(error)
       }
-
-      console.log('account has no tokens');
-
-      store.dispatch(updateAllTokens({
-        accountId: account.id,
-        accountXpub: account.xpub,
-        tokens: tokensMap,
-        holdings: Object.values(assetsData)
-      }));
 
       return;
     }));
   }
 
   const getHoldingsData = async () => {
-    await updateTokensState();
-
     const { walletTokens }: IWalletState = store.getState().wallet;
 
     const connectedAccountId = walletTokens.findIndex((accountTokens: any) => {
@@ -442,6 +449,48 @@ const AccountController = (actions: {
     }
 
     return [];
+
+    // const assetsData: any = [];
+
+    // if (getConnectedAccount().xpub) {
+    //   const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, getConnectedAccount().xpub, 'tokens=nonzero&details=txs', true);
+
+    //   if (tokensAsset) {
+    //     await Promise.all(tokensAsset.map(async (asset: any) => {
+    //       const {
+    //         balance,
+    //         type,
+    //         decimals,
+    //         symbol,
+    //         assetGuid
+    //       } = asset;
+
+    //       const assetId = sys.utils.getBaseAssetID(assetGuid);
+    //       const { pubData } = await getDataAsset(assetGuid);
+
+    //       const assetData = {
+    //         balance,
+    //         type,
+    //         decimals,
+    //         symbol: symbol ? atob(String(symbol)) : '',
+    //         assetGuid,
+    //         baseAssetID: assetId,
+    //         nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null,
+    //         description: pubData !== null ? atob(pubData.desc) : ''
+    //       }
+
+    //       if (assetsData.indexOf(assetData) === -1) {
+    //         assetsData.push(assetData);
+    //       }
+
+    //       return assetsData;
+    //     }));
+    //   }
+
+    //   return assetsData;
+    // }
+
+    // return [];
   };
 
   const getConnectedAccountXpub = () => {
@@ -450,6 +499,8 @@ const AccountController = (actions: {
 
   const signTransaction = async ({ res, assets }: any) => {
     try {
+      console.log('sign and send', res, assets)
+
       await sysjs.signAndSend(res, assets);
     } catch (error) {
       throw new Error(error);
@@ -460,7 +511,7 @@ const AccountController = (actions: {
     return new Promise((resolve, reject) => {
       handleTransactions(currentPSBT, signTransaction).then((response) => {
         resolve(response);
-        
+
         currentPSBT = null;
       }).catch((error) => {
         reject(error);
@@ -1044,6 +1095,8 @@ const AccountController = (actions: {
 
                 clearInterval(interval);
 
+                await updateTokensState();
+
                 resolve({
                   sptCreated,
                   txConfirmations: sptCreated.confirmations,
@@ -1186,6 +1239,8 @@ const AccountController = (actions: {
     updateTransactionData('issuingSPT', txInfo);
 
     watchMemPool();
+
+    await updateTokensState();
   };
 
   const confirmIssueSPT = () => {
@@ -1397,6 +1452,10 @@ const AccountController = (actions: {
 
             console.log('confirming transactions', newParentTx, newParentTx.confirmations);
           }, 16000);
+
+          updateTokensState().then(() => {
+            console.log('tokens state updated');
+          });
         });
       } catch (error) {
         console.log('error sending child nft to creator', error);
@@ -1436,7 +1495,7 @@ const AccountController = (actions: {
       let txInfo;
 
       const txOpts = { rbf };
-      const value = isNFT(token.assetGuid) ? new sys.utils.BN(amount) : new sys.utils.BN(amount * 10 ** token.decimals);
+      const value = new sys.utils.BN(amount * 10 ** token.decimals);
 
       const assetMap = new Map([
         [token.assetGuid, {
@@ -1593,6 +1652,8 @@ const AccountController = (actions: {
     tempTx = null;
 
     watchMemPool();
+
+    await updateTokensState();
   }
 
   const confirmTempTx = () => {
@@ -1710,6 +1771,8 @@ const AccountController = (actions: {
     updateTransactionData('updatingAsset', txInfo);
 
     watchMemPool();
+
+    await updateTokensState();
   }
 
   const confirmUpdateAssetTransaction = () => {
@@ -1839,6 +1902,8 @@ const AccountController = (actions: {
     updateTransactionData('transferringOwnership', txInfo);
 
     watchMemPool();
+
+    await updateTokensState();
   }
 
   const confirmTransferOwnership = () => {

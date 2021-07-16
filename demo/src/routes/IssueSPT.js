@@ -95,7 +95,7 @@ export default function IssueSPT() {
     <section>
       <div className="inner">
         <h1>Issue Fungible Tokens into Circulation</h1>
-        <p>Issue more tokens of your fungible asset (a standard SPT) into circulation.
+        <p className="c">Issue more tokens of your fungible asset (a standard SPT) into circulation.
           The maximum total quantity of tokens that you can issue is limited by the Max Supply value set in the token definition.
         </p>
         <p>
@@ -110,11 +110,16 @@ export default function IssueSPT() {
         <p>
         SysMint automatically follows this process to issue more tokens into circulation.
         </p>
-        <p>
-          1. `assetSend` is executed, issuing your specified quantity. These new
+        <tbody border="2">
+          <tr>
+            <td className="tdb"> 1</td>
+            <td className="tdc">{"  "}
+             `assetSend` is executed, issuing your specified quantity. These new
            tokens are minted at your Owner/Issuer address, from which these
-            tokens can then be sent to recipients using your wallet.
-        </p>{" "}
+            tokens can then be sent to recipients using your wallet.</td>
+          </tr>
+          </tbody>
+          <p>{" "}</p> 
 
         </Modal>
         <form onSubmit={handleIssueSPT}>

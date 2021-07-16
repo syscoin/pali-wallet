@@ -70,6 +70,7 @@ const ConnectionsController = (): IConnectionsController => {
         event.data.type === 'WALLET_UPDATED' &&
         event.data.target === 'connectionsController'
       ) {
+        console.log('event on wallet updated', event.data)
         onUpdated();
       }
     });

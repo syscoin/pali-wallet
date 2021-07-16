@@ -3,7 +3,7 @@ export default function About() {
     <section>
       <div className="inner">
         <h1>About / Documentation</h1>
-        <p>
+        <p className="c">
         SysMint was designed by Syscoin Foundation, and developed by Pollum Labs
         (previously Quan Digital) - a company that has a long term relationship 
         with Syscoin. The main goal for SysMint is to enable users to access the
@@ -15,14 +15,14 @@ export default function About() {
         advanced features like Aux Fees and Notary. Use it as you desire, and 
         enjoy!
         </p>
-        <p>
+        <p className="c">
         We are constantly improving this application. If you have questions, 
         ideas to improve SysMint, or you believe you have identified a bug, 
         reach-out to us in the official Syscoin Discord on {" "}
         <a href="#">the xxxxx channel. </a> 
         We appreciate your feedback!{" "}
         </p>
-        <blockquote>
+        <blockquote className="c">
         SysMint itself is pretty straightforward. An explanation of each 
         functionality is available in its respective area. It's now possible to
         easily create Syscoin Platform Tokens; Fungible tokens like points or 

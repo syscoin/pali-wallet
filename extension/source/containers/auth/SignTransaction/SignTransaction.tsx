@@ -20,6 +20,7 @@ const SignTransaction = () => {
   const alert = useAlert();
 
   const [loading, setLoading] = useState<boolean>(false);
+  // @ts-ignore
   const [confirmed, setConfirmed] = useState<boolean>(false);
 
   const { signingTransaction, currentSenderURL, accounts }: IWalletState = useSelector(

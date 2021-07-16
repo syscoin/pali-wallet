@@ -13,9 +13,12 @@ import { useAlert } from 'react-alert';
 import { getHost } from '../../../scripts/Background/helpers';
 
 import styles from './ConnectWallet.scss';
+import { useController } from 'hooks/index';
 
 const ConnectedAccounts = () => {
+  const controller = useController();
   const alert = useAlert();
+
   const { accounts, currentSenderURL, activeAccountId }: IWalletState =
     useSelector((state: RootState) => state.wallet);
   const [changeAccountIsOpen, setChangeAccountIsOpen] =
@@ -45,6 +48,10 @@ const ConnectedAccounts = () => {
       browser.runtime.sendMessage({
         type: 'CLOSE_POPUP',
         target: 'background',
+      });
+
+      controller.wallet.account.updateTokensState().then(() => {
+        console.log('tokens state updated after change connected account')
       });
     } catch (error) {
       alert.removeAll();
