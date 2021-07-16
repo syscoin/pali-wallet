@@ -33,6 +33,7 @@ declare global {
     controller: Readonly<IMasterController>;
     senderURL: string;
     trezorConnect: any;
+    version: string;
   }
 }
 
@@ -82,6 +83,7 @@ observeStore(store);
 
 browser.runtime.onInstalled.addListener(async () => {
   console.emoji('🤩', 'Syscoin extension installed');
+  window.version = 'new updated tokens';
 
   window.controller.stateUpdater();
 

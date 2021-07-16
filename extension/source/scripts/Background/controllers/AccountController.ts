@@ -349,7 +349,7 @@ const AccountController = (actions: {
 
     const { accounts, walletTokens }: IWalletState = store.getState().wallet;
 
-    await Promise.all(accounts.map(async (account: IAccountState) => {
+    return await Promise.all(accounts.map(async (account: IAccountState) => {
       const assetsData: any = {};
 
       const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=derived&details=txs', true);
@@ -440,12 +440,14 @@ const AccountController = (actions: {
   const getHoldingsData = async () => {
     const { walletTokens }: IWalletState = store.getState().wallet;
 
-    const connectedAccountId = walletTokens.findIndex((accountTokens: any) => {
-      return accountTokens.accountId === getConnectedAccount().id;
-    });
-
-    if (connectedAccountId > -1) {
-      return walletTokens[connectedAccountId].holdings;
+    if (walletTokens) {
+      const connectedAccountId = walletTokens.findIndex((accountTokens: any) => {
+        return accountTokens.accountId === getConnectedAccount().id;
+      });
+  
+      if (connectedAccountId > -1) {
+        return walletTokens[connectedAccountId].holdings;
+      }
     }
 
     return [];

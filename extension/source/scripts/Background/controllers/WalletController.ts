@@ -65,6 +65,9 @@ const WalletController = (): IWalletController => {
     
     account.subscribeAccount(false, sjs, undefined, true).then(() => {
       account.getPrimaryAccount(password, sjs);
+      account.updateTokensState().then(() => {
+        console.log('update tokens state after create wallet')
+      })
     })
   };
 
