@@ -1,7 +1,10 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "https://7or87ne1oj.execute-api.us-east-1.amazonaws.com/v2/",
+  baseURL: "https://1aitumq4tf.execute-api.sa-east-1.amazonaws.com/v2/",
+  headers: {
+    "x-api-key": "#877#W34D!RnP2$sU$s!"
+  }
 });
 
 export async function uploadLogo(token_id, image) {
