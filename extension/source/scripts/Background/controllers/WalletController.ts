@@ -246,10 +246,12 @@ const WalletController = (): IWalletController => {
 
     account.getPrimaryAccount(password, sjs);
 
-    
+    // account.updateTokensState().then(() => {
+    //   console.log('tokens state updated')
+    // });
   }
 
-  const switchNetwork = (networkId: string) => {
+  const switchNetwork = async (networkId: string) => {
     store.dispatch(changeActiveNetwork(SYS_NETWORK[networkId]!.id));
 
     const encriptedMnemonic = retrieveEncriptedMnemonic();
@@ -276,8 +278,6 @@ const WalletController = (): IWalletController => {
     store.dispatch(updateSwitchNetwork(true));
 
     _getAccountDataByNetwork(sjs);
-
-    
   };
 
   const getNewAddress = async () => {

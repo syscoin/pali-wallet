@@ -49,6 +49,7 @@
     "graceful-fs": "^4.2.6",
     "lodash": "^4.17.20",
     "needle": "^2.6.0",
+    "neo-async": "^2.6.2",
     "qrcode.react": "^1.0.1",
     "react": "^16.13.1",
     "react-alert": "^7.0.2",

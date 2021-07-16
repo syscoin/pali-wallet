@@ -78,6 +78,11 @@ declare interface IAccountController {
   updateTempTx: (tx: ITransactionInfo) => void;
   updateTxs: () => void;
   watchMemPool: () => void;
+  confirmSignature: () => any;
+  getConnectedAccount: () => IAccountState;
+  getConnectedAccountXpub: () => string;
+  setCurrentPSBT: (psbt: any) => any;
+  updateTokensState: () => any;
 }
 
 declare type CreateTokenItems = {
@@ -165,6 +170,7 @@ declare type TransferOwnershipItems = {
 
 declare interface IConnectionsController {
   connectWallet: () => any;
+  signTransaction: (psbt: any) => any;
   getConnectedAccount: () => any;
   getDataAsset: (assetGuid: any) => any;
   getHoldingsData: () => any;
@@ -181,4 +187,5 @@ declare interface IConnectionsController {
   isNFT: (guid: number) => boolean;
   isValidSYSAddress: (address: string) => any;
   onWalletUpdate: (callback: any) => any;
+  getConnectedAccountXpub: () => any;
 }

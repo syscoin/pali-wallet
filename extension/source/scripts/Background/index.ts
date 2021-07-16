@@ -17,7 +17,8 @@ import {
   issueNFT,
   setUpdateAsset,
   setTransferOwnership,
-  clearAllTransactions
+  clearAllTransactions,
+  signTransactionState
 } from 'state/wallet';
 import { IAccountState } from 'state/wallet/types';
 import TrezorConnect from 'trezor-connect';
@@ -296,6 +297,14 @@ browser.runtime.onInstalled.addListener(async () => {
         });
       }
 
+      if (type == 'CONNECTED_ACCOUNT_XPUB' && target == 'background') {
+        browser.tabs.sendMessage(tabId, {
+          type: 'CONNECTED_ACCOUNT_XPUB',
+          target: 'contentScript',
+          connectedAccountXpub: window.controller.wallet.account.getConnectedAccountXpub()
+        });
+      }
+
       if (type == 'CHECK_ADDRESS' && target == 'background') {
         const isValidSYSAddress = window.controller.wallet.account.isValidSYSAddress(request.messageData, store.getState().wallet.activeNetwork);
 
@@ -305,6 +314,24 @@ browser.runtime.onInstalled.addListener(async () => {
           type: 'CHECK_ADDRESS',
           target: 'contentScript',
           isValidSYSAddress
+        });
+      }
+
+      if (type == 'SIGN_TRANSACTION' && target == 'background') {
+        const { messageData } = request;
+
+        window.controller.wallet.account.setCurrentPSBT(messageData);
+
+        store.dispatch(signTransactionState(true));
+
+        const appURL = browser.runtime.getURL('app.html');
+
+        await createPopup(appURL);
+
+        browser.tabs.sendMessage(tabId, {
+          type: 'SIGN_TRANSACTION',
+          target: 'contentScript',
+          complete: true
         });
       }
 

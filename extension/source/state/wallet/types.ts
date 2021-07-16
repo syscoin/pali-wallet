@@ -32,10 +32,22 @@ export interface IAccountUpdateXpub {
   xpub: string;
 }
 
-export interface Keystore {
-  address: string,
-  id: number,
-  phrase: string
+export interface Holding {
+  balance: number;
+  type: string;
+  decimals: number;
+  symbol: string;
+  assetGuid: string;
+  baseAssetID: string;
+  nftAssetID: string;
+  description: string;
+}
+
+export interface IWalletTokenState {
+  accountId: number;
+  accountXpub: string;
+  holdings: Holding[];
+  tokens: any;
 }
 
 export default interface IWalletState {
@@ -55,4 +67,6 @@ export default interface IWalletState {
   status: number;
   transferringOwnership: boolean;
   updatingAsset: boolean;
+  signingTransaction: boolean;
+  walletTokens: IWalletTokenState[];
 }

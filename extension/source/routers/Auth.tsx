@@ -31,6 +31,7 @@ import TransferOwnership, {
 import { getHost } from '../scripts/Background/helpers';
 
 import { SendMatchProps } from './types';
+import SignTransaction from 'containers/auth/SignTransaction';
 
 const Auth = () => {
   const location = useLocation();
@@ -57,6 +58,7 @@ const Auth = () => {
     issuingAsset,
     updatingAsset,
     transferringOwnership,
+    signingTransaction
   }: IWalletState = useSelector((state: RootState) => state.wallet);
 
   const connectedAccounts = accounts.filter((account) => {
@@ -72,7 +74,7 @@ const Auth = () => {
 
     if (
       redirectRoute == '/send/confirm' &&
-      !controller.wallet.account.getTransactionItem().newSPT
+      !controller.wallet.account.getTransactionItem().tempTx
     ) {
       history.push('/home');
 
@@ -88,31 +90,6 @@ const Auth = () => {
       return;
     }
 
-    if (
-      updatingAsset &&
-      controller.wallet.account.getTransactionItem().updateAssetItem &&
-      isUnlocked
-    ) {
-      console.log(
-        'updatingAsset && controller.wallet.account.getTransactionItem().updateAssetItem && isUnlocke'
-      );
-      history.push('/updateAsset/confirm');
-
-      return;
-    }
-
-    if (
-      !updatingAsset &&
-      controller.wallet.account.getTransactionItem().updateAssetItem
-    ) {
-      console.log(
-        '!updatingAsset && controller.wallet.account.getTransactionItem().updateAssetItem '
-      );
-      history.push('/home');
-
-      return;
-    }
-
     if (!isUnlocked && accounts.length > 0) {
       history.push('/app.html');
 
@@ -121,10 +98,16 @@ const Auth = () => {
 
     if (
       confirmingTransaction &&
-      controller.wallet.account.getTransactionItem().newSPT &&
+      controller.wallet.account.getTransactionItem().tempTx &&
       isUnlocked
     ) {
       history.push('/send/confirm');
+
+      return;
+    }
+
+    if (signingTransaction && isUnlocked) {
+      history.push('/sign');
 
       return;
     }
@@ -161,7 +144,7 @@ const Auth = () => {
 
     if (
       !confirmingTransaction &&
-      controller.wallet.account.getTransactionItem().newSPT
+      controller.wallet.account.getTransactionItem().tempTx
     ) {
       history.push('/home');
 
@@ -188,12 +171,6 @@ const Auth = () => {
       }
 
       history.push('/home');
-
-      return;
-    }
-
-    if (updatingAsset && !canConnect && isUnlocked) {
-      history.push('/updateAsset/confirm');
 
       return;
     }
@@ -252,6 +229,7 @@ const Auth = () => {
             {isUnlocked && (
               <Route path="/send/confirm" component={SendConfirm} exact />
             )}
+            {isUnlocked && <Route path="/sign" component={SignTransaction} exact />}
             {isUnlocked && <Route path="/create" component={Create} exact />}
             {isUnlocked && (
               <Route

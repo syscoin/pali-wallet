@@ -1,6 +1,54 @@
 import { sendMessage } from 'containers/auth/helpers';
 
 const ConnectionsController = (): IConnectionsController => {
+  const getConnectedAccountXpub = async () => {
+    return await sendMessage(
+      {
+        type: 'CONNECTED_ACCOUNT_XPUB',
+        target: 'connectionsController',
+        freeze: true,
+        eventResult: 'connectedAccountXpub',
+      },
+      {
+        type: 'CONNECTED_ACCOUNT_XPUB',
+        target: 'contentScript',
+      }
+    );
+  };
+
+  const signTransaction = async (psbt: any) => {
+    return new Promise(async (_, reject) => {
+      const callback = (event: any) => {
+        if (
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
+        ) {
+          reject(event.data.error);
+
+          window.removeEventListener('message', callback);
+        }
+
+        return null;
+      };
+
+      window.addEventListener('message', callback);
+
+      await sendMessage(
+        {
+          type: 'SIGN_TRANSACTION',
+          target: 'connectionsController',
+          freeze: true,
+          eventResult: 'complete',
+        },
+        {
+          type: 'SIGN_TRANSACTION',
+          target: 'contentScript',
+          psbt
+        }
+      );
+    });
+  };
+
   const isLocked = async () => {
     return await sendMessage(
       {
@@ -469,6 +517,8 @@ const ConnectionsController = (): IConnectionsController => {
     getHoldingsData,
     getDataAsset,
     handleIssueNFT,
+    signTransaction,
+    getConnectedAccountXpub
   };
 };
 

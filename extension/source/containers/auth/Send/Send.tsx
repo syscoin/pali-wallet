@@ -159,8 +159,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const handleAssetSelected = (item: any) => {
     const selectedAsset = accounts.find(element => element.id === activeAccountId)!.assets.filter((asset: Assets) => asset.assetGuid == item.assetGuid);
 
-    console.log('item selected', item, selectedAsset)
-
     if (selectedAsset[0]) {
       setSelectedAsset(selectedAsset[0]);
 

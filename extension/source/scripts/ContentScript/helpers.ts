@@ -12,6 +12,8 @@ export const getMessagesToListenTo = (request: any) => {
     message,
     response,
     isLocked,
+    signedTransaction,
+    connectedAccountXpub
   } = request;
 
   const postMessagesArray = [
@@ -35,6 +37,13 @@ export const getMessagesToListenTo = (request: any) => {
       messageNewTarget: 'connectionsController',
       responseItem: 'connectedAccount',
       messageResponse: connectedAccount,
+    },
+    {
+      messageType: 'CONNECTED_ACCOUNT_XPUB',
+      messageTarget: 'contentScript',
+      messageNewTarget: 'connectionsController',
+      responseItem: 'connectedAccountXpub',
+      messageResponse: connectedAccountXpub,
     },
     {
       messageType: 'CONNECT_WALLET',
@@ -63,6 +72,13 @@ export const getMessagesToListenTo = (request: any) => {
       messageNewTarget: 'connectionsController',
       responseItem: 'isValidSYSAddress',
       messageResponse: isValidSYSAddress,
+    },
+    {
+      messageType: 'SIGN_TRANSACTION',
+      messageTarget: 'contentScript',
+      messageNewTarget: 'connectionsController',
+      responseItem: 'signedTransaction',
+      messageResponse: signedTransaction,
     },
     {
       messageType: 'GET_HOLDINGS_DATA',
@@ -137,6 +153,7 @@ export const listenAndSendMessageFromPageToBackground = (event: any) => {
     assetGuid,
     address,
     newOwner,
+    psbt
   } = event.data;
 
   const sendToken = {
@@ -257,7 +274,19 @@ export const listenAndSendMessageFromPageToBackground = (event: any) => {
       messageData: address,
     },
     {
+      messageType: 'SIGN_TRANSACTION',
+      messageTarget: 'contentScript',
+      messageNewTarget: 'background',
+      messageData: psbt,
+    },
+    {
       messageType: 'SEND_CONNECTED_ACCOUNT',
+      messageTarget: 'contentScript',
+      messageNewTarget: 'background',
+      messageData: null,
+    },
+    {
+      messageType: 'CONNECTED_ACCOUNT_XPUB',
       messageTarget: 'contentScript',
       messageNewTarget: 'background',
       messageData: null,

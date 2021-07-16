@@ -13,7 +13,8 @@ import {
   updateTransactions,
   updateAccountAddress,
   updateAccountXpub,
-  updateSwitchNetwork
+  updateSwitchNetwork,
+  updateAllTokens,
 } from 'state/wallet';
 
 import {
@@ -63,6 +64,7 @@ const AccountController = (actions: {
   let dataFromPageToTransferOwnership: any;
   let resAddress: any;
   let encode: any;
+  let currentPSBT: any;
 
   const getConnectedAccount = (): IAccountState => {
     const { accounts, currentURL }: IWalletState = store.getState().wallet;
@@ -145,6 +147,9 @@ const AccountController = (actions: {
 
   const clearTransactionItem = (item: string) => {
     switch (item) {
+      case 'currentPSBT':
+        currentPSBT = null;
+        break
       case 'newSPT':
         newSPT = null;
         break;
@@ -245,6 +250,7 @@ const AccountController = (actions: {
 
   const getTransactionItem = () => {
     return {
+      currentPSBT: currentPSBT || null,
       tempTx: tempTx || null,
       newSPT: newSPT || null,
       mintSPT: mintSPT || null,
@@ -335,49 +341,138 @@ const AccountController = (actions: {
     }
   };
 
-  const getHoldingsData = async () => {
-    const assetsData: any = [];
+  const updateTokensState = async () => {
+    if (!sysjs) {
+      return;
+    }
 
-    if (getConnectedAccount().xpub) {
-      const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, getConnectedAccount().xpub, 'tokens=nonzero&details=txs', true);
+    const { accounts, walletTokens }: IWalletState = store.getState().wallet;
+
+    await Promise.all(accounts.map(async (account: IAccountState) => {
+      const assetsData: any = {};
+
+      const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=derived&details=txs', true);
+
+      const accountIndex: number = walletTokens.findIndex((accountTokens: any) => {
+        return accountTokens.accountId === account.id;
+      });
+
+      let tokensMap: any = {};
 
       if (tokensAsset) {
-        await Promise.all(tokensAsset.map(async (asset: any) => {
-          const {
-            balance,
-            type,
-            decimals,
-            symbol,
-            assetGuid
-          } = asset;
-  
-          const assetId = sys.utils.getBaseAssetID(assetGuid);
-          const { pubData } = await getDataAsset(assetGuid);
-  
-          const assetData = {
-            balance,
-            type,
-            decimals,
-            symbol: symbol ? atob(String(symbol)) : '',
-            assetGuid,
-            baseAssetID: assetId,
-            nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null,
-            description: pubData !== null ? atob(pubData.desc) : ''
+        for (let token of tokensAsset) {
+          if (walletTokens[accountIndex]) {
+            if (walletTokens[accountIndex].tokens[token.assetGuid]) {
+              console.log('not added')
+              return;
+            }
           }
-  
-          if (assetsData.indexOf(assetData) === -1) {
-            assetsData.push(assetData);
-          }
-  
-          return assetsData;
-        }));
+
+          console.log('added')
+
+          tokensMap[token.assetGuid] = token;
+        }
+
+        try {
+          await Promise.all(Object.values(tokensMap).map(async (value) => {
+            const {
+              balance,
+              type,
+              decimals,
+              symbol,
+              assetGuid
+            }: any = value;
+
+            const assetId = sys.utils.getBaseAssetID(assetGuid);
+            const { pubData } = await getDataAsset(assetGuid);
+
+            const assetData = {
+              balance,
+              type,
+              decimals,
+              symbol: symbol ? atob(String(symbol)) : '',
+              assetGuid,
+              baseAssetID: assetId,
+              nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null,
+              description: pubData && pubData.desc ? atob(pubData.desc) : ''
+            }
+
+            assetsData[assetData.assetGuid] = assetData;
+
+            return;
+          }));
+
+          store.dispatch(updateAllTokens({
+            accountId: account.id,
+            accountXpub: account.xpub,
+            tokens: tokensMap,
+            holdings: Object.values(assetsData)
+          }));
+
+          return;
+        } catch (error) {
+          console.log(error)
+        }
       }
-  
-      return assetsData;
+
+      console.log('account has no tokens');
+
+      store.dispatch(updateAllTokens({
+        accountId: account.id,
+        accountXpub: account.xpub,
+        tokens: tokensMap,
+        holdings: Object.values(assetsData)
+      }));
+
+      return;
+    }));
+  }
+
+  const getHoldingsData = async () => {
+    await updateTokensState();
+
+    const { walletTokens }: IWalletState = store.getState().wallet;
+
+    const connectedAccountId = walletTokens.findIndex((accountTokens: any) => {
+      return accountTokens.accountId === getConnectedAccount().id;
+    });
+
+    if (connectedAccountId > -1) {
+      return walletTokens[connectedAccountId].holdings;
     }
 
     return [];
   };
+
+  const getConnectedAccountXpub = () => {
+    return getConnectedAccount().xpub;
+  }
+
+  const signTransaction = async ({ res, assets }: any) => {
+    try {
+      await sysjs.signAndSend(res, assets);
+    } catch (error) {
+      throw new Error(error);
+    }
+  };
+
+  const confirmSignature = () => {
+    return new Promise((resolve, reject) => {
+      handleTransactions(currentPSBT, signTransaction).then((response) => {
+        resolve(response);
+        
+        currentPSBT = null;
+      }).catch((error) => {
+        reject(error);
+      });
+    });
+  }
+
+  const setCurrentPSBT = (psbt: any) => {
+    currentPSBT = psbt;
+
+    return;
+  }
 
   // const splitTokensPath = (response: any, address: any, TrezorAccount: any) => {
   //   let receivingIndex = -1;
@@ -624,10 +719,10 @@ const AccountController = (actions: {
 
     store.dispatch(createAccount(account));
 
+    await updateTokensState();
+
     return account!.xpub;
   };
-
-
 
   const getLatestUpdate = async () => {
     const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
@@ -678,7 +773,6 @@ const AccountController = (actions: {
 
     store.dispatch(updateSwitchNetwork(false))
   };
-
 
   const isValidSYSAddress = (address: string, network: string) => {
     if (address && typeof address === 'string') {
@@ -1797,7 +1891,12 @@ const AccountController = (actions: {
     setNewOwnership,
     getHoldingsData,
     getDataAsset,
-    clearTransactionItem
+    clearTransactionItem,
+    confirmSignature,
+    getConnectedAccount,
+    getConnectedAccountXpub,
+    setCurrentPSBT,
+    updateTokensState
   };
 };
 

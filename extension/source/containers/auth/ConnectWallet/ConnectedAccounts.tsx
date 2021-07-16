@@ -136,7 +136,7 @@ const ConnectedAccounts = () => {
               onClick={handleDisconnect}
               fullWidth
             >
-              Cancel
+              Close
             </Button>
 
             <Button

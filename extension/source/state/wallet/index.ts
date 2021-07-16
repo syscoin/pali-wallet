@@ -10,6 +10,7 @@ import IWalletState, {
   IAccountState,
   IAccountUpdateAddress,
   IAccountUpdateXpub,
+  IWalletTokenState,
 } from './types';
 
 const initialState: IWalletState = {
@@ -29,12 +30,47 @@ const initialState: IWalletState = {
   updatingAsset: false,
   transferringOwnership: false,
   changingNetwork: false,
+  signingTransaction: false,
+  walletTokens: []
 };
 
 const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
+    updateAllTokens(state: IWalletState, action: PayloadAction<IWalletTokenState>) {
+      const sameAccountIndexAndDifferentXpub: number = state.walletTokens.findIndex((accountTokens: any) => {
+        return accountTokens.accountId === action.payload.accountId && accountTokens.accountXpub !== action.payload.accountXpub;
+      });
+
+      if (sameAccountIndexAndDifferentXpub > -1) {
+        state.walletTokens[sameAccountIndexAndDifferentXpub] = action.payload;
+
+        return;
+      }
+
+      const index: number = state.walletTokens.findIndex((accountTokens: any) => {
+        return accountTokens.accountId === action.payload.accountId && accountTokens.accountXpub === action.payload.accountXpub;
+      });
+
+      if (index > -1) {
+        if (state.walletTokens[index].tokens !== action.payload.tokens) {
+          state.walletTokens[index].tokens = action.payload.tokens;
+        }
+
+        return;
+      }
+
+      if (state.walletTokens.indexOf({ ...state.walletTokens[index], tokens: action.payload.tokens }) > -1) {
+        console.log('it includes item igual', action.payload.accountId)
+
+        return;
+      }
+
+      console.log('push new account item:', action.payload.accountId)
+
+      state.walletTokens.push(action.payload);
+    },
     clearAllTransactions(state: IWalletState) {
       return {
         ...state,
@@ -44,6 +80,7 @@ const WalletState = createSlice({
         issuingNFT: false,
         updatingAsset: false,
         transferringOwnership: false,
+        signingTransaction: false
       };
     },
     updateSwitchNetwork(state: IWalletState, action: PayloadAction<boolean>) {
@@ -59,6 +96,12 @@ const WalletState = createSlice({
       return {
         ...state,
         confirmingTransaction: action.payload,
+      };
+    },
+    signTransactionState(state: IWalletState, action: PayloadAction<boolean>) {
+      return {
+        ...state,
+        signingTransaction: action.payload,
       };
     },
     createAsset(state: IWalletState, action: PayloadAction<boolean>) {
@@ -320,6 +363,8 @@ export const {
   setTransferOwnership,
   updateSwitchNetwork,
   clearAllTransactions,
+  signTransactionState,
+  updateAllTokens
 } = WalletState.actions;
 
 export default WalletState.reducer;
