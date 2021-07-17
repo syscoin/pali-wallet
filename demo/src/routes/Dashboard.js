@@ -1,79 +1,69 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
+import { AnimatedList } from "react-animated-list";
 
+import useFetch from "../hooks/useFetch";
 import AssetCard from "../components/AssetCard";
-import { getAllLogo } from "../services/logoService";
 import loaderImg from "../images/spinner.svg";
 import paliLogo from "../images/pali_logo.svg";
 
 export default function Dashboard() {
-  const [originalAssets, setOriginalAssets] = useState([]);
-  const [assets, setAssets] = useState([]);
-  const [isLoading, setIsloading] = useState(true);
+  const [accountAssets, setAccountAssets] = useState([]);
+  const [page, setPage] = useState(1);
+  const { isLoading, assets, hasMore } = useFetch(accountAssets, page);
+  const loaderObserver = useRef();
   const { balance, connectedAccount } = useSelector(
     (state) => state.connectedAccountData
   );
 
-  const assetCards = useMemo(() =>
-    assets.map((asset) => <AssetCard key={asset.assetGuid} asset={asset} />)
-  , [assets]);
+  const loaderElementRef = useCallback((element) => {
+    if(isLoading) return;
 
-  async function setAssetsWithLogo(assetsArray) {
-    const assetsIds = assetsArray.map((a) => a.assetGuid);
-    const images = await getAllLogo(assetsIds);
+    if(loaderObserver.current) loaderObserver.current.disconnect();
 
-    const newAssets = assetsArray.reduce((acc, cur) => {
-      const logo = images.urls.find((i) => i[0] === cur.assetGuid);
-      return logo
-        ? (acc = [...acc, { ...cur, logoUrl: logo[1] }])
-        : (acc = [...acc, cur]);
-    }, []);
+    loaderObserver.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore) {
+        setPage(prev => prev + 1);
+      }
+    });
+    if (element) loaderObserver.current.observe(element);
+  }, [isLoading, hasMore]);
 
-    return newAssets;
-  }
+  const assetCards = useMemo(
+    () =>
+      assets.map((asset, i) => {
+        return assets.length === i + 1 ? (
+          <div className="asset" key="observer" ref={loaderElementRef}></div>
+        ) : (
+          <AssetCard key={asset.assetGuid} asset={asset} />
+        );
+      }),
+    [assets, loaderElementRef]
+  );
+
 
   useEffect(() => {
-    (async function () {
-      try {
-        if (connectedAccount?.assets) {
-          if (connectedAccount.assets.length !== assets.length) {
-            const newAssets = await setAssetsWithLogo(connectedAccount.assets);
+    if (connectedAccount?.assets) {
+      const sortedAssets = [...new Set([...connectedAccount.assets])];
 
-            setOriginalAssets(connectedAccount.assets);
-            setAssets(newAssets);
-            setIsloading(false);
+      if (sortedAssets.length !== accountAssets.length) {
+        setAccountAssets(sortedAssets);
 
-            return;
-          }
-
-          if(!connectedAccount.assets.length) {
-            setIsloading(false);
-            return;
-          }
-
-          const accountAssets = connectedAccount.assets.reduce((acc, cur) => {
-            const idx = assets.findIndex((i) => i.assetGuid === cur.assetGuid);
-
-            acc[idx] = cur;
-            return [...acc];
-          }, []);
-
-          if (JSON.stringify(accountAssets) === JSON.stringify(originalAssets)) {
-            return;
-          }
-
-          setOriginalAssets(connectedAccount.assets);
-          
-          const newAssets = await setAssetsWithLogo(accountAssets);
-
-          setAssets(newAssets);
-          setIsloading(false);
-        }
-      } catch (error) {
-        setAssets(connectedAccount.assets);
+        return;
       }
-    })();
+
+      if (!sortedAssets.length) {
+        return;
+      }
+
+      if (JSON.stringify(sortedAssets) === JSON.stringify(accountAssets)) {
+        return;
+      }
+
+      setAccountAssets(sortedAssets);
+    }
   }, [connectedAccount]);
+
 
   const RenderBalance = ({ balance, decimals }) => {
     const _balance = `${
@@ -99,7 +89,11 @@ export default function Dashboard() {
           </div>
         </div>
         {assets.length ? (
-          <div className="assets">{assetCards}</div>
+          <div className="assets">
+            <AnimatedList animation="grow" > 
+              {assetCards}
+            </AnimatedList>
+          </div>
         ) : (
           <div
             style={{

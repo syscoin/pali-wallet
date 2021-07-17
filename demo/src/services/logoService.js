@@ -18,30 +18,22 @@ export async function uploadLogo(token_id, image) {
 
     return data;
   } catch (error) {
-    throw Error("error uploading image");
-  }
-}
-
-export async function getLogo(token_id) {
-  try {
-    const { data } = await api.get(`token/${token_id}`);
-    
-    return data
-  } catch (error) {
-    throw Error("error getting image");
+    console.log(error)
   }
 }
 
 export async function getAllLogo(ids) {
   try {
     const qs = ids.reduce((acc, cur) => {
-      return acc ? `${acc}&token_id=${cur}` : `token_id=${cur}`;
+      return acc
+        ? `${acc}&token_id=${cur.assetGuid}`
+        : `token_id=${cur.assetGuid}`;
     }, "");
   
     const { data } = await api.get(`token?${qs}`);
 
     return data;
   } catch (error) {
-    throw Error("error getting images");
+    console.log(error)
   }
 }
