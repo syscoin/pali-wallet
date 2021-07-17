@@ -13,7 +13,11 @@ export default function useFetch(assetsArray, page) {
   const TOTAL_PAGES = Math.ceil(TOTAL_ITEMS / MAX_ITEMS);
 
   const requestAssetsWithImages = useCallback(async () => {
-    if (!assetsArray.length) return;
+    if (!assetsArray.length) {
+      setIsLoading(false);
+      
+      return;
+    };
 
     const initialIndex = page === 1 ? 0 : (page - 1) * MAX_ITEMS;
     const lastIndex =
