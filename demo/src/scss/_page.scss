@@ -58,6 +58,8 @@ section {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 10px;
+      padding-bottom: 100px;
+      position: relative;
 
       .asset {
         width: 85%;
@@ -658,4 +660,18 @@ section {
   }
   .c {
      text-align: justify;
+  }
+
+  .invisible-asset {
+    width: 100%;
+    height: 10px;
+  }
+
+  .loader {
+    position: absolute;
+    width: 50px;
+    bottom: 0;
+    left: calc(50% - 50px);
+    right: calc(50% - 50px);
+    z-index: 1;
   }

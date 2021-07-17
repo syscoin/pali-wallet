@@ -31,14 +31,8 @@ export default function Dashboard() {
 
   const assetCards = useMemo(
     () =>
-      assets.map((asset, i) => {
-        return assets.length === i + 1 ? (
-          <div className="asset" key="observer" ref={loaderElementRef}></div>
-        ) : (
-          <AssetCard key={asset.assetGuid} asset={asset} />
-        );
-      }),
-    [assets, loaderElementRef]
+      assets.map((asset) => <AssetCard key={asset.assetGuid} asset={asset} />),
+    [assets]
   );
 
 
@@ -90,9 +84,15 @@ export default function Dashboard() {
         </div>
         {assets.length ? (
           <div className="assets">
-            <AnimatedList animation="grow" > 
-              {assetCards}
-            </AnimatedList>
+            <AnimatedList animation="grow">{assetCards}</AnimatedList>
+            <div
+              className="invisible-asset"
+              key="observer"
+              ref={loaderElementRef}
+            ></div>
+            {isLoading && (
+              <img className="loader" src={loaderImg} alt="" />
+            )}
           </div>
         ) : (
           <div
@@ -104,9 +104,9 @@ export default function Dashboard() {
             }}
           >
             {!isLoading && !assets.length ? (
-              <img src={paliLogo} alt="" width="200px"/>
+              <img src={paliLogo} alt="" width="200px" />
             ) : (
-              <img src={loaderImg} alt="" width="70px"/>
+              <img src={loaderImg} alt="" width="70px" />
             )}
           </div>
         )}
