@@ -32,7 +32,6 @@ export default function useFetch(assetsArray, page) {
     setIsLoading(true);
 
     const images = await getAllLogo(assetsToRender) || { urls: [] };
-    // const images = 
     
     const newAssets = assetsToRender.reduce((acc, cur) => {
       const logo = images.urls.find((i) => i[0] === cur.assetGuid);
@@ -45,8 +44,10 @@ export default function useFetch(assetsArray, page) {
 
     TOTAL_PAGES === page && setHasMore(false);
 
-    setAssets((prev) => [...prev, ...newAssets]);
-  }, [assetsArray, page, assets]);
+    (!hasMore && TOTAL_PAGES !== page) && setHasMore(true);
+
+    setAssets((prev) => page === 1 ? [...newAssets] : [...prev, ...newAssets]);
+  }, [assetsArray, page]);
 
   useEffect(() => {
     requestAssetsWithImages();

@@ -24,6 +24,8 @@ export async function uploadLogo(token_id, image) {
 
 export async function getAllLogo(ids) {
   try {
+    if(!Array.isArray(ids) || !ids.length) return;
+
     const qs = ids.reduce((acc, cur) => {
       return acc
         ? `${acc}&token_id=${cur.assetGuid}`

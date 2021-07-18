@@ -22,10 +22,12 @@ export default function Dashboard() {
     if(loaderObserver.current) loaderObserver.current.disconnect();
 
     loaderObserver.current = new IntersectionObserver(entries => {
+      console.log(entries[0].isIntersecting, hasMore)
       if (entries[0].isIntersecting && hasMore) {
         setPage(prev => prev + 1);
       }
     });
+
     if (element) loaderObserver.current.observe(element);
   }, [isLoading, hasMore]);
 
@@ -35,13 +37,13 @@ export default function Dashboard() {
     [assets]
   );
 
-
   useEffect(() => {
     if (connectedAccount?.assets) {
       const sortedAssets = [...new Set([...connectedAccount.assets])];
 
       if (sortedAssets.length !== accountAssets.length) {
         setAccountAssets(sortedAssets);
+        setPage(1);
 
         return;
       }
@@ -57,7 +59,6 @@ export default function Dashboard() {
       setAccountAssets(sortedAssets);
     }
   }, [connectedAccount]);
-
 
   const RenderBalance = ({ balance, decimals }) => {
     const _balance = `${
