@@ -2,8 +2,8 @@ import { useEffect } from "react";
 import { useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 
-import logo from "../../images/logo.svg";
-import { elementEventHandler } from "../../utils/elementEventHandler";
+import logo from "../images/logo.svg";
+import { elementEventHandler } from "../utils/elementEventHandler";
 
 const Header = () => {
   const accountData = useSelector((state) => state.connectedAccountData);
@@ -96,7 +96,7 @@ const Header = () => {
             </div>
             <ul>
               <li>
-                <Link to="/dashboard" className="active">
+                <Link to="/" className="active">
                   Dashboard
                 </Link>
               </li>
