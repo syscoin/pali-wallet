@@ -18,7 +18,6 @@ import { Transaction, Assets } from '../../../scripts/types';
 import { formatDistanceDate, formatCurrency } from '../helpers';
 
 import styles from './Home.scss';
-import { useEffect } from 'react';
 
 interface ITxsPanel {
   address: string;
@@ -32,15 +31,15 @@ interface ITxsPanel {
   setTxidSelected: any;
   transactions: Transaction[];
   txidSelected: any;
+  setTxType: any;
+  setAssetType: any;
 }
 
-const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, setTxidSelected, setAssetSelected, setOpenAssetBlockExplorer }) => {
+const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, setTxidSelected, setAssetSelected, setOpenAssetBlockExplorer, setTxType, setAssetType }) => {
   const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
   const [isActivity, setActivity] = useState<boolean>(true);
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
-  // const [txidSelected, setTxidSelected] = useState('');
-  // const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   const { changingNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
@@ -104,12 +103,12 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
       return 'SPT mint';
     }
 
+    if (tx.tokenType === "SPTAssetUpdate") {
+      return 'SPT update';
+    }
+
     return 'Transaction';
   }
-
-  useEffect(() => {
-    console.log('transactions info', transactions, transactions.findIndex((tx: any) => tx.txid === ''), transactions.findIndex((tx: any) => tx.txid === '') > -1, transactions.find((tx: any) => tx.txid === ''))
-  }, []);
 
   return (
     <section
@@ -181,6 +180,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                       onClick={() => {
                         setOpenBlockExplorer(true);
                         setTxidSelected(tx.txid);
+                        setTxType(tx.tokenType)
                       }}>
                       <div>
                         {isConfirmed ? null : <Spinner size={25} className={styles.spinner} />}
@@ -240,6 +240,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                         onClick={() => {
                           setOpenAssetBlockExplorer(true);
                           setAssetSelected(asset.assetGuid);
+                          setAssetType(asset.type)
                         }}
                       >
                         <div>

@@ -376,9 +376,9 @@ const AccountController = (actions: {
       }
 
       await new Promise((resolve) => {
-        each(tokensAsset, function (token: any, done: any) {
+        each(tokensAsset, function ({ balance, symbol, assetGuid, decimals, type }: any, done: any) {
           if (walletTokens[accountIndex]) {
-            if (walletTokens[accountIndex].tokens[token.assetGuid]) {
+            if (walletTokens[accountIndex].tokens[assetGuid]) {
               console.log('not added')
               return;
             }
@@ -386,7 +386,13 @@ const AccountController = (actions: {
   
           console.log('added')
   
-          tokensMap[token.assetGuid] = token;
+          tokensMap[assetGuid] = {
+            balance: Number(tokensMap[assetGuid] ? tokensMap[assetGuid].balance : 0) + Number(balance),
+            type,
+            decimals,
+            symbol: symbol ? atob(String(symbol)) : '',
+            assetGuid
+          };
   
           done();
         }, function () {
@@ -411,7 +417,7 @@ const AccountController = (actions: {
             balance,
             type,
             decimals,
-            symbol: symbol ? atob(String(symbol)) : '',
+            symbol,
             assetGuid,
             baseAssetID: assetId,
             nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null,

@@ -40,6 +40,8 @@ const Home = () => {
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [txidSelected, setTxidSelected] = useState('');
   const [assetSelected, setAssetSelected] = useState(-1);
+  const [txType, setTxType] = useState('');
+  const [assetType, setAssetType] = useState('');
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   const handleRefresh = () => {
@@ -116,7 +118,7 @@ const Home = () => {
 
       {openBlockExplorer && (
         <ModalBlock
-          title="Open block explorer"
+          title="Open block explorer" // txtype
           message="Would you like to go to view transaction in Sys Block Explorer?"
           setCallback={() => setOpenBlockExplorer(false)}
           callback={() => handleOpenExplorer(txidSelected)}
@@ -125,7 +127,7 @@ const Home = () => {
 
       {openAssetBlockExplorer && (
         <ModalBlock
-          title="Open block explorer"
+          title="Open block explorer" // asset type
           message="Would you like to go to view transaction in Sys Block Explorer?"
           setCallback={() => setOpenAssetBlockExplorer(false)}
           callback={() => handleOpenAssetExplorer(assetSelected)}
@@ -230,6 +232,8 @@ const Home = () => {
             </div>
           </section>
           <TxsPanel
+            setAssetType={setAssetType}
+            setTxType={setTxType}
             txidSelected={txidSelected}
             setTxidSelected={setTxidSelected}
             assetSelected={assetSelected}
