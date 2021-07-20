@@ -54,11 +54,14 @@ export default function CreateNFT() {
         ...advancedOptions,
       })
       .catch((err) => {
+        toast.dismiss()
         toast.error(err, { position: "bottom-right" });
+        
       });
 
       event.target.reset();
     } catch (error) {
+      toast.dismiss()
       toast.error(error.errors[0], { position: "bottom-right" });
     }
   };
@@ -83,7 +86,9 @@ export default function CreateNFT() {
       setIsUploading(false);  
 
     } catch (error) {
+      toast.dismiss()
       toast.error(error.errors[0], { position: "bottom-right" });
+      
       event.target.value = "";
     }
     
@@ -120,7 +125,9 @@ export default function CreateNFT() {
     textAreaRef.current.select();
     document.execCommand("copy");
     e.target.focus();
+    toast.dismiss()
     toast.dark("Copied!", { position: "bottom-right", autoClose: 3000 });
+    
   }
 
   const onOpenModal = () => setOpen(true);
