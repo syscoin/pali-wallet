@@ -1,7 +1,10 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "https://7or87ne1oj.execute-api.us-east-1.amazonaws.com/v2/",
+  baseURL: "https://1aitumq4tf.execute-api.sa-east-1.amazonaws.com/v2/",
+  headers: {
+    "x-api-key": "e2swJDX64l1NnODCI5Pt58TgjfPX7uXn1hmJqvyI"
+  }
 });
 
 export async function uploadLogo(token_id, image) {
@@ -15,30 +18,24 @@ export async function uploadLogo(token_id, image) {
 
     return data;
   } catch (error) {
-    throw Error("error uploading image");
-  }
-}
-
-export async function getLogo(token_id) {
-  try {
-    const { data } = await api.get(`token/${token_id}`);
-    
-    return data
-  } catch (error) {
-    throw Error("error getting image");
+    console.log(error)
   }
 }
 
 export async function getAllLogo(ids) {
   try {
+    if(!Array.isArray(ids) || !ids.length) return;
+
     const qs = ids.reduce((acc, cur) => {
-      return acc ? `${acc}&token_id=${cur}` : `token_id=${cur}`;
+      return acc
+        ? `${acc}&token_id=${cur.assetGuid}`
+        : `token_id=${cur.assetGuid}`;
     }, "");
   
     const { data } = await api.get(`token?${qs}`);
 
     return data;
   } catch (error) {
-    throw Error("error getting images");
+    console.log(error)
   }
 }

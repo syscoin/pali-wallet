@@ -52,22 +52,23 @@ const App = () => {
             <>
               <Header />
               <Switch>
+                <Route path="/about" component={About} />
                 <Route
                   path="/"
                   exact
                   component={!isConnected || isLocked ? Home : Dashboard}
                 />
-                {isConnected ? (
-                  <Route path="/dashboard" component={Dashboard} />
+                {isConnected && !isLocked ? (
+                  <>
+                    <Route path="/create-nft" component={CreateNFT} />
+                    <Route path="/create-spt" component={CreateSPT} />
+                    <Route path="/issue-spt" component={IssueSPT} />
+                    <Route path="/update" component={Update} />
+                    <Route path="/transfer" component={Transfer} />
+                  </>
                 ) : (
                   <Redirect to="/" />
                 )}
-                <Route path="/create-nft" component={CreateNFT} />
-                <Route path="/create-spt" component={CreateSPT} />
-                <Route path="/issue-spt" component={IssueSPT} />
-                <Route path="/update" component={Update} />
-                <Route path="/transfer" component={Transfer} />
-                <Route path="/about" component={About} />
               </Switch>
             </>
           )}
