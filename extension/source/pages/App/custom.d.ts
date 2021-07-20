@@ -103,7 +103,7 @@ declare type CreateTokenItems = {
     instanttransfers?: boolean
   },
   payoutAddress?: string,
-  precision: number | 8,
+  precision: number,
   receiver: string,
   symbol: string
 }

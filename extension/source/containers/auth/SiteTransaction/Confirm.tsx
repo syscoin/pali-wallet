@@ -151,18 +151,11 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 
       confirmTransaction()
         .then((response: any) => {
-          console.log('response confirm transaction', response);
           isPending = false;
 
           setConfirmed(true);
           setLoading(false);
           setLoadingConfirm(false);
-
-          setTimeout(() => {
-            controller.wallet.account.updateTokensState().then(() => {
-              console.log('tokens state updated after transaction')
-            })
-          }, 60000);
 
           if (response) {
             browser.runtime.sendMessage({
@@ -208,7 +201,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 
   const renderData = () => {
     return dataToRender.map(({ label, value }) => {
-      if (label && value) {
+      if (label) {
         if (
           label === 'receiver' ||
           label === 'issuer' ||

@@ -97,7 +97,7 @@ browser.runtime.onInstalled.addListener(async () => {
   });
 
   window.trezorConnect = TrezorConnect;
-  
+
   browser.runtime.onMessage.addListener(async (request, sender) => {
     const {
       type,
@@ -117,34 +117,34 @@ browser.runtime.onInstalled.addListener(async () => {
         alreadyOpen: false,
         windowId: -1
       };
-      
-      browser.tabs.query({ active: true })
-      .then(async (tabs) => {
-        tabs.map(async (tab) => {
-          if (tab.title === 'Pali Wallet') {
-            paliCheck = {
-              ...paliCheck,
-              alreadyOpen: true,
-              windowId: tab.windowId
-            };
-          }
-        });
 
-        if (paliCheck.alreadyOpen) {
-          await browser.windows.update(Number(paliCheck.windowId), {
-            drawAttention: true,
-            focused: true
+      browser.tabs.query({ active: true })
+        .then(async (tabs) => {
+          tabs.map(async (tab) => {
+            if (tab.title === 'Pali Wallet') {
+              paliCheck = {
+                ...paliCheck,
+                alreadyOpen: true,
+                windowId: tab.windowId
+              };
+            }
           });
 
-          return;
-        }
-        
-        const windowpopup: any = window.open(url, "Pali Wallet", "width=372, height=600, left=900, top=90");
-        
-        windowpopup.onbeforeunload = () => {
-          store.dispatch(clearAllTransactions());
-        }
-      });
+          if (paliCheck.alreadyOpen) {
+            await browser.windows.update(Number(paliCheck.windowId), {
+              drawAttention: true,
+              focused: true
+            });
+
+            return;
+          }
+
+          const windowpopup: any = window.open(url, "Pali Wallet", "width=372, height=600, left=900, top=90");
+
+          windowpopup.onbeforeunload = () => {
+            store.dispatch(clearAllTransactions());
+          }
+        });
     };
 
     if (typeof request === 'object') {
@@ -155,7 +155,7 @@ browser.runtime.onInstalled.addListener(async () => {
           invalidParams,
           message
         } = request;
-        
+
         browser.tabs.sendMessage(tabId, {
           type: 'WALLET_ERROR',
           target: 'contentScript',
@@ -167,13 +167,32 @@ browser.runtime.onInstalled.addListener(async () => {
 
       if (type == 'TRANSACTION_RESPONSE' && target == 'background') {
         console.log('response trancaiton', request)
+
         browser.tabs.sendMessage(tabId, {
           type: 'TRANSACTION_RESPONSE',
           target: 'contentScript',
           response: request.response
         });
+
+        const interval = setInterval(async () => {
+          const data = await window.controller.wallet.account.getTransactionInfoByTxId(request.response.txid);
+
+          console.log('updating tokens state using txid: ', request.response.txid)
+
+          if (data.confirmations > 0) {
+            console.log('confirmations > 0')
+
+            window.controller.wallet.account.updateTokensState().then(() => {
+              console.log('update tokens after transaction in background')
+            });
+
+            clearInterval(interval);
+          }
+
+          return;
+        }, 8000);
       }
-      
+
       if (type == 'CONNECT_WALLET' && target == 'background') {
         const url = browser.runtime.getURL('app.html');
 
@@ -241,9 +260,9 @@ browser.runtime.onInstalled.addListener(async () => {
 
       if (type == 'CANCEL_TRANSACTION' && target == 'background') {
         const { item } = request;
-        
+
         store.dispatch(clearAllTransactions());
-        
+
         window.controller.wallet.account.clearTransactionItem(item);
 
         return;
@@ -252,15 +271,15 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'CLOSE_POPUP' && target == 'background') {
         store.dispatch(updateCanConnect(false));
         store.dispatch(clearAllTransactions());
-        
+
         browser.tabs.query({ active: true })
-        .then(async (tabs) => {
-          tabs.map(async (tab) => {
-            if (tab.title === 'Pali Wallet') {
-              await browser.windows.remove(Number(tab.windowId));
-            }
+          .then(async (tabs) => {
+            tabs.map(async (tab) => {
+              if (tab.title === 'Pali Wallet') {
+                await browser.windows.remove(Number(tab.windowId));
+              }
+            });
           });
-        });
 
         return;
       }
@@ -275,7 +294,7 @@ browser.runtime.onInstalled.addListener(async () => {
 
       if (type == 'CHECK_IS_LOCKED' && target == 'background') {
         const isLocked = window.controller.wallet.isLocked();
-        
+
         browser.tabs.sendMessage(tabId, {
           type: 'CHECK_IS_LOCKED',
           target: 'contentScript',
@@ -394,11 +413,11 @@ browser.runtime.onInstalled.addListener(async () => {
           notaryAddress,
           payoutAddress
         } = request.messageData;
-        
+
         if (precision < 0 || precision > 8) {
           throw new Error('invalid precision value');
         }
-        
+
         if (maxsupply < 0) {
           throw new Error('invalid max supply value');
         }
@@ -406,7 +425,7 @@ browser.runtime.onInstalled.addListener(async () => {
         if (initialSupply < 0) {
           throw new Error('invalid initial supply value');
         }
-        
+
         if (!window.controller.wallet.account.isValidSYSAddress(receiver, store.getState().wallet.activeNetwork)) {
           throw new Error('invalid receiver address');
         }
@@ -450,15 +469,15 @@ browser.runtime.onInstalled.addListener(async () => {
           amount,
           assetGuid
         } = request.messageData;
-        
+
         const assetFromAssetGuid = window.controller.wallet.account.getDataAsset(assetGuid);
-        
+
         console.log('asset data', assetFromAssetGuid)
-        
+
         if (amount < 0 || amount >= assetFromAssetGuid.balance) {
           throw new Error('invalid amount value');
         }
-        
+
         window.controller.wallet.account.setDataFromPageToMintSPT({
           assetGuid,
           amount: Number(amount)
@@ -497,11 +516,11 @@ browser.runtime.onInstalled.addListener(async () => {
           notaryAddress,
           payoutAddress,
         } = request.messageData;
-        
+
         if (totalShares < 0 || totalShares > 8) {
           throw new Error('invalid total shares value');
         }
-        
+
         if (!window.controller.wallet.account.isValidSYSAddress(issuer, store.getState().wallet.activeNetwork)) {
           throw new Error('invalid receiver address');
         }
@@ -585,7 +604,7 @@ browser.runtime.onInstalled.addListener(async () => {
           assetGuid,
           newOwner
         } = request.messageData;
-        
+
         if (!window.controller.wallet.account.isValidSYSAddress(newOwner, store.getState().wallet.activeNetwork)) {
           throw new Error('invalid new owner address');
         }

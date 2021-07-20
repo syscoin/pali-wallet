@@ -70,10 +70,10 @@ const ConnectedAccounts = () => {
       <Header showLogo />
 
       {changeAccountIsOpen ? (
-        <div className={styles.list}>
+        <div className={styles.list} style={{ marginTop: "2rem" }}>
           <p className={styles.connectedTitle}>Choose your account</p>
 
-          <ul className={styles.listAccounts}>
+          <ul className={styles.changeAccounts}>
             {accounts.map((account) => {
               return (
                 <li
@@ -105,7 +105,7 @@ const ConnectedAccounts = () => {
             </Button>
             <Button
               type="button"
-              theme="btn-outline-confirm"
+              theme="btn-outline-primary"
               variant={styles.button}
               disabled={accountId === -1}
               onClick={() => handleConfirm()}
@@ -141,18 +141,16 @@ const ConnectedAccounts = () => {
               theme="btn-outline-secondary"
               variant={clsx(styles.button, styles.cancel)}
               onClick={handleDisconnect}
-              fullWidth
             >
               Close
             </Button>
 
             <Button
               type="button"
-              theme="btn-outline-secondary"
+              theme="btn-outline-primary"
               variant={styles.button}
               disabled={accounts.length === 1}
               onClick={() => setChangeAccountIsOpen(!changeAccountIsOpen)}
-              fullWidth
             >
               Change
             </Button>

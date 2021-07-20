@@ -102,7 +102,7 @@ const ConnectWallet = () => {
 
         <Button
           type="button"
-          theme="btn-outline-secondary"
+          theme="btn-outline-primary"
           variant={styles.button}
           disabled={accountId === -1}
           linkTo="/confirm-connection"

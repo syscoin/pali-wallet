@@ -72,18 +72,7 @@
     }
   }
 
-  .listAccounts {
-    width: 75%;
-    border-radius: 6px;
-    text-align: center;
-    overflow: auto;
-    margin: 0;
-    padding: 0;
-    height: 180px;
-    overflow-x: auto;
-    padding: 0rem 0 0 0;
-    overflow-y: auto;
-    
+  .listAccounts, .changeAccounts {
     &::-webkit-scrollbar {
       width: 5px;
     }
@@ -108,6 +97,32 @@
       font-size: 16px;
       font-weight: bold;
     }
+  }
+
+  .listAccounts {
+    width: 75%;
+    border-radius: 6px;
+    text-align: center;
+    overflow: auto;
+    margin: 0;
+    padding: 0;
+    height: 180px;
+    overflow-x: auto;
+    padding: 0rem 0 0 0;
+    overflow-y: auto;
+  }
+
+  .changeAccounts {
+    width: 100%;
+    border-radius: 6px;
+    text-align: center;
+    overflow: auto;
+    margin: 0;
+    padding: 0;
+    height: 320px;
+    overflow-x: hidden;
+    padding: 0rem 0 0 0;
+    overflow-y: auto;
   }
   
   .accounts,

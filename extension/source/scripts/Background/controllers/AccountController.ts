@@ -288,7 +288,7 @@ const AccountController = (actions: {
       return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=nonzero&details=txs', true);
     }
 
-    return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
+    return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, connectedAccount.xpub, 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
   };
 
   const getUserMintedTokens = async () => {
@@ -349,16 +349,12 @@ const AccountController = (actions: {
       return;
     }
 
-    const { accounts, walletTokens }: IWalletState = store.getState().wallet;
+    const { accounts }: IWalletState = store.getState().wallet;
 
     return await Promise.all(accounts.map(async (account: IAccountState) => {
       const assetsData: any = {};
 
       const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=derived&details=txs', true);
-
-      const accountIndex: number = walletTokens.findIndex((accountTokens: any) => {
-        return accountTokens.accountId === account.id;
-      });
 
       let tokensMap: any = {};
 
@@ -377,15 +373,6 @@ const AccountController = (actions: {
 
       await new Promise((resolve) => {
         each(tokensAsset, function ({ balance, symbol, assetGuid, decimals, type }: any, done: any) {
-          if (walletTokens[accountIndex]) {
-            if (walletTokens[accountIndex].tokens[assetGuid]) {
-              console.log('not added')
-              return;
-            }
-          }
-  
-          console.log('added')
-  
           tokensMap[assetGuid] = {
             balance: Number(tokensMap[assetGuid] ? tokensMap[assetGuid].balance : 0) + Number(balance),
             type,
@@ -393,7 +380,9 @@ const AccountController = (actions: {
             symbol: symbol ? atob(String(symbol)) : '',
             assetGuid
           };
-  
+
+          console.log('added')
+
           done();
         }, function () {
           resolve('ok');
@@ -452,7 +441,7 @@ const AccountController = (actions: {
       const connectedAccountId = walletTokens.findIndex((accountTokens: any) => {
         return accountTokens.accountId === getConnectedAccount().id;
       });
-  
+
       if (connectedAccountId > -1) {
         return walletTokens[connectedAccountId].holdings;
       }
@@ -1067,6 +1056,7 @@ const AccountController = (actions: {
 
                 resolve({
                   sptCreated,
+                  txid: txInfo,
                   txConfirmations: sptCreated.confirmations,
                   txAssetGuid: sptCreated.tokenTransfers[0].token
                 });
@@ -1085,8 +1075,11 @@ const AccountController = (actions: {
       }
     }
 
+    console.log('data transaction', transactionData)
+
     return {
       transactionData,
+      txid: txInfoNew,
       txConfirmations: transactionData.confirmations,
       txAssetGuid: transactionData.tokenTransfers[0].token
     }
@@ -1207,11 +1200,19 @@ const AccountController = (actions: {
     updateTransactionData('issuingSPT', txInfo);
 
     watchMemPool();
+
+    return {
+      txid: txInfo
+    }
   };
 
   const confirmIssueSPT = () => {
-    return new Promise((resolve) => {
-      resolve(handleTransactions(mintSPT, confirmMintSPT));
+    return new Promise((resolve, reject) => {
+      handleTransactions(mintSPT, confirmMintSPT).then((response) => {
+        resolve(response);
+      }).catch((error) => {
+        reject(error);
+      });
 
       mintSPT = null;
     });
@@ -1406,9 +1407,9 @@ const AccountController = (actions: {
 
                 clearInterval(interval);
 
-                resolve('transaction ok');
-
-                return;
+                resolve({
+                  txid: psbt.extractTransaction().getId()
+                });
               }
 
               console.log('confirming child transactions', theNFTTx, theNFTTx.confirmations);
@@ -1426,8 +1427,12 @@ const AccountController = (actions: {
   };
 
   const confirmIssueNFT = () => {
-    return new Promise((resolve) => {
-      resolve(handleTransactions(mintNFT, confirmMintNFT));
+    return new Promise((resolve, reject) => {
+      handleTransactions(mintNFT, confirmMintNFT).then((response) => {
+        resolve(response);
+      }).catch((error) => {
+        reject(error);
+      });
 
       mintNFT = null;
     });
@@ -1731,6 +1736,10 @@ const AccountController = (actions: {
     updateTransactionData('updatingAsset', txInfo);
 
     watchMemPool();
+
+    return {
+      txid: txInfo
+    }
   }
 
   const confirmUpdateAssetTransaction = () => {
@@ -1860,11 +1869,19 @@ const AccountController = (actions: {
     updateTransactionData('transferringOwnership', txInfo);
 
     watchMemPool();
+
+    return {
+      txid: txInfo
+    }
   }
 
   const confirmTransferOwnership = () => {
-    return new Promise((resolve) => {
-      resolve(handleTransactions(transferOwnershipData, transferAsset));
+    return new Promise((resolve, reject) => {
+      handleTransactions(transferOwnershipData, transferAsset).then((response) => {
+        resolve(response);
+      }).catch((error) => {
+        reject(error)
+      });
 
       transferOwnershipData = null;
     });

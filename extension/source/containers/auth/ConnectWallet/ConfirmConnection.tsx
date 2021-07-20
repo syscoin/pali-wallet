@@ -100,18 +100,16 @@ const ConfirmConnection = () => {
           variant={clsx(styles.button, styles.cancel)}
           onClick={handleCancelConnection}
           linkTo="/home"
-          fullWidth
         >
           Cancel
         </Button>
 
         <Button
           type="button"
-          theme="btn-outline-confirm"
+          theme="btn-outline-primary"
           variant={styles.button}
           linkTo="/home"
           onClick={handleConfirmConnection}
-          fullWidth
         >
           Confirm
         </Button>

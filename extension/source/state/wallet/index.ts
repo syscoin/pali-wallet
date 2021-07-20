@@ -39,8 +39,10 @@ const WalletState = createSlice({
   initialState,
   reducers: {
     updateAllTokens(state: IWalletState, action: PayloadAction<IWalletTokenState>) {
+      const { accountId, accountXpub, tokens, holdings } = action.payload;
+
       const sameAccountIndexAndDifferentXpub: number = state.walletTokens.findIndex((accountTokens: any) => {
-        return accountTokens.accountId === action.payload.accountId && accountTokens.accountXpub !== action.payload.accountXpub;
+        return accountTokens.accountId === accountId && accountTokens.accountXpub !== accountXpub;
       });
 
       if (sameAccountIndexAndDifferentXpub > -1) {
@@ -50,22 +52,28 @@ const WalletState = createSlice({
       }
 
       const index: number = state.walletTokens.findIndex((accountTokens: any) => {
-        return accountTokens.accountId === action.payload.accountId && accountTokens.accountXpub === action.payload.accountXpub;
+        return accountTokens.accountId === accountId && accountTokens.accountXpub === accountXpub;
       });
 
+      const walletTokens = state.walletTokens[index];
+
       if (index > -1) {
-        if (state.walletTokens[index].tokens !== action.payload.tokens) {
-          state.walletTokens[index].tokens = action.payload.tokens;
+        if (walletTokens.tokens !== tokens) {
+          walletTokens.tokens = tokens;
+        }
+
+        if (walletTokens.holdings !== holdings) {
+          walletTokens.holdings = holdings;
         }
 
         return;
       }
 
-      if (state.walletTokens.indexOf({ ...state.walletTokens[index], tokens: action.payload.tokens }) > -1) {
+      if (state.walletTokens.indexOf({ ...walletTokens, holdings: holdings, tokens: tokens }) > -1) {
         return;
       }
 
-      console.log('push new account item:', action.payload.accountId)
+      console.log('push new account item:', accountId)
 
       state.walletTokens.push(action.payload);
     },
