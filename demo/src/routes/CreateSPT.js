@@ -45,18 +45,6 @@ export default function CreateSPT() {
     receiver: yup.string(),
   });
 
-//   const activeNetwork =  async () => {
-//  await controller.getWalletState().then((data) => {
-//    console.log(data)
-//   data && setNetwork(data);
-// });
-//    activeNetwork()
-//   }
-
-//   useEffect(() => {
-//     activeNetwork()
-//   })
-
   const handleCreateToken = async (event) => {
     try {      
       event.preventDefault();
@@ -70,10 +58,6 @@ export default function CreateSPT() {
           toast.error("Max supply must be greater than initial supply", { position: "bottom-right" });
           return;
         }
-        // if( await controller.getWalletState()){
-        //   toast.error("Max supply must be greater than initial supply", { position: "bottom-right" });
-        //   return;
-        // }
         controller
           .handleCreateToken({
             precision: Number(precision),
@@ -93,15 +77,17 @@ export default function CreateSPT() {
             }
           })
           .catch((err) => {
+            toast.dismiss()
             toast.error(err, { position: "bottom-right" });
             event.target.reset();
           });
 
         return;
       }
-
+      toast.dismiss()
       toast.error("Invalid Address", { position: "bottom-right" });
     } catch (error) {
+      toast.dismiss()
       toast.error(error.errors[0], { position: "bottom-right" });
     }
   };
@@ -121,8 +107,9 @@ export default function CreateSPT() {
       toast.dark(
         `File type ${_file.type} is not supported, just .jpg and .png files`,
         { position: "bottom-right" }
+        
       );
-      
+      toast.dismiss()
       event.target.value = "";
       return;
     }

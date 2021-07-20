@@ -72,6 +72,7 @@ export default function IssueSPT() {
               });
           return;
         }
+        toast.dismiss()
         toast.error("Invalid Quantity to Issue", {position: "bottom-right"});
       })
       .catch((err) => {
