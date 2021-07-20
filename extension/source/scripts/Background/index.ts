@@ -190,7 +190,7 @@ browser.runtime.onInstalled.addListener(async () => {
           }
 
           return;
-        }, 8000);
+        }, 6000);
       }
 
       if (type == 'CONNECT_WALLET' && target == 'background') {
