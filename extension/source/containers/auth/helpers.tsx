@@ -38,26 +38,16 @@ export const formatNumber = (num: number, min = 4, max = 4, maxSig = 12) => {
 };
 
 export const formatCurrency = (number: string, precision: number) => {
-  // if (Number(number) % 1 == 0) {
-  //   return currency(number, {
-  //     separator: ',',
-  //     symbol: '',
-  //     precision: 0,
-  //   }).format();
-  // }
-  //check if number is smaller than 1e-7
   if (Number(number) < 1e-6) {
     number = Number(number).toFixed(precision)
-    console.log(number)
   }
-  console.log(currency(number, { separator: ',', symbol: '', precision }).format())
 
   return currency(number, { separator: ',', symbol: '', precision }).format();
 };
 
-export const formatURL = (url: string) => {
-  if (url.length > 30) {
-    return `${url.slice(0, 30)}...`;
+export const formatURL = (url: string, size: number = 30) => {
+  if (url.length >= size) {
+    return `${url.slice(0, size)}...`;
   }
 
   return url;

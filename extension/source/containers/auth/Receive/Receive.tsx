@@ -53,7 +53,7 @@ const WalletReceive = () => {
                 <CopyIcon className={styles.icon} />
               </IconButton>
               <span className={clsx({ [styles.active]: isCopied })}>
-                {isCopied ? 'Copied Address' : 'Copy'}
+                {isCopied ? 'Copied address' : 'Copy'}
               </span>
             </div>
           </div>

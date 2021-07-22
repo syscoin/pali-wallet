@@ -100,7 +100,7 @@ export type UpdateToken = {
   assetGuid: string,
   assetWhiteList?: any | null,
   auxfeedetails?: any,
-  capabilityflags?: number | 0,
+  capabilityflags?: string,
   contract?: string | null,
   description: string | null,
   fee: number,
@@ -124,7 +124,7 @@ export interface UpdateTokenPageInfo {
       }
     ],
   };
-  capabilityflags?: number | 127;
+  capabilityflags?: string;
   contract?: string;
   description: string | '';
   notarydetails?: {

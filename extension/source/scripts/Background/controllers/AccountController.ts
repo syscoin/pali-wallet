@@ -88,20 +88,13 @@ const AccountController = (actions: {
   };
 
   const updateTransactionData = (item: string, txinfo: any) => {
-    // const txFailed = {
-    //   txid: '',
-    //   value: 0,
-    //   confirmations: -1,
-    //   fees: 0,
-    //   blockTime: Date.now() / 1e3,
-    // } as Transaction;
-
-    console.log('txinfo covent pending type', _coventPendingType(txinfo))
+    const transactionItem = store.getState().wallet[item];
+    const transactions = transactionItem ? getConnectedAccount().transactions : account.transactions;
 
     store.dispatch(
       updateTransactions({
-        id: store.getState().wallet[item] ? getConnectedAccount().id : account.id,
-        txs: [_coventPendingType(txinfo), ...account.transactions],
+        id: transactionItem ? getConnectedAccount().id : account.id,
+        txs: [_coventPendingType(txinfo), ...transactions],
       })
     );
   };
@@ -223,7 +216,7 @@ const AccountController = (actions: {
     }
   };
 
-  const watchMemPool = () => {
+  const watchMemPool = (currentAccount: IAccountState) => {
     if (intervalId) {
       return true;
     }
@@ -231,9 +224,11 @@ const AccountController = (actions: {
     intervalId = setInterval(() => {
       getLatestUpdate();
 
-      const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
+      console.log('watching mempool', currentAccount)
 
-      const activeAccount = accounts.find((account: IAccountState) => account.id === activeAccountId);
+      const { accounts }: IWalletState = store.getState().wallet;
+
+      const activeAccount = accounts.find((account: IAccountState) => account.id === currentAccount.id);
 
       if (
         !activeAccount ||
@@ -282,6 +277,10 @@ const AccountController = (actions: {
 
     return addressItem;
   };
+
+  const getTransactionData = async (txid: string) => {
+    return await getTransactionInfoByTxId(txid);
+  }
 
   const fetchBackendConnectedAccount = async (connectedAccount: IAccountState) => {
     if (connectedAccount.isTrezorWallet) {
@@ -595,7 +594,7 @@ const AccountController = (actions: {
       };
     }
 
-    response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true);
+    response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
 
     return {
       address,
@@ -658,6 +657,8 @@ const AccountController = (actions: {
       }
     }
 
+    console.log('transactions', transactions, xpub)
+
     if (address) {
       return {
         balance,
@@ -670,7 +671,7 @@ const AccountController = (actions: {
     return {
       balance,
       assets,
-      transactions,
+      transactions
     };
   };
 
@@ -934,6 +935,7 @@ const AccountController = (actions: {
       fee,
       notaryAddress,
       payoutAddress,
+      receiver
     } = item;
 
     const newMaxSupply = maxsupply * (10 ** precision);
@@ -943,7 +945,7 @@ const AccountController = (actions: {
       symbol,
       description,
       maxsupply: new sys.utils.BN(newMaxSupply),
-      updatecapabilityflags: capabilityflags || '127',
+      updatecapabilityflags: String(capabilityflags),
       notarydetails,
       auxfeedetails,
       notarykeyid: Buffer.from('', 'hex')
@@ -1002,13 +1004,7 @@ const AccountController = (actions: {
       throw new Error('Trezor don\'t support burning of coins');
     }
 
-    const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, null, new sys.utils.BN(fee * 1e8));
-
-    // if (!pendingTx) {
-    //   updateTransactionData('creatingAsset', '');
-
-    //   return;
-    // }
+    const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, receiver, receiver, new sys.utils.BN(fee * 1e8));
 
     const txInfoNew = pendingTx.extractTransaction().getId();
 
@@ -1038,19 +1034,17 @@ const AccountController = (actions: {
                   }]
                 ]);
 
-                const pendingTx = await sysjs.assetSend(txOpts, assetMap, null, new sys.utils.BN(fee * 1e8));
+                const pendingTx = await sysjs.assetSend(txOpts, assetMap, receiver, new sys.utils.BN(fee * 1e8));
 
                 if (!pendingTx) {
                   console.log('Could not create transaction, not enough funds?');
-
-                  // updateTransactionData('issuingSPT', '');
                 }
 
                 const txInfo = pendingTx.extractTransaction().getId();
 
                 updateTransactionData('issuingSPT', txInfo);
 
-                watchMemPool();
+                watchMemPool(getConnectedAccount());
 
                 clearInterval(interval);
 
@@ -1199,7 +1193,7 @@ const AccountController = (actions: {
 
     updateTransactionData('issuingSPT', txInfo);
 
-    watchMemPool();
+    watchMemPool(getConnectedAccount());
 
     return {
       txid: txInfo
@@ -1618,7 +1612,9 @@ const AccountController = (actions: {
 
     tempTx = null;
 
-    watchMemPool();
+    const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
+
+    watchMemPool(acc);
   }
 
   const confirmTempTx = () => {
@@ -1725,17 +1721,11 @@ const AccountController = (actions: {
 
     if (!pendingTx || !txInfo) {
       console.log('Could not create transaction, not enough funds?');
-
-      // updateTransactionData('updatingAsset', '');
-
-      // watchMemPool();
-
-      // return;
     }
 
     updateTransactionData('updatingAsset', txInfo);
 
-    watchMemPool();
+    watchMemPool(getConnectedAccount());
 
     return {
       txid: txInfo
@@ -1852,7 +1842,7 @@ const AccountController = (actions: {
 
         updateTransactionData('transferringOwnership', txInfo);
 
-        watchMemPool();
+        watchMemPool(getConnectedAccount());
       }
 
       return;
@@ -1868,7 +1858,7 @@ const AccountController = (actions: {
 
     updateTransactionData('transferringOwnership', txInfo);
 
-    watchMemPool();
+    watchMemPool(getConnectedAccount());
 
     return {
       txid: txInfo
@@ -1934,7 +1924,8 @@ const AccountController = (actions: {
     getConnectedAccount,
     getConnectedAccountXpub,
     setCurrentPSBT,
-    updateTokensState
+    updateTokensState,
+    getTransactionData
   };
 };
 

@@ -16,6 +16,7 @@ const ToastAlert: FC<IAlertTemplate> = ({ message, options, style, close }) => {
     <div
       className={clsx(styles.toast, {
         [styles.error]: options.type === 'error',
+        [styles.show]: options.type === 'success',
       })}
       style={{
         ...style,

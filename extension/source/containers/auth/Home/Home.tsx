@@ -43,11 +43,21 @@ const Home = () => {
   const [txType, setTxType] = useState('');
   const [assetType, setAssetType] = useState('');
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
+  const [tx, setTx] = useState(null);
+  const [assetTx, setAssetTx] = useState(null);
 
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();
-    controller.wallet.account.watchMemPool();
+    controller.wallet.account.watchMemPool(accounts[activeAccountId]);
     controller.stateUpdater();
+  };
+
+  const getTransactionData = async (txid: string) => {
+    return await controller.wallet.account.getTransactionData(txid);
+  };
+
+  const getTransactionAssetData = async (assetGuid: string) => {
+    return await controller.wallet.account.getDataAsset(assetGuid);
   };
 
   useEffect(() => {
@@ -122,15 +132,19 @@ const Home = () => {
           message="Would you like to go to view transaction in Sys Block Explorer?"
           setCallback={() => setOpenBlockExplorer(false)}
           callback={() => handleOpenExplorer(txidSelected)}
+          tx={tx}
+          txType={txType}
         />
       )}
 
       {openAssetBlockExplorer && (
         <ModalBlock
           title="Open block explorer" // asset type
-          message="Would you like to go to view transaction in Sys Block Explorer?"
+          message="Would you like to go to view asset in Sys Block Explorer?"
           setCallback={() => setOpenAssetBlockExplorer(false)}
           callback={() => handleOpenAssetExplorer(assetSelected)}
+          assetTx={assetTx}
+          assetType={assetType}
         />
       )}
 
@@ -144,7 +158,7 @@ const Home = () => {
                 options={accounts}
                 onChange={(val: string) => {
                   controller.wallet.switchWallet(Number(val));
-                  controller.wallet.account.watchMemPool();
+                  controller.wallet.account.watchMemPool(accounts[Number(val)]);
                 }}
               />
             ) : (
@@ -232,6 +246,10 @@ const Home = () => {
             </div>
           </section>
           <TxsPanel
+            getTransactionAssetData={getTransactionAssetData}
+            getTransactionData={getTransactionData}
+            setTx={setTx}
+            setAssetTx={setAssetTx}
             setAssetType={setAssetType}
             setTxType={setTxType}
             txidSelected={txidSelected}

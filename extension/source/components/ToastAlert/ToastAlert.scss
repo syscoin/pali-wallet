@@ -22,6 +22,11 @@
     background-color: $deepPink-100;
   }
 
+  &.show {
+    border: 1px solid $deepPink-100;
+    border-radius: 20;
+  }
+
   .icon {
     margin-right: 12px;
     width: 18px;

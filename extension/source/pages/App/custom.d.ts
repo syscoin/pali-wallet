@@ -77,12 +77,13 @@ declare interface IAccountController {
   updateAccountLabel: (id: number, label: string) => void;
   updateTempTx: (tx: ITransactionInfo) => void;
   updateTxs: () => void;
-  watchMemPool: () => void;
+  watchMemPool: (currentAccount: IAccountState) => void;
   confirmSignature: () => any;
   getConnectedAccount: () => IAccountState;
   getConnectedAccountXpub: () => string;
   setCurrentPSBT: (psbt: any) => any;
   updateTokensState: () => any;
+  getTransactionData: (txid: string) => any;
 }
 
 declare type CreateTokenItems = {
@@ -151,7 +152,7 @@ declare type UpdateAssetItems = {
       percent: any | 0
     }]
   },
-  capabilityflags?: string | '127',
+  capabilityflags?: string,
   contract?: string,
   description?: string,
   notaryAddress?: string,

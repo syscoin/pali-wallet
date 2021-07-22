@@ -2,7 +2,7 @@
 
 .background {
   z-index: 19;
-  background-color: rgba(0,0,0,0.6);
+  background-color: rgba(0, 0, 0, 0.6);
   width: 100%;
   position: absolute;
   top: 0;
@@ -11,13 +11,13 @@
 }
 
 .modal {
-  width: 70%;
-  top: 185px;
-  left: 23px;
+  width: 75%;
+  height: 568px;
+  top: 7px;
   z-index: 20;
   transition: .3s all;
   position: absolute;
-  padding: 1rem 2rem;
+  padding: .5rem 2rem;
   border-radius: 1rem;
   border: 1px solid $deepPink;
   font-size: .8rem;
@@ -25,7 +25,258 @@
   font-family: 'Poppins', sans-serif;
   background-color: $navy-darker;
 
-  margin-top: 1em;
+  b {
+    color: $royalBlue;
+  }
+
+  p {
+    color: white;
+  }
+
+  .mask {
+    transition: all 0.3s;
+    display: flex;
+    /* width: 100vw; */
+    height: 485px;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    opacity: 1;
+    -webkit-backdrop-filter: blur(0px);
+    backdrop-filter: blur(0px);
+
+    .loader {
+      width: 60px;
+      height: 60px;
+      margin: 6px 0;
+      transition: all 300ms;
+      opacity: 1;
+
+      svg {
+        color: $white;
+      }
+    }
+  }
+
+  .transaction {
+    .addresses {
+
+      .iconBtn {
+        transition: all 0.3s;
+        padding: .3rem;
+        border-radius: .4rem;
+        transition: all 0.3s;
+        cursor: pointer;
+
+        &:hover {
+          background: $royalBlue-medium;
+          color: $navy;
+        }
+
+        &.active {
+          color: white;
+          background: $deepPink;
+        }
+
+        .icon {
+          color: $white;
+          font-size: 1.5rem;
+        }
+      }
+
+      .select {
+        flex: 1;
+
+        .fullselect {
+          position: relative;
+          transition: all 300ms;
+          cursor: pointer;
+          color: #fff;
+          border-radius: 5rem;
+          z-index: 2;
+          height: 40px;
+
+          .selected {
+            width: 100%;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            font-weight: $semibold;
+            font-size: 0.8rem;
+            color: white;
+
+            .arrow {
+              position: absolute;
+              right: 36px;
+              width: 24px;
+              transition: all 0.3s;
+              transform: rotateZ(0deg);
+              color: $white;
+            }
+          }
+
+          ul.options {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            transition: all 300ms;
+            transform: scaleY(0);
+            transform-origin: top;
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            overflow-x: hidden;
+            overflow-y: auto;
+            max-height: 300px;
+            z-index: 3;
+            border-radius: 1.5rem;
+            font-weight: $semibold;
+            font-size: 0.8rem;
+            color: white;
+            display: block;
+            padding: 1rem;
+            background-color: #162742;
+            cursor: default;
+
+            & li:last-child {
+              border-bottom: none;
+            }
+
+            & li {
+              padding: 0.3rem 0;
+              border-bottom: 1px solid #80808047;
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              // width: 100%;
+            }
+
+            &::-webkit-scrollbar {
+              width: 3px;
+            }
+
+            &::-webkit-scrollbar-button {
+              display: none;
+            }
+
+            &::-webkit-scrollbar-thumb {
+              border-radius: 2rem;
+              background-color: $royalBlue;
+              transition: all 0.3s;
+            }
+
+            li.option {
+              height: 36px;
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              transition: all 300ms;
+              padding: 0 0.6rem;
+              color: $white;
+              font-size: 14px;
+
+              &:hover {
+                background: $gray-light;
+                color: $navy;
+              }
+            }
+          }
+
+          &.expanded {
+            ul.options {
+              transform: scaleY(1);
+            }
+
+            .arrow {
+              transform: rotateZ(180deg);
+            }
+          }
+
+          &.expandedDetail {
+            position: relative;
+            width: 230px;
+            transition: all 300ms;
+            cursor: pointer;
+            background-color: #122036;
+            border: 1px solid #122036;
+            color: #fff;
+            border-radius: 5rem;
+            z-index: 2;
+            height: 20px;
+
+            ul.options {
+              transform: scaleY(1);
+            }
+
+            .arrow {
+              transform: rotateZ(180deg);
+            }
+          }
+        }
+
+        :global(.MuiInputBase-root) {
+          width: 6rem;
+          transition: all 0.3s;
+          background-color: #333f52;
+          border: 1px solid #465162;
+          color: $white;
+
+          &::before,
+          &::after {
+            border-bottom: none !important;
+          }
+        }
+
+        :global(.MuiSelect-root) {
+          transition: all 0.3s;
+          font-size: 0.8rem;
+          background: $white;
+          color: $navy-dark;
+
+          & optgroup {
+            color: turquoise;
+          }
+        }
+
+        :global .MuiSelect-icon {
+          transition: all 0.3s;
+          color: $royalBlue;
+        }
+
+        :global .MuiSelect-iconOpen {
+          transform: rotateZ(180deg);
+        }
+      }
+    }
+
+    .data {
+      height: 260px;
+      overflow: auto;
+      padding: 0 .5rem;
+
+      h1,
+      h2 {
+        margin: 0;
+      }
+
+      &::-webkit-scrollbar {
+        width: 3px;
+      }
+
+      &::-webkit-scrollbar-button {
+        display: none;
+      }
+
+      &::-webkit-scrollbar-thumb {
+        border-radius: 2rem;
+        background-color: $royalBlue;
+        transition: all 0.3s;
+      }
+    }
+  }
+
+
 
   .close {
     padding: .6rem;
@@ -38,18 +289,15 @@
       color: $deepPink;
       border: 1px solid transparent;
       border-radius: 2rem;
-      background-image: 
-        linear-gradient(
-          rgba(255, 255, 255, 0), 
-          rgba(255, 255, 255, 0)), 
-          linear-gradient(
-            30deg, 
-            #8C1F4E 10%,
-            $deepPink-100 50%
-          );
-        background-origin: border-box;
-        background-clip: content-box, border-box;
-        box-shadow: 2px 1000px 1px $navy inset;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0),
+          rgba(255, 255, 255, 0)),
+        linear-gradient(30deg,
+          #8C1F4E 10%,
+          $deepPink-100 50%);
+      background-origin: border-box;
+      background-clip: content-box, border-box;
+      box-shadow: 2px 1000px 1px $navy inset;
 
       cursor: pointer;
       font-weight: bold;
@@ -69,26 +317,21 @@
   }
 
   .title {
-    // margin-bottom: .5rem;
-    padding: 1rem 0 .5rem 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    // flex-direction: column;
     gap: 10px;
     color: $royalBlue-medium;
     font-size: 1.2rem;
     font-weight: bold;
     text-align: center;
     border-bottom: 2px solid;
-    border-image: 
-      linear-gradient(
-        to right, 
-        $navy 20%, 
-        $royalBlue 50%, 
-        $navy 80%
-      ) 10;
-      
+    border-image:
+      linear-gradient(to right,
+        $navy 20%,
+        $royalBlue 50%,
+        $navy 80%) 10;
+
     p {
       cursor: pointer;
     }
@@ -115,7 +358,7 @@
         font-size: 12px;
       }
     }
-    
+
     img {
       &:hover {
         color: $gray-dark;
@@ -126,14 +369,14 @@
   .permissions {
     opacity: 70%;
 
-    & > p {
+    &>p {
       font-weight: bold;
       margin-bottom: .3rem;
       padding-bottom: .2rem;
       border-bottom: 1px solid rgb(230, 230, 230);
     }
 
-    & > div > small {
+    &>div>small {
       cursor: not-allowed;
     }
   }

@@ -90,6 +90,8 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
         }
       });
 
+      console.log('data', data)
+
       setDataToRender([
         ...dataToRender,
         dataToRender.push({

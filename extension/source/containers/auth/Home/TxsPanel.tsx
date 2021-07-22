@@ -33,9 +33,13 @@ interface ITxsPanel {
   txidSelected: any;
   setTxType: any;
   setAssetType: any;
+  getTransactionData: any;
+  setTx: any;
+  setAssetTx: any;
+  getTransactionAssetData: any;
 }
 
-const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, setTxidSelected, setAssetSelected, setOpenAssetBlockExplorer, setTxType, setAssetType }) => {
+const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, setTxidSelected, setAssetSelected, setOpenAssetBlockExplorer, setTxType, setAssetType, getTransactionData, setTx, setAssetTx, getTransactionAssetData }) => {
   const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
   const [isActivity, setActivity] = useState<boolean>(true);
@@ -79,9 +83,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
 
     setScrollArea(event.target);
     const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
-
-    console.log('scroll offset', scrollOffset, event.target.clientHeight)
-
+    
     if (scrollOffset === event.target.clientHeight) {
       if (!changingNetwork) {
         handleFetchMoreTxs();
@@ -180,7 +182,11 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                       onClick={() => {
                         setOpenBlockExplorer(true);
                         setTxidSelected(tx.txid);
-                        setTxType(tx.tokenType)
+                        setTxType(tx.tokenType);
+                        getTransactionData(tx.txid).then((response: any) => {
+                          console.log('promiseresponse tx', response)
+                          setTx(response);
+                        })
                       }}>
                       <div>
                         {isConfirmed ? null : <Spinner size={25} className={styles.spinner} />}
@@ -241,15 +247,15 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                           setOpenAssetBlockExplorer(true);
                           setAssetSelected(asset.assetGuid);
                           setAssetType(asset.type)
+                          getTransactionAssetData(asset.assetGuid).then((response: any) => {
+                            setAssetTx(response);
+                          })
                         }}
                       >
                         <div>
                           <span title="Click here to go to view transaction in sys block explorer">
                             <span>
-                              { //(asset.balance <= 10) && (asset.decimals > 6)
-                                //? formatCurrency(String(asset.balance), 0)
-                                formatCurrency(String(asset.balance / 10 ** asset.decimals), asset.decimals)
-                              }  {asset.symbol}
+                              {formatCurrency(String(asset.balance / 10 ** asset.decimals), asset.decimals)} {asset.symbol}
                             </span>
                           </span>
                           <div className={styles.linkIcon}>
@@ -260,12 +266,9 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                     </Fragment>
                   );
                 }
-
               })}
             </ul>
-          </>
-          :
-          <>
+          </> : <>
             <span className={styles.noTxComment}>
               You have no tokens or NFTs.
             </span>
@@ -280,7 +283,6 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
               />
             )}
           </>
-
       }
     </section>
   );

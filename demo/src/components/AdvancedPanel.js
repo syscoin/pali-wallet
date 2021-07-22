@@ -10,7 +10,7 @@ export default function AdvancedPanel({
   renderIssuerRightsField = true
 }) {
   const [contract, setContract] = useState("");
-  const [capabilityFlags, setCapabilityFlags] = useState(127);
+  const [capabilityflags, setCapabilityFlags] = useState(127);
   const [endpoint, setEndpoint] = useState();
   const [instanttransfers, setInstantTransfers] = useState(false);
   const [hdrequired, setHDRequired] = useState(false);
@@ -22,7 +22,7 @@ export default function AdvancedPanel({
     if (typeof onChange === "function") {
       const state = {
         ...(contract && { contract }),
-        ...(capabilityFlags && { capabilityFlags }),
+        ...(capabilityflags && { capabilityflags }),
         ...(endpoint && {
           notarydetails: { endpoint, instanttransfers, hdrequired },
         }),
@@ -39,7 +39,7 @@ export default function AdvancedPanel({
     }
   }, [
     contract,
-    capabilityFlags,
+    capabilityflags,
     endpoint,
     instanttransfers,
     hdrequired,

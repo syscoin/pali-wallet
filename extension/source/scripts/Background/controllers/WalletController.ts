@@ -170,7 +170,10 @@ const WalletController = (): IWalletController => {
       mnemonic = decriptedMnemonic;
 
       account.getPrimaryAccount(password, sjs);
-      account.watchMemPool();
+
+      const { activeAccountId, accounts } = store.getState().wallet;
+      
+      account.watchMemPool(accounts[activeAccountId]);
 
       return true;
     } catch (error) {

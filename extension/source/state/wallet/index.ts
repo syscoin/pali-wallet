@@ -327,6 +327,8 @@ const WalletState = createSlice({
         (element: IAccountState) => element.id === action.payload.id
       );
 
+      console.log('account index and transactions', state.accounts[indexOf], action.payload.txs)
+
       state.accounts[indexOf].transactions = action.payload.txs;
     },
     updateLabel(
