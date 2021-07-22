@@ -13,7 +13,8 @@ export const getMessagesToListenTo = (request: any) => {
     response,
     isLocked,
     signedTransaction,
-    connectedAccountXpub
+    connectedAccountXpub,
+    connectedAccountChangeAddress,
   } = request;
 
   const postMessagesArray = [
@@ -44,6 +45,13 @@ export const getMessagesToListenTo = (request: any) => {
       messageNewTarget: 'connectionsController',
       responseItem: 'connectedAccountXpub',
       messageResponse: connectedAccountXpub,
+    },
+    {
+      messageType: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
+      messageTarget: 'contentScript',
+      messageNewTarget: 'connectionsController',
+      responseItem: 'connectedAccountChangeAddress',
+      messageResponse: connectedAccountChangeAddress,
     },
     {
       messageType: 'CONNECT_WALLET',
@@ -287,6 +295,12 @@ export const listenAndSendMessageFromPageToBackground = (event: any) => {
     },
     {
       messageType: 'CONNECTED_ACCOUNT_XPUB',
+      messageTarget: 'contentScript',
+      messageNewTarget: 'background',
+      messageData: null,
+    },
+    {
+      messageType: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
       messageTarget: 'contentScript',
       messageNewTarget: 'background',
       messageData: null,

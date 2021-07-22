@@ -41,10 +41,14 @@ declare interface IAccountController {
   confirmIssueNFT: () => Promise<any>;
   confirmIssueSPT: () => Promise<any>;
   confirmNewSPT: () => Promise<any>;
+  confirmSignature: () => any;
   confirmTempTx: () => Promise<any>;
   confirmTransferOwnership: () => any;
   confirmUpdateAssetTransaction: () => any;
   createSPT: (spt: ISPTInfo) => void;
+  getChangeAddress: () => Promise<string>;
+  getConnectedAccount: () => IAccountState;
+  getConnectedAccountXpub: () => string;
   getDataAsset: (assetGuid: any) => any;
   getDataFromPageToInitTransaction: () => any;
   getHoldingsData: () => any;
@@ -59,6 +63,7 @@ declare interface IAccountController {
   isValidSYSAddress: (address: string, network: string) => boolean | undefined;
   issueNFT: (nft: INFTIssue) => void;
   issueSPT: (spt: ISPTIssue) => void;
+  setCurrentPSBT: (psbt: any) => any;
   setDataFromPageToCreateNewSPT: (data: any) => void;
   setDataFromPageToMintNFT: (data: any) => void;
   setDataFromPageToMintSPT: (data: any) => void;
@@ -76,6 +81,7 @@ declare interface IAccountController {
   subscribeAccount: (isHardwareWallet: boolean, sjs?: any, label?: string, walletCreation?: boolean) => Promise<string | null>;
   updateAccountLabel: (id: number, label: string) => void;
   updateTempTx: (tx: ITransactionInfo) => void;
+  updateTokensState: () => any;
   updateTxs: () => void;
   watchMemPool: (currentAccount: IAccountState) => void;
   confirmSignature: () => any;
@@ -171,8 +177,9 @@ declare type TransferOwnershipItems = {
 
 declare interface IConnectionsController {
   connectWallet: () => any;
-  signTransaction: (psbt: any) => any;
+  getChangeAddress: () => any;
   getConnectedAccount: () => any;
+  getConnectedAccountXpub: () => any;
   getDataAsset: (assetGuid: any) => any;
   getHoldingsData: () => any;
   getUserMintedTokens: () => Promise<any>;
@@ -181,12 +188,12 @@ declare interface IConnectionsController {
   handleCreateToken: (items: CreateTokenItems) => any;
   handleIssueNFT: (amount: number, assetGuid: string) => any;
   handleIssueSPT: (items: IssueTokenItems) => any;
-  isLocked: () => any;
   handleSendToken: (items: SendTokenItems) => any;
   handleTransferOwnership: (items: TransferOwnershipItems) => any;
   handleUpdateAsset: (items: UpdateAssetItems) => any;
+  isLocked: () => any;
   isNFT: (guid: number) => boolean;
   isValidSYSAddress: (address: string) => any;
   onWalletUpdate: (callback: any) => any;
-  getConnectedAccountXpub: () => any;
+  signTransaction: (psbt: any) => any;
 }

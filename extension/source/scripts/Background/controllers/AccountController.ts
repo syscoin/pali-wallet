@@ -1,5 +1,5 @@
+/* eslint-disable */
 import { sys } from 'constants/index';
-
 import TrezorConnect from 'trezor-connect';
 import store from 'state/store';
 import IWalletState, { IAccountState } from 'state/wallet/types';
@@ -35,6 +35,7 @@ import {
   UpdateTokenPageInfo,
   UpdateTokenWalletInfo
 } from '../../types';
+import ConnectedAccounts from 'containers/auth/ConnectWallet/ConnectedAccounts';
 
 const bjs = require('bitcoinjs-lib');
 const bitcoinops = require('bitcoin-ops');
@@ -290,6 +291,40 @@ const AccountController = (actions: {
     return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, connectedAccount.xpub, 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
   };
 
+  const getChangeAddress = async () => {
+    const { activeAccountId }: IWalletState = store.getState().wallet;
+    const connectedAccount: IAccountState = getConnectedAccount();
+    if (!sysjs) {
+      //TODO: enhance this error message
+      console.log('SYSJS not defined')
+
+      return await 'Error: wallet is locked, ask client to unlock it to get change address';
+    }
+    if (connectedAccount.isTrezorWallet) {
+      //TODO: Implement changeAddress for trezor wallets 
+      //only when trezor enable syscoin on mainnet
+      console.log('We do not support changeAddress for trezor wallets yet');
+      return 'Error: We do not support changeAddress for trezor wallets yet';
+    }
+
+    else {
+      let changeAddress: string = '';
+      console.log('getting new change Address')
+      if (connectedAccount.id === activeAccountId) {
+        changeAddress = (await sysjs.HDSigner.getNewChangeAddress())
+        console.log(changeAddress)
+        return changeAddress;
+      }
+      else {
+        sysjs.HDSigner.setAccountIndex(connectedAccount.id)
+        changeAddress = await sysjs.HDSigner.getNewChangeAddress();
+        sysjs.HDSigner.setAccountIndex(activeAccountId)
+        console.log('from diff acc')
+        console.log(changeAddress)
+        return changeAddress;
+      }
+    }
+  }
   const getUserMintedTokens = async () => {
     if (!sysjs) {
       throw new Error('Error: no signed account exists.');
@@ -453,11 +488,31 @@ const AccountController = (actions: {
     return getConnectedAccount().xpub;
   }
 
-  const signTransaction = async ({ res, assets }: any) => {
+  const signTransaction = async (psbt: any) => {
     try {
-      console.log('sign and send', res, assets)
-
-      await sysjs.signAndSend(res, assets);
+      // console.log('sign and send', psbt, res, assets)
+      console.log('psbt')
+      console.log(psbt)
+      // const feeRate = new sys.utils.BN(10)
+      // // set to false for ZDAG, true disables it but it is replaceable by bumping the fee
+      // const txOpts = { rbf: true }
+      // const assetguid = '682797033'
+      // // if assets need change sent, set this address. null to let HDSigner find a new address for you
+      // const assetChangeAddress = null
+      // const assetMap = new Map([
+      //   [assetguid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1 * 10 ** 8), address: 'tsys1q4nla8xg9e7ww8zafwkxdwkwl8dxmn78nz4dcc7' }] }]
+      // ])
+      // // if SYS need change sent, set this address. null to let HDSigner find a new address for you
+      // const sysChangeAddress = null
+      // let resp = null
+      // try {
+      //   resp = await sysjs.assetAllocationSend(txOpts, assetMap, assetChangeAddress, feeRate, getConnectedAccountXpub())
+      // } catch (e) {
+      //   console.error(e)
+      // }
+      // console.log('from here')
+      // console.log(resp)
+      await sysjs.signAndSend(psbt.res, psbt.assets);
     } catch (error) {
       throw new Error(error);
     }
@@ -609,7 +664,7 @@ const AccountController = (actions: {
     const assets: Assets[] = [];
     let transactions: Transaction[] = [];
 
-    console.log('response get account indo', response)
+    //console.log('response get account indo', response)
 
     if (response.transactions) {
       transactions = response.transactions.map(({
@@ -1923,6 +1978,7 @@ const AccountController = (actions: {
     confirmSignature,
     getConnectedAccount,
     getConnectedAccountXpub,
+    getChangeAddress,
     setCurrentPSBT,
     updateTokensState,
     getTransactionData

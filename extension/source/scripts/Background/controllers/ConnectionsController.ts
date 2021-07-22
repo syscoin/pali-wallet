@@ -2,7 +2,7 @@ import { sendMessage } from 'containers/auth/helpers';
 
 const ConnectionsController = (): IConnectionsController => {
   const getConnectedAccountXpub = async () => {
-    return await sendMessage(
+    return sendMessage(
       {
         type: 'CONNECTED_ACCOUNT_XPUB',
         target: 'connectionsController',
@@ -11,6 +11,21 @@ const ConnectionsController = (): IConnectionsController => {
       },
       {
         type: 'CONNECTED_ACCOUNT_XPUB',
+        target: 'contentScript',
+      }
+    );
+  };
+
+  const getChangeAddress = async () => {
+    return sendMessage(
+      {
+        type: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
+        target: 'connectionsController',
+        freeze: true,
+        eventResult: 'connectedAccountChangeAddress',
+      },
+      {
+        type: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
         target: 'contentScript',
       }
     );
@@ -43,14 +58,14 @@ const ConnectionsController = (): IConnectionsController => {
         {
           type: 'SIGN_TRANSACTION',
           target: 'contentScript',
-          psbt
+          psbt,
         }
       );
     });
   };
 
   const isLocked = async () => {
-    return await sendMessage(
+    return sendMessage(
       {
         type: 'CHECK_IS_LOCKED',
         target: 'connectionsController',
@@ -70,7 +85,7 @@ const ConnectionsController = (): IConnectionsController => {
         event.data.type === 'WALLET_UPDATED' &&
         event.data.target === 'connectionsController'
       ) {
-        console.log('event on wallet updated', event.data)
+        console.log('event on wallet updated', event.data);
         onUpdated();
       }
     });
@@ -96,7 +111,7 @@ const ConnectionsController = (): IConnectionsController => {
       }
     );
 
-    return await sendMessage(
+    return sendMessage(
       {
         type: 'WALLET_CONNECTION_CONFIRMED',
         target: 'connectionsController',
@@ -111,7 +126,7 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const getWalletState = async () => {
-    return await sendMessage(
+    return sendMessage(
       {
         type: 'SEND_STATE_TO_PAGE',
         target: 'connectionsController',
@@ -126,7 +141,7 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const getConnectedAccount = async () => {
-    return await sendMessage(
+    return sendMessage(
       {
         type: 'SEND_CONNECTED_ACCOUNT',
         target: 'connectionsController',
@@ -344,7 +359,7 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const handleIssueNFT = async (amount: number, assetGuid: string) => {
-    return await sendMessage(
+    return sendMessage(
       {
         type: 'ISSUE_NFT',
         target: 'connectionsController',
@@ -361,7 +376,7 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const getUserMintedTokens = async () => {
-    return await sendMessage(
+    return sendMessage(
       {
         type: 'GET_USER_MINTED_TOKENS',
         target: 'connectionsController',
@@ -376,7 +391,7 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const getDataAsset = async (assetGuid: any) => {
-    return await sendMessage(
+    return sendMessage(
       {
         type: 'GET_ASSET_DATA',
         target: 'connectionsController',
@@ -479,7 +494,7 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const isValidSYSAddress = async (address: string) => {
-    return await sendMessage(
+    return sendMessage(
       {
         type: 'CHECK_ADDRESS',
         target: 'connectionsController',
@@ -495,7 +510,7 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const getHoldingsData = async () => {
-    return await sendMessage(
+    return sendMessage(
       {
         type: 'GET_HOLDINGS_DATA',
         target: 'connectionsController',
@@ -528,7 +543,8 @@ const ConnectionsController = (): IConnectionsController => {
     getDataAsset,
     handleIssueNFT,
     signTransaction,
-    getConnectedAccountXpub
+    getConnectedAccountXpub,
+    getChangeAddress,
   };
 };
 

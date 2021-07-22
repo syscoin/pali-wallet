@@ -324,6 +324,14 @@ browser.runtime.onInstalled.addListener(async () => {
         });
       }
 
+      if (type == 'CONNECTED_ACCOUNT_CHANGE_ADDRESS' && target == 'background') {
+        browser.tabs.sendMessage(tabId, {
+          type: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
+          target: 'contentScript',
+          connectedAccountChangeAddress: await window.controller.wallet.account.getChangeAddress()
+        });
+      }
+
       if (type == 'CHECK_ADDRESS' && target == 'background') {
         const isValidSYSAddress = window.controller.wallet.account.isValidSYSAddress(request.messageData, store.getState().wallet.activeNetwork);
 
