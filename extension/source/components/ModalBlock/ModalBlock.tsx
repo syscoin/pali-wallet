@@ -164,15 +164,15 @@ const ModalBlock: FC<IModalBlock> = ({
       },
       {
         label: 'Total input',
-        value: (valueIn) / 10 ** 8
+        value: valueIn ? (valueIn) / 10 ** 8 : ''
       },
       {
         label: 'Total output',
-        value: (value) / 10 ** 8
+        value: value ? (value) / 10 ** 8 : ''
       },
       {
         label: 'Total',
-        value: fees / 10 ** 8
+        value: fees ? fees / 10 ** 8 : ''
       },
     ];
 
