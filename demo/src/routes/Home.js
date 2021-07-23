@@ -3,14 +3,17 @@ import { useSelector } from "react-redux";
 import store from "../state/store";
 import setupState from "../utils/setupState";
 
-// peace uncle grit essence stuff angle cruise annual fury letter snack globe
-
 export default function Home() {
   const controller = useSelector((state) => state.controller);
   const isLocked = useSelector((state) => state.isLocked);
+  const isInstalled = useSelector((state) => state.isInstalled);
 
   const handleConnect = async (event) => {
     event.preventDefault();
+
+    if(!isInstalled) {
+      return window.open("https://chrome.google.com/webstore/detail/pali-wallet/mgffkfbidihjpoaomajlbgchddlicgpn?hl=pt-BR&authuser=0", "_blank")
+    }
 
     if (controller) {
       controller.connectWallet().then(async (response) => {
@@ -34,9 +37,12 @@ export default function Home() {
             <button
               className="button"
               onClick={handleConnect}
-              disabled={!controller}
             >
-              {isLocked ? "Unlock Pali wallet" : "Connect to Pali Wallet"}
+              {isInstalled
+                ? isLocked
+                  ? "Unlock Pali wallet"
+                  : "Connect to Pali Wallet"
+                : "Install Pali Wallet"}
             </button>
           </div>
         </form>
