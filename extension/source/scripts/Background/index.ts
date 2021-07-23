@@ -670,7 +670,7 @@ browser.runtime.onInstalled.addListener(async () => {
       return;
     }
 
-    browser.tabs.query({ active: true, currentWindow: true })
+    browser.tabs.query({ active: true })
       .then((tabs) => {
         // if (tabs[0].title === 'Pali Wallet') {
         //   return;
