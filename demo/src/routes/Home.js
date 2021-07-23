@@ -7,6 +7,9 @@ export default function Home() {
   const controller = useSelector((state) => state.controller);
   const isLocked = useSelector((state) => state.isLocked);
   const isInstalled = useSelector((state) => state.isInstalled);
+  const isConnected = useSelector((state) => state.connected);
+
+  console.log(isConnected)
 
   const handleConnect = async (event) => {
     event.preventDefault();
@@ -39,7 +42,7 @@ export default function Home() {
               onClick={handleConnect}
             >
               {isInstalled
-                ? isLocked
+                ? (isLocked && isConnected)
                   ? "Unlock Pali wallet"
                   : "Connect to Pali Wallet"
                 : "Install Pali Wallet"}
