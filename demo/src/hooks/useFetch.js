@@ -15,6 +15,7 @@ export default function useFetch(assetsArray, page) {
   const requestAssetsWithImages = useCallback(async () => {
     if (!assetsArray.length) {
       setIsLoading(false);
+      setAssets([]);
       
       return;
     };

@@ -22,7 +22,6 @@ export default function Dashboard() {
     if(loaderObserver.current) loaderObserver.current.disconnect();
 
     loaderObserver.current = new IntersectionObserver(entries => {
-      console.log(entries[0].isIntersecting, hasMore)
       if (entries[0].isIntersecting && hasMore) {
         setPage(prev => prev + 1);
       }
@@ -40,7 +39,6 @@ export default function Dashboard() {
   useEffect(() => {
     if (connectedAccount?.assets) {
       const sortedAssets = [...new Set([...connectedAccount.assets])];
-
       if (sortedAssets.length !== accountAssets.length) {
         setAccountAssets(sortedAssets);
         setPage(1);
@@ -49,6 +47,7 @@ export default function Dashboard() {
       }
 
       if (!sortedAssets.length) {
+        setAccountAssets([]);
         return;
       }
 
