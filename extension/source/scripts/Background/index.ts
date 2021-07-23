@@ -670,8 +670,12 @@ browser.runtime.onInstalled.addListener(async () => {
       return;
     }
 
-    browser.tabs.query({ active: true })
+    browser.tabs.query({ active: true, currentWindow: true })
       .then((tabs) => {
+        // if (tabs[0].title === 'Pali Wallet') {
+        //   return;
+        // }
+
         store.dispatch(updateCurrentURL(`${tabs[0].url}`));
       });
   });

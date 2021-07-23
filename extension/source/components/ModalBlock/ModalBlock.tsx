@@ -160,7 +160,7 @@ const ModalBlock: FC<IModalBlock> = ({
       },
       {
         label: 'Mined',
-        value: formatDistanceDate(new Date(blockTime * 1000).toDateString())
+        value: blockTime ? formatDistanceDate(new Date(blockTime * 1000).toDateString()) : ''
       },
       {
         label: 'Total input',
@@ -284,9 +284,9 @@ const ModalBlock: FC<IModalBlock> = ({
                   </span>
 
                   <ul className={styles.options} style={{ padding: "0 .5rem", margin: "0 1rem 1rem" }}>
-                    {tx.tokenTransfers && tx.tokenTransfers.map((tokenTransfer: any) => {
+                    {tx.tokenTransfers && tx.tokenTransfers.map((tokenTransfer: any, index: number) => {
                       return (
-                        <div className={styles.flexCenter}>
+                        <div key={index} className={styles.flexCenter}>
                           <p>{tokenTransfer.symbol ? atob(tokenTransfer.symbol) : ''}</p>
                           <b>{tokenTransfer.token}</b>
                         </div>
