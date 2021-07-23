@@ -130,7 +130,11 @@ const Home = () => {
         <ModalBlock
           title="Open block explorer" // txtype
           message="Would you like to go to view transaction in Sys Block Explorer?"
-          setCallback={() => setOpenBlockExplorer(false)}
+          setCallback={() => {
+            setOpenBlockExplorer(false);
+            setTxidSelected('');
+            setTx(null)
+          }}
           callback={() => handleOpenExplorer(txidSelected)}
           tx={tx}
           txType={txType}
@@ -141,7 +145,11 @@ const Home = () => {
         <ModalBlock
           title="Open block explorer" // asset type
           message="Would you like to go to view asset in Sys Block Explorer?"
-          setCallback={() => setOpenAssetBlockExplorer(false)}
+          setCallback={() => {
+            setOpenAssetBlockExplorer(false)
+            setAssetSelected(-1);
+            setAssetTx(null)
+          }}
           callback={() => handleOpenAssetExplorer(assetSelected)}
           assetTx={assetTx}
           assetType={assetType}
@@ -254,7 +262,6 @@ const Home = () => {
             setTxType={setTxType}
             txidSelected={txidSelected}
             setTxidSelected={setTxidSelected}
-            assetSelected={assetSelected}
             setAssetSelected={setAssetSelected}
             openBlockExplorer={openBlockExplorer}
             setOpenBlockExplorer={setOpenBlockExplorer}

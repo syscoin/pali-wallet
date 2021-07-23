@@ -27,14 +27,16 @@ const ModalBlock: FC<IModalBlock> = ({
   tx,
   assetTx,
   assetType,
-  txType
+  txType,
 }) => {
   const controller = useController();
   const alert = useAlert();
 
   const [expanded, setExpanded] = useState<boolean>(false);
-  const [fromAddress, setFromAddress] = useState('');
+  const [newExpanded, setNewExpanded] = useState<boolean>(false);
+  const [tokensExpanded, setTokensExpanded] = useState<boolean>(false);
   const [newRecipients, setNewRecipients] = useState<any>({});
+  const [newSenders, setNewSenders] = useState<any>({});
   const [isCopied, copyText] = useCopyClipboard();
 
   useEffect(() => {
@@ -47,53 +49,151 @@ const ModalBlock: FC<IModalBlock> = ({
   ]);
 
   const recipients: any = {};
-
-  useEffect(() => {
-    console.log('assettx', assetTx)
-  }, [
-    assetTx
-  ]);
+  const senders: any = {};
 
   useEffect(() => {
     if (tx) {
-      const vin = tx.vin;
-      const vout = tx.vout;
+      const { vin, vout } = tx;
 
-      for (let item of vin) {
-        controller.wallet.account.getTransactionInfoByTxId(item.txid).then((response: any) => {
-          for (let vout of response.vout) {
-            if (vout.n === item.vout) {
-              setFromAddress(vout.addresses[0]);
+      console.log('tx', tx)
 
-              return;
-            }
+      if (vin && vout) {
+        for (let item of vout) {
+          if (item.addresses) {
+            recipients[item.addresses[0]] = item.addresses[0];
           }
-
-        });
-      }
-
-      for (let item of vout) {
-        if (item.addresses[0] === fromAddress) {
-          return;
         }
 
-        recipients[item.n] = {
-          address: item.addresses[0],
-          value: Number(item.value) / 10 ** 8
+        if (vin.length === 1) {
+          for (const item of vin) {
+            if (!item.vout) {
+              return;
+            }
+
+            controller.wallet.account.getTransactionInfoByTxId(item.txid).then((response: any) => {
+              for (const vout of response.vout) {
+                if (vout.n === item.vout) {
+                  senders[item.addresses[0]] = item.addresses[0];
+                }
+              }
+            });
+          }
+        }
+
+        if (vin.length > 1) {
+          for (const item of vin) {
+            if (item.addresses) {
+              senders[item.addresses[0]] = item.addresses[0];
+            }
+          }
         }
       }
 
       setNewRecipients(recipients);
+      setNewSenders(senders);
     }
-  }, [
-    tx
-  ]);
+  }, [tx]);
 
-  const renderReceiverAddresses = () => {
-    return Object.values(newRecipients).map(({ address, value }: any) => {
-      return <li>
-        <p>{ellipsis(address)}</p>
-        <p>{value}</p>
+  const renderAssetData = ({ assetGuid, contract, symbol, pubData, totalSupply, maxSupply, decimals, updateCapabilityFlags }: any) => {
+    const assetTransaction = [
+      {
+        label: 'Asset Guid',
+        value: assetGuid
+      },
+      {
+        label: 'Type',
+        value: assetType
+      },
+      {
+        label: 'Contract',
+        value: contract
+      },
+      {
+        label: 'Symbol',
+        value: symbol ? atob(String(symbol)) : ''
+      },
+      {
+        label: 'Description',
+        value: pubData && pubData.desc ? formatURL(atob(String(pubData.desc)), 15) : ''
+      },
+      {
+        label: 'Total supply',
+        value: (totalSupply) / 10 ** Number(decimals)
+      },
+      {
+        label: 'Max supply',
+        value: (maxSupply) / 10 ** Number(decimals)
+      },
+      {
+        label: 'Decimals',
+        value: decimals
+      },
+      {
+        label: 'Capability flags',
+        value: updateCapabilityFlags
+      },
+    ];
+
+    return assetTransaction.map(({ label, value }: any) => {
+      return (
+        <div key={label} className={styles.flexCenter}>
+          <p>{label}</p>
+          <b>{value}</b>
+        </div>
+      )
+    })
+  }
+
+  const renderTxData = ({ blockHash, confirmations, blockTime, valueIn, value, fees }: any) => {
+    const txData = [
+      {
+        label: 'Block hash',
+        value: ellipsis(blockHash)
+      },
+      {
+        label: 'Type',
+        value: txType || 'Transaction'
+      },
+      {
+        label: 'Confirmations',
+        value: confirmations
+      },
+      {
+        label: 'Mined',
+        value: formatDistanceDate(new Date(blockTime * 1000).toDateString())
+      },
+      {
+        label: 'Total input',
+        value: (valueIn) / 10 ** 8
+      },
+      {
+        label: 'Total output',
+        value: (value) / 10 ** 8
+      },
+      {
+        label: 'Total',
+        value: fees / 10 ** 8
+      },
+    ];
+
+    return txData.map(({ label, value }: any) => {
+      return (
+        <div key={label} className={styles.flexCenter}>
+          <p>{label}</p>
+          <b>{value}</b>
+        </div>
+      )
+    })
+  }
+
+  const renderAddresses = (list: any) => {
+    return Object.values(list).map((address: any, index: number) => {
+      return <li key={index}>
+        <p
+          onClick={() => copyText(address)}
+        >
+          {ellipsis(address) || '...'}
+        </p>
       </li>
     })
   }
@@ -102,6 +202,7 @@ const ModalBlock: FC<IModalBlock> = ({
     <div className={styles.modal}>
       <div className={styles.title}>
         <small>{title}</small>
+
         <p onClick={() => setCallback()}>
           <svg
             width="14"
@@ -121,12 +222,25 @@ const ModalBlock: FC<IModalBlock> = ({
       {tx && !assetTx ? (
         <div>
           <div className={styles.transaction}>
-            <div className={styles.addresses}>
-              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", flexDirection: "column" }}>
-                <p>From</p>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div className={styles.select}>
+                <div
+                  className={clsx(styles.fullselect, {
+                    [styles.expanded]: newExpanded,
+                  })}
+                >
+                  <span
+                    onClick={() => setNewExpanded(!newExpanded)}
+                    className={styles.selected}
+                  >
+                    <p>From</p>
+                    <DownArrowIcon className={styles.arrow} />
+                  </span>
 
-                <b className={clsx(styles.iconBtn, { [styles.active]: isCopied })} onClick={() => copyText(fromAddress)}>{ellipsis(fromAddress)}</b>
-
+                  <ul className={styles.options}>
+                    {renderAddresses(newSenders)}
+                  </ul>
+                </div>
               </div>
 
               <div className={styles.select}>
@@ -144,7 +258,7 @@ const ModalBlock: FC<IModalBlock> = ({
                   </span>
 
                   <ul className={styles.options}>
-                    {renderReceiverAddresses()}
+                    {renderAddresses(newRecipients)}
                   </ul>
                 </div>
               </div>
@@ -153,53 +267,33 @@ const ModalBlock: FC<IModalBlock> = ({
             <div className={styles.data}>
               <h2>Transaction</h2>
 
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <p>Block hash</p>
-                <b>{ellipsis(tx.blockHash)}</b>
-              </div>
+              {renderTxData(tx)}
 
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <p>Type</p>
-                <b>{txType || 'Transaction'}</b>
-              </div>
+              <div className={styles.select}>
+                <div
+                  className={clsx(styles.fullselect, {
+                    [styles.expanded]: tokensExpanded,
+                  })}
+                >
+                  <span
+                    onClick={() => setTokensExpanded(!tokensExpanded)}
+                    className={styles.selected}
+                  >
+                    <p>Asset info</p>
+                    <DownArrowIcon className={styles.arrow} />
+                  </span>
 
-              {tx.tokenTransfers && (
-                <>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <p>Token</p>
-                    <b>{tx.tokenTransfers[0].token}</b>
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <p>Symbol</p>
-                    <b>{tx.tokenTransfers[0].symbol ? atob(String(tx.tokenTransfers[0].symbol)) : ''}</b>
-                  </div>
-                </>
-              )}
-
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <p>Confirmations</p>
-                <b>{tx.confirmations}</b>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <p>Mined</p>
-                <b> {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}</b>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <p>Total input</p>
-                <b>{(tx.valueIn) / 10 ** 8}</b>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <p>Total output</p>
-                <b>{(tx.value) / 10 ** 8}</b>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <p>Total</p>
-                <b>{tx.fees / 10 ** 8}</b>
+                  <ul className={styles.options} style={{ padding: "0 .5rem", margin: "0 1rem 1rem" }}>
+                    {tx.tokenTransfers && tx.tokenTransfers.map((tokenTransfer: any) => {
+                      return (
+                        <div className={styles.flexCenter}>
+                          <p>{tokenTransfer.symbol ? atob(tokenTransfer.symbol) : ''}</p>
+                          <b>{tokenTransfer.token}</b>
+                        </div>
+                      )
+                    })}
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
@@ -217,50 +311,7 @@ const ModalBlock: FC<IModalBlock> = ({
               <div className={styles.data} style={{ height: "342px" }}>
                 <h2>Asset {assetTx.assetGuid} - {assetTx.symbol ? atob(String(assetTx.symbol)) : ''}</h2>
 
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <p>Asset Guid</p>
-                  <b>{assetTx.assetGuid}</b>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <p>Type</p>
-                  <b>{assetType}</b>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <p>Contract</p>
-                  <b>{assetTx.contract}</b>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <p>Symbol</p>
-                  <b> {assetTx.symbol ? atob(String(assetTx.symbol)) : ''}</b>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <p>Description</p>
-                  <b>{assetTx.pubData && assetTx.pubData.desc ? formatURL(atob(String(assetTx.pubData.desc)), 15) : ''}</b>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <p>Total supply</p>
-                  <b>{(assetTx.totalSupply) / 10 ** Number(assetTx.decimals)}</b>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <p>Max supply</p>
-                  <b>{(assetTx.maxSupply) / 10 ** Number(assetTx.decimals)}</b>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <p>Decimals</p>
-                  <b>{assetTx.decimals}</b>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <p>Capability flags</p>
-                  <b>{assetTx.updateCapabilityFlags}</b>
-                </div>
+                {renderAssetData(assetTx)}
               </div>
 
               <p>{message}</p>
@@ -280,8 +331,6 @@ const ModalBlock: FC<IModalBlock> = ({
           )}
         </div>
       )}
-
-
     </div>
   );
 };

@@ -21,7 +21,6 @@ import styles from './Home.scss';
 
 interface ITxsPanel {
   address: string;
-  assetSelected: any;
   assets: Assets[];
   openAssetBlockExplorer: any;
   openBlockExplorer: any;

@@ -90,6 +90,8 @@ declare interface IAccountController {
   setCurrentPSBT: (psbt: any) => any;
   updateTokensState: () => any;
   getTransactionData: (txid: string) => any;
+  getRawTransaction: (txid: string) => any;
+  setHDSigner: (accountId: number) => any;
 }
 
 declare type CreateTokenItems = {

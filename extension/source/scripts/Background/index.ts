@@ -184,6 +184,7 @@ browser.runtime.onInstalled.addListener(async () => {
 
             window.controller.wallet.account.updateTokensState().then(() => {
               console.log('update tokens after transaction in background')
+              window.controller.wallet.account.setHDSigner(store.getState().wallet.activeAccountId);
             });
 
             clearInterval(interval);

@@ -35,7 +35,7 @@ import {
   UpdateTokenPageInfo,
   UpdateTokenWalletInfo
 } from '../../types';
-import ConnectedAccounts from 'containers/auth/ConnectWallet/ConnectedAccounts';
+import axios from 'axios';
 
 const bjs = require('bitcoinjs-lib');
 const bitcoinops = require('bitcoin-ops');
@@ -101,6 +101,11 @@ const AccountController = (actions: {
   };
 
   const getTransactionInfoByTxId = async (txid: any) => {
+    return await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
+  };
+
+  const getRawTransaction = async (txid: any) => {
+    console.log('data axios', await axios.get(`${sysjs.blockbookURL}/api/v2/tx/${txid}`))
     return await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
   };
 
@@ -225,8 +230,6 @@ const AccountController = (actions: {
     intervalId = setInterval(() => {
       getLatestUpdate();
 
-      console.log('watching mempool', currentAccount)
-
       const { accounts }: IWalletState = store.getState().wallet;
 
       const activeAccount = accounts.find((account: IAccountState) => account.id === currentAccount.id);
@@ -300,6 +303,7 @@ const AccountController = (actions: {
 
       return await 'Error: wallet is locked, ask client to unlock it to get change address';
     }
+
     if (connectedAccount.isTrezorWallet) {
       //TODO: Implement changeAddress for trezor wallets 
       //only when trezor enable syscoin on mainnet
@@ -388,7 +392,7 @@ const AccountController = (actions: {
     return await Promise.all(accounts.map(async (account: IAccountState) => {
       const assetsData: any = {};
 
-      const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=derived&details=txs', true);
+      const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=derived&details=txs', true, sysjs.HDSigner);
 
       let tokensMap: any = {};
 
@@ -664,8 +668,6 @@ const AccountController = (actions: {
     const assets: Assets[] = [];
     let transactions: Transaction[] = [];
 
-    //console.log('response get account indo', response)
-
     if (response.transactions) {
       transactions = response.transactions.map(({
         txid,
@@ -711,8 +713,6 @@ const AccountController = (actions: {
         assets.push(transform[key]);
       }
     }
-
-    console.log('transactions', transactions, xpub)
 
     if (address) {
       return {
@@ -794,6 +794,8 @@ const AccountController = (actions: {
     if (!accounts.find((account: IAccountState) => account.id === activeAccountId)) {
       return;
     }
+
+    console.log('sysjs', sysjs)
 
     account = accounts.find((account: IAccountState) => account.id === activeAccountId)!;
 
@@ -1059,6 +1061,11 @@ const AccountController = (actions: {
       throw new Error('Trezor don\'t support burning of coins');
     }
 
+    sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
+
+    console.log('sysjs', sysjs, sysjs.HDSigner)
+
+
     const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, receiver, receiver, new sys.utils.BN(fee * 1e8));
 
     const txInfoNew = pendingTx.extractTransaction().getId();
@@ -1159,15 +1166,19 @@ const AccountController = (actions: {
 
     let txInfo;
 
+    const { decimals } = await getDataAsset(assetGuid);
+
     const assetMap = new Map([
       [assetGuid, {
         changeAddress: assetChangeAddress,
         outputs: [{
-          value: new sys.utils.BN(amount * 1e8),
+          value: new sys.utils.BN(amount * (10 ** decimals)),
           address: assetChangeAddress
         }]
       }]
     ]);
+
+    sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
 
     let sysChangeAddress = null;
 
@@ -1271,7 +1282,13 @@ const AccountController = (actions: {
     const txOpts: any = { rbf: true };
     const feeRate = new sys.utils.BN(fee * 1e8);
 
-    const psbt = await sysjs.assetNew(assetOpts, txOpts, null, null, feeRate);
+    sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
+
+    let assetChangeAddress = await sysjs.HDSigner.getNewChangeAddress();
+
+    console.log('sysjs', sysjs, sysjs.HDSigner)
+
+    const psbt = await sysjs.assetNew(assetOpts, txOpts, assetChangeAddress, assetChangeAddress, feeRate);
 
     if (!psbt) {
       console.log('Could not create transaction, not enough funds?');
@@ -1300,10 +1317,6 @@ const AccountController = (actions: {
       description,
       issuer,
       totalShares,
-      // notarydetails,
-      // auxfeedetails,
-      // notaryAddress,
-      // payoutAddress
     } = item;
 
     if (getConnectedAccount().isTrezorWallet) {
@@ -1315,57 +1328,7 @@ const AccountController = (actions: {
       symbol,
       maxsupply: new sys.utils.BN(1 * (10 ** totalShares)),
       description,
-      // notarydetails,
-      // auxfeedetails,
-      // notarykeyid: Buffer.from('', 'hex')
     }
-
-    // if (notaryAddress) {
-    //   const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
-    //     address: notaryAddress,
-    //     network: sysjs.HDSigner.network
-    //   });
-
-    //   assetOpts = {
-    //     ...assetOpts,
-    //     notarydetails: {
-    //       ...notarydetails,
-    //       endpoint: Buffer.from(syscointx.utils.encodeToBase64(notarydetails.endpoint))
-    //     },
-    //     notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
-    //   }
-    // }
-
-    // if (notarydetails) {
-    //   assetOpts = {
-    //     ...assetOpts,
-    //     notarydetails
-    //   }
-    // }
-
-    // if (payoutAddress) {
-    //   const payment = sys.utils.bitcoinjs.payments.p2wpkh({
-    //     address: payoutAddress,
-    //     network: sysjs.HDSigner.network
-    //   });
-
-    //   const auxFeeKeyID = Buffer.from(payment.hash.toString('hex'), 'hex');
-
-    //   assetOpts = {
-    //     ...assetOpts,
-    //     auxfeedetails: {
-    //       ...assetOpts.auxfeedetails,
-    //       auxfeekeyid: auxFeeKeyID
-    //     }
-    //   }
-    // }
-
-    // if (auxfeedetails) {
-    //   assetOpts = {
-    //     ...assetOpts,
-    //     auxfeedetails
-    //   }
-    // }
 
     const newParentAsset = await createParentAsset(assetOpts, fee);
 
@@ -1397,10 +1360,12 @@ const AccountController = (actions: {
                 }]
               ]);
 
-              const sysChangeAddress = null;
-
               try {
-                const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
+                sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
+            
+                console.log('sysjs', sysjs, sysjs.HDSigner)
+
+                const pendingTx = await sysjs.assetSend(txOpts, assetMap, issuer, feeRate);
 
                 if (!pendingTx) {
                   console.log('Could not create transaction, not enough funds?')
@@ -1415,6 +1380,8 @@ const AccountController = (actions: {
                 console.log('error creating nft', error);
 
                 parentConfirmed = false;
+
+                return error;
               }
 
               return;
@@ -1434,7 +1401,12 @@ const AccountController = (actions: {
                 const txOpts = { rbf: true };
                 const assetGuid = newParentAsset!.asset_guid;
                 const assetOpts = { updatecapabilityflags: '0' };
-                const assetChangeAddress = null;
+
+                sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
+
+                let assetChangeAddress = null;
+            
+                console.log('sysjs', sysjs, sysjs.HDSigner)
 
                 const assetMap = new Map([
                   [assetGuid, {
@@ -1446,9 +1418,7 @@ const AccountController = (actions: {
                   }]
                 ]);
 
-                const sysChangeAddress = null;
-
-                const psbt = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
+                const psbt = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, issuer, feeRate);
 
                 if (!psbt) {
                   console.log('Could not create transaction, not enough funds?')
@@ -1506,6 +1476,8 @@ const AccountController = (actions: {
       isToken,
       rbf
     } = items;
+
+    sysjs.HDSigner.setAccountIndex(store.getState().wallet.activeAccountId);
 
     if (isToken && token) {
       let txInfo;
@@ -1678,6 +1650,10 @@ const AccountController = (actions: {
     });
   };
 
+  const setHDSigner = (accountId: number) => {
+    sysjs.HDSigner.setAccountIndex(accountId);
+  }
+
   const confirmUpdateAsset = async (item: any) => {
     const {
       fee,
@@ -1770,6 +1746,12 @@ const AccountController = (actions: {
       }]
     ]);
 
+    sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
+
+    // let changeAddress = await sysjs.HDSigner.getNewChangeAddress();
+
+    console.log('sysjs', sysjs, sysjs.HDSigner)
+
     const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, thisAssetMap, null, new sys.utils.BN(fee * 1e8));
 
     const txInfo = pendingTx.extractTransaction().getId();
@@ -1825,12 +1807,6 @@ const AccountController = (actions: {
         }]
       }]
     ]);
-
-    // const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
-    //   return account.connectedTo.find((url: any) => {
-    //     return url == new URL(store.getState().wallet.currentURL).host;
-    //   });
-    // });
 
     if (getConnectedAccount().isTrezorWallet) {
       const sysChangeAddress = await getNewChangeAddress();
@@ -1902,6 +1878,12 @@ const AccountController = (actions: {
 
       return;
     }
+
+    sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
+
+    // let assetChangeAddress = await sysjs.HDSigner.getNewChangeAddress();
+
+    console.log('sysjs', sysjs, sysjs.HDSigner)
 
     const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, newOwner, feeRate);
 
@@ -1981,7 +1963,9 @@ const AccountController = (actions: {
     getChangeAddress,
     setCurrentPSBT,
     updateTokensState,
-    getTransactionData
+    getTransactionData,
+    getRawTransaction,
+    setHDSigner
   };
 };
 

@@ -174,8 +174,8 @@ const WalletController = (): IWalletController => {
 
       account.getPrimaryAccount(password, sjs);
 
-      const { activeAccountId, accounts } = store.getState().wallet;
-      
+      const { accounts, activeAccountId } = store.getState().wallet;
+
       account.watchMemPool(accounts[activeAccountId]);
 
       return true;
