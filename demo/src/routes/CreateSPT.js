@@ -1,4 +1,4 @@
-import { useState,useEffect } from "react";
+import { useState } from "react";
 import { useSelector } from "react-redux";
 import * as yup from "yup";
 import { toast, ToastContainer } from "react-toastify";
@@ -24,7 +24,6 @@ export default function CreateSPT() {
   const [isUploading, setIsUploading] = useState(false);
   const [advancedOptions, setAdvancedOptions] = useState({});
   const [open, setOpen] = useState(false);
-  const [ network, setNetwork] = useState(true); /// true -> mainnet | false ->testnet
   const controller = useSelector((state) => state.controller);
   const { connectedAccountAddress } = useSelector(
     (state) => state.connectedAccountData
