@@ -228,15 +228,24 @@ export default function CreateNFT() {
                 id="shares"
                 onChange={handleInputChange(setTotalShares)}
               >
-                <option>0</option>
-                <option>1</option>
-                <option>2</option>
-                <option>3</option>
-                <option>4</option>
-                <option>5</option>
-                <option>6</option>
-                <option>7</option>
-                <option>8</option>
+                <option
+                value={0}>1</option>
+                <option
+                value={1}>10</option>
+                <option
+                value={2}>100</option>
+                <option
+                value={3}>1.000</option>
+                <option
+                value={4}>10.000</option>
+                <option
+                value={5}>100.000</option>
+                <option
+                value={6}>1.000.000</option>
+                <option
+                value={7}>10.000.000</option>
+                <option
+                value={8}>100.000.000</option>
               </select>
               <p className="help-block">Default 1</p>
             </div>
