@@ -3,7 +3,7 @@ import axios from "axios";
 const api = axios.create({
   baseURL: "https://1aitumq4tf.execute-api.sa-east-1.amazonaws.com/v2/",
   headers: {
-    "x-api-key": "e2swJDX64l1NnODCI5Pt58TgjfPX7uXn1hmJqvyI"
+    "x-api-key": "25a$3KU4UFbyjE2Ue#2e$LwhJgl"
   }
 });
 
