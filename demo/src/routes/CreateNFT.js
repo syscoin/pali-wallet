@@ -235,17 +235,17 @@ export default function CreateNFT() {
                 <option
                 value={2}>100</option>
                 <option
-                value={3}>1.000</option>
+                value={3}>1,000</option>
                 <option
-                value={4}>10.000</option>
+                value={4}>10,000</option>
                 <option
-                value={5}>100.000</option>
+                value={5}>100,000</option>
                 <option
-                value={6}>1.000.000</option>
+                value={6}>1,000,000</option>
                 <option
-                value={7}>10.000.000</option>
+                value={7}>10,000,000</option>
                 <option
-                value={8}>100.000.000</option>
+                value={8}>100,000,000</option>
               </select>
               <p className="help-block">Default 1</p>
             </div>
