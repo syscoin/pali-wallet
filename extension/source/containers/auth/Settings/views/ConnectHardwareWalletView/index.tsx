@@ -1,23 +1,17 @@
 import React, { FC, useState } from 'react';
 import Button from 'components/Button';
-import { useAlert } from 'react-alert';
+import { useController } from 'hooks/index';
 
 import styles from './index.scss';
 import TutorialPanel from './TutorialPanel';
 
-// import { useController } from 'hooks/index';
-
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
-  // const controller = useController();
-  const alert = useAlert();
+  const controller = useController();
 
   const onclick = async () => {
-    // controller.wallet.createHardwareWallet();
-    alert.removeAll();
-    alert.error(
-      'Trezor just has added syscoin support to connect, as soon as they release it officially we will enable this feature.'
-    );
+    controller.wallet.createHardwareWallet();
+
   };
 
   return (

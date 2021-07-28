@@ -20,6 +20,7 @@ const Header = () => {
     const dropdown = document.querySelectorAll(".dropdown");
     const mobilemenu = document.querySelector(".mobilemenu");
     const desktopmenu = document.querySelector(".desktopmenu");
+    const links = document.querySelectorAll("ul > li > a:not(.dropdown)");
 
     // menu open submenu
     dropdown.forEach(elementEventHandler(["click"], "open"));
@@ -30,12 +31,36 @@ const Header = () => {
       document.querySelector("body").classList.toggle("no-scroll");
     })(mobilemenu);
 
+    if(window.innerWidth <= 900) {
+      links.forEach(
+        (link) => (link.onclick = () => desktopmenu.classList.toggle("open"))
+      );
+    }
+
+    window.addEventListener("resize", (e) => {
+      if(window.innerWidth <= 900) {
+        if (Boolean(links[0].onclick)) return;
+
+        links.forEach(
+          (link) => (link.onclick = () => desktopmenu.classList.toggle("open"))
+        );
+      } else if(window.innerWidth > 900) {
+        if (Boolean(links[0].onclick) === false) return;
+        
+        links.forEach(
+          (link) => (link.onclick = undefined)
+        );
+      }
+      
+    })
+
     // remove events when component is unmounted
     return () =>
       dropdown.forEach(
         elementEventHandler(["click", "touchstart"], "open", "remove")
       );
   }, []);
+
 
   const truncate = (str) => {
     return str.substr(0, 5) + "..." + str.substr(-13);

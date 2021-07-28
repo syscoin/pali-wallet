@@ -172,7 +172,7 @@ browser.runtime.onInstalled.addListener(async () => {
   window.controller.stateUpdater();
 
   TrezorConnect.init({
-    connectSrc: 'https://localhost:8088/',
+    // connectSrc: 'https://localhost:8088/',
     lazyLoad: true, // this param will prevent iframe injection until TrezorConnect.method will be called
     manifest: {
       email: 'claudiocarvalhovilasboas@gmail.com',
