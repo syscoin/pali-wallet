@@ -33,7 +33,7 @@ const ConnectWallet = () => {
   };
 
   const handleCancelConnection = () => {
-    // history.push('/home');
+    history.push('/home');
 
     console.log('account id and sender', accountId, currentSenderURL);
 
