@@ -1,4 +1,4 @@
-import { sendMessage } from 'containers/auth/helpers';
+import { sendMessage } from 'scripts/Background/helpers';
 
 const ConnectionsController = (): IConnectionsController => {
   const getConnectedAccountXpub = async () => {

@@ -11,16 +11,24 @@
 }
 
 .modal {
-  width: 70%;
+  position: absolute;
+  top: -10px;
+}
+
+.modalNotConnected {
+  position: absolute;
   top: 50px;
+}
+
+.modal, .modalNotConnected {
+  width: 70%;
   z-index: 20;
   transition: .3s all;
-  position: absolute;
   padding: 1rem 2rem;
   border-radius: 1rem;
   border: 1px solid $deepPink;
   font-size: .8rem;
-  color: $royalBlue-medium;
+  color: $white;
   font-family: 'Poppins', sans-serif;
   background-color: $navy-darker;
 

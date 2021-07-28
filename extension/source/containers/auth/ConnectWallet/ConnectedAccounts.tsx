@@ -9,11 +9,11 @@ import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { useAlert } from 'react-alert';
+import { useController } from 'hooks/index';
 
 import { getHost } from '../../../scripts/Background/helpers';
 
 import styles from './ConnectWallet.scss';
-import { useController } from 'hooks/index';
 
 const ConnectedAccounts = () => {
   const controller = useController();
@@ -51,7 +51,7 @@ const ConnectedAccounts = () => {
       });
 
       controller.wallet.account.updateTokensState().then(() => {
-        console.log('tokens state updated after change connected account')
+        console.log('tokens state updated after change connected account');
       });
     } catch (error) {
       alert.removeAll();
@@ -70,7 +70,7 @@ const ConnectedAccounts = () => {
       <Header showLogo />
 
       {changeAccountIsOpen ? (
-        <div className={styles.list} style={{ marginTop: "2rem" }}>
+        <div className={styles.list} style={{ marginTop: '2rem' }}>
           <p className={styles.connectedTitle}>Choose your account</p>
 
           <ul className={styles.changeAccounts}>

@@ -35,7 +35,7 @@ const ConfirmConnection = () => {
       .sendMessage({
         type: 'RESET_CONNECTION_INFO',
         target: 'background',
-        id: connectedAccount[0].id,
+        id: connectedAccount ? connectedAccount[0].id : -1,
         url: currentSenderURL,
       })
       .then(() => {

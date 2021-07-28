@@ -22,20 +22,20 @@ import styles from './Home.scss';
 interface ITxsPanel {
   address: string;
   assets: Assets[];
+  getTransactionAssetData: any;
+  getTransactionData: any;
   openAssetBlockExplorer: any;
   openBlockExplorer: any;
   setAssetSelected: any;
+  setAssetTx: any;
+  setAssetType: any;
   setOpenAssetBlockExplorer: any;
   setOpenBlockExplorer: any;
-  setTxidSelected: any;
-  transactions: Transaction[];
-  txidSelected: any;
-  setTxType: any;
-  setAssetType: any;
-  getTransactionData: any;
   setTx: any;
-  setAssetTx: any;
-  getTransactionAssetData: any;
+  txidSelected: any;
+  transactions: Transaction[];
+  setTxidSelected: any;
+  setTxType: any;
 }
 
 const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, setTxidSelected, setAssetSelected, setOpenAssetBlockExplorer, setTxType, setAssetType, getTransactionData, setTx, setAssetTx, getTransactionAssetData }) => {

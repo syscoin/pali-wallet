@@ -1,5 +1,9 @@
 export const getHost = (url: string) => {
-  return new URL(url).host;
+  if (typeof url === 'string' && url) {
+    return new URL(url).host;
+  }
+
+  return url;
 };
 
 export const sendMessage = (

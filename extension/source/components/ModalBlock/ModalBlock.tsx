@@ -1,21 +1,25 @@
 import React, { FC, useState, useEffect } from 'react';
 import clsx from 'clsx';
 import DownArrowIcon from '@material-ui/icons/ExpandMore';
-
-import styles from './ModalBlock.scss';
-import { ellipsis, formatDistanceDate, formatURL } from 'containers/auth/helpers';
+import {
+  ellipsis,
+  formatDistanceDate,
+  formatURL,
+} from 'containers/auth/helpers';
 import { CircularProgress } from '@material-ui/core';
 import { useController, useCopyClipboard } from 'hooks/index';
-import { useAlert } from "react-alert";
+import { useAlert } from 'react-alert';
+
+import styles from './ModalBlock.scss';
 
 interface IModalBlock {
+  assetTx?: any;
+  assetType?: any;
   callback?: any;
   message?: any;
   setCallback?: any;
   title: any;
   tx?: any;
-  assetTx?: any;
-  assetType?: any;
   txType?: any;
 }
 
@@ -42,11 +46,9 @@ const ModalBlock: FC<IModalBlock> = ({
   useEffect(() => {
     if (isCopied) {
       alert.removeAll();
-      alert.success("Address copied to clipboard", { timeout: 2000 })
+      alert.success('Address copied to clipboard', { timeout: 2000 });
     }
-  }, [
-    isCopied
-  ]);
+  }, [isCopied]);
 
   const recipients: any = {};
   const senders: any = {};
@@ -55,10 +57,10 @@ const ModalBlock: FC<IModalBlock> = ({
     if (tx) {
       const { vin, vout } = tx;
 
-      console.log('tx', tx)
+      console.log('tx', tx);
 
       if (vin && vout) {
-        for (let item of vout) {
+        for (const item of vout) {
           if (item.addresses) {
             recipients[item.addresses[0]] = item.addresses[0];
           }
@@ -70,13 +72,15 @@ const ModalBlock: FC<IModalBlock> = ({
               return;
             }
 
-            controller.wallet.account.getTransactionInfoByTxId(item.txid).then((response: any) => {
-              for (const vout of response.vout) {
-                if (vout.n === item.vout) {
-                  senders[item.addresses[0]] = item.addresses[0];
+            controller.wallet.account
+              .getTransactionInfoByTxId(item.txid)
+              .then((response: any) => {
+                for (const vout of response.vout) {
+                  if (vout.n === item.vout) {
+                    senders[item.addresses[0]] = item.addresses[0];
+                  }
                 }
-              }
-            });
+              });
           }
         }
 
@@ -94,43 +98,55 @@ const ModalBlock: FC<IModalBlock> = ({
     }
   }, [tx]);
 
-  const renderAssetData = ({ assetGuid, contract, symbol, pubData, totalSupply, maxSupply, decimals, updateCapabilityFlags }: any) => {
+  const renderAssetData = ({
+    assetGuid,
+    contract,
+    symbol,
+    pubData,
+    totalSupply,
+    maxSupply,
+    decimals,
+    updateCapabilityFlags,
+  }: any) => {
     const assetTransaction = [
       {
         label: 'Asset Guid',
-        value: assetGuid
+        value: assetGuid,
       },
       {
         label: 'Type',
-        value: assetType
+        value: assetType,
       },
       {
         label: 'Contract',
-        value: contract
+        value: contract,
       },
       {
         label: 'Symbol',
-        value: symbol ? atob(String(symbol)) : ''
+        value: symbol ? atob(String(symbol)) : '',
       },
       {
         label: 'Description',
-        value: pubData && pubData.desc ? formatURL(atob(String(pubData.desc)), 15) : ''
+        value:
+          pubData && pubData.desc
+            ? formatURL(atob(String(pubData.desc)), 15)
+            : '',
       },
       {
         label: 'Total supply',
-        value: (totalSupply) / 10 ** Number(decimals)
+        value: totalSupply / 10 ** Number(decimals),
       },
       {
         label: 'Max supply',
-        value: (maxSupply) / 10 ** Number(decimals)
+        value: maxSupply / 10 ** Number(decimals),
       },
       {
         label: 'Decimals',
-        value: decimals
+        value: decimals,
       },
       {
         label: 'Capability flags',
-        value: updateCapabilityFlags
+        value: updateCapabilityFlags,
       },
     ];
 
@@ -140,39 +156,48 @@ const ModalBlock: FC<IModalBlock> = ({
           <p>{label}</p>
           <b>{value}</b>
         </div>
-      )
-    })
-  }
+      );
+    });
+  };
 
-  const renderTxData = ({ blockHash, confirmations, blockTime, valueIn, value, fees }: any) => {
+  const renderTxData = ({
+    blockHash,
+    confirmations,
+    blockTime,
+    valueIn,
+    value,
+    fees,
+  }: any) => {
     const txData = [
       {
         label: 'Block hash',
-        value: ellipsis(blockHash)
+        value: ellipsis(blockHash),
       },
       {
         label: 'Type',
-        value: txType || 'Transaction'
+        value: txType || 'Transaction',
       },
       {
         label: 'Confirmations',
-        value: confirmations
+        value: confirmations,
       },
       {
         label: 'Mined',
-        value: blockTime ? formatDistanceDate(new Date(blockTime * 1000).toDateString()) : ''
+        value: blockTime
+          ? formatDistanceDate(new Date(blockTime * 1000).toDateString())
+          : '',
       },
       {
         label: 'Total input',
-        value: valueIn ? (valueIn) / 10 ** 8 : ''
+        value: valueIn ? valueIn / 10 ** 8 : '',
       },
       {
         label: 'Total output',
-        value: value ? (value) / 10 ** 8 : ''
+        value: value ? value / 10 ** 8 : '',
       },
       {
         label: 'Total',
-        value: fees ? fees / 10 ** 8 : ''
+        value: fees ? fees / 10 ** 8 : '',
       },
     ];
 
@@ -182,21 +207,52 @@ const ModalBlock: FC<IModalBlock> = ({
           <p>{label}</p>
           <b>{value}</b>
         </div>
-      )
-    })
-  }
+      );
+    });
+  };
 
   const renderAddresses = (list: any) => {
     return Object.values(list).map((address: any, index: number) => {
-      return <li key={index}>
-        <p
-          onClick={() => copyText(address)}
-        >
-          {ellipsis(address) || '...'}
-        </p>
-      </li>
-    })
-  }
+      return (
+        <li key={index}>
+          <p onClick={() => copyText(address)}>{ellipsis(address) || '...'}</p>
+        </li>
+      );
+    });
+  };
+
+  // const getTokenTransferItem = (transaction: any) => {
+  //   const { vin, vout, tokenTransfers } = transaction;
+
+  //   if (tokenTransfers && vin && vout) {
+  //     console.log('txxxx', tokenTransfers, vin, vout)
+
+  //     for (const v of vin) {
+  //       return controller.wallet.account.getTransactionInfoByTxId(v.txid).then((response: any) => {
+  //         const voutZero = response.vout.find((voutItem: any) => {
+  //           return voutItem.n === 0;
+  //         });
+
+  //         if (voutZero) {
+  //           const assetGuid = tokenTransfers.find((token: any) => {
+  //             return token.token === voutZero.assetInfo.assetGuid;
+  //           })
+
+  //           if (assetGuid) {
+  //             return (
+  //               <div className={styles.flexCenter}>
+  //                 <p>{assetGuid.symbol ? atob(assetGuid.symbol) : ''}</p>
+  //                 <b>{assetGuid.token}</b>
+  //               </div>
+  //             )
+  //           }
+
+  //           return null;
+  //         }
+  //       })
+  //     }
+  //   }
+  // }
 
   return (
     <div className={styles.modal}>
@@ -222,7 +278,13 @@ const ModalBlock: FC<IModalBlock> = ({
       {tx && !assetTx ? (
         <div>
           <div className={styles.transaction}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
               <div className={styles.select}>
                 <div
                   className={clsx(styles.fullselect, {
@@ -283,15 +345,26 @@ const ModalBlock: FC<IModalBlock> = ({
                     <DownArrowIcon className={styles.arrow} />
                   </span>
 
-                  <ul className={styles.options} style={{ padding: "0 .5rem", margin: "0 1rem 1rem" }}>
-                    {tx.tokenTransfers && tx.tokenTransfers.map((tokenTransfer: any, index: number) => {
-                      return (
-                        <div key={index} className={styles.flexCenter}>
-                          <p>{tokenTransfer.symbol ? atob(tokenTransfer.symbol) : ''}</p>
-                          <b>{tokenTransfer.token}</b>
-                        </div>
-                      )
-                    })}
+                  <ul
+                    className={styles.options}
+                    style={{ padding: '0 .5rem', margin: '0 1rem 1rem' }}
+                  >
+                    {tx.tokenTransfers &&
+                      tx.tokenTransfers.map(
+                        (tokenTransfer: any, index: number) => {
+                          return (
+                            <div key={index} className={styles.flexCenter}>
+                              <p>
+                                {tokenTransfer.symbol
+                                  ? atob(tokenTransfer.symbol)
+                                  : ''}
+                              </p>
+                              <b>{tokenTransfer.token}</b>
+                            </div>
+                          );
+                        }
+                      )}
+                    {/* {getTokenTransferItem(tx)} */}
                   </ul>
                 </div>
               </div>
@@ -307,9 +380,12 @@ const ModalBlock: FC<IModalBlock> = ({
       ) : (
         <div>
           {assetTx && !tx ? (
-            <div className={styles.transaction} style={{ marginTop: "2rem" }}>
-              <div className={styles.data} style={{ height: "342px" }}>
-                <h2>Asset {assetTx.assetGuid} - {assetTx.symbol ? atob(String(assetTx.symbol)) : ''}</h2>
+            <div className={styles.transaction} style={{ marginTop: '2rem' }}>
+              <div className={styles.data} style={{ height: '342px' }}>
+                <h2>
+                  Asset {assetTx.assetGuid} -{' '}
+                  {assetTx.symbol ? atob(String(assetTx.symbol)) : ''}
+                </h2>
 
                 {renderAssetData(assetTx)}
               </div>
@@ -323,7 +399,7 @@ const ModalBlock: FC<IModalBlock> = ({
           ) : (
             <div
               className={clsx(styles.mask, {
-                [styles.hide]: tx
+                [styles.hide]: tx,
               })}
             >
               <CircularProgress className={styles.loader} />

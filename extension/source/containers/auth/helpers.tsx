@@ -39,54 +39,16 @@ export const formatNumber = (num: number, min = 4, max = 4, maxSig = 12) => {
 
 export const formatCurrency = (number: string, precision: number) => {
   if (Number(number) < 1e-6) {
-    number = Number(number).toFixed(precision)
+    number = Number(number).toFixed(precision);
   }
 
   return currency(number, { separator: ',', symbol: '', precision }).format();
 };
 
-export const formatURL = (url: string, size: number = 30) => {
+export const formatURL = (url: string, size = 30) => {
   if (url.length >= size) {
     return `${url.slice(0, size)}...`;
   }
 
   return url;
-};
-
-export const sendMessage = (
-  eventReceivedDetails: any,
-  postMessageDetails: any
-) => {
-  return new Promise((resolve) => {
-    const callback = (event: any) => {
-      if (
-        event.data.type === eventReceivedDetails.type &&
-        event.data.target === eventReceivedDetails.target
-      ) {
-        resolve(
-          eventReceivedDetails.freeze
-            ? Object.freeze(event.data[eventReceivedDetails.eventResult])
-            : event.data[eventReceivedDetails.eventResult]
-        );
-
-        console.log(
-          'event result',
-          eventReceivedDetails,
-          event.data[eventReceivedDetails.eventResult]
-        );
-
-        window.removeEventListener('message', callback);
-
-        return true;
-      }
-
-      return false;
-    };
-
-    window.addEventListener('message', callback);
-
-    window.postMessage(postMessageDetails, '*');
-
-    return true;
-  });
 };

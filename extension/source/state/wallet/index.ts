@@ -31,19 +31,32 @@ const initialState: IWalletState = {
   transferringOwnership: false,
   changingNetwork: false,
   signingTransaction: false,
-  walletTokens: []
+  walletTokens: [],
+  // tabs: {
+  //   currentSenderURL: '',
+  //   currentURL: '',
+  //   canConnect: false,
+  //   connections: [],
+  // },
 };
 
 const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
-    updateAllTokens(state: IWalletState, action: PayloadAction<IWalletTokenState>) {
+    updateAllTokens(
+      state: IWalletState,
+      action: PayloadAction<IWalletTokenState>
+    ) {
       const { accountId, accountXpub, tokens, holdings } = action.payload;
 
-      const sameAccountIndexAndDifferentXpub: number = state.walletTokens.findIndex((accountTokens: any) => {
-        return accountTokens.accountId === accountId && accountTokens.accountXpub !== accountXpub;
-      });
+      const sameAccountIndexAndDifferentXpub: number =
+        state.walletTokens.findIndex((accountTokens: any) => {
+          return (
+            accountTokens.accountId === accountId &&
+            accountTokens.accountXpub !== accountXpub
+          );
+        });
 
       if (sameAccountIndexAndDifferentXpub > -1) {
         state.walletTokens[sameAccountIndexAndDifferentXpub] = action.payload;
@@ -51,9 +64,14 @@ const WalletState = createSlice({
         return;
       }
 
-      const index: number = state.walletTokens.findIndex((accountTokens: any) => {
-        return accountTokens.accountId === accountId && accountTokens.accountXpub === accountXpub;
-      });
+      const index: number = state.walletTokens.findIndex(
+        (accountTokens: any) => {
+          return (
+            accountTokens.accountId === accountId &&
+            accountTokens.accountXpub === accountXpub
+          );
+        }
+      );
 
       const walletTokens = state.walletTokens[index];
 
@@ -69,11 +87,17 @@ const WalletState = createSlice({
         return;
       }
 
-      if (state.walletTokens.indexOf({ ...walletTokens, holdings: holdings, tokens: tokens }) > -1) {
+      if (
+        state.walletTokens.indexOf({
+          ...walletTokens,
+          holdings,
+          tokens,
+        }) > -1
+      ) {
         return;
       }
 
-      console.log('push new account item:', accountId)
+      console.log('push new account item:', accountId);
 
       state.walletTokens.push(action.payload);
     },
@@ -86,7 +110,7 @@ const WalletState = createSlice({
         issuingNFT: false,
         updatingAsset: false,
         transferringOwnership: false,
-        signingTransaction: false
+        signingTransaction: false,
       };
     },
     updateSwitchNetwork(state: IWalletState, action: PayloadAction<boolean>) {
@@ -166,6 +190,10 @@ const WalletState = createSlice({
       state: IWalletState,
       action: PayloadAction<{ accountId: number, url: string }>
     ) {
+      console.log('action payload connections array', action.payload);
+
+      // debugger;
+
       const index: number = state.connections.findIndex(
         (connection) =>
           connection.accountId !== action.payload.accountId &&
@@ -327,7 +355,11 @@ const WalletState = createSlice({
         (element: IAccountState) => element.id === action.payload.id
       );
 
-      console.log('account index and transactions', state.accounts[indexOf], action.payload.txs)
+      console.log(
+        'account index and transactions',
+        state.accounts[indexOf],
+        action.payload.txs
+      );
 
       state.accounts[indexOf].transactions = action.payload.txs;
     },
@@ -372,7 +404,7 @@ export const {
   updateSwitchNetwork,
   clearAllTransactions,
   signTransactionState,
-  updateAllTokens
+  updateAllTokens,
 } = WalletState.actions;
 
 export default WalletState.reducer;
