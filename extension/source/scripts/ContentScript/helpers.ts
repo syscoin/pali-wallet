@@ -196,7 +196,7 @@ export const listenAndSendMessageFromPageToBackground = (event: any) => {
   const dataFromPageToCreateAndIssueNFT = {
     symbol,
     issuer,
-    totalShares,
+    precision,
     description,
     notarydetails,
     auxfeedetails,
