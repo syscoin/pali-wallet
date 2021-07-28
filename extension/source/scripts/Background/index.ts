@@ -53,28 +53,55 @@ const observeStore = async (store: any) => {
         active: true,
         lastFocusedWindow: true,
         windowType: 'normal'
-      }).then(async (tabs: any) => {
+      }).then((tabs: any) => {
         if (tabs[0]) {
-          console.log('observe store tabs last focused window', tabs)
-
           const isAccountConnected = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
             return account.connectedTo.find((url: string) => {
               return url === new URL(`${tabs[0].url}`).host;
             })
           }) >= 0;
 
-          console.log('is account connected observe store', isAccountConnected)
-
           if (isAccountConnected) {
-            await browser.tabs.sendMessage(Number(tabs[0].id), {
+            browser.tabs.sendMessage(Number(tabs[0].id), {
               type: 'WALLET_UPDATED',
               target: 'contentScript',
               connected: false
+            }).then(() => {
+              console.log('wallet update sent to the webpage')
+            }).catch((error) => {
+              console.log('error sending update to page', error);
             });
           }
+
+          // browser.tabs.query({}).then((tabs) => {
+          //   for (const tab of tabs) {
+          //     console.log('tab and tabs', tab, tabs)
+          //     const isAccountConnected = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
+          //       return account.connectedTo.find((url: string) => {
+          //         return url === new URL(String(tab.url)).host;
+          //       })
+          //     }) >= 0;
+
+          //     if (isAccountConnected) {
+          //       console.log('is connected account', )
+
+          //       Promise.resolve(browser.tabs.sendMessage(Number(tab.id), {
+          //         type: 'WALLET_UPDATED',
+          //         target: 'contentScript',
+          //         connected: false
+          //       }).then((response) => {
+          //         console.log('wallet updated', response)
+          //       }))
+          //     }
+
+          //     return;
+          //   }
+          // })
         }
 
-        return;
+        
+      }).catch((error) => {
+        console.log('error getting current tab', error);
       });
     }
   }
@@ -94,6 +121,17 @@ const createPopup = async (url: string) => {
     alreadyOpen: false,
     windowId: -1
   };
+
+  browser.tabs.query({ active: true, lastFocusedWindow: true })
+    .then((tabs) => {
+      if (tabs[0].title === 'Pali Wallet') {
+        return;
+      }
+
+      store.dispatch(updateCurrentURL(String(tabs[0].url)));
+    }).catch((error) => {
+      console.log('error getting tabs creating popup', error);
+    });
 
   browser.tabs.query({ active: true })
     .then(async (tabs) => {
@@ -121,6 +159,9 @@ const createPopup = async (url: string) => {
       windowpopup.onbeforeunload = () => {
         store.dispatch(clearAllTransactions());
       }
+    })
+    .catch((error) => {
+      console.log(error);
     });
 };
 
@@ -148,8 +189,6 @@ browser.runtime.onInstalled.addListener(async () => {
     } = request;
 
     if (typeof request === 'object') {
-      console.log('REQUEST MESSAGE', request, sender)
-
       if (type == 'CONNECT_WALLET' && target == 'background') {  // OK
         const url = browser.runtime.getURL('app.html');
 
@@ -164,7 +203,6 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'WALLET_ERROR' && target == 'background') {
-        console.log('response error', request)
         const {
           transactionError,
           invalidParams,
@@ -177,16 +215,24 @@ browser.runtime.onInstalled.addListener(async () => {
           transactionError,
           invalidParams,
           message
+        }).then(() => {
+          console.log('error message sent to the webpage')
+        }).catch((error) => {
+          console.log('error sending error message', error);
         });
       }
 
       if (type == 'TRANSACTION_RESPONSE' && target == 'background') {
-        console.log('response trancaiton', request)
+        console.log('response transaction', request)
 
         browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'TRANSACTION_RESPONSE',
           target: 'contentScript',
           response: request.response
+        }).then(() => {
+          console.log('transaction response sent to the webpage')
+        }).catch((error) => {
+          console.log('error sending transation response', error);
         });
 
         const interval = setInterval(async () => {
@@ -204,29 +250,34 @@ browser.runtime.onInstalled.addListener(async () => {
 
             clearInterval(interval);
           }
-
-          return;
         }, 6000);
       }
 
-
-
       if (type == 'RESET_CONNECTION_INFO' && target == 'background') {
+        const { id, url } = request;
+
         store.dispatch(updateCanConnect(false));
-        console.log('removing connection')
-        store.dispatch(removeConnection({
-          accountId: request.id,
-          url: request.url
-        }));
+        store.dispatch(removeConnection({ accountId: id, url }));
         store.dispatch(setSenderURL(''));
 
-        Promise.resolve(browser.tabs.sendMessage(Number(sender.tab?.id), {
-          type: 'WALLET_UPDATED',
-          target: 'contentScript',
-          connected: false
-        }).then((response) => {
-          console.log('wallet updated', response)
-        }))
+        browser.tabs.query({ url })
+          .then((tabs) => {
+            if (tabs) {
+              tabs.map((tab: any) => {
+                Promise.resolve(browser.tabs.sendMessage(Number(tab.id), {
+                  type: 'WALLET_UPDATED',
+                  target: 'contentScript',
+                  connected: false
+                }).then(() => {
+                  console.log('wallet updated')
+                }).catch(() => {
+                  console.log('extension context invalidated in other tabs with the same url, you need to refresh the tab')
+                }))
+              })
+            }
+          }).catch((error) => {
+            console.log('error getting tabs', error);
+          });
 
         return;
       }
@@ -236,8 +287,6 @@ browser.runtime.onInstalled.addListener(async () => {
           accountId: request.id,
           url: window.senderURL
         }));
-
-        console.log('atualizando select account')
 
         return;
       }
@@ -260,6 +309,10 @@ browser.runtime.onInstalled.addListener(async () => {
             target: 'contentScript',
             connectionConfirmed: true,
             state: store.getState().wallet
+          }).then(() => {
+            console.log('wallet connection confirmed')
+          }).catch((error) => {
+            console.log('error confirming connection', error);
           });
         }
 
@@ -280,17 +333,17 @@ browser.runtime.onInstalled.addListener(async () => {
         store.dispatch(updateCanConnect(false));
         store.dispatch(clearAllTransactions());
 
-        console.log('close popup message')
-
         browser.tabs.query({ active: true })
           .then(async (tabs) => {
-            console.log('close popup tabs', tabs)
             tabs.map(async (tab) => {
               if (tab.title === 'Pali Wallet') {
                 await browser.windows.remove(Number(tab.windowId));
               }
             });
-          });
+          })
+          .catch((error) => {
+            console.log('error removing window', error);
+          });;
 
         return;
       }
@@ -345,8 +398,6 @@ browser.runtime.onInstalled.addListener(async () => {
 
       if (type == 'CHECK_ADDRESS' && target == 'background') {
         const isValidSYSAddress = window.controller.wallet.account.isValidSYSAddress(request.messageData, store.getState().wallet.activeNetwork);
-
-        console.log('is valid sys address', isValidSYSAddress, request.address, store.getState().wallet.activeNetwork)
 
         browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'CHECK_ADDRESS',
@@ -490,8 +541,6 @@ browser.runtime.onInstalled.addListener(async () => {
         } = request.messageData;
 
         const assetFromAssetGuid = window.controller.wallet.account.getDataAsset(assetGuid);
-
-        console.log('asset data', assetFromAssetGuid)
 
         if (amount < 0 || amount >= assetFromAssetGuid.balance) {
           throw new Error('invalid amount value');

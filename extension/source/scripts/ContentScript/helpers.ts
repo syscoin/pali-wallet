@@ -161,7 +161,7 @@ export const listenAndSendMessageFromPageToBackground = (event: any) => {
     assetGuid,
     address,
     newOwner,
-    psbt
+    psbt,
   } = event.data;
 
   const sendToken = {

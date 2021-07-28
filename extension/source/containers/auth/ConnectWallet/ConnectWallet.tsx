@@ -24,7 +24,7 @@ const ConnectWallet = () => {
   const handleSelectAccount = (id: number) => {
     setAccountId(id);
 
-    console.log('seelct account id', id)
+    console.log('seelct account id', id);
     browser.runtime.sendMessage({
       type: 'SELECT_ACCOUNT',
       target: 'background',
@@ -35,33 +35,40 @@ const ConnectWallet = () => {
   const handleCancelConnection = () => {
     // history.push('/home');
 
-    console.log('account id and sender', accountId, currentSenderURL)
-
+    console.log('account id and sender', accountId, currentSenderURL);
 
     if (accountId > -1) {
-      browser.runtime.sendMessage({
-        type: 'RESET_CONNECTION_INFO',
-        target: 'background',
-        id: accountId,
-        url: currentSenderURL,
-      }).then(() => {
-        browser.runtime.sendMessage({
-          type: 'CLOSE_POPUP',
+      browser.runtime
+        .sendMessage({
+          type: 'RESET_CONNECTION_INFO',
           target: 'background',
-        }).then(() => {
-          console.log('close popup message sent to background account id === -1')
+          id: accountId,
+          url: currentSenderURL,
+        })
+        .then(() => {
+          browser.runtime
+            .sendMessage({
+              type: 'CLOSE_POPUP',
+              target: 'background',
+            })
+            .then(() => {
+              console.log(
+                'close popup message sent to background account id === -1'
+              );
+            });
         });
-      });
 
       return;
     }
 
-    browser.runtime.sendMessage({
-      type: 'CLOSE_POPUP',
-      target: 'background',
-    }).then(() => {
-      console.log('close popup message sent to background')
-    });
+    browser.runtime
+      .sendMessage({
+        type: 'CLOSE_POPUP',
+        target: 'background',
+      })
+      .then(() => {
+        console.log('close popup message sent to background');
+      });
   };
 
   return (

@@ -39,13 +39,13 @@ export const formatNumber = (num: number, min = 4, max = 4, maxSig = 12) => {
 
 export const formatCurrency = (number: string, precision: number) => {
   if (Number(number) < 1e-6) {
-    number = Number(number).toFixed(precision)
+    number = Number(number).toFixed(precision);
   }
 
   return currency(number, { separator: ',', symbol: '', precision }).format();
 };
 
-export const formatURL = (url: string, size: number = 30) => {
+export const formatURL = (url: string, size = 30) => {
   if (url.length >= size) {
     return `${url.slice(0, size)}...`;
   }

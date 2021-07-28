@@ -14,13 +14,13 @@ import { useController } from 'hooks/index';
 import { useFiat } from 'hooks/usePrice';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
+import { browser } from 'webextension-polyfill-ts';
 
 import { formatNumber } from '../helpers';
 import { getHost } from '../../../scripts/Background/helpers';
 
 import TxsPanel from './TxsPanel';
 import styles from './Home.scss';
-import { browser } from 'webextension-polyfill-ts';
 
 const Home = () => {
   const controller = useController();
@@ -49,18 +49,19 @@ const Home = () => {
   const [currentTabURL, setCurrentTabURL] = useState<string>(currentURL);
 
   useEffect(() => {
-    console.log('aaaa', Math.floor(Math.random() * 1200))
+    console.log('aaaa', Math.floor(Math.random() * 1200));
     window.addEventListener('message', (event) => {
-      console.log('event message', event)
-
-    })
-
+      console.log('event message', event);
+    });
 
     browser.windows.getAll({ populate: true }).then((windows) => {
       for (const window of windows) {
-        console.log('get views', browser.extension.getViews({ windowId: window.id }))
+        console.log(
+          'get views',
+          browser.extension.getViews({ windowId: window.id })
+        );
       }
-    })
+    });
 
     // browser.runtime.onMessage.addListener((request: any) => {
     //   console.log('request', request)
@@ -72,23 +73,25 @@ const Home = () => {
 
     browser.windows.getAll({ populate: true }).then((windows) => {
       for (const window of windows) {
-        console.log('window tabs', window.tabs)
-        const views = browser.extension.getViews({ windowId: window.id })
+        console.log('window tabs', window.tabs);
+        const views = browser.extension.getViews({ windowId: window.id });
 
         if (views) {
-          console.log(views)
+          console.log(views);
 
-          browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
-            console.log('current url', tabs[0])
-            setCurrentTabURL(String(tabs[0].url));
-          })
+          browser.tabs
+            .query({ active: true, currentWindow: true })
+            .then((tabs) => {
+              console.log('current url', tabs[0]);
+              setCurrentTabURL(String(tabs[0].url));
+            });
 
           return;
         }
 
-        console.log('views window id', views, window.id)
+        console.log('views window id', views, window.id);
       }
-    })
+    });
 
     // if (window.url === url) {
     //   console.log('EXTENSION URL', url, window)
@@ -117,11 +120,7 @@ const Home = () => {
     //     setCurrentTabURL(String(tabs[0].url));
     //   })
     // })
-
-
-  }, [
-    !controller.wallet.isLocked()
-  ]);
+  }, [!controller.wallet.isLocked()]);
 
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();
@@ -210,7 +209,7 @@ const Home = () => {
           setCallback={() => {
             setOpenBlockExplorer(false);
             setTxidSelected('');
-            setTx(null)
+            setTx(null);
           }}
           callback={() => handleOpenExplorer(txidSelected)}
           tx={tx}
@@ -223,9 +222,9 @@ const Home = () => {
           title="Open block explorer" // asset type
           message="Would you like to go to view asset in Sys Block Explorer?"
           setCallback={() => {
-            setOpenAssetBlockExplorer(false)
+            setOpenAssetBlockExplorer(false);
             setAssetSelected(-1);
-            setAssetTx(null)
+            setAssetTx(null);
           }}
           callback={() => handleOpenAssetExplorer(assetSelected)}
           assetTx={assetTx}
@@ -301,9 +300,9 @@ const Home = () => {
               <small style={{ marginTop: '5px', marginBottom: '5px' }}>
                 {activeNetwork !== 'testnet'
                   ? getFiatAmount(
-                    accounts.find((element) => element.id === activeAccountId)
-                      ?.balance || 0
-                  )
+                      accounts.find((element) => element.id === activeAccountId)
+                        ?.balance || 0
+                    )
                   : ''}
               </small>
             )}

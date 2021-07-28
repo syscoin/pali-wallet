@@ -83,7 +83,15 @@ const SiteTransaction: FC<ISiteTransaction> = ({
               fullWidth
               name="fee"
               value={fee}
-              onChange={(event) => setFee(Number(event.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1')))}
+              onChange={(event) =>
+                setFee(
+                  Number(
+                    event.target.value
+                      .replace(/[^0-9.]/g, '')
+                      .replace(/(\..*?)\..*/g, '$1')
+                  )
+                )
+              }
             />
 
             <Button

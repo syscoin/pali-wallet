@@ -33,14 +33,14 @@ export interface IAccountUpdateXpub {
 }
 
 export interface Holding {
-  balance: number;
-  type: string;
-  decimals: number;
-  symbol: string;
   assetGuid: string;
+  balance: number;
   baseAssetID: string;
-  nftAssetID: string;
+  decimals: number;
   description: string;
+  nftAssetID: string;
+  symbol: string;
+  type: string;
 }
 
 export interface IWalletTokenState {
@@ -56,10 +56,10 @@ export interface Connection {
 }
 
 export interface Tabs {
-  currentSenderURL: string;
-  currentURL: string;
   canConnect: boolean;
   connections: Connection[];
+  currentSenderURL: string;
+  currentURL: string;
 }
 
 export default interface IWalletState {
@@ -76,10 +76,10 @@ export default interface IWalletState {
   encriptedMnemonic: any;
   issuingAsset: boolean;
   issuingNFT: boolean;
+  signingTransaction: boolean;
   status: number;
+  // tabs: Tabs;
   transferringOwnership: boolean;
   updatingAsset: boolean;
-  signingTransaction: boolean;
   walletTokens: IWalletTokenState[];
-  tabs: Tabs;
 }
