@@ -1316,7 +1316,7 @@ const AccountController = (actions: {
       symbol,
       description,
       issuer,
-      totalShares,
+      precision,
     } = item;
 
     if (getConnectedAccount().isTrezorWallet) {
@@ -1324,9 +1324,9 @@ const AccountController = (actions: {
     }
 
     const assetOpts = {
-      precision: totalShares,
+      precision,
       symbol,
-      maxsupply: new sys.utils.BN(1 * (10 ** totalShares)),
+      maxsupply: new sys.utils.BN(1 * (10 ** precision)),
       description,
     }
 
@@ -1354,7 +1354,7 @@ const AccountController = (actions: {
                 {
                   changeAddress: null,
                   outputs: [{
-                    value: new sys.utils.BN(1 * (10 ** totalShares)),
+                    value: new sys.utils.BN(1 * (10 ** precision)),
                     address: issuer
                   }]
                 }]

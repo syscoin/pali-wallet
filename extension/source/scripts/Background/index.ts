@@ -541,7 +541,7 @@ browser.runtime.onInstalled.addListener(async () => {
         const {
           symbol,
           issuer,
-          totalShares,
+          precision,
           description,
           notarydetails,
           auxfeedetails,
@@ -549,7 +549,7 @@ browser.runtime.onInstalled.addListener(async () => {
           payoutAddress,
         } = request.messageData;
 
-        if (totalShares < 0 || totalShares > 8) {
+        if (precision < 0 || precision > 8) {
           throw new Error('invalid total shares value');
         }
 
@@ -560,7 +560,7 @@ browser.runtime.onInstalled.addListener(async () => {
         window.controller.wallet.account.setDataFromPageToMintNFT({
           symbol,
           issuer,
-          totalShares,
+          precision,
           description,
           notarydetails,
           auxfeedetails,

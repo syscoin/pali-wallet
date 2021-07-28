@@ -15,7 +15,7 @@ import "react-toastify/dist/ReactToastify.min.css";
 
 export default function CreateNFT() {
   const [symbol, setSymbol] = useState("");
-  const [totalShares, setTotalShares] = useState(1);
+  const [precision, setPrecision] = useState(1);
   const [description, setDescription] = useState("");
   const [metadataDescription, setMetadataDescription] = useState("");
   const [file, setFile] = useState();
@@ -30,13 +30,13 @@ export default function CreateNFT() {
 
   const dataYup = {
     symbol,
-    totalShares,
+    precision,
     metadataDescription,
   };
 
   const schema = yup.object().shape({
     symbol: yup.string().required("Symbol is required!"),
-    totalShares: yup.number(0, 1, 2, 3, 4, 5, 6, 7, 8).required(),
+    precision: yup.number(0, 1, 2, 3, 4, 5, 6, 7, 8).required(),
     metadataDescription: yup.string().required("Metadata URL is required!"),
   });
 
@@ -49,7 +49,7 @@ export default function CreateNFT() {
       controller.handleCreateNFT({
         symbol,
         issuer: connectedAccountAddress,
-        totalShares: Number(totalShares),
+        precision: Number(precision),
         description: metadataDescription,
         ...advancedOptions,
       })
@@ -226,7 +226,7 @@ export default function CreateNFT() {
               <select
                 className="form-control"
                 id="shares"
-                onChange={handleInputChange(setTotalShares)}
+                onChange={handleInputChange(setPrecision)}
               >
                 <option
                 value={0}>1</option>

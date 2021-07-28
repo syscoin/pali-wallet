@@ -149,7 +149,7 @@ declare type CreateAndIssueNFTItems = {
   },
   payoutAddress?: string,
   symbol: string,
-  totalShares: number
+  precision: number
 }
 
 declare type UpdateAssetItems = {

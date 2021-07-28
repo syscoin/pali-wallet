@@ -327,7 +327,7 @@ const ConnectionsController = (): IConnectionsController => {
       const {
         symbol,
         issuer,
-        totalShares,
+        precision,
         description,
         notarydetails,
         auxfeedetails,
@@ -347,7 +347,7 @@ const ConnectionsController = (): IConnectionsController => {
           target: 'contentScript',
           symbol,
           issuer,
-          totalShares: totalShares || 0,
+          precision: precision || 0,
           description: description || null,
           notarydetails: notarydetails || null,
           auxfeedetails: auxfeedetails || null,
