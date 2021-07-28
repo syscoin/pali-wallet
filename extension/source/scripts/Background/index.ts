@@ -31,13 +31,32 @@ declare global {
     controller: Readonly<IMasterController>;
     senderURL: string;
     trezorConnect: any;
-    version: string;
   }
 }
 
 if (!window.controller) {
   window.controller = Object.freeze(MasterController());
   setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
+}
+
+const getTabs = async (options: any) => {
+  return await browser.tabs.query(options);
+};
+
+const getConnectedAccountIndex = ({ match }: any) => {
+  return store.getState().wallet.accounts.findIndex((account: IAccountState) => {
+    return account.connectedTo.find((url: string) => {
+      return url === match;
+    })
+  });
+};
+
+const runtimeSendMessageToTabs = async ({ tabId, messageDetails }: any) => {
+  return await browser.tabs.sendMessage(Number(tabId), messageDetails);
+}
+
+const updateActiveWindow = async ({ windowId, options }: any) => {
+  return await browser.windows.update(Number(windowId), options);
 }
 
 const observeStore = async (store: any) => {
@@ -49,60 +68,26 @@ const observeStore = async (store: any) => {
     if (nextState !== currentState) {
       currentState = nextState;
 
-      browser.tabs.query({
-        active: true,
-        lastFocusedWindow: true,
-        windowType: 'normal'
-      }).then((tabs: any) => {
-        if (tabs[0]) {
-          const isAccountConnected = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
-            return account.connectedTo.find((url: string) => {
-              return url === new URL(`${tabs[0].url}`).host;
-            })
-          }) >= 0;
+      const [tab]: any = await getTabs({ active: true, lastFocusedWindow: true, windowType: 'normal' });
 
-          if (isAccountConnected) {
-            browser.tabs.sendMessage(Number(tabs[0].id), {
-              type: 'WALLET_UPDATED',
-              target: 'contentScript',
-              connected: false
-            }).then(() => {
-              console.log('wallet update sent to the webpage')
-            }).catch((error) => {
-              console.log('error sending update to page', error);
+      if (tab) {
+        if (getConnectedAccountIndex({ match: new URL(String(tab.url)).host }) >= 0) {
+          try {
+            await runtimeSendMessageToTabs({
+              tabId: Number(tab.id),
+              messageDetails: {
+                type: 'WALLET_UPDATED',
+                target: 'contentScript',
+                connected: false
+              }
             });
+
+            console.log('wallet update sent to the webpage')
+          } catch (error) {
+            console.log('error', error);
           }
-
-          // browser.tabs.query({}).then((tabs) => {
-          //   for (const tab of tabs) {
-          //     console.log('tab and tabs', tab, tabs)
-          //     const isAccountConnected = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
-          //       return account.connectedTo.find((url: string) => {
-          //         return url === new URL(String(tab.url)).host;
-          //       })
-          //     }) >= 0;
-
-          //     if (isAccountConnected) {
-          //       console.log('is connected account', )
-
-          //       Promise.resolve(browser.tabs.sendMessage(Number(tab.id), {
-          //         type: 'WALLET_UPDATED',
-          //         target: 'contentScript',
-          //         connected: false
-          //       }).then((response) => {
-          //         console.log('wallet updated', response)
-          //       }))
-          //     }
-
-          //     return;
-          //   }
-          // })
         }
-
-        
-      }).catch((error) => {
-        console.log('error getting current tab', error);
-      });
+      }
     }
   }
 
@@ -111,63 +96,42 @@ const observeStore = async (store: any) => {
   await handleChange();
 
   return unsubscribe;
-}
+};
 
 observeStore(store);
 
 const createPopup = async (url: string) => {
-  let paliCheck: any = {
-    title: 'Pali Wallet',
-    alreadyOpen: false,
-    windowId: -1
-  };
+  const [tab]: any = await getTabs({ active: true, lastFocusedWindow: true });
 
-  browser.tabs.query({ active: true, lastFocusedWindow: true })
-    .then((tabs) => {
-      if (tabs[0].title === 'Pali Wallet') {
-        return;
+  if (tab.title === 'Pali Wallet') {
+    return;
+  }
+
+  store.dispatch(updateCurrentURL(String(tab.url)));
+
+  const [sysWalletPopup]: any = await getTabs({ url: browser.extension.getURL('app.html') });
+
+  if (sysWalletPopup) {
+    await updateActiveWindow({
+      windowId: Number(sysWalletPopup.windowId),
+      options: {
+        drawAttention: true,
+        focused: true
       }
-
-      store.dispatch(updateCurrentURL(String(tabs[0].url)));
-    }).catch((error) => {
-      console.log('error getting tabs creating popup', error);
     });
 
-  browser.tabs.query({ active: true })
-    .then(async (tabs) => {
-      tabs.map(async (tab) => {
-        if (tab.title === 'Pali Wallet') {
-          paliCheck = {
-            ...paliCheck,
-            alreadyOpen: true,
-            windowId: tab.windowId
-          };
-        }
-      });
+    return;
+  }
 
-      if (paliCheck.alreadyOpen) {
-        await browser.windows.update(Number(paliCheck.windowId), {
-          drawAttention: true,
-          focused: true
-        });
+  const sysPopup: any = window.open(url, "Pali Wallet", "width=372, height=600, left=900, top=90");
 
-        return;
-      }
-
-      const windowpopup: any = window.open(url, "Pali Wallet", "width=372, height=600, left=900, top=90");
-
-      windowpopup.onbeforeunload = () => {
-        store.dispatch(clearAllTransactions());
-      }
-    })
-    .catch((error) => {
-      console.log(error);
-    });
+  sysPopup.onbeforeunload = () => {
+    store.dispatch(clearAllTransactions());
+  }
 };
 
 browser.runtime.onInstalled.addListener(async () => {
   console.emoji('🤩', 'Syscoin extension installed');
-  window.version = 'new updated tokens';
 
   window.controller.stateUpdater();
 
