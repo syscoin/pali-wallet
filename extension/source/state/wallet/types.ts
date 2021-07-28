@@ -50,6 +50,18 @@ export interface IWalletTokenState {
   tokens: any;
 }
 
+export interface Connection {
+  accountId: number;
+  url: string;
+}
+
+export interface Tabs {
+  currentSenderURL: string;
+  currentURL: string;
+  canConnect: boolean;
+  connections: Connection[];
+}
+
 export default interface IWalletState {
   accounts: IAccountState[];
   activeAccountId: number;
@@ -69,4 +81,5 @@ export default interface IWalletState {
   updatingAsset: boolean;
   signingTransaction: boolean;
   walletTokens: IWalletTokenState[];
+  tabs: Tabs;
 }

@@ -20,6 +20,7 @@ import { getHost } from '../../../scripts/Background/helpers';
 
 import TxsPanel from './TxsPanel';
 import styles from './Home.scss';
+import { browser } from 'webextension-polyfill-ts';
 
 const Home = () => {
   const controller = useController();
@@ -45,6 +46,82 @@ const Home = () => {
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
   const [tx, setTx] = useState(null);
   const [assetTx, setAssetTx] = useState(null);
+  const [currentTabURL, setCurrentTabURL] = useState<string>(currentURL);
+
+  useEffect(() => {
+    console.log('aaaa', Math.floor(Math.random() * 1200))
+    window.addEventListener('message', (event) => {
+      console.log('event message', event)
+
+    })
+
+
+    browser.windows.getAll({ populate: true }).then((windows) => {
+      for (const window of windows) {
+        console.log('get views', browser.extension.getViews({ windowId: window.id }))
+      }
+    })
+
+    // browser.runtime.onMessage.addListener((request: any) => {
+    //   console.log('request', request)
+    //   if (request.type === 'tohome') {
+    //     console.log('message from background')
+    //     setCurrentTabURL(request.currentTab.currentTabURL)
+    //   }
+    // });
+
+    browser.windows.getAll({ populate: true }).then((windows) => {
+      for (const window of windows) {
+        console.log('window tabs', window.tabs)
+        const views = browser.extension.getViews({ windowId: window.id })
+
+        if (views) {
+          console.log(views)
+
+          browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
+            console.log('current url', tabs[0])
+            setCurrentTabURL(String(tabs[0].url));
+          })
+
+          return;
+        }
+
+        console.log('views window id', views, window.id)
+      }
+    })
+
+    // if (window.url === url) {
+    //   console.log('EXTENSION URL', url, window)
+    // }
+
+    // browser.tabs.onActivated.addListener((info) => {
+    //   console.log('info tab', info)
+
+    //   if (info.tabId > -1 && info.windowId > -1) {
+    //     browser.tabs.query({ active: true, lastFocusedWindow: true, windowType: 'normal' }).then((tabs: any) => {
+    //       setCurrentTabURL(String(tabs[0].url));
+    //       console.log('current url', tabs[0].url)
+
+    //       browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    //         console.log('tabid', tabId, changeInfo, tab)
+    //         setCurrentTabURL(String(tabs[0].url));
+    //       })
+
+    //       console.log('tabs query', tabs)
+    //     })
+    //   }
+    // })
+
+    // browser.tabs.onActivated.addListener((activeInfo) => {
+    //   browser.tabs.query({ active: true, lastFocusedWindow: true }).then((tabs: any) => {
+    //     setCurrentTabURL(String(tabs[0].url));
+    //   })
+    // })
+
+
+  }, [
+    !controller.wallet.isLocked()
+  ]);
 
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();
@@ -77,7 +154,7 @@ const Home = () => {
       if (acc.connectedTo.length > 0) {
         setIsConnected(
           acc.connectedTo.findIndex((url: any) => {
-            return url == getHost(currentURL);
+            return url == getHost(currentTabURL);
           }) > -1
         );
         return;
@@ -85,7 +162,7 @@ const Home = () => {
 
       setIsConnected(false);
     }
-  }, [accounts, activeAccountId, currentURL]);
+  }, [accounts, activeAccountId, currentTabURL]);
 
   const handleOpenExplorer = (txid: string) => {
     window.open(`${sysExplorer}/tx/${txid}`);
@@ -192,7 +269,7 @@ const Home = () => {
 
             {isOpenModal && isConnected && (
               <Modal
-                title={currentURL}
+                title={currentTabURL}
                 connected
                 callback={handleSetModalIsOpen}
               />
@@ -200,7 +277,7 @@ const Home = () => {
 
             {isOpenModal && !isConnected && (
               <Modal
-                title={currentURL}
+                title={currentTabURL}
                 message="This account is not connected to this site. To connect to a sys platform site, find the connect button on their site."
                 callback={handleSetModalIsOpen}
               />
@@ -224,9 +301,9 @@ const Home = () => {
               <small style={{ marginTop: '5px', marginBottom: '5px' }}>
                 {activeNetwork !== 'testnet'
                   ? getFiatAmount(
-                      accounts.find((element) => element.id === activeAccountId)
-                        ?.balance || 0
-                    )
+                    accounts.find((element) => element.id === activeAccountId)
+                      ?.balance || 0
+                  )
                   : ''}
               </small>
             )}

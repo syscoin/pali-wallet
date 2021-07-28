@@ -3,13 +3,13 @@
 .select {
   :global(.MuiInputBase-root) {
     background: transparent;
-    border: 1px solid $royalBlue !important;
+    border: 1px solid #cb2c70bf !important;
     box-sizing: border-box;
-    border-radius: 6px;
+    border-radius: 30px;
     padding: 0;
     height: 36px;
     transition: all 0.3s;
-    color: $white;
+    color: #fff;
 
     &::before,
     &::after {
@@ -43,15 +43,18 @@
   }
 }
 
+:global(.MuiPaper-root) {
+  background-color: transparent !important;
+}
+
 :global(.MuiMenu-paper) {
   box-shadow: none !important;
 }
 
 :global(.MuiMenu-list) {
-  background: $navy;
-  border: 1px solid $royalBlue;
-  // box-sizing: border-box;
-  border-radius: 6px;
+  background: #122036;
+  border: 1px solid #cb2c70;
+  border-radius: 13px;
   border-top-width: 0;
 
   :global(.MuiMenuItem-root) {

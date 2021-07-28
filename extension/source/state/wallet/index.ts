@@ -31,7 +31,13 @@ const initialState: IWalletState = {
   transferringOwnership: false,
   changingNetwork: false,
   signingTransaction: false,
-  walletTokens: []
+  walletTokens: [],
+  tabs: {
+    currentSenderURL: '',
+    currentURL: '',
+    canConnect: false,
+    connections: [],
+  }
 };
 
 const WalletState = createSlice({
@@ -166,6 +172,11 @@ const WalletState = createSlice({
       state: IWalletState,
       action: PayloadAction<{ accountId: number, url: string }>
     ) {
+
+      console.log('action payload connections array', action.payload)
+
+      // debugger;
+
       const index: number = state.connections.findIndex(
         (connection) =>
           connection.accountId !== action.payload.accountId &&
@@ -372,7 +383,7 @@ export const {
   updateSwitchNetwork,
   clearAllTransactions,
   signTransactionState,
-  updateAllTokens
+  updateAllTokens,
 } = WalletState.actions;
 
 export default WalletState.reducer;

@@ -18,15 +18,13 @@ import {
   setUpdateAsset,
   setTransferOwnership,
   clearAllTransactions,
-  signTransactionState
+  signTransactionState,
 } from 'state/wallet';
 import { IAccountState } from 'state/wallet/types';
 import TrezorConnect from 'trezor-connect';
 
 import MasterController, { IMasterController } from './controllers';
 import { getHost } from './helpers';
-
-// var TrezorConnect = require('trezor-connect').default;
 
 declare global {
   interface Window {
@@ -51,24 +49,33 @@ const observeStore = async (store: any) => {
     if (nextState !== currentState) {
       currentState = nextState;
 
-      const tabs = await browser.tabs.query({
+      browser.tabs.query({
         active: true,
+        lastFocusedWindow: true,
         windowType: 'normal'
+      }).then(async (tabs: any) => {
+        if (tabs[0]) {
+          console.log('observe store tabs last focused window', tabs)
+
+          const isAccountConnected = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
+            return account.connectedTo.find((url: string) => {
+              return url === new URL(`${tabs[0].url}`).host;
+            })
+          }) >= 0;
+
+          console.log('is account connected observe store', isAccountConnected)
+
+          if (isAccountConnected) {
+            await browser.tabs.sendMessage(Number(tabs[0].id), {
+              type: 'WALLET_UPDATED',
+              target: 'contentScript',
+              connected: false
+            });
+          }
+        }
+
+        return;
       });
-
-      const isAccountConnected = store.getState().wallet.accounts.findIndex((account: IAccountState) => {
-        return account.connectedTo.find((url: string) => {
-          return url === new URL(`${tabs[0].url}`).host;
-        })
-      }) >= 0;
-
-      if (isAccountConnected) {
-        await browser.tabs.sendMessage(Number(tabs[0].id), {
-          type: 'WALLET_UPDATED',
-          target: 'contentScript',
-          connected: false
-        });
-      }
     }
   }
 
@@ -80,6 +87,42 @@ const observeStore = async (store: any) => {
 }
 
 observeStore(store);
+
+const createPopup = async (url: string) => {
+  let paliCheck: any = {
+    title: 'Pali Wallet',
+    alreadyOpen: false,
+    windowId: -1
+  };
+
+  browser.tabs.query({ active: true })
+    .then(async (tabs) => {
+      tabs.map(async (tab) => {
+        if (tab.title === 'Pali Wallet') {
+          paliCheck = {
+            ...paliCheck,
+            alreadyOpen: true,
+            windowId: tab.windowId
+          };
+        }
+      });
+
+      if (paliCheck.alreadyOpen) {
+        await browser.windows.update(Number(paliCheck.windowId), {
+          drawAttention: true,
+          focused: true
+        });
+
+        return;
+      }
+
+      const windowpopup: any = window.open(url, "Pali Wallet", "width=372, height=600, left=900, top=90");
+
+      windowpopup.onbeforeunload = () => {
+        store.dispatch(clearAllTransactions());
+      }
+    });
+};
 
 browser.runtime.onInstalled.addListener(async () => {
   console.emoji('🤩', 'Syscoin extension installed');
@@ -104,50 +147,22 @@ browser.runtime.onInstalled.addListener(async () => {
       target
     } = request;
 
-    const tabs = await browser.tabs.query({
-      active: true,
-      windowType: 'normal'
-    });
-
-    const tabId = Number(tabs[0].id);
-
-    const createPopup = async (url: string) => {
-      let paliCheck: any = {
-        title: 'Pali Wallet',
-        alreadyOpen: false,
-        windowId: -1
-      };
-
-      browser.tabs.query({ active: true })
-        .then(async (tabs) => {
-          tabs.map(async (tab) => {
-            if (tab.title === 'Pali Wallet') {
-              paliCheck = {
-                ...paliCheck,
-                alreadyOpen: true,
-                windowId: tab.windowId
-              };
-            }
-          });
-
-          if (paliCheck.alreadyOpen) {
-            await browser.windows.update(Number(paliCheck.windowId), {
-              drawAttention: true,
-              focused: true
-            });
-
-            return;
-          }
-
-          const windowpopup: any = window.open(url, "Pali Wallet", "width=372, height=600, left=900, top=90");
-
-          windowpopup.onbeforeunload = () => {
-            store.dispatch(clearAllTransactions());
-          }
-        });
-    };
-
     if (typeof request === 'object') {
+      console.log('REQUEST MESSAGE', request, sender)
+
+      if (type == 'CONNECT_WALLET' && target == 'background') {  // OK
+        const url = browser.runtime.getURL('app.html');
+
+        store.dispatch(setSenderURL(String(sender.url)));
+        store.dispatch(updateCanConnect(true));
+
+        await createPopup(url);
+
+        window.senderURL = String(sender.url);
+
+        return;
+      }
+
       if (type == 'WALLET_ERROR' && target == 'background') {
         console.log('response error', request)
         const {
@@ -156,7 +171,7 @@ browser.runtime.onInstalled.addListener(async () => {
           message
         } = request;
 
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'WALLET_ERROR',
           target: 'contentScript',
           transactionError,
@@ -168,7 +183,7 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'TRANSACTION_RESPONSE' && target == 'background') {
         console.log('response trancaiton', request)
 
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'TRANSACTION_RESPONSE',
           target: 'contentScript',
           response: request.response
@@ -194,28 +209,18 @@ browser.runtime.onInstalled.addListener(async () => {
         }, 6000);
       }
 
-      if (type == 'CONNECT_WALLET' && target == 'background') {
-        const url = browser.runtime.getURL('app.html');
 
-        store.dispatch(setSenderURL(`${sender.url}`));
-        store.dispatch(updateCanConnect(true));
-
-        await createPopup(url);
-
-        window.senderURL = `${sender.url}`;
-
-        return;
-      }
 
       if (type == 'RESET_CONNECTION_INFO' && target == 'background') {
         store.dispatch(updateCanConnect(false));
+        console.log('removing connection')
         store.dispatch(removeConnection({
           accountId: request.id,
           url: request.url
         }));
         store.dispatch(setSenderURL(''));
 
-        Promise.resolve(browser.tabs.sendMessage(Number(tabs[0].id), {
+        Promise.resolve(browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'WALLET_UPDATED',
           target: 'contentScript',
           connected: false
@@ -231,6 +236,8 @@ browser.runtime.onInstalled.addListener(async () => {
           accountId: request.id,
           url: window.senderURL
         }));
+
+        console.log('atualizando select account')
 
         return;
       }
@@ -248,7 +255,7 @@ browser.runtime.onInstalled.addListener(async () => {
         if (getHost(window.senderURL)) {
           store.dispatch(updateCanConnect(false));
 
-          browser.tabs.sendMessage(tabId, {
+          browser.tabs.sendMessage(Number(sender.tab?.id), {
             type: 'WALLET_CONNECTION_CONFIRMED',
             target: 'contentScript',
             connectionConfirmed: true,
@@ -273,8 +280,11 @@ browser.runtime.onInstalled.addListener(async () => {
         store.dispatch(updateCanConnect(false));
         store.dispatch(clearAllTransactions());
 
+        console.log('close popup message')
+
         browser.tabs.query({ active: true })
           .then(async (tabs) => {
+            console.log('close popup tabs', tabs)
             tabs.map(async (tab) => {
               if (tab.title === 'Pali Wallet') {
                 await browser.windows.remove(Number(tab.windowId));
@@ -286,7 +296,7 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'SEND_STATE_TO_PAGE' && target == 'background') {
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'SEND_STATE_TO_PAGE',
           target: 'contentScript',
           state: store.getState().wallet
@@ -296,7 +306,7 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'CHECK_IS_LOCKED' && target == 'background') {
         const isLocked = window.controller.wallet.isLocked();
 
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'CHECK_IS_LOCKED',
           target: 'contentScript',
           isLocked
@@ -310,7 +320,7 @@ browser.runtime.onInstalled.addListener(async () => {
           });
         });
 
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'SEND_CONNECTED_ACCOUNT',
           target: 'contentScript',
           connectedAccount
@@ -318,7 +328,7 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'CONNECTED_ACCOUNT_XPUB' && target == 'background') {
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'CONNECTED_ACCOUNT_XPUB',
           target: 'contentScript',
           connectedAccountXpub: window.controller.wallet.account.getConnectedAccountXpub()
@@ -326,7 +336,7 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'CONNECTED_ACCOUNT_CHANGE_ADDRESS' && target == 'background') {
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
           target: 'contentScript',
           connectedAccountChangeAddress: await window.controller.wallet.account.getChangeAddress()
@@ -338,7 +348,7 @@ browser.runtime.onInstalled.addListener(async () => {
 
         console.log('is valid sys address', isValidSYSAddress, request.address, store.getState().wallet.activeNetwork)
 
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'CHECK_ADDRESS',
           target: 'contentScript',
           isValidSYSAddress
@@ -356,7 +366,7 @@ browser.runtime.onInstalled.addListener(async () => {
 
         await createPopup(appURL);
 
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'SIGN_TRANSACTION',
           target: 'contentScript',
           complete: true
@@ -366,7 +376,7 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'GET_HOLDINGS_DATA' && target == 'background') {
         const holdingsData = await window.controller.wallet.account.getHoldingsData();
 
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'GET_HOLDINGS_DATA',
           target: 'contentScript',
           holdingsData
@@ -401,7 +411,7 @@ browser.runtime.onInstalled.addListener(async () => {
 
         await createPopup(appURL);
 
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'SEND_TOKEN',
           target: 'contentScript',
           complete: true
@@ -459,7 +469,7 @@ browser.runtime.onInstalled.addListener(async () => {
 
         await createPopup(appURL);
 
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
           target: 'contentScript',
           complete: true
@@ -500,7 +510,7 @@ browser.runtime.onInstalled.addListener(async () => {
 
         await createPopup(appURL);
 
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'ISSUE_SPT',
           target: 'contentScript',
           complete: true
@@ -551,7 +561,7 @@ browser.runtime.onInstalled.addListener(async () => {
 
         await createPopup(appURL);
 
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'CREATE_AND_ISSUE_NFT',
           target: 'contentScript',
           complete: true
@@ -594,7 +604,7 @@ browser.runtime.onInstalled.addListener(async () => {
 
         await createPopup(appURL);
 
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'UPDATE_ASSET',
           target: 'contentScript',
           complete: true
@@ -629,7 +639,7 @@ browser.runtime.onInstalled.addListener(async () => {
 
         await createPopup(appURL);
 
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'TRANSFER_OWNERSHIP',
           target: 'contentScript',
           complete: true
@@ -646,7 +656,7 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'GET_USER_MINTED_TOKENS' && target == 'background') {
         const tokensMinted = await window.controller.wallet.account.getUserMintedTokens();
 
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'GET_USER_MINTED_TOKENS',
           target: 'contentScript',
           userTokens: tokensMinted
@@ -656,7 +666,7 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'GET_ASSET_DATA' && target == 'background') {
         const assetData = await window.controller.wallet.account.getDataAsset(request.messageData);
 
-        browser.tabs.sendMessage(tabId, {
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'GET_ASSET_DATA',
           target: 'contentScript',
           assetData
@@ -670,13 +680,30 @@ browser.runtime.onInstalled.addListener(async () => {
       return;
     }
 
-    browser.tabs.query({ active: true })
-      .then((tabs) => {
-        // if (tabs[0].title === 'Pali Wallet') {
-        //   return;
-        // }
+    // browser.tabs.onActivated.addListener((info) => {
+    //   console.log('info tab', info)
 
-        store.dispatch(updateCurrentURL(`${tabs[0].url}`));
+    //   if (info.tabId > -1 && info.windowId > -1) {
+    //     browser.tabs.query({ active: true, currentWindow: true, windowType: 'normal' }).then((tabs: any) => {
+    //       store.dispatch(updateCurrentURL(String(tabs[0].url)));
+
+    //       browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    //         console.log('tabid', tabId, changeInfo, tab)
+    //         store.dispatch(updateCurrentURL(String(tabs[0].url)));
+    //       })
+
+    //       console.log('tabs query', tabs)
+    //     })
+    //   }
+    // })
+
+    browser.tabs.query({ active: true, lastFocusedWindow: true })
+      .then((tabs) => {
+        if (tabs[0].title === 'Pali Wallet') {
+          return;
+        }
+
+        store.dispatch(updateCurrentURL(String(tabs[0].url)));
       });
   });
 });
