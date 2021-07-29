@@ -404,7 +404,7 @@ const AccountController = (actions: {
                   }
                 }
               }
-    
+
               done();
             }, function () {
               resolve('ok');
@@ -950,6 +950,27 @@ const AccountController = (actions: {
     });
   };
 
+  const getAssetguidFromTokenTransfers = async (tokenTransfers: any) => {
+    let createdAssetguid: string = '';
+
+    for (const token of tokenTransfers) {
+      try {
+        const assetGuid = token.token;
+        const assetData = await getDataAsset(assetGuid);
+
+        console.log('tokenData', assetData.response)
+
+        if (assetData.response && assetData.response.data.error === 'Asset not found' && !assetData.assetGuid) {
+          createdAssetguid = assetGuid;
+        }
+      } catch (error) {
+        console.log('error', error)
+      }
+    }
+
+    return String(createdAssetguid);
+  }
+
   const confirmSPTCreation = async (item: any) => {
     const {
       capabilityflags,
@@ -1044,6 +1065,7 @@ const AccountController = (actions: {
     updateTransactionData('creatingAsset', txInfoNew);
 
     const transactionData = await getTransactionInfoByTxId(txInfoNew);
+    const createdAssetguid = await getAssetguidFromTokenTransfers(transactionData.tokenTransfers);
 
     if (initialSupply && initialSupply < newMaxSupply) {
       try {
@@ -1054,11 +1076,11 @@ const AccountController = (actions: {
             const sptCreated = await getTransactionInfoByTxId(txInfoNew);
 
             if (sptCreated?.confirmations > 1) {
-              console.log('confirmations > 1', sptCreated!.tokenTransfers)
+              console.log('confirmations > 1', createdAssetguid)
 
               try {
                 const assetMap = new Map([
-                  [String(sptCreated!.tokenTransfers[0].token), {
+                  [String(createdAssetguid), {
                     changeAddress: null,
                     outputs: [{
                       value: new sys.utils.BN(initialSupply * (10 ** precision)),
@@ -1085,7 +1107,7 @@ const AccountController = (actions: {
                   sptCreated,
                   txid: txInfo,
                   txConfirmations: sptCreated.confirmations,
-                  txAssetGuid: sptCreated.tokenTransfers[0].token
+                  txAssetGuid: createdAssetguid
                 });
               } catch (error) {
                 clearInterval(interval);
@@ -1108,7 +1130,7 @@ const AccountController = (actions: {
       transactionData,
       txid: txInfoNew,
       txConfirmations: transactionData.confirmations,
-      txAssetGuid: transactionData.tokenTransfers[0].token
+      txAssetGuid: createdAssetguid
     }
   };
 
@@ -1333,7 +1355,7 @@ const AccountController = (actions: {
 
               try {
                 sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
-            
+
                 console.log('sysjs', sysjs, sysjs.HDSigner)
 
                 const pendingTx = await sysjs.assetSend(txOpts, assetMap, issuer, feeRate);
@@ -1376,7 +1398,7 @@ const AccountController = (actions: {
                 sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
 
                 let assetChangeAddress = null;
-            
+
                 console.log('sysjs', sysjs, sysjs.HDSigner)
 
                 const assetMap = new Map([
@@ -1936,7 +1958,8 @@ const AccountController = (actions: {
     updateTokensState,
     getTransactionData,
     getRawTransaction,
-    setHDSigner
+    setHDSigner,
+    getAssetguidFromTokenTransfers
   };
 };
 

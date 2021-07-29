@@ -221,39 +221,6 @@ const ModalBlock: FC<IModalBlock> = ({
     });
   };
 
-  // const getTokenTransferItem = (transaction: any) => {
-  //   const { vin, vout, tokenTransfers } = transaction;
-
-  //   if (tokenTransfers && vin && vout) {
-  //     console.log('txxxx', tokenTransfers, vin, vout)
-
-  //     for (const v of vin) {
-  //       return controller.wallet.account.getTransactionInfoByTxId(v.txid).then((response: any) => {
-  //         const voutZero = response.vout.find((voutItem: any) => {
-  //           return voutItem.n === 0;
-  //         });
-
-  //         if (voutZero) {
-  //           const assetGuid = tokenTransfers.find((token: any) => {
-  //             return token.token === voutZero.assetInfo.assetGuid;
-  //           })
-
-  //           if (assetGuid) {
-  //             return (
-  //               <div className={styles.flexCenter}>
-  //                 <p>{assetGuid.symbol ? atob(assetGuid.symbol) : ''}</p>
-  //                 <b>{assetGuid.token}</b>
-  //               </div>
-  //             )
-  //           }
-
-  //           return null;
-  //         }
-  //       })
-  //     }
-  //   }
-  // }
-
   return (
     <div className={styles.modal}>
       <div className={styles.title}>
@@ -341,7 +308,7 @@ const ModalBlock: FC<IModalBlock> = ({
                     onClick={() => setTokensExpanded(!tokensExpanded)}
                     className={styles.selected}
                   >
-                    <p>Asset info</p>
+                    <p>Assets</p>
                     <DownArrowIcon className={styles.arrow} />
                   </span>
 
@@ -363,8 +330,8 @@ const ModalBlock: FC<IModalBlock> = ({
                             </div>
                           );
                         }
-                      )}
-                    {/* {getTokenTransferItem(tx)} */}
+                      )
+                    }
                   </ul>
                 </div>
               </div>

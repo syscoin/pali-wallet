@@ -92,6 +92,7 @@ declare interface IAccountController {
   getTransactionData: (txid: string) => any;
   getRawTransaction: (txid: string) => any;
   setHDSigner: (accountId: number) => any;
+  getAssetguidFromTokenTransfers: (tokenTransfers: any) => Promise<string>;
 }
 
 declare type CreateTokenItems = {

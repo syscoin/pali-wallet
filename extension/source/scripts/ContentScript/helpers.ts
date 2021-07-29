@@ -150,7 +150,6 @@ export const listenAndSendMessageFromPageToBackground = (event: any) => {
     initialSupply,
     symbol,
     issuer,
-    totalShares,
     contract,
     capabilityflags,
     description,
