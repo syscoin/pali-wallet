@@ -154,8 +154,6 @@ browser.runtime.onInstalled.addListener(async () => {
 
     const [tab] = await getTabs({ active: true, windowType: 'normal', url: window.senderURL });
 
-    console.log('tab current', tab)
-
     if (typeof request === 'object') {
       if (type == 'CONNECT_WALLET' && target == 'background') {  // OK
         const url = browser.runtime.getURL('app.html');
@@ -176,8 +174,6 @@ browser.runtime.onInstalled.addListener(async () => {
           invalidParams,
           message
         } = request;
-
-        console.log('tab id send error msg', tab.id)
 
         browser.tabs.sendMessage(Number(tab.id), {
           type: 'WALLET_ERROR',

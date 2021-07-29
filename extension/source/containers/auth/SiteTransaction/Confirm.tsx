@@ -197,7 +197,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
             handleCancelTransactionOnSite();
           }, 4000);
         }
-      }, 380000);
+      }, 8 * 60 * 1000);
     }
   };
 

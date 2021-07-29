@@ -32,7 +32,7 @@ const SendConfirm = () => {
       return url === getHost(currentSenderURL);
     });
   });
-  const {tempTx} = controller.wallet.account.getTransactionItem();
+  const { tempTx } = controller.wallet.account.getTransactionItem();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const alert = useAlert();
@@ -56,7 +56,7 @@ const SendConfirm = () => {
               invalidParams: false,
               message: `TransactionError: ${error}`
             });
-          
+
             setTimeout(() => {
               handleCancelTransactionOnSite();
             }, 4000);
@@ -64,7 +64,7 @@ const SendConfirm = () => {
 
           return;
         }
-        
+
         browser.runtime.sendMessage({
           type: 'WALLET_ERROR',
           target: 'background',
@@ -75,6 +75,29 @@ const SendConfirm = () => {
 
         setConfirmed(true);
         setLoading(false);
+      }).catch((error) => {
+        if (error) {
+          alert.removeAll();
+          alert.error('Can\'t complete transaction. Try again later.');
+
+          if (confirmingTransaction) {
+            browser.runtime.sendMessage({
+              type: 'WALLET_ERROR',
+              target: 'background',
+              transactionError: true,
+              invalidParams: false,
+              message: `TransactionError: ${error}`
+            });
+
+            setTimeout(() => {
+              handleCancelTransactionOnSite();
+            }, 4000);
+          }
+
+          setLoading(false);
+
+          return;
+        }
       });
     }
   };
@@ -130,7 +153,7 @@ const SendConfirm = () => {
         <div className={styles.iconWrapper}>
           <UpArrowIcon />
         </div>
-        {tempTx?.isToken ? `${String(tempTx.amount)  } ${  String(tempTx.token?.symbol)}` : `${(tempTx?.amount || 0) + (tempTx?.fee || 0)  } SYS`}
+        {tempTx?.isToken ? `${String(tempTx.amount)} ${String(tempTx.token?.symbol)}` : `${(tempTx?.amount || 0) + (tempTx?.fee || 0)} SYS`}
       </section>
       <section className={styles.transaction}>
         <div className={styles.row}>
@@ -158,7 +181,7 @@ const SendConfirm = () => {
             {!tempTx?.isToken ? getFiatAmount(
               Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0),
               8
-            ) : `${String(tempTx?.amount)  } ${  String(tempTx?.token?.symbol)}`}
+            ) : `${String(tempTx?.amount)} ${String(tempTx?.token?.symbol)}`}
           </span>
         </div>
 

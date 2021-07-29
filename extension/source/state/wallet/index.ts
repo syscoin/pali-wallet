@@ -48,7 +48,7 @@ const WalletState = createSlice({
       state: IWalletState,
       action: PayloadAction<IWalletTokenState>
     ) {
-      const { accountId, accountXpub, tokens, holdings } = action.payload;
+      const { accountId, accountXpub, tokens, holdings, mintedTokens } = action.payload;
 
       const sameAccountIndexAndDifferentXpub: number =
         state.walletTokens.findIndex((accountTokens: any) => {
@@ -84,6 +84,10 @@ const WalletState = createSlice({
           walletTokens.holdings = holdings;
         }
 
+        if (walletTokens.mintedTokens !== mintedTokens) {
+          walletTokens.mintedTokens = mintedTokens;
+        }
+
         return;
       }
 
@@ -92,6 +96,7 @@ const WalletState = createSlice({
           ...walletTokens,
           holdings,
           tokens,
+          mintedTokens,
         }) > -1
       ) {
         return;

@@ -25,7 +25,6 @@ import {
   ISPTInfo,
   ISPTIssue,
   INFTIssue,
-  MintedToken,
   ISPTPageInfo,
   ISPTWalletInfo,
   INFTPageInfo,
@@ -329,58 +328,12 @@ const AccountController = (actions: {
       }
     }
   }
-  const getUserMintedTokens = async () => {
-    if (!sysjs) {
-      throw new Error('Error: no signed account exists.');
-    }
 
-    const connectedAccountResponse = await fetchBackendConnectedAccount(getConnectedAccount());
-
-    if (connectedAccountResponse.transactions) {
-      const allTokens: any[] = [];
-      const mintedTokens: MintedToken[] = [];
-
-      await Promise.all(connectedAccountResponse.transactions.map(async (transaction: any) => {
-        if (transaction.tokenType === 'SPTAssetActivate') {
-          for (const token of transaction.tokenTransfers) {
-            try {
-              const assetData = await getDataAsset(token.token);
-
-              allTokens.push({
-                assetGuid: token.token,
-                symbol: token.symbol ? atob(String(token.symbol)) : '',
-                maxSupply: Number(assetData.maxSupply),
-                totalSupply: Number(assetData.totalSupply)
-              });
-            } catch (error) {
-              console.log('Get data asset error: ');
-              console.log(error);
-            }
-          }
-        }
-
-        return allTokens;
-      }));
-
-      allTokens.filter(function (el: any) {
-        if (el != null) {
-          let tokenExists = false;
-
-          mintedTokens.forEach((element: any) => {
-            if (element.assetGuid === el.assetGuid) {
-              tokenExists = true
-            }
-          });
-
-          if (!tokenExists) {
-            mintedTokens.push(el);
-          }
-        }
-      });
-
-      return mintedTokens;
-    }
-  };
+  const sortList = (list: any, property: string) => {
+    return list.sort((a: any, b: any) => {
+      return a[property].localeCompare(b[property]);
+    });
+  }
 
   const updateTokensState = async () => {
     if (!sysjs) {
@@ -393,8 +346,10 @@ const AccountController = (actions: {
       const assetsData: any = {};
 
       const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=derived&details=txs', true, sysjs.HDSigner);
+      const { transactions } = await fetchBackendConnectedAccount(account);
 
       let tokensMap: any = {};
+      let mintedTokens: any = {};
 
       if (!tokensAsset) {
         console.log('account has no tokens');
@@ -403,7 +358,8 @@ const AccountController = (actions: {
           accountId: account.id,
           accountXpub: account.xpub,
           tokens: tokensMap,
-          holdings: Object.values(assetsData)
+          holdings: sortList(Object.values(assetsData), 'symbol'),
+          mintedTokens: sortList(Object.values(mintedTokens), 'symbol'),
         }));
 
         return;
@@ -428,6 +384,34 @@ const AccountController = (actions: {
       });
 
       try {
+        if (transactions) {
+          await new Promise((resolve) => {
+            each(transactions, function ({ tokenType, tokenTransfers }: any, done: any) {
+              if (tokenType === 'SPTAssetActivate') {
+                for (const token of tokenTransfers) {
+                  try {
+                    getDataAsset(token.token).then((assetData: any) => {
+                      mintedTokens[token.token] = {
+                        assetGuid: token.token,
+                        symbol: token.symbol ? atob(String(token.symbol)) : '',
+                        maxSupply: Number(assetData.maxSupply),
+                        totalSupply: Number(assetData.totalSupply)
+                      }
+                    });
+                  } catch (error) {
+                    console.log('Get data asset error: ');
+                    console.log(error);
+                  }
+                }
+              }
+    
+              done();
+            }, function () {
+              resolve('ok');
+            });
+          })
+        }
+
         await Promise.all(Object.values(tokensMap).map(async (value) => {
           const {
             balance,
@@ -460,7 +444,8 @@ const AccountController = (actions: {
           accountId: account.id,
           accountXpub: account.xpub,
           tokens: tokensMap,
-          holdings: Object.values(assetsData)
+          holdings: sortList(Object.values(assetsData), 'symbol'),
+          mintedTokens: sortList(Object.values(mintedTokens), 'symbol'),
         }));
 
         return;
@@ -482,6 +467,22 @@ const AccountController = (actions: {
 
       if (connectedAccountId > -1) {
         return walletTokens[connectedAccountId].holdings;
+      }
+    }
+
+    return [];
+  };
+
+  const getUserMintedTokens = async () => {
+    const { walletTokens }: IWalletState = store.getState().wallet;
+
+    if (walletTokens) {
+      const connectedAccountId = walletTokens.findIndex((accountTokens: any) => {
+        return accountTokens.accountId === getConnectedAccount().id;
+      });
+
+      if (connectedAccountId > -1) {
+        return walletTokens[connectedAccountId].mintedTokens;
       }
     }
 
@@ -539,36 +540,6 @@ const AccountController = (actions: {
 
     return;
   }
-
-  // const splitTokensPath = (response: any, address: any, TrezorAccount: any) => {
-  //   let receivingIndex = -1;
-  //   let changeIndex = -1;
-
-  //   if (response.tokens) {
-  //     response.tokens.forEach((token: any) => {
-  //       if (token.path) {
-  //         const splitPath = token.path.split('/');
-
-  //         if (splitPath.length >= 6) {
-  //           const change = parseInt(splitPath[4], 10);
-  //           const index = parseInt(splitPath[5], 10);
-
-  //           if (change === 1) {
-  //             changeIndex = index;
-
-  //             return;
-  //           }
-
-  //           if (index > receivingIndex) {
-  //             receivingIndex = index;
-  //           }
-  //         }
-  //       }
-  //     });
-  //   }
-
-  //   address = TrezorAccount.getAddress(changeIndex + 1, true);
-  // }
 
   const getNewChangeAddress = async () => {
     const { activeAccountId, accounts }: IWalletState = store.getState().wallet;

@@ -46,8 +46,9 @@ export interface Holding {
 export interface IWalletTokenState {
   accountId: number;
   accountXpub: string;
-  holdings: Holding[];
+  holdings: any[];
   tokens: any;
+  mintedTokens: any[];
 }
 
 export interface Connection {
