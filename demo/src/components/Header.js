@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 
@@ -20,7 +20,6 @@ const Header = () => {
     const dropdown = document.querySelectorAll(".dropdown");
     const mobilemenu = document.querySelector(".mobilemenu");
     const desktopmenu = document.querySelector(".desktopmenu");
-    const links = document.querySelectorAll("ul > li > a:not(.dropdown)");
 
     // menu open submenu
     dropdown.forEach(elementEventHandler(["click"], "open"));
@@ -30,29 +29,6 @@ const Header = () => {
       desktopmenu.classList.toggle("open");
       document.querySelector("body").classList.toggle("no-scroll");
     })(mobilemenu);
-
-    if(window.innerWidth <= 900) {
-      links.forEach(
-        (link) => (link.onclick = () => desktopmenu.classList.toggle("open"))
-      );
-    }
-
-    window.addEventListener("resize", (e) => {
-      if(window.innerWidth <= 900) {
-        if (Boolean(links[0].onclick)) return;
-
-        links.forEach(
-          (link) => (link.onclick = () => desktopmenu.classList.toggle("open"))
-        );
-      } else if(window.innerWidth > 900) {
-        if (Boolean(links[0].onclick) === false) return;
-        
-        links.forEach(
-          (link) => (link.onclick = undefined)
-        );
-      }
-      
-    })
 
     // remove events when component is unmounted
     return () =>
@@ -65,6 +41,16 @@ const Header = () => {
   const truncate = (str) => {
     return str.substr(0, 5) + "..." + str.substr(-13);
   };
+
+  const handleClick = useCallback(() => {
+    const desktopmenu = document.querySelector(".desktopmenu");
+    const body = document.querySelector("body");
+
+    if (window.innerWidth <= 900) {
+      desktopmenu.classList.toggle("open");
+      body.classList.toggle("no-scroll");
+    }
+  }, []);
 
   return (
     <header>
@@ -121,7 +107,7 @@ const Header = () => {
             </div>
             <ul>
               <li>
-                <Link to="/" className="active">
+                <Link to="/" className="active" onClick={handleClick}>
                   Dashboard
                 </Link>
               </li>
@@ -131,10 +117,10 @@ const Header = () => {
                 </a>
                 <ul>
                   <li>
-                    <Link to="/create-spt">Standard Token (Fungible)</Link>
+                    <Link to="/create-spt" onClick={handleClick}>Standard Token (Fungible)</Link>
                   </li>
                   <li>
-                    <Link to="/create-nft">NFT (Non-Fungible)</Link>
+                    <Link to="/create-nft" onClick={handleClick}>NFT (Non-Fungible)</Link>
                   </li>
                 </ul>
               </li>
@@ -144,21 +130,21 @@ const Header = () => {
                 </a>
                 <ul>
                   <li>
-                    <Link to="/issue-spt">
+                    <Link to="/issue-spt" onClick={handleClick}>
                       Issue Fungibles Into Circulation
                     </Link>
                   </li>
                   <li>
-                    <Link to="/update">Update Properties</Link>
+                    <Link to="/update" onClick={handleClick}>Update Properties</Link>
                   </li>
                   <li>
-                    <Link to="/transfer">Transfer Ownership</Link>
+                    <Link to="/transfer" onClick={handleClick}>Transfer Ownership</Link>
                   </li>
                 </ul>
               </li>
 
               <li>
-                <Link to="/about">About</Link>
+                <Link to="/about" onClick={handleClick}>About</Link>
               </li>
             </ul>
           </div>

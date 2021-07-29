@@ -59,13 +59,13 @@ const App = () => {
                   component={!isConnected || isLocked ? Home : Dashboard}
                 />
                 {isConnected && !isLocked ? (
-                  <>
+                  <Switch>
                     <Route path="/create-nft" component={CreateNFT} />
                     <Route path="/create-spt" component={CreateSPT} />
                     <Route path="/issue-spt" component={IssueSPT} />
                     <Route path="/update" component={Update} />
                     <Route path="/transfer" component={Transfer} />
-                  </>
+                  </Switch>
                 ) : (
                   <Redirect to="/" />
                 )}
