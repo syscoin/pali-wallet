@@ -152,6 +152,10 @@ browser.runtime.onInstalled.addListener(async () => {
       target
     } = request;
 
+    const [tab] = await getTabs({ active: true, windowType: 'normal', url: window.senderURL });
+
+    console.log('tab current', tab)
+
     if (typeof request === 'object') {
       if (type == 'CONNECT_WALLET' && target == 'background') {  // OK
         const url = browser.runtime.getURL('app.html');
@@ -173,7 +177,9 @@ browser.runtime.onInstalled.addListener(async () => {
           message
         } = request;
 
-        browser.tabs.sendMessage(Number(sender.tab?.id), {
+        console.log('tab id send error msg', tab.id)
+
+        browser.tabs.sendMessage(Number(tab.id), {
           type: 'WALLET_ERROR',
           target: 'contentScript',
           transactionError,
@@ -189,7 +195,7 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'TRANSACTION_RESPONSE' && target == 'background') {
         console.log('response transaction', request)
 
-        browser.tabs.sendMessage(Number(sender.tab?.id), {
+        browser.tabs.sendMessage(Number(tab.id), {
           type: 'TRANSACTION_RESPONSE',
           target: 'contentScript',
           response: request.response
@@ -268,7 +274,7 @@ browser.runtime.onInstalled.addListener(async () => {
         if (getHost(window.senderURL)) {
           store.dispatch(updateCanConnect(false));
 
-          browser.tabs.sendMessage(Number(sender.tab?.id), {
+          browser.tabs.sendMessage(Number(tab.id), {
             type: 'WALLET_CONNECTION_CONFIRMED',
             target: 'contentScript',
             connectionConfirmed: true,
