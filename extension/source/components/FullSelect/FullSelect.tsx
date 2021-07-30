@@ -23,13 +23,13 @@ const FullSelect: FC<IFullSelect> = ({ options, value, onChange }) => {
       onClick={() => setExpanded(!expanded)}
     >
       <span className={styles.selected}>
-        {options.find((el: any) => el.id === Number(value))!.label}
+        {options.find((el: any) => el.id === Number(value)).label}
         <DownArrowIcon className={styles.arrow} />
       </span>
       <ul className={styles.options}>
         {(options).map((option: any) => (
           <li key={String(option.id)} onClick={() => onChange(String(option.id))}>
-            {option!.label}
+            {option.label}
           </li>
         ))}
       </ul>

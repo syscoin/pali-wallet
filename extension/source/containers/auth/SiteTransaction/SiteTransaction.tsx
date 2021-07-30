@@ -70,8 +70,6 @@ const SiteTransaction: FC<ISiteTransaction> = ({
     });
   };
 
- 
-
   return (
     <div>
       <Layout title={layoutTitle} showLogo>

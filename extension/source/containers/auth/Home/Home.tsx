@@ -241,7 +241,7 @@ const Home = () => {
                 value={String(activeAccountId)}
                 options={accounts}
                 onChange={(val: string) => {
-                  console.log('account selected', val)
+                  console.log('account selected', val);
                   controller.wallet.switchWallet(Number(val));
                   controller.wallet.account.watchMemPool(accounts[Number(val)]);
                 }}

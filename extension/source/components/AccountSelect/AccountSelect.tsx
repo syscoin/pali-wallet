@@ -35,7 +35,7 @@ const AccountSelect: FC<IAccountSelect> = ({
       <ul className={styles.options}>
         {Object.keys(options).map((key: string) => (
           <li key={key} onClick={() => onChange(key)}>
-            {options[key]!.label}
+            {options[key].label}
             {key === value && <small>(active)</small>}
           </li>
         ))}

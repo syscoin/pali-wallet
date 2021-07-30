@@ -96,7 +96,7 @@ const SendConfirm = () => {
 
           setLoading(false);
 
-          return;
+          
         }
       });
     }

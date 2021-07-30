@@ -11,7 +11,6 @@ const ConnectHardwareWalletView: FC = () => {
 
   const onclick = async () => {
     controller.wallet.createHardwareWallet();
-
   };
 
   return (

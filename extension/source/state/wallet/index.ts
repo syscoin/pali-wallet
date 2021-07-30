@@ -48,7 +48,8 @@ const WalletState = createSlice({
       state: IWalletState,
       action: PayloadAction<IWalletTokenState>
     ) {
-      const { accountId, accountXpub, tokens, holdings, mintedTokens } = action.payload;
+      const { accountId, accountXpub, tokens, holdings, mintedTokens } =
+        action.payload;
 
       const sameAccountIndexAndDifferentXpub: number =
         state.walletTokens.findIndex((accountTokens: any) => {
@@ -180,14 +181,12 @@ const WalletState = createSlice({
 
       state.connections.splice(connectionIndex, 1);
 
-      const indexOf = state.accounts.findIndex(
+      const index = state.accounts.findIndex(
         (element: IAccountState) => element.id === action.payload.accountId
       );
 
-      state.accounts[indexOf].connectedTo.splice(
-        state.accounts[indexOf].connectedTo.indexOf(
-          getHost(action.payload.url)
-        ),
+      state.accounts[index].connectedTo.splice(
+        state.accounts[index].connectedTo.indexOf(getHost(action.payload.url)),
         1
       );
     },
@@ -195,10 +194,6 @@ const WalletState = createSlice({
       state: IWalletState,
       action: PayloadAction<{ accountId: number, url: string }>
     ) {
-      console.log('action payload connections array', action.payload);
-
-      // debugger;
-
       const index: number = state.connections.findIndex(
         (connection) =>
           connection.accountId !== action.payload.accountId &&

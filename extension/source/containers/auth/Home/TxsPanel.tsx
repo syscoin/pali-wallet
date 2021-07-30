@@ -32,10 +32,10 @@ interface ITxsPanel {
   setOpenAssetBlockExplorer: any;
   setOpenBlockExplorer: any;
   setTx: any;
-  txidSelected: any;
-  transactions: Transaction[];
-  setTxidSelected: any;
   setTxType: any;
+  setTxidSelected: any;
+  transactions: Transaction[];
+  txidSelected: any;
 }
 
 const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, setTxidSelected, setAssetSelected, setOpenAssetBlockExplorer, setTxType, setAssetType, getTransactionData, setTx, setAssetTx, getTransactionAssetData }) => {

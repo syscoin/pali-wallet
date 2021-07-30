@@ -152,7 +152,11 @@ browser.runtime.onInstalled.addListener(async () => {
       target
     } = request;
 
-    const [tab] = await getTabs({ active: true, windowType: 'normal', url: window.senderURL });
+    // const urls = store.getState().wallet.connections.map((connection: any) => `http://${connection.url}/`);
+    // const [tab] = await getTabs({ active: true, windowType: 'normal', url: window.senderURL });
+    // const [tab] = await getTabs({ active: true, url: urls, windowType: 'normal' });
+
+    const tabs = await getTabs({});
 
     if (typeof request === 'object') {
       if (type == 'CONNECT_WALLET' && target == 'background') {  // OK
@@ -175,31 +179,35 @@ browser.runtime.onInstalled.addListener(async () => {
           message
         } = request;
 
-        browser.tabs.sendMessage(Number(tab.id), {
-          type: 'WALLET_ERROR',
-          target: 'contentScript',
-          transactionError,
-          invalidParams,
-          message
-        }).then(() => {
-          console.log('error message sent to the webpage')
-        }).catch((error) => {
-          console.log('error sending error message', error);
-        });
+        for (let tab of tabs) {
+          browser.tabs.sendMessage(Number(tab.id), {
+            type: 'WALLET_ERROR',
+            target: 'contentScript',
+            transactionError,
+            invalidParams,
+            message
+          }).then(() => {
+            console.log('error message sent to the webpage')
+          }).catch((error) => {
+            console.log('error sending error message', error);
+          });
+        }
       }
 
       if (type == 'TRANSACTION_RESPONSE' && target == 'background') {
         console.log('response transaction', request)
 
-        browser.tabs.sendMessage(Number(tab.id), {
-          type: 'TRANSACTION_RESPONSE',
-          target: 'contentScript',
-          response: request.response
-        }).then(() => {
-          console.log('transaction response sent to the webpage')
-        }).catch((error) => {
-          console.log('error sending transation response', error);
-        });
+        for (let tab of tabs) {
+          browser.tabs.sendMessage(Number(tab.id), {
+            type: 'TRANSACTION_RESPONSE',
+            target: 'contentScript',
+            response: request.response
+          }).then(() => {
+            console.log('transaction response sent to the webpage')
+          }).catch((error) => {
+            console.log('error sending transation response', error);
+          });
+        }
 
         const interval = setInterval(async () => {
           const data = await window.controller.wallet.account.getTransactionInfoByTxId(request.response.txid);
@@ -270,16 +278,18 @@ browser.runtime.onInstalled.addListener(async () => {
         if (getHost(window.senderURL)) {
           store.dispatch(updateCanConnect(false));
 
-          browser.tabs.sendMessage(Number(tab.id), {
-            type: 'WALLET_CONNECTION_CONFIRMED',
-            target: 'contentScript',
-            connectionConfirmed: true,
-            state: store.getState().wallet
-          }).then(() => {
-            console.log('wallet connection confirmed')
-          }).catch((error) => {
-            console.log('error confirming connection', error);
-          });
+          for (let tab of tabs) {
+            browser.tabs.sendMessage(Number(tab.id), {
+              type: 'WALLET_CONNECTION_CONFIRMED',
+              target: 'contentScript',
+              connectionConfirmed: true,
+              state: store.getState().wallet
+            }).then(() => {
+              console.log('wallet connection confirmed')
+            }).catch((error) => {
+              console.log('error confirming connection', error);
+            });
+          }
         }
 
         return;

@@ -31,7 +31,7 @@ const Modal: FC<IModal> = ({ title, message, connected, callback }) => {
   };
 
   const connectedAccounts = accounts.filter((account) => {
-    return account.connectedTo.find((url: any) => url == getHost(title));
+    return account.connectedTo.find((url: any) => url === getHost(title));
   });
 
   return (
@@ -50,15 +50,20 @@ const Modal: FC<IModal> = ({ title, message, connected, callback }) => {
 
       {!connected && (
         <div className={styles.close}>
-          <button onClick={() => callback()}>Close</button>
+          <button
+            type="button"
+            onClick={() => callback()
+          }>
+            Close
+          </button>
         </div>
       )}
 
       {connected && (
         <div>
-          {connectedAccounts.map((item, index) => {
+          {connectedAccounts.map((item) => {
             return (
-              <div className={styles.account} key={index}>
+              <div className={styles.account} key={item.id}>
                 <div className={styles.data}>
                   <p>{item.label}</p>
                   <small>{ellipsis(item.address.main)}</small>
@@ -97,7 +102,12 @@ const Modal: FC<IModal> = ({ title, message, connected, callback }) => {
           </div>
 
           <div className={styles.close}>
-            <button onClick={() => callback()}>Close</button>
+            <button
+              type="button"
+              onClick={() => callback()
+            }>
+              Close
+            </button>
           </div>
         </div>
       )}

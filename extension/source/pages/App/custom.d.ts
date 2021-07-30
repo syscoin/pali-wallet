@@ -47,15 +47,21 @@ declare interface IAccountController {
   confirmTransferOwnership: () => any;
   confirmUpdateAssetTransaction: () => any;
   createSPT: (spt: ISPTInfo) => void;
+  getAssetguidFromTokenTransfers: (tokenTransfers: any) => Promise<string>;
   getChangeAddress: () => Promise<string>;
   getConnectedAccount: () => IAccountState;
   getConnectedAccount: () => IAccountState;
   getConnectedAccountXpub: () => string;
   getConnectedAccountXpub: () => string;
+  getDataAsset: (assetGuid: any) => any;
+  getDataFromPageToInitTransaction: () => any;
+  getHoldingsData: () => any;
   getLatestUpdate: () => void;
   getPrimaryAccount: (pwd: string, sjs: any) => void;
+  getRawTransaction: (txid: string) => any;
   getRecommendFee: () => Promise<number>;
   getSysExplorerSearch: () => string;
+  getTransactionData: (txid: string) => any;
   getTransactionInfoByTxId: (txid: any) => any;
   getTransactionItem: () => any | null;
   getUserMintedTokens: () => any;
@@ -63,6 +69,7 @@ declare interface IAccountController {
   isValidSYSAddress: (address: string, network: string) => boolean | undefined;
   issueNFT: (nft: INFTIssue) => void;
   issueSPT: (spt: ISPTIssue) => void;
+  setCurrentPSBT: (psbt: any) => any;
   setCurrentPSBT: (psbt: any) => any;
   setDataFromPageToCreateNewSPT: (data: any) => void;
   setDataFromPageToMintNFT: (data: any) => void;
@@ -72,27 +79,20 @@ declare interface IAccountController {
   setDataFromWalletToCreateSPT: (data: any) => void;
   setDataFromWalletToMintNFT: (data: any) => void;
   setDataFromWalletToMintSPT: (data: any) => void;
-  setDataFromWalletToTransferOwnership: (data: any) => void;
-  setDataFromWalletToUpdateAsset: (data: any) => void;
-  setNewAddress: (addr: string) => boolean;
-  setNewOwnership: (data: any) => any;
-  setNewXpub: (id: number, xpub: string, xprv: string) => boolean;
-  setUpdateAsset: (asset: any) => any;
-  subscribeAccount: (isHardwareWallet: boolean, sjs?: any, label?: string, walletCreation?: boolean) => Promise<string | null>;
   updateAccountLabel: (id: number, label: string) => void;
   updateTempTx: (tx: ITransactionInfo) => void;
   updateTokensState: () => any;
   updateTxs: () => void;
   watchMemPool: (currentAccount: IAccountState) => void;
-  getDataFromPageToInitTransaction: () => any;
-  getDataAsset: (assetGuid: any) => any;
-  getHoldingsData: () => any;
-  setCurrentPSBT: (psbt: any) => any;
+  setDataFromWalletToTransferOwnership: (data: any) => void;
+  setNewXpub: (id: number, xpub: string, xprv: string) => boolean;
+  setDataFromWalletToUpdateAsset: (data: any) => void;
+  setUpdateAsset: (asset: any) => any;
   updateTokensState: () => any;
-  getTransactionData: (txid: string) => any;
-  getRawTransaction: (txid: string) => any;
+  setNewAddress: (addr: string) => boolean;
+  subscribeAccount: (isHardwareWallet: boolean, sjs?: any, label?: string, walletCreation?: boolean) => Promise<string | null>;
   setHDSigner: (accountId: number) => any;
-  getAssetguidFromTokenTransfers: (tokenTransfers: any) => Promise<string>;
+  setNewOwnership: (data: any) => any;
 }
 
 declare type CreateTokenItems = {
@@ -149,8 +149,8 @@ declare type CreateAndIssueNFTItems = {
     instanttransfers?: boolean
   },
   payoutAddress?: string,
-  symbol: string,
-  precision: number
+  precision: number,
+  symbol: string
 }
 
 declare type UpdateAssetItems = {

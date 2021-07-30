@@ -3,8 +3,7 @@ export const getHost = (url: string) => {
     return new URL(url).host;
   }
 
-  return url
-  
+  return url;
 };
 
 export const sendMessage = (
