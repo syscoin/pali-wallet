@@ -67,15 +67,13 @@ export default function CreateSPT() {
             initialSupply: Number(initialSupply),
             ...advancedOptions,
           }).then(async (tx) => {
-            console.log('tx response wallet', tx)
-
-            // if(file) {
-            //   setIsUploading(true);
-            //   await uploadLogo(tx.transactionData.tokenTransfers[1].token, file);
+            if(file) {
+              setIsUploading(true);
+              await uploadLogo(tx.txAssetGuid, file);
                 
-            //   setIsUploading(false);
-            //   event.target.reset();
-            // }
+              setIsUploading(false);
+              event.target.reset();
+            }
           })
           .catch((err) => {
             toast.dismiss()
