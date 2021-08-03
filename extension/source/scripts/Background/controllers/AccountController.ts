@@ -290,7 +290,7 @@ const AccountController = (actions: {
       return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=nonzero&details=txs', true);
     }
 
-    return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, connectedAccount.xpub, 'details=txs&assetMask=non-token-transfers', true, sysjs.HDSigner);
+    return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, connectedAccount.xpub, 'details=txs&assetMask=non-token-transfers', true, sysjs.Signer);
   };
 
   const getChangeAddress = async () => {
@@ -314,14 +314,14 @@ const AccountController = (actions: {
       let changeAddress: string = '';
       console.log('getting new change Address')
       if (connectedAccount.id === activeAccountId) {
-        changeAddress = (await sysjs.HDSigner.getNewChangeAddress())
+        changeAddress = (await sysjs.Signer.getNewChangeAddress())
         console.log(changeAddress)
         return changeAddress;
       }
       else {
-        sysjs.HDSigner.setAccountIndex(connectedAccount.id)
-        changeAddress = await sysjs.HDSigner.getNewChangeAddress();
-        sysjs.HDSigner.setAccountIndex(activeAccountId)
+        sysjs.Signer.setAccountIndex(connectedAccount.id)
+        changeAddress = await sysjs.Signer.getNewChangeAddress();
+        sysjs.Signer.setAccountIndex(activeAccountId)
         console.log('from diff acc')
         console.log(changeAddress)
         return changeAddress;
@@ -345,7 +345,7 @@ const AccountController = (actions: {
     return await Promise.all(accounts.map(async (account: IAccountState) => {
       const assetsData: any = {};
 
-      const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=derived&details=txs', true, sysjs.HDSigner);
+      const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=derived&details=txs', true, sysjs.Signer);
       const { transactions } = await fetchBackendConnectedAccount(account);
 
       let tokensMap: any = {};
@@ -533,7 +533,7 @@ const AccountController = (actions: {
     if (userAccount!.isTrezorWallet) {
       const response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, userAccount.xpub, 'tokens=nonzero&details=txs', true);
 
-      const TrezorAccount = new fromZPub(userAccount.xpub, sysjs.HDSigner.pubTypes, sysjs.HDSigner.networks);
+      const TrezorAccount = new fromZPub(userAccount.xpub, sysjs.Signer.Signer.pubtypes, sysjs.Signer.Signer.networks);
       let receivingIndex = -1;
       let changeIndex = -1;
 
@@ -575,7 +575,7 @@ const AccountController = (actions: {
     if (isHardwareWallet) {
       response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, xpub, 'tokens=nonzero&details=txs', true);
 
-      const account0: any = new fromZPub(xpub, sysjs.HDSigner.pubTypes, sysjs.HDSigner.networks);
+      const account0: any = new fromZPub(xpub, sysjs.Signer.Signer.pubtypes, sysjs.Signer.Signer.networks);
       let receivingIndex = -1;
 
       if (response.tokens) {
@@ -607,7 +607,7 @@ const AccountController = (actions: {
       };
     }
 
-    response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.HDSigner.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.HDSigner);
+    response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.Signer.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.Signer);
 
     return {
       address,
@@ -719,24 +719,30 @@ const AccountController = (actions: {
     }
 
     if (!walletCreation) {
-      await sysjs.HDSigner.createAccount();
+      await sysjs.Signer.createAccount();
     }
-
+    console.log('Checking Sysjs')
+    console.log(sysjs)
     const res: IAccountInfo | null = await getAccountInfo();
-
+    console.log('Info done')
+    console.log(res)
+    console.log(sysjs.Signer)
+    console.log(sysjs.Signer.Signer.accountIndex)
+    console.log(sysjs.Signer.Signer.accounts[sysjs.Signer.Signer.accountIndex].getAccountPrivateKey())
+    console.log(sysjs.Signer.getNewReceivingAddress())
     account = {
-      id: sysjs.HDSigner.accountIndex === 0 ? 0 : sysjs.HDSigner.accountIndex,
-      label: label || `Account ${sysjs.HDSigner.accountIndex + 1}`,
+      id: sysjs.Signer.Signer.accountIndex === 0 ? 0 : sysjs.Signer.Signer.accountIndex,
+      label: label || `Account ${sysjs.Signer.Signer.accountIndex + 1}`,
       balance: res.balance,
       transactions: res.transactions,
-      xpub: sysjs.HDSigner.getAccountXpub(),
-      xprv: sysjs.HDSigner.accounts[sysjs.HDSigner.accountIndex].getAccountPrivateKey(),
-      address: { 'main': await sysjs.HDSigner.getNewReceivingAddress() },
+      xpub: sysjs.Signer.getAccountXpub(),
+      xprv: sysjs.Signer.Signer.accounts[sysjs.Signer.Signer.accountIndex].getAccountPrivateKey(),
+      address: { 'main': await sysjs.Signer.getNewReceivingAddress() },
       assets: res.assets,
       connectedTo: [],
       isTrezorWallet: false
     };
-
+    console.log('Account created')
     store.dispatch(createAccount(account));
 
     return account!.xpub;
@@ -754,7 +760,7 @@ const AccountController = (actions: {
     account = accounts.find((account: IAccountState) => account.id === activeAccountId)!;
 
     if (!account.isTrezorWallet) {
-      sysjs.HDSigner.setAccountIndex(activeAccountId);
+      sysjs.Signer.setAccountIndex(activeAccountId);
 
       const accLatestInfo = await getAccountInfo();
 
@@ -986,7 +992,7 @@ const AccountController = (actions: {
     if (notaryAddress) {
       const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
         address: notaryAddress,
-        network: sysjs.HDSigner.network
+        network: sysjs.Signer.Signer.network
       });
 
       _assetOpts = {
@@ -1009,7 +1015,7 @@ const AccountController = (actions: {
     if (payoutAddress) {
       const payment = sys.utils.bitcoinjs.payments.p2wpkh({
         address: payoutAddress,
-        network: sysjs.HDSigner.network
+        network: sysjs.Signer.Signer.network
       });
 
       const auxFeeKeyID = Buffer.from(payment.hash.toString('hex'), 'hex');
@@ -1036,9 +1042,9 @@ const AccountController = (actions: {
       throw new Error('Trezor don\'t support burning of coins');
     }
 
-    sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
+    sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
-    console.log('sysjs', sysjs, sysjs.HDSigner)
+    console.log('sysjs', sysjs, sysjs.Signer)
 
 
     const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, receiver, receiver, new sys.utils.BN(fee * 1e8));
@@ -1154,7 +1160,7 @@ const AccountController = (actions: {
       }]
     ]);
 
-    sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
+    sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
     let sysChangeAddress = null;
 
@@ -1258,11 +1264,11 @@ const AccountController = (actions: {
     const txOpts: any = { rbf: true };
     const feeRate = new sys.utils.BN(fee * 1e8);
 
-    sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
+    sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
-    let assetChangeAddress = await sysjs.HDSigner.getNewChangeAddress();
+    let assetChangeAddress = await sysjs.Signer.getNewChangeAddress();
 
-    console.log('sysjs', sysjs, sysjs.HDSigner)
+    console.log('sysjs', sysjs, sysjs.Signer)
 
     const psbt = await sysjs.assetNew(assetOpts, txOpts, assetChangeAddress, assetChangeAddress, feeRate);
 
@@ -1337,9 +1343,9 @@ const AccountController = (actions: {
               ]);
 
               try {
-                sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
+                sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
-                console.log('sysjs', sysjs, sysjs.HDSigner)
+                console.log('sysjs', sysjs, sysjs.Signer)
 
                 const pendingTx = await sysjs.assetSend(txOpts, assetMap, issuer, feeRate);
 
@@ -1378,11 +1384,11 @@ const AccountController = (actions: {
                 const assetGuid = newParentAsset!.asset_guid;
                 const assetOpts = { updatecapabilityflags: '0' };
 
-                sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
+                sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
                 let assetChangeAddress = null;
 
-                console.log('sysjs', sysjs, sysjs.HDSigner)
+                console.log('sysjs', sysjs, sysjs.Signer)
 
                 const assetMap = new Map([
                   [assetGuid, {
@@ -1453,7 +1459,7 @@ const AccountController = (actions: {
       rbf
     } = items;
 
-    sysjs.HDSigner.setAccountIndex(store.getState().wallet.activeAccountId);
+    sysjs.Signer.setAccountIndex(store.getState().wallet.activeAccountId);
 
     if (isToken && token) {
       let txInfo;
@@ -1627,7 +1633,7 @@ const AccountController = (actions: {
   };
 
   const setHDSigner = (accountId: number) => {
-    sysjs.HDSigner.setAccountIndex(accountId);
+    sysjs.Signer.setAccountIndex(accountId);
   }
 
   const confirmUpdateAsset = async (item: any) => {
@@ -1680,7 +1686,7 @@ const AccountController = (actions: {
       const scalarPct = 1000;
       const payment = sys.utils.bitcoinjs.payments.p2wpkh({
         address: payoutAddress,
-        network: sysjs.HDSigner.network
+        network: sysjs.Signer.Signer.network
       })
       const auxfeekeyid = Buffer.from(payment.hash.toString('hex'), 'hex')
 
@@ -1701,7 +1707,7 @@ const AccountController = (actions: {
     if (notaryAddress) {
       const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
         address: notaryAddress,
-        network: sysjs.HDSigner.network
+        network: sysjs.Signer.Signer.network
       });
 
       assetOpts = {
@@ -1722,11 +1728,11 @@ const AccountController = (actions: {
       }]
     ]);
 
-    sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
+    sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
-    // let changeAddress = await sysjs.HDSigner.getNewChangeAddress();
+    // let changeAddress = await sysjs.Signer.getNewChangeAddress();
 
-    console.log('sysjs', sysjs, sysjs.HDSigner)
+    console.log('sysjs', sysjs, sysjs.Signer)
 
     const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, thisAssetMap, null, new sys.utils.BN(fee * 1e8));
 
@@ -1855,11 +1861,11 @@ const AccountController = (actions: {
       return;
     }
 
-    sysjs.HDSigner.setAccountIndex(getConnectedAccount().id);
+    sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
-    // let assetChangeAddress = await sysjs.HDSigner.getNewChangeAddress();
+    // let assetChangeAddress = await sysjs.Signer.getNewChangeAddress();
 
-    console.log('sysjs', sysjs, sysjs.HDSigner)
+    console.log('sysjs', sysjs, sysjs.Signer)
 
     const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, newOwner, feeRate);
 
