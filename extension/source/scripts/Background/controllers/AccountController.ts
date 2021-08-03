@@ -495,29 +495,12 @@ const AccountController = (actions: {
 
   const signTransaction = async (psbt: any) => {
     try {
-      // console.log('sign and send', psbt, res, assets)
-      console.log('psbt')
-      console.log(psbt)
-      // const feeRate = new sys.utils.BN(10)
-      // // set to false for ZDAG, true disables it but it is replaceable by bumping the fee
-      // const txOpts = { rbf: true }
-      // const assetguid = '682797033'
-      // // if assets need change sent, set this address. null to let HDSigner find a new address for you
-      // const assetChangeAddress = null
-      // const assetMap = new Map([
-      //   [assetguid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1 * 10 ** 8), address: 'tsys1q4nla8xg9e7ww8zafwkxdwkwl8dxmn78nz4dcc7' }] }]
-      // ])
-      // // if SYS need change sent, set this address. null to let HDSigner find a new address for you
-      // const sysChangeAddress = null
-      // let resp = null
-      // try {
-      //   resp = await sysjs.assetAllocationSend(txOpts, assetMap, assetChangeAddress, feeRate, getConnectedAccountXpub())
-      // } catch (e) {
-      //   console.error(e)
-      // }
-      // console.log('from here')
-      // console.log(resp)
-      await sysjs.signAndSend(psbt.res, psbt.assets);
+      console.log('psbt', psbt)
+
+      // const deserializedPSBT = JSON.parse(psbt);
+      // const newpsbt = Object.assign(new bjs.Psbt(), deserializedPSBT);
+
+      // await sysjs.signAndSend(newpsbt);
     } catch (error) {
       throw new Error(error);
     }

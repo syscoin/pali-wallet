@@ -65,48 +65,29 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 
   useEffect(() => {
     if (data) {
-      Object.entries(data).map(([key, value]) => {
-        if (!dataToRender.includes({ label: key, value })) {
-          setDataToRender([
-            ...dataToRender,
-            dataToRender.push({
-              label: key,
-              value,
-            }),
-          ]);
+      let newData: any = {};
+      let newAdvancedOptions: any = {};
 
-          if (
-            advancedOptionsArray.includes(key) &&
-            !advancedOptions.includes({ label: key, value })
-          ) {
-            setAdvancedOptions([
-              ...advancedOptions,
-              advancedOptions.push({
-                label: key,
-                value,
-              }),
-            ]);
-          }
+      Object.entries(data).map(([key, value]) => {
+        if (!newData[key]) {
+          newData[key] = {
+            label: key,
+            value,
+          };
+        }
+
+        if (advancedOptionsArray.includes(key) && !newAdvancedOptions[key]) {
+          newAdvancedOptions[key] = {
+            label: key,
+            value,
+          };;
         }
       });
 
-      console.log('data', data);
+      setDataToRender(Object.values(newData))
+      setAdvancedOptions(Object.values(newAdvancedOptions))
 
-      setDataToRender([
-        ...dataToRender,
-        dataToRender.push({
-          label: null,
-          value: null,
-        }),
-      ]);
-
-      setAdvancedOptions([
-        ...advancedOptions,
-        advancedOptions.push({
-          label: null,
-          value: null,
-        }),
-      ]);
+      console.log(newData, dataToRender, advancedOptions)
     }
 
     setConnectedAccountId(
@@ -119,17 +100,15 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   }, [data]);
 
   const handleClosePopup = () => {
-    history.push('/home');
-
     browser.runtime.sendMessage({
       type: 'CLOSE_POPUP',
       target: 'background',
     });
+
+    history.push('/home');
   };
 
   const handleCancelTransactionOnSite = () => {
-    history.push('/home');
-
     browser.runtime.sendMessage({
       type: 'CANCEL_TRANSACTION',
       target: 'background',
@@ -140,6 +119,8 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
       type: 'CLOSE_POPUP',
       target: 'background',
     });
+
+    history.push('/home');
   };
 
   const handleConfirm = () => {

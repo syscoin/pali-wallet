@@ -9133,10 +9133,9 @@
   "resolved" "https://registry.npmjs.org/synchronous-promise/-/synchronous-promise-2.0.15.tgz"
   "version" "2.0.15"
 
-"syscoinjs-lib@^1.0.142":
-  "integrity" "sha512-U0cg7TrYOJwADO9T5KmXwP60zIUbuDRupdrbX7PjdRWXvmEHvxLZ9OgvDU+u1mJyt28pxgWVDQrD80+vT4j5ow=="
-  "resolved" "https://registry.npmjs.org/syscoinjs-lib/-/syscoinjs-lib-1.0.143.tgz"
-  "version" "1.0.143"
+"syscoinjs-lib@github:syscoin/syscoinjs-lib":
+  "resolved" "git+ssh://git@github.com/syscoin/syscoinjs-lib.git#856603ea324a9f0b7ea9f7af725a4bb0232ab3b5"
+  "version" "1.0.164"
   dependencies:
     "axios" "^0.21.1"
     "bip84" "^0.2.5"
