@@ -62,10 +62,10 @@ const WalletController = (): IWalletController => {
     if (!isUpdated && sjs !== null) {
       return;
     }
-
+    console.log('Creating wallet')
     HDsigner = new sys.utils.HDSigner(mnemonic, null, false);
     sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.main.beUrl);
-
+    console.log('-----------')
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
 
@@ -161,11 +161,11 @@ const WalletController = (): IWalletController => {
             return false;
           }
 
-          const child = sjs.HDSigner.deriveAccount(i);
+          const child = sjs.Signer.deriveAccount(i);
 
-          sjs.HDSigner.accounts.push(new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks));
-          // sjs.HDSigner.accountIndex = activeAccountId;
-          sjs.HDSigner.setAccountIndex(activeAccountId)
+          sjs.Signer.Signer.accounts.push(new fromZPrv(child, sjs.Signer.pubTypes, sjs.Signer.networks));
+          // sjs.Signer.accountIndex = activeAccountId;
+          sjs.Signer.setAccountIndex(activeAccountId)
         }
       }
 
@@ -243,15 +243,15 @@ const WalletController = (): IWalletController => {
       }
       if (i !== 0) {
 
-        const child = sjs.HDSigner.deriveAccount(i);
-        const derived = new fromZPrv(child, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
-        sjs.HDSigner.accounts.push(derived);
-        // sjs.HDSigner.accountIndex = activeAccountId;
-        sjs.HDSigner.setAccountIndex(activeAccountId)
+        const child = sjs.Signer.deriveAccount(i);
+        const derived = new fromZPrv(child, sjs.Signer.Signer.pubTypes, sjs.Signer.Signer.networks);
+        sjs.Signer.Signer.accounts.push(derived);
+        // sjs.Signer.accountIndex = activeAccountId;
+        sjs.Signer.setAccountIndex(activeAccountId)
         account.setNewXpub(i, derived.getAccountPublicKey(), derived.getAccountPrivateKey());
       }
       else {
-        account.setNewXpub(i, sjs.HDSigner.accounts[i].getAccountPublicKey(), sjs.HDSigner.accounts[i].getAccountPrivateKey());
+        account.setNewXpub(i, sjs.Signer.Signer.accounts[i].getAccountPublicKey(), sjs.Signer.Signer.accounts[i].getAccountPrivateKey());
       }
     }
 
@@ -299,7 +299,7 @@ const WalletController = (): IWalletController => {
     if (userAccount!.isTrezorWallet) {
       const res = await sys.utils.fetchBackendAccount(sjs.blockbookURL, userAccount.xpub, 'tokens=nonzero&details=txs', true);
 
-      const account0 = new fromZPub(userAccount.xpub, sjs.HDSigner.pubTypes, sjs.HDSigner.networks);
+      const account0 = new fromZPub(userAccount.xpub, sjs.Signer.Signer.pubTypes, sjs.Signer.Signer.networks);
 
       let receivingIndex = -1;
 
@@ -331,10 +331,10 @@ const WalletController = (): IWalletController => {
       console.log("New address")
       console.log(address)
     } else {
-      sjs.HDSigner.receivingIndex = -1;
-      address = await sjs.HDSigner.getNewReceivingAddress();
+      sjs.Signer.Signer.receivingIndex = -1;
+      address = await sjs.Signer.getNewReceivingAddress();
       console.log("Receiving Index :")
-      console.log(sjs.HDSigner.receivingIndex)
+      console.log(sjs.Signer.Signer.receivingIndex)
     }
 
     return account.setNewAddress(address);
