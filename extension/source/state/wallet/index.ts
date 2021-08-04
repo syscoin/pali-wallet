@@ -289,12 +289,20 @@ const WalletState = createSlice({
       if (state.accounts.length <= 1) {
         return;
       }
+      const indexOf = state.accounts.findIndex(
+        (element: IAccountState) => element.id === action.payload
+      );
 
       if (state.activeAccountId === action.payload) {
         state.activeAccountId = state.accounts[0].id;
+        
       }
+      console.log('verifying this')
+      console.log(action.payload)
+      console.log(state.accounts[0].id)
+      console.log(state.activeAccountId)
 
-      state.accounts.splice(action.payload, 1);
+      state.accounts.splice(indexOf, 1);
     },
 
     removeAccounts(state: IWalletState) {

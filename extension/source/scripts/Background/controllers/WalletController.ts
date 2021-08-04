@@ -86,10 +86,11 @@ const WalletController = (): IWalletController => {
     })
   };
 
-  const createHardwareWallet = () => {
+  const createHardwareWallet = async () => {
     const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
-    const path = "m/84'/57'/0'";
-    const coin = "SYS"
+    console.log('Creating trezor wallet')
+    // const path = "m/84'/57'/0'";
+    // const coin = "SYS"
     if (isTestnet) {
       const message = "Trezor doesn't support SYS testnet";
       chrome.notifications.create(new Date().getTime().toString(), {
@@ -100,28 +101,68 @@ const WalletController = (): IWalletController => {
       });
       return
     }
-    console.log(window.trezorConnect)
-    window.trezorConnect.getAccountInfo({
-      path,
-      coin
-    })
-      .then((response: any) => {
-        const message = response.success
-          ? `Trezor Wallet Account Created`
-          : `Error: ${response.payload.error}`;
+    try{
+
+    const TrezorSigner =  new sys.utils.TrezorSigner();
+    console.log(TrezorSigner)
+    // const myacc = await TrezorSigner.createAccount();
+    TrezorSigner.createAccount().then((myacc : number) => {
+      console.log('Created trezor wallet')
+      const message = `Trezor Wallet Account Created`;
         chrome.notifications.create(new Date().getTime().toString(), {
           type: 'basic',
           iconUrl: 'assets/icons/favicon-48.png',
           title: 'Hardware Wallet connected',
           message,
         });
-        if (response.success) {
-          account.subscribeAccount(true, response.payload);
-        }
-      })
-      .catch((error: any) => {
-        console.error('TrezorConnectError', error);
-      });
+        console.log(myacc)
+        console.log(TrezorSigner)
+        console.log(TrezorSigner.getAccountXpub())
+        account.subscribeAccount(true, TrezorSigner);
+    }).catch((err : any) => {
+      console.log('error trezor wallet')
+      const message = `Trezor Error: ${err}`;
+        chrome.notifications.create(new Date().getTime().toString(), {
+          type: 'basic',
+          iconUrl: 'assets/icons/favicon-48.png',
+          title: 'Hardware Wallet error',
+          message,
+        });
+    });
+    }
+    catch(e){
+      console.log('error trezor wallet | bad hardcore error')
+          const message = `Error: ${e}`;
+        chrome.notifications.create(new Date().getTime().toString(), {
+          type: 'basic',
+          iconUrl: 'assets/icons/favicon-48.png',
+          title: 'Hardware Wallet connected',
+          message,
+        });
+        
+    }
+    // console.log(window.trezorConnect)
+    // window.trezorConnect.getAccountInfo({
+    //   path,
+    //   coin
+    // })
+    //   .then((response: any) => {
+    //     const message = response.success
+    //       ? `Trezor Wallet Account Created`
+    //       : `Error: ${response.payload.error}`;
+    //     chrome.notifications.create(new Date().getTime().toString(), {
+    //       type: 'basic',
+    //       iconUrl: 'assets/icons/favicon-48.png',
+    //       title: 'Hardware Wallet connected',
+    //       message,
+    //     });
+    //     if (response.success) {
+    //       account.subscribeAccount(true, response.payload);
+    //     }
+    //   })
+    //   .catch((error: any) => {
+    //     console.error('TrezorConnectError', error);
+    //   });
   }
 
 
@@ -157,15 +198,15 @@ const WalletController = (): IWalletController => {
         for (let i = 1; i < accounts.length; i++) {
           if (i > 0 && accounts[i].isTrezorWallet) {
             console.log("Should not derive from hdsigner if the account is from the hardware wallet");
-
-            return false;
           }
+          else{
 
-          const child = sjs.Signer.deriveAccount(i);
+            const child = sjs.Signer.deriveAccount(i);
 
-          sjs.Signer.Signer.accounts.push(new fromZPrv(child, sjs.Signer.pubTypes, sjs.Signer.networks));
-          // sjs.Signer.accountIndex = activeAccountId;
-          sjs.Signer.setAccountIndex(activeAccountId)
+            sjs.Signer.Signer.accounts.push(new fromZPrv(child, sjs.Signer.pubTypes, sjs.Signer.networks));
+            // sjs.Signer.accountIndex = activeAccountId;
+            sjs.Signer.setAccountIndex(activeAccountId)
+          }
         }
       }
 
@@ -222,12 +263,47 @@ const WalletController = (): IWalletController => {
     if (accounts.length > 1000) {
       return false;
     }
-
+    const ToRemoveWalletIds : any = [];
     for (let i = 0; i <= accounts.length; i++) {
       if (accounts[i] === undefined || accounts[i] === null) break;
 
       if (accounts[i].isTrezorWallet) {
-        store.dispatch(removeAccount(i));
+        ToRemoveWalletIds.push(accounts[i].id);
+        // console.log(accounts[i])
+        // store.dispatch(removeAccount(i));
+        // store.dispatch(updateStatus());
+
+        // const message = 'Your device is being disconnected';
+
+        // chrome.notifications.create(new Date().getTime().toString(), {
+        //   type: 'basic',
+        //   iconUrl: 'assets/icons/favicon-48.png',
+        //   title: 'Hardware Wallet removed due to network switch',
+        //   message
+        // });
+
+      }
+      else{
+        if (i !== 0) {
+
+          const child = sjs.Signer.deriveAccount(i);
+          const derived = new fromZPrv(child, sjs.Signer.Signer.pubTypes, sjs.Signer.Signer.networks);
+          sjs.Signer.Signer.accounts.push(derived);
+          // sjs.Signer.accountIndex = activeAccountId;
+          sjs.Signer.setAccountIndex(activeAccountId)
+          account.setNewXpub(i, derived.getAccountPublicKey(), derived.getAccountPrivateKey());
+        }
+        else {
+          account.setNewXpub(i, sjs.Signer.Signer.accounts[i].getAccountPublicKey(), sjs.Signer.Signer.accounts[i].getAccountPrivateKey());
+        }
+      }
+    }
+
+    if(ToRemoveWalletIds.length > 0){
+      console.log(ToRemoveWalletIds)
+      for (let i = 0; i <= accounts.length; i++) {
+        console.log(ToRemoveWalletIds[i])
+        store.dispatch(removeAccount(ToRemoveWalletIds[i]));
         store.dispatch(updateStatus());
 
         const message = 'Your device is being disconnected';
@@ -238,22 +314,10 @@ const WalletController = (): IWalletController => {
           title: 'Hardware Wallet removed due to network switch',
           message
         });
-
-        return;
-      }
-      if (i !== 0) {
-
-        const child = sjs.Signer.deriveAccount(i);
-        const derived = new fromZPrv(child, sjs.Signer.Signer.pubTypes, sjs.Signer.Signer.networks);
-        sjs.Signer.Signer.accounts.push(derived);
-        // sjs.Signer.accountIndex = activeAccountId;
-        sjs.Signer.setAccountIndex(activeAccountId)
-        account.setNewXpub(i, derived.getAccountPublicKey(), derived.getAccountPrivateKey());
-      }
-      else {
-        account.setNewXpub(i, sjs.Signer.Signer.accounts[i].getAccountPublicKey(), sjs.Signer.Signer.accounts[i].getAccountPrivateKey());
       }
     }
+       
+
 
     account.getPrimaryAccount(password, sjs);
 

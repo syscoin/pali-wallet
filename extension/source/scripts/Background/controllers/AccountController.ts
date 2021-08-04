@@ -294,7 +294,7 @@ const AccountController = (actions: {
   };
 
   const getChangeAddress = async () => {
-    const { activeAccountId }: IWalletState = store.getState().wallet;
+    const { accounts,activeAccountId }: IWalletState = store.getState().wallet;
     const connectedAccount: IAccountState = getConnectedAccount();
     if (!sysjs) {
       //TODO: enhance this error message
@@ -306,8 +306,13 @@ const AccountController = (actions: {
     if (connectedAccount.isTrezorWallet) {
       //TODO: Implement changeAddress for trezor wallets 
       //only when trezor enable syscoin on mainnet
-      console.log('We do not support changeAddress for trezor wallets yet');
-      return 'Error: We do not support changeAddress for trezor wallets yet';
+      console.log('Trezor new change address');
+      let addr : string = 'Error: Failed to fetch trezor change address'
+      const inter = await getNewChangeAddress();
+      if(inter !== null) {
+        addr = inter
+      }
+      return addr;
     }
 
     else {
@@ -321,7 +326,9 @@ const AccountController = (actions: {
       else {
         sysjs.Signer.setAccountIndex(connectedAccount.id)
         changeAddress = await sysjs.Signer.getNewChangeAddress();
-        sysjs.Signer.setAccountIndex(activeAccountId)
+        if(accounts[activeAccountId].isTrezorWallet){
+          sysjs.Signer.setAccountIndex(activeAccountId)
+        }
         console.log('from diff acc')
         console.log(changeAddress)
         return changeAddress;
@@ -703,18 +710,21 @@ const AccountController = (actions: {
 
   const subscribeAccount = async (isHardwareWallet = false, sjs?: any, label?: string, walletCreation?: boolean) => {
     if (isHardwareWallet) {
+      console.log("Checking in hardware wallet creation")
+      console.log(sjs)
+      console.log(sjs.getAccountXpub())
       const { accounts }: IWalletState = store.getState().wallet;
       const trezorID: number = accounts.reduce((trezorID: number, account: IAccountState) => (account.trezorId) ? trezorID = trezorID > account.trezorId ? trezorID : account.trezorId : trezorID, 0);
 
-      const trezorinfo: IAccountInfo | null = await getAccountInfo(isHardwareWallet, sjs.descriptor);
+      const trezorinfo: IAccountInfo | null = await getAccountInfo(isHardwareWallet, sjs.getAccountXpub());
 
       if (trezorinfo.address) {
         account = {
           id: 9999 + trezorID,
           label: `Trezor ${trezorID + 1}`,
-          balance: sjs.availableBalance / (10 ** 8),
+          balance: trezorinfo.balance / (10 ** 8),
           transactions: trezorinfo.transactions,
-          xpub: sjs.descriptor,
+          xpub: sjs.getAccountXpub(),
           xprv: '',
           address: { 'main': trezorinfo.address },
           assets: trezorinfo.assets,
@@ -1161,7 +1171,7 @@ const AccountController = (actions: {
 
     const feeRate = new sys.utils.BN(fee * 1e8);
     const txOpts = { rbf: true };
-    const assetChangeAddress = null;
+    const assetChangeAddress : any = null;
 
     let txInfo;
 
@@ -1476,8 +1486,9 @@ const AccountController = (actions: {
       rbf
     } = items;
 
-    sysjs.Signer.setAccountIndex(store.getState().wallet.activeAccountId);
-
+    if(!account.isTrezorWallet){
+      sysjs.Signer.setAccountIndex(store.getState().wallet.activeAccountId);
+    }
     if (isToken && token) {
       let txInfo;
 
@@ -1577,8 +1588,10 @@ const AccountController = (actions: {
 
       if (account.isTrezorWallet) {
         const changeAddress = await getNewChangeAddress();
+        console.log(changeAddress)
         const psbt = await sysjs.createTransaction(txOpts, changeAddress, outputsArray, new sys.utils.BN(fee * 1e8), account.xpub);
-
+        console.log('done')
+        console.log(psbt)
         if (!psbt) {
           console.log('Could not create transaction, not enough funds?')
         }
@@ -1650,7 +1663,9 @@ const AccountController = (actions: {
   };
 
   const setHDSigner = (accountId: number) => {
-    sysjs.Signer.setAccountIndex(accountId);
+    if(!account.isTrezorWallet){
+      sysjs.Signer.setAccountIndex(accountId);
+    }
   }
 
   const confirmUpdateAsset = async (item: any) => {
@@ -1744,6 +1759,7 @@ const AccountController = (actions: {
         }]
       }]
     ]);
+    
 
     sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
