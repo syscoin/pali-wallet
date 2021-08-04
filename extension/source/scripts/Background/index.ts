@@ -206,20 +206,6 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'TRANSACTION_RESPONSE' && target == 'background') {
         console.log('response transaction', request, tabId)
 
-        // if (tab) {
-        //   if (getConnectedAccountIndex({ match: new URL(String(tab.url)).host }) >= 0) {
-        //     browser.tabs.sendMessage(Number(tab.id), {
-        //       type: 'TRANSACTION_RESPONSE',
-        //       target: 'contentScript',
-        //       response: request.response
-        //     }).then(() => {
-        //       console.log('transaction response sent to the webpage', tab.url)
-        //     }).catch((error) => {
-        //       console.log('error sending transation response', error);
-        //     });
-        //   }
-        // }
-
         browser.tabs.sendMessage(Number(tabId), {
           type: 'TRANSACTION_RESPONSE',
           target: 'contentScript',
