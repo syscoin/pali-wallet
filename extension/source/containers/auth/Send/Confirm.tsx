@@ -202,7 +202,7 @@ const SendConfirm = () => {
 
           <Button
             type="submit"
-            theme="btn-outline-confirm"
+            theme="btn-outline-primary"
             variant={styles.button}
             onClick={handleConfirm}
           >

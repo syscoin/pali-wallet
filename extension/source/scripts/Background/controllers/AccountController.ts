@@ -497,12 +497,9 @@ const AccountController = (actions: {
     return getConnectedAccount().xpub;
   }
 
-  const signTransaction = async (psbt: any) => {
+  const signTransaction = async (psbt: string) => {
     try {
-      console.log('psbt', psbt)
-      console.log('new psbt', sys.utils.bitcoinjs.Psbt.fromBase64(psbt.toBase64()))
-      
-      await sysjs.signAndSend(sys.utils.bitcoinjs.Psbt.fromBase64(psbt.toBase64()));
+      return await sysjs.signAndSend(sys.utils.bitcoinjs.Psbt.fromBase64(psbt));
     } catch (error) {
       throw new Error(error);
     }
@@ -1100,6 +1097,7 @@ const AccountController = (actions: {
                   txid: txInfo,
                   txConfirmations: sptCreated.confirmations,
                   txAssetGuid: createdAsset,
+                  psbt: pendingTx.toBase64()
                 });
               } catch (error) {
                 clearInterval(interval);
@@ -1121,6 +1119,7 @@ const AccountController = (actions: {
       txid: txInfoNew,
       txConfirmations: transactionData.confirmations,
       txAssetGuid: createdAsset,
+      psbt: pendingTx.toBase64()
     }
   };
 
