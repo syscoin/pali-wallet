@@ -329,10 +329,14 @@ const AccountController = (actions: {
     }
   }
 
-  const sortList = (list: any, property: string) => {
+  const sortList = (list: any) => {
     return list.sort((a: any, b: any) => {
-      return a[property].localeCompare(b[property]);
-    });
+      const previous = a.symbol.toLowerCase();
+      const next = b.symbol.toLowerCase();
+
+      //@ts-ignore
+      return (previous > next) - (previous < next);
+    })
   }
 
   const updateTokensState = async () => {
@@ -358,8 +362,8 @@ const AccountController = (actions: {
           accountId: account.id,
           accountXpub: account.xpub,
           tokens: tokensMap,
-          holdings: sortList(Object.values(assetsData), 'symbol'),
-          mintedTokens: sortList(Object.values(mintedTokens), 'symbol'),
+          holdings: sortList(Object.values(assetsData)),
+          mintedTokens: sortList(Object.values(mintedTokens)),
         }));
 
         return;
@@ -444,8 +448,8 @@ const AccountController = (actions: {
           accountId: account.id,
           accountXpub: account.xpub,
           tokens: tokensMap,
-          holdings: sortList(Object.values(assetsData), 'symbol'),
-          mintedTokens: sortList(Object.values(mintedTokens), 'symbol'),
+          holdings: sortList(Object.values(assetsData)),
+          mintedTokens: sortList(Object.values(mintedTokens)),
         }));
 
         return;
@@ -496,11 +500,9 @@ const AccountController = (actions: {
   const signTransaction = async (psbt: any) => {
     try {
       console.log('psbt', psbt)
-
-      // const deserializedPSBT = JSON.parse(psbt);
-      // const newpsbt = Object.assign(new bjs.Psbt(), deserializedPSBT);
-
-      // await sysjs.signAndSend(newpsbt);
+      console.log('new psbt', sys.utils.bitcoinjs.Psbt.fromBase64(psbt.toBase64()))
+      
+      await sysjs.signAndSend(sys.utils.bitcoinjs.Psbt.fromBase64(psbt.toBase64()));
     } catch (error) {
       throw new Error(error);
     }
@@ -1054,7 +1056,8 @@ const AccountController = (actions: {
     updateTransactionData('creatingAsset', txInfoNew);
 
     const transactionData = await getTransactionInfoByTxId(txInfoNew);
-    const createdAssetguid = await getAssetguidFromTokenTransfers(transactionData.tokenTransfers);
+    const assets = syscointx.getAssetsFromTx(pendingTx.extractTransaction());
+    const createdAsset = assets.keys().next().value;
 
     if (initialSupply && initialSupply < newMaxSupply) {
       try {
@@ -1065,11 +1068,11 @@ const AccountController = (actions: {
             const sptCreated = await getTransactionInfoByTxId(txInfoNew);
 
             if (sptCreated?.confirmations > 1) {
-              console.log('confirmations > 1', createdAssetguid)
+              console.log('confirmations > 1', createdAsset)
 
               try {
                 const assetMap = new Map([
-                  [String(createdAssetguid), {
+                  [String(createdAsset), {
                     changeAddress: null,
                     outputs: [{
                       value: new sys.utils.BN(initialSupply * (10 ** precision)),
@@ -1096,7 +1099,7 @@ const AccountController = (actions: {
                   sptCreated,
                   txid: txInfo,
                   txConfirmations: sptCreated.confirmations,
-                  txAssetGuid: createdAssetguid
+                  txAssetGuid: createdAsset,
                 });
               } catch (error) {
                 clearInterval(interval);
@@ -1113,13 +1116,11 @@ const AccountController = (actions: {
       }
     }
 
-    console.log('data transaction', transactionData)
-
     return {
       transactionData,
       txid: txInfoNew,
       txConfirmations: transactionData.confirmations,
-      txAssetGuid: createdAssetguid
+      txAssetGuid: createdAsset,
     }
   };
 

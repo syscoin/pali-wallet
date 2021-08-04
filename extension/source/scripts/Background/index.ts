@@ -68,7 +68,7 @@ const observeStore = async (store: any) => {
     if (nextState !== currentState) {
       currentState = nextState;
 
-      const [tab]: any = await getTabs({ active: true, lastFocusedWindow: true, windowType: 'normal' });
+      const [tab]: any = await getTabs({ active: true, windowType: 'normal' });
 
       if (tab) {
         if (getConnectedAccountIndex({ match: new URL(String(tab.url)).host }) >= 0) {
@@ -158,6 +158,8 @@ browser.runtime.onInstalled.addListener(async () => {
 
     const tabs = await getTabs({});
 
+    const [tab]: any = await getTabs({ active: true, windowType: 'normal' });
+
     if (typeof request === 'object') {
       if (type == 'CONNECT_WALLET' && target == 'background') {  // OK
         const url = browser.runtime.getURL('app.html');
@@ -197,16 +199,18 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'TRANSACTION_RESPONSE' && target == 'background') {
         console.log('response transaction', request)
 
-        for (let tab of tabs) {
-          browser.tabs.sendMessage(Number(tab.id), {
-            type: 'TRANSACTION_RESPONSE',
-            target: 'contentScript',
-            response: request.response
-          }).then(() => {
-            console.log('transaction response sent to the webpage')
-          }).catch((error) => {
-            console.log('error sending transation response', error);
-          });
+        if (tab) {
+          if (getConnectedAccountIndex({ match: new URL(String(tab.url)).host }) >= 0) {
+            browser.tabs.sendMessage(Number(tab.id), {
+              type: 'TRANSACTION_RESPONSE',
+              target: 'contentScript',
+              response: request.response
+            }).then(() => {
+              console.log('transaction response sent to the webpage', tab.url)
+            }).catch((error) => {
+              console.log('error sending transation response', error);
+            });
+          }
         }
 
         const interval = setInterval(async () => {

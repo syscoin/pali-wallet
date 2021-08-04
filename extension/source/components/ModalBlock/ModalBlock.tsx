@@ -9,6 +9,9 @@ import {
 import { CircularProgress } from '@material-ui/core';
 import { useController, useCopyClipboard } from 'hooks/index';
 import { useAlert } from 'react-alert';
+import IWalletState from 'state/wallet/types';
+import { RootState } from 'state/store';
+import { useSelector } from 'react-redux';
 
 import styles from './ModalBlock.scss';
 
@@ -36,6 +39,10 @@ const ModalBlock: FC<IModalBlock> = ({
   const controller = useController();
   const alert = useAlert();
 
+  const { activeNetwork }: IWalletState = useSelector(
+    (state: RootState) => state.wallet
+  );
+
   const [expanded, setExpanded] = useState<boolean>(false);
   const [newExpanded, setNewExpanded] = useState<boolean>(false);
   const [tokensExpanded, setTokensExpanded] = useState<boolean>(false);
@@ -56,13 +63,14 @@ const ModalBlock: FC<IModalBlock> = ({
   useEffect(() => {
     if (tx) {
       const { vin, vout } = tx;
-
-      console.log('tx', tx);
-
+  
       if (vin && vout) {
         for (const item of vout) {
           if (item.addresses) {
-            recipients[item.addresses[0]] = item.addresses[0];
+            recipients[item.addresses[0]] = {
+              address: item.addresses[0],
+              value: item.value
+            };
           }
         }
 
@@ -77,7 +85,10 @@ const ModalBlock: FC<IModalBlock> = ({
               .then((response: any) => {
                 for (const vout of response.vout) {
                   if (vout.n === item.vout) {
-                    senders[item.addresses[0]] = item.addresses[0];
+                    senders[item.addresses[0]] = {
+                      address: item.addresses[0],
+                      value: item.value
+                    };
                   }
                 }
               });
@@ -189,15 +200,15 @@ const ModalBlock: FC<IModalBlock> = ({
       },
       {
         label: 'Total input',
-        value: valueIn ? valueIn / 10 ** 8 : '',
+        value: valueIn ? (activeNetwork === 'main' ? `${valueIn / 10 ** 8} SYS` : `${valueIn / 10 ** 8} tSYS`) : '',
       },
       {
         label: 'Total output',
-        value: value ? value / 10 ** 8 : '',
+        value: value ? (activeNetwork === 'main' ? `${value / 10 ** 8} SYS` : `${value / 10 ** 8} tSYS`) : '',
       },
       {
         label: 'Total',
-        value: fees ? fees / 10 ** 8 : '',
+        value: fees ? (activeNetwork === 'main' ? `${fees / 10 ** 8} SYS` : `${fees / 10 ** 8} tSYS`) : '',
       },
     ];
 
@@ -212,10 +223,11 @@ const ModalBlock: FC<IModalBlock> = ({
   };
 
   const renderAddresses = (list: any) => {
-    return Object.values(list).map((address: any, index: number) => {
+    return Object.values(list).map(({ address, value }: any) => {
       return (
-        <li key={index}>
+        <li key={address} className={styles.option}>
           <p onClick={() => copyText(address)}>{ellipsis(address) || '...'}</p>
+          <small>{formatURL(String(Number(value) / 10 ** 8), 18)}   {activeNetwork === 'main' ? 'SYS' : 'tSYS'}</small>
         </li>
       );
     });
