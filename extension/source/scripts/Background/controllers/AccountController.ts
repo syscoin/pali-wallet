@@ -504,9 +504,17 @@ const AccountController = (actions: {
     return getConnectedAccount().xpub;
   }
 
-  const signTransaction = async (psbt: string) => {
+  const signTransaction = async (jsonData: any) => {
+    const base64 = /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
+
+    if (!base64.test(jsonData.psbt) || typeof jsonData.assets !== 'string') {
+      throw new Error(`PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.`);
+    }
+
     try {
-      return await sysjs.signAndSend(sys.utils.bitcoinjs.Psbt.fromBase64(psbt));
+      const { psbt, assets } = sys.utils.importPsbtFromJson(jsonData);
+
+      return await sysjs.signAndSend(psbt, assets);
     } catch (error) {
       throw new Error(error);
     }
@@ -1107,7 +1115,6 @@ const AccountController = (actions: {
                   txid: txInfo,
                   txConfirmations: sptCreated.confirmations,
                   txAssetGuid: createdAsset,
-                  psbt: pendingTx.toBase64()
                 });
               } catch (error) {
                 clearInterval(interval);
@@ -1129,7 +1136,6 @@ const AccountController = (actions: {
       txid: txInfoNew,
       txConfirmations: transactionData.confirmations,
       txAssetGuid: createdAsset,
-      psbt: pendingTx.toBase64()
     }
   };
 

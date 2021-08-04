@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import clsx from 'clsx';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
@@ -23,7 +23,6 @@ const SignTransaction = () => {
   const alert = useAlert();
 
   const [loading, setLoading] = useState<boolean>(false);
-  // @ts-ignore
   const [confirmed, setConfirmed] = useState<boolean>(false);
 
   const { signingTransaction, currentSenderURL, accounts }: IWalletState =
@@ -33,6 +32,19 @@ const SignTransaction = () => {
 
   const handleConfirmSignature = () => {
     setLoading(true);
+
+    const base64 = /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
+
+    if (!base64.test(psbt.psbt) || typeof psbt.assets !== 'string') {
+      alert.removeAll();
+      alert.error(`PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.`);
+
+      setTimeout(() => {
+        handleCancelTransactionOnSite();
+      }, 10000);
+
+      return;
+    }
 
     controller.wallet.account
       .confirmSignature()
@@ -60,13 +72,13 @@ const SignTransaction = () => {
             invalidParams: false,
             message: "Can't sign transaction. Try again later.",
           });
+
+          setTimeout(() => {
+            handleCancelTransactionOnSite();
+          }, 4000);
         }
       });
   };
-
-  useEffect(() => {
-    console.log('psbt', psbt);
-  }, []);
 
   const handleCancelTransactionOnSite = () => {
     history.push('/home');
@@ -95,74 +107,6 @@ const SignTransaction = () => {
       return url == getHost(currentSenderURL);
     });
   });
-
-  // return confirmed ? (
-  //   <Layout title="Your transaction is underway" linkTo="/remind" showLogo>
-  //     <div className="body-description">
-  //       You can follow your transaction under activity on your account screen.
-  //     </div>
-  //     <Button
-  //       type="button"
-  //       theme="btn-gradient-primary"
-  //       variant={styles.next}
-  //       linkTo="/home"
-  //       onClick={handleClosePopup}
-  //     >
-  //       Ok
-  //     </Button>
-  //   </Layout>
-  // ) : (
-  //   <div>
-  //     <Layout title="Signature request" showLogo>
-  //       <div className={styles.wrapper}>
-  //         <p className={styles.description}>{getHost(currentSenderURL)}</p>
-
-  //         <div className={styles.account}>
-  //           <p className={styles.description}>{connectedAccount?.label}</p>
-  //           <p className={styles.description}>
-  //             {ellipsis(connectedAccount?.address.main)}
-  //           </p>
-  //         </div>
-
-  //         <pre className={styles.code}>{`${JSON.stringify(
-  //           psbt,
-  //           null,
-  //           2
-  //         )}`}</pre>
-
-  //         <p
-  //           className={styles.description}
-  //           style={{ textAlign: 'center', marginTop: '1rem' }}
-  //         >
-  //           Only sign messages from sites you fully trust with your account.
-  //         </p>
-
-  //         <section className={styles.confirm}>
-  //           <div className={styles.actions}>
-  //             <Button
-  //               type="button"
-  //               theme="btn-outline-secondary"
-  //               variant={clsx(styles.button, styles.close)}
-  //               linkTo="/home"
-  //               onClick={handleCancelTransactionOnSite}
-  //             >
-  //               Reject
-  //             </Button>
-
-  //             <Button
-  //               type="button"
-  //               theme="btn-outline-primary"
-  //               variant={styles.button}
-  //               onClick={handleConfirmSignature}
-  //             >
-  //               {loading ? <Spinner size={15} className={styles.spinner} /> : 'Sign'}
-  //             </Button>
-  //           </div>
-  //         </section>
-  //       </div>
-  //     </Layout>
-  //   </div>
-  // );
 
   return confirmed ? (
     <Layout title="Your transaction is underway" linkTo="/remind" showLogo>
