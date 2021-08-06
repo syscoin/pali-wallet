@@ -152,11 +152,22 @@
           }
 
           & li {
-            padding: 0.3rem 0;
+            padding: .3rem 0;
             border-bottom: 1px solid #80808047;
             display: flex;
             align-items: center;
             justify-content: center;
+            flex-direction: column;
+
+            & p {
+              margin-bottom: 0;
+            }
+
+            & small {
+              margin-top: 0;
+              margin-bottom: .3rem;
+              color: #cb2c70;
+            }
           }
 
           &::-webkit-scrollbar {
@@ -171,22 +182,6 @@
             border-radius: 2rem;
             background-color: $royalBlue;
             transition: all 0.3s;
-          }
-
-          li.option {
-            height: 36px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            transition: all 300ms;
-            padding: 0 0.6rem;
-            color: $white;
-            font-size: 14px;
-
-            &:hover {
-              background: $gray-light;
-              color: $navy;
-            }
           }
         }
 

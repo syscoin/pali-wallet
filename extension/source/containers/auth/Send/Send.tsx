@@ -27,7 +27,7 @@ import ReactTooltip from 'react-tooltip';
 import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import DownArrowIcon from '@material-ui/icons/ExpandMore';
 import Spinner from '@material-ui/core/CircularProgress';
-
+import { PRICE_SYS_ID } from 'constants/index';
 import { Assets } from '../../../scripts/types';
 
 import styles from './Send.scss';
@@ -50,6 +50,9 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const { accounts, activeAccountId, activeNetwork, changingNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
+  const { price } = useSelector(
+    (state: RootState) => state
+  );
   const [address, setAddress] = useState<string>(initAddress);
   const [amount, setAmount] = useState<string>('');
   const [fee, setFee] = useState<string>('0.00001');
@@ -70,10 +73,23 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     [styles.hide]: !isValidAddress,
   });
 
+  const calculateFee = (amount: number, fraction = 6) => {
+    const value = amount * price.fiat[PRICE_SYS_ID];
+
+    return value.toLocaleString(
+      navigator.language,
+      {
+        minimumFractionDigits: fraction,
+        maximumFractionDigits: fraction,
+      }
+    );
+  }
+
   const onSubmit = (data: any) => {
     if (!isValidAddress) {
       alert.removeAll();
       alert.error('Error: Invalid recipient address');
+
       return;
     }
 
@@ -82,6 +98,13 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       amount,
       fee
     } = data;
+
+    if (Number(fee) > Number(getFiatAmount(Number(amount) + Number(fee), 6)) / 10) {
+      alert.removeAll();
+      alert.error(`Error: Fee too high, maximum ${Number(getFiatAmount(Number(amount) + Number(fee), 6)) / 10}`);
+
+      return;
+    }
 
     if (selectedAsset) {
       try {
@@ -181,7 +204,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
       accounts.find(element => element.id === activeAccountId)!.balance.toFixed(8))
   }
-
 
   return (
     <div className={styles.wrapper}>
@@ -436,6 +458,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                   !isValidAddress ||
                   !amount ||
                   !fee ||
+                  Number(fee) > Number(calculateFee(Number(amount) + Number(fee), 6)) / 10 ||
                   !address ||
                   Number(amount) <= 0
                 }

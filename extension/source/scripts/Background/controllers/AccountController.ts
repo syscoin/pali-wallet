@@ -314,10 +314,14 @@ const AccountController = (actions: {
     }
   }
 
-  const sortList = (list: any, property: string) => {
+  const sortList = (list: any) => {
     return list.sort((a: any, b: any) => {
-      return a[property].localeCompare(b[property]);
-    });
+      const previous = a.symbol.toLowerCase();
+      const next = b.symbol.toLowerCase();
+
+      //@ts-ignore
+      return (previous > next) - (previous < next);
+    })
   }
 
   const updateTokensState = async () => {
@@ -343,8 +347,8 @@ const AccountController = (actions: {
           accountId: account.id,
           accountXpub: account.xpub,
           tokens: tokensMap,
-          holdings: sortList(Object.values(assetsData), 'symbol'),
-          mintedTokens: sortList(Object.values(mintedTokens), 'symbol'),
+          holdings: sortList(Object.values(assetsData)),
+          mintedTokens: sortList(Object.values(mintedTokens)),
         }));
 
         return;
@@ -429,8 +433,8 @@ const AccountController = (actions: {
           accountId: account.id,
           accountXpub: account.xpub,
           tokens: tokensMap,
-          holdings: sortList(Object.values(assetsData), 'symbol'),
-          mintedTokens: sortList(Object.values(mintedTokens), 'symbol'),
+          holdings: sortList(Object.values(assetsData)),
+          mintedTokens: sortList(Object.values(mintedTokens)),
         }));
 
         return;
@@ -478,31 +482,17 @@ const AccountController = (actions: {
     return getConnectedAccount().xpub;
   }
 
-  const signTransaction = async (psbt: any) => {
+  const signTransaction = async (jsonData: any) => {
+    const base64 = /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
+
+    if (!base64.test(jsonData.psbt) || typeof jsonData.assets !== 'string') {
+      throw new Error(`PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.`);
+    }
+
     try {
-      // console.log('sign and send', psbt, res, assets)
-      console.log('psbt')
-      console.log(psbt)
-      // const feeRate = new sys.utils.BN(10)
-      // // set to false for ZDAG, true disables it but it is replaceable by bumping the fee
-      // const txOpts = { rbf: true }
-      // const assetguid = '682797033'
-      // // if assets need change sent, set this address. null to let HDSigner find a new address for you
-      // const assetChangeAddress = null
-      // const assetMap = new Map([
-      //   [assetguid, { changeAddress: assetChangeAddress, outputs: [{ value: new sys.utils.BN(1 * 10 ** 8), address: 'tsys1q4nla8xg9e7ww8zafwkxdwkwl8dxmn78nz4dcc7' }] }]
-      // ])
-      // // if SYS need change sent, set this address. null to let HDSigner find a new address for you
-      // const sysChangeAddress = null
-      // let resp = null
-      // try {
-      //   resp = await sysjs.assetAllocationSend(txOpts, assetMap, assetChangeAddress, feeRate, getConnectedAccountXpub())
-      // } catch (e) {
-      //   console.error(e)
-      // }
-      // console.log('from here')
-      // console.log(resp)
-      await sysjs.signAndSend(psbt.res, psbt.assets);
+      const { psbt, assets } = sys.utils.importPsbtFromJson(jsonData);
+
+      return await sysjs.signAndSend(psbt, assets);
     } catch (error) {
       throw new Error(error);
     }
@@ -1063,7 +1053,8 @@ const AccountController = (actions: {
     updateTransactionData('creatingAsset', txInfoNew);
 
     const transactionData = await getTransactionInfoByTxId(txInfoNew);
-    const createdAssetguid = await getAssetguidFromTokenTransfers(transactionData.tokenTransfers);
+    const assets = syscointx.getAssetsFromTx(pendingTx.extractTransaction());
+    const createdAsset = assets.keys().next().value;
 
     if (initialSupply && initialSupply < newMaxSupply) {
       try {
@@ -1074,11 +1065,11 @@ const AccountController = (actions: {
             const sptCreated = await getTransactionInfoByTxId(txInfoNew);
 
             if (sptCreated?.confirmations > 1) {
-              console.log('confirmations > 1', createdAssetguid)
+              console.log('confirmations > 1', createdAsset)
 
               try {
                 const assetMap = new Map([
-                  [String(createdAssetguid), {
+                  [String(createdAsset), {
                     changeAddress: null,
                     outputs: [{
                       value: new sys.utils.BN(initialSupply * (10 ** precision)),
@@ -1105,7 +1096,7 @@ const AccountController = (actions: {
                   sptCreated,
                   txid: txInfo,
                   txConfirmations: sptCreated.confirmations,
-                  txAssetGuid: createdAssetguid
+                  txAssetGuid: createdAsset,
                 });
               } catch (error) {
                 clearInterval(interval);
@@ -1122,13 +1113,11 @@ const AccountController = (actions: {
       }
     }
 
-    console.log('data transaction', transactionData)
-
     return {
       transactionData,
       txid: txInfoNew,
       txConfirmations: transactionData.confirmations,
-      txAssetGuid: createdAssetguid
+      txAssetGuid: createdAsset,
     }
   };
 
@@ -1477,6 +1466,7 @@ const AccountController = (actions: {
         }
         try{
           TrezorSigner.sign(txData.psbt).then((txInfo : string) => {
+            updateTransactionData('confirmingTransaction', txInfo);
             const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
             watchMemPool(acc);
           })
@@ -1526,6 +1516,7 @@ const AccountController = (actions: {
         TrezorSigner.sign(txData.psbt).then((txInfo : string) => {
           console.log('Signed chief')
           console.log(txInfo)
+          updateTransactionData('confirmingTransaction', txInfo);
           const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
       
           watchMemPool(acc);

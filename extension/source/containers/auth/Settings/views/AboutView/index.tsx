@@ -1,30 +1,30 @@
 import React, { FC } from 'react';
 import clsx from 'clsx';
-import { useAlert } from 'react-alert';
+// import { useAlert } from 'react-alert';
 
 import styles from './index.scss';
 
 const AboutView: FC = () => {
-  const alert = useAlert();
-  const handleSupportClick = () => {
-    alert.removeAll();
-    alert.error('We are currently building the support channels.');
-  };
-  const handleDocsClick = () => {
-    alert.removeAll();
-    alert.error('We are currently building the API docs.');
-  };
+  // const alert = useAlert();
+  // const handleSupportClick = () => {
+  //   alert.removeAll();
+  //   alert.error('We are currently building the support channels.');
+  // };
+  // const handleDocsClick = () => {
+  //   alert.removeAll();
+  //   alert.error('We are currently building the API docs.');
+  // };
   return (
     <div className={styles.about}>
       <span>Pali Wallet Chrome Extension v1.0</span>
-      <span>Version: 1.0.3</span>
+      <span>Version: 1.0.4</span>
       <span>
-        Support:{' '}
+        Support:{'Is handled at syscoin discord on pali_support channel'}
         <a
           className={styles.link}
-          // href="#"
+          href="https://discord.gg/pZ5fMdJpCu"
           // target="_blank"
-          onClick={handleSupportClick}
+          // onClick={handleSupportClick}
         >
           pali support
         </a>
@@ -33,9 +33,9 @@ const AboutView: FC = () => {
         API Docs
         <a
           className={clsx(styles.link, styles.terms)}
-          // href="#"
+          href="https://pali-docs.vercel.app/"
           // target="_blank"
-          onClick={handleDocsClick}
+          // onClick={handleDocsClick}
         >
           pali API
         </a>
