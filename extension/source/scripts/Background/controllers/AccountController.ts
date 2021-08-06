@@ -1465,8 +1465,7 @@ const AccountController = (actions: {
           new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
         }
         try{
-          TrezorSigner.sign(txData.psbt).then((txInfo : string) => {
-            updateTransactionData('confirmingTransaction', txInfo);
+          TrezorSigner.sign(txData.psbt).then(() => {
             const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
             watchMemPool(acc);
           })
@@ -1508,15 +1507,12 @@ const AccountController = (actions: {
           new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
           console.log(TrezorSigner)
         }
-        console.log(TrezorSigner)
-        console.log('Filho da puta')
         try{
-        console.log('Signing trezor tx')
-        // txInfo = await TrezorSigner.sign(txData.psbt)
         TrezorSigner.sign(txData.psbt).then((txInfo : string) => {
-          console.log('Signed chief')
+          //Application breaks if trezor propagate txInfo
+          //updateTransactionData('confirmingTransaction', txInfo); 
+          console.log('TxOutput')
           console.log(txInfo)
-          updateTransactionData('confirmingTransaction', txInfo);
           const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
       
           watchMemPool(acc);

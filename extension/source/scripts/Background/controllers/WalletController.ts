@@ -92,6 +92,7 @@ const WalletController = (): IWalletController => {
     // const path = "m/84'/57'/0'";
     // const coin = "SYS"
     if (isTestnet) {
+      console.log('trying to display testnet message')
       const message = "Trezor doesn't support SYS testnet";
       chrome.notifications.create(new Date().getTime().toString(), {
         type: 'basic',
@@ -290,7 +291,8 @@ const WalletController = (): IWalletController => {
 
     if(ToRemoveWalletIds.length > 0){
       console.log(ToRemoveWalletIds)
-      for (let i = 0; i <= accounts.length; i++) {
+      for (let i = 0; i < ToRemoveWalletIds.length; i++) {
+        console.log('dont be weitd')
         console.log(ToRemoveWalletIds[i])
         store.dispatch(removeAccount(ToRemoveWalletIds[i]));
         store.dispatch(updateStatus());
