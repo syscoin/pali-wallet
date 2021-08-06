@@ -141,28 +141,6 @@ const WalletController = (): IWalletController => {
         });
         
     }
-    // console.log(window.trezorConnect)
-    // window.trezorConnect.getAccountInfo({
-    //   path,
-    //   coin
-    // })
-    //   .then((response: any) => {
-    //     const message = response.success
-    //       ? `Trezor Wallet Account Created`
-    //       : `Error: ${response.payload.error}`;
-    //     chrome.notifications.create(new Date().getTime().toString(), {
-    //       type: 'basic',
-    //       iconUrl: 'assets/icons/favicon-48.png',
-    //       title: 'Hardware Wallet connected',
-    //       message,
-    //     });
-    //     if (response.success) {
-    //       account.subscribeAccount(true, response.payload);
-    //     }
-    //   })
-    //   .catch((error: any) => {
-    //     console.error('TrezorConnectError', error);
-    //   });
   }
 
 
@@ -180,13 +158,24 @@ const WalletController = (): IWalletController => {
       if (!decriptedMnemonic) {
         throw new Error('password wrong');
       }
+      console.log('Unlocking')
+      console.log('Unlocking')
+      console.log('Unlocking')
+      console.log('Unlocking')
+      console.log('Unlocking')
+      console.log('Unlocking')
+      console.log('Unlocking')
+      console.log('Unlocking')
+      console.log('Unlocking')
 
       if (HDsigner === null || sjs === null) {
+        console.log('Recreating wallet')
         const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
 
         const backendURl: string = store.getState().wallet.activeNetwork === 'testnet' ? SYS_NETWORK.testnet.beUrl : SYS_NETWORK.main.beUrl;
-
-        HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, isTestnet);
+        console.log(backendURl)
+        HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, isTestnet, sys.utils.syscoinNetworks, 57, sys.utils.syscoinZPubTypes);
+        console.log(HDsigner)
         sjs = new sys.SyscoinJSLib(HDsigner, backendURl);
 
         const { activeAccountId, accounts } = store.getState().wallet;
@@ -203,7 +192,7 @@ const WalletController = (): IWalletController => {
 
             const child = sjs.Signer.deriveAccount(i);
 
-            sjs.Signer.Signer.accounts.push(new fromZPrv(child, sjs.Signer.pubTypes, sjs.Signer.networks));
+            sjs.Signer.Signer.accounts.push(new fromZPrv(child, sjs.Signer.Signer.pubTypes, sjs.Signer.Signer.networks));
             // sjs.Signer.accountIndex = activeAccountId;
             sjs.Signer.setAccountIndex(activeAccountId)
           }
@@ -397,6 +386,9 @@ const WalletController = (): IWalletController => {
     } else {
       sjs.Signer.Signer.receivingIndex = -1;
       address = await sjs.Signer.getNewReceivingAddress();
+      console.log('new address received')
+      console.log(address)
+      console.log(sjs)
       console.log("Receiving Index :")
       console.log(sjs.Signer.Signer.receivingIndex)
     }
