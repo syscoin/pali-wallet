@@ -1142,7 +1142,6 @@ const AccountController = (actions: {
 
     const feeRate = new sys.utils.BN(fee * 1e8);
     const txOpts = { rbf: true };
-    const assetChangeAddress : any = null;
 
     let txInfo;
 
@@ -1150,10 +1149,10 @@ const AccountController = (actions: {
 
     const assetMap = new Map([
       [assetGuid, {
-        changeAddress: assetChangeAddress,
+        changeAddress: null,
         outputs: [{
           value: new sys.utils.BN(amount * (10 ** decimals)),
-          address: assetChangeAddress
+          address: null
         }]
       }]
     ]);
@@ -1202,7 +1201,7 @@ const AccountController = (actions: {
         return;
       }
     } else {
-      const pendingTx = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate);
+      const pendingTx = await sysjs.assetSend(txOpts, assetMap, null, feeRate);
 
       if (!pendingTx) {
         console.log('Could not create transaction, not enough funds?')
