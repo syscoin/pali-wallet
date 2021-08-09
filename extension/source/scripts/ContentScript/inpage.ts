@@ -10,6 +10,4 @@ if (!window.ConnectionsController) {
   window.ConnectionsController = MasterController().connections;
 }
 
-console.log('INPAGE SYSCOIN')
-
 window.dispatchEvent(new CustomEvent('SyscoinStatus', { detail: { SyscoinInstalled: true, ConnectionsController: true } }));

@@ -98,7 +98,10 @@ const ModalBlock: FC<IModalBlock> = ({
         if (vin.length > 1) {
           for (const item of vin) {
             if (item.addresses) {
-              senders[item.addresses[0]] = item.addresses[0];
+              senders[item.addresses[0]] = {
+                address: item.addresses[0],
+                value: item.value
+              };
             }
           }
         }
@@ -227,7 +230,7 @@ const ModalBlock: FC<IModalBlock> = ({
       return (
         <li key={address} className={styles.option}>
           <p onClick={() => copyText(address)}>{ellipsis(address) || '...'}</p>
-          <small>{formatURL(String(Number(value) / 10 ** 8), 18)}   {activeNetwork === 'main' ? 'SYS' : 'tSYS'}</small>
+          <small>{formatURL(String(Number(value) / 10 ** 8), 18) ? formatURL(String(Number(value) / 10 ** 8), 18) : 0}   {activeNetwork === 'main' ? 'SYS' : 'tSYS'}</small>
         </li>
       );
     });
