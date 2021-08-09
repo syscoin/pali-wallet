@@ -7,17 +7,22 @@ import styles from './index.scss';
 const AboutView: FC = () => {
   const alert = useAlert();
   const handleSupportClick = () => {
-    alert.removeAll();
-    alert.error('We are currently building the support channels.');
+    alert.show('You will be redirected to Syscoin Discord, please contact support team at #pali_support', {
+      timeout: 6000, // custom timeout just for this one alert
+      type: 'success',
+      onClose: () => {
+        window.open('https://discord.gg/6rKsX9SqUr')
+      } // callback that will be executed after this alert is removed
+    });
+    
   };
   const handleDocsClick = () => {
-    alert.removeAll();
-    alert.error('We are currently building the API docs.');
+    window.open('https://pali-docs.vercel.app/');
   };
   return (
     <div className={styles.about}>
       <span>Pali Wallet Chrome Extension v1.0</span>
-      <span>Version: 1.0.3</span>
+      <span>Version: 1.0.4</span>
       <span>
         Support:{' '}
         <a

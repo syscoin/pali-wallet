@@ -297,10 +297,7 @@ const WalletState = createSlice({
         state.activeAccountId = state.accounts[0].id;
         
       }
-      console.log('verifying this')
-      console.log(action.payload)
-      console.log(state.accounts[0].id)
-      console.log(state.activeAccountId)
+      
 
       state.accounts.splice(indexOf, 1);
     },
