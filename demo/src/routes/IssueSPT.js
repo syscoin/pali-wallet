@@ -50,8 +50,8 @@ export default function IssueSPT() {
   const schema = yup.object().shape({
     amount: yup
       .number()
+      .min(0.000000001)
       .typeError("Quantity to Issue is required!")
-      .min(1)
       .required("Quantity to Issue is required!"),
     assetGuid: yup.string().required("Standard Token is required!"),
   });

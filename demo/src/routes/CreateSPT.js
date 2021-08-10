@@ -70,10 +70,7 @@ export default function CreateSPT() {
             ...advancedOptions,
           })
           .then(async (tx) => {
-            // setTimeout(async () => {
-            //   await controller.signTransaction(tx);
-            // }, 5000);
-
+            console.log('tx response', tx)
             if (file) {
               setIsUploading(true);
               await uploadLogo(tx.txAssetGuid, file);

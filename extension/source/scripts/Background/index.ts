@@ -70,8 +70,6 @@ const observeStore = async (store: any) => {
 
       const tabs: any = await getTabs({ active: true, windowType: 'normal' });
 
-      console.log('tab and tabs', tabs, tabs[0])
-
       for (const tab of tabs) {
         if (tab) {
           if (getConnectedAccountIndex({ match: new URL(String(tab.url)).host }) >= 0) {
@@ -189,31 +187,13 @@ browser.runtime.onInstalled.addListener(async () => {
           message
         } = request;
 
-        browser.tabs.sendMessage(Number(tabId), {
-          type: 'WALLET_ERROR',
-          target: 'contentScript',
-          transactionError,
-          invalidParams,
-          message
-        }).then(() => {
-          console.log('error message sent to the webpage')
-        }).catch((error) => {
-          console.log('error sending error message', error);
-        });
+        runtimeSendMessageToTabs({ tabId, messageDetails: { type: 'WALLET_ERROR', target: 'contentScript', transactionError, invalidParams, message } });
       }
 
       if (type == 'TRANSACTION_RESPONSE' && target == 'background') {
         console.log('response transaction', request, tabId)
 
-        browser.tabs.sendMessage(Number(tabId), {
-          type: 'TRANSACTION_RESPONSE',
-          target: 'contentScript',
-          response: request.response
-        }).then(() => {
-          console.log('transaction response sent to the webpage', tab.url)
-        }).catch((error) => {
-          console.log('error sending transation response', error);
-        });
+        runtimeSendMessageToTabs({ tabId, messageDetails: { type: 'TRANSACTION_RESPONSE', target: 'contentScript', response: request.response } });
 
         const interval = setInterval(async () => {
           const data = await window.controller.wallet.account.getTransactionInfoByTxId(request.response.txid);
@@ -224,7 +204,8 @@ browser.runtime.onInstalled.addListener(async () => {
             console.log('confirmations > 0')
 
             window.controller.wallet.account.updateTokensState().then(() => {
-              console.log('update tokens after transaction in background')
+              console.log('update tokens after transaction in background');
+              
               window.controller.wallet.account.setHDSigner(store.getState().wallet.activeAccountId);
             });
 
