@@ -35,8 +35,6 @@ declare interface IWalletController {
   unLock: (pwd: string) => boolean;
 }
 
-declare interface IMessagesController {}
-
 declare interface IAccountController {
   addNewAccount: (label: string) => Promise<string | null>;
   clearTransactionItem: (item: any) => void;

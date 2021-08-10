@@ -62,10 +62,10 @@ const WalletController = (): IWalletController => {
     if (!isUpdated && sjs !== null) {
       return;
     }
-    console.log('Creating wallet')
+    
     HDsigner = new sys.utils.HDSigner(mnemonic, null, false);
     sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.main.beUrl);
-    console.log('-----------')
+  
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
 
@@ -80,6 +80,7 @@ const WalletController = (): IWalletController => {
 
     account.subscribeAccount(false, sjs, undefined, true).then(() => {
       account.getPrimaryAccount(password, sjs);
+
       account.updateTokensState().then(() => {
         console.log('update tokens state after create wallet')
       })
@@ -88,9 +89,7 @@ const WalletController = (): IWalletController => {
 
   const createHardwareWallet = async () => {
     const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
-    console.log('Creating trezor wallet')
-    // const path = "m/84'/57'/0'";
-    // const coin = "SYS"
+    
     if (isTestnet) {
       console.log('trying to display testnet message')
       const message = "Trezor doesn't support SYS testnet";
