@@ -75,7 +75,6 @@ const observeStore = async (store: any) => {
       for (const tab of tabs) {
         if (tab) {
           if (getConnectedAccountIndex({ match: new URL(String(tab.url)).host }) >= 0) {
-            console.log('tab id url', tab, tab.url)
             try {
               await runtimeSendMessageToTabs({
                 tabId: Number(tab.id),

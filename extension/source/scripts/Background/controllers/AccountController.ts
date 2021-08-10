@@ -272,7 +272,7 @@ const AccountController = (actions: {
   };
 
   const getChangeAddress = async () => {
-    const { accounts,activeAccountId }: IWalletState = store.getState().wallet;
+    const { accounts, activeAccountId }: IWalletState = store.getState().wallet;
     const connectedAccount: IAccountState = getConnectedAccount();
     if (!sysjs) {
       //TODO: enhance this error message
@@ -285,9 +285,9 @@ const AccountController = (actions: {
       //TODO: Implement changeAddress for trezor wallets 
       //only when trezor enable syscoin on mainnet
       console.log('Trezor new change address');
-      let addr : string = 'Error: Failed to fetch trezor change address'
+      let addr: string = 'Error: Failed to fetch trezor change address'
       const inter = await getNewChangeAddress();
-      if(inter !== null) {
+      if (inter !== null) {
         addr = inter
       }
       return addr;
@@ -304,7 +304,7 @@ const AccountController = (actions: {
       else {
         sysjs.Signer.setAccountIndex(connectedAccount.id)
         changeAddress = await sysjs.Signer.getNewChangeAddress();
-        if(accounts[activeAccountId].isTrezorWallet){
+        if (accounts[activeAccountId].isTrezorWallet) {
           sysjs.Signer.setAccountIndex(activeAccountId)
         }
         console.log('from diff acc')
@@ -681,7 +681,7 @@ const AccountController = (actions: {
       console.log("Checking in hardware wallet creation")
       console.log(sjs)
       console.log(sjs.getAccountXpub())
-      if(TrezorSigner === null || TrezorSigner === undefined){
+      if (TrezorSigner === null || TrezorSigner === undefined) {
         TrezorSigner = sjs
         new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
       }
@@ -1066,14 +1066,15 @@ const AccountController = (actions: {
 
             if (sptCreated?.confirmations > 1) {
               console.log('confirmations > 1', createdAsset)
+              const changeaddress = await sysjs.Signer.getNewChangeAddress();
 
               try {
                 const assetMap = new Map([
                   [String(createdAsset), {
-                    changeAddress: null,
+                    changeAddress: changeaddress,
                     outputs: [{
                       value: new sys.utils.BN(initialSupply * (10 ** precision)),
-                      address: null
+                      address: changeaddress
                     }]
                   }]
                 ]);
@@ -1146,13 +1147,14 @@ const AccountController = (actions: {
     let txInfo;
 
     const { decimals } = await getDataAsset(assetGuid);
+    const receivingAddress = await sysjs.Signer.getNewReceivingAddress();
 
     const assetMap = new Map([
       [assetGuid, {
         changeAddress: null,
         outputs: [{
           value: new sys.utils.BN(amount * (10 ** decimals)),
-          address: null
+          address: receivingAddress
         }]
       }]
     ]);
@@ -1163,7 +1165,8 @@ const AccountController = (actions: {
 
     if (getConnectedAccount().isTrezorWallet) {
       sysChangeAddress = await getNewChangeAddress();
-      // @ts-ignore: Unreachable code error
+
+      // @ts-ignore
       assetMap.get(assetGuid)!.changeAddress = sysChangeAddress;
 
       const txData = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate, account.xpub);
@@ -1173,31 +1176,38 @@ const AccountController = (actions: {
         //TODO: add error and show on the UI for user
         return;
       }
-      if(TrezorSigner === null || TrezorSigner === undefined){
+
+      if (TrezorSigner === null || TrezorSigner === undefined) {
         TrezorSigner = new sys.utils.TrezorSigner();
+
         new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
       }
-      try{
-      //TODO: had to remove await because with it trezor popup would jam the wallet
+
+      try {
+        //TODO: had to remove await because with it trezor popup would jam the wallet
         // txInfo = await TrezorSigner.sign(txData.psbt)
         // check how to make this properly work (untested part)
 
-      let waitTrezor = true;
-      TrezorSigner.sign(txData.psbt).then((txInfo : string) => {
-        updateTransactionData('issuingSPT', txInfo);
-        watchMemPool(getConnectedAccount());
-        waitTrezor = false;
-        return {
-          txid: txInfo
-        }
-      });
-      while(waitTrezor) {
+        let waitTrezor = true;
+
+        TrezorSigner.sign(txData.psbt).then((txInfo: string) => {
+          updateTransactionData('issuingSPT', txInfo);
+          
+          watchMemPool(getConnectedAccount());
+
+          waitTrezor = false;
+
+          return {
+            txid: txInfo
+          }
+        });
+
+        if (waitTrezor) {}
+
+        return
+      } catch (error) {
+        console.log(`error processing tx: ${error}`);
         
-      }
-      return
-      }
-      catch(e){
-        console.log('Error processing tx: '+e)
         return;
       }
     } else {
@@ -1318,7 +1328,7 @@ const AccountController = (actions: {
 
                 console.log('sysjs', sysjs, sysjs.Signer)
 
-                const pendingTx = await sysjs.assetSend(txOpts, assetMap, issuer, feeRate);
+                const pendingTx = await sysjs.assetSend(txOpts, assetMap, null, feeRate);
 
                 if (!pendingTx) {
                   console.log('Could not create transaction, not enough funds?')
@@ -1357,16 +1367,14 @@ const AccountController = (actions: {
 
                 sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
-                let assetChangeAddress = null;
-
                 console.log('sysjs', sysjs, sysjs.Signer)
 
                 const assetMap = new Map([
                   [assetGuid, {
-                    changeAddress: assetChangeAddress,
+                    changeAddress: null,
                     outputs: [{
                       value: new sys.utils.BN(0),
-                      address: assetChangeAddress
+                      address: issuer
                     }]
                   }]
                 ]);
@@ -1430,7 +1438,7 @@ const AccountController = (actions: {
       rbf
     } = items;
 
-    if(!account.isTrezorWallet){
+    if (!account.isTrezorWallet) {
       sysjs.Signer.setAccountIndex(store.getState().wallet.activeAccountId);
     }
     if (isToken && token) {
@@ -1459,11 +1467,11 @@ const AccountController = (actions: {
         if (!txData) {
           console.log('Could not create transaction, not enough funds?')
         }
-        if(TrezorSigner === null || TrezorSigner === undefined){
+        if (TrezorSigner === null || TrezorSigner === undefined) {
           TrezorSigner = new sys.utils.TrezorSigner();
           new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
         }
-        try{
+        try {
           TrezorSigner.sign(txData.psbt).then(() => {
             const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
             watchMemPool(acc);
@@ -1471,8 +1479,8 @@ const AccountController = (actions: {
           tempTx = null;
           return
         }
-        catch(e){
-          console.log('Error processing tx: '+e)
+        catch (e) {
+          console.log('Error processing tx: ' + e)
           return;
         }
       } else {
@@ -1500,27 +1508,27 @@ const AccountController = (actions: {
           console.log('Could not create transaction, not enough funds?')
         }
         console.log(txData)
-        if(TrezorSigner === null || TrezorSigner === undefined){
+        if (TrezorSigner === null || TrezorSigner === undefined) {
           console.log('Desgraca')
           TrezorSigner = new sys.utils.TrezorSigner();
           new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
           console.log(TrezorSigner)
         }
-        try{
-        TrezorSigner.sign(txData.psbt).then((txInfo : string) => {
-          //Application breaks if trezor propagate txInfo
-          //updateTransactionData('confirmingTransaction', txInfo); 
-          console.log('TxOutput')
-          console.log(txInfo)
-          const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
-      
-          watchMemPool(acc);
-        })
-        tempTx = null;
-        return
-      }
-        catch(e){
-          console.log('Error processing tx: '+e)
+        try {
+          TrezorSigner.sign(txData.psbt).then((txInfo: string) => {
+            //Application breaks if trezor propagate txInfo
+            //updateTransactionData('confirmingTransaction', txInfo); 
+            console.log('TxOutput')
+            console.log(txInfo)
+            const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
+
+            watchMemPool(acc);
+          })
+          tempTx = null;
+          return
+        }
+        catch (e) {
+          console.log('Error processing tx: ' + e)
           return;
         }
 
@@ -1547,7 +1555,7 @@ const AccountController = (actions: {
   };
 
   const setHDSigner = (accountId: number) => {
-    if(!account.isTrezorWallet){
+    if (!account.isTrezorWallet) {
       sysjs.Signer.setAccountIndex(accountId);
     }
   }
@@ -1643,7 +1651,7 @@ const AccountController = (actions: {
         }]
       }]
     ]);
-    
+
 
     sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
@@ -1717,21 +1725,21 @@ const AccountController = (actions: {
       if (!txData) {
         console.log('Could not create transaction, not enough funds?')
       }
-      if(TrezorSigner === null || TrezorSigner === undefined){
+      if (TrezorSigner === null || TrezorSigner === undefined) {
         TrezorSigner = new sys.utils.TrezorSigner();
         new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
       }
-      try{
+      try {
         //TODO: test might have same problem as them mintSPT
-      txInfo = await TrezorSigner.sign(txData.psbt)
-      txInfo = txData.extractTransaction().getId();
+        txInfo = await TrezorSigner.sign(txData.psbt)
+        txInfo = txData.extractTransaction().getId();
 
         updateTransactionData('transferringOwnership', txInfo);
 
         watchMemPool(getConnectedAccount());
       }
-      catch(e){
-        console.log('Error processing tx: '+e)
+      catch (e) {
+        console.log('Error processing tx: ' + e)
         return;
       }
       return;
