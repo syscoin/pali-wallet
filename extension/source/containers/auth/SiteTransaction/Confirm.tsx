@@ -188,7 +188,8 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
         if (
           label === 'receiver' ||
           label === 'issuer' ||
-          label === 'newOwner'
+          label === 'newOwner' ||
+          label === 'description'
         ) {
           return (
             <div key={label} className={styles.flex}>

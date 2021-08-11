@@ -1,4 +1,4 @@
-import React, { useState, FC } from 'react';
+import React, { useState, FC, useCallback, ChangeEvent } from 'react';
 import clsx from 'clsx';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
@@ -6,6 +6,7 @@ import TextInput from 'components/TextInput';
 import { useHistory } from 'react-router-dom';
 import { useController } from 'hooks/index';
 import { browser } from 'webextension-polyfill-ts';
+import { useAlert } from 'react-alert';
 
 import styles from './SiteTransaction.scss';
 
@@ -26,9 +27,10 @@ const SiteTransaction: FC<ISiteTransaction> = ({
 }) => {
   const controller = useController();
   const history = useHistory();
+  const alert = useAlert();
 
   const [loading, setLoading] = useState<boolean>(false);
-  const [fee, setFee] = useState(0);
+  const [fee, setFee] = useState('0');
   const [recommend, setRecommend] = useState(0.00001);
   const [transacting, setTransacting] = useState(false);
 
@@ -36,7 +38,7 @@ const SiteTransaction: FC<ISiteTransaction> = ({
     const recommendFee = await controller.wallet.account.getRecommendFee();
 
     setRecommend(recommendFee);
-    setFee(recommendFee);
+    setFee(String(recommendFee));
   };
 
   const handleMessageToSetDataFromWallet = () => {
@@ -70,6 +72,20 @@ const SiteTransaction: FC<ISiteTransaction> = ({
     });
   };
 
+  const handleFeeChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setFee(event.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'));
+
+      if (Number(event.target.value) > 0.1) {
+        alert.removeAll();
+        alert.error(`Error: Fee too high, maximum 0.1 SYS.`, { timeout: 2000 });
+  
+        return;
+      }
+    },
+    []
+  );
+
   return (
     <div>
       <Layout title={layoutTitle} showLogo>
@@ -79,19 +95,12 @@ const SiteTransaction: FC<ISiteTransaction> = ({
           <section className={styles.fee}>
             <TextInput
               type="text"
-              placeholder="Enter fee"
+              placeholder="Enter transaction fee"
               fullWidth
               name="fee"
+              title="Must be a integer or decimal number"
+              onChange={handleFeeChange}
               value={fee}
-              onChange={(event) =>
-                setFee(
-                  Number(
-                    event.target.value
-                      .replace(/[^0-9.]/g, '')
-                      .replace(/(\..*?)\..*/g, '$1')
-                  )
-                )
-              }
             />
 
             <Button
@@ -125,7 +134,7 @@ const SiteTransaction: FC<ISiteTransaction> = ({
                 theme="btn-outline-primary"
                 variant={styles.button}
                 onClick={handleMessageToSetDataFromWallet}
-                disabled={!fee}
+                disabled={!Number(fee) || Number(fee) > 0.1}
                 loading={transacting && loading}
               >
                 Next

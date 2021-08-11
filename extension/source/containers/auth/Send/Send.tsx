@@ -27,7 +27,6 @@ import ReactTooltip from 'react-tooltip';
 import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import DownArrowIcon from '@material-ui/icons/ExpandMore';
 import Spinner from '@material-ui/core/CircularProgress';
-import { PRICE_SYS_ID } from 'constants/index';
 import { Assets } from '../../../scripts/types';
 
 import styles from './Send.scss';
@@ -50,9 +49,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const { accounts, activeAccountId, activeNetwork, changingNetwork }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
-  const { price } = useSelector(
-    (state: RootState) => state
-  );
   const [address, setAddress] = useState<string>(initAddress);
   const [amount, setAmount] = useState<string>('');
   const [fee, setFee] = useState<string>('0.00001');
@@ -73,18 +69,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     [styles.hide]: !isValidAddress,
   });
 
-  const calculateFee = (amount: number, fraction = 6) => {
-    const value = amount * price.fiat[PRICE_SYS_ID];
-
-    return value.toLocaleString(
-      navigator.language,
-      {
-        minimumFractionDigits: fraction,
-        maximumFractionDigits: fraction,
-      }
-    );
-  }
-
   const onSubmit = (data: any) => {
     if (!isValidAddress) {
       alert.removeAll();
@@ -99,9 +83,9 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       fee
     } = data;
 
-    if (Number(fee) > Number(getFiatAmount(Number(amount) + Number(fee), 6)) / 10) {
+    if (Number(fee) > 0.1) {
       alert.removeAll();
-      alert.error(`Error: Fee too high, maximum ${Number(getFiatAmount(Number(amount) + Number(fee), 6)) / 10}`);
+      alert.error(`Error: Fee too high, maximum 0.1 SYS`, { timeout: 2000 });
 
       return;
     }
@@ -152,6 +136,13 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const handleFeeChange = useCallback(
     (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setFee(event.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'));
+
+      if (Number(event.target.value) > 0.1) {
+        alert.removeAll();
+        alert.error(`Error: Fee too high, maximum 0.1 SYS.`, { timeout: 2000 });
+  
+        return;
+      }
     },
     []
   );
@@ -458,7 +449,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                   !isValidAddress ||
                   !amount ||
                   !fee ||
-                  Number(fee) > Number(calculateFee(Number(amount) + Number(fee), 6)) / 10 ||
+                  Number(fee) > 0.1 ||
                   !address ||
                   Number(amount) <= 0
                 }
