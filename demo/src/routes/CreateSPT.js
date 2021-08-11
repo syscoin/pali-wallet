@@ -259,6 +259,8 @@ export default function CreateSPT() {
               <input
                 onChange={handleInputChange(setMaxSupply)}
                 type="number"
+                min="0"
+                max="1000000000"
                 className="form-control"
                 id="supply"
                 placeholder=""
