@@ -17,6 +17,8 @@ declare module 'react-alert';
 
 declare module 'bip84';
 
+declare module 'extensionizer';
+
 declare interface IWalletController {
   account: Readonly<IAccountController>;
   checkPassword: (pwd: string) => boolean;
@@ -34,6 +36,8 @@ declare interface IWalletController {
   switchWallet: (id: number) => void;
   unLock: (pwd: string) => boolean;
 }
+
+declare interface IMessagesController {}
 
 declare interface IAccountController {
   addNewAccount: (label: string) => Promise<string | null>;
