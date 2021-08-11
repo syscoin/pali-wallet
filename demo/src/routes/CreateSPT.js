@@ -40,7 +40,8 @@ export default function CreateSPT() {
   const schema = yup.object().shape({
     precision: yup.number().required(),
     symbol: yup.string().required("Symbol is required!"),
-    maxSupply: yup.number().required(),
+    maxSupply: yup.number().required().positive().max(1000000000),
+    initialSupply: yup.number().positive().max(1000000000),
     receiver: yup.string(),
   });
 
@@ -272,6 +273,8 @@ export default function CreateSPT() {
                 <i className="icon-info-circled" title="help goes here"></i>
               </label>
               <input
+                min="0"
+                max="1000000000"
                 onChange={handleInputChange(setInitialSupply)}
                 type="number"
                 value={initialSupply}
