@@ -40,8 +40,8 @@ export default function CreateSPT() {
   const schema = yup.object().shape({
     precision: yup.number().required(),
     symbol: yup.string().required("Symbol is required!"),
-    maxSupply: yup.number().required().positive().max(1000000000),
-    initialSupply: yup.number().positive().max(1000000000),
+    maxSupply: yup.number().required().positive().max(10000000000),
+    initialSupply: yup.number().positive().max(10000000000),
     receiver: yup.string(),
   });
 
@@ -260,7 +260,7 @@ export default function CreateSPT() {
                 onChange={handleInputChange(setMaxSupply)}
                 type="number"
                 min="0"
-                max="1000000000"
+                max="10000000000"
                 className="form-control"
                 id="supply"
                 placeholder=""
@@ -276,7 +276,7 @@ export default function CreateSPT() {
               </label>
               <input
                 min="0"
-                max="1000000000"
+                max="10000000000"
                 onChange={handleInputChange(setInitialSupply)}
                 type="number"
                 value={initialSupply}
