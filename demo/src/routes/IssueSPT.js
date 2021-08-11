@@ -65,7 +65,7 @@ export default function IssueSPT() {
     await schema
       .validate(dataYup, { abortEarly: false })
       .then(async () => {
-        if (amount < asset.maxSupply - asset.totalSupply) {
+        if (amount <= asset.maxSupply - asset.totalSupply) {
           controller &&
             controller
               .handleIssueSPT({amount: Number(amount), assetGuid})
