@@ -39,7 +39,7 @@ export default function CreateSPT() {
 
   const schema = yup.object().shape({
     precision: yup.number().required(),
-    symbol: yup.string().required("Symbol is required!"),
+    symbol: yup.string().max(8).required("Symbol is required!"),
     maxSupply: yup.number().required().positive().max(10000000000),
     initialSupply: yup.number().positive().max(10000000000),
     receiver: yup.string(),
