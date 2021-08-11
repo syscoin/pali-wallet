@@ -70,7 +70,6 @@ export default function CreateSPT() {
             ...advancedOptions,
           })
           .then(async (tx) => {
-            console.log('tx response', tx)
             if (file) {
               setIsUploading(true);
               await uploadLogo(tx.txAssetGuid, file);

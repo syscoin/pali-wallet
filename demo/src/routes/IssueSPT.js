@@ -15,6 +15,7 @@ export default function IssueSPT() {
   const [tokens, setTokens] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const [decimals, setDecimals] = useState(8);
   const controller = useSelector((state) => state.controller);
 
   useEffect(() => {
@@ -30,6 +31,8 @@ export default function IssueSPT() {
     if (controller && assetGuid) {
       controller.getDataAsset(assetGuid).then((data) => {
         const { maxSupply, totalSupply, decimals } = data;
+        setDecimals(decimals);
+
         setAsset({
           maxSupply: maxSupply / Math.pow(10, decimals),
           totalSupply: totalSupply / Math.pow(10, decimals),
@@ -50,7 +53,7 @@ export default function IssueSPT() {
   const schema = yup.object().shape({
     amount: yup
       .number()
-      .min(0.00000001)
+      .min((1 / 10 ** decimals))
       .typeError("Quantity to Issue is required!")
       .required("Quantity to Issue is required!"),
     assetGuid: yup.string().required("Standard Token is required!"),
