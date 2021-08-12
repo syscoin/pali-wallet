@@ -1045,8 +1045,7 @@ const AccountController = (actions: {
 
     console.log('sysjs', sysjs, sysjs.Signer)
 
-
-    const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, receiver, receiver, new sys.utils.BN(fee * 1e8));
+    const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, receiver, new sys.utils.BN(fee * 1e8));
 
     const txInfoNew = pendingTx.extractTransaction().getId();
 
