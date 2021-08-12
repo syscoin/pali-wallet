@@ -168,6 +168,7 @@ export default function IssueSPT() {
                 className="form-control"
                 id="amount"
                 value={amount}
+                min="0"
               />
               <p className="help-block">
                 Ceiling: Max Supply
@@ -194,6 +195,7 @@ export default function IssueSPT() {
                 type="text"
                 className="form-control"
                 disabled
+                min="0"
                 value={Intl.NumberFormat("en", {
                   minimumFractionDigits: 2,
                 }).format(asset.maxSupply)}
