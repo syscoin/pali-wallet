@@ -53,7 +53,8 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   const [expanded, setExpanded] = useState<boolean>(false);
   const [loadingConfirm, setLoadingConfirm] = useState<boolean>(false);
   const [dataToRender, setDataToRender] = useState<any[]>([]);
-  const [advancedOptions, setAdvancedOptions] = useState<any[]>([]);
+  const [advancedOptions, setAdvancedOptions] = useState<any[]>([]);  const [recommendedFee, setRecommendedFee] = useState(0.00001);
+
   const advancedOptionsArray = [
     'notarydetails',
     'notaryAddress',
@@ -62,6 +63,12 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
     'capabilityflags',
     'contract',
   ];
+
+  useEffect(() => {
+    controller.wallet.account.getRecommendFee().then((response: any) => {
+      setRecommendedFee(response);
+    })
+  }, []);
 
   useEffect(() => {
     if (data) {
@@ -149,24 +156,29 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
           }
         })
         .catch((error: any) => {
-          console.log(error);
-
-          if (error) {
+          if (error && transactionItemData.fee > recommendedFee) {
+            alert.removeAll();
+            alert.error(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
+          }
+  
+          if (error && transactionItemData < recommendedFee) {
             alert.removeAll();
             alert.error(errorMessage);
-
-            browser.runtime.sendMessage({
-              type: 'WALLET_ERROR',
-              target: 'background',
-              transactionError: true,
-              invalidParams: false,
-              message: errorMessage,
-            });
-
-            setTimeout(() => {
-              handleCancelTransactionOnSite();
-            }, 4000);
           }
+
+          browser.runtime.sendMessage({
+            type: 'WALLET_ERROR',
+            target: 'background',
+            transactionError: true,
+            invalidParams: false,
+            message: errorMessage
+          });
+
+          setTimeout(() => {
+            handleCancelTransactionOnSite();
+          }, 4000);
+
+          console.log(error);
         });
 
       setTimeout(() => {
@@ -374,6 +386,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
                           variant={styles.button}
                           onClick={handleConfirm}
                           loading={loading}
+                          disabled={!transactionItemData}
                         >
                           {loadingConfirm ? (
                             <Spinner size={15} className={styles.spinner} />

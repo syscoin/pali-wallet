@@ -49,6 +49,7 @@ const CreatePass = () => {
               visiblePassword
               inputRef={register}
               variant={styles.pass}
+              tabIndex={0}
             />
             <TextInput
               type="password"
@@ -58,6 +59,7 @@ const CreatePass = () => {
               inputRef={register}
               visiblePassword
               variant={styles.repass}
+              tabIndex={1}
             />
             <span className={styles.warning}>
               At least 8 characters, 1 lower-case, 1 numeral.

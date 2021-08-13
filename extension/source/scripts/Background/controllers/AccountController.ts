@@ -1681,10 +1681,14 @@ const AccountController = (actions: {
         console.log('transaction ok response', response)
 
         resolve(response)
+
+        updateAssetItem = null;
       }).catch((error) => {
         console.log('error', error)
 
         reject(error)
+
+      updateAssetItem = null;
       });
 
       updateAssetItem = null;

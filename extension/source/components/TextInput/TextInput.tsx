@@ -50,6 +50,7 @@ const TextInput: FC<ITextInput> = ({
               onMouseDown={handleMouseDownPassword}
               onClick={handleClickShowPassword}
               edge="end"
+              tabIndex="-1"
             >
               {showed ? <VisibilityOff /> : <Visibility />}
             </IconButton>

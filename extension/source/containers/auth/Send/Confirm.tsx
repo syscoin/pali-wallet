@@ -14,15 +14,17 @@ import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 import { browser } from 'webextension-polyfill-ts';
 
-import { ellipsis } from '../helpers';
+import { ellipsis, formatURL } from '../helpers';
 import { getHost } from '../../../scripts/Background/helpers';
 
 import styles from './Confirm.scss';
+import { useEffect } from 'react';
 
 const SendConfirm = () => {
   const controller = useController();
   const getFiatAmount = useFiat();
   const history = useHistory();
+  const alert = useAlert();
 
   const { accounts, activeAccountId, currentSenderURL, confirmingTransaction }: IWalletState = useSelector(
     (state: RootState) => state.wallet
@@ -35,7 +37,13 @@ const SendConfirm = () => {
   const { tempTx } = controller.wallet.account.getTransactionItem();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
-  const alert = useAlert();
+  const [recommendedFee, setRecommendedFee] = useState(0.00001);
+
+  useEffect(() => {
+    controller.wallet.account.getRecommendFee().then((response: any) => {
+      setRecommendedFee(response);
+    })
+  }, []);
 
   const handleConfirm = () => {
     const acc = accounts.find(element => element.id === activeAccountId)
@@ -76,28 +84,32 @@ const SendConfirm = () => {
         setConfirmed(true);
         setLoading(false);
       }).catch((error) => {
-        if (error) {
+        if (error && tempTx.fee > recommendedFee) {
+          console.log('lllsll', tempTx)
+          alert.removeAll();
+          alert.error(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
+        }
+
+        if (error && tempTx < recommendedFee) {
           alert.removeAll();
           alert.error('Can\'t complete transaction. Try again later.');
-
-          if (confirmingTransaction) {
-            browser.runtime.sendMessage({
-              type: 'WALLET_ERROR',
-              target: 'background',
-              transactionError: true,
-              invalidParams: false,
-              message: `TransactionError: ${error}`
-            });
-
-            setTimeout(() => {
-              handleCancelTransactionOnSite();
-            }, 4000);
-          }
-
-          setLoading(false);
-
-          
         }
+
+        if (confirmingTransaction) {
+          browser.runtime.sendMessage({
+            type: 'WALLET_ERROR',
+            target: 'background',
+            transactionError: true,
+            invalidParams: false,
+            message: `TransactionError: ${error}`
+          });
+
+          setTimeout(() => {
+            handleCancelTransactionOnSite();
+          }, 4000);
+        }
+
+        setLoading(false);
       });
     }
   };
