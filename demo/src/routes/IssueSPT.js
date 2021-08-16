@@ -168,7 +168,6 @@ export default function IssueSPT() {
                 className="form-control"
                 id="amount"
                 value={amount}
-                min="0"
               />
               <p className="help-block">
                 Ceiling: Max Supply
