@@ -345,6 +345,20 @@ const WalletState = createSlice({
       state.activeAccountId = 0;
       state.encriptedMnemonic = null;
       state.activeNetwork = SYS_NETWORK.main.id;
+      state.status = 0;
+      state.currentSenderURL = '';
+      state.currentURL = '';
+      state.canConnect = false;
+      state.connections = [];
+      state.confirmingTransaction = false;
+      state.creatingAsset = false;
+      state.issuingAsset = false;
+      state.issuingNFT = false;
+      state.updatingAsset = false;
+      state.transferringOwnership = false;
+      state.changingNetwork = false;
+      state.signingTransaction = false;
+      state.walletTokens = [];
     },
     changeAccountActiveId(state: IWalletState, action: PayloadAction<number>) {
       state.activeAccountId = action.payload;
