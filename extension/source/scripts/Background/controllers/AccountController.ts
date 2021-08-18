@@ -64,6 +64,7 @@ const AccountController = (actions: {
   let encode: any;
   let currentPSBT: any;
   let TrezorSigner: any;
+  let currentPsbtToSign: any;
 
   const getConnectedAccount = (): IAccountState => {
     const { accounts, currentURL }: IWalletState = store.getState().wallet;
@@ -148,6 +149,9 @@ const AccountController = (actions: {
     switch (item) {
       case 'currentPSBT':
         currentPSBT = null;
+        break
+      case 'currentPsbtToSign':
+        currentPsbtToSign = null;
         break
       case 'newSPT':
         newSPT = null;
@@ -250,6 +254,7 @@ const AccountController = (actions: {
   const getTransactionItem = () => {
     return {
       currentPSBT: currentPSBT || null,
+      currentPsbtToSign: currentPsbtToSign || null,
       tempTx: tempTx || null,
       newSPT: newSPT || null,
       mintSPT: mintSPT || null,
@@ -482,7 +487,7 @@ const AccountController = (actions: {
     return getConnectedAccount().xpub;
   }
 
-  const signTransaction = async (jsonData: any) => {
+  const signTransaction = async (jsonData: any, sendPSBT: boolean) => {
     const base64 = /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
 
     if (!base64.test(jsonData.psbt) || typeof jsonData.assets !== 'string') {
@@ -490,17 +495,22 @@ const AccountController = (actions: {
     }
 
     try {
-      const { psbt, assets } = sys.utils.importPsbtFromJson(jsonData);
+      const psbt = sys.utils.importPsbtFromJson(jsonData);
+      
+      if (sendPSBT) {
+        return await sysjs.Signer.sign(psbt.psbt);
+      }
 
-      return await sysjs.signAndSend(psbt, assets);
+      return await sysjs.signAndSend(psbt.psbt, psbt.assets);
     } catch (error) {
       throw new Error(error);
     }
   };
 
-  const confirmSignature = () => {
+  const confirmSignature = (sendPSBT: boolean) => {
     return new Promise((resolve, reject) => {
-      handleTransactions(currentPSBT, signTransaction).then((response) => {
+      const item = sendPSBT ? currentPsbtToSign : currentPSBT;
+      handleTransactions(item, signTransaction, sendPSBT).then((response) => {
         resolve(response);
 
         currentPSBT = null;
@@ -512,6 +522,12 @@ const AccountController = (actions: {
 
   const setCurrentPSBT = (psbt: any) => {
     currentPSBT = psbt;
+
+    return;
+  }
+
+  const setCurrentPsbtToSign = (psbtToSign: any) => {
+    currentPsbtToSign = psbtToSign;
 
     return;
   }
@@ -914,7 +930,7 @@ const AccountController = (actions: {
     return true;
   }
 
-  const handleTransactions = async (item: any, executeTransaction: any) => {
+  const handleTransactions = async (item: any, executeTransaction: any, condition?: boolean) => {
     if (!sysjs) {
       throw new Error('Error: No signed account exists');
     }
@@ -928,7 +944,7 @@ const AccountController = (actions: {
     }
 
     return new Promise((resolve: any, reject: any) => {
-      executeTransaction(item)
+      executeTransaction(item, condition)
         .then((response: any) => {
           resolve(response);
         })
@@ -1073,7 +1089,7 @@ const AccountController = (actions: {
                     changeAddress: changeaddress,
                     outputs: [{
                       value: new sys.utils.BN(initialSupply * (10 ** precision)),
-                      address: changeaddress
+                      address: receiver
                     }]
                   }]
                 ]);
@@ -1643,10 +1659,10 @@ const AccountController = (actions: {
 
     const thisAssetMap = new Map([
       [assetGuid, {
-        changeAddress: null,
+        changeAddress: await getNewChangeAddress(),
         outputs: [{
           value: new sys.utils.BN(0),
-          address: null
+          address: await sysjs.Signer.getNewReceivingAddress()
         }]
       }]
     ]);
@@ -1710,7 +1726,7 @@ const AccountController = (actions: {
 
     const assetMap = new Map([
       [assetGuid, {
-        changeAddress: newOwner,
+        changeAddress: await getNewChangeAddress(),
         outputs: [{
           value: new sys.utils.BN(0),
           address: newOwner
@@ -1721,6 +1737,7 @@ const AccountController = (actions: {
     if (getConnectedAccount().isTrezorWallet) {
       const sysChangeAddress = await getNewChangeAddress();
 
+      // @ts-ignore
       assetMap.get(assetGuid)!.changeAddress = sysChangeAddress;
 
       const txData = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
@@ -1754,7 +1771,7 @@ const AccountController = (actions: {
 
     console.log('sysjs', sysjs, sysjs.Signer)
 
-    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, newOwner, feeRate);
+    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, null, feeRate);
 
     if (!pendingTx) {
       console.log('Could not create transaction, not enough funds?');
@@ -1831,11 +1848,12 @@ const AccountController = (actions: {
     getConnectedAccountXpub,
     getChangeAddress,
     setCurrentPSBT,
+    setCurrentPsbtToSign,
     updateTokensState,
     getTransactionData,
     getRawTransaction,
     setHDSigner,
-    getAssetguidFromTokenTransfers
+    getAssetguidFromTokenTransfers,
   };
 };
 

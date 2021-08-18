@@ -27,11 +27,12 @@ import IWalletState from 'state/wallet/types';
 import TransferOwnership, {
   TransferOwnershipConfirm,
 } from 'containers/auth/TransferOwnership';
-import SignTransaction from 'containers/auth/SignTransaction';
 
 import { getHost } from '../scripts/Background/helpers';
 
 import { SendMatchProps } from './types';
+import SignPSBT from 'containers/auth/SignPSBT';
+import Sign from 'containers/auth/Sign';
 
 const Auth = () => {
   const location = useLocation();
@@ -59,6 +60,7 @@ const Auth = () => {
     updatingAsset,
     transferringOwnership,
     signingTransaction,
+    signingPSBT
   }: IWalletState = useSelector((state: RootState) => state.wallet);
 
   const connectedAccounts = accounts.filter((account) => {
@@ -108,6 +110,12 @@ const Auth = () => {
 
     if (signingTransaction && isUnlocked) {
       history.push('/sign');
+
+      return;
+    }
+
+    if (signingPSBT && isUnlocked) {
+      history.push('/signPsbt');
 
       return;
     }
@@ -230,7 +238,10 @@ const Auth = () => {
               <Route path="/send/confirm" component={SendConfirm} exact />
             )}
             {isUnlocked && (
-              <Route path="/sign" component={SignTransaction} exact />
+              <Route path="/sign" component={Sign} exact />
+            )}
+            {isUnlocked && (
+              <Route path="/signPsbt" component={SignPSBT} exact />
             )}
             {isUnlocked && <Route path="/create" component={Create} exact />}
             {isUnlocked && (

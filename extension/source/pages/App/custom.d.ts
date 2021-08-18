@@ -45,8 +45,7 @@ declare interface IAccountController {
   confirmIssueNFT: () => Promise<any>;
   confirmIssueSPT: () => Promise<any>;
   confirmNewSPT: () => Promise<any>;
-  confirmSignature: () => any;
-  confirmSignature: () => any;
+  confirmSignature: (sendPSBT: boolean) => any;
   confirmTempTx: () => Promise<any>;
   confirmTransferOwnership: () => any;
   confirmUpdateAssetTransaction: () => any;
@@ -74,7 +73,7 @@ declare interface IAccountController {
   issueNFT: (nft: INFTIssue) => void;
   issueSPT: (spt: ISPTIssue) => void;
   setCurrentPSBT: (psbt: any) => any;
-  setCurrentPSBT: (psbt: any) => any;
+  setCurrentPsbtToSign: (psbtToSign: any) => any;
   setDataFromPageToCreateNewSPT: (data: any) => void;
   setDataFromPageToMintNFT: (data: any) => void;
   setDataFromPageToMintSPT: (data: any) => void;
@@ -203,4 +202,5 @@ declare interface IConnectionsController {
   isValidSYSAddress: (address: string) => any;
   onWalletUpdate: (callback: any) => any;
   signTransaction: (psbt: any) => any;
+  sign: (psbtToSign: any) => any;
 }

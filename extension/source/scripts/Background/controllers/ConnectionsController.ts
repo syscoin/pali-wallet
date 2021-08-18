@@ -526,6 +526,48 @@ const ConnectionsController = (): IConnectionsController => {
     );
   };
 
+  const sign = (psbtToSign: any) => {
+    return new Promise(async (resolve, reject) => {
+      const callback = (event: any) => {
+        if (
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
+        ) {
+          reject(event.data.error);
+
+          window.removeEventListener('message', callback);
+        }
+
+        if (
+          event.data.type === 'TRANSACTION_RESPONSE' &&
+          event.data.target === 'connectionsController'
+        ) {
+          resolve(event.data.response);
+
+          window.removeEventListener('message', callback);
+        }
+
+        return null;
+      };
+
+      window.addEventListener('message', callback);
+
+      await sendMessage(
+        {
+          type: 'SIGN_PSBT',
+          target: 'connectionsController',
+          freeze: true,
+          eventResult: 'complete',
+        },
+        {
+          type: 'SIGN_PSBT',
+          target: 'contentScript',
+          psbtToSign,
+        }
+      );
+    });
+  }
+
   return {
     isLocked,
     isNFT,
@@ -547,6 +589,7 @@ const ConnectionsController = (): IConnectionsController => {
     signTransaction,
     getConnectedAccountXpub,
     getChangeAddress,
+    sign
   };
 };
 

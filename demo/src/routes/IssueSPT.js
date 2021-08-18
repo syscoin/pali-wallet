@@ -164,10 +164,11 @@ export default function IssueSPT() {
               </label>
               <input
                 onChange={handleInputChange(setAmount)}
-                type="number"
+                type="text"
                 className="form-control"
                 id="amount"
-                value={amount}
+                value={amount.toString().replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1')}
+                min={(1 / 10 ** decimals)}
               />
               <p className="help-block">
                 Ceiling: Max Supply

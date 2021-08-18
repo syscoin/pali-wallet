@@ -78,6 +78,7 @@ export default interface IWalletState {
   issuingAsset: boolean;
   issuingNFT: boolean;
   signingTransaction: boolean;
+  signingPSBT: boolean;
   status: number;
   // tabs: Tabs;
   transferringOwnership: boolean;

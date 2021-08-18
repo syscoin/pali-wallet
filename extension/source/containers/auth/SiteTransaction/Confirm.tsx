@@ -174,6 +174,9 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
             message: errorMessage
           });
 
+          alert.removeAll();
+          alert.error(errorMessage);
+
           setTimeout(() => {
             handleCancelTransactionOnSite();
           }, 4000);

@@ -19,6 +19,7 @@ import {
   setTransferOwnership,
   clearAllTransactions,
   signTransactionState,
+  signPSBTState
 } from 'state/wallet';
 import { IAccountState } from 'state/wallet/types';
 import TrezorConnect from 'trezor-connect';
@@ -196,20 +197,22 @@ browser.runtime.onInstalled.addListener(async () => {
         runtimeSendMessageToTabs({ tabId, messageDetails: { type: 'TRANSACTION_RESPONSE', target: 'contentScript', response: request.response } });
 
         const interval = setInterval(async () => {
-          const data = await window.controller.wallet.account.getTransactionInfoByTxId(request.response.txid);
+          if (request.response.txid) {
+            const data = await window.controller.wallet.account.getTransactionInfoByTxId(request.response.txid);
 
-          console.log('updating tokens state using txid: ', request.response.txid)
-
-          if (data.confirmations > 0) {
-            console.log('confirmations > 0')
-
-            window.controller.wallet.account.updateTokensState().then(() => {
-              console.log('update tokens after transaction in background');
-              
-              window.controller.wallet.account.setHDSigner(store.getState().wallet.activeAccountId);
-            });
-
-            clearInterval(interval);
+            console.log('updating tokens state using txid: ', request.response.txid)
+  
+            if (data.confirmations > 0) {
+              console.log('confirmations > 0')
+  
+              window.controller.wallet.account.updateTokensState().then(() => {
+                console.log('update tokens after transaction in background');
+                
+                window.controller.wallet.account.setHDSigner(store.getState().wallet.activeAccountId);
+              });
+  
+              clearInterval(interval);
+            }
           }
         }, 6000);
       }
@@ -382,6 +385,24 @@ browser.runtime.onInstalled.addListener(async () => {
 
         browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'SIGN_TRANSACTION',
+          target: 'contentScript',
+          complete: true
+        });
+      }
+
+      if (type == 'SIGN_PSBT' && target == 'background') {
+        const { messageData } = request;
+
+        window.controller.wallet.account.setCurrentPsbtToSign(messageData);
+
+        store.dispatch(signPSBTState(true));
+
+        const appURL = browser.runtime.getURL('app.html');
+
+        await createPopup(appURL);
+
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
+          type: 'SIGN_PSBT',
           target: 'contentScript',
           complete: true
         });

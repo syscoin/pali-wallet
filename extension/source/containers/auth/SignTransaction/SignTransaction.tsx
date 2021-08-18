@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, FC } from 'react';
 import clsx from 'clsx';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
@@ -17,7 +17,19 @@ import { ellipsis } from '../helpers';
 
 import styles from './SignTransaction.scss';
 
-const SignTransaction = () => {
+interface ISignTransaction {
+  item: string;
+  sendPSBT: boolean;
+  transactingStateItem: boolean;
+  warning: string;
+}
+
+const SignTransaction: FC<ISignTransaction> = ({
+  item,
+  sendPSBT,
+  transactingStateItem,
+  warning,
+}) => {
   const controller = useController();
   const history = useHistory();
   const alert = useAlert();
@@ -25,10 +37,10 @@ const SignTransaction = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [confirmed, setConfirmed] = useState<boolean>(false);
 
-  const { signingTransaction, currentSenderURL, accounts }: IWalletState =
+  const { currentSenderURL, accounts }: IWalletState =
     useSelector((state: RootState) => state.wallet);
 
-  const psbt = controller.wallet.account.getTransactionItem().currentPSBT;
+  const psbt = controller.wallet.account.getTransactionItem()[item];
 
   const handleConfirmSignature = () => {
     setLoading(true);
@@ -47,7 +59,7 @@ const SignTransaction = () => {
     }
 
     controller.wallet.account
-      .confirmSignature()
+      .confirmSignature(sendPSBT)
       .then((response: any) => {
         if (response) {
           setConfirmed(true);
@@ -56,6 +68,12 @@ const SignTransaction = () => {
           setTimeout(() => {
             handleCancelTransactionOnSite();
           }, 4000);
+
+          browser.runtime.sendMessage({
+            type: 'TRANSACTION_RESPONSE',
+            target: 'background',
+            response,
+          });
         }
       })
       .catch((error: any) => {
@@ -86,7 +104,7 @@ const SignTransaction = () => {
     browser.runtime.sendMessage({
       type: 'CANCEL_TRANSACTION',
       target: 'background',
-      item: signingTransaction ? 'currentPSBT' : null,
+      item: transactingStateItem ? item : null,
     });
 
     browser.runtime.sendMessage({
@@ -125,7 +143,7 @@ const SignTransaction = () => {
     </Layout>
   ) : (
     <div>
-      {signingTransaction && loading ? (
+      {transactingStateItem && loading ? (
         <Layout title="" showLogo>
           <div className={styles.wrapper}>
             <section className={clsx(styles.mask)}>
@@ -135,7 +153,7 @@ const SignTransaction = () => {
         </Layout>
       ) : (
         <div>
-          {signingTransaction && psbt && !loading && (
+          {transactingStateItem && psbt && !loading && (
             <div>
               <Layout title="Signature request" showLogo>
                 <div className={styles.wrapper}>
@@ -158,7 +176,7 @@ const SignTransaction = () => {
                     className={styles.description}
                     style={{ textAlign: 'center', marginTop: '1rem' }}
                   >
-                    Only sign messages from sites you fully trust with your account.
+                    { warning }
                   </p>
 
                   <section className={styles.confirm}>

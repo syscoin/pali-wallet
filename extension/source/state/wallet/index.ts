@@ -31,6 +31,7 @@ const initialState: IWalletState = {
   transferringOwnership: false,
   changingNetwork: false,
   signingTransaction: false,
+  signingPSBT: false,
   walletTokens: [],
   // tabs: {
   //   currentSenderURL: '',
@@ -110,6 +111,7 @@ const WalletState = createSlice({
     clearAllTransactions(state: IWalletState) {
       return {
         ...state,
+        signingPSBT: false,
         confirmingTransaction: false,
         creatingAsset: false,
         issuingAsset: false,
@@ -138,6 +140,12 @@ const WalletState = createSlice({
       return {
         ...state,
         signingTransaction: action.payload,
+      };
+    },
+    signPSBTState(state: IWalletState, action: PayloadAction<boolean>) {
+      return {
+        ...state,
+        signingPSBT: action.payload,
       };
     },
     createAsset(state: IWalletState, action: PayloadAction<boolean>) {
@@ -352,6 +360,7 @@ const WalletState = createSlice({
       state.connections = [];
       state.confirmingTransaction = false;
       state.creatingAsset = false;
+      state.signingPSBT = false;
       state.issuingAsset = false;
       state.issuingNFT = false;
       state.updatingAsset = false;
@@ -424,6 +433,7 @@ export const {
   clearAllTransactions,
   signTransactionState,
   updateAllTokens,
+  signPSBTState
 } = WalletState.actions;
 
 export default WalletState.reducer;

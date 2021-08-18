@@ -15,6 +15,7 @@ export const getMessagesToListenTo = (request: any) => {
     signedTransaction,
     connectedAccountXpub,
     connectedAccountChangeAddress,
+    signedPSBT
   } = request;
 
   const postMessagesArray = [
@@ -89,6 +90,13 @@ export const getMessagesToListenTo = (request: any) => {
       messageResponse: signedTransaction,
     },
     {
+      messageType: 'SIGN_PSBT',
+      messageTarget: 'contentScript',
+      messageNewTarget: 'connectionsController',
+      responseItem: 'signedPSBT',
+      messageResponse: signedPSBT,
+    },
+    {
       messageType: 'GET_HOLDINGS_DATA',
       messageTarget: 'contentScript',
       messageNewTarget: 'connectionsController',
@@ -161,6 +169,7 @@ export const listenAndSendMessageFromPageToBackground = (event: any) => {
     address,
     newOwner,
     psbt,
+    psbtToSign
   } = event.data;
 
   const sendToken = {
@@ -285,6 +294,12 @@ export const listenAndSendMessageFromPageToBackground = (event: any) => {
       messageTarget: 'contentScript',
       messageNewTarget: 'background',
       messageData: psbt,
+    },
+    {
+      messageType: 'SIGN_PSBT',
+      messageTarget: 'contentScript',
+      messageNewTarget: 'background',
+      messageData: psbtToSign,
     },
     {
       messageType: 'SEND_CONNECTED_ACCOUNT',
