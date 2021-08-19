@@ -22,7 +22,6 @@ import {
   signPSBTState
 } from 'state/wallet';
 import { IAccountState } from 'state/wallet/types';
-import TrezorConnect from 'trezor-connect';
 
 import MasterController, { IMasterController } from './controllers';
 import { getHost } from './helpers';
@@ -31,7 +30,6 @@ declare global {
   interface Window {
     controller: Readonly<IMasterController>;
     senderURL: string;
-    trezorConnect: any;
   }
 }
 
@@ -138,16 +136,6 @@ browser.runtime.onInstalled.addListener(async () => {
 
   window.controller.stateUpdater();
 
-  TrezorConnect.init({
-    // connectSrc: 'https://localhost:8088/',
-    lazyLoad: true, // this param will prevent iframe injection until TrezorConnect.method will be called
-    manifest: {
-      email: 'claudiocarvalhovilasboas@gmail.com',
-      appUrl: 'https://syscoin.org/',
-    }
-  });
-
-  window.trezorConnect = TrezorConnect;
 
   browser.runtime.onMessage.addListener(async (request, sender) => {
     const {
@@ -333,16 +321,33 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'background') {
-        const connectedAccount = store.getState().wallet.accounts.find((account: IAccountState) => {
+        const connectedAccount : any = store.getState().wallet.accounts.find((account: IAccountState) => {
           return account.connectedTo.find((url) => {
             return url === getHost(store.getState().wallet.currentURL)
           });
         });
+        let copyConnectedAccount:any = undefined
+        if(connectedAccount !== undefined && connectedAccount !== null){
+          console.log('checking connected account')
+          console.log(connectedAccount)
+          copyConnectedAccount ={
+            address: connectedAccount.address,
+            balance: connectedAccount.balance,
+            assets: connectedAccount.assets,
+            connectedTo: connectedAccount.connectedTo,
+            id: connectedAccount.id,
+            isTrezorWallet: connectedAccount.isTrezorWallet,
+            label: connectedAccount.label,
+            transactions: connectedAccount.transactions,
+            xpub: connectedAccount.xpub
+          }
+      }
+        // delete connectedAccount.xprv;
 
         browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'SEND_CONNECTED_ACCOUNT',
           target: 'contentScript',
-          connectedAccount
+          copyConnectedAccount
         });
       }
 

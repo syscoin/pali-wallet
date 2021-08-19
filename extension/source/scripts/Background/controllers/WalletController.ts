@@ -105,8 +105,9 @@ const WalletController = (): IWalletController => {
 
     const TrezorSigner =  new sys.utils.TrezorSigner();
     console.log(TrezorSigner)
+
     // const myacc = await TrezorSigner.createAccount();
-    TrezorSigner.createAccount().then((myacc : number) => {
+    TrezorSigner.createAccount().then(() => {
       console.log('Created trezor wallet')
       const message = `Trezor Wallet Account Created`;
         chrome.notifications.create(new Date().getTime().toString(), {
@@ -115,9 +116,6 @@ const WalletController = (): IWalletController => {
           title: 'Hardware Wallet connected',
           message,
         });
-        console.log(myacc)
-        console.log(TrezorSigner)
-        console.log(TrezorSigner.getAccountXpub())
         account.subscribeAccount(true, TrezorSigner);
     }).catch((err : any) => {
       console.log('error trezor wallet')

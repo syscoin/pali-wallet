@@ -146,7 +146,7 @@ const ConnectionsController = (): IConnectionsController => {
         type: 'SEND_CONNECTED_ACCOUNT',
         target: 'connectionsController',
         freeze: true,
-        eventResult: 'connectedAccount',
+        eventResult: 'copyConnectedAccount',
       },
       {
         type: 'SEND_CONNECTED_ACCOUNT',

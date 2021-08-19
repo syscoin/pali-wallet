@@ -33,7 +33,7 @@ import {
   UpdateTokenPageInfo,
   UpdateTokenWalletInfo
 } from '../../types';
-import axios from 'axios';
+// import axios from 'axios';
 
 const syscointx = require('syscointx-js');
 const { each } = require('neo-async');
@@ -103,7 +103,7 @@ const AccountController = (actions: {
   };
 
   const getRawTransaction = async (txid: any) => {
-    console.log('data axios', await axios.get(`${sysjs.blockbookURL}/api/v2/tx/${txid}`))
+    // console.log('data axios', await axios.get(`${sysjs.blockbookURL}/api/v2/tx/${txid}`))
     return await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
   };
 
@@ -312,8 +312,6 @@ const AccountController = (actions: {
         if (accounts[activeAccountId].isTrezorWallet) {
           sysjs.Signer.setAccountIndex(activeAccountId)
         }
-        console.log('from diff acc')
-        console.log(changeAddress)
         return changeAddress;
       }
     }
@@ -346,7 +344,6 @@ const AccountController = (actions: {
       let mintedTokens: any = {};
 
       if (!tokensAsset) {
-        console.log('account has no tokens');
 
         store.dispatch(updateAllTokens({
           accountId: account.id,
@@ -369,7 +366,6 @@ const AccountController = (actions: {
             assetGuid
           };
 
-          console.log('added')
 
           done();
         }, function () {
@@ -496,13 +492,24 @@ const AccountController = (actions: {
     }
 
     try {
-      const psbt = sys.utils.importPsbtFromJson(jsonData);
+      const res = sys.utils.importPsbtFromJson(jsonData);
+      if (TrezorSigner === null || TrezorSigner === undefined) {
+        TrezorSigner = new sys.utils.TrezorSigner();
+        new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
+      }
       
       if (sendPSBT) {
-        return await sysjs.Signer.sign(psbt.psbt);
+        if(getConnectedAccount().isTrezorWallet) {
+          return await TrezorSigner.sign(res.psbt);
+        }
+        return await sysjs.Signer.sign(res.psbt);
       }
-
-      return await sysjs.signAndSend(psbt.psbt, psbt.assets);
+      if(getConnectedAccount().isTrezorWallet) {
+        return await sysjs.signAndSend(res.psbt, res.assets,TrezorSigner);
+      }
+      else{
+      return await sysjs.signAndSend(res.psbt, res.assets);
+      }
     } catch (error) {
       throw new Error(error);
     }
@@ -695,9 +702,6 @@ const AccountController = (actions: {
 
   const subscribeAccount = async (isHardwareWallet = false, sjs?: any, label?: string, walletCreation?: boolean) => {
     if (isHardwareWallet) {
-      console.log("Checking in hardware wallet creation")
-      console.log(sjs)
-      console.log(sjs.getAccountXpub())
       if (TrezorSigner === null || TrezorSigner === undefined) {
         TrezorSigner = sjs
         new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
@@ -737,15 +741,8 @@ const AccountController = (actions: {
     if (!walletCreation) {
       await sysjs.Signer.createAccount();
     }
-    console.log('Checking Sysjs')
-    console.log(sysjs)
+
     const res: IAccountInfo | null = await getAccountInfo();
-    console.log('Info done')
-    console.log(res)
-    console.log(sysjs.Signer)
-    console.log(sysjs.Signer.Signer.accountIndex)
-    console.log(sysjs.Signer.Signer.accounts[sysjs.Signer.Signer.accountIndex].getAccountPrivateKey())
-    console.log(sysjs.Signer.getNewReceivingAddress())
     account = {
       id: sysjs.Signer.Signer.accountIndex === 0 ? 0 : sysjs.Signer.Signer.accountIndex,
       label: label || `Account ${sysjs.Signer.Signer.accountIndex + 1}`,
@@ -758,7 +755,6 @@ const AccountController = (actions: {
       connectedTo: [],
       isTrezorWallet: false
     };
-    console.log('Account created')
     store.dispatch(createAccount(account));
 
     return account!.xpub;
@@ -771,7 +767,6 @@ const AccountController = (actions: {
       return;
     }
 
-    console.log('sysjs', sysjs)
 
     account = accounts.find((account: IAccountState) => account.id === activeAccountId)!;
 
@@ -963,7 +958,6 @@ const AccountController = (actions: {
         const assetGuid = token.token;
         const assetData = await getDataAsset(assetGuid);
 
-        console.log('tokenData', assetData.response)
 
         if (assetData.response && assetData.response.data.error === 'Asset not found' && !assetData.assetGuid) {
           createdAssetguid = assetGuid;
@@ -1060,7 +1054,6 @@ const AccountController = (actions: {
 
     sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
-    console.log('sysjs', sysjs, sysjs.Signer)
 
     const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, null, receiver, new sys.utils.BN(fee * 1e8));
 
@@ -1205,8 +1198,9 @@ const AccountController = (actions: {
         // check how to make this properly work (untested part)
 
         let waitTrezor = true;
-
-        TrezorSigner.sign(txData.psbt).then((txInfo: string) => {
+        // TrezorSigner.sign(txData.psbt).then((txInfo: string) => {
+        
+          sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner).then((txInfo: string) => {
           updateTransactionData('issuingSPT', txInfo);
           
           watchMemPool(getConnectedAccount());
@@ -1265,7 +1259,6 @@ const AccountController = (actions: {
 
     let assetChangeAddress = await sysjs.Signer.getNewChangeAddress();
 
-    console.log('sysjs', sysjs, sysjs.Signer)
 
     const psbt = await sysjs.assetNew(assetOpts, txOpts, assetChangeAddress, assetChangeAddress, feeRate);
 
@@ -1342,7 +1335,6 @@ const AccountController = (actions: {
               try {
                 sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
-                console.log('sysjs', sysjs, sysjs.Signer)
 
                 const pendingTx = await sysjs.assetSend(txOpts, assetMap, null, feeRate);
 
@@ -1383,7 +1375,6 @@ const AccountController = (actions: {
 
                 sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
-                console.log('sysjs', sysjs, sysjs.Signer)
 
                 const assetMap = new Map([
                   [assetGuid, {
@@ -1488,7 +1479,9 @@ const AccountController = (actions: {
           new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
         }
         try {
-          TrezorSigner.sign(txData.psbt).then(() => {
+          // TrezorSigner.sign(txData.psbt).then(() => {
+          
+            sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner).then(() => {
             const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
             watchMemPool(acc);
           })
@@ -1517,25 +1510,21 @@ const AccountController = (actions: {
 
       if (account.isTrezorWallet) {
         const changeAddress = await getNewChangeAddress();
-        console.log(changeAddress)
         const txData = await sysjs.createTransaction(txOpts, changeAddress, outputsArray, new sys.utils.BN(fee * 1e8), account.xpub);
 
         if (!txData) {
           console.log('Could not create transaction, not enough funds?')
         }
-        console.log(txData)
         if (TrezorSigner === null || TrezorSigner === undefined) {
-          console.log('Desgraca')
           TrezorSigner = new sys.utils.TrezorSigner();
           new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
-          console.log(TrezorSigner)
         }
         try {
-          TrezorSigner.sign(txData.psbt).then((txInfo: string) => {
+          // TrezorSigner.sign(txData.psbt).then((txInfo: string) => {
+          
+            sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner).then(() => {
             //Application breaks if trezor propagate txInfo
             //updateTransactionData('confirmingTransaction', txInfo); 
-            console.log('TxOutput')
-            console.log(txInfo)
             const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
 
             watchMemPool(acc);
@@ -1673,7 +1662,6 @@ const AccountController = (actions: {
 
     // let changeAddress = await sysjs.Signer.getNewChangeAddress();
 
-    console.log('sysjs', sysjs, sysjs.Signer)
 
     const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, thisAssetMap, null, new sys.utils.BN(fee * 1e8));
 
@@ -1752,8 +1740,7 @@ const AccountController = (actions: {
       }
       try {
         //TODO: test might have same problem as them mintSPT
-        txInfo = await TrezorSigner.sign(txData.psbt)
-        txInfo = txData.extractTransaction().getId();
+        txInfo = await sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner)
 
         updateTransactionData('transferringOwnership', txInfo);
 
@@ -1770,7 +1757,6 @@ const AccountController = (actions: {
 
     // let assetChangeAddress = await sysjs.Signer.getNewChangeAddress();
 
-    console.log('sysjs', sysjs, sysjs.Signer)
 
     const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, null, feeRate);
 
