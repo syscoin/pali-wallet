@@ -85,7 +85,6 @@ const SendConfirm = () => {
         setLoading(false);
       }).catch((error) => {
         if (error && tempTx.fee > recommendedFee) {
-          console.log('lllsll', tempTx)
           alert.removeAll();
           alert.error(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
         }

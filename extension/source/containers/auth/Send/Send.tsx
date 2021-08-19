@@ -124,8 +124,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     history.push('/send/confirm');
   };
 
-  const decimalNumberMask = new RegExp('[0-9]+(\\.?[0-9]*)?', 'g');
-
   const handleAmountChange = useCallback(
     (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setAmount(event.target.value);
@@ -443,7 +441,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 theme="btn-outline-primary"
                 variant={styles.button}
                 disabled={
-                  !decimalNumberMask.test(fee) ||
                   accounts.find(element => element.id === activeAccountId)!.balance === 0 ||
                   checkAssetBalance() < Number(amount) ||
                   !isValidAddress ||
@@ -451,7 +448,8 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                   !fee ||
                   Number(fee) > 0.1 ||
                   !address ||
-                  Number(amount) <= 0
+                  Number(amount) <= 0 ||
+                  (Number(amount) + Number(fee)) > checkAssetBalance()
                 }
               >
                 Send
