@@ -277,7 +277,7 @@ const AccountController = (actions: {
   };
 
   const getChangeAddress = async () => {
-    const { accounts, activeAccountId }: IWalletState = store.getState().wallet;
+    const {  activeAccountId }: IWalletState = store.getState().wallet;
     const connectedAccount: IAccountState = getConnectedAccount();
     if (!sysjs) {
       //TODO: enhance this error message
@@ -307,11 +307,9 @@ const AccountController = (actions: {
         return changeAddress;
       }
       else {
-        sysjs.Signer.setAccountIndex(connectedAccount.id)
+        await sysjs.Signer.setAccountIndex(connectedAccount.id)
         changeAddress = await sysjs.Signer.getNewChangeAddress();
-        if (accounts[activeAccountId].isTrezorWallet) {
-          sysjs.Signer.setAccountIndex(activeAccountId)
-        }
+        sysjs.Signer.setAccountIndex(activeAccountId)
         return changeAddress;
       }
     }
@@ -541,9 +539,7 @@ const AccountController = (actions: {
   }
 
   const getNewChangeAddress = async () => {
-    const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
-    const userAccount: IAccountState = accounts.find((account: IAccountState) => account.id === activeAccountId) as IAccountState;
-
+    const userAccount: IAccountState = getConnectedAccount();
     let address = '';
 
     if (userAccount!.isTrezorWallet) {
@@ -1167,9 +1163,9 @@ const AccountController = (actions: {
         }]
       }]
     ]);
-
+    if(!getConnectedAccount().isTrezorWallet){
     sysjs.Signer.setAccountIndex(getConnectedAccount().id);
-
+    }
     let sysChangeAddress = null;
 
     if (getConnectedAccount().isTrezorWallet) {
