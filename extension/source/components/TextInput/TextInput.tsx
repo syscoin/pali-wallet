@@ -1,4 +1,4 @@
-import React, { FC, useState, MouseEvent, ReactNode } from 'react';
+import React, { FC, useState, ReactNode } from 'react';
 import clsx from 'clsx';
 import MUITextInput, {
   OutlinedInputProps,
@@ -31,10 +31,6 @@ const TextInput: FC<ITextInput> = ({
     setShowed(!showed);
   };
 
-  const handleMouseDownPassword = (event: MouseEvent) => {
-    event.preventDefault();
-  };
-
   return (
     <MUITextInput
       className={clsx(styles.textInput, variant)}
@@ -47,7 +43,6 @@ const TextInput: FC<ITextInput> = ({
             <IconButton
               aria-label="toggle password visibility"
               className={styles.iconButton}
-              onMouseDown={handleMouseDownPassword}
               onClick={handleClickShowPassword}
               edge="end"
               tabIndex="-1"

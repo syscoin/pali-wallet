@@ -22,13 +22,43 @@ function AssetCard({ asset }) {
 
   const SPTCard = () => {
     return (
-      <div className="asset" key={asset.assetGuid}>
+      <div className="asset spt" key={asset.assetGuid}>
         <img src={asset?.logoUrl || assetLogo2} alt="" />
         <div className="balance">
           <RenderBalance balance={asset.balance} decimals={asset.decimals} />
         </div>
         <div className="symbol">{asset.symbol}</div>
         <div className="asset-id">Asset ID: {asset.assetGuid}</div>
+      </div>
+    );
+  };
+
+  const NFTChildCard = () => {
+    return (
+      <div className="asset" key={asset.assetGuid}>
+        <div className="nft-id">Child NFT</div>
+        <img src={assetLogo} alt="" />
+        <div className="balance">
+          <RenderBalance balance={asset.balance} decimals={asset.decimals} />
+        </div>
+        <div className="symbol">{asset.symbol}</div>
+        <div className="nft-id">
+          <a
+            href={asset.description}
+            target="_blank"
+            rel="noreferrer"
+            title={asset.description}
+          >
+            {asset.description.substr(0, 10)}...
+          </a>
+        </div>
+        <div className="asset-id">Asset ID: {asset.baseAssetID}</div>
+        {controller.isNFT(asset.assetGuid) && asset.childAssetID && asset.NFTID && (
+          <div>
+            <div className="nft-id">Child ID: {asset.childAssetID}</div>
+            <div className="nft-id">NFT ID: {asset.NFTID}</div>
+          </div>
+        )}
       </div>
     );
   };
@@ -54,8 +84,8 @@ function AssetCard({ asset }) {
           </a>
         </div>
         <div className="asset-id">Asset ID: {asset.assetGuid}</div>
-        {controller.isNFT(asset.assetGuid) && (
-          <div className="nft-id">NFT ID: {asset.nftAssetID}</div>
+        {controller.isNFT(asset.assetGuid) && asset.baseAssetID && (
+          <div className="nft-id">Base asset ID: {asset.baseAssetID}</div>
         )}
       </div>
     );
@@ -66,7 +96,13 @@ function AssetCard({ asset }) {
       {asset.description.startsWith("https://ipfs.io/ipfs/") ? (
         <NFTCard />
       ) : (
-        <SPTCard />
+        <div>
+          {controller.isNFT(asset.assetGuid) && asset.baseAssetID && asset.childAssetID ? (
+            <NFTChildCard />
+          ) : (
+            <SPTCard />
+          )}
+        </div>
       )}
     </>
   );

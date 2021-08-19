@@ -38,7 +38,8 @@ export interface Holding {
   baseAssetID: string;
   decimals: number;
   description: string;
-  nftAssetID: string;
+  NFTID: string;
+  childAssetID: string;
   symbol: string;
   type: string;
 }

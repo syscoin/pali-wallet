@@ -62,6 +62,7 @@ section {
       position: relative;
 
       .asset {
+        min-height: 300px;
         width: 85%;
         margin-right: 5%;
         float: left;
@@ -110,6 +111,21 @@ section {
           text-align: left;
           font-family: monospace;
           min-height: 14px;
+        }
+      }
+
+      .spt {
+        position: relative;
+        min-height: 300px;
+        padding-top: 3.2rem;
+
+        .asset-id,
+        .nft-id {
+          font-size: 12px;
+          text-align: center;
+          font-family: monospace;
+          min-height: 14px;
+          line-height: 40px;
         }
       }
     }

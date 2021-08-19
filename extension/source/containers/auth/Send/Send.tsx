@@ -456,8 +456,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               </Button>
             </div>
           </ul>
-
-
         </section>
       </form>
     </div>

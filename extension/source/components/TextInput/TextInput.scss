@@ -9,6 +9,21 @@ body {
     padding: 15px 12px;
     box-sizing: border-box;
 
+    & input {
+      padding: 0px;
+    }
+
+    & input::-webkit-outer-spin-button,
+    & input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    /* Firefox */
+    & input[type='number'] {
+      -moz-appearance: textfield;
+    }
+
     input {
       color: $white;
     }

@@ -415,8 +415,8 @@ const AccountController = (actions: {
             assetGuid
           }: any = value;
 
-          const assetId = sys.utils.getBaseAssetID(assetGuid);
           const { pubData } = await getDataAsset(assetGuid);
+          const { baseAssetID, NFTID } = sys.utils.getAssetIDs(assetGuid);
 
           const assetData = {
             balance,
@@ -424,8 +424,9 @@ const AccountController = (actions: {
             decimals,
             symbol,
             assetGuid,
-            baseAssetID: assetId,
-            nftAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(assetId, assetGuid) : null,
+            baseAssetID,
+            childAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(NFTID, assetGuid) : null,
+            NFTID,
             description: pubData && pubData.desc ? atob(pubData.desc) : ''
           }
 
