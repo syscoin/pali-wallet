@@ -59,16 +59,6 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
     [transactions]
   );
 
-  const TokenTypeGroupBar = useCallback(
-    (asset: Assets, idx: number) => {
-      return (
-        idx === 0 || controller.wallet.account.isNFT(asset.assetGuid) !==
-        controller.wallet.account.isNFT(assets[idx - 1].assetGuid)
-      );
-    },
-    [assets]
-  );
-
   const handleFetchMoreTxs = () => {
     if (transactions.length) {
       controller.wallet.account.updateTxs();
@@ -231,15 +221,10 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
         ) : assets.length && !changingNetwork ?
           <>
             <ul>
-              {assets.map((asset: Assets, idx: number) => {
+              {assets.map((asset: Assets) => {
                 if (asset.assetGuid !== undefined) {
                   return (
                     <Fragment key={uuid()}>
-                      {TokenTypeGroupBar(asset, idx) && (
-                        <div className={styles.groupbar}>
-                          {controller.wallet.account.isNFT(asset.assetGuid) ? "NFT" : "SPT"}
-                        </div>
-                      )}
                       <div
                         className={styles.assetItem}
                         onClick={() => {
