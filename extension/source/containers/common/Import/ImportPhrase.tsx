@@ -30,7 +30,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
   };
 
   return (
-    <Layout title="Let's import your wallet" linkTo="/app.html">
+    <Layout title="Let's import your wallet" linkTo="/app.html" importSeed={true}>
       <form className={styles.importForm} onSubmit={handleSubmit(onSubmit)}>
         <span>Paste your wallet seed phrase below:</span>
         <TextInput

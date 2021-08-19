@@ -8,6 +8,7 @@ interface ILayout {
   linkTo?: string;
   showLogo?: boolean;
   title: string;
+  importSeed?: boolean;
 }
 
 const Layout: FC<ILayout> = ({
@@ -15,10 +16,11 @@ const Layout: FC<ILayout> = ({
   linkTo = '#',
   showLogo = false,
   children,
+  importSeed = false,
 }) => {
   return (
     <>
-      <Header backLink={linkTo} showLogo={showLogo} />
+      <Header backLink={linkTo} showLogo={showLogo} importSeed={importSeed} />
       <div className={styles.layout}>
         <section className={styles.heading}>
           <span className="heading-1">{title}</span>

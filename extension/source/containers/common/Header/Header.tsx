@@ -17,14 +17,14 @@ import Select from 'components/Select';
 
 import styles from './Header.scss';
 
-
 interface IHeader {
   backLink?: string;
   showLogo?: boolean;
   showName?: boolean;
+  importSeed?: boolean;
 }
 
-const Header: FC<IHeader> = ({ showLogo = false, backLink = '#', showName = true }) => {
+const Header: FC<IHeader> = ({ showLogo = false, backLink = '#', showName = true, importSeed = false }) => {
   const history = useHistory();
   const controller = useController();
   const showView = useSettingsView();
@@ -92,7 +92,7 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#', showName = true
         </div>
       )}
 
-      {encriptedMnemonic ? (
+      {encriptedMnemonic && !importSeed ? (
         <IconButton
           className={`${styles.button} ${styles.more}`}
           onClick={() =>
