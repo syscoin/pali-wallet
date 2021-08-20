@@ -1534,9 +1534,13 @@ const AccountController = (actions: {
         }
 
       } else {
-        const pendingTx = await sysjs.createTransaction(txOpts, null, outputsArray, new sys.utils.BN(fee * 1e8));
+        try {
+          const pendingTx = await sysjs.createTransaction(txOpts, null, outputsArray, new sys.utils.BN(fee * 1e8));
 
-        txInfo = pendingTx.extractTransaction().getId();
+          txInfo = pendingTx.extractTransaction().getId();
+        } catch (error) {
+          throw new Error(error);
+        }
       }
 
       updateTransactionData('confirmingTransaction', txInfo);
@@ -1550,8 +1554,13 @@ const AccountController = (actions: {
   }
 
   const confirmTempTx = () => {
-    return new Promise((resolve) => {
-      resolve(handleTransactions(tempTx, confirmTransactionTx));
+    return new Promise((resolve, reject) => {
+      handleTransactions(tempTx, confirmTransactionTx).then((response) => {
+        console.log('response confirm temptx', response)
+        resolve(response);
+      }).catch((error) => {
+        reject(error);
+      });;
     });
   };
 

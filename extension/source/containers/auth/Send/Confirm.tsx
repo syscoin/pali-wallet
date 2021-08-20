@@ -89,7 +89,18 @@ const SendConfirm = () => {
           alert.error(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
         }
 
-        if (error && tempTx < recommendedFee) {
+        if (error && tempTx.fee <= recommendedFee) {
+          const max = 100 * tempTx.amount / accounts[activeAccountId].balance;
+
+          if (tempTx.amount >= (max * tempTx.amount / 100)) {
+            alert.removeAll();
+            alert.error(error.message);
+
+            setLoading(false);
+
+            return;
+          }
+
           alert.removeAll();
           alert.error('Can\'t complete transaction. Try again later.');
         }
