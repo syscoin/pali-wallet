@@ -194,8 +194,11 @@ const WalletController = (): IWalletController => {
 
             sjs.Signer.Signer.accounts.push(new fromZPrv(child, sjs.Signer.Signer.pubTypes, sjs.Signer.Signer.networks));
             // sjs.Signer.accountIndex = activeAccountId;
-            sjs.Signer.setAccountIndex(activeAccountId)
           }
+        }
+        const activeAccount = accounts.find((account: IAccountState) => account.id === activeAccountId) || accounts[activeAccountId];
+        if(!activeAccount.isTrezorWallet){
+          sjs.Signer.setAccountIndex(activeAccountId);
         }
       }
 

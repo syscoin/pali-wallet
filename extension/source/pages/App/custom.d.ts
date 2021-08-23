@@ -53,9 +53,7 @@ declare interface IAccountController {
   getAssetguidFromTokenTransfers: (tokenTransfers: any) => Promise<string>;
   getChangeAddress: () => Promise<string>;
   getConnectedAccount: () => IAccountState;
-  getConnectedAccount: () => IAccountState;
-  getConnectedAccountXpub: () => string;
-  getConnectedAccountXpub: () => string;
+  getConnectedAccountXpub: () => string | null;
   getDataAsset: (assetGuid: any) => any;
   getDataFromPageToInitTransaction: () => any;
   getHoldingsData: () => any;
