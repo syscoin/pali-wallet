@@ -183,18 +183,24 @@ const WalletState = createSlice({
         (connection) => connection.url === getHost(action.payload.url)
       );
 
+      const connectionByAccount: number = state.connections.findIndex((connection: any) => connection.accountId === action.payload.accountId);
+
+      const account = state.accounts.find(
+        (element: IAccountState) => element.id === action.payload.accountId
+      );
+
+      if (connectionByAccount > -1 && !action.payload.url && account?.isTrezorWallet) {
+        state.connections.splice(connectionByAccount, 1);
+      }
+
       if (connectionIndex === -1) {
         return;
       }
 
       state.connections.splice(connectionIndex, 1);
 
-      const index = state.accounts.findIndex(
-        (element: IAccountState) => element.id === action.payload.accountId
-      );
-
-      state.accounts[index].connectedTo.splice(
-        state.accounts[index].connectedTo.indexOf(getHost(action.payload.url)),
+      account?.connectedTo.splice(
+        account?.connectedTo.indexOf(getHost(action.payload.url)),
         1
       );
     },

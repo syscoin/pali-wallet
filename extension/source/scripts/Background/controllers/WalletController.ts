@@ -11,7 +11,9 @@ import {
   setEncriptedMnemonic,
   removeAccounts,
   removeAccount,
-  updateSwitchNetwork
+  updateSwitchNetwork,
+  updateConnectionsArray,
+  removeConnection
 } from 'state/wallet';
 import IWalletState, {
   IAccountState
@@ -291,6 +293,7 @@ const WalletController = (): IWalletController => {
       for (let i = 0; i < ToRemoveWalletIds.length; i++) {
         console.log('dont be weitd')
         console.log(ToRemoveWalletIds[i])
+        store.dispatch(removeConnection({ accountId: ToRemoveWalletIds[i] }));
         store.dispatch(removeAccount(ToRemoveWalletIds[i]));
         store.dispatch(updateStatus());
 
