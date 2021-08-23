@@ -479,7 +479,13 @@ const AccountController = (actions: {
   };
 
   const getConnectedAccountXpub = () => {
-    return getConnectedAccount().xpub;
+    if(getConnectedAccount() !== undefined){
+    return null;
+    }
+    else{
+      return getConnectedAccount().xpub;
+
+    }
   }
 
   const signTransaction = async (jsonData: any, sendPSBT: boolean) => {
