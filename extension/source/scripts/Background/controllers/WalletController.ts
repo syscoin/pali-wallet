@@ -12,7 +12,6 @@ import {
   removeAccounts,
   removeAccount,
   updateSwitchNetwork,
-  updateConnectionsArray,
   removeConnection
 } from 'state/wallet';
 import IWalletState, {
