@@ -12,7 +12,6 @@ import {
   removeAccounts,
   removeAccount,
   updateSwitchNetwork,
-  updateConnectionsArray,
   removeConnection
 } from 'state/wallet';
 import IWalletState, {
@@ -109,7 +108,7 @@ const WalletController = (): IWalletController => {
     console.log(TrezorSigner)
 
     // const myacc = await TrezorSigner.createAccount();
-    TrezorSigner.createAccount().then(() => {
+    TrezorSigner.createAccount().then(async () => {
       console.log('Created trezor wallet')
       const message = `Trezor Wallet Account Created`;
         chrome.notifications.create(new Date().getTime().toString(), {
@@ -118,7 +117,11 @@ const WalletController = (): IWalletController => {
           title: 'Hardware Wallet connected',
           message,
         });
-        account.subscribeAccount(true, TrezorSigner);
+        await account.subscribeAccount(true, TrezorSigner);
+        console.log('subscribe account ok')
+        account.updateTokensState().then(() => {
+          console.log('tokens state updated after trezor creation')
+        });
     }).catch((err : any) => {
       console.log('error trezor wallet')
       const message = `Trezor Error: ${err}`;
@@ -129,6 +132,7 @@ const WalletController = (): IWalletController => {
           message,
         });
     });
+    
     }
     catch(e){
       console.log('error trezor wallet | bad hardcore error')
@@ -316,7 +320,7 @@ const WalletController = (): IWalletController => {
     account.getPrimaryAccount(password, sjs);
 
     account.updateTokensState().then(() => {
-      console.log('tokens state updated')
+      console.log('tokens state updated after remove trezor')
     });
   }
 

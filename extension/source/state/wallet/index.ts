@@ -52,6 +52,19 @@ const WalletState = createSlice({
       const { accountId, accountXpub, tokens, holdings, mintedTokens } =
         action.payload;
 
+      // console.log('accounts', state.accounts)
+
+      // const accountIndex = state.accounts.findIndex((account: IAccountState) => {
+      //   return state.walletTokens.findIndex((info: any) => account.id === info.accountId);
+      // })
+
+      // if (accountIndex === -1) {
+      //   state.walletTokens.splice(accountIndex, 1);
+      //   console.log('trezor item removed')
+      // }
+
+      // console.log('account index', accountIndex)
+
       const sameAccountIndexAndDifferentXpub: number =
         state.walletTokens.findIndex((accountTokens: any) => {
           return (
@@ -103,6 +116,8 @@ const WalletState = createSlice({
       ) {
         return;
       }
+
+
 
       console.log('push new account item:', accountId);
 
@@ -309,9 +324,7 @@ const WalletState = createSlice({
 
       if (state.activeAccountId === action.payload) {
         state.activeAccountId = state.accounts[0].id;
-        
       }
-      
 
       state.accounts.splice(indexOf, 1);
     },

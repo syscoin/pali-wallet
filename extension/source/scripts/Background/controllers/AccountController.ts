@@ -331,6 +331,7 @@ const AccountController = (actions: {
     }
 
     const { accounts }: IWalletState = store.getState().wallet;
+    console.log('accounts', accounts)
 
     return await Promise.all(accounts.map(async (account: IAccountState) => {
       const assetsData: any = {};
@@ -342,7 +343,6 @@ const AccountController = (actions: {
       let mintedTokens: any = {};
 
       if (!tokensAsset) {
-
         store.dispatch(updateAllTokens({
           accountId: account.id,
           accountXpub: account.xpub,
@@ -494,24 +494,27 @@ const AccountController = (actions: {
     }
 
     try {
-      const res = sys.utils.importPsbtFromJson(jsonData);
+      const response = sys.utils.importPsbtFromJson(jsonData);
+
       if (TrezorSigner === null || TrezorSigner === undefined) {
         TrezorSigner = new sys.utils.TrezorSigner();
+
         new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
       }
       
       if (sendPSBT) {
         if(getConnectedAccount().isTrezorWallet) {
-          return await TrezorSigner.sign(res.psbt);
+          return await TrezorSigner.sign(response.psbt);
         }
-        return await sysjs.Signer.sign(res.psbt);
+
+        return await sysjs.Signer.sign(response.psbt);
       }
+
       if(getConnectedAccount().isTrezorWallet) {
-        return await sysjs.signAndSend(res.psbt, res.assets,TrezorSigner);
+        return await sysjs.signAndSend(response.psbt, response.assets,TrezorSigner);
       }
-      else{
-      return await sysjs.signAndSend(res.psbt, res.assets);
-      }
+
+      return await sysjs.signAndSend(response.psbt, response.assets);
     } catch (error) {
       throw new Error(error);
     }

@@ -106,6 +106,29 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
     );
   }, [data]);
 
+  const handleRejectTransaction = () => {
+    history.push('/home');
+
+    browser.runtime.sendMessage({
+      type: 'WALLET_ERROR',
+      target: 'background',
+      transactionError: true,
+      invalidParams: false,
+      message: "Transaction rejected.",
+    });
+
+    browser.runtime.sendMessage({
+      type: 'CANCEL_TRANSACTION',
+      target: 'background',
+      item: itemStringToClearData || null,
+    });
+
+    browser.runtime.sendMessage({
+      type: 'CLOSE_POPUP',
+      target: 'background',
+    });
+  }
+
   const handleClosePopup = () => {
     browser.runtime.sendMessage({
       type: 'CLOSE_POPUP',
@@ -378,7 +401,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
                           theme="btn-outline-secondary"
                           variant={clsx(styles.button, styles.close)}
                           linkTo="/home"
-                          onClick={handleCancelTransactionOnSite}
+                          onClick={handleRejectTransaction}
                         >
                           Reject
                         </Button>
