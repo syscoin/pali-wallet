@@ -291,7 +291,7 @@ const AccountController = (actions: {
       //only when trezor enable syscoin on mainnet
       console.log('Trezor new change address');
       let addr: string = 'Error: Failed to fetch trezor change address'
-      const inter = await getNewChangeAddress();
+      const inter = await getNewChangeAddress(true);
       if (inter !== null) {
         addr = inter
       }
@@ -538,8 +538,16 @@ const AccountController = (actions: {
     return;
   }
 
-  const getNewChangeAddress = async () => {
-    const userAccount: IAccountState = getConnectedAccount();
+  const getNewChangeAddress = async (fromConnectionsController: boolean) => {
+    let userAccount: IAccountState;
+    if(fromConnectionsController){
+     userAccount = getConnectedAccount();
+    }
+    else{
+      const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
+      userAccount = accounts.find((account: IAccountState) => account.id === activeAccountId) as IAccountState;
+
+    }
     let address = '';
 
     if (userAccount!.isTrezorWallet) {
@@ -1045,7 +1053,9 @@ const AccountController = (actions: {
     const txOpts = { rbf: true };
 
     if (getConnectedAccount().isTrezorWallet) {
-      throw new Error('Trezor don\'t support burning of coins');
+      console.log('Trezor don\'t support burning of coins')
+      // throw new Error('Trezor don\'t support burning of coins');
+      return;
     }
 
     sysjs.Signer.setAccountIndex(getConnectedAccount().id);
@@ -1163,13 +1173,13 @@ const AccountController = (actions: {
         }]
       }]
     ]);
-    if(!getConnectedAccount().isTrezorWallet){
+    if(getConnectedAccount().isTrezorWallet === false){
     sysjs.Signer.setAccountIndex(getConnectedAccount().id);
     }
     let sysChangeAddress = null;
 
     if (getConnectedAccount().isTrezorWallet) {
-      sysChangeAddress = await getNewChangeAddress();
+      sysChangeAddress = await getNewChangeAddress(true);
 
       // @ts-ignore
       assetMap.get(assetGuid)!.changeAddress = sysChangeAddress;
@@ -1461,7 +1471,7 @@ const AccountController = (actions: {
       ]);
 
       if (account.isTrezorWallet) {
-        const changeAddress = await getNewChangeAddress();
+        const changeAddress = await getNewChangeAddress(false);
         // @ts-ignore: Unreachable code error
         assetMap.get(token.assetGuid)!.changeAddress = changeAddress;
 
@@ -1503,28 +1513,36 @@ const AccountController = (actions: {
 
       const txOpts = { rbf };
       let txInfo;
-
+      console.log('Checking account:')
+      console.log(account)
       if (account.isTrezorWallet) {
-        const changeAddress = await getNewChangeAddress();
+        console.log('checking trezor emission')
+        const changeAddress = await getNewChangeAddress(false);
+        console.log('New change address')
+        console.log(changeAddress)
         const txData = await sysjs.createTransaction(txOpts, changeAddress, outputsArray, new sys.utils.BN(fee * 1e8), account.xpub);
-
+        console.log(txData)
         if (!txData) {
           console.log('Could not create transaction, not enough funds?')
         }
         if (TrezorSigner === null || TrezorSigner === undefined) {
+          console.log('Recreating empty signer obj')
           TrezorSigner = new sys.utils.TrezorSigner();
           new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
         }
         try {
           // TrezorSigner.sign(txData.psbt).then((txInfo: string) => {
-          
-            sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner).then(() => {
-            //Application breaks if trezor propagate txInfo
-            //updateTransactionData('confirmingTransaction', txInfo); 
-            const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
+          console.log('trezor tx')
 
-            watchMemPool(acc);
-          })
+            // const trezorOutput = TrezorSigner.convertToTrezorFormat(txData.psbt);
+            // console.log(trezorOutput)
+            sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner).then(() => {
+              //Application breaks if trezor propagate txInfo
+              //updateTransactionData('confirmingTransaction', txInfo); 
+              const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
+  
+              watchMemPool(acc);
+            })
           tempTx = null;
           return
         }
@@ -1654,7 +1672,7 @@ const AccountController = (actions: {
 
     const thisAssetMap = new Map([
       [assetGuid, {
-        changeAddress: await getNewChangeAddress(),
+        changeAddress: await getNewChangeAddress(true),
         outputs: [{
           value: new sys.utils.BN(0),
           address: await sysjs.Signer.getNewReceivingAddress()
@@ -1720,7 +1738,7 @@ const AccountController = (actions: {
 
     const assetMap = new Map([
       [assetGuid, {
-        changeAddress: await getNewChangeAddress(),
+        changeAddress: await getNewChangeAddress(true),
         outputs: [{
           value: new sys.utils.BN(0),
           address: newOwner
@@ -1729,7 +1747,7 @@ const AccountController = (actions: {
     ]);
 
     if (getConnectedAccount().isTrezorWallet) {
-      const sysChangeAddress = await getNewChangeAddress();
+      const sysChangeAddress = await getNewChangeAddress(true);
 
       // @ts-ignore
       assetMap.get(assetGuid)!.changeAddress = sysChangeAddress;
