@@ -52,19 +52,6 @@ const WalletState = createSlice({
       const { accountId, accountXpub, tokens, holdings, mintedTokens } =
         action.payload;
 
-      // console.log('accounts', state.accounts)
-
-      // const accountIndex = state.accounts.findIndex((account: IAccountState) => {
-      //   return state.walletTokens.findIndex((info: any) => account.id === info.accountId);
-      // })
-
-      // if (accountIndex === -1) {
-      //   state.walletTokens.splice(accountIndex, 1);
-      //   console.log('trezor item removed')
-      // }
-
-      // console.log('account index', accountIndex)
-
       const sameAccountIndexAndDifferentXpub: number =
         state.walletTokens.findIndex((accountTokens: any) => {
           return (
@@ -198,15 +185,9 @@ const WalletState = createSlice({
         (connection) => connection.url === getHost(action.payload.url)
       );
 
-      const connectionByAccount: number = state.connections.findIndex((connection: any) => connection.accountId === action.payload.accountId);
-
       const account = state.accounts.find(
         (element: IAccountState) => element.id === action.payload.accountId
       );
-
-      if (connectionByAccount > -1 && !action.payload.url && account?.isTrezorWallet) {
-        state.connections.splice(connectionByAccount, 1);
-      }
 
       if (connectionIndex === -1) {
         return;
@@ -318,7 +299,8 @@ const WalletState = createSlice({
       if (state.accounts.length <= 1) {
         return;
       }
-      const indexOf = state.accounts.findIndex(
+
+      const accountIndex = state.accounts.findIndex(
         (element: IAccountState) => element.id === action.payload
       );
 
@@ -326,7 +308,17 @@ const WalletState = createSlice({
         state.activeAccountId = state.accounts[0].id;
       }
 
-      state.accounts.splice(indexOf, 1);
+      const infoIndex = state.walletTokens.findIndex(
+        (element: any) => element.accountId === action.payload
+      );
+
+      const connectionIndex = state.connections.findIndex(
+        (element: any) => element.accountId === action.payload
+      );
+
+      state.accounts.splice(accountIndex, 1);
+      state.walletTokens.splice(infoIndex, 1);
+      state.connections.splice(connectionIndex, 1);
     },
 
     removeAccounts(state: IWalletState) {
