@@ -57,21 +57,6 @@ const SiteTransaction: FC<ISiteTransaction> = ({
     history.push(confirmRoute);
   };
 
-  const handleCancelTransactionOnSite = () => {
-    history.push('/home');
-
-    browser.runtime.sendMessage({
-      type: 'CANCEL_TRANSACTION',
-      target: 'background',
-      item: transacting ? itemStringToClearData : null,
-    });
-
-    browser.runtime.sendMessage({
-      type: 'CLOSE_POPUP',
-      target: 'background',
-    });
-  };
-
   const handleFeeChange = useCallback(
     (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setFee(event.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'));
@@ -85,6 +70,29 @@ const SiteTransaction: FC<ISiteTransaction> = ({
     },
     []
   );
+
+  const handleRejectTransaction = () => {
+    history.push('/home');
+
+    browser.runtime.sendMessage({
+      type: 'WALLET_ERROR',
+      target: 'background',
+      transactionError: true,
+      invalidParams: false,
+      message: "Transaction rejected.",
+    });
+
+    browser.runtime.sendMessage({
+      type: 'CANCEL_TRANSACTION',
+      target: 'background',
+      item: itemStringToClearData || null,
+    });
+
+    browser.runtime.sendMessage({
+      type: 'CLOSE_POPUP',
+      target: 'background',
+    });
+  }
 
   return (
     <div>
@@ -124,7 +132,7 @@ const SiteTransaction: FC<ISiteTransaction> = ({
                 theme="btn-outline-secondary"
                 variant={clsx(styles.button, styles.close)}
                 linkTo="/home"
-                onClick={handleCancelTransactionOnSite}
+                onClick={handleRejectTransaction}
               >
                 Reject
               </Button>
