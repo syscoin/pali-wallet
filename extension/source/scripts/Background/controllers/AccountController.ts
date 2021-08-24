@@ -498,7 +498,7 @@ const AccountController = (actions: {
     try {
       const response = sys.utils.importPsbtFromJson(jsonData);
 
-      if (TrezorSigner === null || TrezorSigner === undefined) {
+      if (!TrezorSigner) {
         TrezorSigner = new sys.utils.TrezorSigner();
 
         new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
@@ -506,17 +506,17 @@ const AccountController = (actions: {
       
       if (sendPSBT) {
         if(getConnectedAccount().isTrezorWallet) {
-          return await TrezorSigner.sign(response.psbt);
+          return sys.utils.exportPsbtToJson(await TrezorSigner.sign(response.psbt));
         }
 
-        return await sysjs.Signer.sign(response.psbt);
+        return sys.utils.exportPsbtToJson(await sysjs.Signer.sign(response.psbt));
       }
 
       if(getConnectedAccount().isTrezorWallet) {
-        return await sysjs.signAndSend(response.psbt, response.assets,TrezorSigner);
+        return sys.utils.exportPsbtToJson(await sysjs.signAndSend(response.psbt, response.assets, TrezorSigner));
       }
 
-      return await sysjs.signAndSend(response.psbt, response.assets);
+      return sys.utils.exportPsbtToJson(await sysjs.signAndSend(response.psbt, response.assets));
     } catch (error) {
       throw new Error(error);
     }
