@@ -50,7 +50,6 @@ declare interface IAccountController {
   confirmTransferOwnership: () => any;
   confirmUpdateAssetTransaction: () => any;
   createSPT: (spt: ISPTInfo) => void;
-  getAssetguidFromTokenTransfers: (tokenTransfers: any) => Promise<string>;
   getChangeAddress: () => Promise<string>;
   getConnectedAccount: () => IAccountState;
   getConnectedAccountXpub: () => string | null;

@@ -963,26 +963,6 @@ const AccountController = (actions: {
     });
   };
 
-  const getAssetguidFromTokenTransfers = async (tokenTransfers: any) => {
-    let createdAssetguid: string = '';
-
-    for (const token of tokenTransfers) {
-      try {
-        const assetGuid = token.token;
-        const assetData = await getDataAsset(assetGuid);
-
-
-        if (assetData.response && assetData.response.data.error === 'Asset not found' && !assetData.assetGuid) {
-          createdAssetguid = assetGuid;
-        }
-      } catch (error) {
-        console.log('error', error)
-      }
-    }
-
-    return String(createdAssetguid);
-  }
-
   const confirmSPTCreation = async (item: any) => {
     const {
       capabilityflags,
@@ -1872,7 +1852,6 @@ const AccountController = (actions: {
     getTransactionData,
     getRawTransaction,
     setHDSigner,
-    getAssetguidFromTokenTransfers,
   };
 };
 

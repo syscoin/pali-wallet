@@ -43,7 +43,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           variant={styles.input}
         />
 
-        {!isValid && <p>Seed phrase is not valid.</p>}
+        {!isValid && <span>Seed phrase is not valid.</span>}
 
         <span>
           Importing your wallet seed will automatically import a wallet
