@@ -11,22 +11,26 @@ export default function Transfer() {
   const [assetGuid, setAssetGuid] = useState("");
   const [newOwner, setNewOwner] = useState("");
   const controller = useSelector((state) => state.controller);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const { connectedAccountAddress } = useSelector(
     (state) => state.connectedAccountData
   );
 
   useEffect(() => {
     controller &&
+      setIsLoading(true);
+
       controller.getUserMintedTokens().then((data) => {
         data && setTokens(data);
+
+        setIsLoading(false);
       });
 
     return () => setTokens([]);
   }, []);
 
   useEffect(() => {
-    tokens.length && setIsLoading(false);
+    tokens.length || !tokens && setIsLoading(false);
   }, [tokens]);
 
   const dataYup = {

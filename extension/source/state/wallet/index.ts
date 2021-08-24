@@ -316,9 +316,9 @@ const WalletState = createSlice({
         (element: any) => element.accountId === action.payload
       );
 
-      state.accounts.splice(accountIndex, 1);
       state.walletTokens.splice(infoIndex, 1);
       state.connections.splice(connectionIndex, 1);
+      state.accounts.splice(accountIndex, 1);
     },
 
     removeAccounts(state: IWalletState) {

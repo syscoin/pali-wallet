@@ -13,15 +13,19 @@ export default function IssueSPT() {
   const [asset, setAsset] = useState({ maxSupply: "", totalSupply: "" });
   const [amount, setAmount] = useState(1);
   const [tokens, setTokens] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [decimals, setDecimals] = useState(8);
   const controller = useSelector((state) => state.controller);
 
   useEffect(() => {
     controller &&
+      setIsLoading(true);
+
       controller.getUserMintedTokens().then((data) => {
         data && setTokens(data);
+
+        setIsLoading(false);
       });
 
     return () => setTokens([]);
@@ -42,7 +46,7 @@ export default function IssueSPT() {
   }, [assetGuid]);
 
   useEffect(() => {
-    tokens.length && setIsLoading(false);
+    tokens.length || !tokens && setIsLoading(false);
   }, [tokens]);
 
   const dataYup = {

@@ -401,32 +401,42 @@ const AccountController = (actions: {
         }
 
         await Promise.all(Object.values(tokensMap).map(async (value) => {
-          const {
-            balance,
-            type,
-            decimals,
-            symbol,
-            assetGuid
-          }: any = value;
-
-          const { pubData } = await getDataAsset(assetGuid);
-          const { baseAssetID, NFTID } = sys.utils.getAssetIDs(assetGuid);
-
-          const assetData = {
-            balance,
-            type,
-            decimals,
-            symbol,
-            assetGuid,
-            baseAssetID,
-            childAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(NFTID, assetGuid) : null,
-            NFTID,
-            description: pubData && pubData.desc ? atob(pubData.desc) : ''
+          try {
+            const {
+              balance,
+              type,
+              decimals,
+              symbol,
+              assetGuid
+            }: any = value;
+            let pubData: any;
+  
+            try {
+              pubData = await getDataAsset(assetGuid);
+            } catch (error) {
+              console.log('error getting pubdata', error)
+            }
+            
+            const { baseAssetID, NFTID } = sys.utils.getAssetIDs(assetGuid);
+  
+            const assetData = {
+              balance,
+              type,
+              decimals,
+              symbol,
+              assetGuid,
+              baseAssetID,
+              childAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(NFTID, assetGuid) : null,
+              NFTID,
+              description: pubData && pubData.desc ? atob(pubData.desc) : ''
+            }
+  
+            assetsData[assetData.assetGuid] = assetData;
+  
+            return;
+          } catch (error) {
+            console.log('error minted tokens', error)
           }
-
-          assetsData[assetData.assetGuid] = assetData;
-
-          return;
         }));
 
         store.dispatch(updateAllTokens({

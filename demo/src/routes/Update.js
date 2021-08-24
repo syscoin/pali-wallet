@@ -15,19 +15,23 @@ export default function Update() {
   const [assetGuid, setAssetGuid] = useState();
   const [description, setDescription] = useState("");
   const [advancedOptions, setAdvancedOptions] = useState({});
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     controller &&
+      setIsLoading(true);
+
       controller.getUserMintedTokens().then((data) => {
         data && setTokens(data);
+
+        setIsLoading(false);
       });
 
     return () => setTokens([]);
   }, []);
 
   useEffect(() => {
-    tokens.length && setIsLoading(false);
+    tokens.length || !tokens && setIsLoading(false);
   }, [tokens]);
 
   const dataYup = {
