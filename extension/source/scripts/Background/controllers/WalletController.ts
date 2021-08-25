@@ -25,6 +25,16 @@ const WalletController = (): IWalletController => {
   let HDsigner: any = null;
   let sjs: any = null;
 
+  const setHDSigner = ({ mnemonic, password, isTestnet, networks, SLIP44, pubTypes }: any) => {
+    HDsigner = new sys.utils.HDSigner(mnemonic, password, isTestnet, networks, SLIP44, pubTypes);
+    console.log('setting new hdsigner', HDsigner)
+  };
+
+  const setSjs = ({ SignerIn, blockbookURL, network }: any) => {
+    sjs = new sys.SyscoinJSLib(SignerIn, blockbookURL, network);
+    console.log('setting new sjs', sjs)
+  };
+
   const setWalletPassword = (pwd: string) => {
     password = pwd;
   };
@@ -63,8 +73,8 @@ const WalletController = (): IWalletController => {
       return;
     }
 
-    HDsigner = new sys.utils.HDSigner(mnemonic, null, false);
-    sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.main.beUrl);
+    setHDSigner({ mnemonic, password: null, isTestnet: false });
+    setSjs({ SignerIn: HDsigner, blockbookURL: SYS_NETWORK.main.beUrl });
 
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
@@ -136,11 +146,10 @@ const WalletController = (): IWalletController => {
 
       if (!HDsigner || !sjs) {
         const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
-
         const backendURl: string = store.getState().wallet.activeNetwork === 'testnet' ? SYS_NETWORK.testnet.beUrl : SYS_NETWORK.main.beUrl;
 
-        HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, isTestnet, sys.utils.syscoinNetworks, 57, sys.utils.syscoinZPubTypes);
-        sjs = new sys.SyscoinJSLib(HDsigner, backendURl);
+        setHDSigner({ mnemonic: decriptedMnemonic, password: null, isTestnet, networks: sys.utils.syscoinNetworks, SLIP44: 57, pubTypes: sys.utils.syscoinZPubTypes});
+        setSjs({ SignerIn: HDsigner, blockbookURL: backendURl });
 
         const { activeAccountId, accounts } = store.getState().wallet;
 
@@ -282,8 +291,8 @@ const WalletController = (): IWalletController => {
     }
 
     if (SYS_NETWORK[networkId]!.id === 'main') {
-      HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, false);
-      sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.main.beUrl);
+      setHDSigner({ mnemonic: decriptedMnemonic, password: null, isTestnet: false });
+      setSjs({ SignerIn: HDsigner, blockbookURL: SYS_NETWORK.main.beUrl });
 
       store.dispatch(updateSwitchNetwork(true));
 
@@ -292,8 +301,8 @@ const WalletController = (): IWalletController => {
       return;
     }
 
-    HDsigner = new sys.utils.HDSigner(decriptedMnemonic, null, true);
-    sjs = new sys.SyscoinJSLib(HDsigner, SYS_NETWORK.testnet.beUrl);
+    setHDSigner({ mnemonic: decriptedMnemonic, password: null, isTestnet: true });
+    setSjs({ SignerIn: HDsigner, blockbookURL: SYS_NETWORK.testnet.beUrl });
 
     store.dispatch(updateSwitchNetwork(true));
 
@@ -302,6 +311,7 @@ const WalletController = (): IWalletController => {
 
   const getNewAddress = async () => {
     const { activeAccountId, accounts } = store.getState().wallet;
+
     const userAccount: IAccountState = accounts.find((el: IAccountState) => el.id === activeAccountId);
     let address = '';
 

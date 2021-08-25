@@ -86,10 +86,6 @@ function injectScript(content: string) {
     scriptTag.textContent = content;
 
     container.insertBefore(scriptTag, container.children[0]);
-
-    scriptTag.onload = () => {
-      scriptTag.remove();
-    }
   } catch (error) {
     console.error('Syscoin Wallet: Provider injection failed.', error);
   }
@@ -102,10 +98,6 @@ function injectScriptFile(file: string) {
     scriptTag.src = browser.runtime.getURL(file);
 
     container.insertBefore(scriptTag, container.children[0]);
-
-    scriptTag.onload = () => {
-      scriptTag.remove();
-    }
   } catch (error) {
     console.error('Syscoin Wallet: Provider injection failed.', error);
   }
