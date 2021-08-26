@@ -27,12 +27,10 @@ const WalletController = (): IWalletController => {
 
   const setHDSigner = ({ mnemonic, password, isTestnet, networks, SLIP44, pubTypes }: any) => {
     HDsigner = new sys.utils.HDSigner(mnemonic, password, isTestnet, networks, SLIP44, pubTypes);
-    console.log('setting new hdsigner', HDsigner)
   };
 
   const setSjs = ({ SignerIn, blockbookURL, network }: any) => {
     sjs = new sys.SyscoinJSLib(SignerIn, blockbookURL, network);
-    console.log('setting new sjs', sjs)
   };
 
   const setWalletPassword = (pwd: string) => {
@@ -264,6 +262,7 @@ const WalletController = (): IWalletController => {
     }
 
     if (accountsToBeRemoved) {
+      console.log('accounts to be removed', accountsToBeRemoved)
       for (const id of Object.values(accountsToBeRemoved)) {
         store.dispatch(removeConnection({ accountId: id }));
         store.dispatch(removeAccount(Number(id)));
@@ -272,6 +271,8 @@ const WalletController = (): IWalletController => {
         openNotificationsPopup('Hardware Wallet removed due to network switch', 'Your device is being disconnected');
       }
     }
+
+    console.log('accounts after remove trezor', accounts)
 
     account.getPrimaryAccount(password, sjs);
 
