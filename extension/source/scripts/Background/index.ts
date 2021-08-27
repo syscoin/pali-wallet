@@ -19,7 +19,8 @@ import {
   setTransferOwnership,
   clearAllTransactions,
   signTransactionState,
-  signPSBTState
+  signPSBTState,
+  setIssueNFT
 } from 'state/wallet';
 import { IAccountState } from 'state/wallet/types';
 
@@ -691,6 +692,37 @@ browser.runtime.onInstalled.addListener(async () => {
         });
       }
 
+      if (type == 'ISSUE_NFT' && target == 'background') {
+        const {
+          assetGuid,
+          amount
+        } = request.messageData;
+
+        window.controller.wallet.account.setDataFromPageToIssueNFT({
+          assetGuid,
+          amount
+        });
+
+        store.dispatch(setIssueNFT(true));
+
+        const appURL = browser.runtime.getURL('app.html');
+
+        await createPopup(appURL);
+
+        browser.tabs.sendMessage(Number(sender.tab?.id), {
+          type: 'ISSUE_NFT',
+          target: 'contentScript',
+          complete: true
+        });
+      }
+
+      if (type == 'DATA_FROM_WALLET_TO_ISSUE_NFT' && target == 'background') {
+        window.controller.wallet.account.setNewIssueNFT({
+          ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToIssueNFT,
+          ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToIssueNFT
+        });
+      }
+
       if (type == 'GET_USER_MINTED_TOKENS' && target == 'background') {
         const tokensMinted = await window.controller.wallet.account.getUserMintedTokens();
 
@@ -717,23 +749,6 @@ browser.runtime.onInstalled.addListener(async () => {
     if (port.name == 'trezor-connect') {
       return;
     }
-
-    // browser.tabs.onActivated.addListener((info) => {
-    //   console.log('info tab', info)
-
-    //   if (info.tabId > -1 && info.windowId > -1) {
-    //     browser.tabs.query({ active: true, currentWindow: true, windowType: 'normal' }).then((tabs: any) => {
-    //       store.dispatch(updateCurrentURL(String(tabs[0].url)));
-
-    //       browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    //         console.log('tabid', tabId, changeInfo, tab)
-    //         store.dispatch(updateCurrentURL(String(tabs[0].url)));
-    //       })
-
-    //       console.log('tabs query', tabs)
-    //     })
-    //   }
-    // })
 
     browser.tabs.query({ active: true, lastFocusedWindow: true })
       .then((tabs) => {

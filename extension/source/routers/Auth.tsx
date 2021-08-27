@@ -33,6 +33,7 @@ import { getHost } from '../scripts/Background/helpers';
 import { SendMatchProps } from './types';
 import SignPSBT from 'containers/auth/SignPSBT';
 import Sign from 'containers/auth/Sign';
+import MintNFT, { MintNFTConfirm } from 'containers/auth/MintNFT';
 
 const Auth = () => {
   const location = useLocation();
@@ -60,7 +61,8 @@ const Auth = () => {
     updatingAsset,
     transferringOwnership,
     signingTransaction,
-    signingPSBT
+    signingPSBT,
+    mintNFT
   }: IWalletState = useSelector((state: RootState) => state.wallet);
 
   const connectedAccounts = accounts.filter((account) => {
@@ -110,6 +112,12 @@ const Auth = () => {
 
     if (signingTransaction && isUnlocked) {
       history.push('/sign');
+
+      return;
+    }
+
+    if (mintNFT && isUnlocked) {
+      history.push('/mintNFT');
 
       return;
     }
@@ -258,6 +266,16 @@ const Auth = () => {
               <Route
                 path="/issueAsset/confirm"
                 component={IssueTokenConfirm}
+                exact
+              />
+            )}
+             {isUnlocked && (
+              <Route path="/mintNFT" component={MintNFT} exact />
+            )}
+            {isUnlocked && (
+              <Route
+                path="/mintNFT/confirm"
+                component={MintNFTConfirm}
                 exact
               />
             )}

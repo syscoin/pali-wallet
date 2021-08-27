@@ -369,21 +369,49 @@ const ConnectionsController = (): IConnectionsController => {
     });
   };
 
-  const handleIssueNFT = async (amount: number, assetGuid: string) => {
-    return sendMessage(
-      {
-        type: 'ISSUE_NFT',
-        target: 'connectionsController',
-        freeze: true,
-        eventResult: 'complete',
-      },
-      {
-        type: 'ISSUE_NFT',
-        target: 'contentScript',
-        amount,
-        assetGuid,
-      }
-    );
+  const handleIssueNFT = async (items: any) => {
+    return new Promise(async (resolve, reject) => {
+      const callback = (event: any) => {
+        if (
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
+        ) {
+          reject(event.data.error);
+
+          window.removeEventListener('message', callback);
+        }
+
+        if (
+          event.data.type === 'TRANSACTION_RESPONSE' &&
+          event.data.target === 'connectionsController'
+        ) {
+          resolve(event.data.response);
+
+          window.removeEventListener('message', callback);
+        }
+
+        return null;
+      };
+
+      window.addEventListener('message', callback);
+
+      const { assetGuid, amount } = items;
+
+      await sendMessage(
+        {
+          type: 'ISSUE_NFT',
+          target: 'connectionsController',
+          freeze: true,
+          eventResult: 'complete',
+        },
+        {
+          type: 'ISSUE_NFT',
+          target: 'contentScript',
+          assetGuid,
+          amount
+        }
+      );
+    });
   };
 
   const getUserMintedTokens = async () => {

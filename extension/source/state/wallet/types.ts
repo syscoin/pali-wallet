@@ -78,6 +78,7 @@ export default interface IWalletState {
   encriptedMnemonic: any;
   issuingAsset: boolean;
   issuingNFT: boolean;
+  mintNFT: boolean;
   signingTransaction: boolean;
   signingPSBT: boolean;
   status: number;

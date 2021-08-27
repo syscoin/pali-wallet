@@ -93,6 +93,10 @@ declare interface IAccountController {
   subscribeAccount: (isHardwareWallet: boolean, sjs?: any, label?: string, walletCreation?: boolean) => Promise<string | null>;
   setHDSigner: (accountId: number) => any;
   setNewOwnership: (data: any) => any;
+  confirmIssueNFTTx: () => any;
+  setNewIssueNFT: (data: any) => any;
+  setDataFromPageToIssueNFT: (data: any) => any;
+  setDataFromWalletToIssueNFT: (data: any) => any;
 }
 
 declare type CreateTokenItems = {

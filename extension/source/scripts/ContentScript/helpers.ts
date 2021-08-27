@@ -212,6 +212,11 @@ export const listenAndSendMessageFromPageToBackground = (event: any) => {
     payoutAddress,
   };
 
+  const dataFromPageToIssueNFT = {
+    amount,
+    assetGuid
+  }
+
   const dataFromPageToUpdateAsset = {
     assetGuid,
     contract,
@@ -252,6 +257,12 @@ export const listenAndSendMessageFromPageToBackground = (event: any) => {
       messageTarget: 'contentScript',
       messageNewTarget: 'background',
       messageData: dataFromPageToCreateAndIssueNFT,
+    },
+    {
+      messageType: 'ISSUE_NFT',
+      messageTarget: 'contentScript',
+      messageNewTarget: 'background',
+      messageData: dataFromPageToIssueNFT,
     },
     {
       messageType: 'UPDATE_ASSET',

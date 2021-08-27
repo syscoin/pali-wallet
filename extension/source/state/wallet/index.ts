@@ -27,6 +27,7 @@ const initialState: IWalletState = {
   creatingAsset: false,
   issuingAsset: false,
   issuingNFT: false,
+  mintNFT: false,
   updatingAsset: false,
   transferringOwnership: false,
   changingNetwork: false,
@@ -113,6 +114,7 @@ const WalletState = createSlice({
     clearAllTransactions(state: IWalletState) {
       return {
         ...state,
+        mintNFT: false,
         signingPSBT: false,
         confirmingTransaction: false,
         creatingAsset: false,
@@ -160,6 +162,12 @@ const WalletState = createSlice({
       return {
         ...state,
         issuingAsset: action.payload,
+      };
+    },
+    setIssueNFT(state: IWalletState, action: PayloadAction<boolean>) {
+      return {
+        ...state,
+        mintNFT: action.payload,
       };
     },
     issueNFT(state: IWalletState, action: PayloadAction<boolean>) {
@@ -444,7 +452,8 @@ export const {
   clearAllTransactions,
   signTransactionState,
   updateAllTokens,
-  signPSBTState
+  signPSBTState,
+  setIssueNFT
 } = WalletState.actions;
 
 export default WalletState.reducer;
