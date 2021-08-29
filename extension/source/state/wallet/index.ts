@@ -19,10 +19,6 @@ const initialState: IWalletState = {
   activeAccountId: 0,
   activeNetwork: SYS_NETWORK.main.id,
   encriptedMnemonic: null,
-  currentSenderURL: '',
-  currentURL: '',
-  canConnect: false,
-  connections: [],
   confirmingTransaction: false,
   creatingAsset: false,
   issuingAsset: false,
@@ -34,12 +30,12 @@ const initialState: IWalletState = {
   signingTransaction: false,
   signingPSBT: false,
   walletTokens: [],
-  // tabs: {
-  //   currentSenderURL: '',
-  //   currentURL: '',
-  //   canConnect: false,
-  //   connections: [],
-  // },
+  tabs: {
+    currentSenderURL: '',
+    currentURL: '',
+    canConnect: false,
+    connections: [],
+  },
 };
 
 const WalletState = createSlice({
@@ -189,7 +185,7 @@ const WalletState = createSlice({
       };
     },
     removeConnection(state: IWalletState, action: PayloadAction<any>) {
-      const connectionIndex: number = state.connections.findIndex(
+      const connectionIndex: number = state.tabs.connections.findIndex(
         (connection) => connection.url === getHost(action.payload.url)
       );
 
@@ -201,7 +197,7 @@ const WalletState = createSlice({
         return;
       }
 
-      state.connections.splice(connectionIndex, 1);
+      state.tabs.connections.splice(connectionIndex, 1);
 
       account?.connectedTo.splice(
         account?.connectedTo.indexOf(getHost(action.payload.url)),
@@ -212,43 +208,43 @@ const WalletState = createSlice({
       state: IWalletState,
       action: PayloadAction<{ accountId: number, url: string }>
     ) {
-      const index: number = state.connections.findIndex(
+      const index: number = state.tabs.connections.findIndex(
         (connection) =>
           connection.accountId !== action.payload.accountId &&
           connection.url === getHost(action.payload.url)
       );
 
-      if (state.connections[index]) {
-        state.accounts[state.connections[index].accountId].connectedTo.splice(
-          state.connections.findIndex(
-            (url) => url === state.connections[index].url
+      if (state.tabs.connections[index]) {
+        state.accounts[state.tabs.connections[index].accountId].connectedTo.splice(
+          state.tabs.connections.findIndex(
+            (url) => url === state.tabs.connections[index].url
           ),
           1
         );
 
-        state.connections[index] = {
+        state.tabs.connections[index] = {
           accountId: action.payload.accountId,
           url: getHost(action.payload.url),
         };
 
         const indexOf = state.accounts.findIndex(
           (element: IAccountState) =>
-            element.id === state.connections[index].accountId
+            element.id === state.tabs.connections[index].accountId
         );
 
-        state.accounts[indexOf].connectedTo.push(state.connections[index].url);
+        state.accounts[indexOf].connectedTo.push(state.tabs.connections[index].url);
 
         return;
       }
 
-      const alreadyExistsIndex: number = state.connections.findIndex(
+      const alreadyExistsIndex: number = state.tabs.connections.findIndex(
         (connection) =>
           connection.accountId === action.payload.accountId &&
           connection.url === action.payload.url
       );
 
-      if (state.connections[alreadyExistsIndex]) {
-        state.connections[alreadyExistsIndex] = {
+      if (state.tabs.connections[alreadyExistsIndex]) {
+        state.tabs.connections[alreadyExistsIndex] = {
           accountId: action.payload.accountId,
           url: getHost(action.payload.url),
         };
@@ -259,7 +255,7 @@ const WalletState = createSlice({
         return;
       }
 
-      state.connections.push({
+      state.tabs.connections.push({
         accountId: action.payload.accountId,
         url: getHost(action.payload.url),
       });
@@ -273,19 +269,28 @@ const WalletState = createSlice({
     updateCanConnect(state: IWalletState, action: PayloadAction<boolean>) {
       return {
         ...state,
-        canConnect: action.payload,
+        tabs: {
+          ...state.tabs,
+          canConnect: action.payload
+        },
       };
     },
     updateCurrentURL(state: IWalletState, action: PayloadAction<string>) {
       return {
         ...state,
-        currentURL: action.payload,
+        tabs: {
+          ...state.tabs,
+          currentURL: action.payload
+        }
       };
     },
     setSenderURL(state: IWalletState, action: PayloadAction<string>) {
       return {
         ...state,
-        currentSenderURL: action.payload,
+        tabs: {
+          ...state.tabs,
+          currentSenderURL: action.payload
+        },
       };
     },
     setEncriptedMnemonic(
@@ -320,12 +325,12 @@ const WalletState = createSlice({
         (element: any) => element.accountId === action.payload
       );
 
-      const connectionIndex = state.connections.findIndex(
+      const connectionIndex = state.tabs.connections.findIndex(
         (element: any) => element.accountId === action.payload
       );
 
       state.walletTokens.splice(infoIndex, 1);
-      state.connections.splice(connectionIndex, 1);
+      state.tabs.connections.splice(connectionIndex, 1);
       state.accounts.splice(accountIndex, 1);
     },
 
@@ -373,10 +378,12 @@ const WalletState = createSlice({
       state.encriptedMnemonic = null;
       state.activeNetwork = SYS_NETWORK.main.id;
       state.status = 0;
-      state.currentSenderURL = '';
-      state.currentURL = '';
-      state.canConnect = false;
-      state.connections = [];
+      state.tabs = {
+        currentSenderURL: '',
+        currentURL: '',
+        canConnect: false,
+        connections: []
+      };
       state.confirmingTransaction = false;
       state.creatingAsset = false;
       state.signingPSBT = false;

@@ -41,9 +41,10 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   const history = useHistory();
   const alert = useAlert();
 
-  const { accounts, currentSenderURL }: IWalletState = useSelector(
+  const { accounts, tabs }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
+  const { currentSenderURL } = tabs;
 
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
   const transactionItemData =

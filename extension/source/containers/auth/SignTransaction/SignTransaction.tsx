@@ -37,8 +37,10 @@ const SignTransaction: FC<ISignTransaction> = ({
   const [loading, setLoading] = useState<boolean>(false);
   const [confirmed, setConfirmed] = useState<boolean>(false);
 
-  const { currentSenderURL, accounts }: IWalletState =
+  const { tabs, accounts }: IWalletState =
     useSelector((state: RootState) => state.wallet);
+
+  const { currentSenderURL } = tabs;
 
   const psbt = controller.wallet.account.getTransactionItem()[item];
 

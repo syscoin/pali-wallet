@@ -17,9 +17,10 @@ import styles from './ConnectWallet.scss';
 const ConnectWallet = () => {
   const history = useHistory();
 
-  const { accounts, activeAccountId, currentSenderURL }: IWalletState =
+  const { accounts, activeAccountId, tabs }: IWalletState =
     useSelector((state: RootState) => state.wallet);
   const [accountId, setAccountId] = useState<number>(-1);
+  const { currentSenderURL } = tabs;
 
   const handleSelectAccount = (id: number) => {
     setAccountId(id);

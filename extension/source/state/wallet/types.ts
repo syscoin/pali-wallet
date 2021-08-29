@@ -54,7 +54,7 @@ export interface IWalletTokenState {
 
 export interface Connection {
   accountId: number;
-  url: string;
+  url: any;
 }
 
 export interface Tabs {
@@ -68,13 +68,9 @@ export default interface IWalletState {
   accounts: IAccountState[];
   activeAccountId: number;
   activeNetwork: string;
-  canConnect: boolean;
   changingNetwork: boolean;
   confirmingTransaction: boolean;
-  connections: any[];
   creatingAsset: boolean;
-  currentSenderURL: string;
-  currentURL: string;
   encriptedMnemonic: any;
   issuingAsset: boolean;
   issuingNFT: boolean;
@@ -82,7 +78,7 @@ export default interface IWalletState {
   signingTransaction: boolean;
   signingPSBT: boolean;
   status: number;
-  // tabs: Tabs;
+  tabs: Tabs;
   transferringOwnership: boolean;
   updatingAsset: boolean;
   walletTokens: IWalletTokenState[];

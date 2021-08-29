@@ -70,7 +70,8 @@ const AccountController = (actions: {
   let issueNFTItem: any | null;
 
   const getConnectedAccount = (): IAccountState => {
-    const { accounts, currentURL }: IWalletState = store.getState().wallet;
+    const { accounts, tabs }: IWalletState = store.getState().wallet;
+    const { currentURL } = tabs;
 
     return accounts.find((account: IAccountState) => {
       return account.connectedTo.find((url: string) => {
@@ -106,7 +107,6 @@ const AccountController = (actions: {
   };
 
   const getRawTransaction = async (txid: any) => {
-    // console.log('data axios', await axios.get(`${sysjs.blockbookURL}/api/v2/tx/${txid}`))
     return await sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
   };
 

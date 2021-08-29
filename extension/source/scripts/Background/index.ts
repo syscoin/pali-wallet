@@ -324,7 +324,7 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'background') {
         const connectedAccount : any = store.getState().wallet.accounts.find((account: IAccountState) => {
           return account.connectedTo.find((url) => {
-            return url === getHost(store.getState().wallet.currentURL)
+            return url === getHost(store.getState().wallet.tabs.currentURL)
           });
         });
         let copyConnectedAccount:any = undefined

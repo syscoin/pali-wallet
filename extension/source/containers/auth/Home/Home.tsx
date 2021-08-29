@@ -29,10 +29,11 @@ const Home = () => {
   const {
     accounts,
     activeAccountId,
-    currentURL,
+    tabs,
     changingNetwork,
     activeNetwork,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
+  const { currentURL } = tabs;
 
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
   const [openBlockExplorer, setOpenBlockExplorer] = useState<boolean>(false);

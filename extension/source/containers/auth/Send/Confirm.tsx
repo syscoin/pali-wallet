@@ -26,9 +26,10 @@ const SendConfirm = () => {
   const history = useHistory();
   const alert = useAlert();
 
-  const { accounts, activeAccountId, currentSenderURL, confirmingTransaction }: IWalletState = useSelector(
+  const { accounts, activeAccountId, tabs, confirmingTransaction }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
+  const { currentSenderURL } = tabs;
   const connectedAccount = accounts.find((account: IAccountState) => {
     return account.connectedTo.find((url: any) => {
       return url === getHost(currentSenderURL);

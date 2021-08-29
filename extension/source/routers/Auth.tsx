@@ -51,9 +51,8 @@ const Auth = () => {
   });
 
   const {
-    canConnect,
     accounts,
-    currentURL,
+    tabs,
     confirmingTransaction,
     creatingAsset,
     issuingNFT,
@@ -64,6 +63,7 @@ const Auth = () => {
     signingPSBT,
     mintNFT
   }: IWalletState = useSelector((state: RootState) => state.wallet);
+  const { currentURL, canConnect } = tabs;
 
   const connectedAccounts = accounts.filter((account) => {
     return (

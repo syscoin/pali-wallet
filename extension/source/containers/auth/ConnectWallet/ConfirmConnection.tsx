@@ -18,9 +18,11 @@ const ConfirmConnection = () => {
   const alert = useAlert();
   const history = useHistory();
 
-  const { accounts, currentSenderURL }: IWalletState = useSelector(
+  const { accounts, tabs }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
+
+  const { currentSenderURL } = tabs;
 
   const connectedAccount = accounts.filter((account) => {
     return account.connectedTo.find((url: any) => {
