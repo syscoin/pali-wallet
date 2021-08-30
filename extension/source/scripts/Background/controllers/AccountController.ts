@@ -539,6 +539,10 @@ const AccountController = (actions: {
     }
   };
 
+  const importPsbt = (psbt: any) => {
+    return sys.utils.importPsbtFromJson(psbt);
+  }
+
   const confirmSignature = (sendPSBT: boolean) => {
     return new Promise((resolve, reject) => {
       const item = sendPSBT ? currentPsbtToSign : currentPSBT;
@@ -1951,7 +1955,8 @@ const AccountController = (actions: {
       confirmIssueNFTTx,
       setNewIssueNFT,
       setDataFromPageToIssueNFT,
-      setDataFromWalletToIssueNFT
+      setDataFromWalletToIssueNFT,
+      importPsbt
     };
   };
 

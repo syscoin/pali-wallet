@@ -97,6 +97,7 @@ declare interface IAccountController {
   setNewIssueNFT: (data: any) => any;
   setDataFromPageToIssueNFT: (data: any) => any;
   setDataFromWalletToIssueNFT: (data: any) => any;
+  importPsbt: (psbt: any) => any;
 }
 
 declare type CreateTokenItems = {
@@ -202,6 +203,6 @@ declare interface IConnectionsController {
   isNFT: (guid: number) => boolean;
   isValidSYSAddress: (address: string) => any;
   onWalletUpdate: (callback: any) => any;
-  signTransaction: (psbt: any) => any;
-  sign: (psbtToSign: any) => any;
+  signAndSend: (psbt: any) => any;
+  signPSBT: (psbtToSign: any) => any;
 }

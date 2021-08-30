@@ -31,7 +31,7 @@ const ConnectionsController = (): IConnectionsController => {
     );
   };
 
-  const signTransaction = async (psbt: any) => {
+  const signAndSend = async (psbt: any) => {
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
         if (
@@ -563,7 +563,7 @@ const ConnectionsController = (): IConnectionsController => {
     );
   };
 
-  const sign = (psbtToSign: any) => {
+  const signPSBT = (psbtToSign: any) => {
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
         if (
@@ -623,10 +623,10 @@ const ConnectionsController = (): IConnectionsController => {
     getHoldingsData,
     getDataAsset,
     handleIssueNFT,
-    signTransaction,
+    signAndSend,
     getConnectedAccountXpub,
     getChangeAddress,
-    sign
+    signPSBT
   };
 };
 

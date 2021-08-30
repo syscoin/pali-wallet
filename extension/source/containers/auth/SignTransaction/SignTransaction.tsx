@@ -192,7 +192,7 @@ const SignTransaction: FC<ISignTransaction> = ({
                   </div>
 
                   <pre className={styles.code}>{`${JSON.stringify(
-                    psbt,
+                    controller.wallet.account.importPsbt(psbt),
                     null,
                     2
                   )}`}</pre>
