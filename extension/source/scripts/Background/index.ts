@@ -378,7 +378,7 @@ browser.runtime.onInstalled.addListener(async () => {
         });
       }
 
-      if (type == 'SIGN_TRANSACTION' && target == 'background') {
+      if (type == 'SIGN_AND_SEND' && target == 'background') {
         const { messageData } = request;
 
         window.controller.wallet.account.setCurrentPSBT(messageData);
@@ -390,7 +390,7 @@ browser.runtime.onInstalled.addListener(async () => {
         await createPopup(appURL);
 
         browser.tabs.sendMessage(Number(sender.tab?.id), {
-          type: 'SIGN_TRANSACTION',
+          type: 'SIGN_AND_SEND',
           target: 'contentScript',
           complete: true
         });

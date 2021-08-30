@@ -4,7 +4,7 @@ import { RootState } from 'state/store';
 import { useSelector } from 'react-redux';
 import SignTransaction from '../SignTransaction';
 
-const Sign = () => {
+const SignAndSend = () => {
   const { signingTransaction }: IWalletState = useSelector((state: RootState) => state.wallet);
 
   return (
@@ -19,4 +19,4 @@ const Sign = () => {
   )
 };
 
-export default Sign;
+export default SignAndSend;

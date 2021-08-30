@@ -83,7 +83,7 @@ export const getMessagesToListenTo = (request: any) => {
       messageResponse: isValidSYSAddress,
     },
     {
-      messageType: 'SIGN_TRANSACTION',
+      messageType: 'SIGN_AND_SEND',
       messageTarget: 'contentScript',
       messageNewTarget: 'connectionsController',
       responseItem: 'signedTransaction',
@@ -301,7 +301,7 @@ export const listenAndSendMessageFromPageToBackground = (event: any) => {
       messageData: address,
     },
     {
-      messageType: 'SIGN_TRANSACTION',
+      messageType: 'SIGN_AND_SEND',
       messageTarget: 'contentScript',
       messageNewTarget: 'background',
       messageData: psbt,

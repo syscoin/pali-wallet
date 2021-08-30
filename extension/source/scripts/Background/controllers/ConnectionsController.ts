@@ -59,13 +59,13 @@ const ConnectionsController = (): IConnectionsController => {
 
       await sendMessage(
         {
-          type: 'SIGN_TRANSACTION',
+          type: 'SIGN_AND_SEND',
           target: 'connectionsController',
           freeze: true,
           eventResult: 'complete',
         },
         {
-          type: 'SIGN_TRANSACTION',
+          type: 'SIGN_AND_SEND',
           target: 'contentScript',
           psbt,
         }

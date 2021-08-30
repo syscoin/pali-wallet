@@ -32,8 +32,8 @@ import { getHost } from '../scripts/Background/helpers';
 
 import { SendMatchProps } from './types';
 import SignPSBT from 'containers/auth/SignPSBT';
-import Sign from 'containers/auth/Sign';
 import MintNFT, { MintNFTConfirm } from 'containers/auth/MintNFT';
+import SignAndSend from 'containers/auth/SignAndSend';
 
 const Auth = () => {
   const location = useLocation();
@@ -246,7 +246,7 @@ const Auth = () => {
               <Route path="/send/confirm" component={SendConfirm} exact />
             )}
             {isUnlocked && (
-              <Route path="/sign" component={Sign} exact />
+              <Route path="/sign" component={SignAndSend} exact />
             )}
             {isUnlocked && (
               <Route path="/signPsbt" component={SignPSBT} exact />
