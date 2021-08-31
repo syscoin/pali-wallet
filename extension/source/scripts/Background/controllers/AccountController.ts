@@ -1025,7 +1025,7 @@ const AccountController = (actions: {
       symbol,
       description,
       maxsupply: new sys.utils.BN(newMaxSupply),
-      updatecapabilityflags: String(capabilityflags),
+      updatecapabilityflags: capabilityflags ? String(capabilityflags) : '127',
       notarydetails,
       auxfeedetails,
       notarykeyid: Buffer.from('', 'hex')
@@ -1696,7 +1696,7 @@ const AccountController = (actions: {
       };
 
       let assetOpts: any = {
-        updatecapabilityflags: String(capabilityflags),
+        updatecapabilityflags: capabilityflags ? String(capabilityflags) : '127',
         description
       };
 

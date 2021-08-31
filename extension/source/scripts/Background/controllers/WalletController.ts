@@ -155,20 +155,14 @@ const WalletController = (): IWalletController => {
           return false;
         }
 
-        for (let index = 1; index < accounts.length; index++) {
-          if (index > 0 && accounts[index].isTrezorWallet) {
-            console.log('Should not derive from hdsigner if the account is from the hardware wallet');
+        for (let i = 1; i < accounts.length; i++) {
+          if (i > 0 && accounts[i].isTrezorWallet) {
+            console.log("Should not derive from hdsigner if the account is from the hardware wallet");
+          } else {
+            const child = sjs.Signer.deriveAccount(i);
+            sjs.Signer.Signer.accounts.push(new fromZPrv(child, sjs.Signer.Signer.pubTypes, sjs.Signer.Signer.networks));
+            sjs.Signer.setAccountIndex(activeAccountId);
           }
-
-          const child = sjs.Signer.deriveAccount(index);
-
-          sjs.Signer.Signer.accounts.push(new fromZPrv(child, sjs.Signer.Signer.pubTypes, sjs.Signer.Signer.networks));
-        }
-
-        const activeAccount = accounts.find((account: IAccountState) => account.id === activeAccountId) || accounts[activeAccountId];
-
-        if (!activeAccount.isTrezorWallet) {
-          sjs.Signer.setAccountIndex(activeAccountId);
         }
       }
 

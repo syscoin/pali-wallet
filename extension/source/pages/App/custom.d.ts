@@ -107,7 +107,7 @@ declare type CreateTokenItems = {
       percent: any | 0
     }]
   },
-  capabilityflags?: string,
+  capabilityflags?: string | '127',
   description: string,
   initialSupply?: number | 0,
   maxsupply: number,
@@ -166,7 +166,7 @@ declare type UpdateAssetItems = {
       percent: any | 0
     }]
   },
-  capabilityflags?: string,
+  capabilityflags?: string | '127',
   contract?: string,
   description?: string,
   notaryAddress?: string,
