@@ -14,7 +14,7 @@ const AboutView: FC = () => {
         window.open('https://discord.gg/6rKsX9SqUr')
       } // callback that will be executed after this alert is removed
     });
-    
+
   };
   const handleDocsClick = () => {
     window.open('https://pali-docs.vercel.app/');
@@ -22,7 +22,7 @@ const AboutView: FC = () => {
   return (
     <div className={styles.about}>
       <span>Pali Wallet Chrome Extension v1.0</span>
-      <span>Version: 1.0.5</span>
+      <span>Version: 1.0.7</span>
       <span>
         Support:{' '}
         <a

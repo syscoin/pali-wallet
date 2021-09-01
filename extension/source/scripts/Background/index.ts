@@ -133,7 +133,7 @@ const createPopup = async (url: string) => {
 };
 
 browser.runtime.onInstalled.addListener(async () => {
-  console.emoji('🤩', 'Syscoin extension installed');
+  console.emoji('🤩', 'Pali extension installed');
 
   window.controller.stateUpdater();
 
@@ -190,16 +190,16 @@ browser.runtime.onInstalled.addListener(async () => {
             const data = await window.controller.wallet.account.getTransactionInfoByTxId(request.response.txid);
 
             console.log('updating tokens state using txid: ', request.response.txid)
-  
+
             if (data.confirmations > 0) {
               console.log('confirmations > 0')
-  
+
               window.controller.wallet.account.updateTokensState().then(() => {
                 console.log('update tokens after transaction in background');
-                
+
                 window.controller.wallet.account.setHDSigner(store.getState().wallet.activeAccountId);
               });
-  
+
               clearInterval(interval);
             }
           }
@@ -322,16 +322,16 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'background') {
-        const connectedAccount : any = store.getState().wallet.accounts.find((account: IAccountState) => {
+        const connectedAccount: any = store.getState().wallet.accounts.find((account: IAccountState) => {
           return account.connectedTo.find((url) => {
             return url === getHost(store.getState().wallet.tabs.currentURL)
           });
         });
-        let copyConnectedAccount:any = undefined
-        if(connectedAccount !== undefined && connectedAccount !== null){
+        let copyConnectedAccount: any = undefined
+        if (connectedAccount !== undefined && connectedAccount !== null) {
           console.log('checking connected account')
           console.log(connectedAccount)
-          copyConnectedAccount ={
+          copyConnectedAccount = {
             address: connectedAccount.address,
             balance: connectedAccount.balance,
             assets: connectedAccount.assets,
@@ -342,7 +342,7 @@ browser.runtime.onInstalled.addListener(async () => {
             transactions: connectedAccount.transactions,
             xpub: connectedAccount.xpub
           }
-      }
+        }
         // delete connectedAccount.xprv;
 
         browser.tabs.sendMessage(Number(sender.tab?.id), {
