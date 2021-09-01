@@ -63,7 +63,7 @@ const ModalBlock: FC<IModalBlock> = ({
   useEffect(() => {
     if (tx) {
       const { vin, vout } = tx;
-  
+
       if (vin && vout) {
         for (const item of vout) {
           if (item.addresses) {
@@ -210,7 +210,7 @@ const ModalBlock: FC<IModalBlock> = ({
         value: value ? (activeNetwork === 'main' ? `${value / 10 ** 8} SYS` : `${value / 10 ** 8} tSYS`) : '',
       },
       {
-        label: 'Total',
+        label: 'Fees',
         value: fees ? (activeNetwork === 'main' ? `${fees / 10 ** 8} SYS` : `${fees / 10 ** 8} tSYS`) : '',
       },
     ];

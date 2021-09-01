@@ -68,7 +68,7 @@ const blockedDomainCheck = () => {
   }
 
   return false;
-} 
+}
 
 export const shouldInjectProvider = () => {
   return (
@@ -87,7 +87,7 @@ function injectScript(content: string) {
 
     container.insertBefore(scriptTag, container.children[0]);
   } catch (error) {
-    console.error('Syscoin Wallet: Provider injection failed.', error);
+    console.error('Pali Wallet: Provider injection failed.', error);
   }
 }
 
@@ -99,12 +99,12 @@ function injectScriptFile(file: string) {
 
     container.insertBefore(scriptTag, container.children[0]);
   } catch (error) {
-    console.error('Syscoin Wallet: Provider injection failed.', error);
+    console.error('Pali Wallet: Provider injection failed.', error);
   }
 }
 
 if (shouldInjectProvider()) {
-  injectScript("window.SyscoinWallet = 'Syscoin Wallet is installed! :)'");
+  injectScript("window.SyscoinWallet = 'Pali Wallet is installed! :)'");
 
   window.dispatchEvent(new CustomEvent('SyscoinStatus', { detail: { SyscoinInstalled: true, ConnectionsController: false } }));
 
@@ -152,7 +152,7 @@ browser.runtime.onMessage.addListener((request) => {
     messageTarget,
     messageNewTarget,
     responseItem,
-    messageResponse 
+    messageResponse
   }) => {
     if (type === messageType && target === messageTarget) {
       window.postMessage({
