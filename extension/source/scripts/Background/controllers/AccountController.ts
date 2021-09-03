@@ -540,7 +540,11 @@ const AccountController = (actions: {
   };
 
   const importPsbt = (psbt: any) => {
-    return sys.utils.importPsbtFromJson(psbt);
+    try {
+      return sys.utils.importPsbtFromJson(psbt);
+    } catch (error) {
+      return psbt;
+    }
   }
 
   const confirmSignature = (sendPSBT: boolean) => {

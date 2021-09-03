@@ -36,6 +36,7 @@ const SignTransaction: FC<ISignTransaction> = ({
 
   const [loading, setLoading] = useState<boolean>(false);
   const [confirmed, setConfirmed] = useState<boolean>(false);
+  const base64 = /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
 
   const { tabs, accounts }: IWalletState =
     useSelector((state: RootState) => state.wallet);
@@ -44,10 +45,32 @@ const SignTransaction: FC<ISignTransaction> = ({
 
   const psbt = controller.wallet.account.getTransactionItem()[item];
 
+  const handleRejectTransaction = () => {
+    history.push('/home');
+
+    browser.runtime.sendMessage({
+      type: 'WALLET_ERROR',
+      target: 'background',
+      transactionError: true,
+      invalidParams: false,
+      message: "Transaction rejected.",
+    });
+
+    browser.runtime.sendMessage({
+      type: 'CANCEL_TRANSACTION',
+      target: 'background',
+      item: transactingStateItem ? item : null,
+    });
+
+    browser.runtime.sendMessage({
+      type: 'CLOSE_POPUP',
+      target: 'background',
+    });
+  }
+
+
   const handleConfirmSignature = () => {
     setLoading(true);
-
-    const base64 = /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
 
     if (!base64.test(psbt.psbt) || typeof psbt.assets !== 'string') {
       alert.removeAll();
@@ -99,29 +122,6 @@ const SignTransaction: FC<ISignTransaction> = ({
         }
       });
   };
-
-  const handleRejectTransaction = () => {
-    history.push('/home');
-
-    browser.runtime.sendMessage({
-      type: 'WALLET_ERROR',
-      target: 'background',
-      transactionError: true,
-      invalidParams: false,
-      message: "Transaction rejected.",
-    });
-
-    browser.runtime.sendMessage({
-      type: 'CANCEL_TRANSACTION',
-      target: 'background',
-      item: transactingStateItem ? item : null,
-    });
-
-    browser.runtime.sendMessage({
-      type: 'CLOSE_POPUP',
-      target: 'background',
-    });
-  }
 
   const handleCancelTransactionOnSite = () => {
     history.push('/home');
@@ -187,7 +187,7 @@ const SignTransaction: FC<ISignTransaction> = ({
                   <div className={styles.account}>
                     <p className={styles.description}>{connectedAccount?.label}</p>
                     <p className={styles.description}>
-                      {ellipsis(connectedAccount?.address.main)}
+                      {connectedAccount?.address.main && ellipsis(connectedAccount?.address.main)}
                     </p>
                   </div>
 
