@@ -535,7 +535,7 @@ const AccountController = (actions: {
 
       return sys.utils.exportPsbtToJson(await sysjs.signAndSend(response.psbt, response.assets));
     } catch (error) {
-      throw new Error(error);
+      throw new Error(String(error));
     }
   };
 
@@ -1650,7 +1650,7 @@ const AccountController = (actions: {
 
             txInfo = pendingTx.extractTransaction().getId();
           } catch (error) {
-            throw new Error(error);
+            throw new Error(String(error));
           }
         }
 

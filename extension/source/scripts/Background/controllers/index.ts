@@ -4,7 +4,7 @@ import ConnectionsController from './ConnectionsController';
 
 export interface IMasterController {
   appRoute: (newRoute?: string) => string;
-  connections: Readonly<IConnectionsController>;
+  connections: Readonly<any>;
   stateUpdater: () => void;
   wallet: Readonly<IWalletController>;
 }

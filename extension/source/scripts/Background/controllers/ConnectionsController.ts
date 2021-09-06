@@ -1,6 +1,18 @@
 import { sendMessage } from 'scripts/Background/helpers';
 
-const ConnectionsController = (): IConnectionsController => {
+const ConnectionsController = () => {
+  const checkParams = ({ data, throwError, message }: any) => {
+    if (!data) {
+      if (throwError) {
+        throw new Error(message);
+      }
+
+      console.log(message);
+
+      return;
+    }
+  }
+
   const getConnectedAccountXpub = async () => {
     return sendMessage(
       {
@@ -32,6 +44,8 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const signAndSend = async (psbt: any) => {
+    checkParams({ data: psbt, throwError: true, message: 'Invalid PSBT.' });
+
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
         if (
@@ -101,6 +115,8 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const isNFT = (guid: number) => {
+    checkParams({ data: guid, throwError: false, message: 'Invalid asset guid.' });
+
     const assetGuid = BigInt.asUintN(64, BigInt(guid));
 
     return assetGuid >> BigInt(32) > 0;
@@ -165,6 +181,8 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const handleSendToken = async (items: SendTokenItems) => {
+    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+
     return new Promise(async (_, reject) => {
       const callback = (event: any) => {
         if (
@@ -206,6 +224,8 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const handleCreateToken = async (items: CreateTokenItems) => {
+    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
         if (
@@ -272,6 +292,8 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const handleIssueSPT = async (items: IssueTokenItems) => {
+    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
         if (
@@ -317,6 +339,8 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const handleCreateNFT = async (items: CreateAndIssueNFTItems) => {
+    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+
     return new Promise(async (_, reject) => {
       const callback = (event: any) => {
         if (
@@ -370,6 +394,8 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const handleIssueNFT = async (items: any) => {
+    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
         if (
@@ -430,6 +456,8 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const getDataAsset = async (assetGuid: any) => {
+    checkParams({ data: assetGuid, throwError: false, message: 'Invalid token data.' });
+
     return sendMessage(
       {
         type: 'GET_ASSET_DATA',
@@ -446,6 +474,8 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const handleUpdateAsset = async (items: UpdateAssetItems) => {
+    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+
     return new Promise(async (_, reject) => {
       const callback = (event: any) => {
         if (
@@ -497,6 +527,8 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const handleTransferOwnership = async (items: TransferOwnershipItems) => {
+    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+
     return new Promise(async (_, reject) => {
       const callback = (event: any) => {
         if (
@@ -533,6 +565,8 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const isValidSYSAddress = async (address: string) => {
+    checkParams({ data: address, throwError: true, message: 'Invalid address.' });
+
     return sendMessage(
       {
         type: 'CHECK_ADDRESS',
@@ -564,6 +598,8 @@ const ConnectionsController = (): IConnectionsController => {
   };
 
   const signPSBT = (psbtToSign: any) => {
+    checkParams({ data: psbtToSign, throwError: false, message: 'Invalid PSBT.' });
+
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
         if (

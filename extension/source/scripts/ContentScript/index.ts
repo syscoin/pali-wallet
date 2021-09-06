@@ -79,7 +79,7 @@ export const shouldInjectProvider = () => {
   );
 }
 
-function injectScript(content: string) {
+const injectScript = (content: string) => {
   try {
     const container = document.head || document.documentElement;
     const scriptTag = document.createElement('script');
@@ -91,7 +91,7 @@ function injectScript(content: string) {
   }
 }
 
-function injectScriptFile(file: string) {
+const injectScriptFile = (file: string) => {
   try {
     const container = document.head || document.documentElement;
     const scriptTag = document.createElement('script');
