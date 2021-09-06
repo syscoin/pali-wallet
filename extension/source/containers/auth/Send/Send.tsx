@@ -97,7 +97,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
           toAddress: address,
           amount,
           fee,
-          token: selectedAsset,
+          token: selectedAsset.assetGuid,
           isToken: true,
           rbf: !checked,
         });
@@ -111,6 +111,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
       return;
     }
+    
     controller.wallet.account.updateTempTx({
       fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
       toAddress: address,
@@ -169,7 +170,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   };
 
   const handleAssetSelected = (item: any) => {
-    const selectedAsset = accounts.find(element => element.id === activeAccountId)!.assets.filter((asset: Assets) => asset.assetGuid == item.assetGuid);
+    const selectedAsset = accounts.find(element => element.id === activeAccountId)!.assets.filter((asset: Assets) => asset.assetGuid == item);
 
     if (selectedAsset[0]) {
       setSelectedAsset(selectedAsset[0]);
@@ -275,7 +276,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                       {accounts.find(element => element.id === activeAccountId)!.assets.map((item, index) => {
                         if (!controller.wallet.account.isNFT(item.assetGuid)) {
                           return (
-                            <li className={styles.option} key={index} onClick={() => handleAssetSelected(item)}>
+                            <li className={styles.option} key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
                               <p>{item.symbol}</p>
                               <p>SPT</p>
                             </li>
@@ -283,7 +284,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                         }
 
                         return (
-                          <li className={styles.option} key={index} onClick={() => handleAssetSelected(item)}>
+                          <li className={styles.option} key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
                             <p>{item.symbol}</p>
                             <p>NFT</p>
                           </li>

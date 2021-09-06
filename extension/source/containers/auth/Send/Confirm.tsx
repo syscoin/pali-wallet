@@ -19,6 +19,7 @@ import { getHost } from '../../../scripts/Background/helpers';
 
 import styles from './Confirm.scss';
 import { useEffect } from 'react';
+import { Assets } from 'scripts/types';
 
 const SendConfirm = () => {
   const controller = useController();
@@ -39,8 +40,17 @@ const SendConfirm = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [recommendedFee, setRecommendedFee] = useState(0.00001);
+  const [tokenData, setTokenData] = useState<any>({});
 
   useEffect(() => {
+    if (tempTx?.token) {
+      const selectedAsset = accounts.find(element => element.id === activeAccountId)!.assets.filter((asset: Assets) => asset.assetGuid == tempTx?.token);
+
+      console.log('selected asset new', selectedAsset)
+
+      setTokenData(selectedAsset[0]);
+    }
+
     controller.wallet.account.getRecommendFee().then((response: any) => {
       setRecommendedFee(response);
     })
@@ -176,7 +186,7 @@ const SendConfirm = () => {
         <div className={styles.iconWrapper}>
           <UpArrowIcon />
         </div>
-        {tempTx?.isToken ? `${String(tempTx.amount)} ${String(tempTx.token?.symbol)}` : `${(tempTx?.amount || 0) + (tempTx?.fee || 0)} SYS`}
+        {tempTx?.isToken && tokenData.symbol ? `${String(tempTx.amount)} ${String(tokenData?.symbol)}` : `${(tempTx?.amount || 0) + (tempTx?.fee || 0)} SYS`}
       </section>
       <section className={styles.transaction}>
         <div className={styles.row}>
@@ -204,7 +214,7 @@ const SendConfirm = () => {
             {!tempTx?.isToken ? getFiatAmount(
               Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0),
               8
-            ) : `${String(tempTx?.amount)} ${String(tempTx?.token?.symbol)}`}
+            ) : `${String(tempTx?.amount)} ${String(tokenData?.symbol)}`}
           </span>
         </div>
 

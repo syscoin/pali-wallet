@@ -1532,7 +1532,7 @@ const AccountController = (actions: {
         isToken: boolean,
         rbf: boolean,
         toAddress: string,
-        token: any
+        token: string
       }
     ) => {
       const {
@@ -1547,14 +1547,15 @@ const AccountController = (actions: {
       if (!account.isTrezorWallet) {
         sysjs.Signer.setAccountIndex(store.getState().wallet.activeAccountId);
       }
+      
       if (isToken && token) {
         let txInfo;
-
+        const { decimals } = await getDataAsset(token);
         const txOpts = { rbf };
-        const value = new sys.utils.BN(amount * 10 ** token.decimals);
+        const value = new sys.utils.BN(amount * 10 ** decimals);
 
         const assetMap = new Map([
-          [token.assetGuid, {
+          [token, {
             changeAddress: null,
             outputs: [{
               value,
@@ -1566,7 +1567,7 @@ const AccountController = (actions: {
         if (account.isTrezorWallet) {
           const changeAddress = await getNewChangeAddress(false);
           // @ts-ignore: Unreachable code error
-          assetMap.get(token.assetGuid)!.changeAddress = changeAddress;
+          assetMap.get(token)!.changeAddress = changeAddress;
 
           const txData = await sysjs.assetAllocationSend(txOpts, assetMap, changeAddress, new sys.utils.BN(fee * 1e8), account.xpub);
 
