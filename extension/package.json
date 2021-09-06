@@ -73,6 +73,7 @@
     "redux-watch": "^1.2.0",
     "saas": "^1.0.0",
     "sass": "^1.32.12",
+    "ses": "^0.14.2",
     "syscoinjs-lib": "^1.0.173",
     "syscointx-js": "^1.0.90",
     "trezor-connect": "^8.1.29",

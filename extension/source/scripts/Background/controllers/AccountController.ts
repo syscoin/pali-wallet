@@ -1547,7 +1547,7 @@ const AccountController = (actions: {
       if (!account.isTrezorWallet) {
         sysjs.Signer.setAccountIndex(store.getState().wallet.activeAccountId);
       }
-      
+
       if (isToken && token) {
         let txInfo;
         const { decimals } = await getDataAsset(token);

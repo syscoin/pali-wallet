@@ -20,7 +20,7 @@ import store from 'state/store';
 import AccountController from './AccountController';
 
 const WalletController = (): IWalletController => {
-  let password: string = '';
+  let password: any = '';
   let mnemonic: string = '';
   let HDsigner: any = null;
   let sjs: any = null;
@@ -34,11 +34,11 @@ const WalletController = (): IWalletController => {
   };
 
   const setWalletPassword = (pwd: string) => {
-    password = pwd;
+    password = CryptoJS.SHA3(pwd).toString();
   };
 
   const checkPassword = (pwd: string) => {
-    return password === pwd;
+    return password === CryptoJS.SHA3(pwd).toString();
   };
 
   const account = AccountController({ checkPassword });
@@ -136,7 +136,7 @@ const WalletController = (): IWalletController => {
   const unLock = (pwd: string): boolean => {
     try {
       const encriptedMnemonic = retrieveEncriptedMnemonic();
-      const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, pwd).toString(CryptoJS.enc.Utf8);
+      const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, CryptoJS.SHA3(pwd).toString()).toString(CryptoJS.enc.Utf8);
 
       if (!decriptedMnemonic) {
         throw new Error('password wrong');
@@ -146,7 +146,7 @@ const WalletController = (): IWalletController => {
         const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
         const backendURl: string = store.getState().wallet.activeNetwork === 'testnet' ? SYS_NETWORK.testnet.beUrl : SYS_NETWORK.main.beUrl;
 
-        setHDSigner({ mnemonic: decriptedMnemonic, password: null, isTestnet, networks: sys.utils.syscoinNetworks, SLIP44: 57, pubTypes: sys.utils.syscoinZPubTypes});
+        setHDSigner({ mnemonic: decriptedMnemonic, password: null, isTestnet, networks: sys.utils.syscoinNetworks, SLIP44: 57, pubTypes: sys.utils.syscoinZPubTypes });
         setSjs({ SignerIn: HDsigner, blockbookURL: backendURl });
 
         const { activeAccountId, accounts } = store.getState().wallet;
@@ -166,7 +166,7 @@ const WalletController = (): IWalletController => {
         }
       }
 
-      password = pwd;
+      password = CryptoJS.SHA3(pwd).toString();
       mnemonic = decriptedMnemonic;
 
       account.getPrimaryAccount(password, sjs);
@@ -233,7 +233,7 @@ const WalletController = (): IWalletController => {
   const checkAndSeparateTrezorAccounts = (accounts: any, index: number, activeAccountId: number, accountsToBeRemoved: any) => {
     if (!accounts[index].isTrezorWallet) {
       checkAndSetNewXpub(Number(index), activeAccountId);
-      
+
       return;
     }
 
