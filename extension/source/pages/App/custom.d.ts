@@ -130,7 +130,7 @@ declare type SendTokenItems = {
   rbf: boolean,
   receiver: string,
   sender: string,
-  token: any
+  token: string
 }
 
 declare type IssueTokenItems = {
