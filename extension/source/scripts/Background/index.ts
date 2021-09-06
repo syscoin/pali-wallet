@@ -338,12 +338,27 @@ browser.runtime.onInstalled.addListener(async () => {
           walletTokens,
         } = store.getState().wallet;
 
+        const copyAccounts: any = {};
+
+        for (const { address, id, balance, assets, isTrezorWallet, label, transactions, xpub } of accounts) {
+          copyAccounts[id] = {
+            address,
+            balance,
+            assets,
+            id,
+            isTrezorWallet: isTrezorWallet,
+            label: label,
+            transactions: transactions,
+            xpub: xpub
+          }
+        }
+
         browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'SEND_STATE_TO_PAGE',
           target: 'contentScript',
           state: getConnectedAccountIndex({ match: new URL(store.getState().wallet.tabs.currentURL).host }) > -1 || window.controller.wallet.isLocked() ? {
             status,
-            accounts,
+            accounts: Object.values(copyAccounts),
             activeAccountId,
             activeNetwork,
             confirmingTransaction,
