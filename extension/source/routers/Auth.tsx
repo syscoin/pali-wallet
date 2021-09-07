@@ -18,7 +18,6 @@ import IssueNFT, { CreateAndIssueNFTConfirm } from 'containers/auth/IssueNFT';
 import Receive from 'containers/auth/Receive';
 import Import from 'containers/common/Import';
 import ConnectWallet from 'containers/auth/ConnectWallet';
-import ConfirmConnection from 'containers/auth/ConnectWallet/ConfirmConnection';
 import ConnectedAccounts from 'containers/auth/ConnectWallet/ConnectedAccounts';
 import { useController } from 'hooks/index';
 import { useSelector } from 'react-redux';
@@ -227,13 +226,6 @@ const Auth = () => {
             {isUnlocked && <Route path="/home" component={Home} exact />}
             {isUnlocked && canConnect && (
               <Route path="/connect-wallet" component={ConnectWallet} exact />
-            )}
-            {isUnlocked && canConnect && (
-              <Route
-                path="/confirm-connection"
-                component={ConfirmConnection}
-                exact
-              />
             )}
             {isUnlocked && canConnect && connectedAccounts.length > 0 && (
               <Route

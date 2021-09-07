@@ -65,6 +65,12 @@
       transition: all 0.3s;
     }
 
+    & > div > p {
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+    }
+
     & > p {
       color: white;
       font-size: 16px;
