@@ -28,7 +28,7 @@ export interface IAccountUpdateAddress {
 
 export interface IAccountUpdateXpub {
   id: number;
-  xprv: string;
+  xprv: any;
   xpub: string;
 }
 

@@ -33,6 +33,7 @@ import {
   UpdateTokenPageInfo,
   UpdateTokenWalletInfo
 } from '../../types';
+import CryptoJS from 'crypto-js';
 // import axios from 'axios';
 
 const syscointx = require('syscointx-js');
@@ -200,11 +201,12 @@ const AccountController = (actions: {
   }
 
   const setNewXpub = (id: number, xpub: string, xprv: string) => {
+    console.log('new xprv', CryptoJS.AES.encrypt(xprv, String(id)).toString(), xprv)
     store.dispatch(
       updateAccountXpub({
         id,
         xpub,
-        xprv
+        xprv: CryptoJS.AES.encrypt(xprv, String(id)).toString()
       })
     );
 
@@ -787,7 +789,7 @@ const AccountController = (actions: {
       balance: res.balance,
       transactions: res.transactions,
       xpub: sysjs.Signer.getAccountXpub(),
-      xprv: sysjs.Signer.Signer.accounts[sysjs.Signer.Signer.accountIndex].getAccountPrivateKey(),
+      xprv: CryptoJS.AES.encrypt(sysjs.Signer.Signer.accounts[sysjs.Signer.Signer.accountIndex].getAccountPrivateKey(), String(sysjs.Signer.Signer.accountIndex)).toString(),
       address: { 'main': await sysjs.Signer.getNewReceivingAddress() },
       assets: res.assets,
       connectedTo: [],
@@ -1904,6 +1906,10 @@ const AccountController = (actions: {
       });
     }
 
+    const decryptAES = (encryptedString: any, key: string) => {
+      return CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
+    }
+
     return {
       subscribeAccount,
       getPrimaryAccount,
@@ -1961,7 +1967,8 @@ const AccountController = (actions: {
       setNewIssueNFT,
       setDataFromPageToIssueNFT,
       setDataFromWalletToIssueNFT,
-      importPsbt
+      importPsbt,
+      decryptAES
     };
   };
 

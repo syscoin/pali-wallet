@@ -98,6 +98,7 @@ declare interface IAccountController {
   setDataFromPageToIssueNFT: (data: any) => any;
   setDataFromWalletToIssueNFT: (data: any) => any;
   importPsbt: (psbt: any) => any;
+  decryptAES: (encryptedString: any, key: string) => any;
 }
 
 declare type CreateTokenItems = {
