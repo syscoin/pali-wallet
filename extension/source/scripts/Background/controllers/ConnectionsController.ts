@@ -44,7 +44,7 @@ const ConnectionsController = () => {
   };
 
   const signAndSend = async (psbt: any) => {
-    checkParams({ data: psbt, throwError: true, message: 'Invalid PSBT.' });
+    checkParams({ data: psbt, throwError: true, message: 'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.' });
 
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
@@ -598,7 +598,7 @@ const ConnectionsController = () => {
   };
 
   const signPSBT = (psbtToSign: any) => {
-    checkParams({ data: psbtToSign, throwError: false, message: 'Invalid PSBT.' });
+    checkParams({ data: psbtToSign, throwError: true, message: 'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.' });
 
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
