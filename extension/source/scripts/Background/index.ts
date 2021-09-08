@@ -146,6 +146,25 @@ const createPopup = async (url: string) => {
   }
 };
 
+const closePopup = () => {
+  store.dispatch(updateCanConnect(false));
+  store.dispatch(clearAllTransactions());
+
+  browser.tabs.query({ active: true })
+    .then(async (tabs) => {
+      tabs.map(async (tab) => {
+        if (tab.title === 'Pali Wallet') {
+          await browser.windows.remove(Number(tab.windowId));
+        }
+      });
+    })
+    .catch((error) => {
+      console.log('error removing window', error);
+    });;
+
+  return;
+}
+
 let timeout: any;
 
 const restartLockTimeout = () => {
@@ -183,9 +202,11 @@ const restartLockTimeout = () => {
 
       window.controller.wallet.logOut();
 
+      setTimeout(() => closePopup(), 2000);
+
       return;
     }
-    
+
     console.log('can\'t lock automatically - wallet is under transaction');
   }, timer * 60 * 1000);
 };
@@ -346,22 +367,7 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'CLOSE_POPUP' && target == 'background') {
-        store.dispatch(updateCanConnect(false));
-        store.dispatch(clearAllTransactions());
-
-        browser.tabs.query({ active: true })
-          .then(async (tabs) => {
-            tabs.map(async (tab) => {
-              if (tab.title === 'Pali Wallet') {
-                await browser.windows.remove(Number(tab.windowId));
-              }
-            });
-          })
-          .catch((error) => {
-            console.log('error removing window', error);
-          });;
-
-        return;
+        closePopup();
       }
 
       if (type == 'SEND_STATE_TO_PAGE' && target == 'background') {

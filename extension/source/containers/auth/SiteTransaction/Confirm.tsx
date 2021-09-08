@@ -54,7 +54,8 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   const [expanded, setExpanded] = useState<boolean>(false);
   const [loadingConfirm, setLoadingConfirm] = useState<boolean>(false);
   const [dataToRender, setDataToRender] = useState<any[]>([]);
-  const [advancedOptions, setAdvancedOptions] = useState<any[]>([]);  const [recommendedFee, setRecommendedFee] = useState(0.00001);
+  const [advancedOptions, setAdvancedOptions] = useState<any[]>([]); const [recommendedFee, setRecommendedFee] = useState(0.00001);
+  const [assetData, setAssetData] = useState<any>({});
 
   const advancedOptionsArray = [
     'notarydetails',
@@ -94,8 +95,6 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 
       setDataToRender(Object.values(newData))
       setAdvancedOptions(Object.values(newAdvancedOptions))
-
-      console.log(newData, dataToRender, advancedOptions)
     }
 
     setConnectedAccountId(
@@ -106,6 +105,18 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
       })
     );
   }, [data]);
+
+  useEffect(() => {
+    console.log('data to render', dataToRender)
+    dataToRender.map((data) => {
+      if (data.label === 'assetGuid') {
+        controller.wallet.account.getDataAsset(data.value).then((response: any) => {
+          setAssetData(response);
+          console.log('response asset data', response)
+        })
+      }
+    })
+  }, [dataToRender]);
 
   const handleRejectTransaction = () => {
     history.push('/home');
@@ -184,7 +195,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
             alert.removeAll();
             alert.error(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
           }
-  
+
           if (error && transactionItemData < recommendedFee) {
             alert.removeAll();
             alert.error(errorMessage);
@@ -239,6 +250,10 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
         }
 
         if (advancedOptionsArray.includes(label)) {
+          return;
+        }
+
+        if (label === "assetGuid") {
           return;
         }
 
@@ -370,6 +385,19 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
                   <div>
                     <section className={styles.data}>
                       {renderData()}
+
+                      {assetData && (
+                        <div>
+                          <div key="symbol" className={styles.flex}>
+                            <p>symbol</p>
+                            <p>{assetData && assetData.symbol ? atob(String(assetData.symbol)) : 'Not found'}</p>
+                          </div>
+                          <div key="assetGuid" className={styles.flex}>
+                            <p>assetGuid</p>
+                            <p>{assetData && assetData.assetGuid ? String(assetData.assetGuid) : 'Not found'}</p>
+                          </div>
+                        </div>
+                      )}
 
                       <div className={styles.flex}>
                         <p>Site</p>
