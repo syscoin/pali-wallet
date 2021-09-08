@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAlert } from 'react-alert';
+import { browser } from 'webextension-polyfill-ts';
 import {
   Switch,
   Route,
@@ -60,7 +61,7 @@ const Auth = () => {
     transferringOwnership,
     signingTransaction,
     signingPSBT,
-    mintNFT
+    mintNFT,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
   const { currentURL, canConnect } = tabs;
 
@@ -71,6 +72,21 @@ const Auth = () => {
       }) > -1
     );
   });
+
+  useEffect(() => {
+    if (
+      isUnlocked
+    ) {
+      window.addEventListener('mousemove', () => {
+        browser.runtime.sendMessage({
+          type: 'SET_MOUSE_MOVE',
+          target: 'background',
+        });
+      });
+    }
+  }, [
+    isUnlocked,
+  ]);
 
   useEffect(() => {
     const redirectRoute = controller.appRoute();
@@ -261,7 +277,7 @@ const Auth = () => {
                 exact
               />
             )}
-             {isUnlocked && (
+            {isUnlocked && (
               <Route path="/mintNFT" component={MintNFT} exact />
             )}
             {isUnlocked && (

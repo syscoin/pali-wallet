@@ -99,6 +99,7 @@ declare interface IAccountController {
   setDataFromWalletToIssueNFT: (data: any) => any;
   importPsbt: (psbt: any) => any;
   decryptAES: (encryptedString: any, key: string) => any;
+  setAutolockTimer: (minutes: number) => any;
 }
 
 declare type CreateTokenItems = {

@@ -36,12 +36,19 @@ const initialState: IWalletState = {
     canConnect: false,
     connections: [],
   },
+  timer: 5,
 };
 
 const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
+    setTimer(state: IWalletState, action: PayloadAction<number>) {
+      return {
+        ...state,
+        timer: action.payload,
+      };
+    },
     updateAllTokens(
       state: IWalletState,
       action: PayloadAction<IWalletTokenState>
@@ -460,7 +467,8 @@ export const {
   signTransactionState,
   updateAllTokens,
   signPSBTState,
-  setIssueNFT
+  setIssueNFT,
+  setTimer,
 } = WalletState.actions;
 
 export default WalletState.reducer;

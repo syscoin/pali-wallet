@@ -14,6 +14,7 @@ import {
   updateAccountXpub,
   updateSwitchNetwork,
   updateAllTokens,
+  setTimer
 } from 'state/wallet';
 
 import {
@@ -1910,6 +1911,10 @@ const AccountController = (actions: {
       return CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
     }
 
+    const setAutolockTimer = (minutes: number) => {
+      store.dispatch(setTimer(minutes));
+    }
+
     return {
       subscribeAccount,
       getPrimaryAccount,
@@ -1968,7 +1973,8 @@ const AccountController = (actions: {
       setDataFromPageToIssueNFT,
       setDataFromWalletToIssueNFT,
       importPsbt,
-      decryptAES
+      decryptAES,
+      setAutolockTimer
     };
   };
 

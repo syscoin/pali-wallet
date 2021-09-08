@@ -20,7 +20,7 @@ import {
   clearAllTransactions,
   signTransactionState,
   signPSBTState,
-  setIssueNFT
+  setIssueNFT,
 } from 'state/wallet';
 import { IAccountState } from 'state/wallet/types';
 
@@ -146,11 +146,54 @@ const createPopup = async (url: string) => {
   }
 };
 
+let timeout: any;
+
+const restartLockTimeout = () => {
+  const {
+    confirmingTransaction,
+    creatingAsset,
+    issuingNFT,
+    issuingAsset,
+    updatingAsset,
+    transferringOwnership,
+    signingTransaction,
+    signingPSBT,
+    mintNFT,
+    timer
+  } = store.getState().wallet;
+
+  if (timeout) {
+    clearTimeout(timeout);
+  }
+
+  timeout = setTimeout(() => {
+    if (
+      !checkIsLocked()
+      && !confirmingTransaction
+      && !creatingAsset
+      && !issuingNFT
+      && !issuingAsset
+      && !updatingAsset
+      && !transferringOwnership
+      && !signingTransaction
+      && !signingPSBT
+      && !mintNFT
+    ) {
+      console.log('locking wallet automatically');
+
+      window.controller.wallet.logOut();
+
+      return;
+    }
+    
+    console.log('can\'t lock automatically - wallet is under transaction');
+  }, timer * 60 * 1000);
+};
+
 browser.runtime.onInstalled.addListener(async () => {
   console.emoji('🤩', 'Pali extension installed');
 
   window.controller.stateUpdater();
-
 
   browser.runtime.onMessage.addListener(async (request, sender) => {
     const {
@@ -171,6 +214,10 @@ browser.runtime.onInstalled.addListener(async () => {
     }
 
     if (typeof request === 'object') {
+      if (type == 'SET_MOUSE_MOVE' && target == 'background') {
+        restartLockTimeout();
+      }
+
       if (type == 'CONNECT_WALLET' && target == 'background') {  // OK
         const url = browser.runtime.getURL('app.html');
 

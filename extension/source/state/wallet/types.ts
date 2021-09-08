@@ -82,4 +82,5 @@ export default interface IWalletState {
   transferringOwnership: boolean;
   updatingAsset: boolean;
   walletTokens: IWalletTokenState[];
+  timer: number;
 }

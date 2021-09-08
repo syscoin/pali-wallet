@@ -666,4 +666,4 @@ const ConnectionsController = () => {
   };
 };
 
-export default ConnectionsController;
+export default Object.freeze(ConnectionsController);
