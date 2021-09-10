@@ -409,7 +409,7 @@ browser.runtime.onInstalled.addListener(async () => {
         browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'SEND_STATE_TO_PAGE',
           target: 'contentScript',
-          state: getConnectedAccountIndex({ match: new URL(store.getState().wallet.tabs.currentURL).host }) > -1 || window.controller.wallet.isLocked() ? {
+          state: getConnectedAccountIndex({ match: new URL(store.getState().wallet.tabs.currentURL).host }) > -1 && !window.controller.wallet.isLocked() ? {
             status,
             accounts: Object.values(copyAccounts),
             activeAccountId,
