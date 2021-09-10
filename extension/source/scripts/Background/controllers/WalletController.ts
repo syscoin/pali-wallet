@@ -21,6 +21,7 @@ import AccountController from './AccountController';
 
 const WalletController = (): IWalletController => {
   let password: any = '';
+  let encriptedPassword: any = '';
   let mnemonic: string = '';
   let HDsigner: any = null;
   let sjs: any = null;
@@ -34,17 +35,26 @@ const WalletController = (): IWalletController => {
   };
 
   const setWalletPassword = (pwd: string) => {
-    password = CryptoJS.SHA3(pwd).toString();
+    password = pwd;
+    encriptedPassword = CryptoJS.SHA3(pwd).toString();
+
   };
 
   const checkPassword = (pwd: string) => {
-    return password === CryptoJS.SHA3(pwd).toString();
+    if(encriptedPassword === CryptoJS.SHA3(pwd).toString()) {
+      return true;
+    }
+    else{
+      // scenario where we just are veryfing already encripted password
+      return encriptedPassword === pwd;
+    }
+    
   };
 
   const account = AccountController({ checkPassword });
 
   const isLocked = () => {
-    return !password || !mnemonic;
+    return !encriptedPassword || !HDsigner;
   };
 
   const retrieveEncriptedMnemonic = () => {
@@ -88,6 +98,8 @@ const WalletController = (): IWalletController => {
 
     account.subscribeAccount(false, sjs, undefined, true).then(() => {
       account.getPrimaryAccount(password, sjs);
+      password = '';
+      mnemonic = '';
 
       account.updateTokensState().then(() => {
         console.log('update tokens state after create wallet')
@@ -130,13 +142,13 @@ const WalletController = (): IWalletController => {
   }
 
   const getPhrase = (pwd: string) => {
-    return checkPassword(pwd) ? mnemonic : null;
+    return checkPassword(pwd) ? HDsigner.mnemonic : null;
   };
 
   const unLock = (pwd: string): boolean => {
     try {
       const encriptedMnemonic = retrieveEncriptedMnemonic();
-      const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, CryptoJS.SHA3(pwd).toString()).toString(CryptoJS.enc.Utf8);
+      const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, pwd).toString(CryptoJS.enc.Utf8);
 
       if (!decriptedMnemonic) {
         throw new Error('password wrong');
@@ -166,10 +178,9 @@ const WalletController = (): IWalletController => {
         }
       }
 
-      password = CryptoJS.SHA3(pwd).toString();
-      mnemonic = decriptedMnemonic;
+      encriptedPassword = CryptoJS.SHA3(pwd).toString();
 
-      account.getPrimaryAccount(password, sjs);
+      account.getPrimaryAccount(pwd, sjs);
 
       const { accounts, activeAccountId } = store.getState().wallet;
 
@@ -184,6 +195,7 @@ const WalletController = (): IWalletController => {
   const deleteWallet = (pwd: string) => {
     if (checkPassword(pwd)) {
       password = '';
+      encriptedPassword = '';
       mnemonic = '';
       HDsigner = null;
       sjs = null;
@@ -210,6 +222,7 @@ const WalletController = (): IWalletController => {
 
   const logOut = () => {
     password = '';
+    encriptedPassword = '';
     mnemonic = '';
     store.dispatch(updateStatus());
   };
@@ -268,25 +281,20 @@ const WalletController = (): IWalletController => {
 
     console.log('accounts after remove trezor', accounts)
 
-    account.getPrimaryAccount(password, sjs);
+    account.getPrimaryAccount(encriptedPassword, sjs);
 
     account.updateTokensState().then(() => {
       console.log('tokens state updated after remove trezor')
     });
   }
 
+  
+
   const switchNetwork = async (networkId: string) => {
     store.dispatch(changeActiveNetwork(SYS_NETWORK[networkId]!.id));
 
-    const encriptedMnemonic = retrieveEncriptedMnemonic();
-    const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, password).toString(CryptoJS.enc.Utf8);
-
-    if (!decriptedMnemonic) {
-      throw new Error('password wrong');
-    }
-
     if (SYS_NETWORK[networkId]!.id === 'main') {
-      setHDSigner({ mnemonic: decriptedMnemonic, password: null, isTestnet: false });
+      setHDSigner({ mnemonic: HDsigner.mnemonic, password: null, isTestnet: false });
       setSjs({ SignerIn: HDsigner, blockbookURL: SYS_NETWORK.main.beUrl });
 
       store.dispatch(updateSwitchNetwork(true));
@@ -295,8 +303,7 @@ const WalletController = (): IWalletController => {
 
       return;
     }
-
-    setHDSigner({ mnemonic: decriptedMnemonic, password: null, isTestnet: true });
+    setHDSigner({ mnemonic: HDsigner.mnemonic, password: null, isTestnet: true });
     setSjs({ SignerIn: HDsigner, blockbookURL: SYS_NETWORK.testnet.beUrl });
 
     store.dispatch(updateSwitchNetwork(true));
