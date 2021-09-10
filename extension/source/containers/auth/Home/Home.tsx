@@ -64,14 +64,6 @@ const Home = () => {
       }
     });
 
-    // browser.runtime.onMessage.addListener((request: any) => {
-    //   console.log('request', request)
-    //   if (request.type === 'tohome') {
-    //     console.log('message from background')
-    //     setCurrentTabURL(request.currentTab.currentTabURL)
-    //   }
-    // });
-
     browser.windows.getAll({ populate: true }).then((windows) => {
       for (const window of windows) {
         console.log('window tabs', window.tabs);
@@ -93,34 +85,6 @@ const Home = () => {
         console.log('views window id', views, window.id);
       }
     });
-
-    // if (window.url === url) {
-    //   console.log('EXTENSION URL', url, window)
-    // }
-
-    // browser.tabs.onActivated.addListener((info) => {
-    //   console.log('info tab', info)
-
-    //   if (info.tabId > -1 && info.windowId > -1) {
-    //     browser.tabs.query({ active: true, lastFocusedWindow: true, windowType: 'normal' }).then((tabs: any) => {
-    //       setCurrentTabURL(String(tabs[0].url));
-    //       console.log('current url', tabs[0].url)
-
-    //       browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    //         console.log('tabid', tabId, changeInfo, tab)
-    //         setCurrentTabURL(String(tabs[0].url));
-    //       })
-
-    //       console.log('tabs query', tabs)
-    //     })
-    //   }
-    // })
-
-    // browser.tabs.onActivated.addListener((activeInfo) => {
-    //   browser.tabs.query({ active: true, lastFocusedWindow: true }).then((tabs: any) => {
-    //     setCurrentTabURL(String(tabs[0].url));
-    //   })
-    // })
   }, [!controller.wallet.isLocked()]);
 
   const handleRefresh = () => {

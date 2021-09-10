@@ -36,6 +36,7 @@ const SendConfirm = () => {
       return url === getHost(currentSenderURL);
     });
   });
+  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
   const { tempTx } = controller.wallet.account.getTransactionItem();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -43,6 +44,8 @@ const SendConfirm = () => {
   const [tokenData, setTokenData] = useState<any>({});
 
   useEffect(() => {
+    console.log('temptx', tempTx);
+
     if (tempTx?.token) {
       const selectedAsset = accounts.find(element => element.id === activeAccountId)!.assets.filter((asset: Assets) => asset.assetGuid == tempTx?.token);
 
@@ -206,6 +209,20 @@ const SendConfirm = () => {
             {tempTx!.fee} SYS (≈ {getFiatAmount(tempTx?.fee || 0, 8)})
           </span>
         </div>
+        {tempTx?.isToken && tokenData && (
+          <div>
+            <div className={styles.row}>
+              <p>Token being sent</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                <span>
+                  {tokenData?.symbol ? `${String(tokenData?.symbol)}` : null}
+                </span>
+                <span style={{ cursor: 'pointer' }} onClick={() => window.open(`${sysExplorer}/asset/${tokenData.assetGuid}`)}>See on SYS block explorer</span>
+              </div>
+            </div>
+
+          </div>
+        )}
       </section>
       <section className={styles.confirm}>
         <div className={styles.row}>

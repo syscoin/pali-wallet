@@ -183,6 +183,10 @@ const ConnectionsController = () => {
   const handleSendToken = async (items: SendTokenItems) => {
     checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
 
+    if (items.isToken && typeof items.token !== 'string') {
+      throw new Error('Invalid token data.');
+    }
+
     return new Promise(async (_, reject) => {
       const callback = (event: any) => {
         if (
