@@ -12,7 +12,7 @@ export interface IMasterController {
 const MasterController = (): IMasterController => {
   const wallet = Object.freeze(WalletController());
   const utils = Object.freeze(ControllerUtils());
-  const connections = Object.freeze(ConnectionsController());
+  const connections = ConnectionsController;
 
   const stateUpdater = () => {
     utils.updateFiat();
