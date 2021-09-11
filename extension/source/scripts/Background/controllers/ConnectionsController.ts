@@ -1,5 +1,5 @@
 import { sendMessage } from 'scripts/Background/helpers';
-
+ 
 const ConnectionsController = () => {
   const checkParams = ({ data, throwError, message }: any) => {
     if (!data) {
@@ -670,4 +670,5 @@ const ConnectionsController = () => {
   };
 };
 
-export default Object.freeze(ConnectionsController);
+const connectionsController = ConnectionsController();
+export default Object.freeze(connectionsController); 

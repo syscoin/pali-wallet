@@ -50,7 +50,6 @@ const Home = () => {
   const [currentTabURL, setCurrentTabURL] = useState<string>(currentURL);
 
   useEffect(() => {
-    console.log('aaaa', Math.floor(Math.random() * 1200));
     window.addEventListener('message', (event) => {
       console.log('event message', event);
     });
