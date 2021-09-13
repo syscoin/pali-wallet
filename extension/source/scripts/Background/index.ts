@@ -1,9 +1,9 @@
 /* eslint-disable prettier/prettier */
 import 'emoji-log';
 import { STORE_PORT } from 'constants/index';
+import { wrapStore } from 'webext-redux';
 
 import { browser } from 'webextension-polyfill-ts';
-import { wrapStore } from 'webext-redux';
 import store from 'state/store';
 import {
   setSenderURL,
@@ -907,10 +907,3 @@ browser.runtime.onInstalled.addListener(async () => {
 });
 
 wrapStore(store, { portName: STORE_PORT });
-
-// used only for development mode to automatically reload the extension when starting the browser
-// remove this in production
-
-chrome.runtime.onStartup.addListener(() => {
-  chrome.runtime.reload();
-})
