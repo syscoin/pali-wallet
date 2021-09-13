@@ -64,6 +64,7 @@ module.exports = {
 
   entry: {
     manifest: path.join(__dirname, 'manifest.json'),
+    webextension: path.join(__dirname, 'node_modules','webextension-polyfill-ts', 'lib/index.js'),
     background: path.join(sourcePath, 'scripts/Background', 'index.ts'),
     inpage: path.join(sourcePath, 'scripts/ContentScript', 'inpage.ts'),
     contentScript: path.join(sourcePath, 'scripts/ContentScript', 'index.ts'),

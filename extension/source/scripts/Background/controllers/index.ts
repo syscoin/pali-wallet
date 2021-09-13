@@ -12,7 +12,7 @@ export interface IMasterController {
 const MasterController = (): IMasterController => {
   const wallet = Object.freeze(WalletController());
   const utils = Object.freeze(ControllerUtils());
-  const connections = ConnectionsController;
+  const connectionsPrototype = Object.create(ConnectionsController);
 
   const stateUpdater = () => {
     utils.updateFiat();
@@ -20,7 +20,7 @@ const MasterController = (): IMasterController => {
 
   return {
     wallet,
-    connections,
+    connections: Object.freeze(connectionsPrototype),
     appRoute: utils.appRoute,
     stateUpdater,
   };

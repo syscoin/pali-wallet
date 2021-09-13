@@ -16,6 +16,7 @@
     "*://connect.trezor.io/8/*",
     "https://localhost:8088/",
     "tabs",
+    "storage",
     "notifications"
   ],
   "content_security_policy": "script-src 'self'; object-src 'self'",
@@ -50,6 +51,7 @@
   },
   "background": {
     "scripts": [
+      "js/webextension.bundle.js",
       "js/background.bundle.js"
     ],
     "__chrome|opera__persistent": true
@@ -62,6 +64,7 @@
       ],
       "run_at": "document_start",
       "js": [
+        "js/webextension.bundle.js",
         "js/contentScript.bundle.js"
       ]
     },
@@ -71,6 +74,7 @@
         "https://localhost:8088/*"
       ],
       "js": [
+        "js/webextension.bundle.js",
         "js/trezorScript.bundle.js"
       ]
     }

@@ -1,5 +1,5 @@
 import MasterController from '../Background/controllers/index';
-import 'ses';
+
 declare global {
   interface Window {
     ConnectionsController: Readonly<IConnectionsController>;
@@ -7,7 +7,6 @@ declare global {
 }
 
 if (!window.ConnectionsController) {
-  lockdown();
   window.ConnectionsController = MasterController().connections;
 }
 

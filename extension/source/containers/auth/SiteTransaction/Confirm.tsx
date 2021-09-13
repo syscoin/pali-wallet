@@ -109,7 +109,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   useEffect(() => {
     console.log('data to render', dataToRender)
     dataToRender.map((data) => {
-      if (data.label === 'assetGuid') {
+      if (data.label === 'assetGuid' && itemStringToClearData !== 'newSPT' && itemStringToClearData !== 'issueNFTItem') {
         controller.wallet.account.getDataAsset(data.value).then((response: any) => {
           setAssetData(response);
           console.log('response asset data', response)
@@ -386,7 +386,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
                     <section className={styles.data}>
                       {renderData()}
 
-                      {assetData && (
+                      {assetData && itemStringToClearData !== 'newSPT' && itemStringToClearData !== 'issueNFTItem' && (
                         <div>
                           <div key="symbol" className={styles.flex}>
                             <p>symbol</p>
