@@ -16,7 +16,8 @@
     "*://connect.trezor.io/8/*",
     "https://localhost:8088/",
     "tabs",
-    "notifications"
+    "notifications",
+    "storage"
   ],
   "content_security_policy": "script-src 'self'; object-src 'self'",
   "__chrome|firefox__author": "Pollum Sys Teams",

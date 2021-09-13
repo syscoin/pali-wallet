@@ -189,7 +189,7 @@ const SendConfirm = () => {
         <div className={styles.iconWrapper}>
           <UpArrowIcon />
         </div>
-        {tempTx?.isToken && tokenData.symbol ? `${String(tempTx.amount)} ${String(tokenData?.symbol)}` : `${(tempTx?.amount || 0) + (tempTx?.fee || 0)} SYS`}
+        {tempTx?.isToken && tokenData && tokenData?.symbol ? `${String(tempTx.amount)} ${String(tokenData?.symbol)}` : `${(tempTx?.amount || 0) + (tempTx?.fee || 0)} SYS`}
       </section>
       <section className={styles.transaction}>
         <div className={styles.row}>
@@ -231,7 +231,7 @@ const SendConfirm = () => {
             {!tempTx?.isToken ? getFiatAmount(
               Number(tempTx?.amount || 0) + Number(tempTx?.fee || 0),
               8
-            ) : `${String(tempTx?.amount)} ${String(tokenData?.symbol)}`}
+            ) : `${String(tempTx?.amount)} ${tokenData?.symbol ? String(tokenData?.symbol) : 'SYS'}`}
           </span>
         </div>
 

@@ -26,7 +26,8 @@ const store: Store = configureStore({
   }),
   middleware,
   devTools: process.env.NODE_ENV !== 'production',
-  preloadedState: loadState(),
+  //@ts-ignore
+  preloadedState: loadState() ? loadState() : undefined,
 });
 
 store.subscribe(
