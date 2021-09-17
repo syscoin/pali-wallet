@@ -229,7 +229,7 @@ const WalletController = (): IWalletController => {
 
   const checkAndSetNewXpub = (index: number, activeAccountId: number) => {
     if (Number(index) === 0) {
-      account.setNewXpub(Number(index), sjs.Signer.Signer.accounts[Number(index)].getAccountPublicKey(), sjs.Signer.Signer.accounts[Number(index)].getAccountPrivateKey());
+      account.setNewXpub(Number(index), sjs.Signer.Signer.accounts[Number(index)].getAccountPublicKey(), sjs.Signer.Signer.accounts[Number(index)].getAccountPrivateKey(), encriptedPassword);
 
       return;
     }
@@ -240,7 +240,7 @@ const WalletController = (): IWalletController => {
     sjs.Signer.Signer.accounts.push(derived);
     sjs.Signer.setAccountIndex(activeAccountId);
 
-    account.setNewXpub(Number(index), derived.getAccountPublicKey(), derived.getAccountPrivateKey());
+    account.setNewXpub(Number(index), derived.getAccountPublicKey(), derived.getAccountPrivateKey(), encriptedPassword);
   }
 
   const checkAndSeparateTrezorAccounts = (accounts: any, index: number, activeAccountId: number, accountsToBeRemoved: any) => {

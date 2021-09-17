@@ -201,13 +201,13 @@ const AccountController = (actions: {
     return true;
   }
 
-  const setNewXpub = (id: number, xpub: string, xprv: string) => {
-    console.log('new xprv', CryptoJS.AES.encrypt(xprv, String(id)).toString(), xprv)
+  const setNewXpub = (id: number, xpub: string, xprv: string, key: string) => {
+    console.log('new xprv', CryptoJS.AES.encrypt(xprv, String(key)).toString(), xprv, 'key', key)
     store.dispatch(
       updateAccountXpub({
         id,
         xpub,
-        xprv: CryptoJS.AES.encrypt(xprv, String(id)).toString()
+        xprv: CryptoJS.AES.encrypt(xprv, String(key)).toString()
       })
     );
 
