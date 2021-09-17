@@ -107,9 +107,9 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   }, [data]);
 
   useEffect(() => {
-    console.log('data to render', dataToRender)
+    console.log('data to render', dataToRender, itemStringToClearData)
     dataToRender.map((data) => {
-      if (data.label === 'assetGuid' && itemStringToClearData !== 'newSPT' && itemStringToClearData !== 'issueNFTItem') {
+      if (data.label === 'assetGuid' && itemStringToClearData !== 'newSPT' && itemStringToClearData !== 'mintNFT') {
         controller.wallet.account.getDataAsset(data.value).then((response: any) => {
           setAssetData(response);
           console.log('response asset data', response)

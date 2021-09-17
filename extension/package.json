@@ -1,6 +1,6 @@
 {
   "name": "paliwallet",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Extension wallet for SYS tokens.",
   "private": true,
   "repository": {
