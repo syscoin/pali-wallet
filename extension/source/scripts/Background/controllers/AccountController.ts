@@ -419,13 +419,8 @@ const AccountController = (actions: {
               symbol,
               assetGuid
             }: any = value;
-            let pubData: any;
 
-            try {
-              pubData = await getDataAsset(assetGuid);
-            } catch (error) {
-              console.log('error getting pubdata', error)
-            }
+            const { pubData } = await getDataAsset(assetGuid);
 
             const { baseAssetID, NFTID } = sys.utils.getAssetIDs(assetGuid);
 
