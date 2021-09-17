@@ -386,7 +386,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
                     <section className={styles.data}>
                       {renderData()}
 
-                      {assetData && itemStringToClearData !== 'newSPT' && itemStringToClearData !== 'issueNFTItem' && (
+                      {assetData && itemStringToClearData !== 'newSPT' && itemStringToClearData !== 'mintNFT' && (
                         <div>
                           <div key="symbol" className={styles.flex}>
                             <p>symbol</p>
