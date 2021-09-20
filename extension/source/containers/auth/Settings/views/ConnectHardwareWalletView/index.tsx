@@ -32,12 +32,13 @@ const ConnectHardwareWalletView: FC = () => {
       </div>
 
       <p style={{ textAlign: 'center' }}>Don't have a hardware wallet?</p>
-      <p style={{ margin: '0 1rem 3rem', textAlign: 'center' }}>
+      <p style={{ margin: '0 1rem', textAlign: 'center' }}>
         Order a Trezor wallet and keep your funds in cold storage.
-        <a href="https://trezor.io/" target="_blank" rel="noreferrer">
-          Buy now
-        </a>
       </p>
+
+      <a className={styles.link} href="https://trezor.io/" target="_blank" rel="noreferrer">
+        Buy now
+      </a>
 
       <Button
         type="submit"

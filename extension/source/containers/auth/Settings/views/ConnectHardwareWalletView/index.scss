@@ -11,6 +11,16 @@
   color: $white;
   margin: 2rem 0;
 
+  .link {
+    color: $royalBlue-medium;
+    text-decoration: none;
+    margin: .5rem 0 3rem;
+
+    &:hover {
+      color: $white;
+    }
+  }
+
   .options {
     display: flex;
     align-items: center;
