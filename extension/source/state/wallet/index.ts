@@ -108,8 +108,6 @@ const WalletState = createSlice({
         return;
       }
 
-
-
       console.log('push new account item:', accountId);
 
       state.walletTokens.push(action.payload);
@@ -193,7 +191,7 @@ const WalletState = createSlice({
     },
     removeConnection(state: IWalletState, action: PayloadAction<any>) {
       const connectionIndex: number = state.tabs.connections.findIndex(
-        (connection) => connection.url === getHost(action.payload.url)
+        (connection: any) => connection.url === getHost(action.payload.url)
       );
 
       const account = state.accounts.find(
@@ -215,63 +213,67 @@ const WalletState = createSlice({
       state: IWalletState,
       action: PayloadAction<{ accountId: number, url: string }>
     ) {
-      const index: number = state.tabs.connections.findIndex(
-        (connection) =>
-          connection.accountId !== action.payload.accountId &&
-          connection.url === getHost(action.payload.url)
-      );
+      const { accounts, tabs } = state;
+      const { accountId, url } = action.payload;
 
-      if (state.tabs.connections[index]) {
-        state.accounts[state.tabs.connections[index].accountId].connectedTo.splice(
-          state.tabs.connections.findIndex(
-            (url) => url === state.tabs.connections[index].url
-          ),
-          1
-        );
-
-        state.tabs.connections[index] = {
-          accountId: action.payload.accountId,
-          url: getHost(action.payload.url),
-        };
-
-        const indexOf = state.accounts.findIndex(
-          (element: IAccountState) =>
-            element.id === state.tabs.connections[index].accountId
-        );
-
-        state.accounts[indexOf].connectedTo.push(state.tabs.connections[index].url);
-
-        return;
-      }
-
-      const alreadyExistsIndex: number = state.tabs.connections.findIndex(
-        (connection) =>
-          connection.accountId === action.payload.accountId &&
-          connection.url === action.payload.url
-      );
-
-      if (state.tabs.connections[alreadyExistsIndex]) {
-        state.tabs.connections[alreadyExistsIndex] = {
-          accountId: action.payload.accountId,
-          url: getHost(action.payload.url),
-        };
-
-        state.accounts[alreadyExistsIndex].connectedTo[alreadyExistsIndex] =
-          getHost(action.payload.url);
-
-        return;
-      }
-
-      state.tabs.connections.push({
-        accountId: action.payload.accountId,
-        url: getHost(action.payload.url),
+      const accountIndex = tabs.connections.findIndex((connection: any) => {
+        return connection.accountId === accountId; 
       });
 
-      const indexOf = state.accounts.findIndex(
-        (element: IAccountState) => element.id === action.payload.accountId
-      );
+      const currentAccountIndex = accounts.findIndex((account: IAccountState) => {
+        return account.id === accountId;
+      })
 
-      state.accounts[indexOf].connectedTo.push(getHost(action.payload.url));
+      const urlIndex = tabs.connections.findIndex((connection: any) => {
+        return connection.url === getHost(url);
+      });
+
+      if (tabs.connections[urlIndex]) {
+        const accountIdConnected = accounts.findIndex((account: IAccountState) => {
+          return account.id === tabs.connections[urlIndex].accountId;
+        });
+
+        if (accountIdConnected > -1) {
+          const connectedToIndex = accounts[accountIdConnected].connectedTo.findIndex((connectedURL: string) => {
+            return connectedURL === getHost(url);
+          });
+  
+          if (connectedToIndex > -1) {
+            accounts[accountIdConnected].connectedTo.splice(connectedToIndex, 1);
+
+            tabs.connections[urlIndex] = {
+              ...tabs.connections[urlIndex],
+              accountId,
+            }
+
+            accounts[currentAccountIndex].connectedTo.push(getHost(url));
+          }
+        }
+
+        return;
+      }
+
+      if (tabs.connections[accountIndex]) {
+        if (tabs.connections[accountIndex].url === getHost(url)) {
+          return;
+        }
+
+        tabs.connections.push({
+          accountId,
+          url: getHost(url)
+        });
+
+        accounts[currentAccountIndex].connectedTo.push(getHost(url));
+
+        return;
+      }
+
+      tabs.connections.push({
+        accountId,
+        url: getHost(url),
+      });
+
+      accounts[currentAccountIndex].connectedTo.push(getHost(url));
     },
     updateCanConnect(state: IWalletState, action: PayloadAction<boolean>) {
       return {

@@ -1083,9 +1083,7 @@ const AccountController = (actions: {
     const txOpts = { rbf: true };
 
     if (getConnectedAccount().isTrezorWallet) {
-      console.log('Trezor don\'t support burning of coins')
-      // throw new Error('Trezor don\'t support burning of coins');
-      return;
+      throw new Error('Trezor don\'t support burning of coins');
     }
 
     sysjs.Signer.setAccountIndex(getConnectedAccount().id);

@@ -44,11 +44,8 @@ const WalletController = (): IWalletController => {
     if(encriptedPassword === CryptoJS.SHA3(pwd).toString()) {
       return true;
     }
-    else{
-      // scenario where we just are veryfing already encripted password
-      return encriptedPassword === pwd;
-    }
     
+    return encriptedPassword === pwd;
   };
 
   const account = AccountController({ checkPassword });

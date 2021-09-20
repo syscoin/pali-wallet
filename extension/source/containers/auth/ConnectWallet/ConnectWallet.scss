@@ -213,7 +213,7 @@
     }
   }
 
-  .account {
+  .account, .disabled {
     width: 75%;
     margin: 15px 15px 0 15px;
     display: flex;
@@ -225,6 +225,8 @@
     padding: 0.7rem 1rem;
     background-color: #f5f5f5;
     border-radius: 6px;
+
+    
 
     &:hover {
       background-color: #f0f0f0;
@@ -243,6 +245,11 @@
         font-size: 12px;
       }
     }
+  }
+
+  .disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   ul.options {

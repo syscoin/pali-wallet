@@ -228,6 +228,14 @@ const ConnectionsController = () => {
   };
 
   const handleCreateToken = async (items: CreateTokenItems) => {
+    const connectedAccount: any = await getConnectedAccount();
+
+    if (connectedAccount && connectedAccount.isTrezorWallet) {
+      console.log('Trezor don\'t support burning of coins.');
+
+      throw new Error('Trezor don\'t support burning of coins.');
+    } 
+
     checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
 
     return new Promise(async (resolve, reject) => {
