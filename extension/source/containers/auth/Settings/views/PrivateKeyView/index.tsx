@@ -9,6 +9,7 @@ import { useController, useCopyClipboard } from 'hooks/index';
 import { ellipsis } from 'containers/auth/helpers';
 import IWalletState from 'state/wallet/types';
 import { RootState } from 'state/store';
+import CryptoJS from 'crypto-js';
 
 import styles from './index.scss';
 
@@ -45,7 +46,7 @@ const PrivateKeyView: FC<IPrivateKeyView> = ({ id }) => {
 
   const onSubmit = (data: any) => {
     if (controller.wallet.checkPassword(data.password)) {
-      setPrivKey(controller.wallet.account.decryptAES(accounts[Number(id)].xprv, String(id)));
+      setPrivKey(controller.wallet.account.decryptAES(accounts[Number(id)].xprv, CryptoJS.SHA3(data.password).toString()));
       setChecked(true);
       return;
     }
