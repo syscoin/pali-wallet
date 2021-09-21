@@ -22,12 +22,6 @@ export const sendMessage = (
             : event.data[eventReceivedDetails.eventResult]
         );
 
-        console.log(
-          'event result',
-          eventReceivedDetails,
-          event.data[eventReceivedDetails.eventResult]
-        );
-
         window.removeEventListener('message', callback);
 
         return true;
