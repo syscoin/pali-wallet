@@ -107,12 +107,10 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   }, [data]);
 
   useEffect(() => {
-    console.log('data to render', dataToRender, itemStringToClearData)
     dataToRender.map((data) => {
       if (data.label === 'assetGuid' && itemStringToClearData !== 'newSPT' && itemStringToClearData !== 'mintNFT') {
         controller.wallet.account.getDataAsset(data.value).then((response: any) => {
           setAssetData(response);
-          console.log('response asset data', response)
         })
       }
     })
@@ -215,8 +213,6 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
           setTimeout(() => {
             handleCancelTransactionOnSite();
           }, 4000);
-
-          console.log(error);
         });
 
       setTimeout(() => {

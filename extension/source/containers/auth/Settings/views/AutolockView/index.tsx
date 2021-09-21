@@ -32,7 +32,6 @@ const AutolockView = () => {
   const alert = useAlert();
 
   const onSubmit = async (data: any) => {
-    console.log('minutes', data)
     setLoading(true);
     controller.wallet.account.setAutolockTimer(data.minutes);
     setConfirmed(true);

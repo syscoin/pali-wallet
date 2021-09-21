@@ -108,7 +108,6 @@ const ConnectionsController = () => {
         event.data.type === 'WALLET_UPDATED' &&
         event.data.target === 'connectionsController'
       ) {
-        console.log('event on wallet updated', event.data);
         onUpdated();
       }
     });
@@ -379,9 +378,7 @@ const ConnectionsController = () => {
         notaryAddress,
         payoutAddress,
       } = items;
-
-      console.log('items create nft', items)
-
+      
       await sendMessage(
         {
           type: 'CREATE_AND_ISSUE_NFT',

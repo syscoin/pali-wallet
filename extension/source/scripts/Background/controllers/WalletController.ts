@@ -266,7 +266,6 @@ const WalletController = (): IWalletController => {
     }
 
     if (accountsToBeRemoved) {
-      console.log('accounts to be removed', accountsToBeRemoved)
       for (const id of Object.values(accountsToBeRemoved)) {
         store.dispatch(removeConnection({ accountId: id }));
         store.dispatch(removeAccount(Number(id)));
@@ -275,8 +274,6 @@ const WalletController = (): IWalletController => {
         openNotificationsPopup('Hardware Wallet removed due to network switch', 'Your device is being disconnected');
       }
     }
-
-    console.log('accounts after remove trezor', accounts)
 
     account.getPrimaryAccount(encriptedPassword, sjs);
 
@@ -345,9 +342,6 @@ const WalletController = (): IWalletController => {
       }
 
       address = account0.getAddress(receivingIndex + 1);
-
-      console.log("New address")
-      console.log(address)
     } else {
       sjs.Signer.Signer.receivingIndex = -1;
 

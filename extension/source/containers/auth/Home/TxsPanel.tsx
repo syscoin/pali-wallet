@@ -173,7 +173,6 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                         setTxidSelected(tx.txid);
                         setTxType(tx.tokenType);
                         getTransactionData(tx.txid).then((response: any) => {
-                          console.log('promiseresponse tx', response)
                           setTx(response);
                         })
                       }}>

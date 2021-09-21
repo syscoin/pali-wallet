@@ -102,8 +102,6 @@ const SignTransaction: FC<ISignTransaction> = ({
         }
       })
       .catch((error: any) => {
-        console.log(error);
-
         if (error) {
           alert.removeAll();
           alert.error("Can't sign transaction. Try again later.");

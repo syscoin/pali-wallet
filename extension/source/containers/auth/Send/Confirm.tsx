@@ -44,12 +44,8 @@ const SendConfirm = () => {
   const [tokenData, setTokenData] = useState<any>({});
 
   useEffect(() => {
-    console.log('temptx', tempTx);
-
     if (tempTx?.token) {
       const selectedAsset = accounts.find(element => element.id === activeAccountId)!.assets.filter((asset: Assets) => asset.assetGuid == tempTx?.token);
-
-      console.log('selected asset new', selectedAsset)
 
       setTokenData(selectedAsset[0]);
     }

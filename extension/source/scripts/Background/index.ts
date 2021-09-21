@@ -96,8 +96,6 @@ const observeStore = async (store: any) => {
                   connected: false
                 }
               });
-
-              console.log('wallet update sent to the webpage')
             } catch (error) {
               console.log('error', error);
             }
@@ -198,8 +196,6 @@ const restartLockTimeout = () => {
       && !signingPSBT
       && !mintNFT
     ) {
-      console.log('locking wallet automatically');
-
       window.controller.wallet.logOut();
 
       setTimeout(() => closePopup(), 2000);
@@ -263,8 +259,6 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'TRANSACTION_RESPONSE' && target == 'background') {
-        console.log('response transaction', request, tabId)
-
         runtimeSendMessageToTabs({ tabId, messageDetails: { type: 'TRANSACTION_RESPONSE', target: 'contentScript', response: request.response } });
 
         const interval = setInterval(async () => {
@@ -274,11 +268,7 @@ browser.runtime.onInstalled.addListener(async () => {
             console.log('updating tokens state using txid: ', request.response.txid)
 
             if (data.confirmations > 0) {
-              console.log('confirmations > 0')
-
               window.controller.wallet.account.updateTokensState().then(() => {
-                console.log('update tokens after transaction in background');
-
                 window.controller.wallet.account.setHDSigner(store.getState().wallet.activeAccountId);
               });
 
@@ -672,8 +662,6 @@ browser.runtime.onInstalled.addListener(async () => {
           assetGuid,
           amount: Number(amount)
         });
-
-        console.log('sending data asset', amount, assetGuid)
 
         store.dispatch(issueAsset(true));
 

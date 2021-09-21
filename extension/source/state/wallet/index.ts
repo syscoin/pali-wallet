@@ -108,8 +108,6 @@ const WalletState = createSlice({
         return;
       }
 
-      console.log('push new account item:', accountId);
-
       state.walletTokens.push(action.payload);
     },
     clearAllTransactions(state: IWalletState) {
@@ -416,12 +414,6 @@ const WalletState = createSlice({
     ) {
       const indexOf = state.accounts.findIndex(
         (element: IAccountState) => element.id === action.payload.id
-      );
-
-      console.log(
-        'account index and transactions',
-        state.accounts[indexOf],
-        action.payload.txs
       );
 
       state.accounts[indexOf].transactions = action.payload.txs;

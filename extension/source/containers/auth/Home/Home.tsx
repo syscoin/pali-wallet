@@ -50,38 +50,19 @@ const Home = () => {
   const [currentTabURL, setCurrentTabURL] = useState<string>(currentURL);
 
   useEffect(() => {
-    window.addEventListener('message', (event) => {
-      console.log('event message', event);
-    });
-
     browser.windows.getAll({ populate: true }).then((windows) => {
       for (const window of windows) {
-        console.log(
-          'get views',
-          browser.extension.getViews({ windowId: window.id })
-        );
-      }
-    });
-
-    browser.windows.getAll({ populate: true }).then((windows) => {
-      for (const window of windows) {
-        console.log('window tabs', window.tabs);
         const views = browser.extension.getViews({ windowId: window.id });
 
         if (views) {
-          console.log(views);
-
           browser.tabs
             .query({ active: true, currentWindow: true })
             .then((tabs) => {
-              console.log('current url', tabs[0]);
               setCurrentTabURL(String(tabs[0].url));
             });
 
           return;
         }
-
-        console.log('views window id', views, window.id);
       }
     });
   }, [!controller.wallet.isLocked()]);
@@ -205,7 +186,6 @@ const Home = () => {
                 value={String(activeAccountId)}
                 options={accounts}
                 onChange={(val: string) => {
-                  console.log('account selected', val);
                   controller.wallet.switchWallet(Number(val));
                   controller.wallet.account.watchMemPool(accounts[Number(val)]);
                 }}

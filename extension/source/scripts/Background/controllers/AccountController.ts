@@ -202,7 +202,6 @@ const AccountController = (actions: {
   }
 
   const setNewXpub = (id: number, xpub: string, xprv: string, key: string) => {
-    console.log('new xprv', CryptoJS.AES.encrypt(xprv, String(key)).toString(), xprv, 'key', key)
     store.dispatch(
       updateAccountXpub({
         id,
@@ -299,7 +298,6 @@ const AccountController = (actions: {
     if (connectedAccount.isTrezorWallet) {
       //TODO: Implement changeAddress for trezor wallets 
       //only when trezor enable syscoin on mainnet
-      console.log('Trezor new change address');
       let addr: string = 'Error: Failed to fetch trezor change address'
       const inter = await getNewChangeAddress(true);
       if (inter !== null) {
@@ -310,7 +308,6 @@ const AccountController = (actions: {
 
     else {
       let changeAddress: string = '';
-      console.log('getting new change Address')
       if (connectedAccount.id === activeAccountId) {
         changeAddress = (await sysjs.Signer.getNewChangeAddress())
         console.log(changeAddress)
@@ -341,7 +338,6 @@ const AccountController = (actions: {
     }
 
     const { accounts }: IWalletState = store.getState().wallet;
-    console.log('accounts', accounts)
 
     return await Promise.all(accounts.map(async (account: IAccountState) => {
       const assetsData: any = {};
@@ -397,7 +393,6 @@ const AccountController = (actions: {
                       }
                     });
                   } catch (error) {
-                    console.log('Get data asset error: ');
                     console.log(error);
                   }
                 }
@@ -897,7 +892,6 @@ const AccountController = (actions: {
   }
 
   const setDataFromPageToCreateNewSPT = (data: ISPTPageInfo) => {
-    console.log('data from page to create spt', data)
     dataFromPageToCreateSPT = data;
   }
 
@@ -906,12 +900,10 @@ const AccountController = (actions: {
   }
 
   const setDataFromPageToMintSPT = (data: ISPTIssuePage) => {
-    console.log('new mint page spt', data)
     dataFromPageToMintSPT = data;
   }
 
   const setDataFromWalletToMintSPT = (data: ISPTIssueWallet) => {
-    console.log('new  wallet spt', data)
     dataFromWalletToMintSPT = data;
   }
 
@@ -924,12 +916,10 @@ const AccountController = (actions: {
   }
 
   const setDataFromPageToUpdateAsset = (data: UpdateTokenPageInfo) => {
-    console.log('data from page update asset item', data)
     dataFromPageToUpdateAsset = data;
   }
 
   const setDataFromWalletToUpdateAsset = (data: UpdateTokenWalletInfo) => {
-    console.log('data from wallet update asset item', data)
     dataFromWalletToUpdateAsset = data;
   }
 
@@ -943,7 +933,6 @@ const AccountController = (actions: {
 
   const createSPT = (spt: ISPTInfo) => {
     newSPT = spt;
-    console.log('new spt', spt)
 
     return true;
   }
@@ -951,13 +940,10 @@ const AccountController = (actions: {
   const setNewIssueNFT = (nft: any) => {
     issueNFTItem = nft;
 
-    console.log('new nft issue', nft)
-
     return true;
   }
 
   const issueSPT = (spt: ISPTIssue) => {
-    console.log('new mint spt', spt)
     mintSPT = spt;
 
     return true;
@@ -1126,6 +1112,8 @@ const AccountController = (actions: {
 
                 if (!pendingTx) {
                   console.log('Could not create transaction, not enough funds?');
+
+                  return;
                 }
 
                 const txInfo = pendingTx.extractTransaction().getId();
@@ -1260,7 +1248,9 @@ const AccountController = (actions: {
       const pendingTx = await sysjs.assetSend(txOpts, assetMap, null, feeRate);
 
       if (!pendingTx) {
-        console.log('Could not create transaction, not enough funds?')
+        console.log('Could not create transaction, not enough funds?');
+
+        return;
       }
 
       txInfo = pendingTx.extractTransaction().getId();
@@ -1376,6 +1366,8 @@ const AccountController = (actions: {
 
                 if (!pendingTx) {
                   console.log('Could not create transaction, not enough funds?')
+
+                  return;
                 }
 
                 txInfo = pendingTx.extractTransaction().getId();
@@ -1384,8 +1376,6 @@ const AccountController = (actions: {
 
                 theNFTTx = txInfo;
               } catch (error) {
-                console.log('error creating nft', error);
-
                 parentConfirmed = false;
 
                 return error;
@@ -1425,7 +1415,7 @@ const AccountController = (actions: {
                 const psbt = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, issuer, feeRate);
 
                 if (!psbt) {
-                  console.log('Could not create transaction, not enough funds?')
+                  console.log('Could not create transaction, not enough funds?');
                 }
 
                 clearInterval(interval);
@@ -1435,12 +1425,8 @@ const AccountController = (actions: {
                 });
               }
 
-              console.log('confirming child transactions', theNFTTx, theNFTTx.confirmations);
-
               return;
             }
-
-            console.log('confirming transactions', newParentTx, newParentTx.confirmations);
           }, 16000);
         });
       } catch (error) {
@@ -1483,8 +1469,6 @@ const AccountController = (actions: {
       }]
     ]);
 
-    console.log('confirming mint nft', item)
-
     try {
       sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
@@ -1502,8 +1486,6 @@ const AccountController = (actions: {
         txid: txInfo
       }
     } catch (error) {
-      console.log('error minting nft', error);
-
       return error;
     }
   }
@@ -1585,7 +1567,6 @@ const AccountController = (actions: {
             return
           }
           catch (e) {
-            console.log('Error processing tx: ' + e)
             return;
           }
         } else {
@@ -1603,32 +1584,18 @@ const AccountController = (actions: {
 
         const txOpts = { rbf };
         let txInfo;
-        console.log('Checking account:')
-        console.log(account)
         if (account.isTrezorWallet) {
-          console.log('checking trezor emission')
           const changeAddress = await getNewChangeAddress(false);
-          console.log('New change address')
-          console.log(changeAddress)
           const txData = await sysjs.createTransaction(txOpts, changeAddress, outputsArray, new sys.utils.BN(fee * 1e8), account.xpub);
-          console.log(txData)
           if (!txData) {
             console.log('Could not create transaction, not enough funds?')
           }
           if (TrezorSigner === null || TrezorSigner === undefined) {
-            console.log('Recreating empty signer obj')
             TrezorSigner = new sys.utils.TrezorSigner();
             new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
           }
           try {
-            // TrezorSigner.sign(txData.psbt).then((txInfo: string) => {
-            console.log('trezor tx')
-
-            // const trezorOutput = TrezorSigner.convertToTrezorFormat(txData.psbt);
-            // console.log(trezorOutput)
             sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner).then(() => {
-              //Application breaks if trezor propagate txInfo
-              //updateTransactionData('confirmingTransaction', txInfo); 
               const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
 
               watchMemPool(acc);
@@ -1664,7 +1631,6 @@ const AccountController = (actions: {
     const confirmTempTx = () => {
       return new Promise((resolve, reject) => {
         handleTransactions(tempTx, confirmTransactionTx).then((response) => {
-          console.log('response confirm temptx', response)
           resolve(response);
         }).catch((error) => {
           reject(error);
@@ -1782,6 +1748,8 @@ const AccountController = (actions: {
 
       if (!pendingTx || !txInfo) {
         console.log('Could not create transaction, not enough funds?');
+
+        return;
       }
 
       updateTransactionData('updatingAsset', txInfo);
@@ -1796,14 +1764,10 @@ const AccountController = (actions: {
     const confirmUpdateAssetTransaction = () => {
       return new Promise((resolve, reject) => {
         handleTransactions(updateAssetItem, confirmUpdateAsset).then((response) => {
-          console.log('transaction ok response', response)
-
           resolve(response)
 
           updateAssetItem = null;
         }).catch((error) => {
-          console.log('error', error)
-
           reject(error)
 
           updateAssetItem = null;

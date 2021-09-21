@@ -104,7 +104,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
         history.push('/send/confirm');
       } catch (error) {
-        console.log(error);
         alert.removeAll();
         alert.error('An internal error has occurred.');
       }
