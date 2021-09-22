@@ -30,7 +30,7 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#', showName = true
   const showView = useSettingsView();
   const isUnlocked = !controller.wallet.isLocked();
   const [showed, showSettings] = useState<boolean>(false);
-  const { encriptedMnemonic }: IWalletState = useSelector(
+  const { encriptedMnemonic, networks }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
   const network = useSelector(
@@ -82,13 +82,10 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#', showName = true
         <div className={styles.network}>
           <Select
             showSettings={showSettings}
-            value={network || SYS_NETWORK.main.id}
+            value={network || networks.main.id}
             fullWidth
             onChange={handleChangeNetwork}
-            options={[
-              { [SYS_NETWORK.main.id]: SYS_NETWORK.main.label },
-              { [SYS_NETWORK.testnet.id]: SYS_NETWORK.testnet.label },
-            ]}
+            options={Object.values(networks)}
           />
         </div>
       )}

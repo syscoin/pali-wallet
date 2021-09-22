@@ -83,4 +83,12 @@ export default interface IWalletState {
   updatingAsset: boolean;
   walletTokens: IWalletTokenState[];
   timer: number;
+  networks: {
+    [networkId: string]: {
+      beUrl: string,
+      id: string,
+      label: string,
+    },
+  };
+  currentBlockbookURL: string;
 }

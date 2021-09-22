@@ -12,6 +12,9 @@ import { MAIN_VIEW } from '../routes';
 
 import styles from './index.scss';
 import { SYS_NETWORK } from 'constants/index';
+import IWalletState from 'state/wallet/types';
+import { useSelector } from 'react-redux';
+import { RootState } from 'state/store';
 
 const ConfigureNetworkView = () => {
   const controller = useController();
@@ -24,6 +27,10 @@ const ConfigureNetworkView = () => {
       blockbookURL: yup.string().required(),
     }),
   });
+
+  const { networks }: IWalletState = useSelector(
+    (state: RootState) => state.wallet
+  );
 
   const onSubmit = async (data: any) => {
     setLoading(true);
@@ -79,7 +86,7 @@ const ConfigureNetworkView = () => {
       ) : (
         <div className={styles.configureNetworkWrapper}>
           <ul className={styles.networksList}>
-            {Object.values(SYS_NETWORK).map((network: any) => {
+            {Object.values(networks).map((network: any) => {
               return (
                 <li
                   key={network.id}
@@ -106,7 +113,7 @@ const ConfigureNetworkView = () => {
             theme="btn-gradient-primary"
             variant={styles.button}
           >
-            Configure new network
+            Custom network
           </Button>
         </div>
       )}

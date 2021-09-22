@@ -3,6 +3,8 @@ import { FC, ReactElement, ReactNode, ChangeEvent } from 'react';
 import MUISelect from '@material-ui/core/Select';
 import MUIMenuItem from '@material-ui/core/MenuItem';
 import ArrowDownIcon from '@material-ui/icons/KeyboardArrowDown';
+import Settings from '@material-ui/icons/Settings';
+import Icon from 'components/Icon';
 
 import styles from './Select.scss';
 import { useSettingsView } from 'hooks/index';
@@ -58,14 +60,13 @@ const Select: FC<ISelect> = ({
         }}
       >
         {options.map((option: IOption) => {
-          const value = Object.keys(option)[0];
-          const label = option[value];
           return (
-            <MUIMenuItem key={value} value={value}>
-              {label}
+            <MUIMenuItem key={option.id} value={option.id}>
+              {option.label}
             </MUIMenuItem>
           );
         })}
+
         <MUIMenuItem
           onClick={() => {
             showSettings(true)
@@ -73,9 +74,10 @@ const Select: FC<ISelect> = ({
           }}
           key="configure"
           value="configure"
-          style={{ borderTop: "1px solid black", paddingTop: ".5rem" }}
+          style={{ borderBottom: "1px solid transparent", paddingTop: ".7rem", color: "#4ca1cf", marginRight: ".5rem" }}
         >
-          Configure network
+          <Icon Component={Settings} />
+          <span style={{ marginLeft: "-6px" }}>Settings</span>
         </MUIMenuItem>
       </MUISelect>
     </div>

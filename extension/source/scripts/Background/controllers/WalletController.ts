@@ -285,7 +285,7 @@ const WalletController = (): IWalletController => {
   
 
   const switchNetwork = async (networkId: string) => {
-    store.dispatch(changeActiveNetwork(SYS_NETWORK[networkId]!.id));
+    store.dispatch(changeActiveNetwork({ id: SYS_NETWORK[networkId]!.id, beUrl: SYS_NETWORK[networkId]!.beUrl }));
 
     if (SYS_NETWORK[networkId]!.id === 'main') {
       setHDSigner({ mnemonic: HDsigner.mnemonic, password: null, isTestnet: false });
@@ -297,6 +297,7 @@ const WalletController = (): IWalletController => {
 
       return;
     }
+    
     setHDSigner({ mnemonic: HDsigner.mnemonic, password: null, isTestnet: true });
     setSjs({ SignerIn: HDsigner, blockbookURL: SYS_NETWORK.testnet.beUrl });
 

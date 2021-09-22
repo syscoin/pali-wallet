@@ -37,12 +37,40 @@ const initialState: IWalletState = {
     connections: [],
   },
   timer: 5,
+  currentBlockbookURL: 'https://blockbook.elint.services/',
+  networks: {
+    main: {
+      id: 'main',
+      label: 'Main Network',
+      beUrl: 'https://blockbook.elint.services/',
+    },
+    testnet: {
+      id: 'testnet',
+      label: 'Test Network',
+      beUrl: 'https://blockbook-dev.elint.services/',
+    },
+  }
 };
 
 const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
+    updateBlockbookURL(state: IWalletState, action: PayloadAction<string>) {
+      return {
+        ...state,
+        currentBlockbookURL: action.payload
+      };
+    },
+    addNewNetwork(state: IWalletState, action: PayloadAction<any>) {
+      return {
+        ...state,
+        networks: {
+          ...state.networks,
+          [action.payload.id]: action.payload
+        },
+      };
+    },
     setTimer(state: IWalletState, action: PayloadAction<number>) {
       return {
         ...state,
@@ -405,8 +433,9 @@ const WalletState = createSlice({
     changeAccountActiveId(state: IWalletState, action: PayloadAction<number>) {
       state.activeAccountId = action.payload;
     },
-    changeActiveNetwork(state: IWalletState, action: PayloadAction<string>) {
-      state.activeNetwork = action.payload;
+    changeActiveNetwork(state: IWalletState, action: PayloadAction<any>) {
+      state.activeNetwork = action.payload.id;
+      state.currentBlockbookURL = action.payload.beUrl;
     },
     updateTransactions(
       state: IWalletState,
@@ -463,6 +492,7 @@ export const {
   signPSBTState,
   setIssueNFT,
   setTimer,
+  addNewNetwork
 } = WalletState.actions;
 
 export default WalletState.reducer;

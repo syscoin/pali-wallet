@@ -64,12 +64,13 @@
     font-size: 12px;
     line-height: 24px;
     display: flex;
+    justify-content: center;
     align-items: center;
     letter-spacing: 0.03em;
     color: $white;
     font-family: $roboto;
     min-height: initial;
-    height: 24px;
     transition: all 0.3s;
+    border-bottom: 1px solid #1b2f50;
   }
 }
