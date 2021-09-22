@@ -90,6 +90,8 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
         return 'Connect hardware wallet';
       case routes.AUTOLOCK_VIEW:
         return 'Auto lock timer';
+      case routes.CONFIGURE_NETWORK_VIEW:
+        return 'Configure network';
       default:
         return 'Settings';
     }
@@ -115,6 +117,8 @@ const Settings: FC<ISettings> = ({ open, onClose }) => {
         return <Views.ConnectHardwareWalletView />;
       case routes.AUTOLOCK_VIEW:
         return <Views.AutolockView />;
+      case routes.CONFIGURE_NETWORK_VIEW:
+        return <Views.ConfigureNetworkView />;
       default:
         return <Views.MainView onChange={(id: string) => setShowedId(id)} />;
     }

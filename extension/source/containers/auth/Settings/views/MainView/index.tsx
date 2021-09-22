@@ -2,6 +2,7 @@ import React, { FC } from 'react';
 import { useSelector } from 'react-redux';
 import { useHistory } from 'react-router-dom';
 import AddIcon from '@material-ui/icons/Add';
+import LanguageIcon from '@material-ui/icons/Language';
 import SettingsIcon from '@material-ui/icons/Settings';
 import LogOutIcon from '@material-ui/icons/ExitToApp';
 import SettingsInputHdmiIcon from '@material-ui/icons/SettingsInputHdmi';
@@ -14,6 +15,7 @@ import AccountSelect from 'components/AccountSelect';
 
 import {
   ACCOUNT_VIEW,
+  CONFIGURE_NETWORK_VIEW,
   CONNECT_HARDWARE_WALLET_VIEW,
   GENERAL_VIEW,
   NEW_ACCOUNT_VIEW,
@@ -66,6 +68,14 @@ const MainView: FC<IMainView> = ({ onChange }) => {
       >
         <Icon Component={AddIcon} />
         Create new account
+      </section>
+
+      <section
+        className={styles.new}
+        onClick={() => showView(CONFIGURE_NETWORK_VIEW)}
+      >
+        <Icon Component={LanguageIcon} />
+        Configure network
       </section>
 
       <section

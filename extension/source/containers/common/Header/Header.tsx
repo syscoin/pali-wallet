@@ -81,6 +81,7 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#', showName = true
       ) : (
         <div className={styles.network}>
           <Select
+            showSettings={showSettings}
             value={network || SYS_NETWORK.main.id}
             fullWidth
             onChange={handleChangeNetwork}

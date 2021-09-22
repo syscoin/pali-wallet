@@ -45,10 +45,12 @@
 
 :global(.MuiPaper-root) {
   background-color: transparent !important;
+  left: 122px;
 }
 
 :global(.MuiMenu-paper) {
   box-shadow: none !important;
+  left: 122px;
 }
 
 :global(.MuiMenu-list) {

@@ -5,12 +5,16 @@ import MUIMenuItem from '@material-ui/core/MenuItem';
 import ArrowDownIcon from '@material-ui/icons/KeyboardArrowDown';
 
 import styles from './Select.scss';
+import { useSettingsView } from 'hooks/index';
+
+import { CONFIGURE_NETWORK_VIEW } from 'containers/auth/Settings/views/routes';
 
 interface IOption {
   [key: string]: string;
 }
 
 interface ISelect {
+  showSettings?: any;
   disabled?: boolean;
   fullWidth?: boolean;
   input?: ReactElement;
@@ -32,7 +36,10 @@ const Select: FC<ISelect> = ({
   fullWidth,
   onChange,
   disabled = false,
+  showSettings,
 }) => {
+  const showView = useSettingsView();
+
   return (
     <div className={styles.select}>
       <MUISelect
@@ -59,6 +66,17 @@ const Select: FC<ISelect> = ({
             </MUIMenuItem>
           );
         })}
+        <MUIMenuItem
+          onClick={() => {
+            showSettings(true)
+            showView(CONFIGURE_NETWORK_VIEW)
+          }}
+          key="configure"
+          value="configure"
+          style={{ borderTop: "1px solid black", paddingTop: ".5rem" }}
+        >
+          Configure network
+        </MUIMenuItem>
       </MUISelect>
     </div>
   );
