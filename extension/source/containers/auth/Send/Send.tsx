@@ -3,7 +3,6 @@ import {
   ChangeEvent,
   useState,
   useCallback,
-  useMemo,
   useEffect,
   FC,
 } from 'react';
@@ -56,9 +55,24 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const [checked, setChecked] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
   const [expanded, setExpanded] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
+  const [isValidAddress, setIsValidAddress] = useState(false);
 
-  const isValidAddress = useMemo(() => {
-    return controller.wallet.account.isValidSYSAddress(address, activeNetwork);
+  useEffect(() => {
+    setLoading(true);
+
+    controller.wallet.account.isValidSYSAddress(address).then((response: boolean) => {
+      if (response) {
+        setLoading(false);
+        setIsValidAddress(true);
+
+        return;
+      }
+
+      setLoading(false);
+      setIsValidAddress(false);
+
+    })
   }, [address]);
 
   const addressInputClass = clsx(styles.input, styles.address, {
@@ -110,7 +124,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
       return;
     }
-    
+
     controller.wallet.account.updateTempTx({
       fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
       toAddress: address,
@@ -138,7 +152,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       if (Number(event.target.value) > 0.1) {
         alert.removeAll();
         alert.error(`Error: Fee too high, maximum 0.1 SYS.`, { timeout: 2000 });
-  
+
         return;
       }
     },
@@ -185,7 +199,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const checkAssetBalance = () => {
     return Number(selectedAsset ?
       (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
-      accounts.find(element => element.id === activeAccountId)!.balance.toFixed(8))
+      accounts.find(element => element.id === activeAccountId)!.balance.toFixed(8) || 0)
   }
 
   const showAssetBalance = () => {
@@ -222,18 +236,26 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 <label htmlFor="address">Recipient Address</label>
               </div>
 
-              <img
-                src={VerifiedIcon}
-                alt="checked"
-                className={statusIconClass}
-              />
+              {loading ? (
+                <div className={styles.checkLoading}>
+                  <Spinner size={12} className={styles.spinnerCheck} />
+                </div>
+              ) : (
+                <div>
+                  <img
+                    src={VerifiedIcon}
+                    alt="checked"
+                    className={statusIconClass}
+                  />
 
-              <img
-                src={Close}
-                alt="checked"
-                onClick={() => setAddress("")}
-                className={address && !isValidAddress ? styles.statusIsNotValidClass : styles.hideCloseIcon}
-              />
+                  <img
+                    src={Close}
+                    alt="checked"
+                    onClick={() => setAddress("")}
+                    className={address && !isValidAddress ? styles.statusIsNotValidClass : styles.hideCloseIcon}
+                  />
+                </div>
+              )}
 
               <TextInput
                 placeholder="Enter a valid address"

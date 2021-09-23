@@ -1,5 +1,3 @@
-import { SYS_NETWORK } from 'constants/index';
-
 import React, { FC, useState , ChangeEvent } from 'react';
 import { useSelector } from 'react-redux';
 import { useHistory } from 'react-router-dom';

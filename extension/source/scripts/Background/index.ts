@@ -481,7 +481,7 @@ browser.runtime.onInstalled.addListener(async () => {
       if (type == 'CHECK_ADDRESS' && target == 'background') {
         checkToCallPrivateMethods();
 
-        const isValidSYSAddress = window.controller.wallet.account.isValidSYSAddress(request.messageData, store.getState().wallet.activeNetwork);
+        const isValidSYSAddress = window.controller.wallet.account.isValidSYSAddress(request.messageData);
 
         browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'CHECK_ADDRESS',
@@ -606,7 +606,7 @@ browser.runtime.onInstalled.addListener(async () => {
           throw new Error('invalid initial supply value');
         }
 
-        if (!window.controller.wallet.account.isValidSYSAddress(receiver, store.getState().wallet.activeNetwork)) {
+        if (!window.controller.wallet.account.isValidSYSAddress(receiver)) {
           throw new Error('invalid receiver address');
         }
 
@@ -702,7 +702,7 @@ browser.runtime.onInstalled.addListener(async () => {
           throw new Error('invalid total shares value');
         }
 
-        if (!window.controller.wallet.account.isValidSYSAddress(issuer, store.getState().wallet.activeNetwork)) {
+        if (!window.controller.wallet.account.isValidSYSAddress(issuer)) {
           throw new Error('invalid receiver address');
         }
 
@@ -790,7 +790,7 @@ browser.runtime.onInstalled.addListener(async () => {
           newOwner
         } = request.messageData;
 
-        if (!window.controller.wallet.account.isValidSYSAddress(newOwner, store.getState().wallet.activeNetwork)) {
+        if (!window.controller.wallet.account.isValidSYSAddress(newOwner)) {
           throw new Error('invalid new owner address');
         }
 

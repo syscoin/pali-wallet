@@ -1,4 +1,4 @@
-import { sys, SYS_NETWORK } from 'constants/index';
+import { sys } from 'constants/index';
 import { generateMnemonic, validateMnemonic } from 'bip39';
 import { fromZPrv, fromZPub } from 'bip84';
 import {
@@ -79,8 +79,10 @@ const WalletController = (): IWalletController => {
       return;
     }
 
+    const { networks } = store.getState().wallet;
+
     setHDSigner({ mnemonic, password: null, isTestnet: false });
-    setSjs({ SignerIn: HDsigner, blockbookURL: SYS_NETWORK.main.beUrl });
+    setSjs({ SignerIn: HDsigner, blockbookURL: networks.main.beUrl });
 
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
@@ -154,7 +156,7 @@ const WalletController = (): IWalletController => {
 
       if (!HDsigner || !sjs) {
         const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
-        const backendURl: string = store.getState().wallet.activeNetwork === 'testnet' ? SYS_NETWORK.testnet.beUrl : SYS_NETWORK.main.beUrl;
+        const backendURl: string = store.getState().wallet.currentBlockbookURL;
 
         setHDSigner({ mnemonic: decriptedMnemonic, password: null, isTestnet, networks: sys.utils.syscoinNetworks, SLIP44: 57, pubTypes: sys.utils.syscoinZPubTypes });
         setSjs({ SignerIn: HDsigner, blockbookURL: backendURl });
@@ -292,18 +294,17 @@ const WalletController = (): IWalletController => {
 
     try {
       const response = await axios.get(`${networks[networkId].beUrl}/api/v2`);
+      const { blockbook, backend } = response.data;
 
-      if (response && response.data) {
+      if (response && blockbook && backend) {
         let isTestnet: boolean = false;
 
-        if (response.data.blockbook.coin === 'Syscoin' || response.data.blockbook.coin === 'Syscoin Testnet') {
-          console.log('VALIDAAAA')
-
-          if (response.data.backend.chain === 'main') {
+        if (blockbook.coin === 'Syscoin' || blockbook.coin === 'Syscoin Testnet') {
+          if (backend.chain === 'main') {
             isTestnet = false;
           }
 
-          if (response.data.backend.chain === 'test') {
+          if (backend.chain === 'test') {
             isTestnet = true;
           }
 
@@ -318,7 +319,8 @@ const WalletController = (): IWalletController => {
         return;
       }
     } catch (error) {
-      console.log('error invalid network')
+      console.log('error invalid network');
+
       throw new Error('Invalid network.');
     }
   };

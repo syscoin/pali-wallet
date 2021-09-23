@@ -1,23 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import clsx from 'clsx';
 import { useForm } from 'react-hook-form';
 import * as yup from 'yup';
 import TextInput from 'components/TextInput';
 import Button from 'components/Button';
-import { useController, useCopyClipboard, useSettingsView } from 'hooks/index';
-import { ellipsis, formatURL } from 'containers/auth/helpers';
+import { useController } from 'hooks/index';
+import { formatURL } from 'containers/auth/helpers';
 import Spinner from '@material-ui/core/CircularProgress';
 
-import { MAIN_VIEW } from '../routes';
-
 import styles from './index.scss';
-import { SYS_NETWORK } from 'constants/index';
 import IWalletState from 'state/wallet/types';
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
+import axios from 'axios';
+import { useAlert } from 'react-alert';
 
 const ConfigureNetworkView = () => {
   const controller = useController();
+  const alert = useAlert();
   const [selected, setSelected] = useState('');
   const [loading, setLoading] = useState(false);
   const [customNetwork, setCustomNetwork] = useState(false);
@@ -33,20 +33,32 @@ const ConfigureNetworkView = () => {
     (state: RootState) => state.wallet
   );
 
-  const onSubmit = async ({ name, blockbookURL}: any) => {
+  const onSubmit = async ({ name, blockbookURL }: any) => {
     setLoading(true);
 
-    controller.wallet.account.updateNetworkData({ id: selected, label: name, beUrl: blockbookURL });
+    try {
+      const response = await axios.get(`${blockbookURL}/api/v2`);
+      const { coin } = response.data.blockbook;
 
-    setSelected('');
-  };
+      if (response && coin) {
+        if (coin === 'Syscoin' || coin === 'Syscoin Testnet') {
+          controller.wallet.account.updateNetworkData({ id: selected ? selected : name.toString().toLowerCase(), label: name, beUrl: blockbookURL });
 
-  const submitCustomNetwork = async ({ name, blockbookURL}: any) => {
-    setLoading(true);
-    console.log('data on submit custom network', name, blockbookURL)
-    controller.wallet.account.updateNetworkData({ id: name.toString().toLowerCase(), label: name, beUrl: blockbookURL });
+          setLoading(false);
+          setSelected('');
+          setCustomNetwork(false);
 
-    setCustomNetwork(false);
+          return;
+        }
+
+        throw new Error('Invalid blockbook URL.');
+      }
+    } catch (error) {
+      alert.removeAll();
+      alert.error('Invalid blockbook URL.', { timeout: 2000 });
+
+      setLoading(false);
+    }
   };
 
   const defaultNetworks = ['main', 'testnet'];
@@ -100,7 +112,7 @@ const ConfigureNetworkView = () => {
         <div>
           {customNetwork ? (
             <div>
-              <form onSubmit={handleSubmit(submitCustomNetwork)} className={styles.configureNetworkWrapper}>
+              <form onSubmit={handleSubmit(onSubmit)} className={styles.configureNetworkWrapper}>
                 <div className={styles.column}>
                   <TextInput
                     type="text"
@@ -135,8 +147,11 @@ const ConfigureNetworkView = () => {
                     type="submit"
                     theme="btn-outline-primary"
                     variant={styles.button}
+                    disabled={loading}
                   >
-                    Save
+                    {loading ? (
+                      <Spinner size={18} />
+                    ) : 'Save'}
                   </Button>
                 </div>
               </form>
@@ -171,8 +186,11 @@ const ConfigureNetworkView = () => {
                 theme="btn-gradient-primary"
                 variant={styles.button}
                 onClick={() => setCustomNetwork(true)}
+                disabled={loading}
               >
-                Custom network
+                {loading ? (
+                  <Spinner size={18} />
+                ) : 'Custom network'}
               </Button>
             </div>
           )}

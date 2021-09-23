@@ -36,6 +36,7 @@ import {
   UpdateTokenWalletInfo
 } from '../../types';
 import CryptoJS from 'crypto-js';
+import axios from 'axios';
 // import axios from 'axios';
 
 const syscointx = require('syscointx-js');
@@ -843,21 +844,39 @@ const AccountController = (actions: {
     store.dispatch(updateSwitchNetwork(false))
   };
 
-  const isValidSYSAddress = (address: string, network: string) => {
+  const isValidSYSAddress = async (address: string) => {
     if (address && typeof address === 'string') {
       try {
         resAddress = bech32.decode(address);
 
-        if (network === 'main' && resAddress.prefix === 'sys') {
-          encode = bech32.encode(resAddress.prefix, resAddress.words);
+        const response = await axios.get(`${store.getState().wallet.currentBlockbookURL}/api/v2`);
+        const { blockbook, backend } = response.data;
 
-          return encode === address.toLowerCase();
-        }
+        console.log('response axios blockbook', response)
 
-        if (network === 'testnet' && resAddress.prefix === 'tsys') {
-          encode = bech32.encode(resAddress.prefix, resAddress.words);
+        if (response && blockbook && backend) {
+          if (blockbook.coin === 'Syscoin' || blockbook.coin === 'Syscoin Testnet') {
+            console.log('sys or sys testnet')
 
-          return encode === address.toLowerCase();
+            if (backend.chain === 'main' && resAddress.prefix === 'sys') {
+              encode = bech32.encode(resAddress.prefix, resAddress.words);
+
+              console.log('main address',encode === address.toLowerCase())
+
+              return encode === address.toLowerCase();
+            }
+
+            if (backend.chain === 'test' && resAddress.prefix === 'tsys') {
+              encode = bech32.encode(resAddress.prefix, resAddress.words);
+
+              console.log('test address',encode === address.toLowerCase())
+
+
+              return encode === address.toLowerCase();
+            }
+          }
+
+          return false;
         }
       } catch (error) {
         return false;
@@ -1461,13 +1480,13 @@ const AccountController = (actions: {
 
     const assetMap = new Map([
       [assetGuid,
-      {
-        changeAddress: await getNewChangeAddress(false),
-        outputs: [{
-          value: new sys.utils.BN(amount * (10 ** decimals)),
-          address: await sysjs.Signer.getNewReceivingAddress()
+        {
+          changeAddress: await getNewChangeAddress(false),
+          outputs: [{
+            value: new sys.utils.BN(amount * (10 ** decimals)),
+            address: await sysjs.Signer.getNewReceivingAddress()
+          }]
         }]
-      }]
     ]);
 
     try {
@@ -1503,311 +1522,52 @@ const AccountController = (actions: {
     });
   };
 
-    const confirmTransactionTx = async (
-      items: {
-        amount: number,
-        fee: number,
-        fromAddress: string,
-        isToken: boolean,
-        rbf: boolean,
-        toAddress: string,
-        token: string
-      }
-    ) => {
-      const {
-        toAddress,
-        amount,
-        fee,
-        token,
-        isToken,
-        rbf
-      } = items;
+  const confirmTransactionTx = async (
+    items: {
+      amount: number,
+      fee: number,
+      fromAddress: string,
+      isToken: boolean,
+      rbf: boolean,
+      toAddress: string,
+      token: string
+    }
+  ) => {
+    const {
+      toAddress,
+      amount,
+      fee,
+      token,
+      isToken,
+      rbf
+    } = items;
 
-      if (!account.isTrezorWallet) {
-        sysjs.Signer.setAccountIndex(store.getState().wallet.activeAccountId);
-      }
-
-      if (isToken && token) {
-        let txInfo;
-        const { decimals } = await getDataAsset(token);
-        const txOpts = { rbf };
-        const value = new sys.utils.BN(amount * 10 ** decimals);
-
-        const assetMap = new Map([
-          [token, {
-            changeAddress: null,
-            outputs: [{
-              value,
-              address: toAddress
-            }]
-          }]
-        ]);
-
-        if (account.isTrezorWallet) {
-          const changeAddress = await getNewChangeAddress(false);
-          // @ts-ignore: Unreachable code error
-          assetMap.get(token)!.changeAddress = changeAddress;
-
-          const txData = await sysjs.assetAllocationSend(txOpts, assetMap, changeAddress, new sys.utils.BN(fee * 1e8), account.xpub);
-
-          if (!txData) {
-            console.log('Could not create transaction, not enough funds?')
-          }
-          if (TrezorSigner === null || TrezorSigner === undefined) {
-            TrezorSigner = new sys.utils.TrezorSigner();
-            new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
-          }
-          try {
-            // TrezorSigner.sign(txData.psbt).then(() => {
-
-            sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner).then(() => {
-              const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
-              watchMemPool(acc);
-            })
-            tempTx = null;
-            return
-          }
-          catch (e) {
-            return;
-          }
-        } else {
-          const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(fee * 1e8));
-
-          txInfo = pendingTx.extractTransaction().getId();
-        }
-
-        updateTransactionData('confirmingTransaction', txInfo);
-      } else {
-        const outputsArray = [{
-          address: toAddress,
-          value: new sys.utils.BN(amount * 1e8)
-        }];
-
-        const txOpts = { rbf };
-        let txInfo;
-        if (account.isTrezorWallet) {
-          const changeAddress = await getNewChangeAddress(false);
-          const txData = await sysjs.createTransaction(txOpts, changeAddress, outputsArray, new sys.utils.BN(fee * 1e8), account.xpub);
-          if (!txData) {
-            console.log('Could not create transaction, not enough funds?')
-          }
-          if (TrezorSigner === null || TrezorSigner === undefined) {
-            TrezorSigner = new sys.utils.TrezorSigner();
-            new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
-          }
-          try {
-            sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner).then(() => {
-              const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
-
-              watchMemPool(acc);
-            })
-            tempTx = null;
-            return
-          }
-          catch (e) {
-            console.log('Error processing tx: ' + e)
-            return;
-          }
-
-        } else {
-          try {
-            const pendingTx = await sysjs.createTransaction(txOpts, null, outputsArray, new sys.utils.BN(fee * 1e8));
-
-            txInfo = pendingTx.extractTransaction().getId();
-          } catch (error) {
-            throw new Error(String(error));
-          }
-        }
-
-        updateTransactionData('confirmingTransaction', txInfo);
-      }
-
-      tempTx = null;
-
-      const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
-
-      watchMemPool(acc);
+    if (!account.isTrezorWallet) {
+      sysjs.Signer.setAccountIndex(store.getState().wallet.activeAccountId);
     }
 
-    const confirmTempTx = () => {
-      return new Promise((resolve, reject) => {
-        handleTransactions(tempTx, confirmTransactionTx).then((response) => {
-          resolve(response);
-        }).catch((error) => {
-          reject(error);
-        });;
-      });
-    };
-
-    const setHDSigner = (accountId: number) => {
-      if (!account.isTrezorWallet) {
-        sysjs.Signer.setAccountIndex(accountId);
-      }
-    }
-
-    const confirmUpdateAsset = async (item: any) => {
-      const {
-        fee,
-        assetGuid,
-        assetWhiteList,
-        capabilityflags,
-        contract,
-        description,
-        notarydetails,
-        auxfeedetails,
-        notaryAddress,
-        payoutAddress
-      } = item;
-
-      let txOpts: any = {
-        rbf: true
-      };
-
-      let assetOpts: any = {
-        updatecapabilityflags: capabilityflags ? String(capabilityflags) : '127',
-        description
-      };
-
-      if (assetWhiteList) {
-        txOpts = {
-          ...txOpts,
-          assetWhiteList,
-        };
-      }
-
-      if (notarydetails) {
-        assetOpts = {
-          ...assetOpts,
-          notarydetails,
-          auxfeedetails,
-          notarykeyid: null
-        }
-      }
-
-      if (contract) {
-        assetOpts = {
-          ...assetOpts,
-          contract: Buffer.from(contract, 'hex')
-        };
-      }
-
-      if (auxfeedetails) {
-        const scalarPct = 1000;
-        const payment = sys.utils.bitcoinjs.payments.p2wpkh({
-          address: payoutAddress,
-          network: sysjs.Signer.Signer.network
-        })
-        const auxfeekeyid = Buffer.from(payment.hash.toString('hex'), 'hex')
-
-        assetOpts = {
-          ...assetOpts,
-          auxfeedetails: {
-            auxfees: [
-              {
-                bound: new sys.utils.BN(0),
-                percent: 1 * scalarPct
-              }
-            ],
-            auxfeekeyid
-          }
-        };
-      }
-
-      if (notaryAddress) {
-        const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
-          address: notaryAddress,
-          network: sysjs.Signer.Signer.network
-        });
-
-        assetOpts = {
-          ...assetOpts,
-          notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
-        }
-      }
-
-      console.log('asset opts update asset', assetOpts, assetGuid)
-
-      const thisAssetMap = new Map([
-        [assetGuid, {
-          changeAddress: await getNewChangeAddress(true),
-          outputs: [{
-            value: new sys.utils.BN(0),
-            address: await sysjs.Signer.getNewReceivingAddress()
-          }]
-        }]
-      ]);
-
-
-      sysjs.Signer.setAccountIndex(getConnectedAccount().id);
-
-      // let changeAddress = await sysjs.Signer.getNewChangeAddress();
-
-
-      const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, thisAssetMap, null, new sys.utils.BN(fee * 1e8));
-
-      const txInfo = pendingTx.extractTransaction().getId();
-
-      if (!pendingTx || !txInfo) {
-        console.log('Could not create transaction, not enough funds?');
-
-        return;
-      }
-
-      updateTransactionData('updatingAsset', txInfo);
-
-      watchMemPool(getConnectedAccount());
-
-      return {
-        txid: txInfo
-      }
-    }
-
-    const confirmUpdateAssetTransaction = () => {
-      return new Promise((resolve, reject) => {
-        handleTransactions(updateAssetItem, confirmUpdateAsset).then((response) => {
-          resolve(response)
-
-          updateAssetItem = null;
-        }).catch((error) => {
-          reject(error)
-
-          updateAssetItem = null;
-        });
-
-        updateAssetItem = null;
-      });
-    }
-
-    const transferAsset = async (item: any) => {
-      const {
-        fee,
-        assetGuid,
-        newOwner
-      } = item;
-
-      const feeRate = new sys.utils.BN(fee * 1e8);
-      const txOpts = { rbf: true };
-      const assetOpts = {};
-
-      let txInfo = null;
+    if (isToken && token) {
+      let txInfo;
+      const { decimals } = await getDataAsset(token);
+      const txOpts = { rbf };
+      const value = new sys.utils.BN(amount * 10 ** decimals);
 
       const assetMap = new Map([
-        [assetGuid, {
-          changeAddress: await getNewChangeAddress(true),
+        [token, {
+          changeAddress: null,
           outputs: [{
-            value: new sys.utils.BN(0),
-            address: newOwner
+            value,
+            address: toAddress
           }]
         }]
       ]);
 
-      if (getConnectedAccount().isTrezorWallet) {
-        const sysChangeAddress = await getNewChangeAddress(true);
+      if (account.isTrezorWallet) {
+        const changeAddress = await getNewChangeAddress(false);
+        // @ts-ignore: Unreachable code error
+        assetMap.get(token)!.changeAddress = changeAddress;
 
-        // @ts-ignore
-        assetMap.get(assetGuid)!.changeAddress = sysChangeAddress;
-
-        const txData = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
+        const txData = await sysjs.assetAllocationSend(txOpts, assetMap, changeAddress, new sys.utils.BN(fee * 1e8), account.xpub);
 
         if (!txData) {
           console.log('Could not create transaction, not enough funds?')
@@ -1817,128 +1577,387 @@ const AccountController = (actions: {
           new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
         }
         try {
-          //TODO: test might have same problem as them mintSPT
-          txInfo = await sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner)
+          // TrezorSigner.sign(txData.psbt).then(() => {
 
-          updateTransactionData('transferringOwnership', txInfo);
+          sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner).then(() => {
+            const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
+            watchMemPool(acc);
+          })
+          tempTx = null;
+          return
+        }
+        catch (e) {
+          return;
+        }
+      } else {
+        const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(fee * 1e8));
 
-          watchMemPool(getConnectedAccount());
+        txInfo = pendingTx.extractTransaction().getId();
+      }
+
+      updateTransactionData('confirmingTransaction', txInfo);
+    } else {
+      const outputsArray = [{
+        address: toAddress,
+        value: new sys.utils.BN(amount * 1e8)
+      }];
+
+      const txOpts = { rbf };
+      let txInfo;
+      if (account.isTrezorWallet) {
+        const changeAddress = await getNewChangeAddress(false);
+        const txData = await sysjs.createTransaction(txOpts, changeAddress, outputsArray, new sys.utils.BN(fee * 1e8), account.xpub);
+        if (!txData) {
+          console.log('Could not create transaction, not enough funds?')
+        }
+        if (TrezorSigner === null || TrezorSigner === undefined) {
+          TrezorSigner = new sys.utils.TrezorSigner();
+          new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
+        }
+        try {
+          sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner).then(() => {
+            const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
+
+            watchMemPool(acc);
+          })
+          tempTx = null;
+          return
         }
         catch (e) {
           console.log('Error processing tx: ' + e)
           return;
         }
-        return;
+
+      } else {
+        try {
+          const pendingTx = await sysjs.createTransaction(txOpts, null, outputsArray, new sys.utils.BN(fee * 1e8));
+
+          txInfo = pendingTx.extractTransaction().getId();
+        } catch (error) {
+          throw new Error(String(error));
+        }
       }
 
-      sysjs.Signer.setAccountIndex(getConnectedAccount().id);
-
-      // let assetChangeAddress = await sysjs.Signer.getNewChangeAddress();
-
-
-      const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, null, feeRate);
-
-      if (!pendingTx) {
-        console.log('Could not create transaction, not enough funds?');
-      }
-
-      txInfo = pendingTx.extractTransaction().getId();
-
-      updateTransactionData('transferringOwnership', txInfo);
-
-      watchMemPool(getConnectedAccount());
-
-      return {
-        txid: txInfo
-      }
+      updateTransactionData('confirmingTransaction', txInfo);
     }
 
-    const confirmTransferOwnership = () => {
-      return new Promise((resolve, reject) => {
-        handleTransactions(transferOwnershipData, transferAsset).then((response) => {
-          resolve(response);
-        }).catch((error) => {
-          reject(error)
-        });
+    tempTx = null;
 
-        transferOwnershipData = null;
-      });
-    }
+    const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
 
-    const decryptAES = (encryptedString: any, key: string) => {
-      return CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
-    }
+    watchMemPool(acc);
+  }
 
-    const setAutolockTimer = (minutes: number) => {
-      store.dispatch(setTimer(minutes));
-    }
-
-    const updateNetworkData = ({ id, label, beUrl }: any) => {
-      store.dispatch(updateNetwork({ id, label, beUrl }));
-    }
-
-    return {
-      subscribeAccount,
-      getPrimaryAccount,
-      updateAccountLabel,
-      addNewAccount,
-      getLatestUpdate,
-      watchMemPool,
-      updateTempTx,
-      confirmTempTx,
-      isValidSYSAddress,
-      updateTxs,
-      getTransactionItem,
-      getRecommendFee,
-      setNewAddress,
-      setNewXpub,
-      isNFT,
-      getDataFromPageToInitTransaction,
-      createSPT,
-      confirmNewSPT,
-      issueSPT,
-      issueNFT,
-      confirmIssueSPT,
-      confirmIssueNFT,
-      getUserMintedTokens,
-      getTransactionInfoByTxId,
-      getSysExplorerSearch,
-      setDataFromPageToCreateNewSPT,
-      setDataFromWalletToCreateSPT,
-      setDataFromPageToMintSPT,
-      setDataFromWalletToMintSPT,
-      setDataFromPageToMintNFT,
-      setDataFromWalletToMintNFT,
-      setDataFromPageToUpdateAsset,
-      setDataFromWalletToUpdateAsset,
-      setDataFromPageToTransferOwnership,
-      setDataFromWalletToTransferOwnership,
-      confirmUpdateAssetTransaction,
-      confirmTransferOwnership,
-      setUpdateAsset,
-      setNewOwnership,
-      getHoldingsData,
-      getDataAsset,
-      clearTransactionItem,
-      confirmSignature,
-      getConnectedAccount,
-      getConnectedAccountXpub,
-      getChangeAddress,
-      setCurrentPSBT,
-      setCurrentPsbtToSign,
-      updateTokensState,
-      getTransactionData,
-      getRawTransaction,
-      setHDSigner,
-      confirmIssueNFTTx,
-      setNewIssueNFT,
-      setDataFromPageToIssueNFT,
-      setDataFromWalletToIssueNFT,
-      importPsbt,
-      decryptAES,
-      setAutolockTimer,
-      updateNetworkData
-    };
+  const confirmTempTx = () => {
+    return new Promise((resolve, reject) => {
+      handleTransactions(tempTx, confirmTransactionTx).then((response) => {
+        resolve(response);
+      }).catch((error) => {
+        reject(error);
+      });;
+    });
   };
 
-  export default AccountController;
+  const setHDSigner = (accountId: number) => {
+    if (!account.isTrezorWallet) {
+      sysjs.Signer.setAccountIndex(accountId);
+    }
+  }
+
+  const confirmUpdateAsset = async (item: any) => {
+    const {
+      fee,
+      assetGuid,
+      assetWhiteList,
+      capabilityflags,
+      contract,
+      description,
+      notarydetails,
+      auxfeedetails,
+      notaryAddress,
+      payoutAddress
+    } = item;
+
+    let txOpts: any = {
+      rbf: true
+    };
+
+    let assetOpts: any = {
+      updatecapabilityflags: capabilityflags ? String(capabilityflags) : '127',
+      description
+    };
+
+    if (assetWhiteList) {
+      txOpts = {
+        ...txOpts,
+        assetWhiteList,
+      };
+    }
+
+    if (notarydetails) {
+      assetOpts = {
+        ...assetOpts,
+        notarydetails,
+        auxfeedetails,
+        notarykeyid: null
+      }
+    }
+
+    if (contract) {
+      assetOpts = {
+        ...assetOpts,
+        contract: Buffer.from(contract, 'hex')
+      };
+    }
+
+    if (auxfeedetails) {
+      const scalarPct = 1000;
+      const payment = sys.utils.bitcoinjs.payments.p2wpkh({
+        address: payoutAddress,
+        network: sysjs.Signer.Signer.network
+      })
+      const auxfeekeyid = Buffer.from(payment.hash.toString('hex'), 'hex')
+
+      assetOpts = {
+        ...assetOpts,
+        auxfeedetails: {
+          auxfees: [
+            {
+              bound: new sys.utils.BN(0),
+              percent: 1 * scalarPct
+            }
+          ],
+          auxfeekeyid
+        }
+      };
+    }
+
+    if (notaryAddress) {
+      const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
+        address: notaryAddress,
+        network: sysjs.Signer.Signer.network
+      });
+
+      assetOpts = {
+        ...assetOpts,
+        notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
+      }
+    }
+
+    console.log('asset opts update asset', assetOpts, assetGuid)
+
+    const thisAssetMap = new Map([
+      [assetGuid, {
+        changeAddress: await getNewChangeAddress(true),
+        outputs: [{
+          value: new sys.utils.BN(0),
+          address: await sysjs.Signer.getNewReceivingAddress()
+        }]
+      }]
+    ]);
+
+
+    sysjs.Signer.setAccountIndex(getConnectedAccount().id);
+
+    // let changeAddress = await sysjs.Signer.getNewChangeAddress();
+
+
+    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, thisAssetMap, null, new sys.utils.BN(fee * 1e8));
+
+    const txInfo = pendingTx.extractTransaction().getId();
+
+    if (!pendingTx || !txInfo) {
+      console.log('Could not create transaction, not enough funds?');
+
+      return;
+    }
+
+    updateTransactionData('updatingAsset', txInfo);
+
+    watchMemPool(getConnectedAccount());
+
+    return {
+      txid: txInfo
+    }
+  }
+
+  const confirmUpdateAssetTransaction = () => {
+    return new Promise((resolve, reject) => {
+      handleTransactions(updateAssetItem, confirmUpdateAsset).then((response) => {
+        resolve(response)
+
+        updateAssetItem = null;
+      }).catch((error) => {
+        reject(error)
+
+        updateAssetItem = null;
+      });
+
+      updateAssetItem = null;
+    });
+  }
+
+  const transferAsset = async (item: any) => {
+    const {
+      fee,
+      assetGuid,
+      newOwner
+    } = item;
+
+    const feeRate = new sys.utils.BN(fee * 1e8);
+    const txOpts = { rbf: true };
+    const assetOpts = {};
+
+    let txInfo = null;
+
+    const assetMap = new Map([
+      [assetGuid, {
+        changeAddress: await getNewChangeAddress(true),
+        outputs: [{
+          value: new sys.utils.BN(0),
+          address: newOwner
+        }]
+      }]
+    ]);
+
+    if (getConnectedAccount().isTrezorWallet) {
+      const sysChangeAddress = await getNewChangeAddress(true);
+
+      // @ts-ignore
+      assetMap.get(assetGuid)!.changeAddress = sysChangeAddress;
+
+      const txData = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
+
+      if (!txData) {
+        console.log('Could not create transaction, not enough funds?')
+      }
+      if (TrezorSigner === null || TrezorSigner === undefined) {
+        TrezorSigner = new sys.utils.TrezorSigner();
+        new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
+      }
+      try {
+        //TODO: test might have same problem as them mintSPT
+        txInfo = await sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner)
+
+        updateTransactionData('transferringOwnership', txInfo);
+
+        watchMemPool(getConnectedAccount());
+      }
+      catch (e) {
+        console.log('Error processing tx: ' + e)
+        return;
+      }
+      return;
+    }
+
+    sysjs.Signer.setAccountIndex(getConnectedAccount().id);
+
+    // let assetChangeAddress = await sysjs.Signer.getNewChangeAddress();
+
+
+    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, null, feeRate);
+
+    if (!pendingTx) {
+      console.log('Could not create transaction, not enough funds?');
+    }
+
+    txInfo = pendingTx.extractTransaction().getId();
+
+    updateTransactionData('transferringOwnership', txInfo);
+
+    watchMemPool(getConnectedAccount());
+
+    return {
+      txid: txInfo
+    }
+  }
+
+  const confirmTransferOwnership = () => {
+    return new Promise((resolve, reject) => {
+      handleTransactions(transferOwnershipData, transferAsset).then((response) => {
+        resolve(response);
+      }).catch((error) => {
+        reject(error)
+      });
+
+      transferOwnershipData = null;
+    });
+  }
+
+  const decryptAES = (encryptedString: any, key: string) => {
+    return CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
+  }
+
+  const setAutolockTimer = (minutes: number) => {
+    store.dispatch(setTimer(minutes));
+  }
+
+  const updateNetworkData = ({ id, label, beUrl }: any) => {
+    store.dispatch(updateNetwork({ id, label, beUrl }));
+  }
+
+  return {
+    subscribeAccount,
+    getPrimaryAccount,
+    updateAccountLabel,
+    addNewAccount,
+    getLatestUpdate,
+    watchMemPool,
+    updateTempTx,
+    confirmTempTx,
+    isValidSYSAddress,
+    updateTxs,
+    getTransactionItem,
+    getRecommendFee,
+    setNewAddress,
+    setNewXpub,
+    isNFT,
+    getDataFromPageToInitTransaction,
+    createSPT,
+    confirmNewSPT,
+    issueSPT,
+    issueNFT,
+    confirmIssueSPT,
+    confirmIssueNFT,
+    getUserMintedTokens,
+    getTransactionInfoByTxId,
+    getSysExplorerSearch,
+    setDataFromPageToCreateNewSPT,
+    setDataFromWalletToCreateSPT,
+    setDataFromPageToMintSPT,
+    setDataFromWalletToMintSPT,
+    setDataFromPageToMintNFT,
+    setDataFromWalletToMintNFT,
+    setDataFromPageToUpdateAsset,
+    setDataFromWalletToUpdateAsset,
+    setDataFromPageToTransferOwnership,
+    setDataFromWalletToTransferOwnership,
+    confirmUpdateAssetTransaction,
+    confirmTransferOwnership,
+    setUpdateAsset,
+    setNewOwnership,
+    getHoldingsData,
+    getDataAsset,
+    clearTransactionItem,
+    confirmSignature,
+    getConnectedAccount,
+    getConnectedAccountXpub,
+    getChangeAddress,
+    setCurrentPSBT,
+    setCurrentPsbtToSign,
+    updateTokensState,
+    getTransactionData,
+    getRawTransaction,
+    setHDSigner,
+    confirmIssueNFTTx,
+    setNewIssueNFT,
+    setDataFromPageToIssueNFT,
+    setDataFromWalletToIssueNFT,
+    importPsbt,
+    decryptAES,
+    setAutolockTimer,
+    updateNetworkData
+  };
+};
+
+export default AccountController;

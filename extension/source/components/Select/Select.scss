@@ -60,7 +60,7 @@
   border-radius: 13px;
   border-top-width: 0;
   outline: 0;
-  height: 250px;
+  max-height: 250px;
   overflow: auto;
 
   &::-webkit-scrollbar {

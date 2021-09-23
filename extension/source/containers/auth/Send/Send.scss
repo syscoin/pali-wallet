@@ -61,6 +61,12 @@
       }
     }
 
+    .spinnerCheck {
+      svg {
+        color: $white;
+      }
+    }
+
     span {
       font-size: 1.5rem;
       color: $white;
@@ -73,43 +79,8 @@
     }
   }
 
-  // .input {
-  //   font-weight: 500;
-  //   font-size: 16px;
-  //   line-height: 24px;
-  //   height: 48px;
-  //   padding: 0 16px;
-  //   background: $white;
-  //   transition: all 0.3s;
-
-  //   input {
-  //     text-overflow: ellipsis;
-  //     overflow: hidden;
-  //     font-weight: 500;
-  //     font-size: 12px;
-  //     line-height: 18px;
-  //     transition: all 0.3s;
-  //   }
-
-  //   &.amount {
-  //     input {
-  //       padding-right: 48px;
-  //     }
-  //   }
-
-  //   &.fee {
-  //     input {
-  //       padding-right: 92px;
-  //     }
-  //   }
-  // }
-
   section.content {
     width: 100%;
-    // display: flex;
-    // justify-content: center;
-    // align-items: center;
-    // position: absolute;
     
     ul {
       padding: 0;
@@ -253,6 +224,17 @@
           transform: scale(1);
           transition: all 0.3s;
           width: 12px;
+        }
+
+        .checkLoading {
+          position: absolute;
+          opacity: 1;
+          left: 12px;
+          z-index: 1;
+          transform: scale(1);
+          transition: all 0.3s;
+          width: 12px;
+          top: 38px;
         }
 
         .hideCloseIcon {
