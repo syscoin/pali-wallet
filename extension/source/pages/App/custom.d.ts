@@ -32,7 +32,7 @@ declare module '*.scss' {
     isLocked: () => boolean;
     logOut: () => void;
     setWalletPassword: (pwd: string) => void;
-    switchNetwork: (networkId: string) => void;
+    switchNetwork: (networkId: string) => any;
     switchWallet: (id: number) => void;
     unLock: (pwd: string) => boolean;
   }
@@ -100,6 +100,7 @@ declare module '*.scss' {
     importPsbt: (psbt: any) => any;
     decryptAES: (encryptedString: any, key: string) => any;
     setAutolockTimer: (minutes: number) => any;
+    updateNetworkData: ({ id, label, beUrl }: any) => any;
   }
   
   declare type CreateTokenItems = {

@@ -18,6 +18,7 @@ import IWalletState, {
 import CryptoJS from 'crypto-js';
 import store from 'state/store';
 import AccountController from './AccountController';
+import axios from 'axios';
 
 const WalletController = (): IWalletController => {
   let password: any = '';
@@ -41,10 +42,10 @@ const WalletController = (): IWalletController => {
   };
 
   const checkPassword = (pwd: string) => {
-    if(encriptedPassword === CryptoJS.SHA3(pwd).toString()) {
+    if (encriptedPassword === CryptoJS.SHA3(pwd).toString()) {
       return true;
     }
-    
+
     return encriptedPassword === pwd;
   };
 
@@ -282,28 +283,44 @@ const WalletController = (): IWalletController => {
     });
   }
 
-  
+
 
   const switchNetwork = async (networkId: string) => {
-    store.dispatch(changeActiveNetwork({ id: SYS_NETWORK[networkId]!.id, beUrl: SYS_NETWORK[networkId]!.beUrl }));
+    const { networks } = store.getState().wallet;
 
-    if (SYS_NETWORK[networkId]!.id === 'main') {
-      setHDSigner({ mnemonic: HDsigner.mnemonic, password: null, isTestnet: false });
-      setSjs({ SignerIn: HDsigner, blockbookURL: SYS_NETWORK.main.beUrl });
+    store.dispatch(changeActiveNetwork({ id: networks[networkId]!.id, beUrl: networks[networkId]!.beUrl }));
 
-      store.dispatch(updateSwitchNetwork(true));
+    try {
+      const response = await axios.get(`${networks[networkId].beUrl}/api/v2`);
 
-      _getAccountDataByNetwork(sjs);
+      if (response && response.data) {
+        let isTestnet: boolean = false;
 
-      return;
+        if (response.data.blockbook.coin === 'Syscoin' || response.data.blockbook.coin === 'Syscoin Testnet') {
+          console.log('VALIDAAAA')
+
+          if (response.data.backend.chain === 'main') {
+            isTestnet = false;
+          }
+
+          if (response.data.backend.chain === 'test') {
+            isTestnet = true;
+          }
+
+          setHDSigner({ mnemonic: HDsigner.mnemonic, password: null, isTestnet });
+          setSjs({ SignerIn: HDsigner, blockbookURL: networks[networkId].beUrl });
+
+          store.dispatch(updateSwitchNetwork(true));
+
+          _getAccountDataByNetwork(sjs);
+        }
+
+        return;
+      }
+    } catch (error) {
+      console.log('error invalid network')
+      throw new Error('Invalid network.');
     }
-    
-    setHDSigner({ mnemonic: HDsigner.mnemonic, password: null, isTestnet: true });
-    setSjs({ SignerIn: HDsigner, blockbookURL: SYS_NETWORK.testnet.beUrl });
-
-    store.dispatch(updateSwitchNetwork(true));
-
-    _getAccountDataByNetwork(sjs);
   };
 
   const getNewAddress = async () => {

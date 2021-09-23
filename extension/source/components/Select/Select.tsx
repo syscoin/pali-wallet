@@ -10,6 +10,7 @@ import styles from './Select.scss';
 import { useSettingsView } from 'hooks/index';
 
 import { CONFIGURE_NETWORK_VIEW } from 'containers/auth/Settings/views/routes';
+import { formatURL } from 'containers/auth/helpers';
 
 interface IOption {
   [key: string]: string;
@@ -62,7 +63,7 @@ const Select: FC<ISelect> = ({
         {options.map((option: IOption) => {
           return (
             <MUIMenuItem key={option.id} value={option.id}>
-              {option.label}
+              {formatURL(String(option.label), 12)}
             </MUIMenuItem>
           );
         })}

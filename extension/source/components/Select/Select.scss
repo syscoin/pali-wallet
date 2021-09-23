@@ -10,6 +10,7 @@
     height: 36px;
     transition: all 0.3s;
     color: #fff;
+    width: 145px;
 
     &::before,
     &::after {
@@ -58,6 +59,28 @@
   border: 1px solid #cb2c70;
   border-radius: 13px;
   border-top-width: 0;
+  outline: 0;
+  height: 250px;
+  overflow: auto;
+
+  &::-webkit-scrollbar {
+    width: 3px;
+  }
+
+  &::-webkit-scrollbar-track-piece {
+    background-color: #f1f1f1;
+    border-radius: 10px;
+  }
+
+  &::-webkit-scrollbar-button {
+    display: none;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    border-radius: 10px;
+    background-color: #c9c9c9;
+    transition: all 0.3s;
+  }
 
   :global(.MuiMenuItem-root) {
     font-weight: 600;

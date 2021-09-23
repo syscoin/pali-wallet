@@ -62,7 +62,7 @@ const WalletState = createSlice({
         currentBlockbookURL: action.payload
       };
     },
-    addNewNetwork(state: IWalletState, action: PayloadAction<any>) {
+    updateNetwork(state: IWalletState, action: PayloadAction<any>) {
       return {
         ...state,
         networks: {
@@ -492,7 +492,7 @@ export const {
   signPSBTState,
   setIssueNFT,
   setTimer,
-  addNewNetwork
+  updateNetwork
 } = WalletState.actions;
 
 export default WalletState.reducer;

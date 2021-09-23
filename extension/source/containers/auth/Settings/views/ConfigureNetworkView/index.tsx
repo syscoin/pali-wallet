@@ -5,7 +5,7 @@ import * as yup from 'yup';
 import TextInput from 'components/TextInput';
 import Button from 'components/Button';
 import { useController, useCopyClipboard, useSettingsView } from 'hooks/index';
-import { ellipsis } from 'containers/auth/helpers';
+import { ellipsis, formatURL } from 'containers/auth/helpers';
 import Spinner from '@material-ui/core/CircularProgress';
 
 import { MAIN_VIEW } from '../routes';
@@ -20,6 +20,7 @@ const ConfigureNetworkView = () => {
   const controller = useController();
   const [selected, setSelected] = useState('');
   const [loading, setLoading] = useState(false);
+  const [customNetwork, setCustomNetwork] = useState(false);
 
   const { handleSubmit, register } = useForm({
     validationSchema: yup.object().shape({
@@ -32,11 +33,23 @@ const ConfigureNetworkView = () => {
     (state: RootState) => state.wallet
   );
 
-  const onSubmit = async (data: any) => {
+  const onSubmit = async ({ name, blockbookURL}: any) => {
     setLoading(true);
-    console.log('data on submit network', data, data.name, data.blockbookURL)
+
+    controller.wallet.account.updateNetworkData({ id: selected, label: name, beUrl: blockbookURL });
+
     setSelected('');
   };
+
+  const submitCustomNetwork = async ({ name, blockbookURL}: any) => {
+    setLoading(true);
+    console.log('data on submit custom network', name, blockbookURL)
+    controller.wallet.account.updateNetworkData({ id: name.toString().toLowerCase(), label: name, beUrl: blockbookURL });
+
+    setCustomNetwork(false);
+  };
+
+  const defaultNetworks = ['main', 'testnet'];
 
   return (
     <div>
@@ -46,7 +59,7 @@ const ConfigureNetworkView = () => {
             <TextInput
               type="text"
               name="name"
-              defaultValue={SYS_NETWORK[selected].label}
+              defaultValue={networks[selected].label}
               fullWidth
               variant={styles.input}
               placeholder="Network name"
@@ -56,7 +69,7 @@ const ConfigureNetworkView = () => {
             <TextInput
               type="text"
               name="blockbookURL"
-              defaultValue={SYS_NETWORK[selected].beUrl}
+              defaultValue={networks[selected].beUrl}
               fullWidth
               variant={styles.input}
               placeholder="Blockbook URL"
@@ -84,38 +97,87 @@ const ConfigureNetworkView = () => {
           </div>
         </form>
       ) : (
-        <div className={styles.configureNetworkWrapper}>
-          <ul className={styles.networksList}>
-            {Object.values(networks).map((network: any) => {
-              return (
-                <li
-                  key={network.id}
-                  className={styles.networkItem}
-                  onClick={() => {
-                    setSelected(network.id);
-                  }}
-                >
-                  <span>
-                    {network.label}
-                  </span>
+        <div>
+          {customNetwork ? (
+            <div>
+              <form onSubmit={handleSubmit(submitCustomNetwork)} className={styles.configureNetworkWrapper}>
+                <div className={styles.column}>
+                  <TextInput
+                    type="text"
+                    name="name"
+                    fullWidth
+                    variant={styles.input}
+                    placeholder="Network name"
+                    inputRef={register}
+                  />
 
-                  <small>
-                    Blockbook URL:
-                    <span> {network.beUrl}</span>
-                  </small>
-                </li>
-              )
-            })}
-          </ul>
+                  <TextInput
+                    type="text"
+                    name="blockbookURL"
+                    fullWidth
+                    variant={styles.input}
+                    placeholder="Blockbook URL"
+                    inputRef={register}
+                  />
+                </div>
 
-          <Button
-            type="button"
-            theme="btn-gradient-primary"
-            variant={styles.button}
-          >
-            Custom network
-          </Button>
+                <div className={styles.actions}>
+                  <Button
+                    type="button"
+                    theme="btn-outline-secondary"
+                    variant={clsx(styles.button, styles.close)}
+                    onClick={() => setCustomNetwork(false)}
+                  >
+                    Close
+                  </Button>
+
+                  <Button
+                    type="submit"
+                    theme="btn-outline-primary"
+                    variant={styles.button}
+                  >
+                    Save
+                  </Button>
+                </div>
+              </form>
+            </div>
+          ) : (
+            <div className={styles.configureNetworkWrapper}>
+              <ul className={styles.networksList}>
+                {Object.values(networks).map((network: any) => {
+                  return (
+                    <li
+                      key={network.id}
+                      className={defaultNetworks.includes(network.id) ? styles.defaultNetworkItem : styles.networkItem}
+                      onClick={() => {
+                        !defaultNetworks.includes(network.id) && setSelected(network.id);
+                      }}
+                    >
+                      <span>
+                        {formatURL(network.label, 25)}
+                      </span>
+
+                      <small>
+                        Blockbook URL:
+                        <span> {formatURL(String(network.beUrl), 25)}</span>
+                      </small>
+                    </li>
+                  )
+                })}
+              </ul>
+
+              <Button
+                type="button"
+                theme="btn-gradient-primary"
+                variant={styles.button}
+                onClick={() => setCustomNetwork(true)}
+              >
+                Custom network
+              </Button>
+            </div>
+          )}
         </div>
+
       )}
     </div>
   );

@@ -49,6 +49,7 @@ body {
       list-style: none;
       overflow: auto;
       height: 360px;
+      padding: 0 1rem 0 0;
 
       &::-webkit-scrollbar {
         width: 5px;
@@ -69,20 +70,16 @@ body {
         transition: all 0.3s;
       }
 
-      & > li {
+      & > li.networkItem, & > li.defaultNetworkItem {
         cursor: pointer;
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
         transition: all 300ms;
-        border: 1px solid transparent;
+        border: 1px solid rgb(166, 166, 166);
         padding: 1rem;
         border-radius: 0.6rem;
-        margin: 0 1rem 0 0;
-
-        &:hover {
-          border: 1px solid #ff3e91;
-        }
+        margin: 0 0 1rem;
 
         & > span {
           color: #4ca1cf;
@@ -95,6 +92,17 @@ body {
             color: #4ca1cf;
           }
         }
+      }
+
+      & > li.networkItem {
+        &:hover {
+          border: 1px solid #ff3e91;
+        }
+      }
+
+      & > li.defaultNetworkItem {
+        cursor: not-allowed;
+        opacity: 0.8;
       }
     }
 

@@ -14,6 +14,7 @@ import { MAIN_VIEW } from 'containers/auth/Settings/views/routes';
 import IWalletState from 'state/wallet/types';
 import { RootState } from 'state/store';
 import Select from 'components/Select';
+import { useAlert } from 'react-alert';
 
 import styles from './Header.scss';
 
@@ -28,6 +29,7 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#', showName = true
   const history = useHistory();
   const controller = useController();
   const showView = useSettingsView();
+  const alert = useAlert();
   const isUnlocked = !controller.wallet.isLocked();
   const [showed, showSettings] = useState<boolean>(false);
   const { encriptedMnemonic, networks }: IWalletState = useSelector(
@@ -57,7 +59,10 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#', showName = true
       value: unknown;
     }>
   ) => {
-    controller.wallet.switchNetwork(event.target.value as string);
+    controller.wallet.switchNetwork(event.target.value as string).catch((error: any) => {
+      alert.removeAll();
+      console.log('error')
+    });
     controller.wallet.getNewAddress();
   };
 
