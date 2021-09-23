@@ -16,8 +16,8 @@ const Starter = () => {
   });
   const [isInvalid, setInvalid] = useState<boolean>(false);
 
-  const onSubmit = (data: any) => {
-    setInvalid(!controller.wallet.unLock(data.password));
+  const onSubmit = async (data: any) => {
+    setInvalid(await !controller.wallet.unLock(data.password));
   };
 
   return (

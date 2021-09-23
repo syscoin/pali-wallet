@@ -145,7 +145,7 @@ const WalletController = (): IWalletController => {
     return checkPassword(pwd) ? HDsigner.mnemonic : null;
   };
 
-  const unLock = (pwd: string): boolean => {
+  const unLock = async (pwd: string) => {
     try {
       const encriptedMnemonic = retrieveEncriptedMnemonic();
       const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, pwd).toString(CryptoJS.enc.Utf8);
@@ -155,11 +155,25 @@ const WalletController = (): IWalletController => {
       }
 
       if (!HDsigner || !sjs) {
-        const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
-        const backendURl: string = store.getState().wallet.currentBlockbookURL;
+        const response = await axios.get(`${store.getState().wallet.currentBlockbookURL}/api/v2`);
+        const { blockbook, backend } = response.data;
 
-        setHDSigner({ mnemonic: decriptedMnemonic, password: null, isTestnet, networks: sys.utils.syscoinNetworks, SLIP44: 57, pubTypes: sys.utils.syscoinZPubTypes });
-        setSjs({ SignerIn: HDsigner, blockbookURL: backendURl });
+        if (response && blockbook && backend) {
+          let isTestnet: boolean = false;
+
+          if (blockbook.coin === 'Syscoin' || blockbook.coin === 'Syscoin Testnet') {
+            if (backend.chain === 'main') {
+              isTestnet = false;
+            }
+
+            if (backend.chain === 'test') {
+              isTestnet = true;
+            }
+
+            setHDSigner({ mnemonic: decriptedMnemonic, password: null, isTestnet, networks: sys.utils.syscoinNetworks, SLIP44: 57, pubTypes: sys.utils.syscoinZPubTypes });
+            setSjs({ SignerIn: HDsigner, blockbookURL: store.getState().wallet.currentBlockbookURL });
+          }
+        }
 
         const { activeAccountId, accounts } = store.getState().wallet;
 

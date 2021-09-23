@@ -21,6 +21,7 @@ import { getHost } from '../../../scripts/Background/helpers';
 
 import TxsPanel from './TxsPanel';
 import styles from './Home.scss';
+import axios from 'axios';
 
 const Home = () => {
   const controller = useController();
@@ -48,6 +49,30 @@ const Home = () => {
   const [tx, setTx] = useState(null);
   const [assetTx, setAssetTx] = useState(null);
   const [currentTabURL, setCurrentTabURL] = useState<string>(currentURL);
+  // let isTestnet: boolean = false;
+  const [isTestnet, setIsTestnet] = useState(false);
+
+  useEffect(() => {
+    axios.get(`${sysExplorer}/api/v2`).then((response: any) => {
+      const { blockbook, backend } = response.data;
+
+      if (response && blockbook && backend) {
+        if (blockbook.coin === 'Syscoin' || blockbook.coin === 'Syscoin Testnet') {
+          if (backend.chain === 'main') {
+            setIsTestnet(false);
+          }
+  
+          if (backend.chain === 'test') {
+            setIsTestnet(true);
+          }
+        }
+      }
+
+      console.log('is testnet after axios get', response, isTestnet)
+    });
+
+    console.log('askdkansd')
+  }, [changingNetwork]);
 
   useEffect(() => {
     browser.windows.getAll({ populate: true }).then((windows) => {
@@ -235,7 +260,7 @@ const Home = () => {
                   accounts.find((element) => element.id === activeAccountId)
                     ?.balance || 0
                 )}{' '}
-                <small>{activeNetwork == 'testnet' ? 'TSYS' : 'SYS'}</small>
+                <small>{isTestnet ? 'TSYS' : 'SYS'}</small>
               </h3>
             )}
 
@@ -243,7 +268,7 @@ const Home = () => {
               <p style={{ color: 'white' }}>...</p>
             ) : (
               <small style={{ marginTop: '5px', marginBottom: '5px' }}>
-                {activeNetwork !== 'testnet'
+                {!isTestnet
                   ? getFiatAmount(
                       accounts.find((element) => element.id === activeAccountId)
                         ?.balance || 0

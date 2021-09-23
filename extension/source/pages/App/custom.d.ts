@@ -34,7 +34,7 @@ declare module '*.scss' {
     setWalletPassword: (pwd: string) => void;
     switchNetwork: (networkId: string) => any;
     switchWallet: (id: number) => void;
-    unLock: (pwd: string) => boolean;
+    unLock: (pwd: string) => any;
   }
   
   declare interface IMessagesController {}
