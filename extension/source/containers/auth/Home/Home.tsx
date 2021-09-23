@@ -32,7 +32,6 @@ const Home = () => {
     activeAccountId,
     tabs,
     changingNetwork,
-    activeNetwork,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
   const { currentURL } = tabs;
 

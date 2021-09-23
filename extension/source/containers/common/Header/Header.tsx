@@ -59,7 +59,7 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#', showName = true
   ) => {
     controller.wallet.switchNetwork(event.target.value as string).catch((error: any) => {
       alert.removeAll();
-      console.log('error')
+      console.log('error', error)
     });
     controller.wallet.getNewAddress();
   };
