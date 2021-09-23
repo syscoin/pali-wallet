@@ -204,7 +204,7 @@ declare module '*.scss' {
     handleUpdateAsset: (items: UpdateAssetItems) => Promise<any> | null;
     isLocked: () => any;
     isNFT: (guid: number) => boolean | null;
-    isValidSYSAddress: (address: string) => any | null;
+    isValidSYSAddress: (address: string) => any;
     onWalletUpdate: (callback: any) => any;
     signAndSend: (psbt: any) => Promise<any> | null;
     signPSBT: (psbtToSign: any) => Promise<any> | null;

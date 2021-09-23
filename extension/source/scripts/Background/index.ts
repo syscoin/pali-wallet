@@ -56,14 +56,33 @@ const checkIsLocked = () => {
 };
 
 const checkToCallPrivateMethods = () => {
-  if (checkIsLocked()) {
-    throw new Error('Please, check if your wallet is unlocked and try again.');
+  if (checkIsLocked() || getConnectedAccountIndex({ match: new URL(store.getState().wallet.tabs.currentURL).host }) === -1) {
+    return {
+      error: true,
+      message: 'Please, check if your wallet is unlocked and connected and try again.'
+    }
   }
 
-  if (getConnectedAccountIndex({ match: new URL(store.getState().wallet.tabs.currentURL).host }) === -1) {
-    throw new Error('Connect an account and try again.');
+  return {
+    error: false,
+    message: null
   }
 };
+
+const checkAndSendMessages = async () => {
+  if (checkToCallPrivateMethods().error) {
+    const tabs: any = await getTabs({ active: true, windowType: 'normal' });
+
+    for (const tab of tabs) {
+      if (tab) {
+        runtimeSendMessageToTabs({ tabId: tab.id, messageDetails: { type: 'WALLET_ERROR', target: 'contentScript', transactionError: true, invalidParams: false, message: checkToCallPrivateMethods().message } });
+        console.log('errorroror state to page')
+      }
+    }
+
+    return;
+  };
+}
 
 const runtimeSendMessageToTabs = async ({ tabId, messageDetails }: any) => {
   return await browser.tabs.sendMessage(Number(tabId), messageDetails);
@@ -361,7 +380,7 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'SEND_STATE_TO_PAGE' && target == 'background') {
-        checkToCallPrivateMethods();
+        await checkAndSendMessages();
 
         const {
           status,
@@ -459,7 +478,7 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'CONNECTED_ACCOUNT_XPUB' && target == 'background') {
-        checkToCallPrivateMethods();
+        await checkAndSendMessages();
 
         browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'CONNECTED_ACCOUNT_XPUB',
@@ -469,7 +488,7 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'CONNECTED_ACCOUNT_CHANGE_ADDRESS' && target == 'background') {
-        checkToCallPrivateMethods();
+        await checkAndSendMessages();
 
         browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
@@ -479,9 +498,9 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'CHECK_ADDRESS' && target == 'background') {
-        checkToCallPrivateMethods();
+        await checkAndSendMessages();
 
-        const isValidSYSAddress = window.controller.wallet.account.isValidSYSAddress(request.messageData);
+        const isValidSYSAddress = await window.controller.wallet.account.isValidSYSAddress(request.messageData);
 
         browser.tabs.sendMessage(Number(sender.tab?.id), {
           type: 'CHECK_ADDRESS',
@@ -491,7 +510,18 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'SIGN_AND_SEND' && target == 'background') {
-        checkToCallPrivateMethods();
+        if (checkToCallPrivateMethods().error) {
+          const tabs: any = await getTabs({ active: true, windowType: 'normal' });
+      
+          for (const tab of tabs) {
+            if (tab) {
+              runtimeSendMessageToTabs({ tabId: tab.id, messageDetails: { type: 'WALLET_ERROR', target: 'contentScript', transactionError: true, invalidParams: false, message: checkToCallPrivateMethods().message } });
+              console.log('errorroror state to page')
+            }
+          }
+      
+          return;
+        };
 
         const { messageData } = request;
 
@@ -511,7 +541,18 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'SIGN_PSBT' && target == 'background') {
-        checkToCallPrivateMethods();
+        if (checkToCallPrivateMethods().error) {
+          const tabs: any = await getTabs({ active: true, windowType: 'normal' });
+      
+          for (const tab of tabs) {
+            if (tab) {
+              runtimeSendMessageToTabs({ tabId: tab.id, messageDetails: { type: 'WALLET_ERROR', target: 'contentScript', transactionError: true, invalidParams: false, message: checkToCallPrivateMethods().message } });
+              console.log('errorroror state to page')
+            }
+          }
+      
+          return;
+        };
 
         const { messageData } = request;
 
@@ -531,7 +572,7 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'GET_HOLDINGS_DATA' && target == 'background') {
-        checkToCallPrivateMethods();
+        await checkAndSendMessages();
 
         const holdingsData = await window.controller.wallet.account.getHoldingsData();
 
@@ -544,7 +585,18 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'SEND_TOKEN' && target == 'background') {
-        checkToCallPrivateMethods();
+        if (checkToCallPrivateMethods().error) {
+          const tabs: any = await getTabs({ active: true, windowType: 'normal' });
+      
+          for (const tab of tabs) {
+            if (tab) {
+              runtimeSendMessageToTabs({ tabId: tab.id, messageDetails: { type: 'WALLET_ERROR', target: 'contentScript', transactionError: true, invalidParams: false, message: checkToCallPrivateMethods().message } });
+              console.log('errorroror state to page')
+            }
+          }
+      
+          return;
+        };
 
         const {
           fromConnectedAccount,
@@ -580,6 +632,19 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'DATA_FROM_PAGE_TO_CREATE_TOKEN' && target == 'background') {
+        if (checkToCallPrivateMethods().error) {
+          const tabs: any = await getTabs({ active: true, windowType: 'normal' });
+      
+          for (const tab of tabs) {
+            if (tab) {
+              runtimeSendMessageToTabs({ tabId: tab.id, messageDetails: { type: 'WALLET_ERROR', target: 'contentScript', transactionError: true, invalidParams: false, message: checkToCallPrivateMethods().message } });
+              console.log('errorroror state to page')
+            }
+          }
+      
+          return;
+        };
+
         const {
           precision,
           symbol,
@@ -645,7 +710,18 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'ISSUE_SPT' && target == 'background') {
-        checkToCallPrivateMethods();
+        if (checkToCallPrivateMethods().error) {
+          const tabs: any = await getTabs({ active: true, windowType: 'normal' });
+      
+          for (const tab of tabs) {
+            if (tab) {
+              runtimeSendMessageToTabs({ tabId: tab.id, messageDetails: { type: 'WALLET_ERROR', target: 'contentScript', transactionError: true, invalidParams: false, message: checkToCallPrivateMethods().message } });
+              console.log('errorroror state to page')
+            }
+          }
+      
+          return;
+        };
 
         const {
           amount,
@@ -684,8 +760,18 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'CREATE_AND_ISSUE_NFT' && target == 'background') {
-        checkToCallPrivateMethods();
-
+        if (checkToCallPrivateMethods().error) {
+          const tabs: any = await getTabs({ active: true, windowType: 'normal' });
+      
+          for (const tab of tabs) {
+            if (tab) {
+              runtimeSendMessageToTabs({ tabId: tab.id, messageDetails: { type: 'WALLET_ERROR', target: 'contentScript', transactionError: true, invalidParams: false, message: checkToCallPrivateMethods().message } });
+              console.log('errorroror state to page')
+            }
+          }
+      
+          return;
+        };
 
         const {
           symbol,
@@ -738,7 +824,18 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'UPDATE_ASSET' && target == 'background') {
-        checkToCallPrivateMethods();
+        if (checkToCallPrivateMethods().error) {
+          const tabs: any = await getTabs({ active: true, windowType: 'normal' });
+      
+          for (const tab of tabs) {
+            if (tab) {
+              runtimeSendMessageToTabs({ tabId: tab.id, messageDetails: { type: 'WALLET_ERROR', target: 'contentScript', transactionError: true, invalidParams: false, message: checkToCallPrivateMethods().message } });
+              console.log('errorroror state to page')
+            }
+          }
+      
+          return;
+        };
 
         const {
           assetGuid,
@@ -783,7 +880,18 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'TRANSFER_OWNERSHIP' && target == 'background') {
-        checkToCallPrivateMethods();
+        if (checkToCallPrivateMethods().error) {
+          const tabs: any = await getTabs({ active: true, windowType: 'normal' });
+      
+          for (const tab of tabs) {
+            if (tab) {
+              runtimeSendMessageToTabs({ tabId: tab.id, messageDetails: { type: 'WALLET_ERROR', target: 'contentScript', transactionError: true, invalidParams: false, message: checkToCallPrivateMethods().message } });
+              console.log('errorroror state to page')
+            }
+          }
+      
+          return;
+        };
 
         const {
           assetGuid,
@@ -820,7 +928,18 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'ISSUE_NFT' && target == 'background') {
-        checkToCallPrivateMethods();
+        if (checkToCallPrivateMethods().error) {
+          const tabs: any = await getTabs({ active: true, windowType: 'normal' });
+      
+          for (const tab of tabs) {
+            if (tab) {
+              runtimeSendMessageToTabs({ tabId: tab.id, messageDetails: { type: 'WALLET_ERROR', target: 'contentScript', transactionError: true, invalidParams: false, message: checkToCallPrivateMethods().message } });
+              console.log('errorroror state to page')
+            }
+          }
+      
+          return;
+        };
 
         const {
           assetGuid,
@@ -853,7 +972,7 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'GET_USER_MINTED_TOKENS' && target == 'background') {
-        checkToCallPrivateMethods();
+        await checkAndSendMessages();
 
         const tokensMinted = await window.controller.wallet.account.getUserMintedTokens();
 
@@ -865,7 +984,7 @@ browser.runtime.onInstalled.addListener(async () => {
       }
 
       if (type == 'GET_ASSET_DATA' && target == 'background') {
-        checkToCallPrivateMethods();
+        await checkAndSendMessages();
 
         const assetData = await window.controller.wallet.account.getDataAsset(request.messageData);
 
