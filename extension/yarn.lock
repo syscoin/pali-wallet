@@ -8447,7 +8447,7 @@ ripemd160@^2.0.0, ripemd160@^2.0.1:
     hash-base "^3.0.0"
     inherits "^2.0.1"
 
-rlp@^2.0.0, rlp@^2.2.3, rlp@^2.2.4, rlp@^2.2.6:
+rlp@^2.0.0, rlp@^2.2.3, rlp@^2.2.4:
   version "2.2.6"
   resolved "https://registry.yarnpkg.com/rlp/-/rlp-2.2.6.tgz#c80ba6266ac7a483ef1e69e8e2f056656de2fb2c"
   integrity sha512-HAfAmL6SDYNWPUOJNrM500x4Thn4PZsEy5pijPh40U9WfNk0z15hUYzO9xVIMAdIHdFtD8CBDHd75Td1g36Mjg==
@@ -9166,10 +9166,9 @@ synchronous-promise@^2.0.13:
   resolved "https://registry.yarnpkg.com/synchronous-promise/-/synchronous-promise-2.0.15.tgz#07ca1822b9de0001f5ff73595f3d08c4f720eb8e"
   integrity sha512-k8uzYIkIVwmT+TcglpdN50pS2y1BDcUnBPK9iJeGu0Pl1lOI8pD6wtzgw91Pjpe+RxtTncw32tLxs/R0yNL2Mg==
 
-syscoinjs-lib@^1.0.173:
-  version "1.0.173"
-  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.173.tgz#5c317c9f8d3a8468e20c15e9a785e9aa44422406"
-  integrity sha512-I/dZHfR7o0MWuUVz1ny1onM9yfj7W/iRxieZg5FGQpPRnoyg2juCd2XrYnhLxjfDAaZPra4Y2neyAI7x1ZXAnw==
+"syscoinjs-lib@https://github.com/syscoin/syscoinjs-lib":
+  version "1.0.185"
+  resolved "https://github.com/syscoin/syscoinjs-lib#fe7a70a4008dce2526cd7e5003ff8375abc1c4e9"
   dependencies:
     "@trezor/utxo-lib" "^0.1.2"
     axios "^0.21.1"
@@ -9181,8 +9180,7 @@ syscoinjs-lib@^1.0.173:
     eth-object "^1.0.3"
     eth-proof "^2.1.6"
     node-localstorage "^2.1.6"
-    rlp "^2.2.6"
-    syscointx-js "^1.0.92"
+    syscointx-js "^1.0.96"
     trezor-connect "^8.1.29"
     varuint-bitcoin "^1.1.2"
     web3 "^1.4.0"
@@ -9200,10 +9198,10 @@ syscointx-js@^1.0.90:
     typeforce "^1.18.0"
     varuint-bitcoin "^1.1.2"
 
-syscointx-js@^1.0.92:
-  version "1.0.92"
-  resolved "https://registry.yarnpkg.com/syscointx-js/-/syscointx-js-1.0.92.tgz#e95cbff28be2100ba23896463e157a1e656bc462"
-  integrity sha512-SYfVYBuPzMMlkbeehct5ty2LE2Zt6kBtRpBGdDnOr/8ZdYjJILHmwUErBLBDlwXUVkJCtIEDrHK9RMwZFRV8mQ==
+syscointx-js@^1.0.96:
+  version "1.0.96"
+  resolved "https://registry.yarnpkg.com/syscointx-js/-/syscointx-js-1.0.96.tgz#f02ca6724af0fd1957632cd6eb465ac63eb0a2cf"
+  integrity sha512-D4eiEO9MwdPf1DhQPW2ejgCBncrQDizk2RpPAgmPNcQqtPyh3tDqcpTb8DkqkKj7jbXdiub5GDs5nQToOONLOQ==
   dependencies:
     bitcoin-ops "^1.4.1"
     bitcoinjs-lib "^5.2.0"
