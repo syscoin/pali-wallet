@@ -79,7 +79,7 @@
     "saas": "^1.0.0",
     "sass": "^1.32.12",
     "ses": "^0.14.2",
-    "syscoinjs-lib": "https://github.com/syscoin/syscoinjs-lib",
+    "syscoinjs-lib": "^1.0.185",
     "syscointx-js": "^1.0.90",
     "trezor-connect": "^8.1.29",
     "uuid": "^8.3.2",
