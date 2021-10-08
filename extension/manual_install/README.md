@@ -19,4 +19,4 @@ https://forums.opera.com/topic/33583/install-chrome-extensions/221?lang=en-US
 
 
 ### Developer Note:
-We just tested throughlly 
+We have tested thoroughly the extension on Brave and Chrome, but still, there might be issues with Firefox and Opera extensions. If you find any issue within Firefox or Opera or even bug on Brave and Chrome extension please report to us at claudio@pollum.io
