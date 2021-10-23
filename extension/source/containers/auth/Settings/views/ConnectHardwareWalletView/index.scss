@@ -10,6 +10,17 @@
   transition: 0.3s all;
   color: $white;
   margin: 2rem 0;
+  color: white;
+  text-align: center;
+  font-size: 12px;
+
+  .textCenter, .textGap {
+    text-align: center;
+  }
+
+  .textGap {
+    margin: 0 1rem;
+  }
 
   .link {
     color: $royalBlue-medium;

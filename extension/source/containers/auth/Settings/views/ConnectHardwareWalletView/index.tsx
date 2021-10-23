@@ -16,11 +16,10 @@ const ConnectHardwareWalletView: FC = () => {
   return (
     <div
       className={styles.wrapper}
-      style={{ color: 'white', textAlign: 'center' }}
     >
-      <p style={{ textAlign: 'center' }}>
+      <span className={styles.textCenter}>
         Select a hardware wallet you'd like to use with Pali Wallet
-      </p>
+      </span>
 
       <div className={styles.options}>
         <div
@@ -31,10 +30,10 @@ const ConnectHardwareWalletView: FC = () => {
         </div>
       </div>
 
-      <p style={{ textAlign: 'center' }}>Don't have a hardware wallet?</p>
-      <p style={{ margin: '0 1rem', textAlign: 'center' }}>
+      <span className={styles.textCenter}>Don't have a hardware wallet?</span>
+      <span className={styles.textGap}>
         Order a Trezor wallet and keep your funds in cold storage.
-      </p>
+      </span>
 
       <a className={styles.link} href="https://trezor.io/" target="_blank" rel="noreferrer">
         Buy now

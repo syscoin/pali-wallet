@@ -133,7 +133,7 @@ const ModalBlock: FC<IModalBlock> = ({
       },
       {
         label: 'Contract',
-        value: contract,
+        value: formatURL(String(contract), 15),
       },
       {
         label: 'Symbol',
