@@ -17,7 +17,8 @@
     "https://localhost:8088/",
     "tabs",
     "storage",
-    "notifications"
+    "notifications",
+    "management"
   ],
   "content_security_policy": "script-src 'self'; object-src 'self'",
   "__chrome|firefox__author": "Pollum Sys Teams",
@@ -54,7 +55,7 @@
       "js/webextension.bundle.js",
       "js/background.bundle.js"
     ],
-    "__chrome|opera__persistent": true
+    "__chrome|opera__persistent": false
   },
   "content_scripts": [
     {
