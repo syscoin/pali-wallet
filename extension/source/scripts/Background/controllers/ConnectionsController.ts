@@ -122,6 +122,7 @@ const ConnectionsController = () => {
   };
 
   const connectWallet = async () => {
+    console.log('called connect wallet firefox')
     sendMessage(
       {
         type: 'CONNECT_WALLET',

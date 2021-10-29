@@ -83,6 +83,7 @@ const observeStore = async (store: any) => {
       currentState = nextState;
 
       const tabs: any = await getTabs({ active: true, windowType: 'normal' });
+      console.log('tabs firefox', tabs, nextState)
 
       for (const tab of tabs) {
         if (tab) {
@@ -115,17 +116,25 @@ const observeStore = async (store: any) => {
 observeStore(store);
 
 const createPopup = async (url: string) => {
+  console.log('create popup url', url)
   const [tab]: any = await getTabs({ active: true, lastFocusedWindow: true });
 
+  console.log("tab create popup", tab)
+
   if (tab.title === 'Pali Wallet') {
+    console.log('tab title pali wallet', tab)
     return;
   }
 
   store.dispatch(updateCurrentURL(String(tab.url)));
 
-  const [sysWalletPopup]: any = await getTabs({ url: browser.extension.getURL('app.html') });
+  const [sysWalletPopup]: any = await getTabs({ url: browser.runtime.getURL('app.html') });
+
+  console.log('sysWalletpopup exists', sysWalletPopup)
 
   if (sysWalletPopup) {
+    console.log('sys wallet popup active update window', sysWalletPopup)
+    
     await updateActiveWindow({
       windowId: Number(sysWalletPopup.windowId),
       options: {
@@ -137,11 +146,14 @@ const createPopup = async (url: string) => {
     return;
   }
 
-  const sysPopup: any = window.open(url, "Pali Wallet", "width=372, height=600, left=900, top=90");
-
-  sysPopup.onbeforeunload = () => {
-    store.dispatch(clearAllTransactions());
-  }
+  await browser.windows.create({
+    url,
+    type: "popup",
+    height: 600,
+    width: 372,
+    left: 900,
+    top: 90,
+  });
 };
 
 const closePopup = () => {
