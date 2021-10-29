@@ -29,15 +29,7 @@
     </style>
   </head>
   
-  <body onbeforeunload="clearTransactions()">
+  <body>
     <div id="app-root"></div>
   </body>
-
-  <script>
-    import store from '../source/state/store.ts';
-
-    console.log('calling store', store)
-
-    store.dispatch(clearAllTransactions());
-  </script>
 </html>
