@@ -4,7 +4,7 @@ const FilemanagerPlugin = require('filemanager-webpack-plugin');
 const TerserPlugin = require('terser-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const { CleanWebpackPlugin } = require('clean-webpack-plugin');
+const {CleanWebpackPlugin} = require('clean-webpack-plugin');
 const ExtensionReloader = require('webpack-extension-reloader');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const WextManifestWebpackPlugin = require('wext-manifest-webpack-plugin');
@@ -20,20 +20,18 @@ const targetBrowser = process.env.TARGET_BROWSER;
 const extensionReloaderPlugin =
   nodeEnv === 'development'
     ? new ExtensionReloader({
-      port: 9090,
-      reloadPage: true,
-      entries: {
-        // TODO: reload manifest on update
-        contentScript: 'contentScript',
-        background: 'background',
-        inpage: 'inpage',
-        extensionPage: ['popup', 'options'],
-        trezorScript: 'trezorScript'
-      },
-    })
+        port: 9090,
+        reloadPage: true,
+        entries: {
+          // TODO: reload manifest on update
+          contentScript: 'contentScript',
+          background: 'background',
+          extensionPage: ['popup', 'options'],
+        },
+      })
     : () => {
-      this.apply = () => { };
-    };
+        this.apply = () => {};
+      };
 
 const getExtensionFileType = (browser) => {
   if (browser === 'opera') {
@@ -60,15 +58,11 @@ module.exports = {
   mode: nodeEnv,
 
   entry: {
-    manifest: path.join(__dirname, 'manifest.json'),
-    webextension: path.join(__dirname, 'node_modules', 'webextension-polyfill-ts', 'lib/index.js'),
-    background: path.join(sourcePath, 'scripts/Background', 'index.ts'),
-    inpage: path.join(sourcePath, 'scripts/ContentScript', 'inpage.ts'),
-    contentScript: path.join(sourcePath, 'scripts/ContentScript', 'index.ts'),
-    trezorScript: path.join(sourcePath, 'vendor', 'trezor-content-script.js'),
-    app: path.join(sourcePath, 'pages/App', 'index.tsx'),
-    options: path.join(sourcePath, 'pages/Options', 'index.tsx'),
-    trezorUSB: path.join(sourcePath, 'vendor', 'trezor-usb-permissions.js')
+    manifest: path.join(sourcePath, 'manifest.json'),
+    background: path.join(sourcePath, 'Background', 'index.ts'),
+    contentScript: path.join(sourcePath, 'ContentScript', 'index.ts'),
+    popup: path.join(sourcePath, 'Popup', 'index.tsx'),
+    options: path.join(sourcePath, 'Options', 'index.tsx'),
   },
 
   output: {
@@ -82,17 +76,6 @@ module.exports = {
       'webextension-polyfill-ts': path.resolve(
         path.join(__dirname, 'node_modules', 'webextension-polyfill-ts')
       ),
-      assets: path.resolve(__dirname, 'source/assets'),
-      components: path.resolve(__dirname, 'source/components'),
-      scripts: path.resolve(__dirname, 'source/scripts'),
-      containers: path.resolve(__dirname, 'source/containers'),
-      pages: path.resolve(__dirname, 'source/pages'),
-      routers: path.resolve(__dirname, 'source/routers'),
-      state: path.resolve(__dirname, 'source/state'),
-      constants: path.resolve(__dirname, 'source/constants'),
-      services: path.resolve(__dirname, 'source/services'),
-      hooks: path.resolve(__dirname, 'source/hooks'),
-      fs: require.resolve("fs-extra"),
     },
   },
 
@@ -152,7 +135,7 @@ module.exports = {
     // Plugin to not generate js bundle for manifest entry
     new WextManifestWebpackPlugin(),
     // Generate sourcemaps
-    new webpack.SourceMapDevToolPlugin({ filename: false }),
+    new webpack.SourceMapDevToolPlugin({filename: false}),
     new ForkTsCheckerWebpackPlugin(),
     // environmental variables
     new webpack.EnvironmentPlugin(['NODE_ENV', 'TARGET_BROWSER']),
@@ -169,16 +152,11 @@ module.exports = {
       verbose: true,
     }),
     new HtmlWebpackPlugin({
-      template: path.join(viewsPath, 'app.html'),
+      template: path.join(viewsPath, 'popup.html'),
       inject: 'body',
-      chunks: ['app'],
+      chunks: ['popup'],
       hash: true,
-      filename: 'app.html',
-    }),
-    new HtmlWebpackPlugin({
-      template: path.join(viewsPath, 'trezor-usb-permissions.html'),
-      filename: 'trezor-usb-permissions.html',
-      chunks: ['trezorUSB'],
+      filename: 'popup.html',
     }),
     new HtmlWebpackPlugin({
       template: path.join(viewsPath, 'options.html'),
@@ -188,10 +166,10 @@ module.exports = {
       filename: 'options.html',
     }),
     // write css file(s) to build folder
-    new MiniCssExtractPlugin({ filename: 'css/[name].css' }),
+    new MiniCssExtractPlugin({filename: 'css/[name].css'}),
     // copy static assets
     new CopyWebpackPlugin({
-      patterns: [{ from: 'source/assets', to: 'assets' }],
+      patterns: [{from: 'source/assets', to: 'assets'}],
     }),
     // plugin to enable browser reloading in development mode
     extensionReloaderPlugin,
@@ -211,7 +189,7 @@ module.exports = {
       }),
       new OptimizeCSSAssetsPlugin({
         cssProcessorPluginOptions: {
-          preset: ['default', { discardComments: { removeAll: true } }],
+          preset: ['default', {discardComments: {removeAll: true}}],
         },
       }),
       new FilemanagerPlugin({
@@ -222,7 +200,7 @@ module.exports = {
                 format: 'zip',
                 source: path.join(destPath, targetBrowser),
                 destination: `${path.join(destPath, targetBrowser)}.${getExtensionFileType(targetBrowser)}`,
-                options: { zlib: { level: 6 } },
+                options: {zlib: {level: 6}},
               },
             ],
           },

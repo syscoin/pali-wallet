@@ -8,6 +8,7 @@ import watch from 'redux-watch';
 import { transitions, positions, Provider as AlertProvider } from 'react-alert';
 import ToastAlert from 'components/ToastAlert';
 import appStore from 'state/store';
+import 'assets/styles/tailwind.css';
 
 import App from './App';
 
