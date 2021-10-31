@@ -1,30 +1,21 @@
 import React, { ReactNode, FC } from 'react';
-import clsx from 'clsx';
 import { Link as RouterLink } from 'react-router-dom';
-
-import styles from './Link.scss';
 
 interface ILink {
   children: ReactNode;
-  color?: 'primary' | 'secondary' | 'tertiary';
-  noUnderline?: boolean;
+  className?: string;
   onClick?: () => void;
   to: string;
 }
 
 const Link: FC<ILink> = ({
   to,
-  color = 'primary',
+  className = "no-underline font-medium text-base font-sans",
   children,
-  noUnderline = false,
   onClick,
 }) => {
-  const classes = clsx(styles.link, styles[color], {
-    [styles.noUnderline]: noUnderline,
-  });
-
   return (
-    <RouterLink className={classes} to={to} onClick={onClick}>
+    <RouterLink className={className} to={to} onClick={onClick}>
       {children}
     </RouterLink>
   );

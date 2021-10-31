@@ -2,11 +2,11 @@ import { useHistory } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
 import { browser } from 'webextension-polyfill-ts';
 
-export function useController() {
+export const useController = () => {
   return browser.extension.getBackgroundPage().controller;
 }
 
-export function useSettingsView() {
+export const useSettingsView = () => {
   const history = useHistory();
 
   return useCallback((view) => {
@@ -14,9 +14,9 @@ export function useSettingsView() {
   }, []);
 }
 
-export function useCopyClipboard(
+export const useCopyClipboard = (
   timeout = 1000
-): [boolean, (toCopy: string) => void] {
+): [boolean, (toCopy: string) => void] => {
   const [isCopied, setIsCopied] = useState<boolean>(false);
 
   const staticCopy = useCallback(async (text) => {

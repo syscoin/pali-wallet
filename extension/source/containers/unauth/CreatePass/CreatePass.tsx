@@ -1,90 +1,99 @@
 import React, { useState } from 'react';
 import { useHistory } from 'react-router-dom';
 import Button from 'components/Button';
-import TextInput from 'components/TextInput';
-import CheckIcon from '@material-ui/icons/CheckCircle';
-import { useForm } from 'react-hook-form';
 import { useController } from 'hooks/index';
+import { Form, Input } from 'antd';
 
 import Layout from '../../common/Layout';
 
 import * as consts from './consts';
-import styles from './CreatePass.scss';
 
 const CreatePass = () => {
   const history = useHistory();
   const controller = useController();
   const [passed, setPassed] = useState<boolean>(false);
-  const { handleSubmit, register, errors } = useForm({
-    validationSchema: consts.schema,
-  });
   const title = passed ? consts.CREATE_PASS_TITLE2 : consts.CREATE_PASS_TITLE1;
-  const comment = passed
-    ? consts.CREATE_PASS_COMMENT2
-    : consts.CREATE_PASS_COMMENT1;
 
   const nextHandler = () => {
     if (passed) {
-      history.push('/create/phrase/remind');
+      history.push('/create/phrase/generated');
     }
   };
 
   const onSubmit = (data: any) => {
+    console.log('data password', data.password)
     controller.wallet.setWalletPassword(data.password);
     setPassed(true);
   };
 
+  const onFinishFailed = (errorInfo: any) => {
+    console.log('Failed:', errorInfo);
+  };
+
   return (
     <Layout title={title} linkTo="/app.html">
-      <form onSubmit={handleSubmit(onSubmit)} className={styles.form}>
-        {passed ? (
-          <CheckIcon className={styles.checked} />
-        ) : (
-          <>
-            <TextInput
-              type="password"
-              placeholder="Please enter at least 8 characters"
-              fullWidth
-              name="password"
-              visiblePassword
-              inputRef={register}
-              variant={styles.pass}
-              tabIndex={0}
-            />
-            <TextInput
-              type="password"
-              placeholder="Please enter your password again"
-              fullWidth
-              name="repassword"
-              inputRef={register}
-              visiblePassword
-              variant={styles.repass}
-              tabIndex={1}
-            />
-            <span className={styles.warning}>
-              At least 8 characters, 1 lower-case, 1 numeral.
-            </span>
-            {(errors.password || errors.repassword) && (
-              <span className={styles.error}>
-                {errors.password
-                  ? errors.password.message
-                  : errors.repassword.message}
-              </span>
-            )}
-          </>
-        )}
+      <Form
+        name="basic"
+        labelCol={{ span: 8 }}
+        wrapperCol={{ span: 16 }}
+        initialValues={{ remember: true }}
+        onFinish={onSubmit}
+        onFinishFailed={onFinishFailed}
+        autoComplete="off"
+      >
+        <Form.Item
+          label="Password"
+          name="password"
+          hasFeedback
+          tooltip="You will need this password to create your wallet."
+          rules={[
+            {
+              required: true,
+              message: 'Password is a required field.'
+            },
+            {
+              pattern: /^(?=.*[a-z])(?=.*[0-9])(?=.{8,})/,
+              message: 'Please, check the requirements below.'
+            }
+          ]}
+        >
+          <Input.Password className="bg-brand-graymedium" />
+        </Form.Item>
 
-        <span className={`body-comment ${styles.comment}`}>{comment}</span>
+        <Form.Item
+          name="repassword"
+          dependencies={['password']}
+          hasFeedback
+          rules={[
+            {
+              required: true,
+              message: 'Please, confirm your password.'
+            },
+            ({ getFieldValue }) => ({
+              validator(_, value) {
+                if (!value || getFieldValue('password') === value) {
+                  return Promise.resolve();
+                }
+
+                return Promise.reject(new Error('The two passwords that you entered do not match.'));
+              },
+            }),
+          ]}
+        >
+          <Input.Password />
+        </Form.Item>
+
+        <span>
+          At least 8 characters, 1 lower-case, 1 numeral.
+        </span>
 
         <Button
           type={passed ? 'button' : 'submit'}
-          theme="btn-gradient-primary"
-          variant={styles.next}
           onClick={nextHandler}
         >
           Next
         </Button>
-      </form>
+      </Form>
     </Layout>
   );
 };

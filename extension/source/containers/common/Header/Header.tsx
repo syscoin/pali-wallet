@@ -15,8 +15,6 @@ import IWalletState from 'state/wallet/types';
 import { RootState } from 'state/store';
 import Select from 'components/Select';
 
-import styles from './Header.scss';
-
 interface IHeader {
   backLink?: string;
   showLogo?: boolean;
@@ -62,14 +60,13 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#', showName = true
   };
 
   return (
-    <div className={styles.header}>
+    <div>
       {showLogo ? (
         <Link to="/app.html" onClick={handleCloseSettings}>
-          <img src={`/${LogoImage}`} className={styles.logo} alt="Syscoin" />
+          <img src={`/${LogoImage}`} alt="Syscoin" />
         </Link>
       ) : (
         <IconButton
-          className={`${styles.button} ${styles.back}`}
           onClick={handleBack}
         >
           <ArrowBackIcon />
@@ -77,9 +74,9 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#', showName = true
       )}
 
       {showName ? (
-        <span className={styles.title}>Pali Wallet</span>
+        <span>Pali Wallet</span>
       ) : (
-        <div className={styles.network}>
+        <div>
           <Select
             value={network || SYS_NETWORK.main.id}
             fullWidth
@@ -94,7 +91,6 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#', showName = true
 
       {encriptedMnemonic && !importSeed ? (
         <IconButton
-          className={`${styles.button} ${styles.more}`}
           onClick={() =>
             showed ? handleCloseSettings() : showSettings(!showed)
           }
@@ -102,7 +98,7 @@ const Header: FC<IHeader> = ({ showLogo = false, backLink = '#', showName = true
           <MoreVertIcon />
         </IconButton>
       ) : (
-        <i style={{ width: '70px' }} />
+        <i />
       )}
       <Settings open={showed && isUnlocked} onClose={handleCloseSettings} />
     </div>

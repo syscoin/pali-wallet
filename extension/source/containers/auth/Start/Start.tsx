@@ -30,13 +30,9 @@ const Starter = () => {
       <img src={LogoImage} className={styles.logo} alt="syscoin" />
       <form onSubmit={handleSubmit(onSubmit)}>
         <TextInput
-          type="password"
-          name="password"
-          visiblePassword
-          fullWidth
-          inputRef={register}
+          inputType="password"
           placeholder="Please enter your password"
-          variant={styles.password}
+          inputRef={register}
         />
         {errors.password ? (
           <span className={styles.error}>{errors.password.message}</span>
@@ -53,7 +49,7 @@ const Starter = () => {
           Unlock
         </Button>
       </form>
-      <Link color="tertiary" to="/import">
+      <Link to="/import">
         Import using wallet seed phrase
       </Link>
     </div>

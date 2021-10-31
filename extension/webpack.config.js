@@ -110,6 +110,11 @@ module.exports = {
         exclude: /node_modules/,
       },
       {
+        test: /\.(jpg|png|svg)x?$/,
+        loader: 'file-loader',
+        exclude: /node_modules/,
+      },
+      {
         test: /\.(js|ts)x?$/,
         loader: 'babel-loader',
         exclude: /node_modules/,
@@ -198,7 +203,7 @@ module.exports = {
   ],
 
   optimization: {
-    minimize: true,
+    minimize: false,
     minimizer: [
       new TerserPlugin({
         parallel: true,

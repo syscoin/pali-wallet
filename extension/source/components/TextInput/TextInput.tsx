@@ -1,59 +1,50 @@
-import React, { FC, useState, ReactNode } from 'react';
-import clsx from 'clsx';
-import MUITextInput, {
-  OutlinedInputProps,
-} from '@material-ui/core/OutlinedInput';
-import InputAdornment from '@material-ui/core/InputAdornment';
-import IconButton from '@material-ui/core/IconButton';
-import Visibility from '@material-ui/icons/Visibility';
-import VisibilityOff from '@material-ui/icons/VisibilityOff';
+import React, { FC } from 'react';
+import { Input, Space } from 'antd';
+import { EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons';
 
-import styles from './TextInput.scss';
-
-interface ITextInput extends Partial<OutlinedInputProps> {
-  endAdornment?: ReactNode;
-  type?: 'text' | 'password' | 'number';
-  variant?: string;
-  visiblePassword?: boolean;
-}
-
-const TextInput: FC<ITextInput> = ({
-  type = 'text',
-  visiblePassword = false,
-  variant = '',
-  endAdornment,
-  ...otherProps
+const TextInput: FC<{
+  inputType?: string;
+  className?: any;
+  createPass?: boolean;
+  placeholder: string;
+  inputRef: any;
+}> = ({
+  inputType = 'text',
+  className = 'text-brand-graydark',
+  createPass = false,
+  placeholder = '',
+  inputRef = null
 }) => {
-  const [showed, setShowed] = useState<boolean>(false);
-  const inputType = showed && type === 'password' ? 'text' : type;
-
-  const handleClickShowPassword = () => {
-    setShowed(!showed);
+    return (
+      <Space direction="vertical">
+        {createPass ? (
+          <Space>
+            <Input.Password ref={inputRef} placeholder={placeholder} />
+            <Input.Password
+              ref={inputRef}
+              placeholder={placeholder}
+              iconRender={visible => (visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
+            />
+          </Space>
+        ) : (
+          <Space>
+            {inputType === 'password' ? (
+              <Space>
+                <Input.Password
+                  ref={inputRef}
+                  placeholder={placeholder}
+                  iconRender={visible => (visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
+                />
+              </Space>
+            ) : (
+              <Space>
+                <Input ref={inputRef} type={inputType} placeholder={placeholder} />
+              </Space>
+            )}
+          </Space>
+        )}
+      </Space>
+    );
   };
-
-  return (
-    <MUITextInput
-      className={clsx(styles.textInput, variant)}
-      type={inputType}
-      {...otherProps}
-      endAdornment={
-        endAdornment ||
-        (type === 'password' && visiblePassword ? (
-          <InputAdornment position="end">
-            <IconButton
-              aria-label="toggle password visibility"
-              className={styles.iconButton}
-              onClick={handleClickShowPassword}
-              edge="end"
-              tabIndex="-1"
-            >
-              {showed ? <VisibilityOff /> : <Visibility />}
-            </IconButton>
-          </InputAdornment>
-        ) : null)
-      }
-    />
-  );
-};
 
 export default TextInput;

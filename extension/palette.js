@@ -1,0 +1,36 @@
+module.exports = {
+  brand: {
+    black: '#000',
+    white: '#fff',
+
+    navy: '#122036',
+    navydarker: '#111e33',
+    navydark: '#1b2e4d',
+    navymedium: '#1e365c',
+    navylight: '#233f6c',
+    navyborder: '#162742',
+
+    royalBlue: '#4d76b8',
+    royalBluemedium: '#4ca1cf',
+
+    deepPink: '#cb2c70',
+    deepPink100: '#ff3e91',
+
+    yellowGreen: '#7d992e',
+
+    gold: '#ff9900',
+
+    gray: '#808080',
+    gray100: '#888888',
+    gray200: '#c4c4c4',
+    graylight: '#f5f5f5',
+    graylight100: '#ededed',
+    graydark: '#474747',
+    graydark100: '#2f2f2f',
+    graysemi: '#707070',
+    graymedium: '#979797',
+    grayhover: '#dedede',
+    graydisabled: '#dadada',
+    primary: 'linear-gradient(to right top, #ff3e91, #da53b2, #ab66c3, #7971c5, #4d76b8)'
+  }
+}

@@ -12,7 +12,6 @@ import IWalletState from 'state/wallet/types';
 import Layout from '../Layout';
 
 import * as consts from './consts';
-import styles from './CreatePass.scss';
 
 const CreatePass = () => {
   const history = useHistory();
@@ -49,34 +48,22 @@ const CreatePass = () => {
 
   return (
     <Layout title={title} linkTo="/app.html">
-      <form onSubmit={handleSubmit(onSubmit)} className={styles.form}>
+      <form onSubmit={handleSubmit(onSubmit)}>
         {passed ? (
-          <CheckIcon className={styles.checked} />
+          <CheckIcon/>
         ) : (
           <>
             <TextInput
-              type="password"
+              inputType="password"
               placeholder="Please enter at least 8 characters"
-              fullWidth
-              name="password"
-              visiblePassword
+              createPass
               inputRef={register}
-              variant={styles.pass}
             />
-            <TextInput
-              type="password"
-              placeholder="Please enter your password again"
-              fullWidth
-              name="repassword"
-              inputRef={register}
-              visiblePassword
-              variant={styles.repass}
-            />
-            <span className={styles.warning}>
+            <span >
               At least 8 characters, 1 lower-case, 1 numeral.
             </span>
             {(errors.password || errors.repassword) && (
-              <span className={styles.error}>
+              <span >
                 {errors.password
                   ? errors.password.message
                   : errors.repassword.message}
@@ -84,11 +71,10 @@ const CreatePass = () => {
             )}
           </>
         )}
-        <span className={`body-comment ${styles.comment}`}>{comment}</span>
+        <span >{comment}</span>
         <Button
           type={passed ? 'button' : 'submit'}
           theme="btn-gradient-primary"
-          variant={styles.next}
           onClick={nextHandler}
         >
           Next

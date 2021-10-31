@@ -1,5 +1,4 @@
 import React, { FC, useState } from 'react';
-import clsx from 'clsx';
 import { useHistory } from 'react-router-dom';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
@@ -7,7 +6,6 @@ import { useController } from 'hooks/index';
 import Layout from '../../common/Layout';
 
 import * as consts from './consts';
-import styles from './index.scss';
 
 const CreatePhrase: FC = () => {
   const history = useHistory();
@@ -31,10 +29,10 @@ const CreatePhrase: FC = () => {
   };
 
   return (
-    <Layout title={title} linkTo="/create/phrase/remind">
+    <Layout title={title} linkTo="app.html">
       <div className="body-description mb-30">{description}</div>
       {!passed && phrases && (
-        <ul className={styles.generated}>
+        <ul>
           {phrases.split(' ').map((phrase: string, index: number) => (
             <li key={index}>
               <span className="t-gray-medium">
@@ -49,7 +47,6 @@ const CreatePhrase: FC = () => {
         type="button"
         theme="btn-gradient-primary"
         onClick={nextHandler}
-        variant={clsx(styles.written, { [styles.passed]: passed })}
       >
         {passed ? "Let's do it" : "I've written it down"}
       </Button>

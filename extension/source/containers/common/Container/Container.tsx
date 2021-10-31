@@ -1,13 +1,24 @@
 import React, { FC, ReactNode } from 'react';
 
-import styles from './Container.scss';
-
 interface IContainer {
   children?: ReactNode;
 }
 
 const Container: FC<IContainer> = ({ children }) => {
-  return <div className={styles.container}>{children}</div>;
+  return (
+    <div
+      className="
+        w-full
+        min-w-popup
+        max-w-popup
+        h-popup
+        text-xl
+        p-0
+        m-0
+      ">
+        {children}
+      </div>
+  );
 };
 
 export default Container;

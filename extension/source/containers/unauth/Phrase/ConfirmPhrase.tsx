@@ -8,8 +8,6 @@ import { useController } from 'hooks/index';
 
 import Layout from '../../common/Layout';
 
-import styles from './index.scss';
-
 const ConfirmPhrase = () => {
   const history = useHistory();
   const controller = useController();
@@ -54,7 +52,7 @@ const ConfirmPhrase = () => {
 
   return (
     <Layout title={title} linkTo="/create/phrase/generated">
-      {passed && <CheckIcon className={styles.checked} />}
+      {passed && <CheckIcon />}
       <div className="body-description">
         {passed
           ? 'You should now have your recovery phrase and your wallet password written down for future reference.'
@@ -62,24 +60,22 @@ const ConfirmPhrase = () => {
       </div>
       {!passed && (
         <>
-          <section className={styles.topzone}>
+          <section >
             {newList.map((phrase, idx) => (
               <Button
                 key={idx}
                 type="button"
-                variant={`${styles.phrase} ${styles.selected}`}
                 onClick={() => handleNewPhrase(idx)}
               >
                 {phrase}
               </Button>
             ))}
           </section>
-          <section className={styles.bottomzone}>
+          <section >
             {orgList.map((phrase, idx) => (
               <Button
                 key={idx}
                 type="button"
-                variant={styles.phrase}
                 onClick={() => handleOrgPhrase(idx)}
               >
                 {phrase}
@@ -91,7 +87,6 @@ const ConfirmPhrase = () => {
       <Button
         type="button"
         theme="btn-gradient-primary"
-        variant={passed ? styles.start : styles.validate}
         disabled={isNotEqualArrays}
         onClick={handleConfirm}
       >

@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux';
 import IPriceState from 'state/price/types';
 import { RootState } from 'state/store';
 
-export function useFiat() {
+export const useFiat = () => {
   const price: IPriceState = useSelector((state: RootState) => state.price);
 
   return (amount: number, fraction = 4) => {

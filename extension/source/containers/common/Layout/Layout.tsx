@@ -1,7 +1,5 @@
 import React, { ReactNode, FC } from 'react';
-import Header from 'containers/common/Header';
-
-import styles from './Layout.scss';
+// import Header from 'containers/common/Header';
 
 interface ILayout {
   children: ReactNode;
@@ -20,12 +18,12 @@ const Layout: FC<ILayout> = ({
 }) => {
   return (
     <>
-      <Header backLink={linkTo} showLogo={showLogo} importSeed={importSeed} />
-      <div className={styles.layout}>
-        <section className={styles.heading}>
+      {/* <Header backLink={linkTo} showLogo={showLogo} importSeed={importSeed} /> */}
+      <div>
+        <section>
           <span className="heading-1">{title}</span>
         </section>
-        <section className={styles.content}>{children}</section>
+        <section >{children}</section>
       </div>
     </>
   );

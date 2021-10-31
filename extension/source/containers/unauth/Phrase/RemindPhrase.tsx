@@ -3,8 +3,6 @@ import Button from 'components/Button';
 
 import Layout from '../../common/Layout';
 
-import styles from './index.scss';
-
 const RemindPhrase = () => {
   return (
     <Layout title={`Let's create your\nrecovery phrase`} linkTo="/create/pass">
@@ -17,7 +15,6 @@ const RemindPhrase = () => {
       <Button
         type="button"
         theme="btn-gradient-primary"
-        variant={styles.start}
         linkTo="/create/phrase/generated"
       >
         Start

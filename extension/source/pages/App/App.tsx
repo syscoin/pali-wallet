@@ -1,10 +1,10 @@
-import Start from 'containers/unauth/Start';
+// import Start from 'containers/unauth/Start';
 import React, { FC } from 'react';
 // import { useSelector } from 'react-redux';
-// import { BrowserRouter as Router } from 'react-router-dom';
-// import Container from 'containers/common/Container';
+import { BrowserRouter as Router } from 'react-router-dom';
+import Container from 'containers/common/Container/index';
 // import AuthRouter from 'routers/Auth';
-// import UnAuthRouter from 'routers/UnAuth';
+import UnAuthRouter from 'routers/UnAuth';
 // import { RootState } from 'state/store';
 // import IWalletState from 'state/wallet/types';
 
@@ -14,14 +14,13 @@ const App: FC = () => {
   // );
 
   return (
-    <section className="app">
-      <h1 className="text-red-300">ola pali wallet</h1>
-      <Start />
-      {/* <Container>
+    <section className="min-w-popup">
+      <Container>
         <Router>
-          {encriptedMnemonic !== null ? <AuthRouter /> : <UnAuthRouter />}
+          <UnAuthRouter />
+          {/* {encriptedMnemonic !== null ? <AuthRouter /> : <UnAuthRouter />} */}
         </Router>
-      </Container> */}
+      </Container>
     </section>
   );
 };
