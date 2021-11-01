@@ -41,7 +41,7 @@ export default function Home() {
             >
               {isInstalled
                 ? (isLocked && isConnected)
-                  ? "Unlock Pali wallet"
+                  ? "Unlock Pali Wallet"
                   : "Connect to Pali Wallet"
                 : "Install Pali Wallet"}
             </button>
