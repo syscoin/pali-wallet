@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useHistory } from 'react-router-dom';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
@@ -9,18 +9,15 @@ import Layout from '../../common/Layout';
 const CreatePass = () => {
   const history = useHistory();
   const controller = useController();
-  const [passed, setPassed] = useState<boolean>(false);
-
-  const nextHandler = () => {
-    if (passed) {
-      history.push('/create/phrase/generated');
-    }
-  };
 
   const onSubmit = (data: any) => {
-    controller.wallet.setWalletPassword(data.password);
+    try {
+      controller.wallet.setWalletPassword(data.password);
 
-    setPassed(true);
+      history.push('/create/phrase/generated');
+    } catch (error) {
+      console.log('error');
+    }
   };
 
   const onFinishFailed = (errorInfo: any) => {
@@ -88,8 +85,7 @@ const CreatePass = () => {
         </span>
 
         <Button
-          type={passed ? 'button' : 'submit'}
-          onClick={nextHandler}
+          type="submit"
           className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
         >
           Next

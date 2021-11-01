@@ -8,7 +8,7 @@
 }
 
 #basic_password, #basic_repassword {
-  @apply w-72 rounded-full p-2 pl-4 bg-brand-navydarker border border-brand-navymedium text-brand-navymedium text-sm outline-none focus:border-brand-navylight;
+  @apply w-72 rounded-full p-2 pl-4 bg-brand-navydarker border border-brand-navymedium text-brand-graylight text-sm outline-none focus:border-brand-navylight;
 }
 
 .ant-input-suffix {

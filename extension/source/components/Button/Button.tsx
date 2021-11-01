@@ -11,7 +11,7 @@ interface IButton {
   fullWidth?: boolean;
   linkTo?: string;
   loading?: boolean;
-  onClick?: () => any;
+  onClick?: any;
   theme?:
     | 'primary'
     | 'secondary'
