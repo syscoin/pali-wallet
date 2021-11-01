@@ -4,7 +4,7 @@ module.exports = {
     white: '#fff',
 
     navy: '#122036',
-    navydarker: '#111e33',
+    navydarker: '#07152B',
     navydark: '#1b2e4d',
     navymedium: '#1e365c',
     navylight: '#233f6c',
@@ -16,7 +16,7 @@ module.exports = {
     deepPink: '#cb2c70',
     deepPink100: '#ff3e91',
 
-    yellowGreen: '#7d992e',
+    green: '#4E9F3D',
 
     gold: '#ff9900',
 

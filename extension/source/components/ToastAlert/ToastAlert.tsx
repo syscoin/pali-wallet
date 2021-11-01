@@ -1,8 +1,5 @@
 import React, { FC } from 'react';
-import clsx from 'clsx';
 import CancelIcon from '@material-ui/icons/Cancel';
-
-import styles from './ToastAlert.scss';
 
 interface IAlertTemplate {
   close: () => void;
@@ -14,10 +11,6 @@ interface IAlertTemplate {
 const ToastAlert: FC<IAlertTemplate> = ({ message, options, style, close }) => {
   return (
     <div
-      className={clsx(styles.toast, {
-        [styles.error]: options.type === 'error',
-        [styles.show]: options.type === 'success',
-      })}
       style={{
         ...style,
         marginBottom: '80px',
@@ -26,7 +19,7 @@ const ToastAlert: FC<IAlertTemplate> = ({ message, options, style, close }) => {
       }}
       onClick={close}
     >
-      {options.type === 'error' && <CancelIcon className={styles.icon} />}
+      {options.type === 'error' && <CancelIcon />}
       {message}
     </div>
   );

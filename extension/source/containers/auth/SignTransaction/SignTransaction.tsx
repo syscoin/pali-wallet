@@ -1,5 +1,5 @@
 import React, { useState, FC } from 'react';
-import clsx from 'clsx';
+// import clsx from 'clsx';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
 import IWalletState from 'state/wallet/types';
@@ -14,8 +14,6 @@ import { getHost } from 'scripts/Background/helpers';
 import CircularProgress from '@material-ui/core/CircularProgress';
 
 import { ellipsis } from '../helpers';
-
-import styles from './SignTransaction.scss';
 
 interface ISignTransaction {
   item: string;
@@ -156,8 +154,6 @@ const SignTransaction: FC<ISignTransaction> = ({
       </div>
       <Button
         type="button"
-        theme="btn-gradient-primary"
-        variant={styles.next}
         linkTo="/home"
         onClick={handleClosePopup}
       >
@@ -168,9 +164,9 @@ const SignTransaction: FC<ISignTransaction> = ({
     <div>
       {transactingStateItem && loading ? (
         <Layout title="" showLogo>
-          <div className={styles.wrapper}>
-            <section className={clsx(styles.mask)}>
-              <CircularProgress className={styles.loader} />
+          <div >
+            <section>
+              <CircularProgress  />
             </section>
           </div>
         </Layout>
@@ -179,35 +175,33 @@ const SignTransaction: FC<ISignTransaction> = ({
           {transactingStateItem && psbt && !loading && (
             <div>
               <Layout title="Signature request" showLogo>
-                <div className={styles.wrapper}>
-                  <p className={styles.description}>{getHost(currentSenderURL)}</p>
+                <div >
+                  <p>{getHost(currentSenderURL)}</p>
 
-                  <div className={styles.account}>
-                    <p className={styles.description}>{connectedAccount?.label}</p>
-                    <p className={styles.description}>
+                  <div >
+                    <p>{connectedAccount?.label}</p>
+                    <p>
                       {connectedAccount?.address.main && ellipsis(connectedAccount?.address.main)}
                     </p>
                   </div>
 
-                  <pre className={styles.code}>{`${JSON.stringify(
+                  <pre>{`${JSON.stringify(
                     controller.wallet.account.importPsbt(psbt),
                     null,
                     2
                   )}`}</pre>
 
                   <p
-                    className={styles.description}
+                  
                     style={{ textAlign: 'center', marginTop: '1rem' }}
                   >
                     { warning }
                   </p>
 
-                  <section className={styles.confirm}>
-                    <div className={styles.actions}>
+                  <section >
+                    <div >
                       <Button
                         type="button"
-                        theme="btn-outline-secondary"
-                        variant={clsx(styles.button, styles.close)}
                         linkTo="/home"
                         onClick={handleRejectTransaction}
                       >
@@ -216,11 +210,9 @@ const SignTransaction: FC<ISignTransaction> = ({
 
                       <Button
                         type="button"
-                        theme="btn-outline-primary"
-                        variant={styles.button}
                         onClick={handleConfirmSignature}
                       >
-                        {loading ? <Spinner size={15} className={styles.spinner} /> : 'Sign'}
+                        {loading ? <Spinner size={15}/> : 'Sign'}
                       </Button>
                     </div>
                   </section>

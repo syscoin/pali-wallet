@@ -1,8 +1,5 @@
 import React, { FC } from 'react';
-import clsx from 'clsx';
 import { useAlert } from 'react-alert';
-
-import styles from './index.scss';
 
 const AboutView: FC = () => {
   const alert = useAlert();
@@ -20,13 +17,12 @@ const AboutView: FC = () => {
     window.open('https://docs.paliwallet.com/');
   };
   return (
-    <div className={styles.about}>
+    <div >
       <span>Pali Wallet Chrome Extension v1.0</span>
       <span>Version: 1.0.9</span>
       <span>
         Support:{' '}
         <a
-          className={styles.link}
           onClick={handleSupportClick}
         >
           Pali support
@@ -35,7 +31,6 @@ const AboutView: FC = () => {
       <span>
         API Docs
         <a
-          className={clsx(styles.link, styles.terms)}
           onClick={handleDocsClick}
         >
           Pali API

@@ -28,7 +28,7 @@ const WalletReceive = () => {
 
   return (
     <div className={styles.wrapper}>
-      <Header backLink="/home" showName={false}/>
+      <Header />
       <section className={styles.subheading}>Receive SYS</section>
       <section className={styles.content}>
         {loaded ? (

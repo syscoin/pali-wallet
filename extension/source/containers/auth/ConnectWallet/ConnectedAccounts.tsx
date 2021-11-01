@@ -72,7 +72,7 @@ const ConnectedAccounts = () => {
 
   return (
     <div className={styles.wrapper}>
-      <Header showLogo />
+      <Header />
 
       {changeAccountIsOpen ? (
         <div className={styles.list} style={{ marginTop: '2rem' }}>

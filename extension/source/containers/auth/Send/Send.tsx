@@ -1,13 +1,12 @@
 import * as React from 'react';
 import {
-  ChangeEvent,
+  // ChangeEvent,
   useState,
   useCallback,
   useMemo,
   useEffect,
   FC,
 } from 'react';
-import clsx from 'clsx';
 import * as yup from 'yup';
 import { useHistory } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -28,8 +27,6 @@ import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import DownArrowIcon from '@material-ui/icons/ExpandMore';
 import Spinner from '@material-ui/core/CircularProgress';
 import { Assets } from '../../../scripts/types';
-
-import styles from './Send.scss';
 
 interface IWalletSend {
   initAddress?: string;
@@ -61,13 +58,13 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     return controller.wallet.account.isValidSYSAddress(address, activeNetwork);
   }, [address]);
 
-  const addressInputClass = clsx(styles.input, styles.address, {
-    [styles.verified]: isValidAddress || (address && !isValidAddress),
-  });
+  // const addressInputClass = clsx(styles.input, styles.address, {
+  //   [styles.verified]: isValidAddress || (address && !isValidAddress),
+  // });
 
-  const statusIconClass = clsx(styles.statusIcon, {
-    [styles.hide]: !isValidAddress,
-  });
+  // const statusIconClass = clsx(styles.statusIcon, {
+  //   [styles.hide]: !isValidAddress,
+  // });
 
   const onSubmit = (data: any) => {
     if (!isValidAddress) {
@@ -124,33 +121,33 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     history.push('/send/confirm');
   };
 
-  const handleAmountChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setAmount(event.target.value);
-    },
-    []
-  );
+  // const handleAmountChange = useCallback(
+  //   (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  //     setAmount(event.target.value);
+  //   },
+  //   []
+  // );
 
-  const handleFeeChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setFee(event.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'));
+  // const handleFeeChange = useCallback(
+  //   (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  //     setFee(event.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'));
 
-      if (Number(event.target.value) > 0.1) {
-        alert.removeAll();
-        alert.error(`Error: Fee too high, maximum 0.1 SYS.`, { timeout: 2000 });
+  //     if (Number(event.target.value) > 0.1) {
+  //       alert.removeAll();
+  //       alert.error(`Error: Fee too high, maximum 0.1 SYS.`, { timeout: 2000 });
   
-        return;
-      }
-    },
-    []
-  );
+  //       return;
+  //     }
+  //   },
+  //   []
+  // );
 
-  const handleAddressChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setAddress(event.target.value.trim());
-    },
-    []
-  );
+  // const handleAddressChange = useCallback(
+  //   (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  //     setAddress(event.target.value.trim());
+  //   },
+  //   []
+  // );
 
   const handleTypeChanged = useCallback(
     (
@@ -182,11 +179,11 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
   useEffect(handleGetFee, []);
 
-  const checkAssetBalance = () => {
-    return Number(selectedAsset ?
-      (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
-      accounts.find(element => element.id === activeAccountId)!.balance.toFixed(8))
-  }
+  // const checkAssetBalance = () => {
+  //   return Number(selectedAsset ?
+  //     (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
+  //     accounts.find(element => element.id === activeAccountId)!.balance.toFixed(8))
+  // }
 
   const showAssetBalance = () => {
     return (selectedAsset ?
@@ -195,16 +192,16 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   }
 
   return (
-    <div className={styles.wrapper}>
-      <Header backLink="/home" showName={false} />
+    <div>
+      <Header />
 
       <form onSubmit={handleSubmit(onSubmit)} autoComplete="off">
-        <section className={styles.subheading}>Send {selectedAsset ? selectedAsset.symbol : "SYS"}</section>
-        <section className={styles.balance}>
+        <section>Send {selectedAsset ? selectedAsset.symbol : "SYS"}</section>
+        <section>
           <div>
             Balance:{' '}
             {changingNetwork ? (
-              <Spinner size={20} className={styles.spinner} />
+              <Spinner size={20}  />
             ) : (
               <span>{showAssetBalance()}</span>
             )}
@@ -215,9 +212,9 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
           </div>
         </section>
 
-        <section className={styles.content}>
-          <ul className={styles.form}>
-            <li className={styles.item}>
+        <section >
+          <ul >
+            <li >
               <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <label htmlFor="address">Recipient Address</label>
               </div>
@@ -225,49 +222,39 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               <img
                 src={VerifiedIcon}
                 alt="checked"
-                className={statusIconClass}
               />
 
               <img
                 src={Close}
                 alt="checked"
                 onClick={() => setAddress("")}
-                className={address && !isValidAddress ? styles.statusIsNotValidClass : styles.hideCloseIcon}
               />
 
               <TextInput
                 placeholder="Enter a valid address"
-                fullWidth
-                value={address}
-                name="address"
                 inputRef={register}
-                onChange={handleAddressChange}
-                variant={addressInputClass}
               />
             </li>
 
-            <div className={!selectedAsset ? styles.formBlockOne : styles.formBlock}>
-              <li className={!selectedAsset ? styles.noAssetItem : styles.item}>
+            <div >
+              <li>
                 <div
-                  className={styles.select}
                   id="asset"
                 >
                   <label
                     htmlFor="asset"
-                    style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                   >
                     Choose Asset
                   </label>
                   <div
-                    className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
                     onClick={() => setExpanded(!expanded)}
                   >
-                    <span className={styles.selected}>
+                    <span>
                       {selectedAsset?.symbol || "SYS"}
-                      <DownArrowIcon className={styles.arrow} />
+                      <DownArrowIcon />
                     </span>
-                    <ul className={styles.options}>
-                      <li className={styles.option} onClick={() => handleAssetSelected(1)}>
+                    <ul >
+                      <li  onClick={() => handleAssetSelected(1)}>
                         <p>SYS</p>
                         <p>Native</p>
                       </li>
@@ -275,7 +262,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                       {accounts.find(element => element.id === activeAccountId)!.assets.map((item, index) => {
                         if (!controller.wallet.account.isNFT(item.assetGuid)) {
                           return (
-                            <li className={styles.option} key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
+                            <li key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
                               <p>{item.symbol}</p>
                               <p>SPT</p>
                             </li>
@@ -283,7 +270,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                         }
 
                         return (
-                          <li className={styles.option} key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
+                          <li key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
                             <p>{item.symbol}</p>
                             <p>NFT</p>
                           </li>
@@ -294,11 +281,11 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 </div>
               </li>
 
-              <li className={!selectedAsset ? styles.noAsset : styles.item}>
-                <div className={styles.zDag}>
+              <li>
+                <div>
                   <label htmlFor="rbf">Z-DAG</label>
 
-                  <div className={styles.tooltip}>
+                  <div >
                     <HelpOutlineIcon
                       style={{ width: '17px', height: '17px' }}
                       data-tip
@@ -351,27 +338,20 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             </div>
 
             <div>
-              <li className={styles.item}>
+              <li>
                 <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <label htmlFor="amount"> {selectedAsset ? selectedAsset.symbol : "SYS"} Amount</label>
 
-                  {accounts.find(element => element.id === activeAccountId)!.balance === 0 && <small className={styles.description} style={{ textAlign: 'left' }}>You don't have SYS available.</small>}
+                  {accounts.find(element => element.id === activeAccountId)!.balance === 0 && <small >You don't have SYS available.</small>}
                 </div>
 
                 <TextInput
-                  type="number"
                   placeholder="Enter amount to send"
-                  fullWidth
                   inputRef={register}
-                  name="amount"
-                  value={amount}
-                  onChange={handleAmountChange}
-                  variant={clsx(styles.input, styles.amount)}
                 />
 
                 <Button
                   type="button"
-                  variant={styles.textBtn}
                   onClick={() =>
                     setAmount(selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? String(selectedAsset.balance) : String((selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals)) : String(accounts.find(element => element.id === activeAccountId)!.balance))
                   }
@@ -380,7 +360,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 </Button>
               </li>
 
-              <li className={styles.item}>
+              <li >
                 <label
                   htmlFor="fee"
                   style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -389,20 +369,12 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 </label>
 
                 <TextInput
-                  type="text"
                   placeholder="Enter transaction fee"
-                  fullWidth
                   inputRef={register}
-                  name="fee"
-                  title="Must be a integer or decimal number"
-                  onChange={handleFeeChange}
-                  value={fee}
-                  variant={clsx(styles.input, styles.fee)}
                 />
 
                 <Button
                   type="button"
-                  variant={styles.textBtn}
                   onClick={handleGetFee}
                 >
                   Recommend
@@ -410,27 +382,25 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               </li>
             </div>
 
-            <div className={styles.description}>
+            <div>
               {`With current network conditions we recommend a fee of ${recommend} SYS.`}
             </div>
 
-            <div className={styles.status}>
-              <span className={styles.equalAmount}>
+            <div >
+              <span>
                 ≈ {!selectedAsset ? getFiatAmount(Number(amount) + Number(fee), 6) : getFiatAmount(Number(fee), 6)}
 
               </span>
               {!!Object.values(errors).length && (
-                <span className={styles.error}>
+                <span >
                   {Object.values(errors)[0].message}
                 </span>
               )}
             </div>
 
-            <div className={styles.actions}>
+            <div>
               <Button
                 type="button"
-                theme="btn-outline-secondary"
-                variant={clsx(styles.button, styles.close)}
                 linkTo="/home"
               >
                 Close
@@ -438,19 +408,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
               <Button
                 type="submit"
-                theme="btn-outline-primary"
-                variant={styles.button}
-                disabled={
-                  accounts.find(element => element.id === activeAccountId)!.balance === 0 ||
-                  checkAssetBalance() < Number(amount) ||
-                  !isValidAddress ||
-                  !amount ||
-                  !fee ||
-                  Number(fee) > 0.1 ||
-                  !address ||
-                  Number(amount) <= 0 ||
-                  (Number(amount) + Number(fee)) > checkAssetBalance()
-                }
               >
                 Send
               </Button>

@@ -1,54 +1,60 @@
-import React, { useState } from 'react';
-import TextInput from 'components/TextInput';
+import React from 'react';
 import Button from 'components/Button';
 import Link from 'components/Link';
-import { useForm } from 'react-hook-form';
 import { useController } from 'hooks/index';
 import LogoImage from 'assets/images/logo.svg';
+import { Form, Input } from 'antd';
 
-import { schema } from './consts';
-import styles from './Start.scss';
 
 const Starter = () => {
   const controller = useController();
-  const { handleSubmit, register, errors } = useForm({
-    validationSchema: schema,
-  });
-  const [isInvalid, setInvalid] = useState<boolean>(false);
+  // const [isInvalid, setInvalid] = useState<boolean>(false);
 
   const onSubmit = (data: any) => {
-    setInvalid(!controller.wallet.unLock(data.password));
+    // setInvalid(!controller.wallet.unLock(data.password));
+    controller.wallet.unLock(data.password);
   };
 
   return (
-    <div className={styles.home}>
+    <div>
       <h1 className="heading-start full-width t-roboto t-royalBlue">
         <p>Welcome to</p>
         <br />
         Pali Wallet
       </h1>
-      <img src={LogoImage} className={styles.logo} alt="syscoin" />
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <TextInput
-          inputType="password"
-          placeholder="Please enter your password"
-          inputRef={register}
-        />
-        {errors.password ? (
-          <span className={styles.error}>{errors.password.message}</span>
-        ) : (
-          isInvalid && (
-            <span className={styles.error}>Error: Invalid password</span>
-          )
-        )}
+      <img src={LogoImage} alt="syscoin" />
+      <Form
+        name="basic"
+        labelCol={{ span: 8 }}
+        wrapperCol={{ span: 16 }}
+        initialValues={{ remember: true }}
+        onFinish={onSubmit}
+        autoComplete="off"
+      >
+        <Form.Item
+          label="Password"
+          name="password"
+          hasFeedback
+          tooltip="You will need this password to create your wallet."
+          rules={[
+            {
+              required: true,
+              message: 'Password is a required field.'
+            },
+            {
+              pattern: /^(?=.*[a-z])(?=.*[0-9])(?=.{8,})/,
+              message: 'Please, check the requirements below.'
+            }
+          ]}
+        >
+          <Input.Password className="bg-brand-graymedium" />
+        </Form.Item>
         <Button
           type="submit"
-          theme="btn-gradient-primary"
-          variant={styles.unlock}
         >
           Unlock
         </Button>
-      </form>
+      </Form>
       <Link to="/import">
         Import using wallet seed phrase
       </Link>

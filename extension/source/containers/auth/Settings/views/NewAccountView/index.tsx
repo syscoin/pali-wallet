@@ -1,16 +1,13 @@
 import React, { useState } from 'react';
-import clsx from 'clsx';
 import { useForm } from 'react-hook-form';
 import * as yup from 'yup';
 import TextInput from 'components/TextInput';
 import Button from 'components/Button';
-import { useController, useCopyClipboard, useSettingsView } from 'hooks/index';
+import { useController, useSettingsView } from 'hooks/index';
 import { ellipsis } from 'containers/auth/helpers';
 import Spinner from '@material-ui/core/CircularProgress';
 
 import { MAIN_VIEW } from '../routes';
-
-import styles from './index.scss';
 
 const NewAccountView = () => {
   const [address, setAddress] = useState<string | undefined>();
@@ -20,13 +17,13 @@ const NewAccountView = () => {
       name: yup.string().required(),
     }),
   });
-  const [isCopied, copyText] = useCopyClipboard();
+  // const [isCopied, copyText] = useCopyClipboard();
   const [loading, setLoading] = useState<boolean>(false);
   const showView = useSettingsView();
 
-  const addressClass = clsx(styles.address, {
-    [styles.copied]: isCopied && address,
-  });
+  // const addressClass = clsx(styles.address, {
+  //   [styles.copied]: isCopied && address,
+  // });
 
   const onSubmit = async (data: any) => {
     setLoading(true);
@@ -41,24 +38,21 @@ const NewAccountView = () => {
   };
 
   return (
-    <div className={styles.newAccount}>
+    <div >
       {address ? (
         <>
           <span>Your new account has been created</span>
           <span>Click to copy your public address:</span>
           <span
-            className={addressClass}
-            onClick={() => {
-              copyText(address);
-            }}
+            // onClick={() => {
+            //   copyText(address);
+            // }}
           >
             {ellipsis(address)}
           </span>
-          <div className={clsx(styles.actions, styles.centered)}>
+          <div>
             <Button
               type="button"
-              theme="btn-gradient-primary"
-              variant={styles.button}
               onClick={() => showView(MAIN_VIEW)}
             >
               Finish
@@ -69,30 +63,23 @@ const NewAccountView = () => {
         <form onSubmit={handleSubmit(onSubmit)}>
           <span>Please name your new account:</span>
           <TextInput
-            type="text"
-            name="name"
-            fullWidth
-            variant={styles.input}
+            placeholder="account"
             inputRef={register}
           />
-          <div className={styles.actions}>
+          <div>
             <Button
               type="button"
-              theme="btn-outline-secondary"
-              variant={clsx(styles.button, styles.close)}
               onClick={() => showView(MAIN_VIEW)}
             >
               Close
             </Button>
             {loading ? (
-              <div className={styles.loading}>
-                <Spinner size={22} className={styles.spinner} />
+              <div>
+                <Spinner size={22} />
               </div>
             ) : (
               <Button
                 type="submit"
-                theme="btn-gradient-primary"
-                variant={styles.button}
                 disabled={loading}
               >
                 Next

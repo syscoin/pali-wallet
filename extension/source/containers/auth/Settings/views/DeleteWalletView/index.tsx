@@ -1,5 +1,4 @@
 import React from 'react';
-import clsx from 'clsx';
 import { useAlert } from 'react-alert';
 import { useHistory } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -7,8 +6,6 @@ import * as yup from 'yup';
 import TextInput from 'components/TextInput';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
-
-import styles from './index.scss';
 
 const DeleteWalletView = () => {
   const controller = useController();
@@ -33,7 +30,7 @@ const DeleteWalletView = () => {
   };
 
   return (
-    <div className={styles.deleteWallet}>
+    <div >
       <form onSubmit={handleSubmit(onSubmit)}>
         <span>
           <b>Warning:</b> this action will delete your wallet and all accounts
@@ -43,26 +40,18 @@ const DeleteWalletView = () => {
         </span>
         <span>Please enter your wallet password:</span>
         <TextInput
-          type="password"
-          name="password"
-          visiblePassword
-          fullWidth
+          placeholder="password"
           inputRef={register}
-          variant={styles.input}
         />
-        <div className={styles.actions}>
+        <div>
           <Button
             type="button"
-            theme="btn-outline-primary"
-            variant={clsx(styles.button, styles.close)}
             onClick={() => history.goBack()}
           >
             Close
           </Button>
           <Button
             type="submit"
-            theme="btn-outline-secondary"
-            variant={styles.button}
           >
             Delete
           </Button>

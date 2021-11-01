@@ -1,8 +1,6 @@
 import React, { FC, ReactElement } from 'react';
 import MUITooltip from '@material-ui/core/Tooltip';
 
-import styles from './Tooltip.scss';
-
 interface ITooltip {
   arrow?: boolean;
   children: ReactElement;
@@ -25,7 +23,6 @@ interface ITooltip {
 const Tooltip: FC<ITooltip> = ({ title, children, arrow, placement }) => {
   return (
     <MUITooltip
-      classes={{ tooltip: styles.tooltip, arrow: styles.arrow }}
       title={title}
       arrow={arrow}
       placement={placement}

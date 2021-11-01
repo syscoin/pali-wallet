@@ -11,13 +11,14 @@ module.exports = {
         'tooltip': '0px 0px 5px rgba(0, 0, 0, 0.25)'
       },
       maxWidth: {
-        popup: '600px'
+        popup: '600px',
+        input: '18rem'
       },
       minWidth: {
         popup: '372px'
       },
       height: {
-        popup: '900px'
+        popup: '600px'
       },
       letterSpacing: {
         tightest: '-.075em',

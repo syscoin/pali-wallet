@@ -5,14 +5,11 @@ import Button from 'components/Button';
 import checkGreen from 'assets/images/svg/check-green.svg';
 import { ellipsis } from 'containers/auth/helpers';
 import Spinner from '@material-ui/core/CircularProgress';
-import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { useHistory } from 'react-router';
 import { getHost } from 'scripts/Background/helpers';
-
-import styles from './ConnectWallet.scss';
 import { useAlert } from 'react-alert';
 
 const ConnectWallet = () => {
@@ -96,8 +93,8 @@ const ConnectWallet = () => {
   return (
     <div>
       {continueConnection ? (
-        <div className={styles.wrapper}>
-          <Header showLogo />
+        <div >
+          <Header />
 
           <h1>
             Connect with <b>Pali Wallet</b>
@@ -105,7 +102,7 @@ const ConnectWallet = () => {
 
           <p>2/2</p>
 
-          <div className={styles.list}>
+          <div>
             <p>Site: {currentSenderURL}</p>
             {connectedAccount && (
               <div>
@@ -119,11 +116,9 @@ const ConnectWallet = () => {
             Only connect with sites you trust. <a href="#">Learn more.</a>
           </small>
 
-          <div className={styles.actions}>
+          <div>
             <Button
               type="button"
-              theme="btn-outline-secondary"
-              variant={clsx(styles.button, styles.cancel)}
               onClick={handleCancelConnection}
               linkTo="/home"
             >
@@ -132,8 +127,6 @@ const ConnectWallet = () => {
 
             <Button
               type="button"
-              theme="btn-outline-primary"
-              variant={styles.button}
               linkTo="/home"
               onClick={handleConfirmConnection}
             >
@@ -142,8 +135,8 @@ const ConnectWallet = () => {
           </div>
         </div>
       ) : (
-        <div className={styles.wrapper}>
-          <Header showLogo />
+        <div>
+          <Header />
 
           <h1>
             Connect with <b>Pali Wallet</b>
@@ -154,14 +147,13 @@ const ConnectWallet = () => {
           <p>Choose account</p>
 
           {accounts.length > 0 ? (
-            <ul className={styles.listAccounts}>
+            <ul>
               {accounts.map((acc: any) => (
                 <li
                   key={acc.id}
                   onClick={() => handleSelectAccount(acc.id)}
-                  className={styles.account}
                 >
-                  <div className={styles.label}>
+                  <div>
                     <p>
                       {acc.label}{' '}
                       {acc.id === activeAccountId && <small>(active)</small>}
@@ -174,7 +166,7 @@ const ConnectWallet = () => {
               ))}
             </ul>
           ) : (
-            <div className={styles.loading}>
+            <div>
               <Spinner />
             </div>
           )}
@@ -183,11 +175,9 @@ const ConnectWallet = () => {
             Only connect with sites you trust. <a href="#">Learn more.</a>
           </small>
 
-          <div className={styles.actions}>
+          <div>
             <Button
               type="button"
-              theme="btn-outline-secondary"
-              variant={clsx(styles.button, styles.cancel)}
               onClick={handleCancelConnection}
             // linkTo="/home"
             >
@@ -196,8 +186,6 @@ const ConnectWallet = () => {
 
             <Button
               type="button"
-              theme="btn-outline-primary"
-              variant={styles.button}
               disabled={accountId === -1}
               onClick={() => setContinueConnection(true)}
             >

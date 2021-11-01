@@ -1,52 +1,50 @@
 import React, { useEffect, useState } from 'react';
-import clsx from 'clsx';
 import { useSelector } from 'react-redux';
-import CircularProgress from '@material-ui/core/CircularProgress';
-import Spinner from '@material-ui/core/CircularProgress';
-import IconButton from '@material-ui/core/IconButton';
-import RefreshIcon from '@material-ui/icons/Refresh';
+// import CircularProgress from '@material-ui/core/CircularProgress';
+// import Spinner from '@material-ui/core/CircularProgress';
+// import IconButton from '@material-ui/core/IconButton';
+// import RefreshIcon from '@material-ui/icons/Refresh';
 import Header from 'containers/common/Header';
-import Button from 'components/Button';
-import FullSelect from 'components/FullSelect';
-import Modal from 'components/Modal';
-import ModalBlock from 'components/ModalBlock';
+// import Button from 'components/Button';
+// import FullSelect from 'components/FullSelect';
+// import Modal from 'components/Modal';
+// import ModalBlock from 'components/ModalBlock';
 import { useController } from 'hooks/index';
-import { useFiat } from 'hooks/usePrice';
+// import { useFiat } from 'hooks/usePrice';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { browser } from 'webextension-polyfill-ts';
 
-import { formatNumber } from '../helpers';
-import { getHost } from '../../../scripts/Background/helpers';
+// import { formatNumber } from '../helpers';
+// import { getHost } from '../../../scripts/Background/helpers';
 
-import TxsPanel from './TxsPanel';
-import styles from './Home.scss';
+// import TxsPanel from './TxsPanel';
 
 const Home = () => {
   const controller = useController();
-  const getFiatAmount = useFiat();
+  // const getFiatAmount = useFiat();
 
   const {
     accounts,
     activeAccountId,
     tabs,
-    changingNetwork,
-    activeNetwork,
+    // changingNetwork,
+    // activeNetwork,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
   const { currentURL } = tabs;
 
-  const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
-  const [openBlockExplorer, setOpenBlockExplorer] = useState<boolean>(false);
-  const [openAssetBlockExplorer, setOpenAssetBlockExplorer] =
-    useState<boolean>(false);
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [txidSelected, setTxidSelected] = useState('');
-  const [assetSelected, setAssetSelected] = useState(-1);
-  const [txType, setTxType] = useState('');
-  const [assetType, setAssetType] = useState('');
-  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
-  const [tx, setTx] = useState(null);
-  const [assetTx, setAssetTx] = useState(null);
+  // const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
+  // const [openBlockExplorer, setOpenBlockExplorer] = useState<boolean>(false);
+  // const [openAssetBlockExplorer, setOpenAssetBlockExplorer] =
+  //   useState<boolean>(false);
+  // const [isConnected, setIsConnected] = useState<boolean>(false);
+  // const [txidSelected, setTxidSelected] = useState('');
+  // const [assetSelected, setAssetSelected] = useState(-1);
+  // const [txType, setTxType] = useState('');
+  // const [assetType, setAssetType] = useState('');
+  // const sysExplorer = controller.wallet.account.getSysExplorerSearch();
+  // const [tx, setTx] = useState(null);
+  // const [assetTx, setAssetTx] = useState(null);
   const [currentTabURL, setCurrentTabURL] = useState<string>(currentURL);
 
   useEffect(() => {
@@ -73,13 +71,13 @@ const Home = () => {
     controller.stateUpdater();
   };
 
-  const getTransactionData = async (txid: string) => {
-    return await controller.wallet.account.getTransactionData(txid);
-  };
+  // const getTransactionData = async (txid: string) => {
+  //   return await controller.wallet.account.getTransactionData(txid);
+  // };
 
-  const getTransactionAssetData = async (assetGuid: string) => {
-    return await controller.wallet.account.getDataAsset(assetGuid);
-  };
+  // const getTransactionAssetData = async (assetGuid: string) => {
+  //   return await controller.wallet.account.getDataAsset(assetGuid);
+  // };
 
   useEffect(() => {
     if (
@@ -96,42 +94,41 @@ const Home = () => {
 
     if (acc && acc.connectedTo !== undefined) {
       if (acc.connectedTo.length > 0) {
-        setIsConnected(
-          acc.connectedTo.findIndex((url: any) => {
-            return url == getHost(currentTabURL);
-          }) > -1
-        );
+        // setIsConnected(
+        //   acc.connectedTo.findIndex((url: any) => {
+        //     return url == getHost(currentTabURL);
+        //   }) > -1
+        // );
         return;
       }
 
-      setIsConnected(false);
+      // setIsConnected(false);
     }
   }, [accounts, activeAccountId, currentTabURL]);
 
-  const handleOpenExplorer = (txid: string) => {
-    window.open(`${sysExplorer}/tx/${txid}`);
-  };
+  // const handleOpenExplorer = (txid: string) => {
+  //   window.open(`${sysExplorer}/tx/${txid}`);
+  // };
 
-  const handleOpenAssetExplorer = (assetGuid: number) => {
-    window.open(`${sysExplorer}/asset/${assetGuid}`);
-  };
+  // const handleOpenAssetExplorer = (assetGuid: number) => {
+  //   window.open(`${sysExplorer}/asset/${assetGuid}`);
+  // };
 
-  const handleSetModalIsOpen = () => {
-    setIsOpenModal(!isOpenModal);
-  };
+  // const handleSetModalIsOpen = () => {
+  //   setIsOpenModal(!isOpenModal);
+  // };
 
   return (
-    <div className={styles.wrapper}>
-      {isOpenModal && (
+    <div>
+      home
+      {/* {isOpenModal && (
         <div
-          className={styles.background}
           onClick={() => setIsOpenModal(false)}
         />
       )}
 
       {openBlockExplorer && (
         <div
-          className={styles.background}
           onClick={() => {
             setOpenBlockExplorer(false);
           }}
@@ -140,7 +137,6 @@ const Home = () => {
 
       {openAssetBlockExplorer && (
         <div
-          className={styles.background}
           onClick={() => {
             setOpenAssetBlockExplorer(false);
           }}
@@ -175,12 +171,12 @@ const Home = () => {
           assetTx={assetTx}
           assetType={assetType}
         />
-      )}
+      )} */}
 
       {accounts.find((element) => element.id === activeAccountId) ? (
         <>
-          <Header showLogo showName={false} />
-          <section className={styles.account}>
+          <Header />
+          {/* <section>
             {accounts.length > 1 ? (
               <FullSelect
                 value={String(activeAccountId)}
@@ -194,17 +190,15 @@ const Home = () => {
               accounts.find((element) => element.id === activeAccountId)?.label
             )}
           </section>
-          <section className={styles.center}>
+          <section>
             {isConnected ? (
               <small
-                className={styles.connected}
                 onClick={() => setIsOpenModal(!isOpenModal)}
               >
                 Connected
               </small>
             ) : (
               <small
-                className={styles.notConnected}
                 onClick={() => setIsOpenModal(!isOpenModal)}
               >
                 Not connected
@@ -228,7 +222,7 @@ const Home = () => {
             )}
 
             {changingNetwork ? (
-              <Spinner size={25} className={styles.spinner} />
+              <Spinner size={25} />
             ) : (
               <h3>
                 {formatNumber(
@@ -252,14 +246,13 @@ const Home = () => {
               </small>
             )}
 
-            <IconButton className={styles.refresh} onClick={handleRefresh}>
+            <IconButton onClick={handleRefresh}>
               <RefreshIcon />
             </IconButton>
-            <div className={styles.actions}>
+            <div >
               <Button
                 type="button"
                 theme="btn-outline-secondary"
-                variant={styles.button}
                 linkTo="/send"
               >
                 Send
@@ -267,7 +260,6 @@ const Home = () => {
               <Button
                 type="button"
                 theme="btn-outline-primary"
-                variant={styles.button}
                 linkTo="/receive"
               >
                 Receive
@@ -300,17 +292,13 @@ const Home = () => {
               accounts.find((element) => element.id === activeAccountId)
                 ?.assets || []
             }
-          />
+          /> */}
         </>
       ) : (
         <section
-          className={clsx(styles.mask, {
-            [styles.hide]: accounts.find(
-              (element) => element.id === activeAccountId
-            ),
-          })}
         >
-          <CircularProgress className={styles.loader} />
+          no account
+          {/* <CircularProgress /> */}
         </section>
       )}
     </div>

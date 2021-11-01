@@ -1,42 +1,40 @@
 import React, { FC } from 'react';
-import { useSelector } from 'react-redux';
+// import { useSelector } from 'react-redux';
 import { useHistory } from 'react-router-dom';
 import AddIcon from '@material-ui/icons/Add';
 import SettingsIcon from '@material-ui/icons/Settings';
 import LogOutIcon from '@material-ui/icons/ExitToApp';
 import SettingsInputHdmiIcon from '@material-ui/icons/SettingsInputHdmi';
-import UserIcon from '@material-ui/icons/AccountCircleRounded';
+// import UserIcon from '@material-ui/icons/AccountCircleRounded';
 import Icon from 'components/Icon';
 import { useController, useSettingsView } from 'hooks/index';
-import { RootState } from 'state/store';
-import IWalletState from 'state/wallet/types';
-import AccountSelect from 'components/AccountSelect';
+// import { RootState } from 'state/store';
+// import IWalletState from 'state/wallet/types';
+// import AccountSelect from 'components/AccountSelect';
 
 import {
-  ACCOUNT_VIEW,
+  // ACCOUNT_VIEW,
   CONNECT_HARDWARE_WALLET_VIEW,
   GENERAL_VIEW,
   NEW_ACCOUNT_VIEW,
 } from '../routes';
 
-import styles from './index.scss';
-
 interface IMainView {
   onChange: (id: string) => void;
 }
 
-const MainView: FC<IMainView> = ({ onChange }) => {
+const MainView: FC<IMainView> = ({ }) => {
   const showView = useSettingsView();
   const history = useHistory();
   const controller = useController();
-  const { accounts, activeAccountId }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
+  // const { accounts, activeAccountId }: IWalletState = useSelector(
+  //   (state: RootState) => state.wallet
+  // );
 
-  const handleSelectAccount = (id: string) => {
-    onChange(id);
-    showView(ACCOUNT_VIEW);
-  };
+  // const handleSelectAccount = (id: string) => {
+  //   onChange(id);
+  //   showView(ACCOUNT_VIEW);
+  // };
 
   const handleLogout = () => {
     controller.wallet.logOut();
@@ -44,9 +42,9 @@ const MainView: FC<IMainView> = ({ onChange }) => {
   };
 
   return (
-    <div className={styles.main}>
-      <ul className={styles.accounts}>
-        <AccountSelect
+    <div >
+      <ul >
+        {/* <AccountSelect
           label={
             <>
               <Icon Component={UserIcon} />
@@ -58,10 +56,9 @@ const MainView: FC<IMainView> = ({ onChange }) => {
           onChange={(val: string) => {
             handleSelectAccount(val);
           }}
-        />
+        /> */}
       </ul>
       <section
-        className={styles.new}
         onClick={() => showView(NEW_ACCOUNT_VIEW)}
       >
         <Icon Component={AddIcon} />
@@ -69,7 +66,6 @@ const MainView: FC<IMainView> = ({ onChange }) => {
       </section>
 
       <section
-        className={styles.new}
         onClick={() => showView(CONNECT_HARDWARE_WALLET_VIEW)}
       >
         <Icon Component={SettingsInputHdmiIcon} />
@@ -77,13 +73,12 @@ const MainView: FC<IMainView> = ({ onChange }) => {
       </section>
 
       <section
-        className={styles.general}
         onClick={() => showView(GENERAL_VIEW)}
       >
         <Icon Component={SettingsIcon} />
         General settings
       </section>
-      <section className={styles.general} onClick={handleLogout}>
+      <section  onClick={handleLogout}>
         <Icon Component={LogOutIcon} />
         Lock
       </section>

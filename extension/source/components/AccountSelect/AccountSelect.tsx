@@ -1,8 +1,5 @@
 import React, { useState, FC, ReactNode } from 'react';
-import clsx from 'clsx';
 import DownArrowIcon from '@material-ui/icons/ExpandMore';
-
-import styles from './AccountSelect.scss';
 
 interface IOptions {
   [key: string]: any;
@@ -25,14 +22,13 @@ const AccountSelect: FC<IAccountSelect> = ({
 
   return (
     <div
-      className={clsx(styles.accselect, { [styles.expanded]: expanded })}
       onClick={() => setExpanded(!expanded)}
     >
-      <span className={styles.selected}>
+      <span>
         {label}
-        <DownArrowIcon className={styles.arrow} />
+        <DownArrowIcon />
       </span>
-      <ul className={styles.options}>
+      <ul>
         {Object.keys(options).map((key: string) => (
           <li key={key} onClick={() => onChange(key)}>
             {options[key].label}

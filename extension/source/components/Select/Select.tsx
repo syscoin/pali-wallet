@@ -4,8 +4,6 @@ import MUISelect from '@material-ui/core/Select';
 import MUIMenuItem from '@material-ui/core/MenuItem';
 import ArrowDownIcon from '@material-ui/icons/KeyboardArrowDown';
 
-import styles from './Select.scss';
-
 interface IOption {
   [key: string]: string;
 }
@@ -34,7 +32,7 @@ const Select: FC<ISelect> = ({
   disabled = false,
 }) => {
   return (
-    <div className={styles.select}>
+    <div>
       <MUISelect
         value={value}
         input={input}

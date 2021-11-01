@@ -6,13 +6,10 @@ import { Form, Input } from 'antd';
 
 import Layout from '../../common/Layout';
 
-import * as consts from './consts';
-
 const CreatePass = () => {
   const history = useHistory();
   const controller = useController();
   const [passed, setPassed] = useState<boolean>(false);
-  const title = passed ? consts.CREATE_PASS_TITLE2 : consts.CREATE_PASS_TITLE1;
 
   const nextHandler = () => {
     if (passed) {
@@ -21,8 +18,8 @@ const CreatePass = () => {
   };
 
   const onSubmit = (data: any) => {
-    console.log('data password', data.password)
     controller.wallet.setWalletPassword(data.password);
+
     setPassed(true);
   };
 
@@ -31,33 +28,32 @@ const CreatePass = () => {
   };
 
   return (
-    <Layout title={title} linkTo="/app.html">
+    <Layout title="Password" onlySection linkTo="/app.html">
       <Form
         name="basic"
         labelCol={{ span: 8 }}
-        wrapperCol={{ span: 16 }}
+        wrapperCol={{ span: 8 }}
         initialValues={{ remember: true }}
         onFinish={onSubmit}
         onFinishFailed={onFinishFailed}
         autoComplete="off"
+        className="flex justify-center items-center flex-col gap-4 mt-8 text-center"
       >
         <Form.Item
-          label="Password"
           name="password"
           hasFeedback
-          tooltip="You will need this password to create your wallet."
           rules={[
             {
               required: true,
-              message: 'Password is a required field.'
+              message: ''
             },
             {
               pattern: /^(?=.*[a-z])(?=.*[0-9])(?=.{8,})/,
-              message: 'Please, check the requirements below.'
+              message: ''
             }
           ]}
         >
-          <Input.Password className="bg-brand-graymedium" />
+          <Input.Password placeholder="New password (min 8 chars)" />
         </Form.Item>
 
         <Form.Item
@@ -67,7 +63,7 @@ const CreatePass = () => {
           rules={[
             {
               required: true,
-              message: 'Please, confirm your password.'
+              message: ''
             },
             ({ getFieldValue }) => ({
               validator(_, value) {
@@ -75,21 +71,26 @@ const CreatePass = () => {
                   return Promise.resolve();
                 }
 
-                return Promise.reject(new Error('The two passwords that you entered do not match.'));
+                return Promise.reject('');
               },
             }),
           ]}
         >
-          <Input.Password />
+          <Input.Password placeholder="Confirm password" />
         </Form.Item>
 
-        <span>
-          At least 8 characters, 1 lower-case, 1 numeral.
+        <span className="font-light text-brand-graylight text-xs">
+          At least 8 characters, 1 lower-case and 1 numeral.
+        </span>
+
+        <span className="font-light text-brand-royalBlue text-xs mx-4">
+          Do not forget to save your password. You will need this password to unlock your wallet.
         </span>
 
         <Button
           type={passed ? 'button' : 'submit'}
           onClick={nextHandler}
+          className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
         >
           Next
         </Button>

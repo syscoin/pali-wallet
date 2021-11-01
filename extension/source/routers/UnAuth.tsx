@@ -7,7 +7,6 @@ import { useTransition, animated } from 'react-spring';
 import {
   CreatePhrase,
   ConfirmPhrase,
-  RemindPhrase,
 } from 'containers/unauth/Phrase';
 import Import from 'containers/common/Import';
 import { useController } from 'hooks/index';
@@ -50,11 +49,6 @@ const UnAuth = () => {
             <Route path="/import" component={Import} exact />
             <Route path="/remind" component={Remind} exact />
             <Route path="/create/pass" component={CreatePass} exact />
-            <Route
-              path="/create/phrase/remind"
-              component={RemindPhrase}
-              exact
-            />
             <Route
               path="/create/phrase/generated"
               component={CreatePhrase}

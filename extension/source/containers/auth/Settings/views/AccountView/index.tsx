@@ -10,8 +10,6 @@ import { RootState } from 'state/store';
 
 import { PRIV_KEY_VIEW } from '../routes';
 
-import styles from './index.scss';
-
 interface IAccountView {
   id: number;
 }
@@ -28,7 +26,7 @@ const AccountView: FC<IAccountView> = ({ id }) => {
   };
 
   return (
-    <div className={styles.account}>
+    <div>
       <ul>
         <li onClick={() => showView(PRIV_KEY_VIEW)}>
           <Icon Component={ExportIcon} />

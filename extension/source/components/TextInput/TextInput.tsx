@@ -10,7 +10,7 @@ const TextInput: FC<{
   inputRef: any;
 }> = ({
   inputType = 'text',
-  className = 'text-brand-graydark',
+  // className = 'text-brand-graydark',
   createPass = false,
   placeholder = '',
   inputRef = null
@@ -31,7 +31,6 @@ const TextInput: FC<{
             {inputType === 'password' ? (
               <Space>
                 <Input.Password
-                  ref={inputRef}
                   placeholder={placeholder}
                   iconRender={visible => (visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
                 />

@@ -1,8 +1,5 @@
 import React, { useState, FC } from 'react';
-import clsx from 'clsx';
 import DownArrowIcon from '@material-ui/icons/ExpandMore';
-
-import styles from './FullSelect.scss';
 
 interface IOptions {
   [key: string]: any;
@@ -19,14 +16,13 @@ const FullSelect: FC<IFullSelect> = ({ options, value, onChange }) => {
 
   return (
     <div
-      className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
       onClick={() => setExpanded(!expanded)}
     >
-      <span className={styles.selected}>
+      <span>
         {options.find((el: any) => el.id === Number(value)).label}
-        <DownArrowIcon className={styles.arrow} />
+        <DownArrowIcon />
       </span>
-      <ul className={styles.options}>
+      <ul>
         {(options).map((option: any) => (
           <li key={String(option.id)} onClick={() => onChange(String(option.id))}>
             {option.label}

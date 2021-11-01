@@ -179,7 +179,7 @@ const SendConfirm = () => {
     </Layout>
   ) : (
     <div className={styles.wrapper}>
-      <Header backLink="/send" />
+      <Header/>
       <section className={styles.subheading}>Confirm</section>
       <section className={styles.txAmount}>
         <div className={styles.iconWrapper}>

@@ -8,13 +8,11 @@ import { useSettingsView } from 'hooks/index';
 
 import { AUTOLOCK_VIEW, ABOUT_VIEW, DELETE_WALLET_VIEW, PHRASE_VIEW } from '../routes';
 
-import styles from './index.scss';
-
 const GeneralView = () => {
   const showView = useSettingsView();
 
   return (
-    <div className={styles.general}>
+    <div>
       <ul>
         <li onClick={() => showView(AUTOLOCK_VIEW)}>
           <Icon Component={TimeIcon} />
