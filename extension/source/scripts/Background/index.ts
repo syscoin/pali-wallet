@@ -894,4 +894,8 @@ browser.runtime.onInstalled.addListener(async () => {
   });
 });
 
+browser.management.onEnabled.addListener(() => {
+  browser.runtime.reload();
+})
+
 wrapStore(store, { portName: STORE_PORT });
