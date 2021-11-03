@@ -13,7 +13,7 @@ const Start = () => {
       <h1 className=" text-brand-royalBlue font-bold text-center text-4xl m-0 font-sans leading-4 tracking-wide"
       >Pali Wallet</h1>
 
-      <img src={LogoImage} className="w-52 mt-8 mb-6" alt="syscoin" />
+      <img src={LogoImage} className="w-52 my-8" alt="syscoin" />
 
       <Button
         type="submit"

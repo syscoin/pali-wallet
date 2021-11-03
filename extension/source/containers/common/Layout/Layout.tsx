@@ -1,5 +1,7 @@
 import React, { ReactNode, FC } from 'react';
 import Header from 'containers/common/Header';
+import { Tooltip } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 
 interface ILayout {
   children: ReactNode;
@@ -10,6 +12,7 @@ interface ILayout {
   onlySection?: boolean;
   accountHeader?: boolean;
   normalHeader?: boolean;
+  tooltipText?: string;
 }
 
 const Layout: FC<ILayout> = ({
@@ -21,6 +24,7 @@ const Layout: FC<ILayout> = ({
   onlySection = false,
   accountHeader = false,
   normalHeader = false,
+  tooltipText = '',
 }) => {
   return (
     <div className="flex flex-col justify-center items-center">
@@ -29,9 +33,20 @@ const Layout: FC<ILayout> = ({
         accountHeader={accountHeader}
         normalHeader={normalHeader}
       />
-
       <section>
-        <span className="text-brand-royalBlue font-bold text-xl text-center tracking-normal">{title}</span>
+        {tooltipText ? (
+          <div className="flex justify-center items-center gap-2">
+            <span className="text-brand-royalBlue font-bold text-xl text-center tracking-normal">{title}</span>
+
+            <Tooltip placement="bottom" title={tooltipText}>
+              <QuestionCircleOutlined className="text-brand-graylight w-4" />
+            </Tooltip>
+          </div>
+
+        ) : (
+          <span className="text-brand-royalBlue font-bold text-xl text-center tracking-normal">{title}</span>
+        )}
+
       </section>
       <section >{children}</section>
     </div>

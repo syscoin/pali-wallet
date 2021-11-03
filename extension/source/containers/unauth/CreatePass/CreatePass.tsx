@@ -1,9 +1,8 @@
 import React from 'react';
 import { useHistory } from 'react-router-dom';
-import Button from 'components/Button';
 import { useController } from 'hooks/index';
 import { Form, Input } from 'antd';
-
+import Button from 'components/Button';
 import Layout from '../../common/Layout';
 
 const CreatePass = () => {
@@ -16,23 +15,22 @@ const CreatePass = () => {
 
       history.push('/create/phrase/generated');
     } catch (error) {
-      console.log('error');
+      console.log('error', error);
     }
   };
 
-  const onFinishFailed = (errorInfo: any) => {
-    console.log('Failed:', errorInfo);
-  };
-
   return (
-    <Layout title="Password" onlySection linkTo="/app.html">
+    <Layout
+      title="Password"
+      onlySection
+      linkTo="/app.html"
+    >
       <Form
         name="basic"
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         initialValues={{ remember: true }}
         onFinish={onSubmit}
-        onFinishFailed={onFinishFailed}
         autoComplete="off"
         className="flex justify-center items-center flex-col gap-4 mt-8 text-center"
       >

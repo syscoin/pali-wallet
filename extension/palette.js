@@ -2,6 +2,7 @@ module.exports = {
   brand: {
     black: '#000',
     white: '#fff',
+    darktransparent: '#00000094',
 
     navy: '#122036',
     navydarker: '#07152B',
