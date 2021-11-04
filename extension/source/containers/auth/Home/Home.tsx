@@ -1,50 +1,52 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
-// import CircularProgress from '@material-ui/core/CircularProgress';
-// import Spinner from '@material-ui/core/CircularProgress';
-// import IconButton from '@material-ui/core/IconButton';
-// import RefreshIcon from '@material-ui/icons/Refresh';
+import CircularProgress from '@material-ui/core/CircularProgress';
+import Spinner from '@material-ui/core/CircularProgress';
+import IconButton from '@material-ui/core/IconButton';
+import RefreshIcon from '@material-ui/icons/Refresh';
 import Header from 'containers/common/Header';
-// import Button from 'components/Button';
-// import FullSelect from 'components/FullSelect';
-// import Modal from 'components/Modal';
-// import ModalBlock from 'components/ModalBlock';
+import Button from 'components/Button';
+import FullSelect from 'components/FullSelect';
+import Modal from 'components/Modal';
+import ModalBlock from 'components/ModalBlock';
 import { useController } from 'hooks/index';
-// import { useFiat } from 'hooks/usePrice';
+import { useFiat } from 'hooks/usePrice';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { browser } from 'webextension-polyfill-ts';
 
-// import { formatNumber } from '../helpers';
-// import { getHost } from '../../../scripts/Background/helpers';
+import { formatNumber } from '../helpers';
+import { useHistory } from 'react-router-dom';
+import { getHost } from '../../../scripts/Background/helpers';
 
-// import TxsPanel from './TxsPanel';
+import TxsPanel from './TxsPanel';
 
 const Home = () => {
   const controller = useController();
-  // const getFiatAmount = useFiat();
+  const history = useHistory();
+  const getFiatAmount = useFiat();
 
   const {
     accounts,
     activeAccountId,
     tabs,
-    // changingNetwork,
-    // activeNetwork,
+    changingNetwork,
+    activeNetwork,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
   const { currentURL } = tabs;
 
-  // const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
-  // const [openBlockExplorer, setOpenBlockExplorer] = useState<boolean>(false);
-  // const [openAssetBlockExplorer, setOpenAssetBlockExplorer] =
-  //   useState<boolean>(false);
-  // const [isConnected, setIsConnected] = useState<boolean>(false);
-  // const [txidSelected, setTxidSelected] = useState('');
-  // const [assetSelected, setAssetSelected] = useState(-1);
-  // const [txType, setTxType] = useState('');
-  // const [assetType, setAssetType] = useState('');
-  // const sysExplorer = controller.wallet.account.getSysExplorerSearch();
-  // const [tx, setTx] = useState(null);
-  // const [assetTx, setAssetTx] = useState(null);
+  const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
+  const [openBlockExplorer, setOpenBlockExplorer] = useState<boolean>(false);
+  const [openAssetBlockExplorer, setOpenAssetBlockExplorer] =
+    useState<boolean>(false);
+  const [isConnected, setIsConnected] = useState<boolean>(false);
+  const [txidSelected, setTxidSelected] = useState('');
+  const [assetSelected, setAssetSelected] = useState(-1);
+  const [txType, setTxType] = useState('');
+  const [assetType, setAssetType] = useState('');
+  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
+  const [tx, setTx] = useState(null);
+  const [assetTx, setAssetTx] = useState(null);
   const [currentTabURL, setCurrentTabURL] = useState<string>(currentURL);
 
   useEffect(() => {
@@ -71,13 +73,13 @@ const Home = () => {
     controller.stateUpdater();
   };
 
-  // const getTransactionData = async (txid: string) => {
-  //   return await controller.wallet.account.getTransactionData(txid);
-  // };
+  const getTransactionData = async (txid: string) => {
+    return await controller.wallet.account.getTransactionData(txid);
+  };
 
-  // const getTransactionAssetData = async (assetGuid: string) => {
-  //   return await controller.wallet.account.getDataAsset(assetGuid);
-  // };
+  const getTransactionAssetData = async (assetGuid: string) => {
+    return await controller.wallet.account.getDataAsset(assetGuid);
+  };
 
   useEffect(() => {
     if (
@@ -94,34 +96,34 @@ const Home = () => {
 
     if (acc && acc.connectedTo !== undefined) {
       if (acc.connectedTo.length > 0) {
-        // setIsConnected(
-        //   acc.connectedTo.findIndex((url: any) => {
-        //     return url == getHost(currentTabURL);
-        //   }) > -1
-        // );
+        setIsConnected(
+          acc.connectedTo.findIndex((url: any) => {
+            return url == getHost(currentTabURL);
+          }) > -1
+        );
         return;
       }
 
-      // setIsConnected(false);
+      setIsConnected(false);
     }
   }, [accounts, activeAccountId, currentTabURL]);
 
-  // const handleOpenExplorer = (txid: string) => {
-  //   window.open(`${sysExplorer}/tx/${txid}`);
-  // };
+  const handleOpenExplorer = (txid: string) => {
+    window.open(`${sysExplorer}/tx/${txid}`);
+  };
 
-  // const handleOpenAssetExplorer = (assetGuid: number) => {
-  //   window.open(`${sysExplorer}/asset/${assetGuid}`);
-  // };
+  const handleOpenAssetExplorer = (assetGuid: number) => {
+    window.open(`${sysExplorer}/asset/${assetGuid}`);
+  };
 
-  // const handleSetModalIsOpen = () => {
-  //   setIsOpenModal(!isOpenModal);
-  // };
+  const handleSetModalIsOpen = () => {
+    setIsOpenModal(!isOpenModal);
+  };
 
   return (
     <div>
       home
-      {/* {isOpenModal && (
+      {isOpenModal && (
         <div
           onClick={() => setIsOpenModal(false)}
         />
@@ -171,12 +173,12 @@ const Home = () => {
           assetTx={assetTx}
           assetType={assetType}
         />
-      )} */}
+      )}
 
       {accounts.find((element) => element.id === activeAccountId) ? (
         <>
           <Header />
-          {/* <section>
+          <section>
             {accounts.length > 1 ? (
               <FullSelect
                 value={String(activeAccountId)}
@@ -190,6 +192,7 @@ const Home = () => {
               accounts.find((element) => element.id === activeAccountId)?.label
             )}
           </section>
+          
           <section>
             {isConnected ? (
               <small
@@ -245,27 +248,26 @@ const Home = () => {
                   : ''}
               </small>
             )}
-
+ 
             <IconButton onClick={handleRefresh}>
               <RefreshIcon />
             </IconButton>
             <div >
               <Button
                 type="button"
-                theme="btn-outline-secondary"
-                linkTo="/send"
+                onClick={() => history.push('/send')}
               >
                 Send
               </Button>
               <Button
                 type="button"
-                theme="btn-outline-primary"
-                linkTo="/receive"
+                onClick={() => history.push('/receive')}
               >
                 Receive
               </Button>
             </div>
           </section>
+          
           <TxsPanel
             getTransactionAssetData={getTransactionAssetData}
             getTransactionData={getTransactionData}
@@ -292,13 +294,12 @@ const Home = () => {
               accounts.find((element) => element.id === activeAccountId)
                 ?.assets || []
             }
-          /> */}
+          />
         </>
       ) : (
         <section
         >
-          no account
-          {/* <CircularProgress /> */}
+          <CircularProgress />
         </section>
       )}
     </div>

@@ -1,7 +1,6 @@
 /* eslint-disable no-nested-ternary */
 import * as React from 'react';
 import { FC, Fragment, useCallback, useState } from 'react';
-import clsx from 'clsx';
 import { v4 as uuid } from 'uuid';
 import UpArrowIcon from '@material-ui/icons/ArrowUpward';
 import GoTopIcon from '@material-ui/icons/VerticalAlignTop';
@@ -16,8 +15,6 @@ import { useSelector } from 'react-redux';
 
 import { Transaction, Assets } from '../../../scripts/types';
 import { formatDistanceDate, formatCurrency } from '../helpers';
-
-import styles from './Home.scss';
 
 interface ITxsPanel {
   address: string;
@@ -103,16 +100,13 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
 
   return (
     <section
-      className={clsx(styles.activity, { [styles.expanded]: isShowed })}
       onScroll={handleScroll}
     >
       {!isShowed ?
-        <div className={styles.wrapper}>
-          <div className={styles.center}>
+        <div>
+          <div>
             <Button
               type="button"
-              theme={isActivity ? "btn-rectangle-primary" : "btn-rectangle-selected"}
-              variant={styles.buttonActivity}
               onClick={() => { setActivity(false) }}
             >
               Assets
@@ -120,8 +114,6 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
 
             <Button
               type="button"
-              theme={isActivity ? "btn-rectangle-selected" : "btn-rectangle-primary"}
-              variant={styles.buttonActivity}
               onClick={() => { setActivity(true) }}
             >
               Activity
@@ -129,9 +121,9 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
           </div>
         </div>
         :
-        <div className={styles.heading}>
+        <div >
           {isActivity ? "Activity" : "Assets"}
-          <IconButton className={styles.goTop} onClick={handleGoTop}>
+          <IconButton onClick={handleGoTop}>
             <GoTopIcon />
           </IconButton>
         </div>
@@ -139,12 +131,11 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
 
       {changingNetwork && (
         <>
-          <span className={styles.noTxComment}>
-            <Spinner size={25} className={styles.spinner} />
+          <span>
+            <Spinner size={25} />
           </span>
           <img
             src={SyscoinIcon}
-            className={styles.syscoin}
             alt="syscoin"
             height="167"
             width="auto"
@@ -162,12 +153,11 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                 return (
                   <Fragment key={uuid()}>
                     {isShowedGroupBar(tx, idx) && (
-                      <li className={styles.groupbar}>
+                      <li >
                         {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}
                       </li>
                     )}
                     <li
-                      className={styles.transactionItem}
                       onClick={() => {
                         setOpenBlockExplorer(true);
                         setTxidSelected(tx.txid);
@@ -177,7 +167,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                         })
                       }}>
                       <div>
-                        {isConfirmed ? null : <Spinner size={25} className={styles.spinner} />}
+                        {isConfirmed ? null : <Spinner size={25} />}
                       </div>
                       <div>
                         <span title="Click here to go to view transaction in sys block explorer">
@@ -191,7 +181,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                           <small>{isConfirmed ? "Confirmed" : "Unconfirmed"}</small>
                           <small>{getTxType(tx)}</small>
                         </span>
-                        <div className={styles.linkIcon}>
+                        <div>
                           <UpArrowIcon />
                         </div>
                       </div>
@@ -203,14 +193,13 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
           </>
         ) : (
           <>
-            <span className={styles.noTxComment}>
+            <span>
               You have no transaction history.
             </span>
 
             {!changingNetwork && (
               <img
                 src={SyscoinIcon}
-                className={styles.syscoin}
                 alt="syscoin"
                 height="167"
                 width="auto"
@@ -225,7 +214,6 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                   return (
                     <Fragment key={uuid()}>
                       <div
-                        className={styles.assetItem}
                         onClick={() => {
                           setOpenAssetBlockExplorer(true);
                           setAssetSelected(asset.assetGuid);
@@ -241,7 +229,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                               {formatCurrency(String(asset.balance / 10 ** asset.decimals), asset.decimals)} {asset.symbol}
                             </span>
                           </span>
-                          <div className={styles.linkIcon}>
+                          <div>
                             <UpArrowIcon />
                           </div>
                         </div>
@@ -252,14 +240,13 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
               })}
             </ul>
           </> : <>
-            <span className={styles.noTxComment}>
+            <span>
               You have no tokens or NFTs.
             </span>
 
             {!changingNetwork && (
               <img
                 src={SyscoinIcon}
-                className={styles.syscoin}
                 alt="syscoin"
                 height="167"
                 width="auto"

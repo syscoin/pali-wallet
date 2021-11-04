@@ -1,10 +1,8 @@
-import React, { FC, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import * as yup from 'yup';
+import React, { FC } from 'react';
 import Layout from 'containers/common/Layout';
-import TextInput from 'components/TextInput';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
+import { Form, Input } from 'antd';
 
 interface IImportPhrase {
   onRegister: () => void;
@@ -12,47 +10,54 @@ interface IImportPhrase {
 
 const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
   const controller = useController();
-  const { handleSubmit, register } = useForm({
-    validationSchema: yup.object().shape({
-      phrase: yup.string().required(),
-    }),
-  });
-  const [isValid, setIsValid] = useState<boolean>(true);
 
   const onSubmit = (data: any) => {
     if (controller.wallet.importPhrase(data.phrase)) {
       onRegister();
-    } else {
-      setIsValid(false);
     }
   };
 
   return (
-    <Layout title="Let's import your wallet" linkTo="/app.html" importSeed={true}>
-      <form onSubmit={handleSubmit(onSubmit)}>
+    <Layout title="Let's import your wallet" normalHeader importSeed>
+      <Form
+        name="basic"
+        labelCol={{ span: 8 }}
+        wrapperCol={{ span: 8 }}
+        initialValues={{ remember: true }}
+        onFinish={onSubmit}
+        autoComplete="off"
+        className="flex justify-center items-center flex-col gap-4 mt-8 text-center"
+      >
         <span>Paste your wallet seed phrase below:</span>
-        <TextInput
-          inputRef={register}
-          inputType="text"
-          placeholder="import input"
-        />
+        <Form.Item
+          name="phrase"
+          hasFeedback
+          rules={[
+            {
+              required: true,
+              message: ''
+            },
+            ({}) => ({
+              validator(_, value) {
+                if (controller.wallet.importPhrase(value)) {
+                  return Promise.resolve();
+                }
 
-        {!isValid && <span>Seed phrase is not valid.</span>}
+                return Promise.reject('');
+              },
+            }),
+          ]}
+        >
+          <Input placeholder="import phrase" />
+        </Form.Item>
 
-        <span>
-          Importing your wallet seed will automatically import a wallet
-          associated with this seed phrase.
-        </span>
-
-        <div >
-          <Button
-            type="submit"
-            theme="btn-gradient-primary"
-          >
-            Import
-          </Button>
-        </div>
-      </form>
+        <Button
+          type="submit"
+          className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
+        >
+          Next
+        </Button>
+      </Form>
     </Layout>
   );
 };
