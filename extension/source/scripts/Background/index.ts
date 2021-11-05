@@ -207,8 +207,8 @@ const restartLockTimeout = () => {
   }, timer * 60 * 1000);
 };
 
-browser.runtime.onInstalled.addListener(async () => {
-  console.emoji('🤩', 'Pali extension installed');
+const executeMessages = async () => {
+  console.emoji('🤩', 'Pali extension ebabled');
 
   window.controller.stateUpdater();
 
@@ -892,10 +892,14 @@ browser.runtime.onInstalled.addListener(async () => {
         store.dispatch(updateCurrentURL(String(tabs[0].url)));
       });
   });
+}
+
+browser.runtime.onInstalled.addListener(async () => {
+  await executeMessages();
 });
 
-browser.management.onEnabled.addListener(() => {
-  browser.runtime.reload();
+browser.management.onEnabled.addListener(async () => {
+  await executeMessages();
 })
 
 wrapStore(store, { portName: STORE_PORT });

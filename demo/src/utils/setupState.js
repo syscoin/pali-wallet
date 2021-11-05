@@ -8,59 +8,32 @@ import {
 
 export default async function setupState(store) {
   let isConnected = false;
-  let isLocked = true;
+  let isLocked = false;
 
-  if (window.ConnectionsController) {
-    const controller = window.ConnectionsController;
-    const connectedAccount = await controller.getConnectedAccount();
-    isLocked = await controller.isLocked();
+  const callback = async (event) => {
+    console.log('event', event)
+    if (event.detail.SyscoinInstalled) {
+      console.log('syscoin installed')
+      console.log('window', window.SyscoinWallet)
+      setIsInstalled(true);
 
-    if(isLocked && connectedAccount) {
-      store.dispatch(setController(controller));
-      store.dispatch(setIsInstalled(true));
-      store.dispatch(setIsConnected(true));
-      store.dispatch(setIsLocked(isLocked));
-      store.dispatch(
-        updateConnectedAccountData({
-          balance: connectedAccount.balance,
-          connectedAccount: { ...connectedAccount, assets: [] },
-          connectedAccountAddress: connectedAccount.address.main,
-        })
-      );
-      
-      return { isConnected: true, isLocked };
+      if (event.detail.ConnectionsController) {
+        setController(window.ConnectionsController);
+        setIsLocked(!isLocked);
+
+        return { isConnected, isLocked };
+      }
+
+      return { isConnected, isLocked };
     }
-    
-    
-    if (connectedAccount) {
-      const holdingsData = await controller.getHoldingsData();      
-      isConnected = true;
-      
-      store.dispatch(setController(controller));
-      store.dispatch(setIsInstalled(true));
-      store.dispatch(setIsConnected(true));
-      store.dispatch(setIsLocked(isLocked));
-      store.dispatch(
-        updateConnectedAccountData({
-          balance: connectedAccount.balance,
-          connectedAccount: { ...connectedAccount, assets: holdingsData },
-          connectedAccountAddress: connectedAccount.address.main,
-        })
-      );
-    } else {
-      store.dispatch(setController(controller));
-      store.dispatch(setIsLocked(isLocked));
-      store.dispatch(setIsConnected(false));
-      store.dispatch(setIsInstalled(true));
-      store.dispatch(
-        updateConnectedAccountData({
-          balance: 0,
-          connectedAccount: null,
-          connectedAccountAddress: "",
-        })
-      );
-    }
+
+    window.removeEventListener('SyscoinStatus', callback);
   }
 
+  console.log('checking syscoin status');
+
+  window.addEventListener('SyscoinStatus', callback);
+
+  console.log('is installed', store.getState().isInstalled)
   return { isConnected, isLocked };
 }

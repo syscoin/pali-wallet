@@ -10,4 +10,5 @@ if (!window.ConnectionsController) {
   window.ConnectionsController = MasterController().connections;
 }
 
-window.dispatchEvent(new CustomEvent('SyscoinStatus', { detail: { SyscoinInstalled: true, ConnectionsController: true } }));
+console.log('injected')
+window.dispatchEvent(new CustomEvent('SyscoinStatus', { detail: { SyscoinInstalled: true, ConnectionsController: true, inactive: true } }));

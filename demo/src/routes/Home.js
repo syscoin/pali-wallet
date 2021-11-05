@@ -13,7 +13,8 @@ export default function Home() {
     event.preventDefault();
 
     if(!isInstalled) {
-      return window.open("https://chrome.google.com/webstore/detail/pali-wallet/mgffkfbidihjpoaomajlbgchddlicgpn?hl=pt-BR&authuser=0", "_blank")
+      console.log('is not installed', isInstalled, store.getState())
+      // return window.open("https://chrome.google.com/webstore/detail/pali-wallet/mgffkfbidihjpoaomajlbgchddlicgpn?hl=pt-BR&authuser=0", "_blank")
     }
 
     if (controller) {

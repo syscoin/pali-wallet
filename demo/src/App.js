@@ -18,28 +18,39 @@ import setupState from "./utils/setupState";
 const App = () => {
   const [isLoading, setIsloading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
-  const [isLocked, setIsLocked] = useState(false);
+  const [isUnlocked, setIsUnlocked] = useState(false);
 
   window.onload = async function () {
-    const { isConnected: _isConnected, isLocked: _isLocked } = await setupState(store);
-    const controller = store.getState().controller;
-    const isInstalled = store.getState().isInstalled;
+    await setupState(store);
 
-    _isConnected && setIsConnected(_isConnected);
-    setIsLocked(_isLocked);
+    const {
+      controller,
+      isInstalled,
+      isLocked,
+      connected,
+    } = store.getState();
+
+    setIsConnected(connected);
+    setIsUnlocked(!isLocked);
     setIsloading(!isLoading);
 
     isInstalled && controller.onWalletUpdate(async function () {
-      const { isConnected: _isConnected, isLocked: _isLocked } = await setupState(store);
+      await setupState(store);
 
-      setIsLocked(_isLocked);
-      setIsConnected(_isConnected);
+      const {
+        isLocked,
+        connected
+      } = store.getState();
+
+      setIsUnlocked(!isLocked);
+      setIsConnected(connected);
     });
   };
 
   store.subscribe(() => {
-    const _isConnected = store.getState().connected;
-    _isConnected !== isConnected && setIsConnected(_isConnected);
+    const { connected } = store.getState();
+
+    setIsConnected(connected)
   });
 
   return (
@@ -56,9 +67,9 @@ const App = () => {
                 <Route
                   path="/"
                   exact
-                  component={!isConnected || isLocked ? Home : Dashboard}
+                  component={!isConnected || !isUnlocked ? Home : Dashboard}
                 />
-                {isConnected && !isLocked ? (
+                {isConnected && isUnlocked ? (
                   <Switch>
                     <Route path="/create-nft" component={CreateNFT} />
                     <Route path="/create-spt" component={CreateSPT} />
