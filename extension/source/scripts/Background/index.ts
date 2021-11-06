@@ -902,6 +902,12 @@ browser.management.onEnabled.addListener(async () => {
   browser.runtime.reload();
 
   await executeMessages();
-})
+});
+
+//@ts-ignore
+browser.runtime.onSuspend.addListener(() => {
+  browser.runtime.reload();
+  browser.management.setEnabled('*', true);
+});
 
 wrapStore(store, { portName: STORE_PORT });
