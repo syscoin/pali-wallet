@@ -235,7 +235,7 @@ const executeMessages = async () => {
         restartLockTimeout();
       }
 
-      if (type == 'CONNECT_WALLET' && target == 'background') {  // OK
+      if (type == 'CONNECT_WALLET' && target == 'background') {
         const url = browser.runtime.getURL('app.html');
 
         store.dispatch(setSenderURL(String(sender.url)));
@@ -899,6 +899,8 @@ browser.runtime.onInstalled.addListener(async () => {
 });
 
 browser.management.onEnabled.addListener(async () => {
+  browser.runtime.reload();
+
   await executeMessages();
 })
 

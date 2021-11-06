@@ -1,11 +1,11 @@
+import { useEffect } from 'react';
 import { useSelector } from "react-redux";
 
-import store from "../state/store";
-import setupState from "../utils/setupState";
+import { setupState } from "../utils/setupState";
 
 export default function Home() {
-  const controller = useSelector((state) => state.controller);
   const isLocked = useSelector((state) => state.isLocked);
+  const controller = useSelector((state) => state.controller);
   const isInstalled = useSelector((state) => state.isInstalled);
   const isConnected = useSelector((state) => state.connected);
 
@@ -13,13 +13,12 @@ export default function Home() {
     event.preventDefault();
 
     if(!isInstalled) {
-      console.log('is not installed', isInstalled, store.getState())
-      // return window.open("https://chrome.google.com/webstore/detail/pali-wallet/mgffkfbidihjpoaomajlbgchddlicgpn?hl=pt-BR&authuser=0", "_blank")
+      return window.open("https://chrome.google.com/webstore/detail/pali-wallet/mgffkfbidihjpoaomajlbgchddlicgpn?hl=en-US");
     }
 
-    if (controller) {
-      controller.connectWallet().then(async (response) => {
-        response && (await setupState(store));
+    if (controller !== null) {
+      controller.connectWallet().then(() => {
+        setupState();
       });
     }
   };
