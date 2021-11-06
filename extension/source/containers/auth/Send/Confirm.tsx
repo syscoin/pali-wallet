@@ -104,7 +104,7 @@ const SendConfirm = () => {
 
           if (tempTx.amount >= (max * tempTx.amount / 100)) {
             alert.removeAll();
-            alert.error(error.message);
+            alert.error(`Cannot send your whole balance due to internal security methods. Your maximum amount to send is ${(max * tempTx.amount / 100)}`);
 
             setLoading(false);
 

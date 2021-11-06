@@ -95,7 +95,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
         controller.wallet.account.updateTempTx({
           fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
           toAddress: address,
-          amount,
+          amount: Number(amount - fee),
           fee,
           token: selectedAsset.assetGuid,
           isToken: true,
@@ -114,7 +114,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     controller.wallet.account.updateTempTx({
       fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
       toAddress: address,
-      amount,
+      amount: Number(amount - fee),
       fee,
       token: null,
       isToken: false,
@@ -448,8 +448,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                   !fee ||
                   Number(fee) > 0.1 ||
                   !address ||
-                  Number(amount) <= 0 ||
-                  (Number(amount) + Number(fee)) > checkAssetBalance()
+                  Number(amount) <= 0
                 }
               >
                 Send

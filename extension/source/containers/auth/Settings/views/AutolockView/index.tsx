@@ -67,7 +67,7 @@ const AutolockView = () => {
         </>
       ) : (
         <form onSubmit={handleSubmit(onSubmit)}>
-          <span>You can set auto lock timer. Default is 5 minutes after no activity.</span>
+          <span>You can set auto lock timer. Default is a few seconds after no activity.</span>
           <TextInput
             type="text"
             name="minutes"
