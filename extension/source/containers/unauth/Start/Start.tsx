@@ -6,6 +6,7 @@ import { useHistory } from 'react-router-dom';
 
 const Start = () => {
   const history = useHistory();
+  
   return (
     <div className="mt-20 flex justify-center items-center flex-col min-w-full p-2">
       <p className=" text-brand-deepPink100 text-center text-lg  font-normal mb-2 tracking-wider">WELCOME TO</p>

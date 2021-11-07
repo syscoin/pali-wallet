@@ -8,22 +8,22 @@ import { Form, Input } from 'antd';
 
 const Starter = () => {
   const controller = useController();
-  // const [isInvalid, setInvalid] = useState<boolean>(false);
 
   const onSubmit = (data: any) => {
-    // setInvalid(!controller.wallet.unLock(data.password));
     controller.wallet.unLock(data.password);
   };
-
+  
   return (
-    <div>
-      <h1 className="heading-start full-width t-roboto t-royalBlue">
-        <p>Welcome to</p>
-        <br />
-        Pali Wallet
-      </h1>
-      <img src={LogoImage} alt="syscoin" />
+    <div className="mt-16 flex justify-center items-center flex-col min-w-full p-2">
+      <p className=" text-brand-deepPink100 text-center text-lg  font-normal mb-2 tracking-wider">WELCOME TO</p>
+
+      <h1 className=" text-brand-royalBlue font-bold text-center text-4xl m-0 font-sans leading-4 tracking-wide"
+      >Pali Wallet</h1>
+
+      <img src={LogoImage} className="w-52 my-8" alt="syscoin" />
+
       <Form
+        className="flex justify-center items-center flex-col gap-8 text-center"
         name="basic"
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 16 }}
@@ -32,22 +32,25 @@ const Starter = () => {
         autoComplete="off"
       >
         <Form.Item
-          label="Password"
           name="password"
           hasFeedback
-          tooltip="You will need this password to create your wallet."
           rules={[
             {
               required: true,
-              message: 'Password is a required field.'
+              message: ''
             },
-            {
-              pattern: /^(?=.*[a-z])(?=.*[0-9])(?=.{8,})/,
-              message: 'Please, check the requirements below.'
-            }
+            ({}) => ({
+              validator(_, value) {
+                if (controller.wallet.unLock(value)) {
+                  return Promise.resolve();
+                }
+
+                return Promise.reject('');
+              },
+            }),
           ]}
         >
-          <Input.Password className="bg-brand-graymedium" />
+          <Input.Password placeholder="Enter your password" />
         </Form.Item>
         <Button
           type="submit"
@@ -55,7 +58,8 @@ const Starter = () => {
           Unlock
         </Button>
       </Form>
-      <Link to="/import">
+      
+      <Link className="font-light mt-12 text-base text-brand-graylight hover:text-brand-royalBlue transition-all duration-300" to="/import">
         Import using wallet seed phrase
       </Link>
     </div>
