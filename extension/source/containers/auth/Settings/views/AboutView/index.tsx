@@ -8,7 +8,7 @@ const AboutView: FC = () => {
       timeout: 5000,
       type: 'success',
       onClose: () => {
-        window.open('https://discord.gg/6rKsX9SqUr')
+        window.open('https://discord.gg/8QKeyurHRd')
       }
     });
 
@@ -19,7 +19,7 @@ const AboutView: FC = () => {
   return (
     <div >
       <span>Pali Wallet Chrome Extension v1.0</span>
-      <span>Version: 1.0.9</span>
+      <span>Version: 1.0.10</span>
       <span>
         Support:{' '}
         <a

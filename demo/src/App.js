@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BrowserRouter, Redirect, Route, Switch } from "react-router-dom";
 import { Provider } from "react-redux";
 
@@ -13,33 +13,63 @@ import About from "./routes/About";
 
 import Header from "./components/Header";
 import store from "./state/store";
-import setupState from "./utils/setupState";
+import { setupState } from "./utils/setupState";
+
+import {
+  setController,
+  setIsInstalled,
+} from "./state/wallet";
 
 const App = () => {
   const [isLoading, setIsloading] = useState(true);
-  const [isConnected, setIsConnected] = useState(false);
-  const [isLocked, setIsLocked] = useState(false);
+  const [componentIsConnected, setComponentIsConnected] = useState(false);
+  const [walletLocked, setWalletLocked] = useState(false);
 
-  window.onload = async function () {
-    const { isConnected: _isConnected, isLocked: _isLocked } = await setupState(store);
-    const controller = store.getState().controller;
-    const isInstalled = store.getState().isInstalled;
+  useEffect(() => {
+    const callback = async (event) => {
+      if (event.detail.SyscoinInstalled) {
+        store.dispatch(setIsInstalled(true));
 
-    _isConnected && setIsConnected(_isConnected);
-    setIsLocked(_isLocked);
+        if (event.detail.ConnectionsController) {
+          store.dispatch(setController(window.ConnectionsController));
+        }
+
+        return;
+      }
+
+      window.removeEventListener('SyscoinStatus', callback);
+    }
+
+    window.addEventListener('SyscoinStatus', callback);
+  }, []);
+
+  window.onload = async () => {
+    const {
+      connected,
+      isLocked,
+      controller,
+      isInstalled
+    } = store.getState();
+
+    connected && setComponentIsConnected(connected);
+    setWalletLocked(isLocked);
     setIsloading(!isLoading);
 
-    isInstalled && controller.onWalletUpdate(async function () {
-      const { isConnected: _isConnected, isLocked: _isLocked } = await setupState(store);
+    setupState();
 
-      setIsLocked(_isLocked);
-      setIsConnected(_isConnected);
-    });
-  };
+    if (isInstalled && controller !== null) {
+      controller.onWalletUpdate(setupState);
 
-  store.subscribe(() => {
-    const _isConnected = store.getState().connected;
-    _isConnected !== isConnected && setIsConnected(_isConnected);
+      setWalletLocked(isLocked);
+      setComponentIsConnected(connected);
+    }
+  }
+
+  store.subscribe(async () => {
+    const { connected, isLocked } = store.getState();
+
+    connected !== componentIsConnected && setComponentIsConnected(connected);
+    isLocked !== walletLocked && setWalletLocked(isLocked);
   });
 
   return (
@@ -56,9 +86,9 @@ const App = () => {
                 <Route
                   path="/"
                   exact
-                  component={!isConnected || isLocked ? Home : Dashboard}
+                  component={!store.getState().connected || store.getState().isLocked ? Home : Dashboard}
                 />
-                {isConnected && !isLocked ? (
+                {store.getState().connected && !store.getState().isLocked ? (
                   <Switch>
                     <Route path="/create-nft" component={CreateNFT} />
                     <Route path="/create-spt" component={CreateSPT} />

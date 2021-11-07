@@ -156,7 +156,7 @@ export default function AdvancedPanel({
               id="endpointurl"
               placeholder=""
             />
-            <p className="help-block">URL to your notray API</p>
+            <p className="help-block">URL to your notary API</p>
           </div>
           <div className="form-group col-100">
             <div className="checkbox small">

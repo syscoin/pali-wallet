@@ -1,6 +1,6 @@
 import * as React from 'react';
 import {
-  // ChangeEvent,
+  ChangeEvent,
   useState,
   useCallback,
   useMemo,
@@ -92,7 +92,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
         controller.wallet.account.updateTempTx({
           fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
           toAddress: address,
-          amount,
+          amount: Number(amount - fee),
           fee,
           token: selectedAsset.assetGuid,
           isToken: true,
@@ -111,7 +111,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     controller.wallet.account.updateTempTx({
       fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
       toAddress: address,
-      amount,
+      amount: Number(amount - fee),
       fee,
       token: null,
       isToken: false,
@@ -121,33 +121,33 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     history.push('/send/confirm');
   };
 
-  // const handleAmountChange = useCallback(
-  //   (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-  //     setAmount(event.target.value);
-  //   },
-  //   []
-  // );
+  const handleAmountChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setAmount(event.target.value);
+    },
+    []
+  );
 
-  // const handleFeeChange = useCallback(
-  //   (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-  //     setFee(event.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'));
+  const handleFeeChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setFee(event.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'));
 
-  //     if (Number(event.target.value) > 0.1) {
-  //       alert.removeAll();
-  //       alert.error(`Error: Fee too high, maximum 0.1 SYS.`, { timeout: 2000 });
+      if (Number(event.target.value) > 0.1) {
+        alert.removeAll();
+        alert.error(`Error: Fee too high, maximum 0.1 SYS.`, { timeout: 2000 });
   
-  //       return;
-  //     }
-  //   },
-  //   []
-  // );
+        return;
+      }
+    },
+    []
+  );
 
-  // const handleAddressChange = useCallback(
-  //   (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-  //     setAddress(event.target.value.trim());
-  //   },
-  //   []
-  // );
+  const handleAddressChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setAddress(event.target.value.trim());
+    },
+    []
+  );
 
   const handleTypeChanged = useCallback(
     (
@@ -179,11 +179,11 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
   useEffect(handleGetFee, []);
 
-  // const checkAssetBalance = () => {
-  //   return Number(selectedAsset ?
-  //     (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
-  //     accounts.find(element => element.id === activeAccountId)!.balance.toFixed(8))
-  // }
+  const checkAssetBalance = () => {
+    return Number(selectedAsset ?
+      (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
+      accounts.find(element => element.id === activeAccountId)!.balance.toFixed(8))
+  }
 
   const showAssetBalance = () => {
     return (selectedAsset ?
@@ -408,6 +408,16 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
               <Button
                 type="submit"
+                disabled={
+                  accounts.find(element => element.id === activeAccountId)!.balance === 0 ||
+                  checkAssetBalance() < Number(amount) ||
+                  !isValidAddress ||
+                  !amount ||
+                  !fee ||
+                  Number(fee) > 0.1 ||
+                  !address ||
+                  Number(amount) <= 0
+                }
               >
                 Send
               </Button>

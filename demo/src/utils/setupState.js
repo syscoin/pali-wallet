@@ -5,62 +5,68 @@ import {
   setIsInstalled,
   updateConnectedAccountData,
 } from "../state/wallet";
+import store from '../state/store';
 
-export default async function setupState(store) {
-  let isConnected = false;
+const setState = ({ isConnected, isLocked, accountData }) => {
+  store.dispatch(setIsConnected(isConnected));
+  store.dispatch(setIsLocked(isLocked));
+  store.dispatch(
+    updateConnectedAccountData(accountData)
+  );
+}
+
+export const setupState = () => {
   let isLocked = true;
 
   if (window.ConnectionsController) {
     const controller = window.ConnectionsController;
-    const connectedAccount = await controller.getConnectedAccount();
-    isLocked = await controller.isLocked();
 
-    if(isLocked && connectedAccount) {
-      store.dispatch(setController(controller));
-      store.dispatch(setIsInstalled(true));
-      store.dispatch(setIsConnected(true));
-      store.dispatch(setIsLocked(isLocked));
-      store.dispatch(
-        updateConnectedAccountData({
-          balance: connectedAccount.balance,
-          connectedAccount: { ...connectedAccount, assets: [] },
-          connectedAccountAddress: connectedAccount.address.main,
+    controller.isLocked().then((locked) => {
+      isLocked = locked;
+    });
+
+    store.dispatch(setIsInstalled(true));
+
+    controller.getConnectedAccount().then((account) => {
+      if (account) {
+        if (isLocked) {
+          setState({
+            isConnected: true,
+            isLocked,
+            accountData: {
+              balance: account.balance,
+              connectedAccount: { ...account, assets: [] },
+              connectedAccountAddress: account.address.main,
+            }
+          });
+
+          return;
+        }
+
+        controller.getHoldingsData().then((holdings) => {
+          setState({
+            isConnected: true,
+            isLocked,
+            accountData: {
+              balance: account.balance,
+              connectedAccount: { ...account, assets: holdings },
+              connectedAccountAddress: account.address.main,
+            }
+          });
         })
-      );
-      
-      return { isConnected: true, isLocked };
-    }
-    
-    
-    if (connectedAccount) {
-      const holdingsData = await controller.getHoldingsData();      
-      isConnected = true;
-      
-      store.dispatch(setController(controller));
-      store.dispatch(setIsInstalled(true));
-      store.dispatch(setIsConnected(true));
-      store.dispatch(setIsLocked(isLocked));
-      store.dispatch(
-        updateConnectedAccountData({
-          balance: connectedAccount.balance,
-          connectedAccount: { ...connectedAccount, assets: holdingsData },
-          connectedAccountAddress: connectedAccount.address.main,
-        })
-      );
-    } else {
-      store.dispatch(setController(controller));
-      store.dispatch(setIsLocked(isLocked));
-      store.dispatch(setIsConnected(false));
-      store.dispatch(setIsInstalled(true));
-      store.dispatch(
-        updateConnectedAccountData({
+
+        return;
+      }
+
+      setState({
+        isConnected: false,
+        isLocked,
+        accountData: {
           balance: 0,
           connectedAccount: null,
           connectedAccountAddress: "",
-        })
-      );
-    }
+        }
+      });
+    })
   }
-
-  return { isConnected, isLocked };
 }

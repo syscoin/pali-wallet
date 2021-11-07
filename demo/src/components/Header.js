@@ -178,7 +178,7 @@ const Header = () => {
               Github
             </a>
             <a
-              href="https://discord.gg/RkK2AXD"
+              href="https://discord.gg/8QKeyurHRd"
               rel="noopener noreferrer"
               target="_blank"
             >

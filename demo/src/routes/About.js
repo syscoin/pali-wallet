@@ -19,7 +19,7 @@ export default function About() {
         We are constantly improving this application. If you have questions, 
         ideas to improve SysMint, or you believe you have identified a bug, 
         reach-out to us in the official Syscoin Discord on {" "}
-        <a href="#">the xxxxx channel. </a> 
+        <a href="https://discord.gg/8QKeyurHRd">the  #pali-wallet  channel. </a> 
         We appreciate your feedback!{" "}
         </p>
         <blockquote className="c">
@@ -29,7 +29,7 @@ export default function About() {
         currencies, NFT's, special fractional NFT's, and tools that make it 
         easier for token issuers to manage their creations. Have fun exploring!
         </blockquote>
-        <p>This application was built using the Pali Wallet API. To build your 
+        <p>This application was built using the <a href="https://docs.paliwallet.com/">Pali Wallet API </a> . To build your 
           own DApp powered by Syscoin Core, refer to the Pali Wallet docs. The 
           API was designed to be intuitive. The learning curve will be minimal 
           if you're familiar with Web3Js and Metamask.
@@ -42,7 +42,7 @@ export default function About() {
           <li><a href="https://syscoin.readme.io">Syscoin Core Documentation</a></li>
           <li><a href="https://github.com/syscoin/syscoinjs-lib">syscoinjs-lib</a></li>
           <li><a href="https://github.com/syscoin/syscoinjs-lib-examples">syscoinjs-lib-examples</a></li>
-          <li><a href="https://discord.gg/RkK2AXD">Official Syscoin Discord chat</a></li>
+          <li><a href="https://.gg/8QKeyurHRd">Official Syscoin Discord chat</a></li>
           <li><a href="https://support.syscoin.org/">Syscoin Community Wiki</a></li>
         </ol>
 

@@ -116,6 +116,11 @@ const AccountController = (actions: {
     return await sys.utils.fetchBackendAsset(sysjs.blockbookURL, assetGuid);
   };
 
+  const countDecimals = (x: number) => {
+    if(Math.floor(x) === x) return 0;
+    return x.toString().split(".")[1].length || 0;
+}
+
   const getSysExplorerSearch = () => {
     return sysjs.blockbookURL;
   };
@@ -1531,6 +1536,10 @@ const AccountController = (actions: {
         const { decimals } = await getDataAsset(token);
         const txOpts = { rbf };
         const value = new sys.utils.BN(amount * 10 ** decimals);
+        const valueDecimals = countDecimals(amount);
+        if(valueDecimals > decimals) {
+          throw new Error('This token has ' + decimals + ' decimals and you are trying to send a value with ' + valueDecimals + ' decimals, please check your tx')
+        }
 
         const assetMap = new Map([
           [token, {
