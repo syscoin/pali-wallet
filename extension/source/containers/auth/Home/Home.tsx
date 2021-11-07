@@ -7,17 +7,14 @@ import RefreshIcon from '@material-ui/icons/Refresh';
 import Header from 'containers/common/Header';
 import Button from 'components/Button';
 import FullSelect from 'components/FullSelect';
-import Modal from 'components/Modal';
 import ModalBlock from 'components/ModalBlock';
 import { useController } from 'hooks/index';
 import { useFiat } from 'hooks/usePrice';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
-import { browser } from 'webextension-polyfill-ts';
 
 import { formatNumber } from '../helpers';
 import { useHistory } from 'react-router-dom';
-import { getHost } from '../../../scripts/Background/helpers';
 
 import TxsPanel from './TxsPanel';
 
@@ -33,13 +30,10 @@ const Home = () => {
     changingNetwork,
     activeNetwork,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
-  const { currentURL } = tabs;
 
-  const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
   const [openBlockExplorer, setOpenBlockExplorer] = useState<boolean>(false);
   const [openAssetBlockExplorer, setOpenAssetBlockExplorer] =
     useState<boolean>(false);
-  const [isConnected, setIsConnected] = useState<boolean>(false);
   const [txidSelected, setTxidSelected] = useState('');
   const [assetSelected, setAssetSelected] = useState(-1);
   const [txType, setTxType] = useState('');
@@ -47,25 +41,8 @@ const Home = () => {
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
   const [tx, setTx] = useState(null);
   const [assetTx, setAssetTx] = useState(null);
-  const [currentTabURL, setCurrentTabURL] = useState<string>(currentURL);
 
-  useEffect(() => {
-    browser.windows.getAll({ populate: true }).then((windows) => {
-      for (const window of windows) {
-        const views = browser.extension.getViews({ windowId: window.id });
 
-        if (views) {
-          browser.tabs
-            .query({ active: true, currentWindow: true })
-            .then((tabs) => {
-              setCurrentTabURL(String(tabs[0].url));
-            });
-
-          return;
-        }
-      }
-    });
-  }, [!controller.wallet.isLocked()]);
 
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();
@@ -91,22 +68,7 @@ const Home = () => {
     }
   }, [!controller.wallet.isLocked(), accounts.length > 0]);
 
-  useEffect(() => {
-    const acc = accounts.find((element) => element.id === activeAccountId);
 
-    if (acc && acc.connectedTo !== undefined) {
-      if (acc.connectedTo.length > 0) {
-        setIsConnected(
-          acc.connectedTo.findIndex((url: any) => {
-            return url == getHost(currentTabURL);
-          }) > -1
-        );
-        return;
-      }
-
-      setIsConnected(false);
-    }
-  }, [accounts, activeAccountId, currentTabURL]);
 
   const handleOpenExplorer = (txid: string) => {
     window.open(`${sysExplorer}/tx/${txid}`);
@@ -116,19 +78,8 @@ const Home = () => {
     window.open(`${sysExplorer}/asset/${assetGuid}`);
   };
 
-  const handleSetModalIsOpen = () => {
-    setIsOpenModal(!isOpenModal);
-  };
-
   return (
     <div>
-      home
-      {isOpenModal && (
-        <div
-          onClick={() => setIsOpenModal(false)}
-        />
-      )}
-
       {openBlockExplorer && (
         <div
           onClick={() => {
@@ -177,8 +128,8 @@ const Home = () => {
 
       {accounts.find((element) => element.id === activeAccountId) ? (
         <>
-          <Header />
-          <section>
+          <Header accountHeader />
+          {/* <section>
             {accounts.length > 1 ? (
               <FullSelect
                 value={String(activeAccountId)}
@@ -191,39 +142,9 @@ const Home = () => {
             ) : (
               accounts.find((element) => element.id === activeAccountId)?.label
             )}
-          </section>
+          </section> */}
           
-          <section>
-            {isConnected ? (
-              <small
-                onClick={() => setIsOpenModal(!isOpenModal)}
-              >
-                Connected
-              </small>
-            ) : (
-              <small
-                onClick={() => setIsOpenModal(!isOpenModal)}
-              >
-                Not connected
-              </small>
-            )}
-
-            {isOpenModal && isConnected && (
-              <Modal
-                title={currentTabURL}
-                connected
-                callback={handleSetModalIsOpen}
-              />
-            )}
-
-            {isOpenModal && !isConnected && (
-              <Modal
-                title={currentTabURL}
-                message="This account is not connected to this site. To connect to a sys platform site, find the connect button on their site."
-                callback={handleSetModalIsOpen}
-              />
-            )}
-
+          <section className="flex justify-center items-center flex-col gap-4 text-brand-white bg-brand-green">
             {changingNetwork ? (
               <Spinner size={25} />
             ) : (

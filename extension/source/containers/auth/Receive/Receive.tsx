@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { useController , useCopyClipboard } from 'hooks/index';
+import { useController, useCopyClipboard } from 'hooks/index';
 import QRCode from 'qrcode.react';
 import IconButton from '@material-ui/core/IconButton';
 import CopyIcon from '@material-ui/icons/FileCopy';
 import Header from 'containers/common/Header';
+import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import Spinner from '@material-ui/core/CircularProgress';
+import { useHistory } from 'react-router-dom';
 
 const WalletReceive = () => {
   const [isCopied, copyText] = useCopyClipboard();
@@ -27,10 +29,18 @@ const WalletReceive = () => {
     getNewAddress();
   }, []);
 
+  const history = useHistory();
+
   return (
-    <div>
-      <Header />
+    <div className="bg-brand-gray">
+      <Header normalHeader />
+      <IconButton
+        onClick={() => history.goBack()}
+      >
+        <ArrowBackIcon />
+      </IconButton>
       <section>Receive SYS</section>
+
       <section>
         {loaded ? (
           <div>

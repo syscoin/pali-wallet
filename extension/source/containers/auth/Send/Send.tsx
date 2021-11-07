@@ -1,6 +1,6 @@
 import * as React from 'react';
 import {
-  ChangeEvent,
+  // ChangeEvent,
   useState,
   useCallback,
   useMemo,
@@ -27,6 +27,9 @@ import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import DownArrowIcon from '@material-ui/icons/ExpandMore';
 import Spinner from '@material-ui/core/CircularProgress';
 import { Assets } from '../../../scripts/types';
+import IconButton from '@material-ui/core/IconButton';
+import ArrowBackIcon from '@material-ui/icons/ArrowBack';
+import { Form, Input } from 'antd';
 
 interface IWalletSend {
   initAddress?: string;
@@ -107,7 +110,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
       return;
     }
-    
+
     controller.wallet.account.updateTempTx({
       fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
       toAddress: address,
@@ -121,33 +124,33 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
     history.push('/send/confirm');
   };
 
-  const handleAmountChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setAmount(event.target.value);
-    },
-    []
-  );
+  // const handleAmountChange = useCallback(
+  //   (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  //     setAmount(event.target.value);
+  //   },
+  //   []
+  // );
 
-  const handleFeeChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setFee(event.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'));
+  // const handleFeeChange = useCallback(
+  //   (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  //     setFee(event.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'));
 
-      if (Number(event.target.value) > 0.1) {
-        alert.removeAll();
-        alert.error(`Error: Fee too high, maximum 0.1 SYS.`, { timeout: 2000 });
-  
-        return;
-      }
-    },
-    []
-  );
+  //     if (Number(event.target.value) > 0.1) {
+  //       alert.removeAll();
+  //       alert.error(`Error: Fee too high, maximum 0.1 SYS.`, { timeout: 2000 });
 
-  const handleAddressChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setAddress(event.target.value.trim());
-    },
-    []
-  );
+  //       return;
+  //     }
+  //   },
+  //   []
+  // );
+
+  // const handleAddressChange = useCallback(
+  //   (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  //     setAddress(event.target.value.trim());
+  //   },
+  //   []
+  // );
 
   const handleTypeChanged = useCallback(
     (
@@ -192,16 +195,31 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   }
 
   return (
-    <div>
-      <Header />
+    <div className="bg-brand-gray">
+      <Header normalHeader />
 
-      <form onSubmit={handleSubmit(onSubmit)} autoComplete="off">
+      <IconButton
+        onClick={() => history.goBack()}
+      >
+        <ArrowBackIcon />
+      </IconButton>
+
+      <Form
+        name="basic"
+        labelCol={{ span: 8 }}
+        wrapperCol={{ span: 8 }}
+        initialValues={{ remember: true }}
+        onFinish={onSubmit}
+        autoComplete="off"
+        className="flex justify-center items-center flex-col gap-4 mt-8 text-center"
+      >
         <section>Send {selectedAsset ? selectedAsset.symbol : "SYS"}</section>
+
         <section>
           <div>
             Balance:{' '}
             {changingNetwork ? (
-              <Spinner size={20}  />
+              <Spinner size={20} />
             ) : (
               <span>{showAssetBalance()}</span>
             )}
@@ -212,19 +230,139 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
           </div>
         </section>
 
+        <Form.Item
+          label="Recipient Address"
+          name="address"
+          hasFeedback
+          rules={[
+            {
+              required: true,
+              message: ''
+            },
+            ({ }) => ({
+              validator(_, value) {
+                if (controller.wallet.account.isValidSYSAddress(value, activeNetwork)) {
+                  return Promise.resolve();
+                }
+
+                return Promise.reject('');
+              }
+            })
+          ]}
+        >
+          <Input placeholder="address" />
+        </Form.Item>
+
+        <Form.Item
+          label="Choose asset"
+          name="asset"
+          hasFeedback
+          rules={[
+            {
+              required: true,
+              message: ''
+            },
+          ]}
+        >
+          <div
+            onClick={() => setExpanded(!expanded)}
+          >
+            <span>
+              {selectedAsset?.symbol || "SYS"}
+              <DownArrowIcon />
+            </span>
+            <ul >
+              <li onClick={() => handleAssetSelected(1)}>
+                <p>SYS</p>
+                <p>Native</p>
+              </li>
+
+              {accounts.find(element => element.id === activeAccountId)!.assets.map((item, index) => {
+                if (!controller.wallet.account.isNFT(item.assetGuid)) {
+                  return (
+                    <li key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
+                      <p>{item.symbol}</p>
+                      <p>SPT</p>
+                    </li>
+                  )
+                }
+
+                return (
+                  <li key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
+                    <p>{item.symbol}</p>
+                    <p>NFT</p>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        </Form.Item>
+
+        <Form.Item
+          label="Asset amount"
+          name="amount"
+          hasFeedback
+          rules={[
+            {
+              required: true,
+              message: ''
+            },
+          ]}
+        >
+          <Input placeholder="amount" />
+          {accounts.find(element => element.id === activeAccountId)!.balance === 0 && <small >You don't have SYS available.</small>}
+          <Button
+            type="button"
+            onClick={() =>
+              setAmount(selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? String(selectedAsset.balance) : String((selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals)) : String(accounts.find(element => element.id === activeAccountId)!.balance))
+            }
+          >
+            Max
+          </Button>
+        </Form.Item>
+
+        <Form.Item
+          label="Fee"
+          name="fee"
+          hasFeedback
+          rules={[
+            {
+              required: true,
+              message: ''
+            },
+          ]}
+        >
+          <Input placeholder="fee" />
+          <div>
+            {`With current network conditions we recommend a fee of ${recommend} SYS.`}
+          </div>
+          <Button
+            type="button"
+            onClick={handleGetFee}
+          >
+            Recommend
+          </Button>
+        </Form.Item>
+      </Form>
+
+      <form onSubmit={handleSubmit(onSubmit)} autoComplete="off">
+
+
         <section >
           <ul >
-            <li >
-              <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* <li >
+              <div>
                 <label htmlFor="address">Recipient Address</label>
               </div>
 
               <img
+                className="w-12 h-12"
                 src={VerifiedIcon}
                 alt="checked"
               />
 
               <img
+                className="w-12 h-12"
                 src={Close}
                 alt="checked"
                 onClick={() => setAddress("")}
@@ -234,52 +372,10 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 placeholder="Enter a valid address"
                 inputRef={register}
               />
-            </li>
-
+            </li> */}
+            {/* 
             <div >
-              <li>
-                <div
-                  id="asset"
-                >
-                  <label
-                    htmlFor="asset"
-                  >
-                    Choose Asset
-                  </label>
-                  <div
-                    onClick={() => setExpanded(!expanded)}
-                  >
-                    <span>
-                      {selectedAsset?.symbol || "SYS"}
-                      <DownArrowIcon />
-                    </span>
-                    <ul >
-                      <li  onClick={() => handleAssetSelected(1)}>
-                        <p>SYS</p>
-                        <p>Native</p>
-                      </li>
 
-                      {accounts.find(element => element.id === activeAccountId)!.assets.map((item, index) => {
-                        if (!controller.wallet.account.isNFT(item.assetGuid)) {
-                          return (
-                            <li key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
-                              <p>{item.symbol}</p>
-                              <p>SPT</p>
-                            </li>
-                          )
-                        }
-
-                        return (
-                          <li key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
-                            <p>{item.symbol}</p>
-                            <p>NFT</p>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </div>
-                </div>
-              </li>
 
               <li>
                 <div>
@@ -287,14 +383,13 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
                   <div >
                     <HelpOutlineIcon
-                      style={{ width: '17px', height: '17px' }}
                       data-tip
                       data-for="zdag_info"
                     />
                     <ReactTooltip id="zdag_info"
                       getContent={() =>
-                        <div style={{ backgroundColor: 'white' }}>
-                          <small style={{ fontWeight: 'bold' }}>
+                        <div >
+                          <small>
                             OFF for Replace-by-fee (RBF) and ON for Z-DAG <br />
                             Z-DAG: a exclusive Syscoin feature.<br />
                             Z-DAG enable faster transactions but should not be used for high amounts
@@ -335,31 +430,9 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                   onChange={handleTypeChanged}
                 />
               </li>
-            </div>
+            </div> */}
 
-            <div>
-              <li>
-                <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label htmlFor="amount"> {selectedAsset ? selectedAsset.symbol : "SYS"} Amount</label>
-
-                  {accounts.find(element => element.id === activeAccountId)!.balance === 0 && <small >You don't have SYS available.</small>}
-                </div>
-
-                <TextInput
-                  placeholder="Enter amount to send"
-                  inputRef={register}
-                />
-
-                <Button
-                  type="button"
-                  onClick={() =>
-                    setAmount(selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? String(selectedAsset.balance) : String((selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals)) : String(accounts.find(element => element.id === activeAccountId)!.balance))
-                  }
-                >
-                  Max
-                </Button>
-              </li>
-
+            {/* <div>
               <li >
                 <label
                   htmlFor="fee"
@@ -380,11 +453,11 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                   Recommend
                 </Button>
               </li>
-            </div>
+            </div> */}
 
-            <div>
+            {/* <div>
               {`With current network conditions we recommend a fee of ${recommend} SYS.`}
-            </div>
+            </div> */}
 
             <div >
               <span>

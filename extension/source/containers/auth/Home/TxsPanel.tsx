@@ -69,7 +69,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
 
     setScrollArea(event.target);
     const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
-    
+
     if (scrollOffset === event.target.clientHeight) {
       if (!changingNetwork) {
         handleFetchMoreTxs();
@@ -101,6 +101,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
   return (
     <section
       onScroll={handleScroll}
+      className="bg-brand-gray text-brand-white flex justify-center items-center flex-col"
     >
       {!isShowed ?
         <div>
@@ -134,12 +135,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
           <span>
             <Spinner size={25} />
           </span>
-          <img
-            src={SyscoinIcon}
-            alt="syscoin"
-            height="167"
-            width="auto"
-          />
+          <img src={`/${SyscoinIcon}`} className="w-40 max-w-40 mx-auto mt-8" alt="Syscoin" />
         </>
       )}
 
@@ -198,12 +194,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
             </span>
 
             {!changingNetwork && (
-              <img
-                src={SyscoinIcon}
-                alt="syscoin"
-                height="167"
-                width="auto"
-              />
+              <img src={`/${SyscoinIcon}`} className="w-40 max-w-40 mx-auto mt-8" alt="Syscoin" />
             )}
           </>
         ) : assets.length && !changingNetwork ?
@@ -245,12 +236,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
             </span>
 
             {!changingNetwork && (
-              <img
-                src={SyscoinIcon}
-                alt="syscoin"
-                height="167"
-                width="auto"
-              />
+              <img src={`/${SyscoinIcon}`} className="w-40 max-w-40 mx-auto mt-8" alt="Syscoin" />
             )}
           </>
       }
