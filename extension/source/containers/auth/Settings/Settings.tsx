@@ -18,7 +18,7 @@ import CheckIcon from '@material-ui/icons/Check';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 // import TextInput from 'components/TextInput';
-import { useController } from 'hooks/index';
+// import { useController } from 'hooks/index';
 
 import * as Views from './views';
 import * as routes from './views/routes';
@@ -31,7 +31,7 @@ interface ISettings {
 const Settings: FC<ISettings> = ({ onClose }) => {
   const location = useLocation();
   const history = useHistory();
-  const controller = useController();
+  // const controller = useController();
   const transitions = useTransition(location, (locat) => locat.hash, {
     initial: { opacity: 1 },
     from: { opacity: 0 },
@@ -155,7 +155,19 @@ const Settings: FC<ISettings> = ({ onClose }) => {
               <CloseIcon />
             </IconButton>
           </section>
-          {renderView(location.hash)}
+          {transitions.map(({ item, props, key }) => (
+            <animated.section
+              style={{
+                ...props,
+                position: 'absolute',
+                height: '100%',
+                width: '100%',
+              }}
+              key={key}
+            >
+              {renderView(item.hash)}
+            </animated.section>
+          ))}
         </div>
       </div>
     </Portal>

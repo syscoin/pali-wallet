@@ -42,13 +42,13 @@ const Auth = () => {
   const controller = useController();
   const isUnlocked = !controller.wallet.isLocked();
 
-  const transitions = useTransition(location, (locat) => locat.pathname, {
-    initial: { opacity: 1 },
-    from: { opacity: 0 },
-    enter: { opacity: 1 },
-    leave: { opacity: 0 },
-    config: { duration: 200 },
-  });
+  // const transitions = useTransition(location, (locat) => locat.pathname, {
+  //   initial: { opacity: 1 },
+  //   from: { opacity: 0 },
+  //   enter: { opacity: 1 },
+  //   leave: { opacity: 0 },
+  //   config: { duration: 200 },
+  // });
 
   const {
     accounts,
@@ -224,117 +224,107 @@ const Auth = () => {
 
   return (
     <>
-      {transitions.map(({ item, props, key }) => (
-        <animated.div
-          style={{
-            ...props,
-            position: 'absolute',
-            height: '100%',
-            width: '100%',
-          }}
-          key={key}
-        >
-          <Switch location={item}>
-            <Route path="/app.html" component={Start} exact>
-              {isUnlocked && <Redirect to="/home" />}
-            </Route>
-            {!isUnlocked && <Route path="/import" component={Import} exact />}
-            {isUnlocked && <Route path="/home" component={Home} exact />}
-            {isUnlocked && canConnect && (
-              <Route path="/connect-wallet" component={ConnectWallet} exact />
-            )}
-            {isUnlocked && canConnect && connectedAccounts.length > 0 && (
-              <Route
-                path="/connected-accounts"
-                component={ConnectedAccounts}
-                exact
-              />
-            )}
-            {isUnlocked && (
-              <Route path="/send/confirm" component={SendConfirm} exact />
-            )}
-            {isUnlocked && (
-              <Route path="/sign" component={SignAndSend} exact />
-            )}
-            {isUnlocked && (
-              <Route path="/signPsbt" component={SignPSBT} exact />
-            )}
-            {isUnlocked && <Route path="/create" component={Create} exact />}
-            {isUnlocked && (
-              <Route
-                path="/create/confirm"
-                component={CreateTokenConfirm}
-                exact
-              />
-            )}
-            {isUnlocked && (
-              <Route path="/issueAsset" component={IssueAsset} exact />
-            )}
-            {isUnlocked && (
-              <Route
-                path="/issueAsset/confirm"
-                component={IssueTokenConfirm}
-                exact
-              />
-            )}
-            {isUnlocked && (
-              <Route path="/mintNFT" component={MintNFT} exact />
-            )}
-            {isUnlocked && (
-              <Route
-                path="/mintNFT/confirm"
-                component={MintNFTConfirm}
-                exact
-              />
-            )}
-            {isUnlocked && (
-              <Route path="/issueNFT" component={IssueNFT} exact />
-            )}
-            {isUnlocked && (
-              <Route
-                path="/issueNFT/confirm"
-                component={CreateAndIssueNFTConfirm}
-                exact
-              />
-            )}
-            {isUnlocked && (
-              <Route path="/updateAsset" component={UpdateAsset} exact />
-            )}
-            {isUnlocked && (
-              <Route
-                path="/updateAsset/confirm"
-                component={UpdateConfirm}
-                exact
-              />
-            )}
-            {isUnlocked && (
-              <Route
-                path="/transferOwnership"
-                component={TransferOwnership}
-                exact
-              />
-            )}
-            {isUnlocked && (
-              <Route
-                path="/transferOwnership/confirm"
-                component={TransferOwnershipConfirm}
-                exact
-              />
-            )}
-            {isUnlocked && <Route path="/send" component={Send} exact />}
-            {isUnlocked && (
-              <Route
-                path="/send/:address"
-                render={({ match }: SendMatchProps) => (
-                  <Send initAddress={match.params.address} />
-                )}
-                exact
-              />
-            )}
-            {isUnlocked && <Route path="/receive" component={Receive} exact />}
-          </Switch>
-        </animated.div>
-      ))}
+      <div className="absolute w-full h-full">
+        <Switch>
+          <Route path="/app.html" component={Start} exact>
+            {isUnlocked && <Redirect to="/home" />}
+          </Route>
+          {!isUnlocked && <Route path="/import" component={Import} exact />}
+          {isUnlocked && <Route path="/home" component={Home} exact />}
+          {isUnlocked && canConnect && (
+            <Route path="/connect-wallet" component={ConnectWallet} exact />
+          )}
+          {isUnlocked && canConnect && connectedAccounts.length > 0 && (
+            <Route
+              path="/connected-accounts"
+              component={ConnectedAccounts}
+              exact
+            />
+          )}
+          {isUnlocked && (
+            <Route path="/send/confirm" component={SendConfirm} exact />
+          )}
+          {isUnlocked && (
+            <Route path="/sign" component={SignAndSend} exact />
+          )}
+          {isUnlocked && (
+            <Route path="/signPsbt" component={SignPSBT} exact />
+          )}
+          {isUnlocked && <Route path="/create" component={Create} exact />}
+          {isUnlocked && (
+            <Route
+              path="/create/confirm"
+              component={CreateTokenConfirm}
+              exact
+            />
+          )}
+          {isUnlocked && (
+            <Route path="/issueAsset" component={IssueAsset} exact />
+          )}
+          {isUnlocked && (
+            <Route
+              path="/issueAsset/confirm"
+              component={IssueTokenConfirm}
+              exact
+            />
+          )}
+          {isUnlocked && (
+            <Route path="/mintNFT" component={MintNFT} exact />
+          )}
+          {isUnlocked && (
+            <Route
+              path="/mintNFT/confirm"
+              component={MintNFTConfirm}
+              exact
+            />
+          )}
+          {isUnlocked && (
+            <Route path="/issueNFT" component={IssueNFT} exact />
+          )}
+          {isUnlocked && (
+            <Route
+              path="/issueNFT/confirm"
+              component={CreateAndIssueNFTConfirm}
+              exact
+            />
+          )}
+          {isUnlocked && (
+            <Route path="/updateAsset" component={UpdateAsset} exact />
+          )}
+          {isUnlocked && (
+            <Route
+              path="/updateAsset/confirm"
+              component={UpdateConfirm}
+              exact
+            />
+          )}
+          {isUnlocked && (
+            <Route
+              path="/transferOwnership"
+              component={TransferOwnership}
+              exact
+            />
+          )}
+          {isUnlocked && (
+            <Route
+              path="/transferOwnership/confirm"
+              component={TransferOwnershipConfirm}
+              exact
+            />
+          )}
+          {isUnlocked && <Route path="/send" component={Send} exact />}
+          {isUnlocked && (
+            <Route
+              path="/send/:address"
+              render={({ match }: SendMatchProps) => (
+                <Send initAddress={match.params.address} />
+              )}
+              exact
+            />
+          )}
+          {isUnlocked && <Route path="/receive" component={Receive} exact />}
+        </Switch>
+      </div>
     </>
   );
 };
