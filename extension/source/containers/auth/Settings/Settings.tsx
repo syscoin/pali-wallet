@@ -28,7 +28,7 @@ interface ISettings {
   open: boolean;
 }
 
-const Settings: FC<ISettings> = ({ onClose }) => {
+const Settings: FC<ISettings> = ({ onClose, open }) => {
   const location = useLocation();
   const history = useHistory();
   // const controller = useController();
@@ -125,8 +125,8 @@ const Settings: FC<ISettings> = ({ onClose }) => {
 
   return (
     <Portal>
-      <div >
-        <div>
+      <div className={open ? "opacity-1 pointer-events-auto" : "hidden"}>
+        <div className="opacity-1 transform translate-y-0">
           <section >
             <IconButton
               onClick={handleBackNav}

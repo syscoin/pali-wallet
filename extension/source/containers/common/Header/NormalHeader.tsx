@@ -130,6 +130,7 @@ const NormalHeader: FC<any> = ({
       {encriptedMnemonic && !importSeed ? (
         <IconButton
           onClick={() => {
+            console.log('showed', showed)
             showed ? handleCloseSettings() : showSettings(!showed)
           }
           }
