@@ -13,17 +13,23 @@ import { useController, useSettingsView } from 'hooks/index';
 // import AccountSelect from 'components/AccountSelect';
 
 import {
-  // ACCOUNT_VIEW,
+  ACCOUNT_VIEW,
   CONNECT_HARDWARE_WALLET_VIEW,
   GENERAL_VIEW,
   NEW_ACCOUNT_VIEW,
+  PRIV_KEY_VIEW,
+  AUTOLOCK_VIEW,
+  PHRASE_VIEW,
+  ABOUT_VIEW
 } from '../routes';
 
 interface IMainView {
+  accountSettings: boolean;
+  generalSettings: boolean;
   onChange: (id: string) => void;
 }
 
-const MainView: FC<IMainView> = ({ }) => {
+const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
   const showView = useSettingsView();
   const history = useHistory();
   const controller = useController();
@@ -43,8 +49,8 @@ const MainView: FC<IMainView> = ({ }) => {
 
   return (
     <div >
-      <ul >
-        {/* <AccountSelect
+      {/* <ul >
+        <AccountSelect
           label={
             <>
               <Icon Component={UserIcon} />
@@ -56,32 +62,77 @@ const MainView: FC<IMainView> = ({ }) => {
           onChange={(val: string) => {
             handleSelectAccount(val);
           }}
-        /> */}
-      </ul>
-      <section
-        onClick={() => showView(NEW_ACCOUNT_VIEW)}
-      >
-        <Icon Component={AddIcon} />
-        Create new account
-      </section>
+        />
+      </ul> */}
 
-      <section
-        onClick={() => showView(CONNECT_HARDWARE_WALLET_VIEW)}
-      >
-        <Icon Component={SettingsInputHdmiIcon} />
-        Connect hardware wallet
-      </section>
-
-      <section
-        onClick={() => showView(GENERAL_VIEW)}
-      >
-        <Icon Component={SettingsIcon} />
-        General settings
-      </section>
-      <section  onClick={handleLogout}>
+      {/* <section  onClick={handleLogout}>
         <Icon Component={LogOutIcon} />
-        Lock
-      </section>
+        Fiat Currency
+      </section> */}
+
+      {generalSettings && (
+        <ul>
+          <li
+            onClick={() => showView(AUTOLOCK_VIEW)}
+          >
+            <Icon Component={AddIcon} />
+            Auto lock timer
+          </li>
+
+          <li
+            onClick={() => showView(PHRASE_VIEW)}
+          >
+            <Icon Component={SettingsInputHdmiIcon} />
+            Wallet Seed Phrase
+          </li>
+
+          <li
+            onClick={() => showView(ABOUT_VIEW)}
+          >
+            <Icon Component={SettingsIcon} />
+            Info/Help
+          </li>
+        </ul>
+      )}
+
+      {accountSettings && (
+        <ul>
+          <li
+            onClick={() => showView(PRIV_KEY_VIEW)}
+          >
+            <Icon Component={AddIcon} />
+            XPUB
+          </li>
+
+          <li
+            onClick={() => showView(ACCOUNT_VIEW)}
+          >
+            <Icon Component={SettingsInputHdmiIcon} />
+            Accounts
+          </li>
+
+          <li
+            onClick={() => showView(CONNECT_HARDWARE_WALLET_VIEW)}
+          >
+            <Icon Component={SettingsIcon} />
+            Connect hardware wallet
+          </li>
+
+          <li
+            onClick={handleLogout}
+          >
+            <Icon Component={SettingsIcon} />
+            Lock
+          </li>
+
+          {/* <li
+          onClick={() => showView(NEW_ACCOUNT_VIEW)}
+        >
+          <Icon Component={SettingsIcon} />
+          new account
+        </li> */}
+        </ul>
+      )}
     </div>
   );
 };

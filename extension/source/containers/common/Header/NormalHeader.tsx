@@ -1,4 +1,4 @@
-import React, { FC, useEffect, useState } from 'react';
+import React, { FC, useEffect, useState, ChangeEvent } from 'react';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import IconButton from '@material-ui/core/IconButton';
 import Settings from 'containers/auth/Settings';
@@ -12,14 +12,22 @@ import IWalletState from 'state/wallet/types';
 import { browser } from 'webextension-polyfill-ts';
 import { useController } from 'hooks/index';
 
-const NormalHeader: FC<any> = ({
-  encriptedMnemonic,
+interface INormalHeader {
+  importSeed: boolean;
+  generalSettingsShowed: boolean;
+  handleCloseSettings: any;
+  showSettings: any;
+  isUnlocked: boolean;
+  encriptedMnemonic: string;
+}
+
+const NormalHeader: FC<INormalHeader> = ({
   importSeed,
-  showed,
+  generalSettingsShowed,
+  handleCloseSettings,
   showSettings,
   isUnlocked,
-  handleChangeNetwork,
-  handleCloseSettings,
+  encriptedMnemonic
 }) => {
   const controller = useController();
 
@@ -27,8 +35,6 @@ const NormalHeader: FC<any> = ({
     accounts,
     activeAccountId,
     tabs,
-    changingNetwork,
-    activeNetwork,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
   const { currentURL } = tabs;
 
@@ -42,6 +48,16 @@ const NormalHeader: FC<any> = ({
 
   const handleSetModalIsOpen = () => {
     setIsOpenModal(!isOpenModal);
+  };
+
+  const handleChangeNetwork = (
+    event: ChangeEvent<{
+      name?: string | undefined;
+      value: unknown;
+    }>
+  ) => {
+    controller.wallet.switchNetwork(event.target.value as string);
+    controller.wallet.getNewAddress();
   };
 
   useEffect(() => {
@@ -130,18 +146,18 @@ const NormalHeader: FC<any> = ({
       {encriptedMnemonic && !importSeed ? (
         <IconButton
           onClick={() => {
-            console.log('showed', showed)
-            showed ? handleCloseSettings() : showSettings(!showed)
+            console.log('generalSettingsShowed', generalSettingsShowed)
+            generalSettingsShowed ? handleCloseSettings() : showSettings(!generalSettingsShowed)
           }
           }
         >
           <MoreVertIcon />
         </IconButton>
       ) : (
-        <i />
+        null
       )}
 
-      <Settings open={showed && isUnlocked} onClose={handleCloseSettings} />
+      <Settings accountSettings={false} generalSettings open={generalSettingsShowed && isUnlocked} onClose={handleCloseSettings} />
     </div>
   )
 }

@@ -26,9 +26,16 @@ import * as routes from './views/routes';
 interface ISettings {
   onClose?: () => void;
   open: boolean;
+  accountSettings?: boolean;
+  generalSettings?: boolean;
 }
 
-const Settings: FC<ISettings> = ({ onClose, open }) => {
+const Settings: FC<ISettings> = ({
+  onClose,
+  open,
+  generalSettings = true,
+  accountSettings = false,
+}) => {
   const location = useLocation();
   const history = useHistory();
   // const controller = useController();
@@ -55,55 +62,49 @@ const Settings: FC<ISettings> = ({ onClose, open }) => {
 
   const renderTitle = (view: string) => {
     switch (view) {
-      case routes.ACCOUNT_VIEW:
-        return editable ? (
-          <h1>oola editable</h1>
-        ) : (
-          accounts[Number(showedId)].label
-        );
-      case routes.GENERAL_VIEW:
-        return 'General Settings';
+      // case routes.ACCOUNT_VIEW:
+      //      return 'Accounts'
+      // case routes.GENERAL_VIEW:
+      //   return 'General Settings';
       case routes.PHRASE_VIEW:
         return 'Wallet seed phrase';
       case routes.DELETE_WALLET_VIEW:
         return 'Delete wallet';
-      case routes.NEW_ACCOUNT_VIEW:
-        return 'Create account';
-      case routes.PRIV_KEY_VIEW:
-        return 'Export private key';
+      // case routes.NEW_ACCOUNT_VIEW:
+      //   return 'Create account';
+      // case routes.PRIV_KEY_VIEW:
+      //   return 'Export private key';
       case routes.ABOUT_VIEW:
         return 'About';
-      case routes.CONNECT_HARDWARE_WALLET_VIEW:
-        return 'Connect hardware wallet';
+      // case routes.CONNECT_HARDWARE_WALLET_VIEW:
+      //   return 'Connect hardware wallet';
       case routes.AUTOLOCK_VIEW:
         return 'Auto lock timer';
-      default:
-        return 'Settings';
     }
   };
 
   const renderView = (view: string) => {
     switch (view) {
-      case routes.ACCOUNT_VIEW:
-        return <Views.AccountView id={Number(showedId)} />;
-      case routes.GENERAL_VIEW:
-        return <Views.GeneralView />;
+      // case routes.ACCOUNT_VIEW:
+      //   return <Views.AccountView id={Number(showedId)} />;
+      // case routes.GENERAL_VIEW:
+      //   return <Views.GeneralView />;
       case routes.PHRASE_VIEW:
         return <Views.PhraseView />;
       case routes.DELETE_WALLET_VIEW:
         return <Views.DeleteWalletView />;
-      case routes.NEW_ACCOUNT_VIEW:
-        return <Views.NewAccountView />;
-      case routes.PRIV_KEY_VIEW:
-        return <Views.PrivateKeyView id={showedId} />;
+      // case routes.NEW_ACCOUNT_VIEW:
+      //   return <Views.NewAccountView />;
+      // case routes.PRIV_KEY_VIEW:
+      //   return <Views.PrivateKeyView id={showedId} />;
       case routes.ABOUT_VIEW:
         return <Views.AboutView />;
-      case routes.CONNECT_HARDWARE_WALLET_VIEW:
-        return <Views.ConnectHardwareWalletView />;
+      // case routes.CONNECT_HARDWARE_WALLET_VIEW:
+      //   return <Views.ConnectHardwareWalletView />;
       case routes.AUTOLOCK_VIEW:
         return <Views.AutolockView />;
       default:
-        return <Views.MainView onChange={(id: string) => setShowedId(id)} />;
+        return <Views.MainView accountSettings={accountSettings} generalSettings={generalSettings} onChange={(id: string) => setShowedId(id)} />;
     }
   };
 
@@ -124,53 +125,156 @@ const Settings: FC<ISettings> = ({ onClose, open }) => {
   };
 
   return (
-    <Portal>
-      <div className={open ? "opacity-1 pointer-events-auto" : "hidden"}>
-        <div className="opacity-1 transform translate-y-0">
-          <section >
-            <IconButton
-              onClick={handleBackNav}
-              disabled={!location.hash}
-            >
-              {location.hash && <ArrowBackIcon />}
-            </IconButton>
-            <span
+    <div>
+      {open && accountSettings && (
+        <div className="transition-all duration-300 ease-in-out">
+          <div onClick={onClose} className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-darktransparent"></div>
+
+          <div className="transition-all duration-300 ease-in-out fixed z-10 flex flex-col bg-brand-deepPink max-w-70 top-3rem right-4 p-6 rounded-3xl">
+            <h2 className="pb-4 text-brand-white border-b border-dashed border-brand-graylight w-full text-center mb-4">ACCOUNT SETTINGS</h2>
+
+            {/* <ul>
+            
+            <li>
+              auto lock timer
+            </li>
+
+            <li>
+              wallet seed phrase
+            </li>
+
+            <li>
+              info/help
+            </li>
+
+            <li>
+              delete wallet
+            </li>
+
+            <li>
+              fiat currency
+            </li>
+          </ul> */}
+
+            {/* <ul>
+            <li
             >
               {renderTitle(location.hash)}
-            </span>
-            {location.hash === routes.ACCOUNT_VIEW && (
-              <IconButton
-                onClick={handleChangeLabel}
+            </li>
+          </ul> */}
+
+            {transitions.map(({ item, props, key }) => (
+              <animated.section
+                style={{
+                  ...props,
+                }}
+                key={key}
               >
-                {editable ? (
-                  <CheckIcon />
-                ) : (
-                  <EditIcon  />
-                )}
-              </IconButton>
-            )}
-            <IconButton
-              onClick={onClose}
-            >
-              <CloseIcon />
-            </IconButton>
-          </section>
-          {transitions.map(({ item, props, key }) => (
-            <animated.section
-              style={{
-                ...props,
-                position: 'absolute',
-                height: '100%',
-                width: '100%',
-              }}
-              key={key}
-            >
-              {renderView(item.hash)}
-            </animated.section>
-          ))}
+                {renderView(item.hash)}
+              </animated.section>
+            ))}
+          </div>
         </div>
-      </div>
-    </Portal>
+      )}
+      
+      {open && generalSettings && (
+        <div className="transition-all duration-300 ease-in-out">
+          <div onClick={onClose} className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-darktransparent"></div>
+
+          <div className="transition-all duration-300 ease-in-out fixed z-10 flex flex-col bg-brand-royalBlue max-w-70 top-3rem right-4 p-6 rounded-3xl">
+            <h2 className="pb-4 text-brand-white border-b border-dashed border-brand-graylight w-full text-center mb-4">GENERAL SETTINGS</h2>
+
+            {/* <ul>
+            
+            <li>
+              auto lock timer
+            </li>
+
+            <li>
+              wallet seed phrase
+            </li>
+
+            <li>
+              info/help
+            </li>
+
+            <li>
+              delete wallet
+            </li>
+
+            <li>
+              fiat currency
+            </li>
+          </ul> */}
+
+            {/* <ul>
+            <li
+            >
+              {renderTitle(location.hash)}
+            </li>
+          </ul> */}
+
+            {transitions.map(({ item, props, key }) => (
+              <animated.section
+                style={{
+                  ...props,
+                }}
+                key={key}
+              >
+                {renderView(item.hash)}
+              </animated.section>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+    // <Portal>
+    //   <div className={open ? "opacity-1 pointer-events-auto" : "hidden"}>
+    //     <div className="opacity-1 transform translate-y-0">
+    //       <section >
+    //         <IconButton
+    //           onClick={handleBackNav}
+    //           disabled={!location.hash}
+    //         >
+    //           {location.hash && <ArrowBackIcon />}
+    //         </IconButton>
+    // <span
+    // >
+    //   {renderTitle(location.hash)}
+    // </span>
+    //         {location.hash === routes.ACCOUNT_VIEW && (
+    //           <IconButton
+    //             onClick={handleChangeLabel}
+    //           >
+    //             {editable ? (
+    //               <CheckIcon />
+    //             ) : (
+    //               <EditIcon  />
+    //             )}
+    //           </IconButton>
+    //         )}
+    //         <IconButton
+    //           onClick={onClose}
+    //         >
+    //           <CloseIcon />
+    //         </IconButton>
+    //       </section>
+    // {transitions.map(({ item, props, key }) => (
+    //   <animated.section
+    //     style={{
+    //       ...props,
+    //       position: 'absolute',
+    //       height: '100%',
+    //       width: '100%',
+    //     }}
+    //     key={key}
+    //   >
+    //     {renderView(item.hash)}
+    //   </animated.section>
+    // ))}
+    //     </div>
+    //   </div>
+    // </Portal>
   );
 };
 

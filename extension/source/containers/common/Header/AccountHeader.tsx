@@ -1,9 +1,27 @@
-import React from 'react';
+import React, { FC } from 'react';
 import LogoImage from 'assets/images/logo-s.svg';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import IconButton from '@material-ui/core/IconButton';
+import Settings from 'containers/auth/Settings';
 
-const AccountHeader = () => {
+
+interface IAccountHeader {
+  encriptedMnemonic: string;
+  importSeed: boolean;
+  accountSettingsShowed: boolean;
+  handleCloseSettings: any;
+  showSettings: any;
+  isUnlocked: boolean;
+}
+
+const AccountHeader: FC <IAccountHeader> = ({
+  encriptedMnemonic,
+  importSeed,
+  accountSettingsShowed,
+  handleCloseSettings,
+  showSettings,
+  isUnlocked
+}) => {
   return (
     <div className="flex justify-between items-center bg-brand-gold">
       <div className="flex justify-between items-center">
@@ -15,14 +33,22 @@ const AccountHeader = () => {
         </div>
       </div>
 
-      <IconButton
-        onClick={() => {
-          console.log('open account settings')
-        }
-        }
-      >
-        <MoreVertIcon />
-      </IconButton>
+
+      {encriptedMnemonic && !importSeed ? (
+        <IconButton
+          onClick={() => {
+            console.log('accountSettingsShowed', accountSettingsShowed)
+            accountSettingsShowed ? handleCloseSettings() : showSettings(!accountSettingsShowed)
+          }
+          }
+        >
+          <MoreVertIcon />
+        </IconButton>
+      ) : (
+        null
+      )}
+
+      <Settings accountSettings generalSettings={false} open={accountSettingsShowed && isUnlocked} onClose={handleCloseSettings} />
     </div>
   )
 }

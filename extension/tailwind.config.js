@@ -10,9 +10,14 @@ module.exports = {
         'btn': '0px 1px 5px rgba(0, 0, 0, 0.25)',
         'tooltip': '0px 0px 5px rgba(0, 0, 0, 0.25)'
       },
+      top: {
+        '3rem': '4rem'
+      },
       maxWidth: {
         popup: '600px',
-        input: '18rem'
+        input: '18rem',
+        '1/2': '50%',
+        '70': '70%'
       },
       minWidth: {
         popup: '372px'
