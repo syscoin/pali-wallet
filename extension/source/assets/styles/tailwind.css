@@ -28,7 +28,7 @@
 }
 
 div[role=alert] {
-  @apply font-light text-brand-deepPink text-xs mx-4 absolute mt-2;
+  @apply text-brand-deepPink text-base font-bold mx-4 absolute mt-2;
 }
 
 .anticon.anticon-check-circle {

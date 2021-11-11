@@ -39,6 +39,7 @@ const Starter = () => {
             },
             ({}) => ({
               validator(_, value) {
+                console.log('value pass',controller.wallet.unLock(value))
                 if (controller.wallet.unLock(value)) {
                   return Promise.resolve();
                 }
