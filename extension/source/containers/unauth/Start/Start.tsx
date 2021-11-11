@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button, Link } from 'components/index';
-import LogoImage from 'assets/images/logo.svg';
+import LogoImage from 'assets/images/logo-s.svg';
 import { useHistory } from 'react-router-dom';
 
 const Start = () => {

@@ -4,7 +4,7 @@ import { FC, Fragment, useCallback, useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { Icon, IconButton, Button } from 'components/index';
 import { useController } from 'hooks/index';
-import SyscoinIcon from 'assets/images/logosys.svg';
+import SyscoinIcon from 'assets/images/logo-s.svg';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
 import { useSelector } from 'react-redux';
