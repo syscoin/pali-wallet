@@ -49,6 +49,7 @@ export const useStore = () => {
     signingPSBT,
     walletTokens,
     timer,
+    tabs,
     currentSenderURL,
     currentURL,
     canConnect,
