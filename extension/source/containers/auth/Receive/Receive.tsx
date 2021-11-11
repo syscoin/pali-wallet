@@ -21,9 +21,13 @@ const WalletReceive = () => {
   );
 
   useEffect(() => {
-    if (controller.wallet.getNewAddress()) {
-      setLoaded(true);
+    const setup = async () => {
+      if (await controller.wallet.getNewAddress()) {
+        setLoaded(true);
+      }
     }
+
+    setup();
   }, []);
 
   return (
