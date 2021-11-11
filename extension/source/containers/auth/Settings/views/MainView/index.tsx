@@ -1,6 +1,6 @@
-import React, { FC } from 'react';
+import React, { FC, useEffect} from 'react';
 // import { useSelector } from 'react-redux';
-import { useHistory } from 'react-router-dom';
+import { useHistory, useLocation } from 'react-router-dom';
 import AddIcon from '@material-ui/icons/Add';
 import SettingsIcon from '@material-ui/icons/Settings';
 import LogOutIcon from '@material-ui/icons/ExitToApp';
@@ -12,27 +12,29 @@ import { useController, useSettingsView } from 'hooks/index';
 // import IWalletState from 'state/wallet/types';
 // import AccountSelect from 'components/AccountSelect';
 
-import {
-  ACCOUNT_VIEW,
-  CONNECT_HARDWARE_WALLET_VIEW,
-  GENERAL_VIEW,
-  NEW_ACCOUNT_VIEW,
-  PRIV_KEY_VIEW,
-  AUTOLOCK_VIEW,
-  PHRASE_VIEW,
-  ABOUT_VIEW
-} from '../routes';
+// import {
+//   ACCOUNT_VIEW,
+//   CONNECT_HARDWARE_WALLET_VIEW,
+//   GENERAL_VIEW,
+//   NEW_ACCOUNT_VIEW,
+//   PRIV_KEY_VIEW,
+//   AUTOLOCK_VIEW,
+//   PHRASE_VIEW,
+//   ABOUT_VIEW
+// } from '../routes';
 
 interface IMainView {
-  accountSettings: boolean;
-  generalSettings: boolean;
-  onChange: (id: string) => void;
+  accountSettings?: boolean;
+  generalSettings?: boolean;
+  // onChange: (id: string) => void;
+  onClose?: any;
 }
 
-const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
+const MainView: FC<IMainView> = ({ onClose, accountSettings, generalSettings }) => {
   const showView = useSettingsView();
   const history = useHistory();
   const controller = useController();
+  const location = useLocation();
   // const { accounts, activeAccountId }: IWalletState = useSelector(
   //   (state: RootState) => state.wallet
   // );
@@ -47,47 +49,30 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
     history.push('/app.html');
   };
 
+  const handleShowView = (pathname: string) => {
+    history.push(pathname);
+  }
+
   return (
     <div >
-      {/* <ul >
-        <AccountSelect
-          label={
-            <>
-              <Icon Component={UserIcon} />
-              Accounts
-            </>
-          }
-          value={String(activeAccountId)}
-          options={accounts}
-          onChange={(val: string) => {
-            handleSelectAccount(val);
-          }}
-        />
-      </ul> */}
-
-      {/* <section  onClick={handleLogout}>
-        <Icon Component={LogOutIcon} />
-        Fiat Currency
-      </section> */}
-
       {generalSettings && (
         <ul>
-          <li
-            onClick={() => showView(AUTOLOCK_VIEW)}
-          >
-            <Icon Component={AddIcon} />
-            Auto lock timer
+          <li onClick={() => onClose({ pathname: '/general-autolock' })}>
+            {/* <span onClick={() => history.push('/general-autolock')}> */}
+              <Icon Component={AddIcon} />
+              Auto lock timer
+            {/* </span> */}
           </li>
 
           <li
-            onClick={() => showView(PHRASE_VIEW)}
+            onClick={() => history.push('/general-phrase')}
           >
             <Icon Component={SettingsInputHdmiIcon} />
             Wallet Seed Phrase
           </li>
 
           <li
-            onClick={() => showView(ABOUT_VIEW)}
+            onClick={() => history.push('/general-about')}
           >
             <Icon Component={SettingsIcon} />
             Info/Help
@@ -98,21 +83,28 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
       {accountSettings && (
         <ul>
           <li
-            onClick={() => showView(PRIV_KEY_VIEW)}
+            onClick={() => history.push('/account-priv')}
           >
             <Icon Component={AddIcon} />
             XPUB
           </li>
 
           <li
-            onClick={() => showView(ACCOUNT_VIEW)}
+            onClick={() => history.push('/account-details')}
           >
             <Icon Component={SettingsInputHdmiIcon} />
             Accounts
           </li>
 
           <li
-            onClick={() => showView(CONNECT_HARDWARE_WALLET_VIEW)}
+            onClick={() => history.push('/account-newaccount')}
+          >
+            <Icon Component={SettingsInputHdmiIcon} />
+            new account
+          </li>
+
+          <li
+            onClick={() => history.push('/account-hardware')}
           >
             <Icon Component={SettingsIcon} />
             Connect hardware wallet
@@ -124,13 +116,6 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
             <Icon Component={SettingsIcon} />
             Lock
           </li>
-
-          {/* <li
-          onClick={() => showView(NEW_ACCOUNT_VIEW)}
-        >
-          <Icon Component={SettingsIcon} />
-          new account
-        </li> */}
         </ul>
       )}
     </div>

@@ -4,6 +4,7 @@ import { useAlert } from 'react-alert';
 import { useForm } from 'react-hook-form';
 import * as yup from 'yup';
 import TextInput from 'components/TextInput';
+import { Form, Input } from 'antd';
 import { useController } from 'hooks/index';
 
 const PhraseView = () => {
@@ -15,17 +16,11 @@ const PhraseView = () => {
   const alert = useAlert();
   const controller = useController();
   // const [isCopied, copyText] = useCopyClipboard();
-  const { handleSubmit, register } = useForm({
-    validationSchema: yup.object().shape({
-      password: yup.string().required(),
-    }),
-  });
-
-  // const seedClass = clsx(styles.seed, {
-  //   [styles.copied]: isCopied,
-  //   [styles.notAllowed]: !checked,
+  // const { handleSubmit, register } = useForm({
+  //   validationSchema: yup.object().shape({
+  //     password: yup.string().required(),
+  //   }),
   // });
-
   const onSubmit = (data: any) => {
     const res = controller.wallet.getPhrase(data.password);
     if (res) {
@@ -45,14 +40,40 @@ const PhraseView = () => {
   };
 
   return (
-    <div>
+    <div className="bg-brand-deepPink w-popup fixed h-popup">
       <span>Please input your wallet password and press enter:</span>
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <TextInput
-          inputRef={register}
-          placeholder="input"
-        />
-      </form>
+      <Form
+        className="flex justify-center items-center flex-col gap-8 text-center"
+        name="basic"
+        labelCol={{ span: 8 }}
+        wrapperCol={{ span: 16 }}
+        initialValues={{ remember: true }}
+        onFinish={onSubmit}
+        autoComplete="off"
+      >
+        <Form.Item
+          name="password"
+          hasFeedback
+          rules={[
+            {
+              required: true,
+              message: ''
+            },
+            ({ }) => ({
+              validator(_, value) {
+                if (controller.wallet.getPhrase(value)) {
+                  return Promise.resolve();
+                }
+
+                return Promise.reject('');
+              },
+            }),
+          ]}
+        >
+          <Input.Password placeholder="Enter your password" />
+        </Form.Item>
+      </Form>
+
       <span>Click to copy your seed phrase:</span>
       <div onClick={handleCopySeed}>
         {phrase}

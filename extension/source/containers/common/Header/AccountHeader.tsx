@@ -4,7 +4,6 @@ import MoreVertIcon from '@material-ui/icons/MoreVert';
 import IconButton from '@material-ui/core/IconButton';
 import Settings from 'containers/auth/Settings';
 
-
 interface IAccountHeader {
   encriptedMnemonic: string;
   importSeed: boolean;
@@ -48,7 +47,12 @@ const AccountHeader: FC <IAccountHeader> = ({
         null
       )}
 
-      <Settings accountSettings generalSettings={false} open={accountSettingsShowed && isUnlocked} onClose={handleCloseSettings} />
+      <Settings
+        accountSettings
+        generalSettings={false}
+        open={accountSettingsShowed && isUnlocked}
+        onClose={handleCloseSettings}
+      />
     </div>
   )
 }

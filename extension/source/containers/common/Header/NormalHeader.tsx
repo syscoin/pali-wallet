@@ -29,22 +29,23 @@ const NormalHeader: FC<INormalHeader> = ({
   isUnlocked,
   encriptedMnemonic
 }) => {
-  const controller = useController();
-
   const {
     accounts,
     activeAccountId,
     tabs,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
+
   const { currentURL } = tabs;
+
+  const network = useSelector(
+    (state: RootState) => state.wallet!.activeNetwork
+  );
 
   const [currentTabURL, setCurrentTabURL] = useState<string>(currentURL);
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
   const [isConnected, setIsConnected] = useState<boolean>(false);
 
-  const network = useSelector(
-    (state: RootState) => state.wallet!.activeNetwork
-  );
+  const controller = useController();
 
   const handleSetModalIsOpen = () => {
     setIsOpenModal(!isOpenModal);
@@ -157,7 +158,12 @@ const NormalHeader: FC<INormalHeader> = ({
         null
       )}
 
-      <Settings accountSettings={false} generalSettings open={generalSettingsShowed && isUnlocked} onClose={handleCloseSettings} />
+      <Settings
+        accountSettings={false}
+        generalSettings
+        open={generalSettingsShowed && isUnlocked}
+        onClose={handleCloseSettings}
+      />
     </div>
   )
 }

@@ -3,7 +3,7 @@ import { Switch, Route, useLocation, useHistory } from 'react-router-dom';
 import Start from 'containers/unauth/Start';
 import Remind from 'containers/unauth/Remind';
 import CreatePass from 'containers/unauth/CreatePass';
-import { useTransition, animated } from 'react-spring';
+// import { useTransition, animated } from 'react-spring';
 import {
   CreatePhrase,
   ConfirmPhrase,
@@ -34,7 +34,7 @@ const UnAuth = () => {
 
   return (
     <>
-      <div className="absolute w-full h-full">
+      <div>
         <Switch>
           <Route path="/app.html" component={Start} exact />
           <Route path="/import" component={Import} exact />

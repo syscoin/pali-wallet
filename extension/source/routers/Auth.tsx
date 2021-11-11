@@ -8,7 +8,7 @@ import {
   useLocation,
   useHistory,
 } from 'react-router-dom';
-import { useTransition, animated } from 'react-spring';
+// import { useTransition, animated } from 'react-spring';
 import Start from 'containers/auth/Start';
 import Home from 'containers/auth/Home';
 import Send, { SendConfirm } from 'containers/auth/Send';
@@ -34,6 +34,17 @@ import { SendMatchProps } from './types';
 import SignPSBT from 'containers/auth/SignPSBT';
 import MintNFT, { MintNFTConfirm } from 'containers/auth/MintNFT';
 import SignAndSend from 'containers/auth/SignAndSend';
+import {
+  AboutView,
+  AccountView,
+  AutolockView,
+  ConnectHardwareWalletView,
+  DeleteWalletView,
+  MainView,
+  NewAccountView,
+  PhraseView,
+  PrivateKeyView
+} from 'containers/auth/Settings/views';
 
 const Auth = () => {
   const location = useLocation();
@@ -323,6 +334,34 @@ const Auth = () => {
             />
           )}
           {isUnlocked && <Route path="/receive" component={Receive} exact />}
+
+          {/* settings */}
+
+          <Route
+            path='/general'
+            component={MainView}
+            exact
+          />
+          <Route path="/general-autolock" component={AutolockView} exact />
+          <Route path="/general-about" component={AboutView} exact />
+          <Route path="/general-phrase" component={PhraseView} exact />
+          <Route path="/general-delete" component={DeleteWalletView} exact />
+
+          <Route
+            path='/account'
+            component={MainView}
+            exact
+          />
+          <Route
+            path='/account-priv'
+            render={(props) => (
+              <PrivateKeyView {...props} id='0' />
+            )}
+            exact
+          />
+          <Route path="/account-hardware" component={ConnectHardwareWalletView} exact />
+          <Route path="/account-newaccount" component={NewAccountView} exact />
+          <Route path="/account-details" component={AccountView} exact />
         </Switch>
       </div>
     </>

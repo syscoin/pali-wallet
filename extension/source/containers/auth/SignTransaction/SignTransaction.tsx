@@ -44,7 +44,7 @@ const SignTransaction: FC<ISignTransaction> = ({
   const psbt = controller.wallet.account.getTransactionItem()[item];
 
   const handleRejectTransaction = () => {
-    history.push('/home');
+    history('/home');
 
     browser.runtime.sendMessage({
       type: 'WALLET_ERROR',
@@ -120,7 +120,7 @@ const SignTransaction: FC<ISignTransaction> = ({
   };
 
   const handleCancelTransactionOnSite = () => {
-    history.push('/home');
+    history('/home');
 
     browser.runtime.sendMessage({
       type: 'CANCEL_TRANSACTION',

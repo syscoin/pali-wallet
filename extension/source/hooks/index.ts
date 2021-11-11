@@ -10,7 +10,7 @@ export const useSettingsView = () => {
   const history = useHistory();
 
   return useCallback((view) => {
-    history.push(view);
+    history(view);
   }, []);
 }
 
