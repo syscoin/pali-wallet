@@ -1,4 +1,4 @@
-import React, { FC, useEffect} from 'react';
+import React, { FC, useEffect } from 'react';
 // import { useSelector } from 'react-redux';
 import { useHistory, useLocation } from 'react-router-dom';
 import AddIcon from '@material-ui/icons/Add';
@@ -57,11 +57,9 @@ const MainView: FC<IMainView> = ({ onClose, accountSettings, generalSettings }) 
     <div >
       {generalSettings && (
         <ul>
-          <li onClick={() => onClose({ pathname: '/general-autolock' })}>
-            {/* <span onClick={() => history.push('/general-autolock')}> */}
-              <Icon Component={AddIcon} />
-              Auto lock timer
-            {/* </span> */}
+          <li onClick={() => history.push('/general-autolock')}>
+            <Icon Component={AddIcon} />
+            Auto lock timer
           </li>
 
           <li

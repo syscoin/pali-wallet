@@ -1,5 +1,6 @@
 import React, { FC } from 'react';
 import { useAlert } from 'react-alert';
+import ViewLayout from '../Layout';
 
 const AboutView: FC = () => {
   const alert = useAlert();
@@ -17,7 +18,7 @@ const AboutView: FC = () => {
     window.open('https://docs.paliwallet.com/');
   };
   return (
-    <div >
+    <ViewLayout title="INFO & HELP">
       <span>Pali Wallet Chrome Extension v1.0</span>
       <span>Version: 1.0.10</span>
       <span>
@@ -36,7 +37,7 @@ const AboutView: FC = () => {
           Pali API
         </a>
       </span>
-    </div>
+    </ViewLayout>
   );
 };
 

@@ -6,6 +6,7 @@ import * as yup from 'yup';
 import TextInput from 'components/TextInput';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
+import ViewLayout from '../Layout';
 
 const DeleteWalletView = () => {
   const controller = useController();
@@ -30,34 +31,36 @@ const DeleteWalletView = () => {
   };
 
   return (
-    <div >
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <span>
-          <b>Warning:</b> this action will delete your wallet and all accounts
-          associated with this wallet. Please make sure to back up your Wallet
-          seed phase if you would like to access this wallet and associated
-          accounts in the future.
-        </span>
-        <span>Please enter your wallet password:</span>
-        <TextInput
-          placeholder="password"
-          inputRef={register}
-        />
-        <div>
-          <Button
-            type="button"
-            onClick={() => history.goBack()}
-          >
-            Close
-          </Button>
-          <Button
-            type="submit"
-          >
-            Delete
-          </Button>
-        </div>
-      </form>
-    </div>
+    <ViewLayout title="DELETE WALLET">
+      <div >
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <span>
+            <b>Warning:</b> this action will delete your wallet and all accounts
+            associated with this wallet. Please make sure to back up your Wallet
+            seed phase if you would like to access this wallet and associated
+            accounts in the future.
+          </span>
+          <span>Please enter your wallet password:</span>
+          <TextInput
+            placeholder="password"
+            inputRef={register}
+          />
+          <div>
+            <Button
+              type="button"
+              onClick={() => history.goBack()}
+            >
+              Close
+            </Button>
+            <Button
+              type="submit"
+            >
+              Delete
+            </Button>
+          </div>
+        </form>
+      </div>
+    </ViewLayout>
   );
 };
 

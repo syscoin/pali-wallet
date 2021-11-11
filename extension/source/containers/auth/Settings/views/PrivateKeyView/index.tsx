@@ -10,6 +10,7 @@ import { ellipsis } from 'containers/auth/helpers';
 import IWalletState from 'state/wallet/types';
 import { RootState } from 'state/store';
 import CryptoJS from 'crypto-js';
+import ViewLayout from '../Layout';
 
 interface IPrivateKeyView {
   id: string;
@@ -60,40 +61,43 @@ const PrivateKeyView: FC<IPrivateKeyView> = ({ id }) => {
   };
 
   return (
-    <div >
-      {accounts[Number(id)] && (
-        <>
-          <div >
-            <div>Click to copy your account xpub:</div>
-            <span
+    <ViewLayout title="PRIVATE KEY">
+      <div >
+        {accounts[Number(id)] && (
+          <>
+            <div >
+              <div>Click to copy your account xpub:</div>
+              <span
               // onClick={() => {
               //   copyText(accounts[Number(id)].xpub);
               //   copyAddress(true);
               // }}
-            >
-              {ellipsis(accounts[Number(id)].xpub)}
-            </span>
-          </div>
-          <div >
-            <span>Please input your wallet password and press enter:</span>
-            <form onSubmit={handleSubmit(onSubmit)}>
-              <TextInput
-                placeholder="input"
-                inputRef={register}
-              />
-            </form>
-            <span>Click to copy your private key:</span>
-            <div onClick={handleCopyPrivKey}>
-              <span>{ellipsis(privKey)}</span>
+              >
+                {ellipsis(accounts[Number(id)].xpub)}
+              </span>
             </div>
-            <span>
-              <b>Warning:</b> Keep your keys secret! Anyone with your private
-              keys can steal your assets .
-            </span>
-          </div>
-        </>
-      )}
-    </div>
+            <div >
+              <span>Please input your wallet password and press enter:</span>
+              <form onSubmit={handleSubmit(onSubmit)}>
+                <TextInput
+                  placeholder="input"
+                  inputRef={register}
+                />
+              </form>
+              <span>Click to copy your private key:</span>
+              <div onClick={handleCopyPrivKey}>
+                <span>{ellipsis(privKey)}</span>
+              </div>
+              <span>
+                <b>Warning:</b> Keep your keys secret! Anyone with your private
+                keys can steal your assets .
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    </ViewLayout>
+
   );
 };
 

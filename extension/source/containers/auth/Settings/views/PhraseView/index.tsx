@@ -6,6 +6,7 @@ import * as yup from 'yup';
 import TextInput from 'components/TextInput';
 import { Form, Input } from 'antd';
 import { useController } from 'hooks/index';
+import ViewLayout from '../Layout';
 
 const PhraseView = () => {
   const [checked, setChecked] = useState<boolean>(false);
@@ -40,50 +41,52 @@ const PhraseView = () => {
   };
 
   return (
-    <div className="bg-brand-deepPink w-popup fixed h-popup">
-      <span>Please input your wallet password and press enter:</span>
-      <Form
-        className="flex justify-center items-center flex-col gap-8 text-center"
-        name="basic"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 16 }}
-        initialValues={{ remember: true }}
-        onFinish={onSubmit}
-        autoComplete="off"
-      >
-        <Form.Item
-          name="password"
-          hasFeedback
-          rules={[
-            {
-              required: true,
-              message: ''
-            },
-            ({ }) => ({
-              validator(_, value) {
-                if (controller.wallet.getPhrase(value)) {
-                  return Promise.resolve();
-                }
-
-                return Promise.reject('');
-              },
-            }),
-          ]}
+    <ViewLayout title="WALLET SEED PHRASE">
+      <div className="bg-brand-deepPink w-popup fixed h-popup">
+        <span>Please input your wallet password and press enter:</span>
+        <Form
+          className="flex justify-center items-center flex-col gap-8 text-center"
+          name="basic"
+          labelCol={{ span: 8 }}
+          wrapperCol={{ span: 16 }}
+          initialValues={{ remember: true }}
+          onFinish={onSubmit}
+          autoComplete="off"
         >
-          <Input.Password placeholder="Enter your password" />
-        </Form.Item>
-      </Form>
+          <Form.Item
+            name="password"
+            hasFeedback
+            rules={[
+              {
+                required: true,
+                message: ''
+              },
+              ({ }) => ({
+                validator(_, value) {
+                  if (controller.wallet.getPhrase(value)) {
+                    return Promise.resolve();
+                  }
 
-      <span>Click to copy your seed phrase:</span>
-      <div onClick={handleCopySeed}>
-        {phrase}
+                  return Promise.reject('');
+                },
+              }),
+            ]}
+          >
+            <Input.Password placeholder="Enter your password" />
+          </Form.Item>
+        </Form>
+
+        <span>Click to copy your seed phrase:</span>
+        <div onClick={handleCopySeed}>
+          {phrase}
+        </div>
+        <span>
+          <b>Warning:</b> Keep your seed phrase secret! Anyone with your seed
+          phrase can access any account connected to this wallet and steal your
+          assets.
+        </span>
       </div>
-      <span>
-        <b>Warning:</b> Keep your seed phrase secret! Anyone with your seed
-        phrase can access any account connected to this wallet and steal your
-        assets.
-      </span>
-    </div>
+    </ViewLayout>
   );
 };
 

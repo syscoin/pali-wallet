@@ -7,7 +7,9 @@ import { useController, useSettingsView } from 'hooks/index';
 import { ellipsis } from 'containers/auth/helpers';
 import Spinner from '@material-ui/core/CircularProgress';
 
-import { MAIN_VIEW } from '../routes';
+// import { MAIN_VIEW } from '../routes';
+import ViewLayout from '../Layout';
+import { useHistory } from 'react-router-dom';
 
 const NewAccountView = () => {
   const [address, setAddress] = useState<string | undefined>();
@@ -19,7 +21,7 @@ const NewAccountView = () => {
   });
   // const [isCopied, copyText] = useCopyClipboard();
   const [loading, setLoading] = useState<boolean>(false);
-  const showView = useSettingsView();
+  const history = useHistory();
 
   // const addressClass = clsx(styles.address, {
   //   [styles.copied]: isCopied && address,
@@ -38,57 +40,59 @@ const NewAccountView = () => {
   };
 
   return (
-    <div >
-      {address ? (
-        <>
-          <span>Your new account has been created</span>
-          <span>Click to copy your public address:</span>
-          <span
+    <ViewLayout title="CREATE ACCOUNT">
+      <div >
+        {address ? (
+          <>
+            <span>Your new account has been created</span>
+            <span>Click to copy your public address:</span>
+            <span
             // onClick={() => {
             //   copyText(address);
             // }}
-          >
-            {ellipsis(address)}
-          </span>
-          <div>
-            <Button
-              type="button"
-              onClick={() => showView(MAIN_VIEW)}
             >
-              Finish
-            </Button>
-          </div>
-        </>
-      ) : (
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <span>Please name your new account:</span>
-          <TextInput
-            placeholder="account"
-            inputRef={register}
-          />
-          <div>
-            <Button
-              type="button"
-              onClick={() => showView(MAIN_VIEW)}
-            >
-              Close
-            </Button>
-            {loading ? (
-              <div>
-                <Spinner size={22} />
-              </div>
-            ) : (
+              {ellipsis(address)}
+            </span>
+            <div>
               <Button
-                type="submit"
-                disabled={loading}
+                type="button"
+                onClick={() => history.push('/home')}
               >
-                Next
+                Finish
               </Button>
-            )}
-          </div>
-        </form>
-      )}
-    </div>
+            </div>
+          </>
+        ) : (
+          <form onSubmit={handleSubmit(onSubmit)}>
+            <span>Please name your new account:</span>
+            <TextInput
+              placeholder="account"
+              inputRef={register}
+            />
+            <div>
+              <Button
+                type="button"
+                onClick={() => history.push('/home')}
+              >
+                Close
+              </Button>
+              {loading ? (
+                <div>
+                  <Spinner size={22} />
+                </div>
+              ) : (
+                <Button
+                  type="submit"
+                  disabled={loading}
+                >
+                  Next
+                </Button>
+              )}
+            </div>
+          </form>
+        )}
+      </div>
+    </ViewLayout>
   );
 };
 
