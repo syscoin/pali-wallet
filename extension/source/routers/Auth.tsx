@@ -4,11 +4,10 @@ import { browser } from 'webextension-polyfill-ts';
 import {
   Switch,
   Route,
-  Redirect,
+  // Redirect,
   useLocation,
   useHistory,
 } from 'react-router-dom';
-// import { useTransition, animated } from 'react-spring';
 import Start from 'containers/auth/Start';
 import Home from 'containers/auth/Home';
 import Send, { SendConfirm } from 'containers/auth/Send';
@@ -52,14 +51,6 @@ const Auth = () => {
   const history = useHistory();
   const controller = useController();
   const isUnlocked = !controller.wallet.isLocked();
-
-  // const transitions = useTransition(location, (locat) => locat.pathname, {
-  //   initial: { opacity: 1 },
-  //   from: { opacity: 0 },
-  //   enter: { opacity: 1 },
-  //   leave: { opacity: 0 },
-  //   config: { duration: 200 },
-  // });
 
   const {
     accounts,
@@ -237,131 +228,110 @@ const Auth = () => {
     <>
       <div className="absolute w-full h-full">
         <Switch>
-          <Route path="/app.html" component={Start} exact>
-            {isUnlocked && <Redirect to="/home" />}
-          </Route>
-          {!isUnlocked && <Route path="/import" component={Import} exact />}
-          {isUnlocked && <Route path="/home" component={Home} exact />}
-          {isUnlocked && canConnect && (
-            <Route path="/connect-wallet" component={ConnectWallet} exact />
-          )}
-          {isUnlocked && canConnect && connectedAccounts.length > 0 && (
-            <Route
-              path="/connected-accounts"
-              component={ConnectedAccounts}
-              exact
-            />
-          )}
-          {isUnlocked && (
-            <Route path="/send/confirm" component={SendConfirm} exact />
-          )}
-          {isUnlocked && (
-            <Route path="/sign" component={SignAndSend} exact />
-          )}
-          {isUnlocked && (
-            <Route path="/signPsbt" component={SignPSBT} exact />
-          )}
-          {isUnlocked && <Route path="/create" component={Create} exact />}
-          {isUnlocked && (
-            <Route
-              path="/create/confirm"
-              component={CreateTokenConfirm}
-              exact
-            />
-          )}
-          {isUnlocked && (
-            <Route path="/issueAsset" component={IssueAsset} exact />
-          )}
-          {isUnlocked && (
-            <Route
-              path="/issueAsset/confirm"
-              component={IssueTokenConfirm}
-              exact
-            />
-          )}
-          {isUnlocked && (
-            <Route path="/mintNFT" component={MintNFT} exact />
-          )}
-          {isUnlocked && (
-            <Route
-              path="/mintNFT/confirm"
-              component={MintNFTConfirm}
-              exact
-            />
-          )}
-          {isUnlocked && (
-            <Route path="/issueNFT" component={IssueNFT} exact />
-          )}
-          {isUnlocked && (
-            <Route
-              path="/issueNFT/confirm"
-              component={CreateAndIssueNFTConfirm}
-              exact
-            />
-          )}
-          {isUnlocked && (
-            <Route path="/updateAsset" component={UpdateAsset} exact />
-          )}
-          {isUnlocked && (
-            <Route
-              path="/updateAsset/confirm"
-              component={UpdateConfirm}
-              exact
-            />
-          )}
-          {isUnlocked && (
-            <Route
-              path="/transferOwnership"
-              component={TransferOwnership}
-              exact
-            />
-          )}
-          {isUnlocked && (
-            <Route
-              path="/transferOwnership/confirm"
-              component={TransferOwnershipConfirm}
-              exact
-            />
-          )}
-          {isUnlocked && <Route path="/send" component={Send} exact />}
-          {isUnlocked && (
-            <Route
-              path="/send/:address"
-              render={({ match }: SendMatchProps) => (
-                <Send initAddress={match.params.address} />
+          <Route path="/app.html" component={Start} exact />
+
+          {isUnlocked ? (
+            <>
+              <Route path="/home" component={Home} exact />
+              <Route path="/send/confirm" component={SendConfirm} exact />
+              <Route path="/sign" component={SignAndSend} exact />
+              <Route path="/signPsbt" component={SignPSBT} exact />
+              <Route path="/create" component={Create} exact />
+              <Route
+                path="/create/confirm"
+                component={CreateTokenConfirm}
+                exact
+              />
+              <Route path="/issueAsset" component={IssueAsset} exact />
+              <Route
+                path="/issueAsset/confirm"
+                component={IssueTokenConfirm}
+                exact
+              />
+              <Route path="/mintNFT" component={MintNFT} exact />
+              <Route
+                path="/mintNFT/confirm"
+                component={MintNFTConfirm}
+                exact
+              />
+              <Route path="/updateAsset" component={UpdateAsset} exact />
+              <Route
+                path="/updateAsset/confirm"
+                component={UpdateConfirm}
+                exact
+              />
+              <Route path="/issueNFT" component={IssueNFT} exact />
+              <Route
+                path="/issueNFT/confirm"
+                component={CreateAndIssueNFTConfirm}
+                exact
+              />
+              <Route
+                path="/transferOwnership"
+                component={TransferOwnership}
+                exact
+              />
+              <Route
+                path="/transferOwnership/confirm"
+                component={TransferOwnershipConfirm}
+                exact
+              />
+              <Route path="/send" component={Send} exact />
+              <Route
+                path="/send/:address"
+                render={({ match }: SendMatchProps) => (
+                  <Send initAddress={match.params.address} />
+                )}
+                exact
+              />
+              <Route path="/receive" component={Receive} exact />
+              <Route
+                path='/general'
+                component={MainView}
+                exact
+              />
+              <Route path="/general-autolock" component={AutolockView} exact />
+              <Route path="/general-about" component={AboutView} exact />
+              <Route path="/general-phrase" component={PhraseView} exact />
+              <Route path="/general-delete" component={DeleteWalletView} exact />
+
+              <Route
+                path='/account'
+                component={MainView}
+                exact
+              />
+              <Route
+                path='/account-priv'
+                render={(props) => (
+                  <PrivateKeyView {...props} id='0' />
+                )}
+                exact
+              />
+              <Route path="/account-hardware" component={ConnectHardwareWalletView} exact />
+              <Route path="/account-newaccount" component={NewAccountView} exact />
+              <Route path="/account-details" component={AccountView} exact />
+
+              {canConnect && (
+                <>
+                  <Route path="/connect-wallet" component={ConnectWallet} exact />
+
+                  {connectedAccounts.length > 0 && (
+                    <>
+                      <Route
+                        path="/connected-accounts"
+                        component={ConnectedAccounts}
+                        exact
+                      />
+                    </>
+                  )}
+                </>
               )}
-              exact
-            />
+            </>
+          ) : (
+            <>
+              <Route path="/import" component={Import} exact />
+            </>
           )}
-          {isUnlocked && <Route path="/receive" component={Receive} exact />}
-
-          {/* settings */}
-
-          <Route
-            path='/general'
-            component={MainView}
-            exact
-          />
-          <Route path="/general-autolock" component={AutolockView} exact />
-          <Route path="/general-about" component={AboutView} exact />
-          <Route path="/general-phrase" component={PhraseView} exact />
-          <Route path="/general-delete" component={DeleteWalletView} exact />
-
-          <Route
-            path='/account'
-            component={MainView}
-            exact
-          />
-          <Route
-            path='/account-priv'
-            render={(props) => (
-              <PrivateKeyView {...props} id='0' />
-            )}
-            exact
-          />
-          <Route path="/account-hardware" component={ConnectHardwareWalletView} exact />
-          <Route path="/account-newaccount" component={NewAccountView} exact />
-          <Route path="/account-details" component={AccountView} exact />
         </Switch>
       </div>
     </>
