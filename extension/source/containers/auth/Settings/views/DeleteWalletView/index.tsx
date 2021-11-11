@@ -1,14 +1,13 @@
 import React from 'react';
-// import { useAlert } from 'react-alert';
 import { useHistory } from 'react-router-dom';
 import { Button } from 'components/index';;
-// import { useController } from 'hooks/index';
+// import { useController, useUtils } from 'hooks/index';
 import ViewLayout from '../Layout';
 
 const DeleteWalletView = () => {
   // const controller = useController();
   const history = useHistory();
-  // const alert = useAlert();
+  // const { alert } = useUtils();
 
   // const onSubmit = (data: any) => {
   //   if (controller.wallet.checkPassword(data.password)) {

@@ -1,14 +1,5 @@
 import React, { FC, useState, useEffect } from 'react';
-import {
-  ellipsis,
-  formatDistanceDate,
-  formatURL,
-} from 'containers/auth/helpers';
-import { useController, useCopyClipboard } from 'hooks/index';
-import { useAlert } from 'react-alert';
-import IWalletState from 'state/wallet/types';
-import { RootState } from 'state/store';
-import { useSelector } from 'react-redux';
+import { useController, useStore, useUtils, useFormat } from 'hooks/index';
 import { Icon } from 'components/index';
 
 interface IModalBlock {
@@ -33,11 +24,10 @@ export const ModalBlock: FC<IModalBlock> = ({
   txType,
 }) => {
   const controller = useController();
-  const alert = useAlert();
 
-  const { activeNetwork }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
+  const { activeNetwork } = useStore();
+  const { useCopyClipboard, alert } = useUtils();
+  const { ellipsis, formatDistanceDate, formatURL } = useFormat();
 
   const [expanded, setExpanded] = useState<boolean>(false);
   const [newExpanded, setNewExpanded] = useState<boolean>(false);

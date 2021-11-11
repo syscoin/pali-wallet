@@ -1,11 +1,9 @@
+import { useStore } from 'hooks/index';
 import React from 'react';
-import IWalletState from 'state/wallet/types';
-import { RootState } from 'state/store';
-import { useSelector } from 'react-redux';
 import SignTransaction from '../SignTransaction';
 
 const SignPSBT = () => {
-  const { signingPSBT }: IWalletState = useSelector((state: RootState) => state.wallet);
+  const { signingPSBT } = useStore();
 
   return (
     <div>

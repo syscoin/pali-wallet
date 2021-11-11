@@ -1,8 +1,5 @@
 import React from 'react';
-import IWalletState from 'state/wallet/types';
-import { useSelector } from 'react-redux';
-import { useController } from 'hooks/index';
-import { RootState } from 'state/store';
+import { useController, useStore } from 'hooks/index';
 
 import { ConfirmTransaction } from '../SiteTransaction';
 
@@ -10,9 +7,7 @@ const IssueAssetConfirm = () => {
   const controller = useController();
   const { mintSPT } = controller.wallet.account.getTransactionItem();
 
-  const { issuingAsset }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
+  const { issuingAsset } = useStore();
 
   return (
     <div>

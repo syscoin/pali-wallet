@@ -1,17 +1,12 @@
 import React, { useState } from 'react';
-import { useSelector } from 'react-redux';
 import Header from 'containers/common/Header';
 import Layout from 'containers/common/Layout';
 import { Button, Icon } from 'components/index';;
-import { useController } from 'hooks/index';
-import { useFiat } from 'hooks/usePrice';
+import { useController, useFiat, useStore, useUtils, useFormat } from 'hooks/index';
 import { useHistory } from 'react-router-dom';
-import { RootState } from 'state/store';
-import IWalletState, { IAccountState } from 'state/wallet/types';
-import { useAlert } from 'react-alert';
+import { IAccountState } from 'state/wallet/types';
 import { browser } from 'webextension-polyfill-ts';
 
-import { ellipsis, formatURL } from '../helpers';
 import { getHost } from '../../../scripts/Background/helpers';
 
 import { useEffect } from 'react';
@@ -21,17 +16,17 @@ const SendConfirm = () => {
   const controller = useController();
   const getFiatAmount = useFiat();
   const history = useHistory();
-  const alert = useAlert();
 
-  const { accounts, activeAccountId, tabs, confirmingTransaction }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
-  const { currentSenderURL } = tabs;
+  const { alert } = useUtils();
+  const { ellipsis, formatURL } = useFormat();
+  const { accounts, activeAccountId, currentSenderURL, confirmingTransaction } = useStore();
+
   const connectedAccount = accounts.find((account: IAccountState) => {
     return account.connectedTo.find((url: any) => {
       return url === getHost(currentSenderURL);
     });
   });
+  
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
   const { tempTx } = controller.wallet.account.getTransactionItem();
   const [confirmed, setConfirmed] = useState<boolean>(false);

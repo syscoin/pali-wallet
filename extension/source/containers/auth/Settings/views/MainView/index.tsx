@@ -1,10 +1,7 @@
 import React, { FC } from 'react';
 import { useHistory } from 'react-router-dom';
-import { useController } from 'hooks/index';
+import { useController/*, useStore */} from 'hooks/index';
 import { Icon } from 'components/index';
-
-// import { RootState } from 'state/store';
-// import IWalletState from 'state/wallet/types';
 // import AccountSelect from 'components/AccountSelect';
 
 interface IMainView {
@@ -17,9 +14,7 @@ interface IMainView {
 const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
   const history = useHistory();
   const controller = useController();
-  // const { accounts, activeAccountId }: IWalletState = useSelector(
-  //   (state: RootState) => state.wallet
-  // );
+  // const { accounts, activeAccountId } = useStore();
 
   // const handleSelectAccount = (id: string) => {
   //   onChange(id);
@@ -56,7 +51,7 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
         </ul>
       )}
 
-{/* <DollarOutlined /> */}
+      {/* <DollarOutlined /> */}
 
       {accountSettings && (
         <ul>
@@ -83,7 +78,7 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
           <li
             onClick={() => history.push('/account-hardware')}
           >
-            <Icon name="partition" className="bg-brand-deepPink text-brand-white w-4"/>
+            <Icon name="partition" className="bg-brand-deepPink text-brand-white w-4" />
             Connect hardware wallet
           </li>
 

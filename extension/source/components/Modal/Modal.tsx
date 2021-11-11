@@ -1,8 +1,6 @@
 import React, { FC } from 'react';
 import { browser } from 'webextension-polyfill-ts';
-import { useSelector } from 'react-redux';
-import { RootState } from 'state/store';
-import IWalletState from 'state/wallet/types';
+import { useStore } from 'hooks/index';
 
 import { getHost } from '../../scripts/Background/helpers';
 import { ellipsis, formatURL } from '../../containers/auth/helpers';
@@ -15,10 +13,8 @@ interface IModal {
 }
 
 export const Modal: FC<IModal> = ({ title, message, connected, callback }) => {
-  const { accounts }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
-
+  const { accounts } = useStore();
+  
   const handleDisconnect = (id: number) => {
     browser.runtime.sendMessage({
       type: 'RESET_CONNECTION_INFO',

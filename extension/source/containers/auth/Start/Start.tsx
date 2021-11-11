@@ -4,7 +4,6 @@ import { useController } from 'hooks/index';
 import LogoImage from 'assets/images/logo-s.svg';
 import { Form, Input } from 'antd';
 
-
 const Starter = () => {
   const controller = useController();
 

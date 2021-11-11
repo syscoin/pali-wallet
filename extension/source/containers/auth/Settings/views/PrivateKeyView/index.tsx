@@ -1,10 +1,5 @@
 import React, { FC } from 'react';
-// import { useAlert } from 'react-alert';
-// import { useSelector } from 'react-redux';
-// import { useController } from 'hooks/index';
-// import { ellipsis } from 'containers/auth/helpers';
-// import IWalletState from 'state/wallet/types';
-// import { RootState } from 'state/store';
+// import { useController, useFormat, useUtils, useStore } from 'hooks/index';
 // import CryptoJS from 'crypto-js';
 import ViewLayout from '../Layout';
 
@@ -14,10 +9,9 @@ interface IPrivateKeyView {
 
 const PrivateKeyView: FC<IPrivateKeyView> = (/*{ id }*/) => {
   // const controller = useController();
-  // const alert = useAlert();
-  // const { accounts }: IWalletState = useSelector(
-  //   (state: RootState) => state.wallet
-  // );
+  // const { alert, useCopyClipboard } = useUtils();
+  // const { accounts } = useStore();
+  // const { ellipsis } = useFormat();
 
   // // const [isCopied, copyText] = useCopyClipboard();
   // const [checked, setChecked] = useState<boolean>(false);

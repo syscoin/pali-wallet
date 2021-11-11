@@ -1,8 +1,5 @@
 import React from 'react';
-import IWalletState from 'state/wallet/types';
-import { useSelector } from 'react-redux';
-import { useController } from 'hooks/index';
-import { RootState } from 'state/store';
+import { useController, useStore } from 'hooks/index';
 
 import { ConfirmTransaction } from '../SiteTransaction';
 
@@ -11,9 +8,7 @@ const TransferOwnershipConfirm = () => {
   const { transferOwnershipData } =
     controller.wallet.account.getTransactionItem();
 
-  const { transferringOwnership }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
+  const { transferringOwnership } = useStore();
 
   return (
     <div>

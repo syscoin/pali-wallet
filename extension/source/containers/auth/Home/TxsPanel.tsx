@@ -3,14 +3,10 @@ import * as React from 'react';
 import { FC, Fragment, useCallback, useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { Icon, IconButton, Button } from 'components/index';
-import { useController } from 'hooks/index';
+import { useController, useStore, useFormat } from 'hooks/index';
 import SyscoinIcon from 'assets/images/logo-s.svg';
-import { RootState } from 'state/store';
-import IWalletState from 'state/wallet/types';
-import { useSelector } from 'react-redux';
 
 import { Transaction, Assets } from '../../../scripts/types';
-import { formatDistanceDate, formatCurrency } from '../helpers';
 
 interface ITxsPanel {
   address: string;
@@ -37,9 +33,8 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
   const [isActivity, setActivity] = useState<boolean>(true);
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
 
-  const { changingNetwork }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
+  const { changingNetwork } = useStore();
+  const { formatDistanceDate, formatCurrency } = useFormat();
 
   const isShowedGroupBar = useCallback(
     (tx: Transaction, idx: number) => {

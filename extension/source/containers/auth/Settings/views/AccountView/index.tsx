@@ -1,9 +1,6 @@
 import * as React from 'react';
 import { FC } from 'react';
-import { useController } from 'hooks/index';
-import { useSelector } from 'react-redux';
-import IWalletState from 'state/wallet/types';
-import { RootState } from 'state/store';
+import { useController, useStore } from 'hooks/index';
 import { useHistory } from 'react-router-dom';
 import { Icon } from 'components/index';
 
@@ -14,9 +11,8 @@ interface IAccountView {
 const AccountView: FC<IAccountView> = ({ id }) => {
   const controller = useController();
   const history = useHistory();
-  const { accounts }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
+  const { accounts } = useStore();
+
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
   const handleOpenExplorer = () => {
     window.open(`${sysExplorer}/xpub/${accounts[id].xpub}`);

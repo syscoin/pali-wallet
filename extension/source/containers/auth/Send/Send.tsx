@@ -8,14 +8,9 @@ import {
   FC,
 } from 'react';
 // import { useHistory } from 'react-router-dom';
-// import { useSelector } from 'react-redux';
-// import { useAlert } from 'react-alert';
 import Header from 'containers/common/Header';
 // import { Button, IconButton, Icon } from 'components/index';;
-// import { useController } from 'hooks/index';
-// import { useFiat } from 'hooks/usePrice';
-// import IWalletState from 'state/wallet/types';
-// import { RootState } from 'state/store';
+// import { useController, useFiat, useStore, useUtils } from 'hooks/index';
 // import { Assets } from '../../../scripts/types';
 // import { Form, Input } from 'antd';
 
@@ -26,10 +21,9 @@ const WalletSend: FC<IWalletSend> = (/*{ initAddress = '' }*/) => {
   // const history = useHistory();
   // // const getFiatAmount = useFiat();
   // const controller = useController();
-  // const alert = useAlert();
-  // const { accounts, activeAccountId, activeNetwork, changingNetwork }: IWalletState = useSelector(
-  //   (state: RootState) => state.wallet
-  // );
+  // const { alert } = useUtils();
+  // const { accounts, activeAccountId, activeNetwork, changingNetwork } = useStore();
+  
   // const [address, setAddress] = useState<string>(initAddress);
   // const [amount, setAmount] = useState<string>('');
   // const [fee, setFee] = useState<string>('0.00001');

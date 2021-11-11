@@ -1,20 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { useSelector } from 'react-redux';
-import { useController, useCopyClipboard } from 'hooks/index';
+import { useController, useUtils, useStore } from 'hooks/index';
 import QRCode from 'qrcode.react';
 import { IconButton, Icon } from 'components/index';
 import Header from 'containers/common/Header';
-import { RootState } from 'state/store';
-import IWalletState from 'state/wallet/types';
 import { useHistory } from 'react-router-dom';
 
 const WalletReceive = () => {
+  const { useCopyClipboard } = useUtils();
   const [isCopied, copyText] = useCopyClipboard();
   const controller = useController();
   const [loaded, setLoaded] = useState<boolean>(false);
-  const { accounts, activeAccountId }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
+  const { accounts, activeAccountId } = useStore();
   const history = useHistory();
 
   useEffect(() => {

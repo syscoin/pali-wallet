@@ -1,6 +1,6 @@
 import React from 'react';
 // import { Button } from 'components/index';;
-// import { useController } from 'hooks/index';
+// import { useController, useUtils, useStore } from 'hooks/index';
 // import IWalletState from 'state/wallet/types';
 // import { useSelector } from 'react-redux';
 // import { RootState } from 'state/store';
@@ -10,13 +10,12 @@ import ViewLayout from '../Layout';
 const AutolockView = () => {
   // const [confirmed, setConfirmed] = useState<boolean>(false);
   // const controller = useController();
-  // const { timer }: IWalletState = useSelector(
-  //   (state: RootState) => state.wallet
-  // );
+  // const { timer } = useStore();
+  // const { alert } = useUtils();
+
   // const [loading, setLoading] = useState<boolean>(false);
   // const [minutes, setMinutes] = useState<string>(String(timer));
   // const history = useHistory();
-  // const alert = useAlert();
 
   // const onSubmit = async (data: any) => {
   //   setLoading(true);

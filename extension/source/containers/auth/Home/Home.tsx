@@ -1,28 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import { useSelector } from 'react-redux';
 import { Icon, IconButton, Button, ModalBlock } from 'components/index';
-import Header from 'containers/common/Header';
-import { useController } from 'hooks/index';
-import { useFiat } from 'hooks/usePrice';
-import { RootState } from 'state/store';
-import IWalletState from 'state/wallet/types';
-
-import { formatNumber } from '../helpers';
+import { useController, useStore, useFiat, useFormat } from 'hooks/index';
 import { useHistory } from 'react-router-dom';
 
+import Header from 'containers/common/Header';
 import TxsPanel from './TxsPanel';
 
 const Home = () => {
   const controller = useController();
   const history = useHistory();
   const getFiatAmount = useFiat();
+  
+  const { formatNumber } = useFormat();
 
   const {
     accounts,
     activeAccountId,
     changingNetwork,
     activeNetwork,
-  }: IWalletState = useSelector((state: RootState) => state.wallet);
+  } = useStore();
 
   const [openBlockExplorer, setOpenBlockExplorer] = useState<boolean>(false);
   const [openAssetBlockExplorer, setOpenAssetBlockExplorer] =
@@ -34,8 +30,6 @@ const Home = () => {
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
   const [tx, setTx] = useState(null);
   const [assetTx, setAssetTx] = useState(null);
-
-
 
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();
@@ -60,8 +54,6 @@ const Home = () => {
       handleRefresh();
     }
   }, [!controller.wallet.isLocked(), accounts.length > 0]);
-
-
 
   const handleOpenExplorer = (txid: string) => {
     window.open(`${sysExplorer}/tx/${txid}`);

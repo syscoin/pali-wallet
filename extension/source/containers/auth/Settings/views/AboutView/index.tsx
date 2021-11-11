@@ -1,9 +1,9 @@
 import React, { FC } from 'react';
-import { useAlert } from 'react-alert';
+import { useUtils } from 'hooks/index';
 import ViewLayout from '../Layout';
 
 const AboutView: FC = () => {
-  const alert = useAlert();
+  const { alert } = useUtils();
   const handleSupportClick = () => {
     alert.show('You will be redirected to Syscoin Discord, please contact support team at #pali_support', {
       timeout: 5000,

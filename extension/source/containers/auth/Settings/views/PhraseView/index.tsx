@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { useAlert } from 'react-alert';
 import { Form, Input } from 'antd';
-import { useController } from 'hooks/index';
+import { useController, useUtils } from 'hooks/index';
 import ViewLayout from '../Layout';
 
 const PhraseView = () => {
@@ -10,7 +9,7 @@ const PhraseView = () => {
     '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****'
   );
 
-  const alert = useAlert();
+  const { alert } = useUtils();
   const controller = useController();
   const onSubmit = (data: any) => {
     const res = controller.wallet.getPhrase(data.password);

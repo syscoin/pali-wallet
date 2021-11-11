@@ -2,10 +2,7 @@ import React, { useState } from 'react';
 import AccountHeader from './AccountHeader';
 import Section from './Section';
 import NormalHeader from './NormalHeader';
-import IWalletState from 'state/wallet/types';
-import { RootState } from 'state/store';
-import { useSelector } from 'react-redux';
-import { useController } from 'hooks/index';
+import { useController, useStore } from 'hooks/index';
 
 const Header = ({
   importSeed = false,
@@ -16,7 +13,7 @@ const Header = ({
   const [generalSettingsShowed, showGeneralSettings] = useState<boolean>(false);
   const [accountSettingsShowed, showAccountSettings] = useState<boolean>(false);
 
-  const { encriptedMnemonic }: IWalletState = useSelector((state: RootState) => state.wallet);
+  const { encriptedMnemonic } = useStore();
 
   const controller = useController();
 

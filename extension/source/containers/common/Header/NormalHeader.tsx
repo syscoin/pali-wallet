@@ -2,12 +2,9 @@ import React, { FC, useEffect, useState, ChangeEvent } from 'react';
 import { IconButton, Modal, Select, Icon } from 'components/index';
 import Settings from 'containers/auth/Settings';
 import { SYS_NETWORK } from 'constants/index';
-import { RootState } from 'state/store';
-import { useSelector } from 'react-redux';
 import { getHost } from '../../../scripts/Background/helpers';
-import IWalletState from 'state/wallet/types';
 import { browser } from 'webextension-polyfill-ts';
-import { useController } from 'hooks/index';
+import { useController, useStore } from 'hooks/index';
 
 interface INormalHeader {
   importSeed: boolean;
@@ -29,14 +26,11 @@ const NormalHeader: FC<INormalHeader> = ({
   const {
     accounts,
     activeAccountId,
-    tabs,
-  }: IWalletState = useSelector((state: RootState) => state.wallet);
+    currentURL,
+    activeNetwork
+  } = useStore();
 
-  const { currentURL } = tabs;
-
-  const network = useSelector(
-    (state: RootState) => state.wallet!.activeNetwork
-  );
+  const network = activeNetwork;
 
   const [currentTabURL, setCurrentTabURL] = useState<string>(currentURL);
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);

@@ -1,20 +1,15 @@
 import React, { useState } from 'react';  
-import { useController } from 'hooks/index';
+import { useController, useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Button } from 'components/index';;
 import Layout from '../../common/Layout';
-import { useSelector } from 'react-redux';
-import { RootState } from 'state/store';
-import IWalletState from 'state/wallet/types';
 import { useHistory } from 'react-router-dom';
 
 const CreatePass = () => {
   const controller = useController();
   const history = useHistory();
 
-  const { tabs }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
+  const { canConnect } = useStore()
 
   const [passed, setPassed] = useState<boolean>(false);
 
@@ -22,7 +17,7 @@ const CreatePass = () => {
     if (passed) {
       controller.wallet.createWallet(true);
 
-      if (tabs.canConnect) {
+      if (canConnect) {
         history.push('/connect-wallet');
       } else {
         history.push('/home');

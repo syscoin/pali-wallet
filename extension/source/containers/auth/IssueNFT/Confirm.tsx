@@ -1,18 +1,13 @@
 import React from 'react';
-import IWalletState from 'state/wallet/types';
-import { useSelector } from 'react-redux';
-import { useController } from 'hooks/index';
-import { RootState } from 'state/store';
+import { useController, useStore } from 'hooks/index';
 
 import { ConfirmTransaction } from '../SiteTransaction';
 
 const CreateAndIssueNFTConfirm = () => {
   const controller = useController();
-  const { mintNFT } = controller.wallet.account.getTransactionItem();
+  const { issuingNFT } = useStore();
 
-  const { issuingNFT }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
+  const { mintNFT } = controller.wallet.account.getTransactionItem();
 
   return (
     <div>

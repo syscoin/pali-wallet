@@ -1,6 +1,6 @@
 import React from 'react';
 // import { Button, Icon } from 'components/index';;
-// import { useController } from 'hooks/index';
+// import { useController, useFormat } from 'hooks/index';
 // import { ellipsis } from 'containers/auth/helpers';
 
 // import { MAIN_VIEW } from '../routes';
@@ -10,6 +10,7 @@ import ViewLayout from '../Layout';
 const NewAccountView = () => {
   // const [address, setAddress] = useState<string | undefined>();
   // const controller = useController();
+  // const { ellipsis } = useFormat();
   // const [isCopied, copyText] = useCopyClipboard();
   // const [loading, setLoading] = useState<boolean>(false);
   // const history = useHistory();

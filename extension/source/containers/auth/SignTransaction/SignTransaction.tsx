@@ -1,16 +1,10 @@
 import React, { useState, FC } from 'react';
 import Layout from 'containers/common/Layout';
 import { Button, Icon } from 'components/index';
-import IWalletState from 'state/wallet/types';
-import { RootState } from 'state/store';
 import { useHistory } from 'react-router-dom';
-import { useController } from 'hooks/index';
+import { useController, useUtils, useFormat, useStore } from 'hooks/index';
 import { browser } from 'webextension-polyfill-ts';
-import { useSelector } from 'react-redux';
-import { useAlert } from 'react-alert';
 import { getHost } from 'scripts/Background/helpers';
-
-import { ellipsis } from '../helpers';
 
 interface ISignTransaction {
   item: string;
@@ -27,16 +21,14 @@ const SignTransaction: FC<ISignTransaction> = ({
 }) => {
   const controller = useController();
   const history = useHistory();
-  const alert = useAlert();
+  const { alert } = useUtils();
+  const { ellipsis } = useFormat();
 
   const [loading, setLoading] = useState<boolean>(false);
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const base64 = /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
 
-  const { tabs, accounts }: IWalletState =
-    useSelector((state: RootState) => state.wallet);
-
-  const { currentSenderURL } = tabs;
+  const { currentSenderURL, accounts } = useStore();
 
   const psbt = controller.wallet.account.getTransactionItem()[item];
 
