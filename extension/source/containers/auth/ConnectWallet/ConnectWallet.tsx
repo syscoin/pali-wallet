@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { browser } from 'webextension-polyfill-ts';
 import Header from 'containers/common/Header';
 import { Button, Icon } from 'components/index';
-import checkGreen from 'assets/images/svg/check-green.svg';
 import { ellipsis } from 'containers/auth/helpers';
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
@@ -158,7 +157,7 @@ const ConnectWallet = () => {
                     <small>{ellipsis(acc.address.main)}</small>
                   </div>
 
-                  {acc.id === accountId && <img src={checkGreen} alt="check" />}
+                  {acc.id === accountId && <p>check</p>}
                 </li>
               ))}
             </ul>

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { browser } from 'webextension-polyfill-ts';
 import { Button } from 'components/index';;
 import Header from 'containers/common/Header';
-import checkGreen from 'assets/images/svg/check-green.svg';
 import { ellipsis } from 'containers/auth/helpers';
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
@@ -11,8 +10,6 @@ import { useAlert } from 'react-alert';
 import { useController } from 'hooks/index';
 
 import { getHost } from '../../../scripts/Background/helpers';
-
-import styles from './ConnectWallet.scss';
 
 const ConnectedAccounts = () => {
   const controller = useController();
@@ -70,35 +67,35 @@ const ConnectedAccounts = () => {
   };
 
   return (
-    <div className={styles.wrapper}>
+    <div >
       <Header />
 
       {changeAccountIsOpen ? (
-        <div className={styles.list} style={{ marginTop: '2rem' }}>
-          <p className={styles.connectedTitle}>Choose your account</p>
+        <div >
+          <p >Choose your account</p>
 
-          <ul className={styles.changeAccounts}>
+          <ul >
             {accounts.map((account) => {
               return (
                 <li
                   key={account.id}
-                  className={account.id === connectedAccount[0].id ? styles.disabled : styles.account}
                   onClick={() => handleChangeAccount(account.id)}
                 > 
-                  <div className={styles.label}>
+                  <div >
                     <p>{account.label}</p>
                     <small>{ellipsis(account.address.main)}</small>
                   </div>
                   {account.id === activeAccountId && <small>(active)</small>}
                   {account.id === accountId && account.id !== connectedAccount[0].id && (
-                    <img src={checkGreen} alt="check" />
+                    // <img src={checkGreen} alt="check" />
+                    <p>check</p>
                   )}
                 </li>
               );
             })}
           </ul>
 
-          <div className={styles.actions}>
+          <div >
             <Button
               type="button"
               onClick={() => setChangeAccountIsOpen(false)}
@@ -114,8 +111,8 @@ const ConnectedAccounts = () => {
           </div>
         </div>
       ) : (
-        <div className={styles.list}>
-          <div className={styles.connectedTitle}>
+        <div >
+          <div>
             <p>
               This account is connected to
               <br />
@@ -133,14 +130,14 @@ const ConnectedAccounts = () => {
             )}
           </div>
 
-          <div className={styles.account}>
-            <div className={styles.label}>
+          <div >
+            <div>
               <p>{connectedAccount[0].label}</p>
               <small>{ellipsis(connectedAccount[0].address.main)}</small>
             </div>
           </div>
 
-          <div className={styles.actions}>
+          <div >
             <Button
               type="button"
               onClick={handleDisconnect}

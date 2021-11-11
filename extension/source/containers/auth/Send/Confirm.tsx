@@ -14,7 +14,6 @@ import { browser } from 'webextension-polyfill-ts';
 import { ellipsis, formatURL } from '../helpers';
 import { getHost } from '../../../scripts/Background/helpers';
 
-import styles from './Confirm.scss';
 import { useEffect } from 'react';
 import { Assets } from 'scripts/types';
 
@@ -172,28 +171,28 @@ const SendConfirm = () => {
       </Button>
     </Layout>
   ) : (
-    <div className={styles.wrapper}>
+    <div >
       <Header/>
-      <section className={styles.subheading}>Confirm</section>
-      <section className={styles.txAmount}>
-        <div className={styles.iconWrapper}>
+      <section >Confirm</section>
+      <section >
+        <div >
           <Icon name="arrow-up" className="w-4 bg-brand-graydark100 text-brand-white" />
         </div>
         {tempTx?.isToken && tokenData && tokenData?.symbol ? `${String(tempTx.amount)} ${String(tokenData?.symbol)}` : `${(tempTx?.amount || 0) + (tempTx?.fee || 0)} SYS`}
       </section>
-      <section className={styles.transaction}>
-        <div className={styles.row}>
+      <section >
+        <div>
           <p>From</p>
           <span>
             {confirmingTransaction && connectedAccount ? connectedAccount?.label : accounts.find(element => element.id === activeAccountId)!.label || ''} (
             {ellipsis(tempTx!.fromAddress)})
           </span>
         </div>
-        <div className={styles.row}>
+        <div>
           <p>To</p>
           <span>{tempTx!.toAddress}</span>
         </div>
-        <div className={styles.row}>
+        <div>
           <p>Transaction fee</p>
           <span>
             {tempTx!.fee} SYS (≈ {getFiatAmount(tempTx?.fee || 0, 8)})
@@ -201,7 +200,7 @@ const SendConfirm = () => {
         </div>
         {tempTx?.isToken && tokenData && (
           <div>
-            <div className={styles.row}>
+            <div>
               <p>Token being sent</p>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                 <span>
@@ -214,8 +213,8 @@ const SendConfirm = () => {
           </div>
         )}
       </section>
-      <section className={styles.confirm}>
-        <div className={styles.row}>
+      <section>
+        <div>
           <p>Max total</p>
           <span>
             {!tempTx?.isToken ? getFiatAmount(
@@ -226,12 +225,12 @@ const SendConfirm = () => {
         </div>
 
         {confirmingTransaction && (
-          <div className={styles.row}>
+          <div>
             <span style={{ fontSize: '14px', margin: '0px' }}>Confirm transaction on {currentSenderURL}?</span>
           </div>
         )}
 
-        <div className={styles.actions}>
+        <div>
           <Button
             type="button"
             onClick={confirmingTransaction ? handleCancelTransactionOnSite : handleCancel}
