@@ -8,7 +8,7 @@ interface ILink {
   to: string;
 }
 
-const Link: FC<ILink> = ({
+export const Link: FC<ILink> = ({
   to,
   className = "no-underline font-medium text-base font-sans",
   children,
@@ -20,5 +20,3 @@ const Link: FC<ILink> = ({
     </RouterLink>
   );
 };
-
-export default Link;

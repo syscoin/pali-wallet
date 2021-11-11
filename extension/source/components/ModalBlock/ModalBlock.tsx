@@ -9,7 +9,7 @@ import { useAlert } from 'react-alert';
 import IWalletState from 'state/wallet/types';
 import { RootState } from 'state/store';
 import { useSelector } from 'react-redux';
-import Icon from 'components/Icon';
+import { Icon } from 'components/index';
 
 interface IModalBlock {
   assetTx?: any;
@@ -22,7 +22,7 @@ interface IModalBlock {
   txType?: any;
 }
 
-const ModalBlock: FC<IModalBlock> = ({
+export const ModalBlock: FC<IModalBlock> = ({
   title,
   message,
   callback,
@@ -372,5 +372,3 @@ const ModalBlock: FC<IModalBlock> = ({
     </div>
   );
 };
-
-export default ModalBlock;

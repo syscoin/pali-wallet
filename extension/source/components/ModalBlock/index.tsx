@@ -1,1 +1,1 @@
-export { default } from './ModalBlock';
+export { ModalBlock } from './ModalBlock';

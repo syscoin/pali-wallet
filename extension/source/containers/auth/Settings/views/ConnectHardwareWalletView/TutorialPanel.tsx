@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { FC, useCallback, useState } from 'react';
-import Icon from 'components/Icon';
-import IconButton from 'components/IconButton';
+import { Icon, IconButton } from 'components/index';
 
 const TutorialPanel: FC = () => {
   const [isShowed, setShowed] = useState<boolean>(false);

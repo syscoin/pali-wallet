@@ -20,7 +20,7 @@ interface IOption {
 //   value?: unknown;
 // }
 
-const Select: FC<any> = ({
+export const Select: FC<any> = ({
   options,
   value,
   className,
@@ -45,5 +45,3 @@ const Select: FC<any> = ({
     </div>
   );
 };
-
-export default Select;

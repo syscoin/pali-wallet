@@ -21,7 +21,7 @@ interface IButton {
   className?: string;
 }
 
-const Button: FC<IButton> = ({
+export const Button: FC<IButton> = ({
   children,
   disabled = false,
   loading = false,
@@ -40,5 +40,3 @@ const Button: FC<IButton> = ({
     </button>
   );
 };
-
-export default Button;

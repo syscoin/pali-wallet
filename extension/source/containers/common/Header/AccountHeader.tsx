@@ -1,7 +1,6 @@
 import React, { FC } from 'react';
 import LogoImage from 'assets/images/logo-s.svg';
-import Icon from 'components/Icon';
-import IconButton from 'components/IconButton';
+import { Icon, IconButton } from 'components/index';
 import Settings from 'containers/auth/Settings';
 
 interface IAccountHeader {

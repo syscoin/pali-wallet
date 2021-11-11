@@ -1,8 +1,7 @@
 import React, { useState, FC } from 'react';
 import Layout from 'containers/common/Layout';
-import Button from 'components/Button';
+import { Button, Icon } from 'components/index';
 import IWalletState from 'state/wallet/types';
-import Icon from 'components/Icon';
 import { RootState } from 'state/store';
 import { useHistory } from 'react-router-dom';
 import { useController } from 'hooks/index';

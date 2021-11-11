@@ -1,5 +1,5 @@
 import React from 'react';
-// import Button from 'components/Button';
+// import { Button } from 'components/index';;
 // import { useController } from 'hooks/index';
 // import IWalletState from 'state/wallet/types';
 // import { useSelector } from 'react-redux';

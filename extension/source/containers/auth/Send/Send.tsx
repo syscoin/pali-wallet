@@ -11,15 +11,13 @@ import {
 // import { useSelector } from 'react-redux';
 // import { useAlert } from 'react-alert';
 import Header from 'containers/common/Header';
-// import Button from 'components/Button';
+// import { Button, IconButton, Icon } from 'components/index';;
 // import { useController } from 'hooks/index';
 // import { useFiat } from 'hooks/usePrice';
 // import IWalletState from 'state/wallet/types';
 // import { RootState } from 'state/store';
 // import { Assets } from '../../../scripts/types';
 // import { Form, Input } from 'antd';
-// import Icon from 'components/Icon';
-// import IconButton from 'components/IconButton';
 
 interface IWalletSend {
   initAddress?: string;

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { browser } from 'webextension-polyfill-ts';
-import Button from 'components/Button';
+import { Button } from 'components/index';;
 import Header from 'containers/common/Header';
 import checkGreen from 'assets/images/svg/check-green.svg';
 import { ellipsis } from 'containers/auth/helpers';

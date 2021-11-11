@@ -1,12 +1,9 @@
 import React, { FC, useEffect, useState, ChangeEvent } from 'react';
-import IconButton from 'components/IconButton';
+import { IconButton, Modal, Select, Icon } from 'components/index';
 import Settings from 'containers/auth/Settings';
-import Select from 'components/Select';
-import Icon from 'components/Icon';
 import { SYS_NETWORK } from 'constants/index';
 import { RootState } from 'state/store';
 import { useSelector } from 'react-redux';
-import Modal from 'components/Modal';
 import { getHost } from '../../../scripts/Background/helpers';
 import IWalletState from 'state/wallet/types';
 import { browser } from 'webextension-polyfill-ts';

@@ -1,22 +1,16 @@
 import React, { FC } from 'react';
-import Icon from "components/Icon";
+import { Icon } from "../Icon";
 
 interface IAlertTemplate {
   close: () => void;
   message: any;
   options: any;
-  style: any;
 }
 
-const ToastAlert: FC<IAlertTemplate> = ({ message, options, style, close }) => {
+export const ToastAlert: FC<IAlertTemplate> = ({ message, options, close }) => {
   return (
     <div
-      style={{
-        ...style,
-        marginBottom: '80px',
-        width: '300px',
-        textAlign: 'center',
-      }}
+      className="mb-20 w-72 text-center"
       onClick={close}
     >
       {options.type === 'error' && <Icon name="close-circle" className="w-4 bg-brand-gray200 text-brand-navy" />}
@@ -24,5 +18,3 @@ const ToastAlert: FC<IAlertTemplate> = ({ message, options, style, close }) => {
     </div>
   );
 };
-
-export default ToastAlert;

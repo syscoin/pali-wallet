@@ -14,7 +14,7 @@ interface IModal {
   title: any;
 }
 
-const Modal: FC<IModal> = ({ title, message, connected, callback }) => {
+export const Modal: FC<IModal> = ({ title, message, connected, callback }) => {
   const { accounts }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
@@ -112,5 +112,3 @@ const Modal: FC<IModal> = ({ title, message, connected, callback }) => {
     </div>
   );
 };
-
-export default Modal;

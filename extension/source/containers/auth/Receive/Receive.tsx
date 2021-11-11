@@ -2,11 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useController, useCopyClipboard } from 'hooks/index';
 import QRCode from 'qrcode.react';
-import IconButton from 'components/IconButton';
+import { IconButton, Icon } from 'components/index';
 import Header from 'containers/common/Header';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
-import Icon from 'components/Icon';
 import { useHistory } from 'react-router-dom';
 
 const WalletReceive = () => {

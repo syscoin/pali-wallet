@@ -9,7 +9,7 @@ interface IIconButton {
   className?: string;
 }
 
-const IconButton: FC<IIconButton> = ({
+export const IconButton: FC<IIconButton> = ({
   children,
   type = "primary",
   onClick,
@@ -27,5 +27,3 @@ const IconButton: FC<IIconButton> = ({
     </AntButton>
   );
 };
-
-export default IconButton;

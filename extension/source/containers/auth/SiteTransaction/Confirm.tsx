@@ -1,13 +1,12 @@
 import React, { useState, useEffect, FC } from 'react';
 import { useSelector } from 'react-redux';
 import Layout from 'containers/common/Layout';
-import Button from 'components/Button';
+import { Button, Icon } from 'components/index';;
 import { useController } from 'hooks/index';
 import { RootState } from 'state/store';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 import { browser } from 'webextension-polyfill-ts';
-import Icon from 'components/Icon';
 import { useHistory } from 'react-router';
 
 import { getHost } from '../../../scripts/Background/helpers';

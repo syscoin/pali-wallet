@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import Layout from 'containers/common/Layout';
-import Button from 'components/Button';
+import { Button } from 'components/index';;
 import { useController } from 'hooks/index';
 import { Form, Input } from 'antd';
 

@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { browser } from 'webextension-polyfill-ts';
 import Header from 'containers/common/Header';
-import Button from 'components/Button';
-import Icon from 'components/Icon';
+import { Button, Icon } from 'components/index';
 import checkGreen from 'assets/images/svg/check-green.svg';
 import { ellipsis } from 'containers/auth/helpers';
 import { useSelector } from 'react-redux';

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';  
 import { useController } from 'hooks/index';
 import { Form, Input } from 'antd';
-import Button from 'components/Button';
+import { Button } from 'components/index';;
 import Layout from '../../common/Layout';
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';

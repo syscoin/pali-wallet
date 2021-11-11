@@ -1,6 +1,6 @@
 import React, { useState, FC } from 'react';
 import Layout from 'containers/common/Layout';
-import Button from 'components/Button';
+import { Button } from 'components/index';;
 import { useHistory } from 'react-router-dom';
 import { useController } from 'hooks/index';
 import { browser } from 'webextension-polyfill-ts';

@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import { useHistory } from 'react-router-dom';
-import Button from 'components/Button';
+import { Button } from 'components/index';;
 import { useController } from 'hooks/index';
 
 import Layout from '../../common/Layout';

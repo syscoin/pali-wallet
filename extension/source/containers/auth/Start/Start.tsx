@@ -1,6 +1,5 @@
 import React from 'react';
-import Button from 'components/Button';
-import Link from 'components/Link';
+import { Button, Link } from 'components/index';
 import { useController } from 'hooks/index';
 import LogoImage from 'assets/images/logo.svg';
 import { Form, Input } from 'antd';

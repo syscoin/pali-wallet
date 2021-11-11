@@ -1,8 +1,7 @@
 import React from 'react';
-// import Button from 'components/Button';
+// import { Button, Icon } from 'components/index';;
 // import { useController } from 'hooks/index';
 // import { ellipsis } from 'containers/auth/helpers';
-// import Icon from 'components/Icon';
 
 // import { MAIN_VIEW } from '../routes';
 import ViewLayout from '../Layout';

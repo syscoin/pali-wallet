@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useHistory } from 'react-router-dom';
 import { useController } from 'hooks/index';
-import Button from 'components/Button';
+import { Button } from 'components/index';;
 import shuffle from 'lodash/shuffle';
 import isEqual from 'lodash/isEqual';
 

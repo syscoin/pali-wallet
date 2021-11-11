@@ -1,10 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
-import Icon from 'components/Icon';
-import IconButton from 'components/IconButton';
+import { Icon, IconButton, Button, ModalBlock } from 'components/index';
 import Header from 'containers/common/Header';
-import Button from 'components/Button';
-import ModalBlock from 'components/ModalBlock';
 import { useController } from 'hooks/index';
 import { useFiat } from 'hooks/usePrice';
 import { RootState } from 'state/store';

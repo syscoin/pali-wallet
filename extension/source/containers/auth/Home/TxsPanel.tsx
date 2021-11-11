@@ -2,9 +2,7 @@
 import * as React from 'react';
 import { FC, Fragment, useCallback, useState } from 'react';
 import { v4 as uuid } from 'uuid';
-import Icon from 'components/Icon';
-import IconButton from 'components/IconButton';
-import Button from 'components/Button';
+import { Icon, IconButton, Button } from 'components/index';
 import { useController } from 'hooks/index';
 import SyscoinIcon from 'assets/images/logosys.svg';
 import { RootState } from 'state/store';

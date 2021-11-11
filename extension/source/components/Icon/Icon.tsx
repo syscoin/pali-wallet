@@ -49,7 +49,7 @@ interface IIcon {
   maxWidth?: string;
 }
 
-const Icon: FC<IIcon> = ({ name, className, maxWidth }) => {
+export const Icon: FC<IIcon> = ({ name, className, maxWidth }) => {
   {/* @ts-ignore */}
   const Component = icons[name];
 
@@ -59,5 +59,3 @@ const Icon: FC<IIcon> = ({ name, className, maxWidth }) => {
     </div>
   );
 };
-
-export default Icon;

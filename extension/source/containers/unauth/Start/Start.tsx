@@ -1,6 +1,5 @@
 import React from 'react';
-import Button from 'components/Button';
-import Link from 'components/Link';
+import { Button, Link } from 'components/index';
 import LogoImage from 'assets/images/logo.svg';
 import { useHistory } from 'react-router-dom';
 

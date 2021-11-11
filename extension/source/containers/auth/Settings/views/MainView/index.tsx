@@ -1,8 +1,7 @@
 import React, { FC } from 'react';
 import { useHistory } from 'react-router-dom';
-// import Icon from 'components/Icon';
 import { useController } from 'hooks/index';
-import Icon from 'components/Icon';
+import { Icon } from 'components/index';
 
 // import { RootState } from 'state/store';
 // import IWalletState from 'state/wallet/types';

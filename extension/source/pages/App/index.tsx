@@ -6,7 +6,7 @@ import { Provider } from 'react-redux';
 import { Store } from 'webext-redux';
 import watch from 'redux-watch';
 import { transitions, positions, Provider as AlertProvider } from 'react-alert';
-import ToastAlert from 'components/ToastAlert';
+import { ToastAlert } from 'components/index';
 import appStore from 'state/store';
 import 'assets/styles/tailwind.css';
 
@@ -19,7 +19,6 @@ const w = watch(appStore.getState, 'wallet.status');
 store.subscribe(
   w(() => {
     console.log('watching webext store');
-    // location.reload();
   })
 );
 

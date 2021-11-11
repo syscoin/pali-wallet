@@ -1,5 +1,5 @@
 import React, { FC, useState } from 'react';
-import Button from 'components/Button';
+import { Button } from 'components/index';;
 import { useController } from 'hooks/index';
 import TutorialPanel from './TutorialPanel';
 import ViewLayout from '../Layout';

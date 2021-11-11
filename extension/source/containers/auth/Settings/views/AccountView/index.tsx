@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux';
 import IWalletState from 'state/wallet/types';
 import { RootState } from 'state/store';
 import { useHistory } from 'react-router-dom';
-import Icon from 'components/Icon';
+import { Icon } from 'components/index';
 
 interface IAccountView {
   id: number;

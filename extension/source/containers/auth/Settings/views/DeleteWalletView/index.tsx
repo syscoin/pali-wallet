@@ -1,7 +1,7 @@
 import React from 'react';
 // import { useAlert } from 'react-alert';
 import { useHistory } from 'react-router-dom';
-import Button from 'components/Button';
+import { Button } from 'components/index';;
 // import { useController } from 'hooks/index';
 import ViewLayout from '../Layout';
 
