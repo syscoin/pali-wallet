@@ -5,8 +5,10 @@ import { v4 as uuid } from 'uuid';
 import { Icon, IconButton, Button } from 'components/index';
 import { useController, useStore, useFormat } from 'hooks/index';
 import SyscoinIcon from 'assets/images/logo-s.svg';
+import ActivityPanel from './ActivityPanel';
 
 import { Transaction, Assets } from '../../../scripts/types';
+import AssetsPanel from './AssetsPanel';
 
 interface ITxsPanel {
   address: string;
@@ -34,7 +36,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
   const [scrollArea, setScrollArea] = useState<HTMLElement>();
 
   const { changingNetwork } = useStore();
-  const { formatDistanceDate, formatCurrency } = useFormat();
+  // const { formatDistanceDate, formatCurrency } = useFormat();
 
   const isShowedGroupBar = useCallback(
     (tx: Transaction, idx: number) => {
@@ -90,148 +92,53 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
   }
 
   return (
-    <section
-      onScroll={handleScroll}
-      className="bg-brand-gray text-brand-white flex justify-center items-center flex-col"
-    >
-      {!isShowed ?
+    <div className="w-full flex justify-center items-center flex-col">
+      {!isShowed ? (
         <div>
-          <div>
-            <Button
-              type="button"
-              onClick={() => { setActivity(false) }}
-            >
-              Assets
-            </Button>
+          <Button
+            type="button"
+            onClick={() => { setActivity(false) }}
+          >
+            Assets
+          </Button>
 
-            <Button
-              type="button"
-              onClick={() => { setActivity(true) }}
-            >
-              Activity
-            </Button>
-          </div>
+          <Button
+            type="button"
+            onClick={() => { setActivity(true) }}
+          >
+            Activity
+          </Button>
         </div>
-        :
+      ) : (
         <div >
           {isActivity ? "Activity" : "Assets"}
+
           <IconButton type="primary" shape="circle" onClick={handleGoTop}>
             <Icon name="vertical-align" className="w-4 bg-brand-gray200 text-brand-navy" />
           </IconButton>
         </div>
-      }
+      )}
 
-      {changingNetwork && (
+      {/* {changingNetwork && (
         <>
           <span>
-          <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
+            <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
           </span>
           <img src={`/${SyscoinIcon}`} className="w-40 max-w-40 mx-auto mt-8" alt="Syscoin" />
         </>
+      )} */}
+
+      {isActivity ? (
+        <ActivityPanel
+          show={transactions && !changingNetwork}
+        />
+      ) : (
+        <AssetsPanel
+          show={assets && !changingNetwork}
+        />
       )}
 
-      {isActivity ?
-        transactions.length && !changingNetwork ? (
-          <>
-            <ul>
-              {transactions.map((tx: Transaction, idx: number) => {
-                const isConfirmed = tx.confirmations > 0;
-
-                return (
-                  <Fragment key={uuid()}>
-                    {isShowedGroupBar(tx, idx) && (
-                      <li >
-                        {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}
-                      </li>
-                    )}
-                    <li
-                      onClick={() => {
-                        setOpenBlockExplorer(true);
-                        setTxidSelected(tx.txid);
-                        setTxType(tx.tokenType);
-                        getTransactionData(tx.txid).then((response: any) => {
-                          setTx(response);
-                        })
-                      }}>
-                      <div>
-                        {isConfirmed ? null : <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy"/>}
-                      </div>
-                      <div>
-                        <span title="Click here to go to view transaction in sys block explorer">
-                          <span>
-                            {new Date(tx.blockTime * 1000).toLocaleTimeString(navigator.language, {
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </span>
-                          <small>{tx.txid}</small>
-                          <small>{isConfirmed ? "Confirmed" : "Unconfirmed"}</small>
-                          <small>{getTxType(tx)}</small>
-                        </span>
-                        <div>
-                          <Icon name="arrow-up" className="w-4 bg-brand-gray200 text-brand-navy" />
-                        </div>
-                      </div>
-                    </li>
-                  </Fragment>
-                );
-              })}
-            </ul>
-          </>
-        ) : (
-          <>
-            <span>
-              You have no transaction history.
-            </span>
-
-            {!changingNetwork && (
-              <img src={`/${SyscoinIcon}`} className="w-40 max-w-40 mx-auto mt-8" alt="Syscoin" />
-            )}
-          </>
-        ) : assets.length && !changingNetwork ?
-          <>
-            <ul>
-              {assets.map((asset: Assets) => {
-                if (asset.assetGuid !== undefined) {
-                  return (
-                    <Fragment key={uuid()}>
-                      <div
-                        onClick={() => {
-                          setOpenAssetBlockExplorer(true);
-                          setAssetSelected(asset.assetGuid);
-                          setAssetType(asset.type)
-                          getTransactionAssetData(asset.assetGuid).then((response: any) => {
-                            setAssetTx(response);
-                          })
-                        }}
-                      >
-                        <div>
-                          <span title="Click here to go to view transaction in sys block explorer">
-                            <span>
-                              {formatCurrency(String(asset.balance / 10 ** asset.decimals), asset.decimals)} {asset.symbol}
-                            </span>
-                          </span>
-                          <div>
-                            <Icon name="arrow-up" className="w-4 bg-brand-gray200 text-brand-navy" />
-                          </div>
-                        </div>
-                      </div>
-                    </Fragment>
-                  );
-                }
-              })}
-            </ul>
-          </> : <>
-            <span>
-              You have no tokens or NFTs.
-            </span>
-
-            {!changingNetwork && (
-              <img src={`/${SyscoinIcon}`} className="w-40 max-w-40 mx-auto mt-8" alt="Syscoin" />
-            )}
-          </>
-      }
-    </section>
+    </div>
   );
 };
 
