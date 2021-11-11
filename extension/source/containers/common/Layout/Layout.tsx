@@ -1,7 +1,7 @@
 import React, { ReactNode, FC } from 'react';
 import Header from 'containers/common/Header';
 import { Tooltip } from 'antd';
-import { QuestionCircleOutlined } from '@ant-design/icons';
+import Icon from 'components/Icon';
 
 interface ILayout {
   children: ReactNode;
@@ -39,7 +39,7 @@ const Layout: FC<ILayout> = ({
             <span className="text-brand-royalBlue font-bold text-xl text-center tracking-normal">{title}</span>
 
             <Tooltip placement="bottom" title={tooltipText}>
-              <QuestionCircleOutlined className="text-brand-graylight w-4" />
+              <Icon name="question" className="text-brand-graylight w-4" />
             </Tooltip>
           </div>
 

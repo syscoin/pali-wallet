@@ -1,9 +1,8 @@
 import React, { useState, FC } from 'react';
-// import clsx from 'clsx';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
 import IWalletState from 'state/wallet/types';
-import Spinner from '@material-ui/core/CircularProgress';
+import Icon from 'components/Icon';
 import { RootState } from 'state/store';
 import { useHistory } from 'react-router-dom';
 import { useController } from 'hooks/index';
@@ -11,7 +10,6 @@ import { browser } from 'webextension-polyfill-ts';
 import { useSelector } from 'react-redux';
 import { useAlert } from 'react-alert';
 import { getHost } from 'scripts/Background/helpers';
-import CircularProgress from '@material-ui/core/CircularProgress';
 
 import { ellipsis } from '../helpers';
 
@@ -44,7 +42,7 @@ const SignTransaction: FC<ISignTransaction> = ({
   const psbt = controller.wallet.account.getTransactionItem()[item];
 
   const handleRejectTransaction = () => {
-    history('/home');
+    history.push('/home');
 
     browser.runtime.sendMessage({
       type: 'WALLET_ERROR',
@@ -120,7 +118,7 @@ const SignTransaction: FC<ISignTransaction> = ({
   };
 
   const handleCancelTransactionOnSite = () => {
-    history('/home');
+    history.push('/home');
 
     browser.runtime.sendMessage({
       type: 'CANCEL_TRANSACTION',
@@ -154,7 +152,6 @@ const SignTransaction: FC<ISignTransaction> = ({
       </div>
       <Button
         type="button"
-        linkTo="/home"
         onClick={handleClosePopup}
       >
         Ok
@@ -166,7 +163,7 @@ const SignTransaction: FC<ISignTransaction> = ({
         <Layout title="" showLogo>
           <div >
             <section>
-              <CircularProgress  />
+            <Icon name="loading"  className="w-4 bg-brand-graydark100 text-brand-white"/>
             </section>
           </div>
         </Layout>
@@ -202,7 +199,6 @@ const SignTransaction: FC<ISignTransaction> = ({
                     <div >
                       <Button
                         type="button"
-                        linkTo="/home"
                         onClick={handleRejectTransaction}
                       >
                         Reject
@@ -212,7 +208,7 @@ const SignTransaction: FC<ISignTransaction> = ({
                         type="button"
                         onClick={handleConfirmSignature}
                       >
-                        {loading ? <Spinner size={15}/> : 'Sign'}
+                        {loading ? <Icon name="loading" className="w-4 bg-brand-graydark100 text-brand-white" /> : 'Sign'}
                       </Button>
                     </div>
                   </section>

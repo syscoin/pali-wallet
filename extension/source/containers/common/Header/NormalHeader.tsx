@@ -1,8 +1,8 @@
 import React, { FC, useEffect, useState, ChangeEvent } from 'react';
-import MoreVertIcon from '@material-ui/icons/MoreVert';
-import IconButton from '@material-ui/core/IconButton';
+import IconButton from 'components/IconButton';
 import Settings from 'containers/auth/Settings';
 import Select from 'components/Select';
+import Icon from 'components/Icon';
 import { SYS_NETWORK } from 'constants/index';
 import { RootState } from 'state/store';
 import { useSelector } from 'react-redux';
@@ -146,13 +146,15 @@ const NormalHeader: FC<INormalHeader> = ({
 
       {encriptedMnemonic && !importSeed ? (
         <IconButton
+          type="primary"
+          shape="circle"
           onClick={() => {
             console.log('generalSettingsShowed', generalSettingsShowed)
             generalSettingsShowed ? handleCloseSettings() : showSettings(!generalSettingsShowed)
           }
           }
         >
-          <MoreVertIcon />
+          <Icon name="dots" className="bg-brand-gray text-brand-deepPink" />
         </IconButton>
       ) : (
         null

@@ -1,16 +1,15 @@
 import React, { FC, useState, useEffect } from 'react';
-import DownArrowIcon from '@material-ui/icons/ExpandMore';
 import {
   ellipsis,
   formatDistanceDate,
   formatURL,
 } from 'containers/auth/helpers';
-import { CircularProgress } from '@material-ui/core';
 import { useController, useCopyClipboard } from 'hooks/index';
 import { useAlert } from 'react-alert';
 import IWalletState from 'state/wallet/types';
 import { RootState } from 'state/store';
 import { useSelector } from 'react-redux';
+import Icon from 'components/Icon';
 
 interface IModalBlock {
   assetTx?: any;
@@ -271,7 +270,7 @@ const ModalBlock: FC<IModalBlock> = ({
                     onClick={() => setNewExpanded(!newExpanded)}
                   >
                     <p>From</p>
-                    <DownArrowIcon />
+                    <Icon name="arrow-down" className="w-4 bg-brand-gold text-brand-white" />
                   </span>
 
                   <ul>
@@ -287,7 +286,7 @@ const ModalBlock: FC<IModalBlock> = ({
                     onClick={() => setExpanded(!expanded)}
                   >
                     <p>To</p>
-                    <DownArrowIcon />
+                    <Icon name="arrow-dowm"  className="w-4 bg-brand-gold text-brand-white" />
                   </span>
 
                   <ul>
@@ -309,7 +308,7 @@ const ModalBlock: FC<IModalBlock> = ({
                     onClick={() => setTokensExpanded(!tokensExpanded)}
                   >
                     <p>Assets</p>
-                    <DownArrowIcon />
+                    <Icon name="arrow-down" className="w-4 bg-brand-gold text-brand-white" />
                   </span>
 
                   <ul
@@ -365,7 +364,7 @@ const ModalBlock: FC<IModalBlock> = ({
           ) : (
             <div
             >
-              <CircularProgress/>
+              <Icon name="loading" className="w-4 bg-brand-gray text-brand-darktransparent" />
             </div>
           )}
         </div>

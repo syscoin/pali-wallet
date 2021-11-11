@@ -2,10 +2,8 @@
 import * as React from 'react';
 import { FC, Fragment, useCallback, useState } from 'react';
 import { v4 as uuid } from 'uuid';
-import UpArrowIcon from '@material-ui/icons/ArrowUpward';
-import GoTopIcon from '@material-ui/icons/VerticalAlignTop';
-import IconButton from '@material-ui/core/IconButton';
-import Spinner from '@material-ui/core/CircularProgress';
+import Icon from 'components/Icon';
+import IconButton from 'components/IconButton';
 import Button from 'components/Button';
 import { useController } from 'hooks/index';
 import SyscoinIcon from 'assets/images/logosys.svg';
@@ -124,8 +122,8 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
         :
         <div >
           {isActivity ? "Activity" : "Assets"}
-          <IconButton onClick={handleGoTop}>
-            <GoTopIcon />
+          <IconButton type="primary" shape="circle" onClick={handleGoTop}>
+            <Icon name="vertical-align" className="w-4 bg-brand-gray200 text-brand-navy" />
           </IconButton>
         </div>
       }
@@ -133,7 +131,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
       {changingNetwork && (
         <>
           <span>
-            <Spinner size={25} />
+          <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
           </span>
           <img src={`/${SyscoinIcon}`} className="w-40 max-w-40 mx-auto mt-8" alt="Syscoin" />
         </>
@@ -163,7 +161,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                         })
                       }}>
                       <div>
-                        {isConfirmed ? null : <Spinner size={25} />}
+                        {isConfirmed ? null : <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy"/>}
                       </div>
                       <div>
                         <span title="Click here to go to view transaction in sys block explorer">
@@ -178,7 +176,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                           <small>{getTxType(tx)}</small>
                         </span>
                         <div>
-                          <UpArrowIcon />
+                          <Icon name="arrow-up" className="w-4 bg-brand-gray200 text-brand-navy" />
                         </div>
                       </div>
                     </li>
@@ -221,7 +219,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
                             </span>
                           </span>
                           <div>
-                            <UpArrowIcon />
+                            <Icon name="arrow-up" className="w-4 bg-brand-gray200 text-brand-navy" />
                           </div>
                         </div>
                       </div>

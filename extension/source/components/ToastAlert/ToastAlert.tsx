@@ -1,5 +1,5 @@
 import React, { FC } from 'react';
-import CancelIcon from '@material-ui/icons/Cancel';
+import Icon from "components/Icon";
 
 interface IAlertTemplate {
   close: () => void;
@@ -19,7 +19,7 @@ const ToastAlert: FC<IAlertTemplate> = ({ message, options, style, close }) => {
       }}
       onClick={close}
     >
-      {options.type === 'error' && <CancelIcon />}
+      {options.type === 'error' && <Icon name="close-circle" className="w-4 bg-brand-gray200 text-brand-navy" />}
       {message}
     </div>
   );

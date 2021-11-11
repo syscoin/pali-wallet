@@ -3,7 +3,6 @@ import { browser } from 'webextension-polyfill-ts';
 import Button from 'components/Button';
 import Header from 'containers/common/Header';
 import checkGreen from 'assets/images/svg/check-green.svg';
-import clsx from 'clsx';
 import { ellipsis } from 'containers/auth/helpers';
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
@@ -102,17 +101,12 @@ const ConnectedAccounts = () => {
           <div className={styles.actions}>
             <Button
               type="button"
-              theme="btn-outline-secondary"
-              variant={clsx(styles.button, styles.cancel)}
               onClick={() => setChangeAccountIsOpen(false)}
             >
               Cancel
             </Button>
             <Button
               type="button"
-              theme="btn-outline-primary"
-              variant={styles.button}
-              disabled={accountId === -1}
               onClick={() => handleConfirm()}
             >
               Confirm
@@ -149,8 +143,6 @@ const ConnectedAccounts = () => {
           <div className={styles.actions}>
             <Button
               type="button"
-              theme="btn-outline-secondary"
-              variant={clsx(styles.button, styles.cancel)}
               onClick={handleDisconnect}
             >
               Close
@@ -158,9 +150,6 @@ const ConnectedAccounts = () => {
 
             <Button
               type="button"
-              theme="btn-outline-primary"
-              variant={styles.button}
-              disabled={accounts.length === 1 || accountId === connectedAccount[0].id}
               onClick={() => setChangeAccountIsOpen(!changeAccountIsOpen)}
             >
               Change

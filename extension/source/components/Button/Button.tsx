@@ -1,8 +1,4 @@
 import React, { ReactNode, FC } from 'react';
-// import clsx from 'clsx';
-// import MUIButton from '@material-ui/core/Button';
-// import { useHistory } from 'react-router-dom';
-// import Spinner from '@material-ui/core/CircularProgress';
 
 interface IButton {
   blockHeight?: number;

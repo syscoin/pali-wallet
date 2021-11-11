@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
-import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 import Header from 'containers/common/Header';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
-import Spinner from '@material-ui/core/CircularProgress';
 import { useController } from 'hooks/index';
 import { useFiat } from 'hooks/usePrice';
 import { useHistory } from 'react-router-dom';
-import UpArrowIcon from '@material-ui/icons/ArrowUpward';
+import Icon from 'components/Icon';
 import { RootState } from 'state/store';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
@@ -169,9 +167,6 @@ const SendConfirm = () => {
       </div>
       <Button
         type="button"
-        theme="btn-gradient-primary"
-        variant={styles.next}
-        linkTo="/home"
         onClick={confirmingTransaction ? handleClosePopup : goHome}
       >
         Next
@@ -183,7 +178,7 @@ const SendConfirm = () => {
       <section className={styles.subheading}>Confirm</section>
       <section className={styles.txAmount}>
         <div className={styles.iconWrapper}>
-          <UpArrowIcon />
+          <Icon name="arrow-up" className="w-4 bg-brand-graydark100 text-brand-white" />
         </div>
         {tempTx?.isToken && tokenData && tokenData?.symbol ? `${String(tempTx.amount)} ${String(tokenData?.symbol)}` : `${(tempTx?.amount || 0) + (tempTx?.fee || 0)} SYS`}
       </section>
@@ -240,21 +235,16 @@ const SendConfirm = () => {
         <div className={styles.actions}>
           <Button
             type="button"
-            theme="btn-outline-secondary"
-            variant={clsx(styles.button, styles.close)}
             onClick={confirmingTransaction ? handleCancelTransactionOnSite : handleCancel}
-            linkTo="/home"
           >
             Cancel
           </Button>
 
           <Button
             type="submit"
-            theme="btn-outline-primary"
-            variant={styles.button}
             onClick={handleConfirm}
           >
-            {loading ? <Spinner size={15} className={styles.spinner} /> : 'Confirm'}
+            {loading ? <Icon name="loading" className="w-4 bg-brand-graydark100 text-brand-white" /> : 'Confirm'}
           </Button>
         </div>
       </section>

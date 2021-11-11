@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
 import LogoImage from 'assets/images/logo-s.svg';
-import MoreVertIcon from '@material-ui/icons/MoreVert';
-import IconButton from '@material-ui/core/IconButton';
+import Icon from 'components/Icon';
+import IconButton from 'components/IconButton';
 import Settings from 'containers/auth/Settings';
 
 interface IAccountHeader {
@@ -35,13 +35,15 @@ const AccountHeader: FC <IAccountHeader> = ({
 
       {encriptedMnemonic && !importSeed ? (
         <IconButton
+          type="primary"
+          shape="circle"
           onClick={() => {
             console.log('accountSettingsShowed', accountSettingsShowed)
             accountSettingsShowed ? handleCloseSettings() : showSettings(!accountSettingsShowed)
           }
           }
         >
-          <MoreVertIcon />
+          <Icon name="dots" className="w-4 bg-brand-graydark100 text-brand-white" />
         </IconButton>
       ) : (
         null

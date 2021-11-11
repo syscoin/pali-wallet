@@ -1,39 +1,31 @@
 import React from 'react';
-import { useAlert } from 'react-alert';
+// import { useAlert } from 'react-alert';
 import { useHistory } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
-import * as yup from 'yup';
-import TextInput from 'components/TextInput';
 import Button from 'components/Button';
-import { useController } from 'hooks/index';
+// import { useController } from 'hooks/index';
 import ViewLayout from '../Layout';
 
 const DeleteWalletView = () => {
-  const controller = useController();
+  // const controller = useController();
   const history = useHistory();
-  const alert = useAlert();
-  const { handleSubmit, register } = useForm({
-    validationSchema: yup.object().shape({
-      password: yup.string().required(),
-    }),
-  });
+  // const alert = useAlert();
 
-  const onSubmit = (data: any) => {
-    if (controller.wallet.checkPassword(data.password)) {
-      controller.wallet.deleteWallet(data.password);
-      history.push('/app.html');
+  // const onSubmit = (data: any) => {
+  //   if (controller.wallet.checkPassword(data.password)) {
+  //     controller.wallet.deleteWallet(data.password);
+  //     history.push('/app.html');
 
-      return;
-    }
+  //     return;
+  //   }
 
-    alert.removeAll();
-    alert.error('Error: Invalid password');
-  };
+  //   alert.removeAll();
+  //   alert.error('Error: Invalid password');
+  // };
 
   return (
     <ViewLayout title="DELETE WALLET">
       <div >
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form>
           <span>
             <b>Warning:</b> this action will delete your wallet and all accounts
             associated with this wallet. Please make sure to back up your Wallet
@@ -41,10 +33,7 @@ const DeleteWalletView = () => {
             accounts in the future.
           </span>
           <span>Please enter your wallet password:</span>
-          <TextInput
-            placeholder="password"
-            inputRef={register}
-          />
+          <input type="text" />
           <div>
             <Button
               type="button"

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, FC } from 'react';
-import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
@@ -8,15 +7,11 @@ import { RootState } from 'state/store';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { useAlert } from 'react-alert';
 import { browser } from 'webextension-polyfill-ts';
-import DownArrowIcon from '@material-ui/icons/ExpandMore';
-import Spinner from '@material-ui/core/CircularProgress';
+import Icon from 'components/Icon';
 import { useHistory } from 'react-router';
-import CircularProgress from '@material-ui/core/CircularProgress';
 
 import { getHost } from '../../../scripts/Background/helpers';
 import { ellipsis, formatURL } from '../helpers';
-
-import styles from './SiteTransaction.scss';
 
 interface IConfirmTransaction {
   confirmTransaction: any;
@@ -238,7 +233,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
           label === 'description'
         ) {
           return (
-            <div key={label} className={styles.flex}>
+            <div key={label}>
               <p>{label}</p>
               <p>{ellipsis(value)}</p>
             </div>
@@ -254,7 +249,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
         }
 
         return (
-          <div key={label} className={styles.flex}>
+          <div key={label}>
             <p>{label}</p>
             <p>{value}</p>
           </div>
@@ -270,7 +265,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
       if (label && value) {
         if (label == 'contract') {
           return (
-            <div key={label} className={styles.flex}>
+            <div key={label}>
               <p>{label}</p>
               <p>{formatURL(value)}</p>
             </div>
@@ -279,7 +274,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 
         if (label == 'notaryAddress' || label == 'payoutAddress') {
           return (
-            <div key={label} className={styles.flex}>
+            <div key={label}>
               <p>{label}</p>
               <p>{ellipsis(value)}</p>
             </div>
@@ -291,7 +286,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
         }
 
         return (
-          <div key={label} className={styles.flex}>
+          <div key={label}>
             <p>{label}</p>
             <p>{value}</p>
           </div>
@@ -307,17 +302,17 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
       <div>
         {itemName == 'notarydetails' && items && items.endpoint !== '' && (
           <div>
-            <div className={styles.flex}>
+            <div>
               <p>Endpoint</p>
               <p>{formatURL(items.endpoint)}</p>
             </div>
 
-            <div className={styles.flex}>
+            <div>
               <p>Instant transfers</p>
               <p>{items.instanttransfers || 0}</p>
             </div>
 
-            <div className={styles.flex}>
+            <div>
               <p>HD required</p>
               <p>{items.hdrequired ? 'Yes' : 'No'}</p>
             </div>
@@ -328,13 +323,13 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
           <div>
             {items.auxfees.map((auxfee: any, index: number) => {
               return (
-                <div key={index} className={styles.options}>
-                  <div className={styles.flex}>
+                <div key={index} >
+                  <div>
                     <p>Bound</p>
                     <p>{auxfee.bound}</p>
                   </div>
 
-                  <div className={styles.flex}>
+                  <div>
                     <p>Percent</p>
                     <p>{auxfee.percent}</p>
                   </div>
@@ -354,9 +349,6 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
       </div>
       <Button
         type="button"
-        theme="btn-gradient-primary"
-        variant={styles.next}
-        linkTo="/home"
         onClick={handleClosePopup}
       >
         Ok
@@ -366,9 +358,9 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
     <div>
       {transactingStateItem && loading ? (
         <Layout title="" showLogo>
-          <div className={styles.wrapper}>
-            <section className={clsx(styles.mask)}>
-              <CircularProgress className={styles.loader} />
+          <div >
+            <section>
+              <Icon name="loading" className="w-4 bg-brand-graydark100 text-brand-white" />
             </section>
           </div>
         </Layout>
@@ -377,55 +369,48 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
           {transactionItemData && data && !loading && (
             <div>
               <Layout title={layoutTitle} showLogo>
-                <div className={styles.wrapper}>
+                <div >
                   <div>
-                    <section className={styles.data}>
+                    <section >
                       {renderData()}
 
                       {assetData && itemStringToClearData !== 'newSPT' && itemStringToClearData !== 'mintNFT' && (
                         <div>
-                          <div key="symbol" className={styles.flex}>
+                          <div key="symbol">
                             <p>symbol</p>
                             <p>{assetData && assetData.symbol ? atob(String(assetData.symbol)) : 'Not found'}</p>
                           </div>
-                          <div key="assetGuid" className={styles.flex}>
+                          <div key="assetGuid">
                             <p>assetGuid</p>
                             <p>{assetData && assetData.assetGuid ? String(assetData.assetGuid) : 'Not found'}</p>
                           </div>
                         </div>
                       )}
 
-                      <div className={styles.flex}>
+                      <div>
                         <p>Site</p>
                         <p>{getHost(`${currentSenderURL}`)}</p>
                       </div>
 
-                      <div className={styles.select}>
+                      <div>
                         <div
-                          className={clsx(styles.fullselect, {
-                            [styles.expanded]: expanded,
-                          })}
                         >
                           <span
                             onClick={() => setExpanded(!expanded)}
-                            className={styles.selected}
                           >
                             Advanced options
-                            <DownArrowIcon className={styles.arrow} />
+                            <Icon name="arrow-down" className="w-4 bg-brand-graydark100 text-brand-white" />
                           </span>
 
-                          <ul className={styles.options}>{renderOptions()}</ul>
+                          <ul >{renderOptions()}</ul>
                         </div>
                       </div>
                     </section>
 
-                    <section className={styles.confirm}>
-                      <div className={styles.actions}>
+                    <section >
+                      <div >
                         <Button
                           type="button"
-                          theme="btn-outline-secondary"
-                          variant={clsx(styles.button, styles.close)}
-                          linkTo="/home"
                           onClick={handleRejectTransaction}
                         >
                           Reject
@@ -433,14 +418,10 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 
                         <Button
                           type="submit"
-                          theme="btn-outline-primary"
-                          variant={styles.button}
                           onClick={handleConfirm}
-                          loading={loading}
-                          disabled={!transactionItemData}
                         >
                           {loadingConfirm ? (
-                            <Spinner size={15} className={styles.spinner} />
+                            <Icon name="loading" className="w-4 bg-brand-graydark100 text-brand-white" />
                           ) : (
                             'Confirm'
                           )}

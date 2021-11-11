@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { browser } from 'webextension-polyfill-ts';
 import Header from 'containers/common/Header';
 import Button from 'components/Button';
+import Icon from 'components/Icon';
 import checkGreen from 'assets/images/svg/check-green.svg';
 import { ellipsis } from 'containers/auth/helpers';
-import Spinner from '@material-ui/core/CircularProgress';
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
@@ -120,14 +120,12 @@ const ConnectWallet = () => {
             <Button
               type="button"
               onClick={handleCancelConnection}
-              linkTo="/home"
             >
               Cancel
             </Button>
 
             <Button
               type="button"
-              linkTo="/home"
               onClick={handleConfirmConnection}
             >
               Confirm
@@ -167,7 +165,7 @@ const ConnectWallet = () => {
             </ul>
           ) : (
             <div>
-              <Spinner />
+              <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
             </div>
           )}
 
@@ -179,14 +177,12 @@ const ConnectWallet = () => {
             <Button
               type="button"
               onClick={handleCancelConnection}
-            // linkTo="/home"
             >
               Cancel
             </Button>
 
             <Button
               type="button"
-              disabled={accountId === -1}
               onClick={() => setContinueConnection(true)}
             >
               Next

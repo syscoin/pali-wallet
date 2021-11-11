@@ -1,12 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
-import CircularProgress from '@material-ui/core/CircularProgress';
-import Spinner from '@material-ui/core/CircularProgress';
-import IconButton from '@material-ui/core/IconButton';
-import RefreshIcon from '@material-ui/icons/Refresh';
+import Icon from 'components/Icon';
+import IconButton from 'components/IconButton';
 import Header from 'containers/common/Header';
 import Button from 'components/Button';
-import FullSelect from 'components/FullSelect';
 import ModalBlock from 'components/ModalBlock';
 import { useController } from 'hooks/index';
 import { useFiat } from 'hooks/usePrice';
@@ -26,7 +23,6 @@ const Home = () => {
   const {
     accounts,
     activeAccountId,
-    tabs,
     changingNetwork,
     activeNetwork,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
@@ -129,24 +125,10 @@ const Home = () => {
       {accounts.find((element) => element.id === activeAccountId) ? (
         <>
           <Header accountHeader />
-          {/* <section>
-            {accounts.length > 1 ? (
-              <FullSelect
-                value={String(activeAccountId)}
-                options={accounts}
-                onChange={(val: string) => {
-                  controller.wallet.switchWallet(Number(val));
-                  controller.wallet.account.watchMemPool(accounts[Number(val)]);
-                }}
-              />
-            ) : (
-              accounts.find((element) => element.id === activeAccountId)?.label
-            )}
-          </section> */}
-          
+
           <section className="flex justify-center items-center flex-col gap-4 text-brand-white bg-brand-green">
             {changingNetwork ? (
-              <Spinner size={25} />
+              <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
             ) : (
               <h3>
                 {formatNumber(
@@ -163,16 +145,17 @@ const Home = () => {
               <small style={{ marginTop: '5px', marginBottom: '5px' }}>
                 {activeNetwork !== 'testnet'
                   ? getFiatAmount(
-                      accounts.find((element) => element.id === activeAccountId)
-                        ?.balance || 0
-                    )
+                    accounts.find((element) => element.id === activeAccountId)
+                      ?.balance || 0
+                  )
                   : ''}
               </small>
             )}
- 
-            <IconButton onClick={handleRefresh}>
-              <RefreshIcon />
+
+            <IconButton onClick={handleRefresh} type="primary" shape="circle">
+              <Icon name="reload" className="bg-brand-gray200 text-brand-navy w-4" />
             </IconButton>
+
             <div >
               <Button
                 type="button"
@@ -188,7 +171,7 @@ const Home = () => {
               </Button>
             </div>
           </section>
-          
+
           <TxsPanel
             getTransactionAssetData={getTransactionAssetData}
             getTransactionData={getTransactionData}
@@ -220,7 +203,7 @@ const Home = () => {
       ) : (
         <section
         >
-          <CircularProgress />
+          <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
         </section>
       )}
     </div>

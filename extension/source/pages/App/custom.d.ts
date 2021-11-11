@@ -17,8 +17,6 @@ declare module 'react-alert';
 
 declare module 'bip84';
 
-declare module 'extensionizer';
-
 declare interface IWalletController {
   account: Readonly<IAccountController>;
   checkPassword: (pwd: string) => boolean;

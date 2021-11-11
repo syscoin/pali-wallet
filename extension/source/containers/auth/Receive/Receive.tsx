@@ -2,13 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useController, useCopyClipboard } from 'hooks/index';
 import QRCode from 'qrcode.react';
-import IconButton from '@material-ui/core/IconButton';
-import CopyIcon from '@material-ui/icons/FileCopy';
+import IconButton from 'components/IconButton';
 import Header from 'containers/common/Header';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
-import Spinner from '@material-ui/core/CircularProgress';
+import Icon from 'components/Icon';
 import { useHistory } from 'react-router-dom';
 
 const WalletReceive = () => {
@@ -18,6 +16,7 @@ const WalletReceive = () => {
   const { accounts, activeAccountId }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
+  const history = useHistory();
 
   useEffect(() => {
     const getNewAddress = async () => {
@@ -29,15 +28,15 @@ const WalletReceive = () => {
     getNewAddress();
   }, []);
 
-  const history = useHistory();
-
   return (
     <div className="bg-brand-gray">
       <Header normalHeader />
       <IconButton
-        onClick={() => history.goBack()}
+        type="primary"
+        shape="circle"
+        onClick={() => history.push('/home')}
       >
-        <ArrowBackIcon />
+        <Icon name="arrow-left" className="w-4 bg-brand-graydark100 text-brand-white" />
       </IconButton>
       <section>Receive SYS</section>
 
@@ -55,18 +54,20 @@ const WalletReceive = () => {
             </div>
             <div>
               <IconButton
+                type="primary"
+                shape="circle"
                 onClick={() =>
                   copyText(accounts.find(element => element.id === activeAccountId)!.address.main)
                 }
               >
-                <CopyIcon />
+                <Icon name="copy" className="w-4 bg-brand-graydark100 text-brand-white" />
               </IconButton>
               <span>
                 {isCopied ? 'Copied address' : 'Copy'}
               </span>
             </div>
           </div>
-        ) : <Spinner />}
+        ) : <Icon name="loading" className="w-4 bg-brand-graydark100 text-brand-white" />}
 
       </section>
     </div>

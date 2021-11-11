@@ -1,9 +1,5 @@
 import React, { useState } from 'react';
-// import clsx from 'clsx';
 import { useAlert } from 'react-alert';
-import { useForm } from 'react-hook-form';
-import * as yup from 'yup';
-import TextInput from 'components/TextInput';
 import { Form, Input } from 'antd';
 import { useController } from 'hooks/index';
 import ViewLayout from '../Layout';
@@ -16,12 +12,6 @@ const PhraseView = () => {
 
   const alert = useAlert();
   const controller = useController();
-  // const [isCopied, copyText] = useCopyClipboard();
-  // const { handleSubmit, register } = useForm({
-  //   validationSchema: yup.object().shape({
-  //     password: yup.string().required(),
-  //   }),
-  // });
   const onSubmit = (data: any) => {
     const res = controller.wallet.getPhrase(data.password);
     if (res) {

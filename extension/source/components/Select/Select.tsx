@@ -1,27 +1,24 @@
 import * as React from 'react';
-import { FC, ReactElement, ReactNode, ChangeEvent } from 'react';
-// import MUISelect from '@material-ui/core/Select';
-// import MUIMenuItem from '@material-ui/core/MenuItem';
-// import ArrowDownIcon from '@material-ui/icons/KeyboardArrowDown';
+import { FC } from 'react';
 
 interface IOption {
   [key: string]: string;
 }
 
-interface ISelect {
-  disabled?: boolean;
-  fullWidth?: boolean;
-  input?: ReactElement;
-  onChange?: (
-    event: ChangeEvent<{
-      name?: string | undefined,
-      value: unknown,
-    }>,
-    child: ReactNode
-  ) => void;
-  options: Array<IOption>;
-  value?: unknown;
-}
+// interface ISelect {
+//   disabled?: boolean;
+//   fullWidth?: boolean;
+//   input?: ReactElement;
+//   onChange?: (
+//     event: ChangeEvent<{
+//       name?: string | undefined,
+//       value: unknown,
+//     }>,
+//     child: ReactNode
+//   ) => void;
+//   options: Array<IOption>;
+//   value?: unknown;
+// }
 
 const Select: FC<any> = ({
   options,

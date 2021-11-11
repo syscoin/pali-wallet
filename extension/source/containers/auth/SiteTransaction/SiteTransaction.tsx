@@ -1,8 +1,6 @@
 import React, { useState, FC } from 'react';
-// import clsx from 'clsx';
 import Layout from 'containers/common/Layout';
 import Button from 'components/Button';
-import TextInput from 'components/TextInput';
 import { useHistory } from 'react-router-dom';
 import { useController } from 'hooks/index';
 import { browser } from 'webextension-polyfill-ts';
@@ -94,15 +92,12 @@ const SiteTransaction: FC<ISiteTransaction> = ({
 
   return (
     <div>
-      <Layout title={layoutTitle} showLogo>
+      <Layout title={layoutTitle}>
         <form >
           <label htmlFor="fee">Fee</label>
 
           <section >
-            <TextInput
-              placeholder="Enter transaction fee"
-              inputRef=""
-            />
+            <input type="text" />
 
             <Button
               type="button"
@@ -121,7 +116,6 @@ const SiteTransaction: FC<ISiteTransaction> = ({
             <div>
               <Button
                 type="button"
-                linkTo="/home"
                 onClick={handleRejectTransaction}
               >
                 Reject

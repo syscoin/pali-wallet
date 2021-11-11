@@ -13,7 +13,6 @@ const ConnectHardwareWalletView: FC = () => {
   };
 
   return (
-
     <ViewLayout title="CONNECT HARDWARE WALLET">
       <div
       >

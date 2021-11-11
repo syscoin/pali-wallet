@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { FC, useCallback, useState } from 'react';
-import GoTopIcon from '@material-ui/icons/VerticalAlignTop';
-import IconButton from '@material-ui/core/IconButton';
+import Icon from 'components/Icon';
+import IconButton from 'components/IconButton';
 
 const TutorialPanel: FC = () => {
   const [isShowed, setShowed] = useState<boolean>(false);
@@ -40,8 +40,8 @@ const TutorialPanel: FC = () => {
       ) : (
         <div>
           <p>Learn more</p>
-          <IconButton onClick={handleGoTop}>
-            <GoTopIcon />
+          <IconButton type="primary" shape="circle" onClick={handleGoTop}>
+            <Icon name="vertical-align" className="w-4 bg-brand-graydark100 text-brand-white" />
           </IconButton>
         </div>
       )}
