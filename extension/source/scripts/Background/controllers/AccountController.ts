@@ -314,7 +314,7 @@ const AccountController = (actions: {
     let changeAddress: string = '';
 
     if (connectedAccount.id === activeAccountId) {
-      changeAddress = (await sysjs.Signer.getNewChangeAddress());
+      changeAddress = await sysjs.Signer.getNewChangeAddress();
 
       console.log(changeAddress);
 
