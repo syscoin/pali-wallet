@@ -105,8 +105,8 @@ declare module '*.scss' {
   declare type CreateTokenItems = {
     auxfeedetails?: {
       auxfees: [{
-        bound: any | 0,
-        percent: any | 0
+        bound: any,
+        percent: any,
       }]
     },
     capabilityflags?: string | '127',
@@ -143,8 +143,8 @@ declare module '*.scss' {
   declare type CreateAndIssueNFTItems = {
     auxfeedetails?: {
       auxfees: [{
-        bound: any | 0,
-        percent: any | 0
+        bound: any,
+        percent: any
       }]
     },
     description: string,
@@ -164,8 +164,8 @@ declare module '*.scss' {
     assetGuid: string,
     auxfeedetails?: {
       auxfees: [{
-        bound: any | 0,
-        percent: any | 0
+        bound: any,
+        percent: any
       }]
     },
     capabilityflags?: string | '127',

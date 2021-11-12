@@ -55,7 +55,7 @@
       "js/webextension.bundle.js",
       "js/background.bundle.js"
     ],
-    "__chrome|opera__persistent": false
+    "__chrome|opera__persistent": true
   },
   "content_scripts": [
     {

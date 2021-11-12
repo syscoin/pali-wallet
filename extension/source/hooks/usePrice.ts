@@ -9,12 +9,17 @@ export function useFiat() {
 
   return (amount: number, fraction = 4) => {
     const value = amount * price.fiat[PRICE_SYS_ID];
-    return `${DEFAULT_CURRENCY.symbol}${value.toLocaleString(
-      navigator.language,
-      {
-        minimumFractionDigits: fraction,
-        maximumFractionDigits: fraction,
-      }
-    )} ${DEFAULT_CURRENCY.name}`;
+
+    if (DEFAULT_CURRENCY && value && price) {
+      return `${DEFAULT_CURRENCY.symbol}${value.toLocaleString(
+        navigator.language,
+        {
+          minimumFractionDigits: fraction,
+          maximumFractionDigits: fraction,
+        }
+      )} ${DEFAULT_CURRENCY.name}`;
+    }
+
+    return `-- ${DEFAULT_CURRENCY.name}`;
   };
 }

@@ -341,7 +341,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
                   </div>
                 </div>
               );
-            }) || 0}
+            })}
           </div>
         )}
       </div>
