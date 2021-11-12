@@ -165,47 +165,47 @@ const closePopup = () => {
 
 let timeout: any;
 
-const restartLockTimeout = () => {
-  const {
-    confirmingTransaction,
-    creatingAsset,
-    issuingNFT,
-    issuingAsset,
-    updatingAsset,
-    transferringOwnership,
-    signingTransaction,
-    signingPSBT,
-    mintNFT,
-    timer
-  } = store.getState().wallet;
+// const restartLockTimeout = () => {
+//   const {
+//     confirmingTransaction,
+//     creatingAsset,
+//     issuingNFT,
+//     issuingAsset,
+//     updatingAsset,
+//     transferringOwnership,
+//     signingTransaction,
+//     signingPSBT,
+//     mintNFT,
+//     timer
+//   } = store.getState().wallet;
 
-  if (timeout) {
-    clearTimeout(timeout);
-  }
+//   if (timeout) {
+//     clearTimeout(timeout);
+//   }
 
-  timeout = setTimeout(() => {
-    if (
-      !checkIsLocked()
-      && !confirmingTransaction
-      && !creatingAsset
-      && !issuingNFT
-      && !issuingAsset
-      && !updatingAsset
-      && !transferringOwnership
-      && !signingTransaction
-      && !signingPSBT
-      && !mintNFT
-    ) {
-      window.controller.wallet.logOut();
+//   timeout = setTimeout(() => {
+//     if (
+//       !checkIsLocked()
+//       && !confirmingTransaction
+//       && !creatingAsset
+//       && !issuingNFT
+//       && !issuingAsset
+//       && !updatingAsset
+//       && !transferringOwnership
+//       && !signingTransaction
+//       && !signingPSBT
+//       && !mintNFT
+//     ) {
+//       window.controller.wallet.logOut();
 
-      setTimeout(() => closePopup(), 2000);
+//       setTimeout(() => closePopup(), 2000);
 
-      return;
-    }
+//       return;
+//     }
 
-    console.log('can\'t lock automatically - wallet is under transaction');
-  }, timer * 60 * 1000);
-};
+//     console.log('can\'t lock automatically - wallet is under transaction');
+//   }, timer * 60 * 1000);
+// };
 
 const executeMessages = async () => {
   console.emoji('🤩', 'Pali extension ebabled');
@@ -231,9 +231,9 @@ const executeMessages = async () => {
     }
 
     if (typeof request === 'object') {
-      if (type == 'SET_MOUSE_MOVE' && target == 'background') {
-        restartLockTimeout();
-      }
+      // if (type == 'SET_MOUSE_MOVE' && target == 'background') {
+      //   restartLockTimeout();
+      // }
 
       if (type == 'CONNECT_WALLET' && target == 'background') {
         const url = browser.runtime.getURL('app.html');

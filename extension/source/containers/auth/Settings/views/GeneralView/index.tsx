@@ -1,12 +1,11 @@
 import * as React from 'react';
 import ListIcon from '@material-ui/icons/ListAltRounded';
-import TimeIcon from '@material-ui/icons/AccessTime';
 import InfoIcon from '@material-ui/icons/InfoRounded';
 import DeleteIcon from '@material-ui/icons/Delete';
 import Icon from 'components/Icon';
 import { useSettingsView } from 'hooks/index';
 
-import { AUTOLOCK_VIEW, ABOUT_VIEW, DELETE_WALLET_VIEW, PHRASE_VIEW } from '../routes';
+import { ABOUT_VIEW, DELETE_WALLET_VIEW, PHRASE_VIEW } from '../routes';
 
 import styles from './index.scss';
 
@@ -16,10 +15,6 @@ const GeneralView = () => {
   return (
     <div className={styles.general}>
       <ul>
-        <li onClick={() => showView(AUTOLOCK_VIEW)}>
-          <Icon Component={TimeIcon} />
-          Auto lock timer
-        </li>
         <li onClick={() => showView(PHRASE_VIEW)}>
           <Icon Component={ListIcon} />
           Wallet seed phrase
