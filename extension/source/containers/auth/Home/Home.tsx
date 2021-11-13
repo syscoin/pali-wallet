@@ -4,7 +4,7 @@ import { useController, useStore, useFiat, useFormat } from 'hooks/index';
 import { useHistory } from 'react-router-dom';
 
 import Header from 'containers/common/Header';
-import TxsPanel from './TxsPanel';
+import {TxsPanel} from './TxsPanel';
 
 export const Home = () => {
   const controller = useController();

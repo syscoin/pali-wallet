@@ -1,4 +1,6 @@
 import React, { useEffect } from 'react';
+import Import from 'containers/common/Import';
+
 import {
   Switch,
   Route,
@@ -6,6 +8,14 @@ import {
   useLocation,
   useHistory,
 } from 'react-router-dom';
+
+import {
+  useController,
+  useStore,
+  useUtils,
+  useBrowser
+} from 'hooks/index';
+
 import {
   Home, 
   Receive,
@@ -15,20 +25,7 @@ import {
   SendConfirm,
   Start
 } from 'containers/auth/index';
-import UpdateAsset, { UpdateConfirm } from 'containers/auth/Transactions/UpdateAsset';
-import Create, { CreateTokenConfirm } from 'containers/auth/Transactions/Create';
-import IssueAsset, { IssueTokenConfirm } from 'containers/auth/Transactions/IssueAsset';
-import IssueNFT, { CreateAndIssueNFTConfirm } from 'containers/auth/Transactions/IssueNFT';
-import Import from 'containers/common/Import';
-import { useController, useStore, useUtils, useBrowser } from 'hooks/index';
-import TransferOwnership, {
-  TransferOwnershipConfirm,
-} from 'containers/auth/Transactions/TransferOwnership';
 
-import { SendMatchProps } from './types';
-import SignPSBT from 'containers/auth/Transactions/SignPSBT';
-import MintNFT, { MintNFTConfirm } from 'containers/auth/Transactions/MintNFT';
-import SignAndSend from 'containers/auth/Transactions/SignAndSend';
 import {
   AboutView,
   AccountView,
@@ -40,6 +37,25 @@ import {
   PhraseView,
   PrivateKeyView
 } from 'containers/auth/Settings/views';
+
+import {
+  Create,
+  CreateTokenConfirm,
+  IssueAsset,
+  IssueAssetConfirm,
+  IssueNFT,
+  CreateAndIssueNFTConfirm,
+  UpdateAsset,
+  UpdateAssetConfirm,
+  TransferOwnership,
+  TransferOwnershipConfirm,
+  MintNFT,
+  MintNFTConfirm,
+  SignAndSend,
+  SignPSBT,
+} from 'containers/auth/Transactions/views';
+
+import { SendMatchProps } from './types';
 
 const Auth = () => {
   const location = useLocation();
@@ -243,7 +259,7 @@ const Auth = () => {
               <Route path="/issueAsset" component={IssueAsset} exact />
               <Route
                 path="/issueAsset/confirm"
-                component={IssueTokenConfirm}
+                component={IssueAssetConfirm}
                 exact
               />
               <Route path="/mintNFT" component={MintNFT} exact />
@@ -255,7 +271,7 @@ const Auth = () => {
               <Route path="/updateAsset" component={UpdateAsset} exact />
               <Route
                 path="/updateAsset/confirm"
-                component={UpdateConfirm}
+                component={UpdateAssetConfirm}
                 exact
               />
               <Route path="/issueNFT" component={IssueNFT} exact />

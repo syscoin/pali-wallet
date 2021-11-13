@@ -5,10 +5,9 @@ import { v4 as uuid } from 'uuid';
 import { Icon, IconButton, Button } from 'components/index';
 import { useController, useStore, useFormat } from 'hooks/index';
 import SyscoinIcon from 'assets/images/logo-s.svg';
-import ActivityPanel from './ActivityPanel';
+import { ActivityPanel, AssetsPanel } from './Panel/index';
 
 import { Transaction, Assets } from '../../../scripts/types';
-import AssetsPanel from './AssetsPanel';
 
 interface ITxsPanel {
   address: string;
@@ -29,7 +28,7 @@ interface ITxsPanel {
   txidSelected: any;
 }
 
-const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, setTxidSelected, setAssetSelected, setOpenAssetBlockExplorer, setTxType, setAssetType, getTransactionData, setTx, setAssetTx, getTransactionAssetData }) => {
+export const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, setTxidSelected, setAssetSelected, setOpenAssetBlockExplorer, setTxType, setAssetType, getTransactionData, setTx, setAssetTx, getTransactionAssetData }) => {
   const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
   const [isActivity, setActivity] = useState<boolean>(true);
@@ -141,5 +140,3 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
     </div>
   );
 };
-
-export default TxsPanel;
