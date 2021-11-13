@@ -112,6 +112,11 @@ if (shouldInjectProvider()) {
 
   injectScriptFile('js/inpage.bundle.js');
   console.log('injecting inpage after')
+
+  browser.runtime.sendMessage({
+    type: 'RELOAD_DATA',
+    target: 'background'
+  });
 }
 
 window.addEventListener('message', (event) => {

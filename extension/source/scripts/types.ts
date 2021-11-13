@@ -119,8 +119,8 @@ export interface UpdateTokenPageInfo {
   auxfeedetails?: {
     auxfees?: [
       {
-        bound?: any | 0,
-        percent?: any | 0,
+        bound?: any,
+        percent?: any,
       }
     ],
   };

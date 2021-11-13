@@ -34,192 +34,180 @@ declare global {
   }
 }
 
-if (!window.controller) {
-  window.controller = Object.freeze(MasterController());
-  setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
-}
-
-const getTabs = async (options: any) => {
-  return await browser.tabs.query(options);
-};
-
-const getConnectedAccountIndex = ({ match }: any) => {
-  return store.getState().wallet.accounts.findIndex((account: IAccountState) => {
-    return account.connectedTo.find((url: string) => {
-      return url === match;
-    })
-  });
-};
-
-const checkIsLocked = () => {
-  return window.controller.wallet.isLocked();
-};
-
-const checkToCallPrivateMethods = () => {
-  if (checkIsLocked()) {
-    throw new Error('Please, check if your wallet is unlocked and try again.');
+const executeMessages = async () => {
+  if (!window.controller) {
+    window.controller = Object.freeze(MasterController());
+    setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
   }
 
-  if (getConnectedAccountIndex({ match: new URL(store.getState().wallet.tabs.currentURL).host }) === -1) {
-    throw new Error('Connect an account and try again.');
+  let timeout: any;
+
+  const restartLockTimeout = () => {
+    const {
+      confirmingTransaction,
+      creatingAsset,
+      issuingNFT,
+      issuingAsset,
+      updatingAsset,
+      transferringOwnership,
+      signingTransaction,
+      signingPSBT,
+      mintNFT,
+      timer
+    } = store.getState().wallet;
+
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+
+    timeout = setTimeout(() => {
+      if (
+        !checkIsLocked()
+        && !confirmingTransaction
+        && !creatingAsset
+        && !issuingNFT
+        && !issuingAsset
+        && !updatingAsset
+        && !transferringOwnership
+        && !signingTransaction
+        && !signingPSBT
+        && !mintNFT
+      ) {
+        window.controller.wallet.logOut();
+
+        setTimeout(() => closePopup(), 2000);
+
+        return;
+      }
+
+      console.log('can\'t lock automatically - wallet is under transaction');
+    }, timer * 60 * 1000);
+  };
+
+  const getTabs = async (options: any) => {
+    return await browser.tabs.query(options);
+  };
+
+  const getConnectedAccountIndex = ({ match }: any) => {
+    return store.getState().wallet.accounts.findIndex((account: IAccountState) => {
+      return account.connectedTo.find((url: string) => {
+        return url === match;
+      })
+    });
+  };
+
+  const checkIsLocked = () => {
+    return window.controller.wallet.isLocked();
+  };
+
+  const checkToCallPrivateMethods = () => {
+    if (checkIsLocked()) {
+      throw new Error('Please, check if your wallet is unlocked and try again.');
+    }
+
+    if (getConnectedAccountIndex({ match: new URL(store.getState().wallet.tabs.currentURL).host }) === -1) {
+      throw new Error('Connect an account and try again.');
+    }
+  };
+
+  const runtimeSendMessageToTabs = async ({ tabId, messageDetails }: any) => {
+    return await browser.tabs.sendMessage(Number(tabId), messageDetails);
   }
-};
 
-const runtimeSendMessageToTabs = async ({ tabId, messageDetails }: any) => {
-  return await browser.tabs.sendMessage(Number(tabId), messageDetails);
-}
+  const updateActiveWindow = async ({ windowId, options }: any) => {
+    return await browser.windows.update(Number(windowId), options);
+  }
 
-const updateActiveWindow = async ({ windowId, options }: any) => {
-  return await browser.windows.update(Number(windowId), options);
-}
+  const observeStore = async (store: any) => {
+    let currentState: any;
 
-const observeStore = async (store: any) => {
-  let currentState: any;
+    const handleChange = async () => {
+      const nextState = store.getState();
 
-  const handleChange = async () => {
-    const nextState = store.getState();
+      if (nextState !== currentState) {
+        currentState = nextState;
 
-    if (nextState !== currentState) {
-      currentState = nextState;
+        const tabs: any = await getTabs({ active: true, windowType: 'normal' });
 
-      const tabs: any = await getTabs({ active: true, windowType: 'normal' });
-      console.log('tabs firefox', tabs, nextState)
-
-      for (const tab of tabs) {
-        if (tab) {
-          if (getConnectedAccountIndex({ match: new URL(String(tab.url)).host }) >= 0) {
-            try {
-              await runtimeSendMessageToTabs({
-                tabId: Number(tab.id),
-                messageDetails: {
-                  type: 'WALLET_UPDATED',
-                  target: 'contentScript',
-                  connected: false
-                }
-              });
-            } catch (error) {
-              console.log('error', error);
+        for (const tab of tabs) {
+          if (tab) {
+            if (getConnectedAccountIndex({ match: new URL(String(tab.url)).host }) >= 0) {
+              try {
+                await runtimeSendMessageToTabs({
+                  tabId: Number(tab.id),
+                  messageDetails: {
+                    type: 'WALLET_UPDATED',
+                    target: 'contentScript',
+                    connected: false
+                  }
+                });
+              } catch (error) {
+                console.log('error', error);
+              }
             }
           }
         }
       }
     }
-  }
 
-  const unsubscribe = store.subscribe(handleChange);
+    const unsubscribe = store.subscribe(handleChange);
 
-  await handleChange();
+    await handleChange();
 
-  return unsubscribe;
-};
+    return unsubscribe;
+  };
 
-observeStore(store);
+  observeStore(store);
 
-const createPopup = async (url: string) => {
-  console.log('create popup url', url)
-  const [tab]: any = await getTabs({ active: true, lastFocusedWindow: true });
+  const createPopup = async (url: string) => {
+    const [tab]: any = await getTabs({ active: true, lastFocusedWindow: true });
 
-  console.log("tab create popup", tab)
+    if (tab.title === 'Pali Wallet') {
+      return;
+    }
 
-  if (tab.title === 'Pali Wallet') {
-    console.log('tab title pali wallet', tab)
-    return;
-  }
+    store.dispatch(updateCurrentURL(String(tab.url)));
 
-  store.dispatch(updateCurrentURL(String(tab.url)));
+    const [sysWalletPopup]: any = await getTabs({ url: browser.extension.getURL('app.html') });
 
-  const [sysWalletPopup]: any = await getTabs({ url: browser.runtime.getURL('app.html') });
-
-  console.log('sysWalletpopup exists', sysWalletPopup)
-
-  if (sysWalletPopup) {
-    console.log('sys wallet popup active update window', sysWalletPopup)
-    
-    await updateActiveWindow({
-      windowId: Number(sysWalletPopup.windowId),
-      options: {
-        drawAttention: true,
-        focused: true
-      }
-    });
-
-    return;
-  }
-
-  await browser.windows.create({
-    url,
-    type: "popup",
-    height: 600,
-    width: 372,
-    left: 900,
-    top: 90,
-  });
-};
-
-const closePopup = () => {
-  store.dispatch(updateCanConnect(false));
-  store.dispatch(clearAllTransactions());
-
-  browser.tabs.query({ active: true })
-    .then(async (tabs) => {
-      tabs.map(async (tab) => {
-        if (tab.title === 'Pali Wallet') {
-          await browser.windows.remove(Number(tab.windowId));
+    if (sysWalletPopup) {
+      await updateActiveWindow({
+        windowId: Number(sysWalletPopup.windowId),
+        options: {
+          drawAttention: true,
+          focused: true
         }
       });
-    })
-    .catch((error) => {
-      console.log('error removing window', error);
-    });;
-
-  return;
-}
-
-let timeout: any;
-
-const restartLockTimeout = () => {
-  const {
-    confirmingTransaction,
-    creatingAsset,
-    issuingNFT,
-    issuingAsset,
-    updatingAsset,
-    transferringOwnership,
-    signingTransaction,
-    signingPSBT,
-    mintNFT,
-    timer
-  } = store.getState().wallet;
-
-  if (timeout) {
-    clearTimeout(timeout);
-  }
-
-  timeout = setTimeout(() => {
-    if (
-      !checkIsLocked()
-      && !confirmingTransaction
-      && !creatingAsset
-      && !issuingNFT
-      && !issuingAsset
-      && !updatingAsset
-      && !transferringOwnership
-      && !signingTransaction
-      && !signingPSBT
-      && !mintNFT
-    ) {
-      window.controller.wallet.logOut();
-
-      setTimeout(() => closePopup(), 2000);
 
       return;
     }
 
-    console.log('can\'t lock automatically - wallet is under transaction');
-  }, timer * 60 * 1000);
-};
+    window.open(url, "Pali Wallet", "width=372, height=600, left=900, top=90");
 
-const executeMessages = async () => {
+    // sysPopup.onbeforeunload = () => {
+    //   store.dispatch(clearAllTransactions());
+    // }
+  };
+
+  const closePopup = () => {
+    store.dispatch(updateCanConnect(false));
+    store.dispatch(clearAllTransactions());
+
+    browser.tabs.query({ active: true })
+      .then(async (tabs) => {
+        tabs.map(async (tab) => {
+          if (tab.title === 'Pali Wallet') {
+            await browser.windows.remove(Number(tab.windowId));
+          }
+        });
+      })
+      .catch((error) => {
+        console.log('error removing window', error);
+      });;
+
+    return;
+  }
+
   console.emoji('🤩', 'Pali extension ebabled');
 
   window.controller.stateUpdater();
@@ -606,6 +594,8 @@ const executeMessages = async () => {
           payoutAddress
         } = request.messageData;
 
+        console.log('token create auxfee', auxfeedetails)
+
         if (precision < 0 || precision > 8) {
           throw new Error('invalid precision value');
         }
@@ -906,20 +896,14 @@ const executeMessages = async () => {
   });
 }
 
+browser.runtime.onMessage.addListener(async (request) => {
+  if (request.type === 'RELOAD_DATA' && request.target === 'background') {
+    await executeMessages()
+  }
+});
+
 browser.runtime.onInstalled.addListener(async () => {
   await executeMessages();
-});
-
-browser.management.onEnabled.addListener(async () => {
-  browser.runtime.reload();
-
-  await executeMessages();
-});
-
-//@ts-ignore
-browser.runtime.onSuspend.addListener(() => {
-  browser.runtime.reload();
-  browser.management.setEnabled('*', true);
 });
 
 wrapStore(store, { portName: STORE_PORT });

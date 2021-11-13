@@ -68,6 +68,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 
   useEffect(() => {
     if (data) {
+      console.log('data', data)
       let newData: any = {};
       let newAdvancedOptions: any = {};
 
@@ -334,7 +335,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
                   </div>
                 </div>
               );
-            }) || 0}
+            })}
           </div>
         )}
       </div>

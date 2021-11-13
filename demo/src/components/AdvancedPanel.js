@@ -6,7 +6,7 @@ export default function AdvancedPanel({
   onChange,
   renderContractField = false,
   toggleButton = false,
-  onIssueSupplyIntoCirculationChange = () => {},
+  onIssueSupplyIntoCirculationChange = () => { },
   renderIssuerRightsField = true
 }) {
   const [contract, setContract] = useState("");
@@ -17,6 +17,8 @@ export default function AdvancedPanel({
   const [auxfeekeyid, setAuxFeeKeyID] = useState();
   const [auxfees, setAuxFees] = useState([]);
   const [notaryAddress, setNotaryAddress] = useState();
+  const [bound, setBound] = useState(0);
+  const [percent, setPercent] = useState(0);
 
   useEffect(() => {
     if (typeof onChange === "function") {
@@ -29,7 +31,7 @@ export default function AdvancedPanel({
         ...(auxfeekeyid && {
           auxfeedetails: {
             auxfeekeyid,
-            auxfees: auxfees.length ? auxfees : [{ bound: 0, percent: 0 }],
+            auxfees: auxfees.length > 0 ? auxfees : [{ bound, percent }],
           },
         }),
         ...(notaryAddress && { notaryAddress }),
@@ -65,31 +67,28 @@ export default function AdvancedPanel({
     setCapabilityFlags((prevValue) => {
       return isChecked ? prevValue - value : prevValue + value;
     });
-    
+
     event.target.id === "issue-supply" &&
       onIssueSupplyIntoCirculationChange(isChecked);
   };
 
-  const handleAddFee = (event) => {
-    event.preventDefault();
+  // const handleAddFee = (event) => {
+  //   event.preventDefault();
 
-    const bound = document.querySelector("#bound");
-    const percent = document.querySelector("#percent");
+  //   if (!bound || !percent) return;
 
-    if (!bound.value || !percent.value) return;
+  //   if ([bound, percent].some((v) => isNaN(Number(v)))) {
+  //     bound = "";
+  //     percent = "";
 
-    if ([bound.value, percent.value].some((v) => isNaN(Number(v)))) {
-      bound.value = "";
-      percent.value = "";
+  //     return;
+  //   }
 
-      return;
-    }
+  //   setAuxFees([...auxfees, { bound, percent }]);
 
-    setAuxFees([...auxfees, { bound: bound.value, percent: percent.value }]);
-
-    bound.value = "";
-    percent.value = "";
-  };
+  //   bound = "";
+  //   percent = "";
+  // };
 
   const handleRemoveFee = (fee) => {
     return function (event) {
@@ -293,22 +292,22 @@ export default function AdvancedPanel({
                 <p className="help-block">Percent</p>
               </div>
             </div>
-            {auxfees.map((fee, i) => (
+            {/* {auxfees.map((fee, i) => (
               <div className="row nested" key={i}>
                 <div className="form-group col-40">
                   <input
-                    value={fee.bound}
                     disabled
                     type="text"
                     className="form-control"
+                    id="bound"
                   />
                 </div>
                 <div className="form-group col-40">
                   <input
-                    value={fee.percent}
                     disabled
                     type="text"
                     className="form-control"
+                    id="percent"
                   />
                 </div>
                 <div className="form-group col-20">
@@ -317,9 +316,34 @@ export default function AdvancedPanel({
                   </button>
                 </div>
               </div>
-            ))}
+            ))} */}
 
             <div className="row nested">
+              <div className="form-group col-40">
+                <input
+                  onChange={(event) => {
+                    setBound(event.target.value)
+                    setAuxFees([{ bound: event.target.value, percent }])
+                  }}
+                  type="text"
+                  className="form-control"
+                  id="bound"
+                />
+              </div>
+              <div className="form-group col-40">
+                <input
+                  onChange={(event) => {
+                    setPercent(event.target.value)
+                    setAuxFees([{ bound, percent: event.target.value }])
+                  }}
+                  type="text"
+                  className="form-control"
+                  id="percent"
+                />
+              </div>
+            </div>
+
+            {/* <div className="row nested">
               <div className="form-group col-40">
                 <input type="text" className="form-control" id="bound" />
               </div>
@@ -331,7 +355,7 @@ export default function AdvancedPanel({
                   <i className="icon-plus"></i>
                 </button>
               </div>
-            </div>
+            </div> */}
 
             <div className="row nested">
               <div className="col-100">
