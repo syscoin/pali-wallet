@@ -1,19 +1,18 @@
 import React, { useState } from 'react';
 import { Button } from 'components/index';;
 import Header from 'containers/common/Header';
-import { useController, useFormat, useUtils, useStore, useBrowser } from 'hooks/index';
+import { useFormat, useUtils, useStore, useDappConnection, usePopup } from 'hooks/index';
 
 const ConnectedAccounts = () => {
-  const controller = useController();
   const { ellipsis } = useFormat();
-  const { getHost, alert } = useUtils();
-  const { browser } = useBrowser();
+  const { getHost } = useUtils();
+  const { closePopup } = usePopup();
+  const { changeConnectedAccount } = useDappConnection();
+  const { accounts, currentSenderURL, activeAccountId } = useStore();
 
-  const { accounts, tabs, activeAccountId } = useStore();
   const [changeAccountIsOpen, setChangeAccountIsOpen] =
     useState<boolean>(false);
   const [accountId, setAccountId] = useState<number>(-1);
-  const { currentSenderURL } = tabs;
 
   const connectedAccount = accounts.filter((account) => {
     return account.connectedTo.find((url: any) => {
@@ -27,36 +26,6 @@ const ConnectedAccounts = () => {
     }
 
     setAccountId(id);
-  };
-
-  const handleDisconnect = () => {
-    browser.runtime.sendMessage({
-      type: 'CLOSE_POPUP',
-      target: 'background',
-    });
-  };
-
-  const handleConfirm = () => {
-    try {
-      browser.runtime.sendMessage({
-        type: 'CHANGE_CONNECTED_ACCOUNT',
-        target: 'background',
-        id: accountId,
-        url: currentSenderURL,
-      });
-
-      browser.runtime.sendMessage({
-        type: 'CLOSE_POPUP',
-        target: 'background',
-      });
-
-      controller.wallet.account.updateTokensState().then(() => {
-        console.log('tokens state updated after change connected account');
-      });
-    } catch (error) {
-      alert.removeAll();
-      alert.error('Error changing account. Try again.');
-    }
   };
 
   return (
@@ -97,7 +66,7 @@ const ConnectedAccounts = () => {
             </Button>
             <Button
               type="button"
-              onClick={() => handleConfirm()}
+              onClick={() => changeConnectedAccount(accountId)}
             >
               Confirm
             </Button>
@@ -133,7 +102,7 @@ const ConnectedAccounts = () => {
           <div >
             <Button
               type="button"
-              onClick={handleDisconnect}
+              onClick={closePopup}
             >
               Close
             </Button>
