@@ -5,7 +5,7 @@ import { Button } from 'components/index';;
 import shuffle from 'lodash/shuffle';
 import isEqual from 'lodash/isEqual';
 
-import Layout from '../../common/Layout';
+import {Layout} from '../../common/Layout';
 
 const ConfirmPhrase = () => {
   const history = useHistory();
@@ -51,7 +51,7 @@ const ConfirmPhrase = () => {
   };
 
   return (
-    <Layout title="Verify your recovery phrase" onlySection linkTo="/app.html">
+    <Layout title="Verify your recovery phrase" onlySection>
       <div className="transition-all duration-300 ease-in-out flex justify-center items-center flex-col gap-4 mt-8">
         <>
           <span className="font-light text-brand-graylight text-xs">

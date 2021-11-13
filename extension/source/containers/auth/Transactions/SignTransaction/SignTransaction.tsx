@@ -1,10 +1,8 @@
 import React, { useState, FC } from 'react';
-import Layout from 'containers/common/Layout';
+import {Layout} from 'containers/common/Layout';
 import { Button, Icon } from 'components/index';
 import { useHistory } from 'react-router-dom';
-import { useController, useUtils, useFormat, useStore } from 'hooks/index';
-import { browser } from 'webextension-polyfill-ts';
-import { getHost } from 'scripts/Background/helpers';
+import { useController, useUtils, useFormat, useStore, useBrowser } from 'hooks/index';
 
 interface ISignTransaction {
   item: string;
@@ -21,8 +19,9 @@ const SignTransaction: FC<ISignTransaction> = ({
 }) => {
   const controller = useController();
   const history = useHistory();
-  const { alert } = useUtils();
+  const { alert, getHost } = useUtils();
   const { ellipsis } = useFormat();
+  const { browser } = useBrowser();
 
   const [loading, setLoading] = useState<boolean>(false);
   const [confirmed, setConfirmed] = useState<boolean>(false);
@@ -137,7 +136,7 @@ const SignTransaction: FC<ISignTransaction> = ({
   });
 
   return confirmed ? (
-    <Layout title="Your transaction is underway" linkTo="/remind" showLogo>
+    <Layout title="Your transaction is underway">
       <div className="body-description">
         You can follow your transaction under activity on your account screen.
       </div>
@@ -151,7 +150,7 @@ const SignTransaction: FC<ISignTransaction> = ({
   ) : (
     <div>
       {transactingStateItem && loading ? (
-        <Layout title="" showLogo>
+        <Layout title="">
           <div >
             <section>
             <Icon name="loading"  className="w-4 bg-brand-graydark100 text-brand-white"/>
@@ -162,7 +161,7 @@ const SignTransaction: FC<ISignTransaction> = ({
         <div>
           {transactingStateItem && psbt && !loading && (
             <div>
-              <Layout title="Signature request" showLogo>
+              <Layout title="Signature request">
                 <div >
                   <p>{getHost(currentSenderURL)}</p>
 

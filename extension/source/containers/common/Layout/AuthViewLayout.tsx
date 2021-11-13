@@ -1,12 +1,12 @@
 import React, { FC } from 'react';
 import Header from 'containers/common/Header';
 
-interface IViewLayout {
+interface IAuthViewLayout {
   title: string;
   children: any;
 }
 
-const ViewLayout: FC<IViewLayout> = ({
+export const AuthViewLayout: FC<IAuthViewLayout> = ({
   title,
   children
 }) => {
@@ -22,5 +22,3 @@ const ViewLayout: FC<IViewLayout> = ({
     </div>
   );
 };
-
-export default ViewLayout;

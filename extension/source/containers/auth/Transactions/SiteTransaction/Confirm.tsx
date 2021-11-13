@@ -1,16 +1,12 @@
 import React, { useState, useEffect, FC } from 'react';
-import { useSelector } from 'react-redux';
-import Layout from 'containers/common/Layout';
+import {Layout} from 'containers/common/Layout';
 import { Button, Icon } from 'components/index';;
 import { useController } from 'hooks/index';
-import { RootState } from 'state/store';
-import IWalletState, { IAccountState } from 'state/wallet/types';
-import { useAlert } from 'react-alert';
+import { IAccountState } from 'state/wallet/types';
 import { browser } from 'webextension-polyfill-ts';
 import { useHistory } from 'react-router';
 
-import { getHost } from '../../../scripts/Background/helpers';
-import { ellipsis, formatURL } from '../helpers';
+import { useStore, useUtils, useFormat } from 'hooks/index';
 
 interface IConfirmTransaction {
   confirmTransaction: any;
@@ -33,12 +29,10 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 }) => {
   const controller = useController();
   const history = useHistory();
-  const alert = useAlert();
 
-  const { accounts, tabs }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
-  const { currentSenderURL } = tabs;
+  const { getHost, alert } = useUtils();
+  const { ellipsis, formatURL } = useFormat();
+  const { accounts, currentSenderURL } = useStore();
 
   const [connectedAccountId, setConnectedAccountId] = useState(-1);
   const transactionItemData =
@@ -343,7 +337,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   };
 
   return confirmed ? (
-    <Layout title="Your transaction is underway" linkTo="/remind" showLogo>
+    <Layout title="Your transaction is underway">
       <div className="body-description">
         You can follow your transaction under activity on your account screen.
       </div>
@@ -357,7 +351,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   ) : (
     <div>
       {transactingStateItem && loading ? (
-        <Layout title="" showLogo>
+        <Layout title="">
           <div >
             <section>
               <Icon name="loading" className="w-4 bg-brand-graydark100 text-brand-white" />
@@ -368,7 +362,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
         <div>
           {transactionItemData && data && !loading && (
             <div>
-              <Layout title={layoutTitle} showLogo>
+              <Layout title={layoutTitle}>
                 <div >
                   <div>
                     <section >

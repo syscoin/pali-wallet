@@ -2,7 +2,7 @@ import React, { FC, useState } from 'react';
 import { Button } from 'components/index';;
 import { useController } from 'hooks/index';
 import TutorialPanel from './TutorialPanel';
-import ViewLayout from '../Layout';
+import { AuthViewLayout } from 'containers/common/Layout';
 
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
@@ -13,7 +13,7 @@ const ConnectHardwareWalletView: FC = () => {
   };
 
   return (
-    <ViewLayout title="CONNECT HARDWARE WALLET">
+    <AuthViewLayout title="CONNECT HARDWARE WALLET">
       <div
       >
         <span>
@@ -46,7 +46,7 @@ const ConnectHardwareWalletView: FC = () => {
 
         <TutorialPanel />
       </div>
-    </ViewLayout>
+    </AuthViewLayout>
   );
 };
 

@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
 // import { useController, useFormat, useUtils, useStore } from 'hooks/index';
 // import CryptoJS from 'crypto-js';
-import ViewLayout from '../Layout';
+import { AuthViewLayout } from 'containers/common/Layout';
 
 interface IPrivateKeyView {
   id?: string;
@@ -46,7 +46,7 @@ const PrivateKeyView: FC<IPrivateKeyView> = (/*{ id }*/) => {
   // };
 
   return (
-    <ViewLayout title="PRIVATE KEY">
+    <AuthViewLayout title="PRIVATE KEY">
       <div >
         {/* {accounts[Number(id)] && (
           <>
@@ -80,7 +80,7 @@ const PrivateKeyView: FC<IPrivateKeyView> = (/*{ id }*/) => {
 
         <p>private key view</p>
       </div>
-    </ViewLayout>
+    </AuthViewLayout>
 
   );
 };

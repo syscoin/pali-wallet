@@ -1,9 +1,8 @@
 import React, { useState, FC } from 'react';
-import Layout from 'containers/common/Layout';
+import {Layout} from 'containers/common/Layout';
 import { Button } from 'components/index';;
 import { useHistory } from 'react-router-dom';
-import { useController, useUtils } from 'hooks/index';
-import { browser } from 'webextension-polyfill-ts';
+import { useController/*, useUtils*/, useBrowser } from 'hooks/index';
 
 interface ISiteTransaction {
   callbackToSetDataFromWallet: any;
@@ -22,7 +21,8 @@ const SiteTransaction: FC<ISiteTransaction> = ({
 }) => {
   const controller = useController();
   const history = useHistory();
-  const { alert } = useUtils();
+  // const { alert } = useUtils();
+  const { browser } = useBrowser();
 
   // const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState('0');

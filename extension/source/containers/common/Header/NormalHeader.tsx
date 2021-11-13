@@ -2,9 +2,8 @@ import React, { FC, useEffect, useState, ChangeEvent } from 'react';
 import { IconButton, Modal, Select, Icon } from 'components/index';
 import Settings from 'containers/auth/Settings';
 import { SYS_NETWORK } from 'constants/index';
-import { getHost } from '../../../scripts/Background/helpers';
 import { browser } from 'webextension-polyfill-ts';
-import { useController, useStore } from 'hooks/index';
+import { useController, useStore, useUtils } from 'hooks/index';
 
 interface INormalHeader {
   importSeed: boolean;
@@ -29,6 +28,8 @@ const NormalHeader: FC<INormalHeader> = ({
     currentURL,
     activeNetwork
   } = useStore();
+
+  const { getHost } = useUtils();
 
   const network = activeNetwork;
 

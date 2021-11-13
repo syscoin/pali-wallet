@@ -1,21 +1,16 @@
 import React, { useState } from 'react';
-import { browser } from 'webextension-polyfill-ts';
 import Header from 'containers/common/Header';
 import { Button, Icon } from 'components/index';
-import { ellipsis } from 'containers/auth/helpers';
-import { useSelector } from 'react-redux';
-import { RootState } from 'state/store';
-import IWalletState from 'state/wallet/types';
 import { useHistory } from 'react-router';
-import { getHost } from 'scripts/Background/helpers';
-import { useAlert } from 'react-alert';
+import { useStore, useUtils, useFormat, useBrowser } from 'hooks/index';
 
 const ConnectWallet = () => {
   const history = useHistory();
-  const alert = useAlert()
+  const { alert, getHost } = useUtils();
+  const { ellipsis } = useFormat();
+  const { browser } = useBrowser();
 
-  const { accounts, activeAccountId, tabs }: IWalletState =
-    useSelector((state: RootState) => state.wallet);
+  const { accounts, activeAccountId, tabs } = useStore();
   const [accountId, setAccountId] = useState<number>(-1);
   const { currentSenderURL } = tabs;
   const [continueConnection, setContinueConnection] = useState(false);

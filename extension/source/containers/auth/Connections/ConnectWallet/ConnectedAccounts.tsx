@@ -1,22 +1,15 @@
 import React, { useState } from 'react';
-import { browser } from 'webextension-polyfill-ts';
 import { Button } from 'components/index';;
 import Header from 'containers/common/Header';
-import { ellipsis } from 'containers/auth/helpers';
-import { useSelector } from 'react-redux';
-import { RootState } from 'state/store';
-import IWalletState from 'state/wallet/types';
-import { useAlert } from 'react-alert';
-import { useController } from 'hooks/index';
-
-import { getHost } from '../../../scripts/Background/helpers';
+import { useController, useFormat, useUtils, useStore, useBrowser } from 'hooks/index';
 
 const ConnectedAccounts = () => {
   const controller = useController();
-  const alert = useAlert();
+  const { ellipsis } = useFormat();
+  const { getHost, alert } = useUtils();
+  const { browser } = useBrowser();
 
-  const { accounts, tabs, activeAccountId }: IWalletState =
-    useSelector((state: RootState) => state.wallet);
+  const { accounts, tabs, activeAccountId } = useStore();
   const [changeAccountIsOpen, setChangeAccountIsOpen] =
     useState<boolean>(false);
   const [accountId, setAccountId] = useState<number>(-1);

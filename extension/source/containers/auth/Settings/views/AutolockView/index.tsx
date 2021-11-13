@@ -4,7 +4,7 @@ import React from 'react';
 // import IWalletState from 'state/wallet/types';
 // import { useSelector } from 'react-redux';
 // import { RootState } from 'state/store';
-import ViewLayout from '../Layout';
+import { AuthViewLayout } from 'containers/common/Layout';
 // import { useHistory } from 'react-router-dom';
 
 const AutolockView = () => {
@@ -36,9 +36,9 @@ const AutolockView = () => {
   // );
 
   return (
-    <ViewLayout title="AUTO LOCK TIMER">
+    <AuthViewLayout title="AUTO LOCK TIMER">
       <p>auto lock timer</p>
-    </ViewLayout>
+    </AuthViewLayout>
   );
 };
 

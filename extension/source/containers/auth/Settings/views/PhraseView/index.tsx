@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Form, Input } from 'antd';
 import { useController, useUtils } from 'hooks/index';
-import ViewLayout from '../Layout';
+import { AuthViewLayout } from 'containers/common/Layout';
 
 const PhraseView = () => {
   const [checked, setChecked] = useState<boolean>(false);
@@ -30,7 +30,7 @@ const PhraseView = () => {
   };
 
   return (
-    <ViewLayout title="WALLET SEED PHRASE">
+    <AuthViewLayout title="WALLET SEED PHRASE">
       <div className="bg-brand-deepPink w-popup fixed h-popup">
         <span>Please input your wallet password and press enter:</span>
         <Form
@@ -75,7 +75,7 @@ const PhraseView = () => {
           assets.
         </span>
       </div>
-    </ViewLayout>
+    </AuthViewLayout>
   );
 };
 

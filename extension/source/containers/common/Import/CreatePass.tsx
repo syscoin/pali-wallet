@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useController, useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Button } from 'components/index';;
-import Layout from '../../common/Layout';
+import {Layout} from '../../common/Layout';
 import { useHistory } from 'react-router-dom';
 
 const CreatePass = () => {
@@ -34,7 +34,6 @@ const CreatePass = () => {
     <Layout
       title="Password"
       onlySection
-      linkTo="/app.html"
     >
       <Form
         name="basic"
