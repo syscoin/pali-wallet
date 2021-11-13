@@ -23,29 +23,28 @@ export const Layout: FC<ILayout> = ({
 }) => {
   return (
     <div className="flex flex-col justify-center items-center">
-      <div>
-        <Header
-          onlySection={onlySection}
-          accountHeader={accountHeader}
-          normalHeader={normalHeader}
-        />
-        <section>
-          {tooltipText ? (
-            <div className="flex justify-center items-center gap-2">
-              <span className="text-brand-royalBlue font-bold text-xl text-center tracking-normal">{title}</span>
+      <Header
+        onlySection={onlySection}
+        accountHeader={accountHeader}
+        normalHeader={normalHeader}
+      />
 
-              <Tooltip placement="bottom" title={tooltipText}>
-                <Icon name="question" className="text-brand-graylight w-4" />
-              </Tooltip>
-            </div>
-
-          ) : (
+      <section>
+        {tooltipText ? (
+          <div className="flex justify-center items-center gap-2">
             <span className="text-brand-royalBlue font-bold text-xl text-center tracking-normal">{title}</span>
-          )}
 
-        </section>
-        <section >{children}</section>
-      </div>
+            <Tooltip placement="bottom" title={tooltipText}>
+              <Icon name="question" className="text-brand-graylight w-4" />
+            </Tooltip>
+          </div>
+
+        ) : (
+          <span className="text-brand-royalBlue font-bold text-xl text-center tracking-normal">{title}</span>
+        )}
+
+      </section>
+      <section >{children}</section>
     </div>
   );
 };

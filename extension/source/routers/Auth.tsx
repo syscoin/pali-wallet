@@ -7,7 +7,7 @@ import {
   useHistory,
 } from 'react-router-dom';
 import Start from 'containers/auth/Start';
-import Home from 'containers/auth/Home';
+import {Home} from 'containers/auth/index';
 import Send, { SendConfirm } from 'containers/auth/Send';
 import UpdateAsset, { UpdateConfirm } from 'containers/auth/Transactions/UpdateAsset';
 import Create, { CreateTokenConfirm } from 'containers/auth/Transactions/Create';

@@ -6,11 +6,11 @@ import { useHistory } from 'react-router-dom';
 import Header from 'containers/common/Header';
 import TxsPanel from './TxsPanel';
 
-const Home = () => {
+export const Home = () => {
   const controller = useController();
   const history = useHistory();
   const getFiatAmount = useFiat();
-  
+
   const { formatNumber } = useFormat();
 
   const {
@@ -116,30 +116,32 @@ const Home = () => {
           <Header accountHeader />
 
           <section className="flex justify-center items-center flex-col gap-4 text-brand-white bg-brand-green">
-            {changingNetwork ? (
-              <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
-            ) : (
-              <h3>
-                {formatNumber(
-                  accounts.find((element) => element.id === activeAccountId)
-                    ?.balance || 0
-                )}{' '}
-                <small>{activeNetwork == 'testnet' ? 'TSYS' : 'SYS'}</small>
-              </h3>
-            )}
-
-            {changingNetwork ? (
-              <p style={{ color: 'white' }}>...</p>
-            ) : (
-              <small style={{ marginTop: '5px', marginBottom: '5px' }}>
-                {activeNetwork !== 'testnet'
-                  ? getFiatAmount(
-                    accounts.find((element) => element.id === activeAccountId)
-                      ?.balance || 0
-                  )
-                  : ''}
-              </small>
-            )}
+            <div className="bg-brand-white text-brand-deepPink100 font-bold">
+              {changingNetwork ? (
+                <>
+                  <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
+                  <p style={{ color: 'white' }}>...</p>
+                </>
+              ) : (
+                <>
+                  <h3>
+                    {formatNumber(
+                      accounts.find((element) => element.id === activeAccountId)
+                        ?.balance || 0
+                    )}{' '}
+                    <small>{activeNetwork == 'testnet' ? 'TSYS' : 'SYS'}</small>
+                  </h3>
+                  <small style={{ marginTop: '5px', marginBottom: '5px' }}>
+                    {activeNetwork !== 'testnet'
+                      ? getFiatAmount(
+                        accounts.find((element) => element.id === activeAccountId)
+                          ?.balance || 0
+                      )
+                      : ''}
+                  </small>
+                </>
+              )}
+            </div>
 
             <IconButton onClick={handleRefresh} type="primary" shape="circle">
               <Icon name="reload" className="bg-brand-gray200 text-brand-navy w-4" />
@@ -198,5 +200,3 @@ const Home = () => {
     </div>
   );
 };
-
-export default Home;

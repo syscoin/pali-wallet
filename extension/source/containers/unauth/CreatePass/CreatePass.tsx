@@ -3,7 +3,7 @@ import { useHistory } from 'react-router-dom';
 import { useController } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Button } from 'components/index';;
-import {Layout} from '../../common/Layout';
+import { Layout } from '../../common/Layout';
 
 const CreatePass = () => {
   const history = useHistory();

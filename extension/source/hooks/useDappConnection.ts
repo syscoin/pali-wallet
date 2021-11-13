@@ -1,5 +1,4 @@
-import { browser } from 'webextension-polyfill-ts';
-import { useUtils, useStore, usePopup, useController } from 'hooks/index';
+import { useUtils, useStore, usePopup, useController, useBrowser } from 'hooks/index';
 import { useHistory } from 'react-router-dom';
 
 export const useDappConnection = () => {
@@ -9,6 +8,7 @@ export const useDappConnection = () => {
   const { alert } = useUtils();
   const { currentSenderURL } = useStore();
   const { closePopup } = usePopup();
+  const { browser } = useBrowser();
 
   const confirmConnection = async (accountId: number) => {
     try {
@@ -18,7 +18,7 @@ export const useDappConnection = () => {
         id: accountId,
       });
 
-      browser.runtime.sendMessage({
+      await browser.runtime.sendMessage({
         type: 'CONFIRM_CONNECTION',
         target: 'background',
       });
