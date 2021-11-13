@@ -10,7 +10,7 @@ import { browser } from 'webextension-polyfill-ts';
 import { useEffect } from 'react';
 import { Assets } from 'scripts/types';
 
-const SendConfirm = () => {
+export const SendConfirm = () => {
   const controller = useController();
   const getFiatAmount = useFiat();
   const history = useHistory();
@@ -242,5 +242,3 @@ const SendConfirm = () => {
     </div>
   );
 };
-
-export default SendConfirm;

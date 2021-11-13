@@ -6,17 +6,20 @@ import {
   useLocation,
   useHistory,
 } from 'react-router-dom';
-import Start from 'containers/auth/Start';
-import {Home} from 'containers/auth/index';
-import Send, { SendConfirm } from 'containers/auth/Send';
+import {
+  Home, 
+  Receive,
+  ConnectWallet,
+  ConnectedAccounts,
+  Send,
+  SendConfirm,
+  Start
+} from 'containers/auth/index';
 import UpdateAsset, { UpdateConfirm } from 'containers/auth/Transactions/UpdateAsset';
 import Create, { CreateTokenConfirm } from 'containers/auth/Transactions/Create';
 import IssueAsset, { IssueTokenConfirm } from 'containers/auth/Transactions/IssueAsset';
 import IssueNFT, { CreateAndIssueNFTConfirm } from 'containers/auth/Transactions/IssueNFT';
-import Receive from 'containers/auth/Receive';
 import Import from 'containers/common/Import';
-import ConnectWallet from 'containers/auth/Connections/ConnectWallet';
-import ConnectedAccounts from 'containers/auth/Connections/ConnectWallet/ConnectedAccounts';
 import { useController, useStore, useUtils, useBrowser } from 'hooks/index';
 import TransferOwnership, {
   TransferOwnershipConfirm,

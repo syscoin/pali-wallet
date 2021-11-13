@@ -1,6 +1,6 @@
 import React, { FC, useEffect, useState, ChangeEvent } from 'react';
 import { IconButton, Modal, Select, Icon } from 'components/index';
-import Settings from 'containers/auth/Settings';
+import { Settings } from 'containers/auth/index';
 import { SYS_NETWORK } from 'constants/index';
 import { browser } from 'webextension-polyfill-ts';
 import { useController, useStore, useUtils } from 'hooks/index';

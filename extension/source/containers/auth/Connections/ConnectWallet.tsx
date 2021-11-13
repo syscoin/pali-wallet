@@ -3,7 +3,7 @@ import Header from 'containers/common/Header';
 import { Button, Icon } from 'components/index';
 import { useStore, useUtils, useFormat, useDappConnection } from 'hooks/index';
 
-const ConnectWallet = () => {
+export const ConnectWallet = () => {
   const { getHost } = useUtils();
   const { ellipsis } = useFormat();
   const { confirmConnection, cancelConnection } = useDappConnection();
@@ -123,5 +123,3 @@ const ConnectWallet = () => {
 
   );
 };
-
-export default ConnectWallet;

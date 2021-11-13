@@ -3,7 +3,7 @@ import { Button } from 'components/index';;
 import Header from 'containers/common/Header';
 import { useFormat, useUtils, useStore, useDappConnection, usePopup } from 'hooks/index';
 
-const ConnectedAccounts = () => {
+export const ConnectedAccounts = () => {
   const { ellipsis } = useFormat();
   const { getHost } = useUtils();
   const { closePopup } = usePopup();
@@ -119,5 +119,3 @@ const ConnectedAccounts = () => {
     </div>
   );
 };
-
-export default ConnectedAccounts;

@@ -8,7 +8,7 @@ interface ISettings {
   generalSettings?: boolean;
 }
 
-const Settings: FC<ISettings> = ({
+export const Settings: FC<ISettings> = ({
   onClose,
   open,
   generalSettings = true,
@@ -42,5 +42,3 @@ const Settings: FC<ISettings> = ({
     </div>
   );
 };
-
-export default Settings;

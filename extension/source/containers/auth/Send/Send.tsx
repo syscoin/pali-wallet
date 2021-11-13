@@ -14,10 +14,10 @@ import Header from 'containers/common/Header';
 // import { Assets } from '../../../scripts/types';
 // import { Form, Input } from 'antd';
 
-interface IWalletSend {
+interface ISend {
   initAddress?: string;
 }
-const WalletSend: FC<IWalletSend> = (/*{ initAddress = '' }*/) => {
+export const Send: FC<ISend> = (/*{ initAddress = '' }*/) => {
   // const history = useHistory();
   // // const getFiatAmount = useFiat();
   // const controller = useController();
@@ -342,5 +342,3 @@ const WalletSend: FC<IWalletSend> = (/*{ initAddress = '' }*/) => {
     </div>
   );
 };
-
-export default WalletSend;
