@@ -22,7 +22,7 @@ export const SYS_NETWORK: {
 };
 
 export const ASSET_PRICE_API =
-  'https://blockbook-dev.elint.services/api/v2/tickers/';
+  'https://blockbook.elint.services/api/v2/tickers/';
 export const SYS_EXPLORER_SEARCH = 'https://blockbook-dev.elint.services/';
 
 export const PRICE_SYS_ID = 'syscoin';
