@@ -737,16 +737,16 @@ const AccountController = (actions: {
     };
   };
 
-  const getNewReceivingAddress = async (skipIncrement?: boolean) => {
-    if (sysjs.Signer.Signer.receivingIndex === -1 && sysjs.Signer.blockbookURL) {
+  const getNewAddress = async (type: string, skipIncrement?: boolean) => {
+    if (sysjs.Signer.Signer[type] === -1 && sysjs.Signer.blockbookURL) {
       await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.Signer.getAccountXpub(), 'tokens=used&details=tokens', true, sysjs.Signer);
     }
 
-    const address = sysjs.Signer.createAddress(sysjs.Signer.Signer.receivingIndex + 1, false);
+    const address = sysjs.Signer.createAddress(sysjs.Signer.Signer[type] + 1, false);
 
     if (address) {
       if (!skipIncrement) {
-        sysjs.Signer.Signer.receivingIndex++;
+        sysjs.Signer.Signer[type]++;
       }
 
       return address;
@@ -754,6 +754,27 @@ const AccountController = (actions: {
   
     return null
   }
+
+  // const getNewChangeAddress = () => {
+  //   if (this.Signer.changeIndex === -1 && this.blockbookURL) {
+  //     await fetchBackendAccount(this.blockbookURL, this.getAccountXpub(), 'tokens=used&details=tokens', true, this)
+  //     if (this.Signer.changeIndex === -1) {
+  //       await fetchBackendAccount(this.blockbookURL, this.getAccountXpub(), 'tokens=used&details=tokens', true, this)
+  //       if (this.Signer.changeIndex === -1) {
+  //         throw new Error('Could not update XPUB change index')
+  //       }
+  //     }
+  //   }
+  //   const address = this.createAddress(this.Signer.changeIndex + 1, true)
+  //   if (address) {
+  //     if (!skipIncrement) {
+  //       this.Signer.changeIndex++
+  //     }
+  //     return address
+  //   }
+  
+  //   return null
+  // }
 
   const subscribeAccount = async (isHardwareWallet = false, sjs?: any, label?: string, walletCreation?: boolean) => {
     if (isHardwareWallet) {
@@ -806,7 +827,7 @@ const AccountController = (actions: {
       transactions: res.transactions,
       xpub: sysjs.Signer.getAccountXpub(),
       xprv: CryptoJS.AES.encrypt(sysjs.Signer.Signer.accounts[sysjs.Signer.Signer.accountIndex].getAccountPrivateKey(), String(sysjs.Signer.Signer.accountIndex)).toString(),
-      address: { 'main': await getNewReceivingAddress() },
+      address: { 'main': await getNewAddress('receivingIndex') },
       assets: res.assets,
       connectedTo: [],
       isTrezorWallet: false
@@ -1204,7 +1225,7 @@ const AccountController = (actions: {
     let txInfo;
 
     const { decimals } = await getDataAsset(assetGuid);
-    const receivingAddress = await getNewReceivingAddress();
+    const receivingAddress = await getNewAddress('receivingIndex');
 
     const assetMap = new Map([
       [assetGuid, {
@@ -1487,10 +1508,10 @@ const AccountController = (actions: {
     const assetMap = new Map([
       [assetGuid,
         {
-          changeAddress: await getNewChangeAddress(false),
+          changeAddress: await getNewAddress('changeIndex'),
           outputs: [{
             value: new sys.utils.BN(amount * (10 ** decimals)),
-            address: await getNewReceivingAddress()
+            address: await getNewAddress('receivingIndex')
           }]
         }]
     ]);
@@ -1615,7 +1636,7 @@ const AccountController = (actions: {
       const txOpts = { rbf };
       let txInfo;
       if (account.isTrezorWallet) {
-        const changeAddress = await getNewChangeAddress(false);
+        const changeAddress = await getNewAddress('changeIndex');
         const txData = await sysjs.createTransaction(txOpts, changeAddress, outputsArray, new sys.utils.BN(fee * 1e8), account.xpub);
         if (!txData) {
           console.log('Could not create transaction, not enough funds?')
@@ -1761,7 +1782,7 @@ const AccountController = (actions: {
         changeAddress: await getNewChangeAddress(true),
         outputs: [{
           value: new sys.utils.BN(0),
-          address: await getNewReceivingAddress(true)
+          address: await getNewAddress('receivingIndex')
         }]
       }]
     ]);
@@ -1962,7 +1983,7 @@ const AccountController = (actions: {
     importPsbt,
     decryptAES,
     setAutolockTimer,
-    getNewReceivingAddress,
+    getNewAddress,
   };
 };
 

@@ -345,7 +345,7 @@ const WalletController = (): IWalletController => {
     } else {
       sjs.Signer.Signer.receivingIndex = -1;
 
-      address = await account.getNewReceivingAddress();
+      address = await account.getNewAddress('receivingIndex');
     }
 
     return account.setNewAddress(address);
