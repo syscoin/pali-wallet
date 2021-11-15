@@ -8,7 +8,7 @@
     "48": "assets/icons/favicon-48.png",
     "128": "assets/icons/favicon-128.png"
   },
-  "description": "Extension wallet for SYS blockchain.",
+  "description": "A Non-Custodial Crypto Wallet for Syscoin that Supports Trezor™",
   "short_name": "pali",
   "permissions": [
     "http://*/*",
