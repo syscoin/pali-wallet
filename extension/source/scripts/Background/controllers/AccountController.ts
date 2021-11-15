@@ -737,6 +737,24 @@ const AccountController = (actions: {
     };
   };
 
+  const getNewReceivingAddress = async (skipIncrement?: boolean) => {
+    if (sysjs.Signer.Signer.receivingIndex === -1 && sysjs.Signer.blockbookURL) {
+      await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.Signer.getAccountXpub(), 'tokens=used&details=tokens', true, sysjs.Signer);
+    }
+
+    const address = sysjs.Signer.createAddress(sysjs.Signer.Signer.receivingIndex + 1, false);
+
+    if (address) {
+      if (!skipIncrement) {
+        sysjs.Signer.Signer.receivingIndex++;
+      }
+
+      return address;
+    }
+  
+    return null
+  }
+
   const subscribeAccount = async (isHardwareWallet = false, sjs?: any, label?: string, walletCreation?: boolean) => {
     if (isHardwareWallet) {
       if (TrezorSigner === null || TrezorSigner === undefined) {
@@ -780,18 +798,20 @@ const AccountController = (actions: {
     }
 
     const res: IAccountInfo | null = await getAccountInfo();
+
     account = {
-      id: sysjs.Signer.Signer.accountIndex === 0 ? 0 : sysjs.Signer.Signer.accountIndex,
+      id: sysjs.Signer.Signer.accountIndex,
       label: label || `Account ${sysjs.Signer.Signer.accountIndex + 1}`,
       balance: res.balance,
       transactions: res.transactions,
       xpub: sysjs.Signer.getAccountXpub(),
       xprv: CryptoJS.AES.encrypt(sysjs.Signer.Signer.accounts[sysjs.Signer.Signer.accountIndex].getAccountPrivateKey(), String(sysjs.Signer.Signer.accountIndex)).toString(),
-      address: { 'main': await sysjs.Signer.getNewReceivingAddress() },
+      address: { 'main': await getNewReceivingAddress() },
       assets: res.assets,
       connectedTo: [],
       isTrezorWallet: false
     };
+
     store.dispatch(createAccount(account));
 
     return account!.xpub;
@@ -1184,7 +1204,7 @@ const AccountController = (actions: {
     let txInfo;
 
     const { decimals } = await getDataAsset(assetGuid);
-    const receivingAddress = await sysjs.Signer.getNewReceivingAddress();
+    const receivingAddress = await getNewReceivingAddress();
 
     const assetMap = new Map([
       [assetGuid, {
@@ -1470,7 +1490,7 @@ const AccountController = (actions: {
           changeAddress: await getNewChangeAddress(false),
           outputs: [{
             value: new sys.utils.BN(amount * (10 ** decimals)),
-            address: await sysjs.Signer.getNewReceivingAddress()
+            address: await getNewReceivingAddress()
           }]
         }]
     ]);
@@ -1741,7 +1761,7 @@ const AccountController = (actions: {
         changeAddress: await getNewChangeAddress(true),
         outputs: [{
           value: new sys.utils.BN(0),
-          address: await sysjs.Signer.getNewReceivingAddress()
+          address: await getNewReceivingAddress(true)
         }]
       }]
     ]);
@@ -1941,7 +1961,8 @@ const AccountController = (actions: {
     setDataFromWalletToIssueNFT,
     importPsbt,
     decryptAES,
-    setAutolockTimer
+    setAutolockTimer,
+    getNewReceivingAddress,
   };
 };
 
