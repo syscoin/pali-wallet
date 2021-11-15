@@ -3,7 +3,7 @@ import { useHistory } from 'react-router-dom';
 import { Button } from 'components/index';;
 import { useController } from 'hooks/index';
 
-import {Layout} from '../../common/Layout';
+import { Layout } from '../../common/Layout';
 
 const CreatePhrase: FC = () => {
   const history = useHistory();

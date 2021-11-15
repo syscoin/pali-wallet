@@ -1,4 +1,4 @@
-import React, { ReactNode, FC } from 'react';
+import React, { ReactNode, FC, useEffect } from 'react';
 import Header from 'containers/common/Header';
 import { Tooltip } from 'antd';
 import { Icon } from 'components/index';
@@ -21,6 +21,10 @@ export const Layout: FC<ILayout> = ({
   normalHeader = false,
   tooltipText = '',
 }) => {
+  useEffect(() => {
+    console.log('tooltip', tooltipText)
+  }, [tooltipText])
+
   return (
     <div className="flex flex-col justify-center items-center">
       <Header
@@ -38,7 +42,6 @@ export const Layout: FC<ILayout> = ({
               <Icon name="question" className="text-brand-graylight w-4" />
             </Tooltip>
           </div>
-
         ) : (
           <span className="text-brand-royalBlue font-bold text-xl text-center tracking-normal">{title}</span>
         )}
