@@ -1635,8 +1635,10 @@ const AccountController = (actions: {
 
       const txOpts = { rbf };
       let txInfo;
+
+      const changeAddress = await getNewAddress('changeIndex');
+
       if (account.isTrezorWallet) {
-        const changeAddress = await getNewAddress('changeIndex');
         const txData = await sysjs.createTransaction(txOpts, changeAddress, outputsArray, new sys.utils.BN(fee * 1e8), account.xpub);
         if (!txData) {
           console.log('Could not create transaction, not enough funds?')
@@ -1661,7 +1663,7 @@ const AccountController = (actions: {
 
       } else {
         try {
-          const pendingTx = await sysjs.createTransaction(txOpts, null, outputsArray, new sys.utils.BN(fee * 1e8));
+          const pendingTx = await sysjs.createTransaction(txOpts, changeAddress, outputsArray, new sys.utils.BN(fee * 1e8));
 
           txInfo = pendingTx.extractTransaction().getId();
         } catch (error) {
