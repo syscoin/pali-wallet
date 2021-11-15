@@ -594,8 +594,6 @@ const executeMessages = async () => {
           payoutAddress
         } = request.messageData;
 
-        console.log('token create auxfee', auxfeedetails)
-
         if (precision < 0 || precision > 8) {
           throw new Error('invalid precision value');
         }
