@@ -10,3 +10,4 @@ export * from './useUtils';
 export * from './useWalletController';
 export * from './useController';
 export * from './usePrice';
+export * from './useDappConnection';

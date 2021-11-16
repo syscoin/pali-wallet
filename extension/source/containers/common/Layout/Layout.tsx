@@ -6,8 +6,6 @@ import { Icon } from 'components/index';
 
 interface ILayout {
   children: ReactNode;
-  linkTo?: string;
-  showLogo?: boolean;
   title: string;
   importSeed?: boolean;
   onlySection?: boolean;
@@ -16,12 +14,9 @@ interface ILayout {
   tooltipText?: string;
 }
 
-const Layout: FC<ILayout> = ({
+export const Layout: FC<ILayout> = ({
   title,
-  // linkTo = '#',
-  // showLogo = false,
   children,
-  // importSeed = false,
   onlySection = false,
   accountHeader = false,
   normalHeader = false,
@@ -56,5 +51,3 @@ const Layout: FC<ILayout> = ({
     </div>
   );
 };
-
-export default Layout;

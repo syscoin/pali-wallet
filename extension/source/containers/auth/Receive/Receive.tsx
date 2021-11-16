@@ -5,7 +5,7 @@ import { IconButton, Icon } from 'components/index';
 import Header from 'containers/common/Header';
 import { useHistory } from 'react-router-dom';
 
-const WalletReceive = () => {
+export const Receive = () => {
   const { useCopyClipboard } = useUtils();
   const [isCopied, copyText] = useCopyClipboard();
   const controller = useController();
@@ -68,5 +68,3 @@ const WalletReceive = () => {
     </div>
   );
 };
-
-export default WalletReceive;

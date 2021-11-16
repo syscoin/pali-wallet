@@ -1,11 +1,11 @@
 import React from 'react';
 import { Button, Link } from 'components/index';
 
-import Layout from '../../common/Layout';
+import {Layout} from '../../common/Layout';
 
 const WelcomeWallet = () => {
   return (
-    <Layout title={`Let's create a new \n Wallet`} linkTo="/app.html" showLogo>
+    <Layout title={`Let's create a new \n Wallet`}>
       <span>
         {`To create a wallet, you will generate a unique identifier and choose a password. They will allow you to interact with the SYS blockchain.\n
         Note that this software only temporarily stores your wallet information, and only if you choose to. Please make sure to safely back up the wallet information.`}

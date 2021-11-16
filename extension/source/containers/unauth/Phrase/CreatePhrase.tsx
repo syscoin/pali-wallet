@@ -3,7 +3,7 @@ import { useHistory } from 'react-router-dom';
 import { Button } from 'components/index';;
 import { useController } from 'hooks/index';
 
-import Layout from '../../common/Layout';
+import {Layout} from '../../common/Layout';
 
 const CreatePhrase: FC = () => {
   const history = useHistory();
@@ -20,7 +20,6 @@ const CreatePhrase: FC = () => {
       title="Recovery phrase"
       tooltipText="A recovery phrase is a series of 12 words in a specific order. This word combination is unique to your wallet. Make sure to have pen and paper ready so you can write it down."
       onlySection
-      linkTo="/app.html"
     >
       <div className="flex justify-center items-center flex-col gap-4 mt-8">
         {phrases && (

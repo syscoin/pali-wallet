@@ -2,7 +2,7 @@ import React from 'react';
 import { useHistory } from 'react-router-dom';
 import { Button } from 'components/index';;
 // import { useController, useUtils } from 'hooks/index';
-import ViewLayout from '../Layout';
+import { AuthViewLayout } from 'containers/common/Layout';
 
 const DeleteWalletView = () => {
   // const controller = useController();
@@ -22,7 +22,7 @@ const DeleteWalletView = () => {
   // };
 
   return (
-    <ViewLayout title="DELETE WALLET">
+    <AuthViewLayout title="DELETE WALLET">
       <div >
         <form>
           <span>
@@ -48,7 +48,7 @@ const DeleteWalletView = () => {
           </div>
         </form>
       </div>
-    </ViewLayout>
+    </AuthViewLayout>
   );
 };
 

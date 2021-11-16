@@ -1,9 +1,10 @@
 import React, { FC } from 'react';
 import { useUtils } from 'hooks/index';
-import ViewLayout from '../Layout';
+import { AuthViewLayout } from 'containers/common/Layout';
 
 const AboutView: FC = () => {
   const { alert } = useUtils();
+  
   const handleSupportClick = () => {
     alert.show('You will be redirected to Syscoin Discord, please contact support team at #pali_support', {
       timeout: 5000,
@@ -18,7 +19,7 @@ const AboutView: FC = () => {
     window.open('https://docs.paliwallet.com/');
   };
   return (
-    <ViewLayout title="INFO & HELP">
+    <AuthViewLayout title="INFO & HELP">
       <span>Pali Wallet Chrome Extension v1.0</span>
       <span>Version: 1.0.10</span>
       <span>
@@ -37,7 +38,7 @@ const AboutView: FC = () => {
           Pali API
         </a>
       </span>
-    </ViewLayout>
+    </AuthViewLayout>
   );
 };
 

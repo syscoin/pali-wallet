@@ -1,10 +1,9 @@
 import React from 'react';
 // import { Button, Icon } from 'components/index';;
 // import { useController, useFormat } from 'hooks/index';
-// import { ellipsis } from 'containers/auth/helpers';
 
 // import { MAIN_VIEW } from '../routes';
-import ViewLayout from '../Layout';
+import { AuthViewLayout } from 'containers/common/Layout';
 // import { useHistory } from 'react-router-dom';
 
 const NewAccountView = () => {
@@ -28,7 +27,7 @@ const NewAccountView = () => {
   // };
 
   return (
-    <ViewLayout title="CREATE ACCOUNT">
+    <AuthViewLayout title="CREATE ACCOUNT">
       {/* <span>Your new account has been created</span>
       <span>Click to copy your public address:</span>
       <span
@@ -72,7 +71,7 @@ const NewAccountView = () => {
         </div>
       </form> */}
       <p>new account</p>
-    </ViewLayout>
+    </AuthViewLayout>
   );
 };
 

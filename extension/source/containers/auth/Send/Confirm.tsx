@@ -1,23 +1,21 @@
 import React, { useState } from 'react';
 import Header from 'containers/common/Header';
-import Layout from 'containers/common/Layout';
+import { Layout } from 'containers/common/Layout';
 import { Button, Icon } from 'components/index';;
 import { useController, useFiat, useStore, useUtils, useFormat } from 'hooks/index';
 import { useHistory } from 'react-router-dom';
 import { IAccountState } from 'state/wallet/types';
 import { browser } from 'webextension-polyfill-ts';
 
-import { getHost } from '../../../scripts/Background/helpers';
-
 import { useEffect } from 'react';
 import { Assets } from 'scripts/types';
 
-const SendConfirm = () => {
+export const SendConfirm = () => {
   const controller = useController();
   const getFiatAmount = useFiat();
   const history = useHistory();
 
-  const { alert } = useUtils();
+  const { alert, getHost } = useUtils();
   const { ellipsis, formatURL } = useFormat();
   const { accounts, activeAccountId, currentSenderURL, confirmingTransaction } = useStore();
 
@@ -154,7 +152,7 @@ const SendConfirm = () => {
   }
 
   return confirmed ? (
-    <Layout title="Your transaction is underway" linkTo="/remind" showLogo>
+    <Layout title="Your transaction is underway">
       <div className="body-description">
         You can follow your transaction under activity on your account screen.
       </div>
@@ -244,5 +242,3 @@ const SendConfirm = () => {
     </div>
   );
 };
-
-export default SendConfirm;

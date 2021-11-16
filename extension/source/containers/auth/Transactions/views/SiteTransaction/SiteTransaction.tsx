@@ -1,5 +1,10 @@
 import React, { useState, FC } from 'react';
-<<<<<<< HEAD:extension/source/containers/auth/SiteTransaction/SiteTransaction.tsx
+
+import { AuthViewLayout } from 'containers/common/Layout';
+import { Button } from 'components/index';;
+import { useHistory } from 'react-router-dom';
+import { useController/*, useUtils*/, useBrowser } from 'hooks/index';
+
 import Layout from 'containers/common/Layout';
 import { Button } from 'components/index';
 import { useHistory } from 'react-router-dom';
@@ -8,12 +13,11 @@ import {
   // useUtils
 } from 'hooks/index';
 import { browser } from 'webextension-polyfill-ts';
-=======
+
 import { AuthViewLayout } from 'containers/common/Layout';
 import { Button } from 'components/index';;
 import { useHistory } from 'react-router-dom';
 import { useController/*, useUtils*/, useBrowser } from 'hooks/index';
->>>>>>> origin/styles:extension/source/containers/auth/Transactions/views/SiteTransaction/SiteTransaction.tsx
 
 interface ISiteTransaction {
   callbackToSetDataFromWallet: any;
@@ -33,10 +37,9 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
   const controller = useController();
   const history = useHistory();
   // const { alert } = useUtils();
-<<<<<<< HEAD:extension/source/containers/auth/SiteTransaction/SiteTransaction.tsx
-=======
   const { browser } = useBrowser();
->>>>>>> origin/styles:extension/source/containers/auth/Transactions/views/SiteTransaction/SiteTransaction.tsx
+  const { browser } = useBrowser();
+
 
   // const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState('0');
@@ -105,13 +108,10 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
 
   return (
     <div>
-<<<<<<< HEAD:extension/source/containers/auth/SiteTransaction/SiteTransaction.tsx
       <Layout title={layoutTitle}>
         <form>
-=======
       <AuthViewLayout title={layoutTitle}>
         <form >
->>>>>>> origin/styles:extension/source/containers/auth/Transactions/views/SiteTransaction/SiteTransaction.tsx
           <label htmlFor="fee">Fee</label>
 
           <section>

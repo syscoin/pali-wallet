@@ -4,6 +4,7 @@ import currency from 'currency.js';
 const getYesterday = () => {
   const d = new Date();
   d.setDate(d.getDate() - 1);
+
   return d;
 };
 
@@ -28,6 +29,7 @@ export const useFormat = () => {
 
     if (formatedDate === format(today, formatStyle)) return 'Today';
     if (formatedDate === format(yesterday, formatStyle)) return 'Yesterday';
+    
     return formatedDate;
   };
 

@@ -39,9 +39,18 @@ export const useUtils = () => {
 
   const alert = useAlert();
 
+  const getHost = (url: string) => {
+    if (typeof url === 'string' && url !== '') {
+      return new URL(url).host;
+    }
+  
+    return url;
+  };
+
   return {
     useSettingsView,
     useCopyClipboard,
-    alert
+    alert,
+    getHost
   }
 }

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
-import { useAlert } from 'react-alert';
-import { browser } from 'webextension-polyfill-ts';
+import Import from 'containers/common/Import';
+
 import {
   Switch,
   Route,
@@ -8,31 +8,24 @@ import {
   useLocation,
   useHistory,
 } from 'react-router-dom';
-import Start from 'containers/auth/Start';
-import Home from 'containers/auth/Home';
-import Send, { SendConfirm } from 'containers/auth/Send';
-import UpdateAsset, { UpdateConfirm } from 'containers/auth/UpdateAsset';
-import Create, { CreateTokenConfirm } from 'containers/auth/Create';
-import IssueAsset, { IssueTokenConfirm } from 'containers/auth/IssueAsset';
-import IssueNFT, { CreateAndIssueNFTConfirm } from 'containers/auth/IssueNFT';
-import Receive from 'containers/auth/Receive';
-import Import from 'containers/common/Import';
-import ConnectWallet from 'containers/auth/ConnectWallet';
-import ConnectedAccounts from 'containers/auth/ConnectWallet/ConnectedAccounts';
-import { useController } from 'hooks/index';
-import { useSelector } from 'react-redux';
-import { RootState } from 'state/store';
-import IWalletState from 'state/wallet/types';
-import TransferOwnership, {
-  TransferOwnershipConfirm,
-} from 'containers/auth/TransferOwnership';
 
-import { getHost } from '../scripts/Background/helpers';
+import {
+  useController,
+  useStore,
+  useUtils,
+  useBrowser
+} from 'hooks/index';
 
-import { SendMatchProps } from './types';
-import SignPSBT from 'containers/auth/SignPSBT';
-import MintNFT, { MintNFTConfirm } from 'containers/auth/MintNFT';
-import SignAndSend from 'containers/auth/SignAndSend';
+import {
+  Home, 
+  Receive,
+  ConnectWallet,
+  ConnectedAccounts,
+  Send,
+  SendConfirm,
+  Start
+} from 'containers/auth/index';
+
 import {
   AboutView,
   AccountView,
@@ -45,16 +38,36 @@ import {
   PrivateKeyView
 } from 'containers/auth/Settings/views';
 
+import {
+  Create,
+  CreateTokenConfirm,
+  IssueAsset,
+  IssueAssetConfirm,
+  IssueNFT,
+  CreateAndIssueNFTConfirm,
+  UpdateAsset,
+  UpdateAssetConfirm,
+  TransferOwnership,
+  TransferOwnershipConfirm,
+  MintNFT,
+  MintNFTConfirm,
+  SignAndSend,
+  SignPSBT,
+} from 'containers/auth/Transactions/views';
+
+import { SendMatchProps } from './types';
+
 const Auth = () => {
   const location = useLocation();
-  const alert = useAlert();
   const history = useHistory();
   const controller = useController();
   const isUnlocked = !controller.wallet.isLocked();
 
+  const { getHost, alert } = useUtils();
+  const { browser } = useBrowser();
+
   const {
     accounts,
-    tabs,
     confirmingTransaction,
     creatingAsset,
     issuingNFT,
@@ -64,8 +77,9 @@ const Auth = () => {
     signingTransaction,
     signingPSBT,
     mintNFT,
-  }: IWalletState = useSelector((state: RootState) => state.wallet);
-  const { currentURL, canConnect } = tabs;
+    currentURL,
+    canConnect
+  } = useStore();
 
   const connectedAccounts = accounts.filter((account) => {
     return (
@@ -245,7 +259,7 @@ const Auth = () => {
               <Route path="/issueAsset" component={IssueAsset} exact />
               <Route
                 path="/issueAsset/confirm"
-                component={IssueTokenConfirm}
+                component={IssueAssetConfirm}
                 exact
               />
               <Route path="/mintNFT" component={MintNFT} exact />
@@ -257,7 +271,7 @@ const Auth = () => {
               <Route path="/updateAsset" component={UpdateAsset} exact />
               <Route
                 path="/updateAsset/confirm"
-                component={UpdateConfirm}
+                component={UpdateAssetConfirm}
                 exact
               />
               <Route path="/issueNFT" component={IssueNFT} exact />

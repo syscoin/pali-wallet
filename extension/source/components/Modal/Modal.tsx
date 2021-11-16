@@ -1,9 +1,5 @@
 import React, { FC } from 'react';
-import { browser } from 'webextension-polyfill-ts';
-import { useStore } from 'hooks/index';
-
-import { getHost } from '../../scripts/Background/helpers';
-import { ellipsis, formatURL } from '../../containers/auth/helpers';
+import { useFormat, useUtils, useBrowser, useStore } from 'hooks/index';
 
 interface IModal {
   callback?: any;
@@ -14,6 +10,9 @@ interface IModal {
 
 export const Modal: FC<IModal> = ({ title, message, connected, callback }) => {
   const { accounts } = useStore();
+  const { ellipsis, formatURL } = useFormat();
+  const { getHost } = useUtils();
+  const { browser } = useBrowser();
   
   const handleDisconnect = (id: number) => {
     browser.runtime.sendMessage({

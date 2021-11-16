@@ -1,11 +1,11 @@
 import React from 'react';
 import { Button } from 'components/index';;
 
-import Layout from '../../common/Layout';
+import {Layout} from '../../common/Layout';
 
 const RemindPhrase = () => {
   return (
-    <Layout title={`Let's create your\nrecovery phrase`} linkTo="/create/pass">
+    <Layout title={`Let's create your\nrecovery phrase`}>
       <span className="body-description">
         A recovery phrase is a series of 12 words in a specific order. This word
         combination is unique to your wallet. Make sure to have pen and paper

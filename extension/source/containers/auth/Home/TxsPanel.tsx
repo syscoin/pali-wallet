@@ -34,7 +34,7 @@ interface ITxsPanel {
   txidSelected: any;
 }
 
-const TxsPanel: FC<ITxsPanel> = ({ transactions,
+export const TxsPanel: FC<ITxsPanel> = ({ transactions,
                                    assets,
                                    // setOpenBlockExplorer,
                                    // setTxidSelected,
@@ -57,59 +57,58 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions,
   const { changingNetwork } = useStore();
   // const { formatDistanceDate, formatCurrency } = useFormat();
 
-  // const isShowedGroupBar = useCallback(
-  //   (tx: Transaction, idx: number) => {
-  //     return (
-  //       idx === 0 ||
-  //       new Date(tx.blockTime * 1e3).toDateString() !==
-  //       new Date(transactions[idx - 1].blockTime * 1e3).toDateString()
-  //     );
-  //   },
-  //   [transactions]
-  // );
+  const isShowedGroupBar = useCallback(
+    (tx: Transaction, idx: number) => {
+      return (
+        idx === 0 ||
+        new Date(tx.blockTime * 1e3).toDateString() !==
+        new Date(transactions[idx - 1].blockTime * 1e3).toDateString()
+      );
+    },
+    [transactions]
+  );
 
-  // const handleFetchMoreTxs = () => {
-  //   if (transactions.length) {
-  //     controller.wallet.account.updateTxs();
-  //   }
-  // };
+  const handleFetchMoreTxs = () => {
+    if (transactions.length) {
+      controller.wallet.account.updateTxs();
+    }
+  };
 
-  // const handleScroll = useCallback((event) => {
-  //   event.persist();
-  //
-  //   if (event.target.scrollTop) setShowed(true);
-  //
-  //   setScrollArea(event.target);
-  //   const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
-  //
-  //   if (scrollOffset === event.target.clientHeight) {
-  //     if (!changingNetwork) {
-  //       handleFetchMoreTxs();
-  //     }
-  //   }
-  // }, []);
+  const handleScroll = useCallback((event) => {
+    event.persist();
+
+    if (event.target.scrollTop) setShowed(true);
+
+    setScrollArea(event.target);
+    const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
+
+    if (scrollOffset === event.target.clientHeight) {
+      if (!changingNetwork) {
+        handleFetchMoreTxs();
+      }
+    }
+  }, []);
 
   const handleGoTop = () => {
-    // eslint-disable-next-line prettier/prettier
     scrollArea!.scrollTo({ top: 0, behavior: 'smooth' });
     setShowed(false);
   };
 
-  // const getTxType = (tx: Transaction) => {
-  //   if (tx.tokenType === "SPTAssetActivate") {
-  //     return 'SPT creation';
-  //   }
-  //
-  //   if (tx.tokenType === "SPTAssetSend") {
-  //     return 'SPT mint';
-  //   }
-  //
-  //   if (tx.tokenType === "SPTAssetUpdate") {
-  //     return 'SPT update';
-  //   }
-  //
-  //   return 'Transaction';
-  // }
+  const getTxType = (tx: Transaction) => {
+    if (tx.tokenType === "SPTAssetActivate") {
+      return 'SPT creation';
+    }
+
+    if (tx.tokenType === "SPTAssetSend") {
+      return 'SPT mint';
+    }
+
+    if (tx.tokenType === "SPTAssetUpdate") {
+      return 'SPT update';
+    }
+
+    return 'Transaction';
+  }
 
   return (
     <div className="w-full flex items-center flex-col">

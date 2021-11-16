@@ -6,6 +6,7 @@ export const getHost = (url: string) => {
   return url;
 };
 
+
 export const sendMessage = (
   eventReceivedDetails: any,
   postMessageDetails: any

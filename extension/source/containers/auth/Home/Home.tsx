@@ -4,14 +4,14 @@ import { useController, useStore, useFiat, useFormat } from 'hooks/index';
 import { useHistory } from 'react-router-dom';
 
 import Header from 'containers/common/Header';
-import TxsPanel from './TxsPanel';
+import {TxsPanel} from './TxsPanel';
 import { ReloadOutlined } from '@ant-design/icons';
 
-const Home = () => {
+export const Home = () => {
   const controller = useController();
   const history = useHistory();
   const getFiatAmount = useFiat();
-  
+
   const { formatNumber } = useFormat();
 
   const {

@@ -4,7 +4,7 @@ import { useController } from 'hooks/index';
 import LogoImage from 'assets/images/logo-s.svg';
 import { Form, Input } from 'antd';
 
-const Starter = () => {
+export const Start = () => {
   const controller = useController();
 
   const onSubmit = (data: any) => {
@@ -65,4 +65,4 @@ const Starter = () => {
   );
 };
 
-export default Starter;
+export default Start;
