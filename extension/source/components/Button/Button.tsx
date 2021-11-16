@@ -27,7 +27,8 @@ export const Button: FC<IButton> = ({
   loading = false,
   type = 'button',
   onClick,
-  className = "tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
+  className = ""
+  // className="py-2.5 px-12 rounded-full bg-brand-navy hover:bg-brand-primary"
 }) => {
   return (
     <button

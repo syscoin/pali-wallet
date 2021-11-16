@@ -4,6 +4,9 @@ import Section from './Section';
 import NormalHeader from './NormalHeader';
 import { useController, useStore } from 'hooks/index';
 
+import { useHistory } from 'react-router-dom';
+import { HomeOutlined } from '@ant-design/icons';
+
 const Header = ({
   importSeed = false,
   onlySection = false,
@@ -23,11 +26,18 @@ const Header = ({
     showAccountSettings(false);
     showGeneralSettings(false);
   };
-
+  const history = useHistory();
   return (
     <div>
       {onlySection && (
-        <Section />
+        <div className="grid grid-cols-6 gap-4">
+          <div className="col-start-2 col-span-4">
+            <Section />
+          </div>
+          <div className="col-end-7">
+            <button className="pl-6" onClick={() => history.goBack()}><HomeOutlined style={{color: '#4ca1cf'}} /></button>
+          </div>
+        </div>
       )}
   
       {normalHeader && (

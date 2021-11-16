@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Icon, IconButton, Button, ModalBlock } from 'components/index';
+import { Button, Icon, ModalBlock } from 'components/index';
 import { useController, useStore, useFiat, useFormat } from 'hooks/index';
 import { useHistory } from 'react-router-dom';
 
 import Header from 'containers/common/Header';
 import TxsPanel from './TxsPanel';
+import { ReloadOutlined } from '@ant-design/icons';
 
 const Home = () => {
   const controller = useController();
@@ -115,7 +116,11 @@ const Home = () => {
         <>
           <Header accountHeader />
 
-          <section className="flex justify-center items-center flex-col gap-4 text-brand-white bg-brand-green">
+          <section className="flex items-center flex-col gap-4 text-brand-white bg-brand-navydarker">
+            <button onClick={handleRefresh} className="">
+              <ReloadOutlined />
+            </button>
+
             {changingNetwork ? (
               <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
             ) : (
@@ -141,23 +146,21 @@ const Home = () => {
               </small>
             )}
 
-            <IconButton onClick={handleRefresh} type="primary" shape="circle">
-              <Icon name="reload" className="bg-brand-gray200 text-brand-navy w-4" />
-            </IconButton>
-
             <div >
               <Button
+                className="bg-brand-navydarker rounded-l-full border border-brand-deepPink tracking-normal text-base py-1.5 px-12 cursor-pointer mr-px hover:bg-brand-deepPink"
                 type="button"
                 onClick={() => history.push('/send')}
               >
                 Send
               </Button>
-              <Button
+              <button
+                className="bg-brand-navydarker rounded-r-full border border-brand-royalBlue tracking-normal text-base py-1.5 px-12 cursor-pointer ml-px hover:bg-brand-royalBlue"
                 type="button"
                 onClick={() => history.push('/receive')}
               >
                 Receive
-              </Button>
+              </button>
             </div>
           </section>
 

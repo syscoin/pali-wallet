@@ -3,6 +3,7 @@ import Header from 'containers/common/Header';
 import { Tooltip } from 'antd';
 import { Icon } from 'components/index';
 
+
 interface ILayout {
   children: ReactNode;
   linkTo?: string;
@@ -26,13 +27,16 @@ const Layout: FC<ILayout> = ({
   normalHeader = false,
   tooltipText = '',
 }) => {
+  
   return (
     <div className="flex flex-col justify-center items-center">
+
       <Header
         onlySection={onlySection}
         accountHeader={accountHeader}
         normalHeader={normalHeader}
       />
+
       <section>
         {tooltipText ? (
           <div className="flex justify-center items-center gap-2">

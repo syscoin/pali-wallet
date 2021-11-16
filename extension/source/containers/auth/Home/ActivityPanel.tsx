@@ -2,11 +2,12 @@ import React, { FC } from 'react';
 
 interface IActivityPanel {
   show: boolean;
+  classNames: any
 }
 
-const ActivityPanel: FC<IActivityPanel> = ({ show }) => {
+const ActivityPanel: FC<IActivityPanel> = ({ show, classNames }) => {
   return (
-    <ul>
+    <ul className={classNames}>
       activity panel
 
       {show ? (

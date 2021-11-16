@@ -22,7 +22,7 @@ module.exports = {
       maxWidth: {
         popup: '600px',
         input: '18rem',
-        '1/2': '50%',
+        '1/2': '50%', 
         '70': '70%'
       },
       minWidth: {

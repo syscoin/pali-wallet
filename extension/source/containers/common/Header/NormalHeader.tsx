@@ -1,10 +1,11 @@
 import React, { FC, useEffect, useState, ChangeEvent } from 'react';
-import { IconButton, Modal, Select, Icon } from 'components/index';
+import { Modal, Select } from 'components/index';
 import Settings from 'containers/auth/Settings';
 import { SYS_NETWORK } from 'constants/index';
 import { getHost } from '../../../scripts/Background/helpers';
 import { browser } from 'webextension-polyfill-ts';
 import { useController, useStore } from 'hooks/index';
+import { SettingOutlined } from '@ant-design/icons';
 
 interface INormalHeader {
   importSeed: boolean;
@@ -88,16 +89,30 @@ const NormalHeader: FC<INormalHeader> = ({
   }, [accounts, activeAccountId, currentTabURL]);
 
   return (
-    <div className="flex justify-between items-center bg-brand-gray200">
+    <div className="flex justify-between items-center bg-brand-navydarker text-gray-300 p-2">
       <Select
         value={network || SYS_NETWORK.main.id}
-        className=""
+        className="bg-brand-navydarker text-gray-300"
         onChange={handleChangeNetwork}
         options={[
           { [SYS_NETWORK.main.id]: SYS_NETWORK.main.label },
           { [SYS_NETWORK.testnet.id]: SYS_NETWORK.testnet.label },
         ]}
       />
+
+      {isConnected ? (
+        <small
+          onClick={() => setIsOpenModal(!isOpenModal)}
+        >
+          Connected
+        </small>
+      ) : (
+        <small
+          onClick={() => setIsOpenModal(!isOpenModal)}
+        >
+          Not connected
+        </small>
+      )}
 
       {isOpenModal && (
         <div
@@ -121,32 +136,14 @@ const NormalHeader: FC<INormalHeader> = ({
         />
       )}
 
-      {isConnected ? (
-        <small
-          onClick={() => setIsOpenModal(!isOpenModal)}
-        >
-          Connected
-        </small>
-      ) : (
-        <small
-          onClick={() => setIsOpenModal(!isOpenModal)}
-        >
-          Not connected
-        </small>
-      )}
-
       {encriptedMnemonic && !importSeed ? (
-        <IconButton
-          type="primary"
-          shape="circle"
-          onClick={() => {
-            console.log('generalSettingsShowed', generalSettingsShowed)
-            generalSettingsShowed ? handleCloseSettings() : showSettings(!generalSettingsShowed)
-          }
-          }
-        >
-          <Icon name="dots" className="bg-brand-gray text-brand-deepPink" />
-        </IconButton>
+
+        <button onClick={() => {
+          console.log('generalSettingsShowed', generalSettingsShowed)
+          generalSettingsShowed ? handleCloseSettings() : showSettings(!generalSettingsShowed)}}
+          >
+            <SettingOutlined />
+        </button>
       ) : (
         null
       )}

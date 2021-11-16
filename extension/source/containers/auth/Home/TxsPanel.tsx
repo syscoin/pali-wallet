@@ -1,13 +1,18 @@
 /* eslint-disable no-nested-ternary */
 import * as React from 'react';
-import { FC, Fragment, useCallback, useState } from 'react';
-import { v4 as uuid } from 'uuid';
+import { FC,
+  // useCallback,
+  useState } from 'react';
+// import { v4 as uuid } from 'uuid';
 import { Icon, IconButton, Button } from 'components/index';
-import { useController, useStore, useFormat } from 'hooks/index';
-import SyscoinIcon from 'assets/images/logo-s.svg';
-import ActivityPanel from './ActivityPanel';
+import {
+  // useController,
+  useStore } from 'hooks/index';
 
+// import SyscoinIcon from 'assets/images/logo-s.svg';
 import { Transaction, Assets } from '../../../scripts/types';
+
+import ActivityPanel from './ActivityPanel';
 import AssetsPanel from './AssetsPanel';
 
 interface ITxsPanel {
@@ -29,73 +34,89 @@ interface ITxsPanel {
   txidSelected: any;
 }
 
-const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, setTxidSelected, setAssetSelected, setOpenAssetBlockExplorer, setTxType, setAssetType, getTransactionData, setTx, setAssetTx, getTransactionAssetData }) => {
-  const controller = useController();
+const TxsPanel: FC<ITxsPanel> = ({ transactions,
+                                   assets,
+                                   // setOpenBlockExplorer,
+                                   // setTxidSelected,
+                                   // setAssetSelected,
+                                   // setOpenAssetBlockExplorer,
+                                   // setTxType,
+                                   // setAssetType,
+                                   // getTransactionData,
+                                   // setTx,
+                                   // setAssetTx,
+                                   // getTransactionAssetData
+}) => {
+  // const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
   const [isActivity, setActivity] = useState<boolean>(true);
-  const [scrollArea, setScrollArea] = useState<HTMLElement>();
+  const [scrollArea,
+    // setScrollArea
+  ] = useState<HTMLElement>();
 
   const { changingNetwork } = useStore();
   // const { formatDistanceDate, formatCurrency } = useFormat();
 
-  const isShowedGroupBar = useCallback(
-    (tx: Transaction, idx: number) => {
-      return (
-        idx === 0 ||
-        new Date(tx.blockTime * 1e3).toDateString() !==
-        new Date(transactions[idx - 1].blockTime * 1e3).toDateString()
-      );
-    },
-    [transactions]
-  );
+  // const isShowedGroupBar = useCallback(
+  //   (tx: Transaction, idx: number) => {
+  //     return (
+  //       idx === 0 ||
+  //       new Date(tx.blockTime * 1e3).toDateString() !==
+  //       new Date(transactions[idx - 1].blockTime * 1e3).toDateString()
+  //     );
+  //   },
+  //   [transactions]
+  // );
 
-  const handleFetchMoreTxs = () => {
-    if (transactions.length) {
-      controller.wallet.account.updateTxs();
-    }
-  };
+  // const handleFetchMoreTxs = () => {
+  //   if (transactions.length) {
+  //     controller.wallet.account.updateTxs();
+  //   }
+  // };
 
-  const handleScroll = useCallback((event) => {
-    event.persist();
-
-    if (event.target.scrollTop) setShowed(true);
-
-    setScrollArea(event.target);
-    const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
-
-    if (scrollOffset === event.target.clientHeight) {
-      if (!changingNetwork) {
-        handleFetchMoreTxs();
-      }
-    }
-  }, []);
+  // const handleScroll = useCallback((event) => {
+  //   event.persist();
+  //
+  //   if (event.target.scrollTop) setShowed(true);
+  //
+  //   setScrollArea(event.target);
+  //   const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
+  //
+  //   if (scrollOffset === event.target.clientHeight) {
+  //     if (!changingNetwork) {
+  //       handleFetchMoreTxs();
+  //     }
+  //   }
+  // }, []);
 
   const handleGoTop = () => {
+    // eslint-disable-next-line prettier/prettier
     scrollArea!.scrollTo({ top: 0, behavior: 'smooth' });
     setShowed(false);
   };
 
-  const getTxType = (tx: Transaction) => {
-    if (tx.tokenType === "SPTAssetActivate") {
-      return 'SPT creation';
-    }
-
-    if (tx.tokenType === "SPTAssetSend") {
-      return 'SPT mint';
-    }
-
-    if (tx.tokenType === "SPTAssetUpdate") {
-      return 'SPT update';
-    }
-
-    return 'Transaction';
-  }
+  // const getTxType = (tx: Transaction) => {
+  //   if (tx.tokenType === "SPTAssetActivate") {
+  //     return 'SPT creation';
+  //   }
+  //
+  //   if (tx.tokenType === "SPTAssetSend") {
+  //     return 'SPT mint';
+  //   }
+  //
+  //   if (tx.tokenType === "SPTAssetUpdate") {
+  //     return 'SPT update';
+  //   }
+  //
+  //   return 'Transaction';
+  // }
 
   return (
-    <div className="w-full flex justify-center items-center flex-col">
+    <div className="w-full flex items-center flex-col">
       {!isShowed ? (
         <div>
           <Button
+            className={isActivity == false ? "flex-2 p-4 pr-12 text-white text-base bg-brand-navyborder" : "flex-2 p-4 pr-12 text-white text-base"}
             type="button"
             onClick={() => { setActivity(false) }}
           >
@@ -103,6 +124,7 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
           </Button>
 
           <Button
+            className={isActivity == true ? "flex-2 p-4 pl-12 text-white text-base bg-brand-navyborder" : "flex-2 p-4 pl-12 text-white text-base"}
             type="button"
             onClick={() => { setActivity(true) }}
           >
@@ -130,10 +152,12 @@ const TxsPanel: FC<ITxsPanel> = ({ transactions, assets, setOpenBlockExplorer, s
 
       {isActivity ? (
         <ActivityPanel
+          classNames={isActivity == true ? "flex-2 p-4 pr-12 text-white text-base bg-brand-navyborder" : "flex-2 p-4 pr-12 text-white text-base"}
           show={transactions && !changingNetwork}
         />
       ) : (
         <AssetsPanel
+          classNames={isActivity == false ? "flex-2 p-4 pr-12 text-white text-base bg-brand-navyborder" : "flex-2 p-4 pr-12 text-white text-base"}
           show={assets && !changingNetwork}
         />
       )}

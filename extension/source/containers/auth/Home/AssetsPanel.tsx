@@ -2,11 +2,12 @@ import React, { FC } from 'react';
 
 interface IAssetsPanel {
   show: boolean;
+  classNames: any
 }
 
-const AssetsPanel: FC<IAssetsPanel> = ({ show }) => {
+const AssetsPanel: FC<IAssetsPanel> = ({ show, classNames }) => {
   return (
-    <ul>
+    <ul className={classNames}>
       assets panel
 
       {show ? (

@@ -1,8 +1,11 @@
 import React, { useState, FC } from 'react';
 import Layout from 'containers/common/Layout';
-import { Button } from 'components/index';;
+import { Button } from 'components/index';
 import { useHistory } from 'react-router-dom';
-import { useController, useUtils } from 'hooks/index';
+import {
+  useController,
+  // useUtils
+} from 'hooks/index';
 import { browser } from 'webextension-polyfill-ts';
 
 interface ISiteTransaction {
@@ -22,7 +25,7 @@ const SiteTransaction: FC<ISiteTransaction> = ({
 }) => {
   const controller = useController();
   const history = useHistory();
-  const { alert } = useUtils();
+  // const { alert } = useUtils();
 
   // const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState('0');
@@ -59,7 +62,7 @@ const SiteTransaction: FC<ISiteTransaction> = ({
   //     if (Number(event.target.value) > 0.1) {
   //       alert.removeAll();
   //       alert.error(`Error: Fee too high, maximum 0.1 SYS.`, { timeout: 2000 });
-  
+
   //       return;
   //     }
   //   },
@@ -74,7 +77,7 @@ const SiteTransaction: FC<ISiteTransaction> = ({
       target: 'background',
       transactionError: true,
       invalidParams: false,
-      message: "Transaction rejected.",
+      message: 'Transaction rejected.',
     });
 
     browser.runtime.sendMessage({
@@ -87,43 +90,34 @@ const SiteTransaction: FC<ISiteTransaction> = ({
       type: 'CLOSE_POPUP',
       target: 'background',
     });
-  }
+  };
 
   return (
     <div>
       <Layout title={layoutTitle}>
-        <form >
+        <form>
           <label htmlFor="fee">Fee</label>
 
-          <section >
+          <section>
             <input type="text" />
 
-            <Button
-              type="button"
-              onClick={handleGetFee}
-            >
+            <Button type="button" onClick={handleGetFee}>
               Recommend
             </Button>
           </section>
 
-          <p >
+          <p>
             With current network conditions, we recommend a fee of {recommend}{' '}
             SYS.
           </p>
 
           <section>
             <div>
-              <Button
-                type="button"
-                onClick={handleRejectTransaction}
-              >
+              <Button type="button" onClick={handleRejectTransaction}>
                 Reject
               </Button>
 
-              <Button
-                type="button"
-                onClick={handleMessageToSetDataFromWallet}
-              >
+              <Button type="button" onClick={handleMessageToSetDataFromWallet}>
                 Next
               </Button>
             </div>
