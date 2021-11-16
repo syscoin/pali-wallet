@@ -3,7 +3,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { browser } from 'webextension-polyfill-ts';
 
 export function useController() {
-  return browser.extension.getBackgroundPage().controller;
+  const controller = browser.extension.getBackgroundPage().controller;
+
+  if (controller) {
+    return controller;
+  }
+  
+  browser.runtime.reload();
+
+  return controller;
 }
 
 export function useSettingsView() {

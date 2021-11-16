@@ -35,12 +35,12 @@ declare module '*.scss' {
     switchNetwork: (networkId: string) => void;
     switchWallet: (id: number) => void;
     unLock: (pwd: string) => boolean;
+    addNewAccount: (label: string) => Promise<string | null>;
   }
   
   declare interface IMessagesController {}
   
   declare interface IAccountController {
-    addNewAccount: (label: string) => Promise<string | null>;
     clearTransactionItem: (item: any) => void;
     confirmIssueNFT: () => Promise<any>;
     confirmIssueSPT: () => Promise<any>;
@@ -91,7 +91,7 @@ declare module '*.scss' {
     setUpdateAsset: (asset: any) => any;
     updateTokensState: () => any;
     setNewAddress: (addr: string) => boolean;
-    subscribeAccount: (isHardwareWallet: boolean, sjs?: any, label?: string, walletCreation?: boolean) => Promise<string | null>;
+    subscribeAccount: (encriptedPassword: any, isHardwareWallet: boolean, sjs?: any, label?: string, walletCreation?: boolean) => Promise<string | null>;
     setHDSigner: (accountId: number) => any;
     setNewOwnership: (data: any) => any;
     confirmIssueNFTTx: () => any;

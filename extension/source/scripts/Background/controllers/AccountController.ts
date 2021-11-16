@@ -133,10 +133,6 @@ const AccountController = (actions: {
     store.dispatch(updateLabel({ id, label }));
   };
 
-  const addNewAccount = async (label: string) => {
-    return await subscribeAccount(false, null, label);
-  };
-
   const isNFT = (guid: number) => {
     const assetGuid = BigInt.asUintN(64, BigInt(guid));
 
@@ -755,28 +751,7 @@ const AccountController = (actions: {
     return null
   }
 
-  // const getNewChangeAddress = () => {
-  //   if (this.Signer.changeIndex === -1 && this.blockbookURL) {
-  //     await fetchBackendAccount(this.blockbookURL, this.getAccountXpub(), 'tokens=used&details=tokens', true, this)
-  //     if (this.Signer.changeIndex === -1) {
-  //       await fetchBackendAccount(this.blockbookURL, this.getAccountXpub(), 'tokens=used&details=tokens', true, this)
-  //       if (this.Signer.changeIndex === -1) {
-  //         throw new Error('Could not update XPUB change index')
-  //       }
-  //     }
-  //   }
-  //   const address = this.createAddress(this.Signer.changeIndex + 1, true)
-  //   if (address) {
-  //     if (!skipIncrement) {
-  //       this.Signer.changeIndex++
-  //     }
-  //     return address
-  //   }
-  
-  //   return null
-  // }
-
-  const subscribeAccount = async (isHardwareWallet = false, sjs?: any, label?: string, walletCreation?: boolean) => {
+  const subscribeAccount = async (encriptedPassword: any, isHardwareWallet = false, sjs?: any, label?: string, walletCreation?: boolean) => {
     if (isHardwareWallet) {
       if (TrezorSigner === null || TrezorSigner === undefined) {
         TrezorSigner = sjs
@@ -826,7 +801,7 @@ const AccountController = (actions: {
       balance: res.balance,
       transactions: res.transactions,
       xpub: sysjs.Signer.getAccountXpub(),
-      xprv: CryptoJS.AES.encrypt(sysjs.Signer.Signer.accounts[sysjs.Signer.Signer.accountIndex].getAccountPrivateKey(), String(sysjs.Signer.Signer.accountIndex)).toString(),
+      xprv: CryptoJS.AES.encrypt(sysjs.Signer.Signer.accounts[sysjs.Signer.Signer.accountIndex].getAccountPrivateKey(), encriptedPassword).toString(),
       address: { 'main': await getNewAddress('receivingIndex') },
       assets: res.assets,
       connectedTo: [],
@@ -1929,7 +1904,6 @@ const AccountController = (actions: {
     subscribeAccount,
     getPrimaryAccount,
     updateAccountLabel,
-    addNewAccount,
     getLatestUpdate,
     watchMemPool,
     updateTempTx,

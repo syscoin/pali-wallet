@@ -30,7 +30,7 @@ const NewAccountView = () => {
 
   const onSubmit = async (data: any) => {
     setLoading(true);
-    const res = await controller.wallet.account.addNewAccount(data.name);
+    const res = await controller.wallet.addNewAccount(data.name);
 
     if (res) {
       setAddress(res);

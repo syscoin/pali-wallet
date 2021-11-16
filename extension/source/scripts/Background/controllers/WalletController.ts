@@ -93,7 +93,7 @@ const WalletController = (): IWalletController => {
 
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
 
-    account.subscribeAccount(false, sjs, undefined, true).then(() => {
+    account.subscribeAccount(encriptedPassword, false, sjs, undefined, true).then(() => {
       account.getPrimaryAccount(password, sjs);
       password = '';
       mnemonic = '';
@@ -128,7 +128,7 @@ const WalletController = (): IWalletController => {
       TrezorSigner.createAccount().then(async () => {
         openNotificationsPopup('Hardware Wallet connected', 'Trezor Wallet account created')
 
-        await account.subscribeAccount(true, TrezorSigner);
+        await account.subscribeAccount(encriptedPassword, true, TrezorSigner, undefined, false);
         await account.updateTokensState();
       }).catch((error: any) => {
         openNotificationsPopup('Hardware Wallet error', `Trezor Error: ${error}`);
@@ -250,6 +250,10 @@ const WalletController = (): IWalletController => {
     accountsToBeRemoved[accounts[index].id] = accounts[index].id;
   }
 
+  const addNewAccount = async (label: string) => {
+    return await account.subscribeAccount(encriptedPassword, false, null, label, false);
+  };
+
   const _getAccountDataByNetwork = (sjs: any) => {
     const { activeAccountId, accounts } = store.getState().wallet;
 
@@ -366,7 +370,8 @@ const WalletController = (): IWalletController => {
     switchWallet,
     switchNetwork,
     getNewAddress,
-    logOut
+    logOut,
+    addNewAccount
   };
 };
 

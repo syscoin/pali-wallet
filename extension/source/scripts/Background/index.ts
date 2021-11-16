@@ -896,7 +896,7 @@ const executeMessages = async () => {
 
 browser.runtime.onMessage.addListener(async (request) => {
   if (request.type === 'RELOAD_DATA' && request.target === 'background') {
-    await executeMessages()
+    await executeMessages();
   }
 });
 
