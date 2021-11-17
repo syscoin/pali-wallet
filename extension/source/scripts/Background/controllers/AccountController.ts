@@ -133,10 +133,6 @@ const AccountController = (actions: {
     store.dispatch(updateLabel({ id, label }));
   };
 
-  const addNewAccount = async (label: string) => {
-    return await subscribeAccount(false, null, label);
-  };
-
   const isNFT = (guid: number) => {
     const assetGuid = BigInt.asUintN(64, BigInt(guid));
 
@@ -737,7 +733,25 @@ const AccountController = (actions: {
     };
   };
 
-  const subscribeAccount = async (isHardwareWallet = false, sjs?: any, label?: string, walletCreation?: boolean) => {
+  // const getNewAddress = async (type: string, skipIncrement?: boolean) => {
+  //   if (sysjs.Signer.Signer[type] === -1 && sysjs.Signer.blockbookURL) {
+  //     await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.Signer.getAccountXpub(), 'tokens=used&details=tokens', true, sysjs.Signer);
+  //   }
+
+  //   const address = sysjs.Signer.createAddress(sysjs.Signer.Signer[type] + 1, false);
+
+  //   if (address) {
+  //     if (!skipIncrement) {
+  //       sysjs.Signer.Signer[type]++;
+  //     }
+
+  //     return address;
+  //   }
+  
+  //   return null
+  // }
+
+  const subscribeAccount = async (encriptedPassword: any, isHardwareWallet = false, sjs?: any, label?: string, walletCreation?: boolean) => {
     if (isHardwareWallet) {
       if (TrezorSigner === null || TrezorSigner === undefined) {
         TrezorSigner = sjs
@@ -780,18 +794,32 @@ const AccountController = (actions: {
     }
 
     const res: IAccountInfo | null = await getAccountInfo();
+
+    let mainAddress = '';
+
+    try {
+      mainAddress = await sysjs.Signer.getNewReceivingAddress();
+
+      console.log('address from sys', mainAddress)
+    } catch (error: any) {
+      console.log('error getting receiving address from sys', error)
+
+      throw new Error(error);
+    }
+
     account = {
-      id: sysjs.Signer.Signer.accountIndex === 0 ? 0 : sysjs.Signer.Signer.accountIndex,
+      id: sysjs.Signer.Signer.accountIndex,
       label: label || `Account ${sysjs.Signer.Signer.accountIndex + 1}`,
       balance: res.balance,
       transactions: res.transactions,
       xpub: sysjs.Signer.getAccountXpub(),
-      xprv: CryptoJS.AES.encrypt(sysjs.Signer.Signer.accounts[sysjs.Signer.Signer.accountIndex].getAccountPrivateKey(), String(sysjs.Signer.Signer.accountIndex)).toString(),
-      address: { 'main': await sysjs.Signer.getNewReceivingAddress() },
+      xprv: CryptoJS.AES.encrypt(sysjs.Signer.Signer.accounts[sysjs.Signer.Signer.accountIndex].getAccountPrivateKey(), encriptedPassword).toString(),
+      address: { 'main': mainAddress },
       assets: res.assets,
       connectedTo: [],
       isTrezorWallet: false
     };
+
     store.dispatch(createAccount(account));
 
     return account!.xpub;
@@ -1467,7 +1495,7 @@ const AccountController = (actions: {
     const assetMap = new Map([
       [assetGuid,
         {
-          changeAddress: await getNewChangeAddress(false),
+          changeAddress: await sysjs.Signer.getNewChangeAddress(),
           outputs: [{
             value: new sys.utils.BN(amount * (10 ** decimals)),
             address: await sysjs.Signer.getNewReceivingAddress()
@@ -1594,8 +1622,10 @@ const AccountController = (actions: {
 
       const txOpts = { rbf };
       let txInfo;
+
+      const changeAddress = await sysjs.Signer.getNewChangeAddress();
+
       if (account.isTrezorWallet) {
-        const changeAddress = await getNewChangeAddress(false);
         const txData = await sysjs.createTransaction(txOpts, changeAddress, outputsArray, new sys.utils.BN(fee * 1e8), account.xpub);
         if (!txData) {
           console.log('Could not create transaction, not enough funds?')
@@ -1620,7 +1650,7 @@ const AccountController = (actions: {
 
       } else {
         try {
-          const pendingTx = await sysjs.createTransaction(txOpts, null, outputsArray, new sys.utils.BN(fee * 1e8));
+          const pendingTx = await sysjs.createTransaction(txOpts, changeAddress, outputsArray, new sys.utils.BN(fee * 1e8));
 
           txInfo = pendingTx.extractTransaction().getId();
         } catch (error) {
@@ -1886,7 +1916,6 @@ const AccountController = (actions: {
     subscribeAccount,
     getPrimaryAccount,
     updateAccountLabel,
-    addNewAccount,
     getLatestUpdate,
     watchMemPool,
     updateTempTx,
@@ -1941,7 +1970,7 @@ const AccountController = (actions: {
     setDataFromWalletToIssueNFT,
     importPsbt,
     decryptAES,
-    setAutolockTimer
+    setAutolockTimer,
   };
 };
 

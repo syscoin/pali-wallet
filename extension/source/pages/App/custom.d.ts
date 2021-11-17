@@ -12,6 +12,8 @@ declare module 'react-alert';
 
 declare module 'bip84';
 
+declare module 'extensionizer';
+
 declare interface IWalletController {
   account: Readonly<IAccountController>;
   checkPassword: (pwd: string) => boolean;
@@ -28,12 +30,12 @@ declare interface IWalletController {
   switchNetwork: (networkId: string) => void;
   switchWallet: (id: number) => void;
   unLock: (pwd: string) => boolean;
+  addNewAccount: (label: string) => Promise<string | null>;
 }
 
 declare interface IMessagesController { }
 
 declare interface IAccountController {
-  addNewAccount: (label: string) => Promise<string | null>;
   clearTransactionItem: (item: any) => void;
   confirmIssueNFT: () => Promise<any>;
   confirmIssueSPT: () => Promise<any>;
@@ -83,7 +85,7 @@ declare interface IAccountController {
   setUpdateAsset: (asset: any) => any;
   updateTokensState: () => any;
   setNewAddress: (addr: string) => boolean;
-  subscribeAccount: (isHardwareWallet: boolean, sjs?: any, label?: string, walletCreation?: boolean) => Promise<string | null>;
+  subscribeAccount: (encriptedPassword: any, isHardwareWallet: boolean, sjs?: any, label?: string, walletCreation?: boolean) => Promise<string | null>;
   setHDSigner: (accountId: number) => any;
   setNewOwnership: (data: any) => any;
   confirmIssueNFTTx: () => any;
@@ -98,8 +100,8 @@ declare interface IAccountController {
 declare type CreateTokenItems = {
   auxfeedetails?: {
     auxfees: [{
-      bound: any | 0,
-      percent: any | 0
+      bound: any,
+      percent: any,
     }]
   },
   capabilityflags?: string | '127',
@@ -136,8 +138,8 @@ declare type IssueTokenItems = {
 declare type CreateAndIssueNFTItems = {
   auxfeedetails?: {
     auxfees: [{
-      bound: any | 0,
-      percent: any | 0
+      bound: any,
+      percent: any
     }]
   },
   description: string,
@@ -157,8 +159,8 @@ declare type UpdateAssetItems = {
   assetGuid: string,
   auxfeedetails?: {
     auxfees: [{
-      bound: any | 0,
-      percent: any | 0
+      bound: any,
+      percent: any
     }]
   },
   capabilityflags?: string | '127',
