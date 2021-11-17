@@ -733,23 +733,23 @@ const AccountController = (actions: {
     };
   };
 
-  const getNewAddress = async (type: string, skipIncrement?: boolean) => {
-    if (sysjs.Signer.Signer[type] === -1 && sysjs.Signer.blockbookURL) {
-      await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.Signer.getAccountXpub(), 'tokens=used&details=tokens', true, sysjs.Signer);
-    }
+  // const getNewAddress = async (type: string, skipIncrement?: boolean) => {
+  //   if (sysjs.Signer.Signer[type] === -1 && sysjs.Signer.blockbookURL) {
+  //     await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.Signer.getAccountXpub(), 'tokens=used&details=tokens', true, sysjs.Signer);
+  //   }
 
-    const address = sysjs.Signer.createAddress(sysjs.Signer.Signer[type] + 1, false);
+  //   const address = sysjs.Signer.createAddress(sysjs.Signer.Signer[type] + 1, false);
 
-    if (address) {
-      if (!skipIncrement) {
-        sysjs.Signer.Signer[type]++;
-      }
+  //   if (address) {
+  //     if (!skipIncrement) {
+  //       sysjs.Signer.Signer[type]++;
+  //     }
 
-      return address;
-    }
+  //     return address;
+  //   }
   
-    return null
-  }
+  //   return null
+  // }
 
   const subscribeAccount = async (encriptedPassword: any, isHardwareWallet = false, sjs?: any, label?: string, walletCreation?: boolean) => {
     if (isHardwareWallet) {
@@ -795,6 +795,18 @@ const AccountController = (actions: {
 
     const res: IAccountInfo | null = await getAccountInfo();
 
+    let mainAddress = '';
+
+    try {
+      mainAddress = await sysjs.Signer.getNewReceivingAddress();
+
+      console.log('address from sys', mainAddress)
+    } catch (error: any) {
+      console.log('error getting receiving address from sys', error)
+
+      throw new Error(error);
+    }
+
     account = {
       id: sysjs.Signer.Signer.accountIndex,
       label: label || `Account ${sysjs.Signer.Signer.accountIndex + 1}`,
@@ -802,7 +814,7 @@ const AccountController = (actions: {
       transactions: res.transactions,
       xpub: sysjs.Signer.getAccountXpub(),
       xprv: CryptoJS.AES.encrypt(sysjs.Signer.Signer.accounts[sysjs.Signer.Signer.accountIndex].getAccountPrivateKey(), encriptedPassword).toString(),
-      address: { 'main': await getNewAddress('receivingIndex') },
+      address: { 'main': mainAddress },
       assets: res.assets,
       connectedTo: [],
       isTrezorWallet: false
@@ -1200,7 +1212,7 @@ const AccountController = (actions: {
     let txInfo;
 
     const { decimals } = await getDataAsset(assetGuid);
-    const receivingAddress = await getNewAddress('receivingIndex');
+    const receivingAddress = await sysjs.Signer.getNewReceivingAddress();
 
     const assetMap = new Map([
       [assetGuid, {
@@ -1483,10 +1495,10 @@ const AccountController = (actions: {
     const assetMap = new Map([
       [assetGuid,
         {
-          changeAddress: await getNewAddress('changeIndex'),
+          changeAddress: await sysjs.Signer.getNewChangeAddress(),
           outputs: [{
             value: new sys.utils.BN(amount * (10 ** decimals)),
-            address: await getNewAddress('receivingIndex')
+            address: await sysjs.Signer.getNewReceivingAddress()
           }]
         }]
     ]);
@@ -1611,7 +1623,7 @@ const AccountController = (actions: {
       const txOpts = { rbf };
       let txInfo;
 
-      const changeAddress = await getNewAddress('changeIndex');
+      const changeAddress = await sysjs.Signer.getNewChangeAddress();
 
       if (account.isTrezorWallet) {
         const txData = await sysjs.createTransaction(txOpts, changeAddress, outputsArray, new sys.utils.BN(fee * 1e8), account.xpub);
@@ -1759,7 +1771,7 @@ const AccountController = (actions: {
         changeAddress: await getNewChangeAddress(true),
         outputs: [{
           value: new sys.utils.BN(0),
-          address: await getNewAddress('receivingIndex')
+          address: await sysjs.Signer.getNewReceivingAddress()
         }]
       }]
     ]);
@@ -1959,7 +1971,6 @@ const AccountController = (actions: {
     importPsbt,
     decryptAES,
     setAutolockTimer,
-    getNewAddress,
   };
 };
 

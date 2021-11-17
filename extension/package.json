@@ -83,7 +83,7 @@
     "ses": "^0.14.2",
     "socket.io": "^4.3.2",
     "socket.io-client": "^4.3.2",
-    "syscoinjs-lib": "^1.0.189",
+    "syscoinjs-lib": "^1.0.192",
     "syscointx-js": "^1.0.90",
     "trezor-connect": "^8.1.29",
     "uuid": "^8.3.2",

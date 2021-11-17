@@ -50,7 +50,6 @@ declare module '*.scss' {
     confirmTransferOwnership: () => any;
     confirmUpdateAssetTransaction: () => any;
     createSPT: (spt: ISPTInfo) => void;
-    getNewAddress: (type: string, skipIncrement?: boolean) => any;
     getChangeAddress: () => Promise<string>;
     getConnectedAccount: () => IAccountState;
     getConnectedAccountXpub: () => string | null;

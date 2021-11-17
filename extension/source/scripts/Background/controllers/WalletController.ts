@@ -349,7 +349,13 @@ const WalletController = (): IWalletController => {
     } else {
       sjs.Signer.Signer.receivingIndex = -1;
 
-      address = await account.getNewAddress('receivingIndex');
+      try {
+        address = await sjs.Signer.getNewReceivingAddress();
+      } catch (error: any) {
+        console.log('error getting receiving address from sysjs', error);
+
+        throw new Error(error);
+      }
     }
 
     return account.setNewAddress(address);

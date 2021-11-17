@@ -2475,7 +2475,7 @@ bip66@^1.1.0, bip66@^1.1.5:
   dependencies:
     safe-buffer "^5.0.1"
 
-bip84@^0.2.5, bip84@^0.2.6:
+bip84@^0.2.5, bip84@^0.2.7:
   version "0.2.7"
   resolved "https://registry.yarnpkg.com/bip84/-/bip84-0.2.7.tgz#ed350a2fea02051b3048c411ccc344996d8fda29"
   integrity sha512-qIBhY2ojC3iATFrpWw8FmNHPFGgjUEkbA4qnchZY6nzv2SAzKy5tmdg9JxVPJlpSfQXYn0hcbzjhEp0+G/Mvqw==
@@ -9672,14 +9672,14 @@ synchronous-promise@^2.0.13:
   resolved "https://registry.yarnpkg.com/synchronous-promise/-/synchronous-promise-2.0.15.tgz#07ca1822b9de0001f5ff73595f3d08c4f720eb8e"
   integrity sha512-k8uzYIkIVwmT+TcglpdN50pS2y1BDcUnBPK9iJeGu0Pl1lOI8pD6wtzgw91Pjpe+RxtTncw32tLxs/R0yNL2Mg==
 
-syscoinjs-lib@^1.0.189:
-  version "1.0.190"
-  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.190.tgz#c91e6f75bcff73b299c0143a6ff77fac297a96af"
-  integrity sha512-fEwF20oUYxR6uP9CIdLZq0+tgTZoaG3wRF5N0Zkg3nDyysgwSXT1OzZjX5lDZlsqnEVhohWjYU23TBW87ncxcw==
+syscoinjs-lib@^1.0.192:
+  version "1.0.192"
+  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.192.tgz#61a1b1e2d3dbf75b0c81d16bac5d953d383cf2e6"
+  integrity sha512-h3AQ3ZKDXLoOLlpw2/cJ9b35eQ8dnJ3qE1vfAJtBgHLOjeTc59afqtDRQ1AMMabRQ0w2ZBU4/C6WAPxR3iz1Vw==
   dependencies:
     "@trezor/utxo-lib" "^0.1.2"
     axios "^0.21.1"
-    bip84 "^0.2.6"
+    bip84 "^0.2.7"
     bitcoin-ops "^1.4.1"
     bitcoinjs-lib "^5.2.0"
     bn.js "^5.1.3"
