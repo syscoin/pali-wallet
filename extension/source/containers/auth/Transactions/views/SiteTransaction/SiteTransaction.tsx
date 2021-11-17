@@ -1,23 +1,8 @@
 import React, { useState, FC } from 'react';
-
 import { AuthViewLayout } from 'containers/common/Layout';
-import { Button } from 'components/index';;
-import { useHistory } from 'react-router-dom';
-import { useController/*, useUtils*/, useBrowser } from 'hooks/index';
-
-import Layout from 'containers/common/Layout';
 import { Button } from 'components/index';
 import { useHistory } from 'react-router-dom';
-import {
-  useController,
-  // useUtils
-} from 'hooks/index';
-import { browser } from 'webextension-polyfill-ts';
-
-import { AuthViewLayout } from 'containers/common/Layout';
-import { Button } from 'components/index';;
-import { useHistory } from 'react-router-dom';
-import { useController/*, useUtils*/, useBrowser } from 'hooks/index';
+import { useController /* , useUtils */, useBrowser } from 'hooks/index';
 
 interface ISiteTransaction {
   callbackToSetDataFromWallet: any;
@@ -38,8 +23,6 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
   const history = useHistory();
   // const { alert } = useUtils();
   const { browser } = useBrowser();
-  const { browser } = useBrowser();
-
 
   // const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState('0');
@@ -108,10 +91,8 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
 
   return (
     <div>
-      <Layout title={layoutTitle}>
-        <form>
       <AuthViewLayout title={layoutTitle}>
-        <form >
+        <form>
           <label htmlFor="fee">Fee</label>
 
           <section>

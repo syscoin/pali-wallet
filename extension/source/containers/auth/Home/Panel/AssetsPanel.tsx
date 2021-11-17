@@ -8,14 +8,13 @@ interface IAssetsPanel {
 const AssetsPanel: FC<IAssetsPanel> = ({ show, classNames }) => {
   return (
     <ul className={classNames}>
-      assets panel
 
       {show ? (
         <ul>show assets panel</ul>
       ) : (
-        <span>
+        <p className="justify-center items-center text-sm text-brand-gray">
           You have no tokens or NFTs.
-        </span>
+        </p>
 
         //       {!changingNetwork && (
         //         <img src={`/${SyscoinIcon}`} className="w-40 max-w-40 mx-auto mt-8" alt="Syscoin" />

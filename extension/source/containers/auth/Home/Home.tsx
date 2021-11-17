@@ -5,7 +5,7 @@ import { useHistory } from 'react-router-dom';
 
 import Header from 'containers/common/Header';
 import {TxsPanel} from './TxsPanel';
-import { ReloadOutlined } from '@ant-design/icons';
+import { ArrowDownOutlined, ArrowUpOutlined, ReloadOutlined } from '@ant-design/icons';
 
 export const Home = () => {
   const controller = useController();
@@ -116,21 +116,24 @@ export const Home = () => {
         <>
           <Header accountHeader />
 
-          <section className="flex items-center flex-col gap-4 text-brand-white bg-brand-navydarker">
-            <button onClick={handleRefresh} className="">
+          <section className="flex items-center flex-col gap-1 text-brand-white bg-brand-navydarker pb-14">
+            <button onClick={handleRefresh} className="ml-10 pl-72">
               <ReloadOutlined />
             </button>
 
             {changingNetwork ? (
               <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
             ) : (
-              <h3>
-                {formatNumber(
-                  accounts.find((element) => element.id === activeAccountId)
-                    ?.balance || 0
-                )}{' '}
-                <small>{activeNetwork == 'testnet' ? 'TSYS' : 'SYS'}</small>
-              </h3>
+              <div className="flex justify-center">
+                <h3 className="text-5xl flex-1">
+                  {formatNumber(
+                    accounts.find((element) => element.id === activeAccountId)
+                      ?.balance || 5268
+                  )}{' '}
+                </h3>
+                <small className="flex-1 ">{activeNetwork == 'testnet' ? 'TSYS' : 'SYS'}</small>
+              </div>
+              
             )}
 
             {changingNetwork ? (
@@ -146,19 +149,21 @@ export const Home = () => {
               </small>
             )}
 
-            <div >
+            <div className="pt-4">
               <Button
-                className="bg-brand-navydarker rounded-l-full border border-brand-deepPink tracking-normal text-base py-1.5 px-12 cursor-pointer mr-px hover:bg-brand-deepPink"
+                className="bg-brand-navydarker rounded-l-full border border-brand-deepPink tracking-normal text-base py-1 px-6 cursor-pointer mr-px hover:bg-brand-deepPink"
                 type="button"
                 onClick={() => history.push('/send')}
               >
+                <ArrowUpOutlined rotate={40}/>
                 Send
               </Button>
               <button
-                className="bg-brand-navydarker rounded-r-full border border-brand-royalBlue tracking-normal text-base py-1.5 px-12 cursor-pointer ml-px hover:bg-brand-royalBlue"
+                className="bg-brand-navydarker rounded-r-full border border-brand-royalBlue tracking-normal text-base py-1 px-6 cursor-pointer ml-px hover:bg-brand-royalBlue"
                 type="button"
                 onClick={() => history.push('/receive')}
               >
+                <ArrowDownOutlined />
                 Receive
               </button>
             </div>

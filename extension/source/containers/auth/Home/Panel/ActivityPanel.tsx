@@ -8,15 +8,14 @@ interface IActivityPanel {
 const ActivityPanel: FC<IActivityPanel> = ({ show, classNames }) => {
   return (
     <ul className={classNames}>
-      activity panel
-
+     
       {show ? (
         <ul>show activity panel</ul>
       ) : (
         <>
-          <span>
+          <p className="justify-center items-center text-sm text-brand-gray">
             You have no transaction history.
-          </span>
+          </p>
 
           {/* {!changingNetwork && (
             <img src={`/${SyscoinIcon}`} className="w-40 max-w-40 mx-auto mt-8" alt="Syscoin" />

@@ -90,10 +90,10 @@ const NormalHeader: FC<INormalHeader> = ({
   }, [accounts, activeAccountId, currentTabURL]);
 
   return (
-    <div className="flex justify-between items-center bg-brand-navydarker text-gray-300 p-2">
+    <div className="flex items-center bg-brand-navydarker text-gray-300 p-2">
       <Select
         value={network || SYS_NETWORK.main.id}
-        className="bg-brand-navydarker text-gray-300"
+        className="bg-brand-navydarker text-gray-300 "
         onChange={handleChangeNetwork}
         options={[
           { [SYS_NETWORK.main.id]: SYS_NETWORK.main.label },
@@ -139,7 +139,7 @@ const NormalHeader: FC<INormalHeader> = ({
 
       {encriptedMnemonic && !importSeed ? (
 
-        <button onClick={() => {
+        <button className="pl-20" onClick={() => {
           console.log('generalSettingsShowed', generalSettingsShowed)
           generalSettingsShowed ? handleCloseSettings() : showSettings(!generalSettingsShowed)}}
           >
