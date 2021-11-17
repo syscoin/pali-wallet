@@ -1,7 +1,6 @@
 import React, { useState, FC } from 'react';
 import {Layout} from 'containers/common/Layout';
 import { Button, Icon } from 'components/index';
-import { useHistory } from 'react-router-dom';
 import { useController, useUtils, useFormat, useStore, useBrowser } from 'hooks/index';
 
 interface ISignTransaction {
@@ -18,8 +17,7 @@ export const SignTransaction: FC<ISignTransaction> = ({
   warning,
 }) => {
   const controller = useController();
-  const history = useHistory();
-  const { alert, getHost } = useUtils();
+  const { alert, getHost, history } = useUtils();
   const { ellipsis } = useFormat();
   const { browser } = useBrowser();
 

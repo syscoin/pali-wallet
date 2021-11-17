@@ -3,15 +3,13 @@ import { useController, useUtils, useStore } from 'hooks/index';
 import QRCode from 'qrcode.react';
 import { IconButton, Icon } from 'components/index';
 import Header from 'containers/common/Header';
-import { useHistory } from 'react-router-dom';
 
 export const Receive = () => {
-  const { useCopyClipboard } = useUtils();
+  const { useCopyClipboard, history } = useUtils();
   const [isCopied, copyText] = useCopyClipboard();
   const controller = useController();
   const [loaded, setLoaded] = useState<boolean>(false);
   const { accounts, activeAccountId } = useStore();
-  const history = useHistory();
 
   useEffect(() => {
     const getNewAddress = async () => {

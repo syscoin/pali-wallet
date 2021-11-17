@@ -1,18 +1,17 @@
 import React from 'react';
 // import { Button, Icon } from 'components/index';;
-// import { useController, useFormat } from 'hooks/index';
+// import { useController, useFormat, useUtils } from 'hooks/index';
 
 // import { MAIN_VIEW } from '../routes';
 import { AuthViewLayout } from 'containers/common/Layout';
-// import { useHistory } from 'react-router-dom';
 
 const NewAccountView = () => {
   // const [address, setAddress] = useState<string | undefined>();
   // const controller = useController();
   // const { ellipsis } = useFormat();
+  // const { history } = useUtils();
   // const [isCopied, copyText] = useCopyClipboard();
   // const [loading, setLoading] = useState<boolean>(false);
-  // const history = useHistory();
 
   // const onSubmit = async (data: any) => {
   //   setLoading(true);

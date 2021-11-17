@@ -7,7 +7,6 @@ import {
   // useEffect,
   FC,
 } from 'react';
-// import { useHistory } from 'react-router-dom';
 import Header from 'containers/common/Header';
 // import { Button, IconButton, Icon } from 'components/index';;
 // import { useController, useFiat, useStore, useUtils } from 'hooks/index';
@@ -18,10 +17,9 @@ interface ISend {
   initAddress?: string;
 }
 export const Send: FC<ISend> = (/*{ initAddress = '' }*/) => {
-  // const history = useHistory();
   // // const getFiatAmount = useFiat();
   // const controller = useController();
-  // const { alert } = useUtils();
+  // const { alert, history } = useUtils();
   // const { accounts, activeAccountId, activeNetwork, changingNetwork } = useStore();
   
   // const [address, setAddress] = useState<string>(initAddress);

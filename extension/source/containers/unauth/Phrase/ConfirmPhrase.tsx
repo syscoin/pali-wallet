@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useHistory } from 'react-router-dom';
-import { useController } from 'hooks/index';
+import { useController, useUtils } from 'hooks/index';
 import { Button } from 'components/index';;
 import shuffle from 'lodash/shuffle';
 // import isEqual from 'lodash/isEqual';
@@ -8,7 +7,7 @@ import shuffle from 'lodash/shuffle';
 import { Layout } from '../../common/Layout';
 
 const ConfirmPhrase = () => {
-  const history = useHistory();
+  const { history } = useUtils();
   const controller = useController();
   const phrases = controller.wallet.generatePhrase();
 

@@ -1,12 +1,11 @@
 import React from 'react';
-import { useHistory } from 'react-router-dom';
-import { useController } from 'hooks/index';
+import { useController, useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Button } from 'components/index';;
 import { Layout } from '../../common/Layout';
 
 const CreatePass = () => {
-  const history = useHistory();
+  const { history } = useUtils();
   const controller = useController();
 
   const onSubmit = (data: any) => {

@@ -1,15 +1,14 @@
 import React, { useState } from 'react';  
-import { useController, useStore } from 'hooks/index';
+import { useController, useStore, useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
-import { Button } from 'components/index';;
-import {Layout} from '../../common/Layout';
-import { useHistory } from 'react-router-dom';
+import { Button } from 'components/index';
+import { Layout } from '../../common/Layout';
 
 const CreatePass = () => {
   const controller = useController();
-  const history = useHistory();
 
-  const { canConnect } = useStore()
+  const { canConnect } = useStore();
+  const { history } = useUtils();
 
   const [passed, setPassed] = useState<boolean>(false);
 

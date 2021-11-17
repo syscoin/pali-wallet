@@ -1,8 +1,7 @@
 import React, { useState, FC } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout';
 import { Button } from 'components/index';;
-import { useHistory } from 'react-router-dom';
-import { useController/*, useUtils*/, useBrowser } from 'hooks/index';
+import { useController, useUtils, useBrowser } from 'hooks/index';
 
 interface ISiteTransaction {
   callbackToSetDataFromWallet: any;
@@ -20,8 +19,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
   layoutTitle,
 }) => {
   const controller = useController();
-  const history = useHistory();
-  // const { alert } = useUtils();
+  const { history } = useUtils();
   const { browser } = useBrowser();
 
   // const [loading, setLoading] = useState<boolean>(false);

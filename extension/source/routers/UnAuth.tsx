@@ -1,16 +1,16 @@
 import React, { useEffect } from 'react';
-import { Switch, Route, useLocation, useHistory } from 'react-router-dom';
+import { Switch, Route, useLocation } from 'react-router-dom';
 import Start from 'containers/unauth/Start';
 import Remind from 'containers/unauth/Remind';
 import CreatePass from 'containers/unauth/CreatePass';
 import Import from 'containers/common/Import';
-import { useController } from 'hooks/index';
+import { useController, useUtils } from 'hooks/index';
 import { CreatePhrase, ConfirmPhrase } from 'containers/unauth/Phrase';
 
 const UnAuth = () => {
   const location = useLocation();
-  const history = useHistory();
   const controller = useController();
+  const { history } = useUtils();
 
   useEffect(() => {
     const redirectRoute = controller.appRoute();

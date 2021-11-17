@@ -1,10 +1,10 @@
 import React from 'react';
 import { Button, Link } from 'components/index';
 import LogoImage from 'assets/images/logo-s.svg';
-import { useHistory } from 'react-router-dom';
+import { useUtils } from 'hooks/index';
 
 const Start = () => {
-  const history = useHistory();
+  const { history } = useUtils();
   
   return (
     <div className="mt-20 flex justify-center items-center flex-col min-w-full p-2">

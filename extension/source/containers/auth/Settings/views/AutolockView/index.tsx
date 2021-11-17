@@ -5,17 +5,15 @@ import React from 'react';
 // import { useSelector } from 'react-redux';
 // import { RootState } from 'state/store';
 import { AuthViewLayout } from 'containers/common/Layout';
-// import { useHistory } from 'react-router-dom';
 
 const AutolockView = () => {
   // const [confirmed, setConfirmed] = useState<boolean>(false);
   // const controller = useController();
   // const { timer } = useStore();
-  // const { alert } = useUtils();
+  // const { alert, history } = useUtils();
 
   // const [loading, setLoading] = useState<boolean>(false);
   // const [minutes, setMinutes] = useState<string>(String(timer));
-  // const history = useHistory();
 
   // const onSubmit = async (data: any) => {
   //   setLoading(true);

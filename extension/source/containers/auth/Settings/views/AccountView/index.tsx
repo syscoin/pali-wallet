@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { FC } from 'react';
-import { useController, useStore } from 'hooks/index';
-import { useHistory } from 'react-router-dom';
+import { useController, useStore, useUtils } from 'hooks/index';
 import { Icon } from 'components/index';
 
 interface IAccountView {
@@ -10,8 +9,8 @@ interface IAccountView {
 
 const AccountView: FC<IAccountView> = ({ id }) => {
   const controller = useController();
-  const history = useHistory();
   const { accounts } = useStore();
+  const { history } = useUtils();
 
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
   const handleOpenExplorer = () => {

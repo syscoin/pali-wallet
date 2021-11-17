@@ -4,7 +4,6 @@ import { Button, Icon } from 'components/index';;
 import { useController } from 'hooks/index';
 import { IAccountState } from 'state/wallet/types';
 import { browser } from 'webextension-polyfill-ts';
-import { useHistory } from 'react-router';
 
 import { useStore, useUtils, useFormat } from 'hooks/index';
 
@@ -28,9 +27,8 @@ export const ConfirmTransaction: FC<IConfirmTransaction> = ({
   transactingStateItem,
 }) => {
   const controller = useController();
-  const history = useHistory();
 
-  const { getHost, alert } = useUtils();
+  const { getHost, alert, history } = useUtils();
   const { ellipsis, formatURL } = useFormat();
   const { accounts, currentSenderURL } = useStore();
 

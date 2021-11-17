@@ -1,6 +1,5 @@
 import React, { FC } from 'react';
-import { useHistory } from 'react-router-dom';
-import { useController/*, useStore */} from 'hooks/index';
+import { useController/*, useStore */, useUtils} from 'hooks/index';
 import { Icon } from 'components/index';
 // import AccountSelect from 'components/AccountSelect';
 
@@ -12,7 +11,7 @@ interface IMainView {
 }
 
 const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
-  const history = useHistory();
+  const { history } = useUtils();
   const controller = useController();
   // const { accounts, activeAccountId } = useStore();
 

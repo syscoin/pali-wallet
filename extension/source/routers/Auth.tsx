@@ -6,7 +6,6 @@ import {
   Route,
   // Redirect,
   useLocation,
-  useHistory,
 } from 'react-router-dom';
 
 import {
@@ -59,11 +58,10 @@ import { SendMatchProps } from './types';
 
 const Auth = () => {
   const location = useLocation();
-  const history = useHistory();
   const controller = useController();
   const isUnlocked = !controller.wallet.isLocked();
 
-  const { getHost, alert } = useUtils();
+  const { getHost, alert, history } = useUtils();
   const { browser } = useBrowser();
 
   const {

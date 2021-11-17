@@ -1,16 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Icon, IconButton, Button, ModalBlock } from 'components/index';
-import { useController, useStore, useFiat, useFormat } from 'hooks/index';
-import { useHistory } from 'react-router-dom';
+import { useController, useStore, useFiat, useFormat, useUtils } from 'hooks/index';
 
 import Header from 'containers/common/Header';
 import {TxsPanel} from './TxsPanel';
 
 export const Home = () => {
   const controller = useController();
-  const history = useHistory();
   const getFiatAmount = useFiat();
-
+  const { history } = useUtils();
   const { formatNumber } = useFormat();
 
   const {

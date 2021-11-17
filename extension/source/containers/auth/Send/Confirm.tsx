@@ -3,7 +3,6 @@ import Header from 'containers/common/Header';
 import { Layout } from 'containers/common/Layout';
 import { Button, Icon } from 'components/index';;
 import { useController, useFiat, useStore, useUtils, useFormat } from 'hooks/index';
-import { useHistory } from 'react-router-dom';
 import { IAccountState } from 'state/wallet/types';
 import { browser } from 'webextension-polyfill-ts';
 
@@ -13,9 +12,8 @@ import { Assets } from 'scripts/types';
 export const SendConfirm = () => {
   const controller = useController();
   const getFiatAmount = useFiat();
-  const history = useHistory();
 
-  const { alert, getHost } = useUtils();
+  const { alert, getHost, history } = useUtils();
   const { ellipsis, formatURL } = useFormat();
   const { accounts, activeAccountId, currentSenderURL, confirmingTransaction } = useStore();
 

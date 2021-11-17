@@ -1,11 +1,9 @@
 import { useUtils, useStore, usePopup, useController, useBrowser } from 'hooks/index';
-import { useHistory } from 'react-router-dom';
 
 export const useDappConnection = () => {
-  const history = useHistory();
   const controller = useController();
 
-  const { alert } = useUtils();
+  const { alert, history } = useUtils();
   const { currentSenderURL } = useStore();
   const { closePopup } = usePopup();
   const { browser } = useBrowser();

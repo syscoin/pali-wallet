@@ -1,13 +1,12 @@
 import React, { FC } from 'react';
-import { useHistory } from 'react-router-dom';
 import { Button } from 'components/index';;
-import { useController } from 'hooks/index';
+import { useController, useUtils } from 'hooks/index';
 
 import { Layout } from '../../common/Layout';
 
 const CreatePhrase: FC = () => {
-  const history = useHistory();
   const controller = useController();
+  const { history } = useUtils();
 
   const phrases = controller.wallet.generatePhrase();
 

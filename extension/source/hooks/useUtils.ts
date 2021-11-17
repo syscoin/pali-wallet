@@ -3,9 +3,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAlert } from 'react-alert';
 
 export const useUtils = () => {
-  const useSettingsView = () => {
-    const history = useHistory();
+  const history = useHistory();
   
+  const useSettingsView = () => {
     return useCallback((view) => {
       history.push(view);
     }, []);
@@ -51,6 +51,7 @@ export const useUtils = () => {
     useSettingsView,
     useCopyClipboard,
     alert,
-    getHost
+    getHost,
+    history
   }
 }
