@@ -57,7 +57,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
   //     if (Number(event.target.value) > 0.1) {
   //       alert.removeAll();
   //       alert.error(`Error: Fee too high, maximum 0.1 SYS.`, { timeout: 2000 });
-  
+
   //       return;
   //     }
   //   },
@@ -72,7 +72,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
       target: 'background',
       transactionError: true,
       invalidParams: false,
-      message: "Transaction rejected.",
+      message: 'Transaction rejected.',
     });
 
     browser.runtime.sendMessage({
@@ -85,43 +85,34 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
       type: 'CLOSE_POPUP',
       target: 'background',
     });
-  }
+  };
 
   return (
     <div>
       <AuthViewLayout title={layoutTitle}>
-        <form >
+        <form>
           <label htmlFor="fee">Fee</label>
 
-          <section >
+          <section>
             <input type="text" />
 
-            <Button
-              type="button"
-              onClick={handleGetFee}
-            >
+            <Button type="button" onClick={handleGetFee}>
               Recommend
             </Button>
           </section>
 
-          <p >
+          <p>
             With current network conditions, we recommend a fee of {recommend}{' '}
             SYS.
           </p>
 
           <section>
             <div>
-              <Button
-                type="button"
-                onClick={handleRejectTransaction}
-              >
+              <Button type="button" onClick={handleRejectTransaction}>
                 Reject
               </Button>
 
-              <Button
-                type="button"
-                onClick={handleMessageToSetDataFromWallet}
-              >
+              <Button type="button" onClick={handleMessageToSetDataFromWallet}>
                 Next
               </Button>
             </div>

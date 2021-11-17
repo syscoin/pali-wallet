@@ -30,7 +30,7 @@ const CreatePass = () => {
         initialValues={{ remember: true }}
         onFinish={onSubmit}
         autoComplete="off"
-        className="flex justify-center items-center flex-col gap-4 mt-8 text-center"
+        className="flex justify-center text-justify items-center flex-col gap-4 mt-8 text-center"
       >
         <Form.Item
           name="password"
@@ -72,11 +72,11 @@ const CreatePass = () => {
           <Input.Password placeholder="Confirm password" />
         </Form.Item>
 
-        <span className="font-light text-brand-graylight text-xs">
+        <span className="font-light text-brand-graylight text-sm">
           At least 8 characters, 1 lower-case and 1 numeral.
         </span>
 
-        <span className="font-light text-brand-royalBlue text-xs mx-4">
+        <span className="font-light text-brand-royalBlue text-sm mx-4 p-7">
           Do not forget to save your password. You will need this password to unlock your wallet.
         </span>
 

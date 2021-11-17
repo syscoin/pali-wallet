@@ -52,6 +52,7 @@ export const Start = () => {
           <Input.Password placeholder="Enter your password" />
         </Form.Item>
         <Button
+          className="bg-primary tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white border"
           type="submit"
         >
           Unlock

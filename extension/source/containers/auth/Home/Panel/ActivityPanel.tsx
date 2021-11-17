@@ -2,20 +2,20 @@ import React, { FC } from 'react';
 
 interface IActivityPanel {
   show: boolean;
+  classNames: any
 }
 
-export const ActivityPanel: FC<IActivityPanel> = ({ show }) => {
+const ActivityPanel: FC<IActivityPanel> = ({ show, classNames }) => {
   return (
-    <ul>
-      activity panel
-
+    <ul className={classNames}>
+     
       {show ? (
         <ul>show activity panel</ul>
       ) : (
         <>
-          <span>
+          <p className="justify-center items-center text-sm text-brand-gray">
             You have no transaction history.
-          </span>
+          </p>
 
           {/* {!changingNetwork && (
             <img src={`/${SyscoinIcon}`} className="w-40 max-w-40 mx-auto mt-8" alt="Syscoin" />
@@ -67,3 +67,5 @@ export const ActivityPanel: FC<IActivityPanel> = ({ show }) => {
     </ul>
   )
 }
+
+export default ActivityPanel;

@@ -4,12 +4,12 @@ import { Tooltip } from 'antd';
 import { Icon } from 'components/index';
 
 interface ILayout {
-  children: ReactNode;
-  title: string;
-  importSeed?: boolean;
-  onlySection?: boolean;
   accountHeader?: boolean;
+  children: ReactNode;
+  importSeed?: boolean;
   normalHeader?: boolean;
+  onlySection?: boolean;
+  title: string;
   tooltipText?: string;
 }
 
@@ -36,18 +36,21 @@ export const Layout: FC<ILayout> = ({
       <section>
         {tooltipText ? (
           <div className="flex justify-center items-center gap-2">
-            <span className="text-brand-royalBlue font-bold text-xl text-center tracking-normal">{title}</span>
+            <span className="text-brand-royalBlue font-bold text-xl text-center tracking-normal">
+              {title}
+            </span>
 
             <Tooltip placement="bottom" title={tooltipText}>
               <Icon name="question" className="text-brand-graylight w-4" />
             </Tooltip>
           </div>
         ) : (
-          <span className="text-brand-royalBlue font-bold text-xl text-center tracking-normal">{title}</span>
+          <span className="text-brand-royalBlue font-bold text-xl text-center tracking-normal">
+            {title}
+          </span>
         )}
-
       </section>
-      <section >{children}</section>
+      <section>{children}</section>
     </div>
   );
 };

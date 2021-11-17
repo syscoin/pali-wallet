@@ -26,11 +26,12 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
         initialValues={{ remember: true }}
         onFinish={onSubmit}
         autoComplete="off"
-        className="flex justify-center items-center flex-col gap-4 mt-8 text-center"
+        className="flex items-center flex-col gap-4 mt-8 "
       >
-        <span className="font-light text-brand-graylight text-xs">Paste your wallet seed phrase below:</span>
+        
         <Form.Item
           name="phrase"
+          className="text-blue"
           rules={[
             {
               required: true,
@@ -49,12 +50,12 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
         >
           <Input.TextArea
             autoSize={{ minRows: 3, maxRows: 5 }}
-            placeholder="import phrase"
-            className="text-center text-xs w-72 h-28 rounded p-2 pl-4 bg-brand-navydarker border border-brand-navymedium text-brand-graylight outline-none focus:border-brand-navylight"
+            placeholder="Paste your wallet seed phrase"
+            className="text-xs w-72 h-28 rounded p-2 pl-4 bg-brand-navydarker border border-brand-navymedium text-brand-royalBluemedium outline-none focus:border-brand-navylight"
           />
         </Form.Item>
 
-        <span className="font-light text-brand-royalBluemedium text-xs mx-4 mt-9">
+        <span className="font-light text-brand-royalBluemedium text-xs mx-12 mt-2">
           Importing your wallet seed automatically import a wallet associated with this seed phrase.
         </span>
 

@@ -4,6 +4,7 @@ import { useController, useStore, useFiat, useFormat, useUtils } from 'hooks/ind
 
 import Header from 'containers/common/Header';
 import {TxsPanel} from './TxsPanel';
+import { ArrowDownOutlined, ArrowUpOutlined, ReloadOutlined } from '@ant-design/icons';
 
 export const Home = () => {
   const controller = useController();
@@ -113,51 +114,56 @@ export const Home = () => {
         <>
           <Header accountHeader />
 
-          <section className="flex justify-center items-center flex-col gap-4 text-brand-white bg-brand-green">
-            <div className="bg-brand-white text-brand-deepPink100 font-bold">
-              {changingNetwork ? (
-                <>
-                  <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
-                  <p style={{ color: 'white' }}>...</p>
-                </>
-              ) : (
-                <>
-                  <h3>
-                    {formatNumber(
-                      accounts.find((element) => element.id === activeAccountId)
-                        ?.balance || 0
-                    )}{' '}
-                    <small>{activeNetwork == 'testnet' ? 'TSYS' : 'SYS'}</small>
-                  </h3>
-                  <small style={{ marginTop: '5px', marginBottom: '5px' }}>
-                    {activeNetwork !== 'testnet'
-                      ? getFiatAmount(
-                        accounts.find((element) => element.id === activeAccountId)
-                          ?.balance || 0
-                      )
-                      : ''}
-                  </small>
-                </>
-              )}
-            </div>
+          <section className="flex items-center flex-col gap-1 text-brand-white bg-brand-navydarker pb-14">
+            <button onClick={handleRefresh} className="ml-10 pl-72">
+              <ReloadOutlined />
+            </button>
 
-            <IconButton onClick={handleRefresh} type="primary" shape="circle">
-              <Icon name="reload" className="bg-brand-gray200 text-brand-navy w-4" />
-            </IconButton>
+            {changingNetwork ? (
+              <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
+            ) : (
+              <div className="flex justify-center">
+                <h3 className="text-5xl flex-1">
+                  {formatNumber(
+                    accounts.find((element) => element.id === activeAccountId)
+                      ?.balance || 5268
+                  )}{' '}
+                </h3>
+                <small className="flex-1 ">{activeNetwork == 'testnet' ? 'TSYS' : 'SYS'}</small>
+              </div>
+              
+            )}
 
-            <div >
+            {changingNetwork ? (
+              <p style={{ color: 'white' }}>...</p>
+            ) : (
+              <small style={{ marginTop: '5px', marginBottom: '5px' }}>
+                {activeNetwork !== 'testnet'
+                  ? getFiatAmount(
+                    accounts.find((element) => element.id === activeAccountId)
+                      ?.balance || 0
+                  )
+                  : ''}
+              </small>
+            )}
+
+            <div className="pt-4">
               <Button
+                className="bg-brand-navydarker rounded-l-full border border-brand-deepPink tracking-normal text-base py-1 px-6 cursor-pointer mr-px hover:bg-brand-deepPink"
                 type="button"
                 onClick={() => history.push('/send')}
               >
+                <ArrowUpOutlined rotate={40}/>
                 Send
               </Button>
-              <Button
+              <button
+                className="bg-brand-navydarker rounded-r-full border border-brand-royalBlue tracking-normal text-base py-1 px-6 cursor-pointer ml-px hover:bg-brand-royalBlue"
                 type="button"
                 onClick={() => history.push('/receive')}
               >
+                <ArrowDownOutlined />
                 Receive
-              </Button>
+              </button>
             </div>
           </section>
 
@@ -198,3 +204,5 @@ export const Home = () => {
     </div>
   );
 };
+
+export default Home;

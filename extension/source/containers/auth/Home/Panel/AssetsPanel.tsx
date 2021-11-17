@@ -2,19 +2,19 @@ import React, { FC } from 'react';
 
 interface IAssetsPanel {
   show: boolean;
+  classNames: any
 }
 
-export const AssetsPanel: FC<IAssetsPanel> = ({ show }) => {
+const AssetsPanel: FC<IAssetsPanel> = ({ show, classNames }) => {
   return (
-    <ul>
-      assets panel
+    <ul className={classNames}>
 
       {show ? (
         <ul>show assets panel</ul>
       ) : (
-        <span>
+        <p className="justify-center items-center text-sm text-brand-gray">
           You have no tokens or NFTs.
-        </span>
+        </p>
 
         //       {!changingNetwork && (
         //         <img src={`/${SyscoinIcon}`} className="w-40 max-w-40 mx-auto mt-8" alt="Syscoin" />
@@ -56,3 +56,5 @@ export const AssetsPanel: FC<IAssetsPanel> = ({ show }) => {
     </ul>
   )
 }
+
+export default AssetsPanel;

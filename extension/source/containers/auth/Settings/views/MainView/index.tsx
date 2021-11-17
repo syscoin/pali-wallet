@@ -1,6 +1,7 @@
 import React, { FC } from 'react';
 import { useController/*, useStore */, useUtils} from 'hooks/index';
 import { Icon } from 'components/index';
+import { ClockCircleOutlined, DeleteOutlined, DollarOutlined, WalletOutlined, WarningOutlined } from '@ant-design/icons';
 // import AccountSelect from 'components/AccountSelect';
 
 interface IMainView {
@@ -26,27 +27,34 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
   };
 
   return (
-    <div >
+    <div className="text-brand-white">
       {generalSettings && (
         <ul>
-          <li onClick={() => history.push('/general-autolock')}>
-            <Icon name="clock" className="bg-brand-deepPink text-brand-white w-4" />
+          <li className="m-px pt-6 justify-center" onClick={() => history.push('/general-autolock')}>
+            <ClockCircleOutlined style={{marginBottom: '2px'}} />
             Auto lock timer
           </li>
 
-          <li
-            onClick={() => history.push('/general-phrase')}
-          >
-            <Icon name="file-protect" className="bg-brand-deepPink text-brand-white w-4" />
+          <li className="m-px pt-6" onClick={() => history.push('/general-phrase')}>
+            <DollarOutlined />
+            Currency
+          </li>
+
+          <li className="m-px pt-6" onClick={() => history.push('/general-phrase')}>
+            <WalletOutlined />
             Wallet Seed Phrase
           </li>
 
-          <li
-            onClick={() => history.push('/general-about')}
-          >
-            <Icon name="warning" className="bg-brand-deepPink text-brand-white w-4" />
+          <li className="m-px pt-6" onClick={() => history.push('/general-about')}>
+            <WarningOutlined />
             Info/Help
           </li>
+
+          <li className="m-px pt-6" onClick={() => history.push('/general-about')}>
+            <DeleteOutlined />
+            Delete Wallet
+          </li>
+          
         </ul>
       )}
 
@@ -54,37 +62,39 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
 
       {accountSettings && (
         <ul>
-          <li
-            onClick={() => history.push('/account-priv')}
-          >
-            <Icon name="key" className="bg-brand-deepPink text-brand-white w-4" />
+          <li onClick={() => history.push('/account-priv')}>
+            <Icon
+              name="key"
+              className="bg-brand-deepPink text-brand-white w-4"
+            />
             XPUB
           </li>
 
-          <li
-            onClick={() => history.push('/account-details')}
-          >
-            <Icon name="user" className="bg-brand-deepPink text-brand-white w-4" />
+          <li onClick={() => history.push('/account-details')}>
+            <Icon
+              name="user"
+              className="bg-brand-deepPink text-brand-white w-4"
+            />
             Accounts
           </li>
 
-          <li
-            onClick={() => history.push('/account-newaccount')}
-          >
+          <li onClick={() => history.push('/account-newaccount')}>
             new account
           </li>
 
-          <li
-            onClick={() => history.push('/account-hardware')}
-          >
-            <Icon name="partition" className="bg-brand-deepPink text-brand-white w-4" />
+          <li onClick={() => history.push('/account-hardware')}>
+            <Icon
+              name="partition"
+              className="bg-brand-deepPink text-brand-white w-4"
+            />
             Connect hardware wallet
           </li>
 
-          <li
-            onClick={handleLogout}
-          >
-            <Icon name="lock" className="bg-brand-deepPink text-brand-white w-4" />
+          <li onClick={handleLogout}>
+            <Icon
+              name="lock"
+              className="bg-brand-deepPink text-brand-white w-4"
+            />
             Lock
           </li>
         </ul>
