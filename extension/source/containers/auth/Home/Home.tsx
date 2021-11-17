@@ -3,7 +3,7 @@ import { Icon, IconButton, Button, ModalBlock } from 'components/index';
 import { useController, useStore, useFiat, useFormat, useUtils } from 'hooks/index';
 
 import Header from 'containers/common/Header';
-import {TxsPanel} from './TxsPanel';
+import { TxsPanel } from './TxsPanel';
 import { ArrowDownOutlined, ArrowUpOutlined, ReloadOutlined } from '@ant-design/icons';
 
 export const Home = () => {
@@ -110,6 +110,95 @@ export const Home = () => {
         />
       )}
 
+
+      {/* you can use this code instead the below (just need to put some style)
+{accounts.find((element) => element.id === activeAccountId) ? (
+        <>
+          <Header accountHeader />
+
+          <section className="flex justify-center items-center flex-col gap-4 text-brand-white bg-brand-green">
+            <div className="bg-brand-white text-brand-deepPink100 font-bold">
+              {changingNetwork ? (
+                <>
+                  <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
+                  <p style={{ color: 'white' }}>...</p>
+                </>
+              ) : (
+                <>
+                  <h3>
+                    {formatNumber(
+                      accounts.find((element) => element.id === activeAccountId)
+                        ?.balance || 0
+                    )}{' '}
+                    <small>{activeNetwork == 'testnet' ? 'TSYS' : 'SYS'}</small>
+                  </h3>
+                  <small style={{ marginTop: '5px', marginBottom: '5px' }}>
+                    {activeNetwork !== 'testnet'
+                      ? getFiatAmount(
+                        accounts.find((element) => element.id === activeAccountId)
+                          ?.balance || 0
+                      )
+                      : ''}
+                  </small>
+                </>
+              )}
+            </div>
+
+            <IconButton onClick={handleRefresh} type="primary" shape="circle">
+              <Icon name="reload" className="bg-brand-gray200 text-brand-navy w-4" />
+            </IconButton>
+
+            <div >
+              <Button
+                type="button"
+                onClick={() => history.push('/send')}
+              >
+                Send
+              </Button>
+              <Button
+                type="button"
+                onClick={() => history.push('/receive')}
+              >
+                Receive
+              </Button>
+            </div>
+          </section>
+
+          <TxsPanel
+            getTransactionAssetData={getTransactionAssetData}
+            getTransactionData={getTransactionData}
+            setTx={setTx}
+            setAssetTx={setAssetTx}
+            setAssetType={setAssetType}
+            setTxType={setTxType}
+            txidSelected={txidSelected}
+            setTxidSelected={setTxidSelected}
+            setAssetSelected={setAssetSelected}
+            openBlockExplorer={openBlockExplorer}
+            setOpenBlockExplorer={setOpenBlockExplorer}
+            openAssetBlockExplorer={openAssetBlockExplorer}
+            setOpenAssetBlockExplorer={setOpenAssetBlockExplorer}
+            address={
+              accounts.find((element) => element.id === activeAccountId)
+                ?.address.main || 'no addr'
+            }
+            transactions={
+              accounts.find((element) => element.id === activeAccountId)
+                ?.transactions || []
+            }
+            assets={
+              accounts.find((element) => element.id === activeAccountId)
+                ?.assets || []
+            }
+          />
+        </>
+      ) : (
+        <section
+        >
+          <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
+        </section>
+      )} */}
+
       {accounts.find((element) => element.id === activeAccountId) ? (
         <>
           <Header accountHeader />
@@ -131,7 +220,7 @@ export const Home = () => {
                 </h3>
                 <small className="flex-1 ">{activeNetwork == 'testnet' ? 'TSYS' : 'SYS'}</small>
               </div>
-              
+
             )}
 
             {changingNetwork ? (
@@ -153,7 +242,7 @@ export const Home = () => {
                 type="button"
                 onClick={() => history.push('/send')}
               >
-                <ArrowUpOutlined rotate={40}/>
+                <ArrowUpOutlined rotate={40} />
                 Send
               </Button>
               <button
