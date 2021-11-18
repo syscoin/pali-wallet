@@ -1,24 +1,31 @@
-import { useEffect } from 'react';
 import { useSelector } from "react-redux";
+import Bowser from "bowser";
 
-import { setupState } from "../utils/setupState";
+import store from "../state/store";
+import setupState from "../utils/setupState";
 
 export default function Home() {
-  const isLocked = useSelector((state) => state.isLocked);
   const controller = useSelector((state) => state.controller);
+  const isLocked = useSelector((state) => state.isLocked);
   const isInstalled = useSelector((state) => state.isInstalled);
   const isConnected = useSelector((state) => state.connected);
 
   const handleConnect = async (event) => {
     event.preventDefault();
 
-    if(!isInstalled) {
-      return window.open("https://chrome.google.com/webstore/detail/pali-wallet/mgffkfbidihjpoaomajlbgchddlicgpn?hl=en-US");
+    const browser = Bowser.getParser(window.navigator.userAgent);
+
+    if (!isInstalled) {
+      if (browser.getBrowserName() === "Firefox") {
+        return window.open("https://addons.mozilla.org/en-US/firefox/addon/pali-wallet/", "_blank")
+      }
+
+      return window.open("https://chrome.google.com/webstore/detail/pali-wallet/mgffkfbidihjpoaomajlbgchddlicgpn?hl=en-US", "_blank")
     }
 
-    if (controller !== null) {
-      controller.connectWallet().then(() => {
-        setupState();
+    if (controller) {
+      controller.connectWallet().then(async (response) => {
+        response && (await setupState(store));
       });
     }
   };
@@ -41,7 +48,7 @@ export default function Home() {
             >
               {isInstalled
                 ? (isLocked && isConnected)
-                  ? "Unlock Pali Wallet"
+                  ? "Unlock Pali wallet"
                   : "Connect to Pali Wallet"
                 : "Install Pali Wallet"}
             </button>
