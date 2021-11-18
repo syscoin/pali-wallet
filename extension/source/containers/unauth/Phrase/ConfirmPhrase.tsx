@@ -3,11 +3,11 @@ import React, {
   // useMemo
 } from 'react';
 import { useController, useUtils } from 'hooks/index';
-import { Button } from 'components/index';
 import shuffle from 'lodash/shuffle';
 // import isEqual from 'lodash/isEqual';
 
 import { Layout } from '../../common/Layout';
+import { Button } from 'antd';
 
 const ConfirmPhrase = () => {
   const { history } = useUtils();
@@ -61,7 +61,6 @@ const ConfirmPhrase = () => {
               <Button
                 className="px-6 text-brand-white min-w-xs h-7 text-xs flex items-center justify-center tracking-normal bg-brand-royalBlue border border-brand-royalBlue gap-4 rounded-md "
                 key={idx}
-                type="button"
                 onClick={() => handleNewPhrase(idx)}
               >
                 {phrase}
@@ -73,20 +72,20 @@ const ConfirmPhrase = () => {
               <Button
                 className="px-2 min-w-xs h-7 font-bold text-xs leading-4 flex items-center justify-center tracking-normal bg-brand-navy p-1 border-2 border-brand-royalBlue gap-4 rounded-md text-brand-white"
                 key={idx}
-                type="button"
                 onClick={() => handleOrgPhrase(idx)}
               >
                 {phrase}
               </Button>
             ))}
           </section>
-          <Button
-            type="button"
-            className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white border-2 border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
-            onClick={handleConfirm}
-          >
-            Validate
-          </Button>
+          <div className="p-0.5 bg-primary rounded-full">
+            <Button
+              className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white border-2 border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
+              onClick={handleConfirm}
+            >
+              Validate
+            </Button>
+          </div>
         </>
         {passed && (
           <div className="transition-all duration-300 ease-in-out">
@@ -103,7 +102,6 @@ const ConfirmPhrase = () => {
               </span>
 
               <Button
-                type="button"
                 className="tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-deepPink text-brand-white font-light border border-brand-white hover:bg-brand-white hover:text-brand-deepPink transition-all duration-300 mt-8"
                 onClick={handleConfirm}
               >

@@ -1,8 +1,8 @@
 import React, { FC } from 'react';
 import {Layout} from 'containers/common/Layout';
-import { Button } from 'components/index';;
+
 import { useController } from 'hooks/index';
-import { Form, Input } from 'antd';
+import { Button, Form, Input } from 'antd';
 
 interface IImportPhrase {
   onRegister: () => void;
@@ -59,13 +59,13 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           Importing your wallet seed automatically import a wallet associated with this seed phrase.
         </span>
 
-
-        <Button
-          type="submit"
-          className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
-        >
-          Next
-        </Button>
+        <div className="p-0.5 bg-primary rounded-full">
+          <Button
+            className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
+          >
+            Import
+          </Button>
+        </div>
       </Form>
     </Layout>
   );

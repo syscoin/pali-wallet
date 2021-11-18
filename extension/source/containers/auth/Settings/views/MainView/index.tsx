@@ -1,7 +1,13 @@
 import React, { FC } from 'react';
 import { useController/*, useStore */, useUtils} from 'hooks/index';
 import { Icon } from 'components/index';
-import { ClockCircleOutlined, DeleteOutlined, DollarOutlined, WalletOutlined, WarningOutlined } from '@ant-design/icons';
+import {
+  ClockCircleOutlined,
+  DeleteOutlined,
+  DollarOutlined,
+  WalletOutlined,
+  WarningOutlined,
+} from '@ant-design/icons';
 // import AccountSelect from 'components/AccountSelect';
 
 interface IMainView {
@@ -30,31 +36,45 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
     <div className="text-brand-white">
       {generalSettings && (
         <ul>
-          <li className="m-px pt-6 justify-center" onClick={() => history.push('/general-autolock')}>
-            <ClockCircleOutlined style={{marginBottom: '2px'}} />
+          <li
+            className="m-px pt-6 justify-center"
+            onClick={() => history.push('/general-autolock')}
+          >
+            <ClockCircleOutlined style={{ marginBottom: '2px' }} />
             Auto lock timer
           </li>
 
-          <li className="m-px pt-6" onClick={() => history.push('/general-phrase')}>
+          <li
+            className="m-px pt-6"
+            onClick={() => history.push('/general-phrase')}
+          >
             <DollarOutlined />
             Currency
           </li>
 
-          <li className="m-px pt-6" onClick={() => history.push('/general-phrase')}>
+          <li
+            className="m-px pt-6"
+            onClick={() => history.push('/general-phrase')}
+          >
             <WalletOutlined />
             Wallet Seed Phrase
           </li>
 
-          <li className="m-px pt-6" onClick={() => history.push('/general-about')}>
+          <li
+            className="m-px pt-6"
+            onClick={() => history.push('/general-about')}
+          >
             <WarningOutlined />
             Info/Help
           </li>
 
-          <li className="m-px pt-6" onClick={() => history.push('/general-about')}>
+          <li
+            className="m-px pt-6"
+            onClick={() => history.push('/general-about')}
+          >
             <DeleteOutlined />
             Delete Wallet
           </li>
-          
         </ul>
       )}
 

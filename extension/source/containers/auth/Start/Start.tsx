@@ -1,8 +1,8 @@
 import React from 'react';
-import { Button, Link } from 'components/index';
+import { Link } from 'components/index';
 import { useController } from 'hooks/index';
 import LogoImage from 'assets/images/logo-s.svg';
-import { Form, Input } from 'antd';
+import { Button, Form, Input } from 'antd';
 
 export const Start = () => {
   const controller = useController();
@@ -53,7 +53,6 @@ export const Start = () => {
         </Form.Item>
         <Button
           className="bg-primary tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white border"
-          type="submit"
         >
           Unlock
         </Button>

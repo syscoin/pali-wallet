@@ -1,7 +1,8 @@
 import React from 'react';
-import { Button, Link } from 'components/index';
+import { Link } from 'components/index';
 import LogoImage from 'assets/images/logo-s.svg';
 import { useUtils } from 'hooks/index';
+import { Button } from 'antd';
 
 const Start = () => {
   const { history } = useUtils();
@@ -14,16 +15,17 @@ const Start = () => {
       >Pali Wallet</h1> 
 
       <img src={LogoImage} className="w-52 my-8" alt="syscoin" />
- 
-      <Button
-        className="bg-primary tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white border"
-        type="submit"
-        onClick={() => history.push('/create/pass')}
-      >
-        Get Started
-      </Button>
+     
+      <div className="p-0.5 bg-primary rounded-full">
+        <Button
+          className="bg-brand-navy tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white hover:bg-gradient-primary"
+          onClick={() => history.push('/create/pass')}
+        >
+          Get Started
+        </Button>
+      </div>
       
-      <Link className="font-light mt-20 text-base text-brand-royalBlue hover:text-brand-deepPink transition-all duration-300" to="/import">
+      <Link className="text-brand-deepPink font-light mt-20 text-base text-brand-royalBlue transition-all duration-300" to="/import">
         Import using wallet seed phrase
       </Link>
     </div> 
