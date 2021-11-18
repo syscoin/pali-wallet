@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Icon, IconButton, Button, ModalBlock } from 'components/index';
+import { Icon, ModalBlock } from 'components/index';
 import { useController, useStore, useFiat, useFormat, useUtils } from 'hooks/index';
 
 import Header from 'containers/common/Header';
 import { TxsPanel } from './TxsPanel';
 import { ArrowDownOutlined, ArrowUpOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Button } from 'antd';
 
 export const Home = () => {
   const controller = useController();
@@ -235,24 +236,22 @@ export const Home = () => {
                   : ''}
               </small>
             )}
-
             <div className="pt-4">
               <Button
                 className="bg-brand-navydarker rounded-l-full border border-brand-deepPink tracking-normal text-base py-1 px-6 cursor-pointer mr-px hover:bg-brand-deepPink"
-                type="button"
+                icon={<ArrowUpOutlined rotate={40} />}
                 onClick={() => history.push('/send')}
+              
               >
-                <ArrowUpOutlined rotate={40} />
                 Send
               </Button>
-              <button
+              <Button
                 className="bg-brand-navydarker rounded-r-full border border-brand-royalBlue tracking-normal text-base py-1 px-6 cursor-pointer ml-px hover:bg-brand-royalBlue"
-                type="button"
+                icon={<ArrowDownOutlined />}
                 onClick={() => history.push('/receive')}
               >
-                <ArrowDownOutlined />
                 Receive
-              </button>
+              </Button>
             </div>
           </section>
 

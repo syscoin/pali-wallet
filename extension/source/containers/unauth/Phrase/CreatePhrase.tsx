@@ -1,8 +1,7 @@
 import React, { FC } from 'react';
-import { Button } from 'components/index';;
 import { useController, useUtils } from 'hooks/index';
-
 import { Layout } from '../../common/Layout';
+import { Button } from 'antd';
 
 const CreatePhrase: FC = () => {
   const controller = useController();
@@ -38,13 +37,14 @@ const CreatePhrase: FC = () => {
           </ul>
         )}
         
-        <Button
-          type="button"
-          className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
-          onClick={nextHandler}
-        >
-          I've written it down
-        </Button>
+        <div className="p-0.5 bg-primary rounded-full">
+          <Button
+            className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
+            onClick={nextHandler}
+          >
+            I've written it down
+          </Button>
+        </div>
       </div>
     </Layout>
   );

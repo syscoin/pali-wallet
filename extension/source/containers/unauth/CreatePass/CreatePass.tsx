@@ -79,13 +79,14 @@ const CreatePass = () => {
         <span className="font-light text-brand-royalBlue text-sm mx-4 p-7">
           Do not forget to save your password. You will need this password to unlock your wallet.
         </span>
-
-        <Button
-          type="submit"
-          className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
-        >
-          Next
-        </Button>
+        <div className="p-0.5 bg-primary rounded-full">
+          <Button
+            type="submit"
+            className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
+          >
+            Next
+          </Button>
+        </div>
       </Form>
     </Layout>
   );
