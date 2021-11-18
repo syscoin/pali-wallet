@@ -3,6 +3,7 @@ import { Link } from 'components/index';
 import { useController } from 'hooks/index';
 import LogoImage from 'assets/images/logo-s.svg';
 import { Button, Form, Input } from 'antd';
+import { changeBackgroundLinear, changeBackground } from '../../../constants'
 
 export const Start = () => {
   const controller = useController();
@@ -51,11 +52,15 @@ export const Start = () => {
         >
           <Input.Password placeholder="Enter your password" />
         </Form.Item>
-        <Button
-          className="bg-primary tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white border"
-        >
-          Unlock
-        </Button>
+        <div className="p-0.5 bg-primary rounded-full">
+          <Button
+            onMouseEnter={changeBackgroundLinear}
+            onMouseLeave={changeBackground}
+            className="bg-brand-navy tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white"
+          >
+            Unlock
+          </Button>
+        </div>
       </Form>
       
       <Link className="font-light mt-12 text-base text-brand-graylight hover:text-brand-royalBlue transition-all duration-300" to="/import">

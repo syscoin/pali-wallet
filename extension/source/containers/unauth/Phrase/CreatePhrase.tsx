@@ -2,7 +2,7 @@ import React, { FC } from 'react';
 import { useController, useUtils } from 'hooks/index';
 import { Layout } from '../../common/Layout';
 import { Button } from 'antd';
-
+import { changeBackgroundLinear, changeBackground } from '../../../constants'
 const CreatePhrase: FC = () => {
   const controller = useController();
   const { history } = useUtils();
@@ -21,7 +21,7 @@ const CreatePhrase: FC = () => {
     >
       <div className="flex justify-center items-center flex-col gap-4 mt-8">
         {phrases && (
-          <ul className="list-none m-0 p-0 grid grid-cols-2 w-full gap-x-8">
+          <ul className="list-none m-0 p-0 grid grid-cols-2 w-full gap-x-8 pb-10">
             {phrases.split(' ').map((phrase: string, index: number) => (
               <li
                 className="font-sans font-light text-sm leading-8 tracking-normal text-brand-graylight border-dashed border-b border-brand-graylight text-left w-32"
@@ -39,7 +39,9 @@ const CreatePhrase: FC = () => {
         
         <div className="p-0.5 bg-primary rounded-full">
           <Button
-            className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
+            onMouseEnter={changeBackgroundLinear}
+            onMouseLeave={changeBackground}
+            className="bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light"
             onClick={nextHandler}
           >
             I've written it down

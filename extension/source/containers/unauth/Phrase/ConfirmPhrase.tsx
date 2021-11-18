@@ -5,7 +5,7 @@ import React, {
 import { useController, useUtils } from 'hooks/index';
 import shuffle from 'lodash/shuffle';
 // import isEqual from 'lodash/isEqual';
-
+import { changeBackgroundLinear, changeBackground } from '../../../constants'
 import { Layout } from '../../common/Layout';
 import { Button } from 'antd';
 
@@ -67,7 +67,7 @@ const ConfirmPhrase = () => {
               </Button>
             ))}
           </section>
-          <section className="flex p-6 w-full flex-wrap box-border min-h-full transition-all duration-300 items-center justify-center gap-4">
+          <section className="flex p-6 w-full flex-wrap box-border min-h-full transition-all duration-300 items-center justify-center gap-4 pb-10">
             {orgList.map((phrase, idx) => (
               <Button
                 className="px-2 min-w-xs h-7 font-bold text-xs leading-4 flex items-center justify-center tracking-normal bg-brand-navy p-1 border-2 border-brand-royalBlue gap-4 rounded-md text-brand-white"
@@ -80,8 +80,10 @@ const ConfirmPhrase = () => {
           </section>
           <div className="p-0.5 bg-primary rounded-full">
             <Button
-              className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white border-2 border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
               onClick={handleConfirm}
+              onMouseEnter={changeBackgroundLinear}
+              onMouseLeave={changeBackground}
+              className="bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white"
             >
               Validate
             </Button>

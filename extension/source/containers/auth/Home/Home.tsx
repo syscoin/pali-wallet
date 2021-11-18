@@ -62,6 +62,7 @@ export const Home = () => {
   const handleOpenAssetExplorer = (assetGuid: number) => {
     window.open(`${sysExplorer}/asset/${assetGuid}`);
   };
+  
 
   return (
     <div>
@@ -206,7 +207,7 @@ export const Home = () => {
 
           <section className="flex items-center flex-col gap-1 text-brand-white bg-brand-navydarker pb-14">
             <button onClick={handleRefresh} className="ml-10 pl-72">
-              <ReloadOutlined />
+              <ReloadOutlined style={{display: 'inline-flex', alignSelf : 'center', fontSize: '16px'}} />
             </button>
 
             {changingNetwork ? (
@@ -236,21 +237,22 @@ export const Home = () => {
                   : ''}
               </small>
             )}
-            <div className="pt-4">
+            <div className="pt-8">
               <Button
                 className="bg-brand-navydarker rounded-l-full border border-brand-deepPink tracking-normal text-base py-1 px-6 cursor-pointer mr-px hover:bg-brand-deepPink"
-                icon={<ArrowUpOutlined rotate={40} />}
+              
                 onClick={() => history.push('/send')}
               
               >
-                Send
+                <ArrowUpOutlined rotate={40} style={{display: 'inline-flex', alignSelf : 'center', fontSize: '14px', paddingRight: '4px'}}/>
+                  Send
               </Button>
               <Button
                 className="bg-brand-navydarker rounded-r-full border border-brand-royalBlue tracking-normal text-base py-1 px-6 cursor-pointer ml-px hover:bg-brand-royalBlue"
-                icon={<ArrowDownOutlined />}
                 onClick={() => history.push('/receive')}
               >
-                Receive
+                <ArrowDownOutlined style={{display: 'inline-flex', alignSelf : 'center', fontSize: '14px', paddingRight: '4px'}} />
+                  Receive
               </Button>
             </div>
           </section>

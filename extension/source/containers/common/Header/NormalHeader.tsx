@@ -5,6 +5,7 @@ import { SYS_NETWORK } from 'constants/index';
 import { browser } from 'webextension-polyfill-ts';
 import { useController, useStore, useUtils } from 'hooks/index';
 import { SettingOutlined } from '@ant-design/icons';
+import { Button } from 'antd';
 
 interface INormalHeader {
   importSeed: boolean;
@@ -139,12 +140,11 @@ const NormalHeader: FC<INormalHeader> = ({
 
       {encriptedMnemonic && !importSeed ? (
 
-        <button className="pl-20" onClick={() => {
-          console.log('generalSettingsShowed', generalSettingsShowed)
+        <Button className="pl-20" onClick={() => {
           generalSettingsShowed ? handleCloseSettings() : showSettings(!generalSettingsShowed)}}
           >
-            <SettingOutlined />
-        </button>
+            <SettingOutlined style={{display: 'inline-flex', alignSelf : 'center', fontSize: '16px'}} />
+        </Button>
       ) : (
         null
       )}

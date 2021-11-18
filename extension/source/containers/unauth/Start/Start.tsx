@@ -3,10 +3,10 @@ import { Link } from 'components/index';
 import LogoImage from 'assets/images/logo-s.svg';
 import { useUtils } from 'hooks/index';
 import { Button } from 'antd';
-
+import { changeBackgroundLinear, changeBackground } from '../../../constants'
 const Start = () => {
   const { history } = useUtils();
-  
+
   return (
     <div className="mt-20 flex justify-center items-center flex-col min-w-full p-2">
       <p className=" text-brand-deepPink100 text-center text-lg  font-normal mb-2 tracking-wider">WELCOME TO</p>
@@ -18,7 +18,9 @@ const Start = () => {
      
       <div className="p-0.5 bg-primary rounded-full">
         <Button
-          className="bg-brand-navy tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white hover:bg-gradient-primary"
+          onMouseEnter={changeBackgroundLinear}
+          onMouseLeave={changeBackground}
+          className="bg-brand-navy tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white hover:backgroundImage"
           onClick={() => history.push('/create/pass')}
         >
           Get Started

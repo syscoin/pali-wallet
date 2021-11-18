@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import {Layout} from 'containers/common/Layout';
-
+import { changeBackgroundLinear, changeBackground } from '../../../constants'
 import { useController } from 'hooks/index';
 import { Button, Form, Input } from 'antd';
 
@@ -55,13 +55,15 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           />
         </Form.Item>
 
-        <span className="font-light text-brand-royalBluemedium text-xs mx-12 mt-2">
+        <span className="font-light text-brand-royalBluemedium text-xs mx-12 mt-2 pb-12">
           Importing your wallet seed automatically import a wallet associated with this seed phrase.
         </span>
 
-        <div className="p-0.5 bg-primary rounded-full">
+        <div className="p-0.5 bg-primary rounded-full ">
           <Button
-            className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
+            onMouseEnter={changeBackgroundLinear}
+            onMouseLeave={changeBackground}
+            className="tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light "
           >
             Import
           </Button>

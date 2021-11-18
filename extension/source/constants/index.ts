@@ -34,3 +34,14 @@ export const DEFAULT_CURRENCY = {
   symbol: '$',
   name: 'USD',
 };
+
+export function changeBackgroundLinear(e: any) {
+  if(e.target.tagName == 'BUTTON') {
+    e.target.style.background = 'linear-gradient(to right top, #ff3e91, #da53b2, #ab66c3, #7971c5, #4d76b8)';
+  }
+}
+export function changeBackground(e: any) {
+  if(e.target.tagName == 'BUTTON') {
+    e.target.style.background = '#122036';
+  }
+}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useController, useUtils } from 'hooks/index';
-import { Form, Input } from 'antd';
-import { Button } from 'components/index';;
+import { Button, Form, Input } from 'antd';
+import { changeBackgroundLinear, changeBackground } from '../../../constants'
 import { Layout } from '../../common/Layout';
 
 const CreatePass = () => {
@@ -81,8 +81,10 @@ const CreatePass = () => {
         </span>
         <div className="p-0.5 bg-primary rounded-full">
           <Button
-            type="submit"
-            className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
+            htmlType="submit"
+            onMouseEnter={changeBackgroundLinear}
+            onMouseLeave={changeBackground}
+            className="bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light"
           >
             Next
           </Button>
