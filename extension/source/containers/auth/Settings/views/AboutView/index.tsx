@@ -22,7 +22,7 @@ const AboutView: FC = () => {
   return (
     <div className={styles.about}>
       <span>Pali Wallet Chrome Extension v1.0</span>
-      <span>Version: 1.0.14</span>
+      <span>Version: 1.0.15</span>
       <span>
         Support:{' '}
         <a
