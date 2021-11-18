@@ -21,7 +21,7 @@ const AboutView: FC = () => {
   return (
     <AuthViewLayout title="INFO & HELP">
       <span>Pali Wallet Chrome Extension v1.0</span>
-      <span>Version: 1.0.13</span>
+      <span>Version: 1.0.14</span>
       <span>
         Support:{' '}
         <a
