@@ -2,9 +2,7 @@ import React, { useState } from 'react';
 import AccountHeader from './AccountHeader';
 import Section from './Section';
 import NormalHeader from './NormalHeader';
-import { useController, useStore } from 'hooks/index';
-
-import { useHistory } from 'react-router-dom';
+import { useController, useStore, useUtils } from 'hooks/index';
 import { HomeOutlined } from '@ant-design/icons';
 
 const Header = ({
@@ -17,6 +15,7 @@ const Header = ({
   const [accountSettingsShowed, showAccountSettings] = useState<boolean>(false);
 
   const { encriptedMnemonic } = useStore();
+  const { history } = useUtils();
 
   const controller = useController();
 
@@ -26,7 +25,6 @@ const Header = ({
     showAccountSettings(false);
     showGeneralSettings(false);
   };
-  const history = useHistory();
   return (
     <div>
       {onlySection && (
