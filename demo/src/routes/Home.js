@@ -2,7 +2,7 @@ import { useSelector } from "react-redux";
 import Bowser from "bowser";
 
 import store from "../state/store";
-import setupState from "../utils/setupState";
+import { setupState } from "../utils/setupState";
 
 export default function Home() {
   const controller = useSelector((state) => state.controller);

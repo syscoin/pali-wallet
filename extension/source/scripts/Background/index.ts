@@ -114,14 +114,9 @@ const executeMessages = async () => {
     return await browser.tabs.sendMessage(Number(tabId), messageDetails);
   }
 
-<<<<<<< HEAD
   const updateActiveWindow = async ({ windowId, options }: any) => {
     return await browser.windows.update(Number(windowId), options);
   }
-=======
-      const tabs: any = await getTabs({ active: true, windowType: 'normal' });
-      console.log('tabs firefox', tabs, nextState)
->>>>>>> fix-firefox
 
   const observeStore = async (store: any) => {
     let currentState: any;
@@ -162,50 +157,24 @@ const executeMessages = async () => {
     return unsubscribe;
   };
 
-const createPopup = async (url: string) => {
-  console.log('create popup url', url)
-  const [tab]: any = await getTabs({ active: true, lastFocusedWindow: true });
+  observeStore(store);
 
-  console.log("tab create popup", tab)
+  const createPopup = async (url: string) => {
+    const [tab]: any = await getTabs({ active: true, lastFocusedWindow: true });
 
-  if (tab.title === 'Pali Wallet') {
-    console.log('tab title pali wallet', tab)
-    return;
-  }
+    if (tab.title === 'Pali Wallet') {
+      return;
+    }
 
-  store.dispatch(updateCurrentURL(String(tab.url)));
+    store.dispatch(updateCurrentURL(String(tab.url)));
 
-  const [sysWalletPopup]: any = await getTabs({ url: browser.runtime.getURL('app.html') });
+    const [sysWalletPopup]: any = await getTabs({ url: browser.runtime.getURL('app.html') });
 
-  console.log('sysWalletpopup exists', sysWalletPopup)
-
-  if (sysWalletPopup) {
-    console.log('sys wallet popup active update window', sysWalletPopup)
-    
-    await updateActiveWindow({
-      windowId: Number(sysWalletPopup.windowId),
-      options: {
-        drawAttention: true,
-        focused: true
-      }
-    });
-
-    return;
-  }
-
-  await browser.windows.create({
-    url,
-    type: "popup",
-    height: 600,
-    width: 372,
-    left: 900,
-    top: 90,
-  });
-};
-
-    const [sysWalletPopup]: any = await getTabs({ url: browser.extension.getURL('app.html') });
+    console.log('sysWalletpopup exists', sysWalletPopup)
 
     if (sysWalletPopup) {
+      console.log('sys wallet popup active update window', sysWalletPopup)
+
       await updateActiveWindow({
         windowId: Number(sysWalletPopup.windowId),
         options: {
@@ -216,12 +185,15 @@ const createPopup = async (url: string) => {
 
       return;
     }
-
-    window.open(url, "Pali Wallet", "width=372, height=600, left=900, top=90");
-
-    // sysPopup.onbeforeunload = () => {
-    //   store.dispatch(clearAllTransactions());
-    // }
+    
+    await browser.windows.create({
+      url,
+      type: "popup",
+      height: 600,
+      width: 372,
+      left: 900,
+      top: 90,
+    });
   };
 
   const closePopup = () => {

@@ -27,7 +27,7 @@ const App = () => {
 
   useEffect(() => {
     const callback = async (event) => {
-      if (event.detail.SyscoinInstalled) {
+      if (event && event.detail.SyscoinInstalled) {
         store.dispatch(setIsInstalled(true));
 
         if (event.detail.ConnectionsController) {
