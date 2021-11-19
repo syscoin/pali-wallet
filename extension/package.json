@@ -1,6 +1,6 @@
 {
   "name": "paliwallet",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "Extension wallet for SYS blockchain.",
   "private": true,
   "repository": {
@@ -72,7 +72,7 @@
     "ses": "^0.14.2",
     "socket.io": "^4.3.2",
     "socket.io-client": "^4.3.2",
-    "syscoinjs-lib": "^1.0.192",
+    "syscoinjs-lib": "^1.0.195",
     "syscointx-js": "^1.0.90",
     "tailwindcss": "npm:@tailwindcss/postcss7-compat",
     "trezor-connect": "^8.1.29",
