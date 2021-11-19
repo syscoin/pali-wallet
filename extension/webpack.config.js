@@ -27,7 +27,7 @@ const extensionReloaderPlugin =
         contentScript: 'contentScript',
         background: 'background',
         inpage: 'inpage',
-        extensionPage: ['popup', 'options'],
+        extensionPage: ['popup'],
         trezorScript: 'trezorScript'
       },
     })
@@ -67,7 +67,6 @@ module.exports = {
     contentScript: path.join(sourcePath, 'scripts/ContentScript', 'index.ts'),
     trezorScript: path.join(sourcePath, 'vendor', 'trezor-content-script.js'),
     app: path.join(sourcePath, 'pages/App', 'index.tsx'),
-    options: path.join(sourcePath, 'pages/Options', 'index.tsx'),
     trezorUSB: path.join(sourcePath, 'vendor', 'trezor-usb-permissions.js')
   },
 
@@ -206,13 +205,6 @@ module.exports = {
       template: path.join(viewsPath, 'trezor-usb-permissions.html'),
       filename: 'trezor-usb-permissions.html',
       chunks: ['trezorUSB'],
-    }),
-    new HtmlWebpackPlugin({
-      template: path.join(viewsPath, 'options.html'),
-      inject: 'body',
-      chunks: ['options'],
-      hash: true,
-      filename: 'options.html',
     }),
     // write css file(s) to build folder
     new MiniCssExtractPlugin({ filename: 'css/[name].css' }),

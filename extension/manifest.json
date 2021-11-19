@@ -43,12 +43,6 @@
     "__chrome|opera__chrome_style": false,
     "__firefox__browser_style": false
   },
-  "__chrome|opera__options_page": "options.html",
-  "options_ui": {
-    "page": "options.html",
-    "open_in_tab": true,
-    "__chrome__chrome_style": false
-  },
   "background": {
     "scripts": [
       "js/webextension.bundle.js",
