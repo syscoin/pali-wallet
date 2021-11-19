@@ -1,23 +1,11 @@
 import React, { ReactNode, FC } from 'react';
 
 interface IButton {
-  blockHeight?: number;
   children: ReactNode;
   disabled?: boolean;
-  fullWidth?: boolean;
-  linkTo?: string;
   loading?: boolean;
   onClick?: any;
-  theme?:
-    | 'primary'
-    | 'secondary'
-    | 'btn-outline-primary'
-    | 'btn-gradient-primary'
-    | 'btn-outline-secondary'
-    | 'btn-rectangle-primary'
-    | 'btn-rectangle-selected'
   type: 'button' | 'submit';
-  variant?: string;
   standardClass?: string;
   className?: string;
   noStandard?: boolean;

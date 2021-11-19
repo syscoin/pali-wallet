@@ -7,12 +7,7 @@ import {
 import {
   useController,
   useStore,
-  useUtils
 } from 'hooks/index';
-import {
-  Icon,
-  IconButton
-} from 'components/index';
 
 export const Header = ({
   importSeed = false,
@@ -24,16 +19,15 @@ export const Header = ({
   const [accountSettingsShowed, showAccountSettings] = useState<boolean>(false);
 
   const { encriptedMnemonic } = useStore();
-  const { history } = useUtils();
 
   const controller = useController();
-
   const isUnlocked = !controller.wallet.isLocked();
 
   const handleCloseSettings = () => {
     showAccountSettings(false);
     showGeneralSettings(false);
   };
+
   return (
     <div>
       {onlySection && (
