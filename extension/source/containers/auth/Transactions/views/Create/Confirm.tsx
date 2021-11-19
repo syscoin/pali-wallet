@@ -1,18 +1,13 @@
 import React from 'react';
-import IWalletState from 'state/wallet/types';
-import { useSelector } from 'react-redux';
-import { useController } from 'hooks/index';
-import { RootState } from 'state/store';
+import { useController, useStore } from 'hooks/index';
 
 import { ConfirmTransaction } from '../SiteTransaction';
 
 export const CreateTokenConfirm = () => {
   const controller = useController();
-  const { newSPT } = controller.wallet.account.getTransactionItem();
 
-  const { creatingAsset }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
+  const { newSPT } = controller.wallet.account.getTransactionItem();
+  const { creatingAsset } = useStore();
 
   return (
     <div>

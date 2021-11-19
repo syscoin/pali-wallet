@@ -36,7 +36,7 @@ div[role=alert] {
 }
 
 .anticon.anticon-close-circle {
-  @apply text-brand-deepPink;
+  @apply text-brand-error;
 }
 
 .ant-tooltip {

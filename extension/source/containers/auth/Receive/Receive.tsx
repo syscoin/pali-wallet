@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useController, useUtils, useStore } from 'hooks/index';
 import QRCode from 'qrcode.react';
 import { IconButton, Icon } from 'components/index';
-import Header from 'containers/common/Header';
+import { Header } from 'containers/common/Header';
 
 export const Receive = () => {
   const { useCopyClipboard, history } = useUtils();

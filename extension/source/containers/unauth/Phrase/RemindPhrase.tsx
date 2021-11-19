@@ -1,9 +1,9 @@
 import React from 'react';
 import { Button } from 'components/index';;
 
-import {Layout} from '../../common/Layout';
+import { Layout } from 'containers/common/Layout';
 
-const RemindPhrase = () => {
+export const RemindPhrase = () => {
   return (
     <Layout title={`Let's create your\nrecovery phrase`}>
       <span className="body-description">
@@ -22,5 +22,3 @@ const RemindPhrase = () => {
     </Layout>
   );
 };
-
-export default RemindPhrase;

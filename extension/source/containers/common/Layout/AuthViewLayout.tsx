@@ -1,5 +1,5 @@
 import React, { FC } from 'react';
-import Header from 'containers/common/Header';
+import { Header } from 'containers/common/Header';
 
 interface IAuthViewLayout {
   title: string;

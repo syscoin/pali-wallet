@@ -1,9 +1,9 @@
 import React from 'react';
 import { Button, Link } from 'components/index';
 
-import {Layout} from '../../common/Layout';
+import { Layout } from '../../common/Layout';
 
-const WelcomeWallet = () => {
+export const WelcomeWallet = () => {
   return (
     <Layout title={`Let's create a new \n Wallet`}>
       <span>
@@ -17,5 +17,3 @@ const WelcomeWallet = () => {
     </Layout>
   );
 };
-
-export default WelcomeWallet;

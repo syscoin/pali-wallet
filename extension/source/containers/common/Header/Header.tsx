@@ -1,13 +1,20 @@
 import React, { useState } from 'react';
-import AccountHeader from './AccountHeader';
-import Section from './Section';
-import NormalHeader from './NormalHeader';
-import { useController, useStore } from 'hooks/index';
+import {
+  AccountHeader,
+  NormalHeader,
+  Section
+} from './index';
+import {
+  useController,
+  useStore,
+  useUtils
+} from 'hooks/index';
+import {
+  Icon,
+  IconButton
+} from 'components/index';
 
-import { useHistory } from 'react-router-dom';
-import { HomeOutlined } from '@ant-design/icons';
-
-const Header = ({
+export const Header = ({
   importSeed = false,
   onlySection = false,
   accountHeader = false,
@@ -17,6 +24,7 @@ const Header = ({
   const [accountSettingsShowed, showAccountSettings] = useState<boolean>(false);
 
   const { encriptedMnemonic } = useStore();
+  const { history } = useUtils();
 
   const controller = useController();
 
@@ -26,22 +34,14 @@ const Header = ({
     showAccountSettings(false);
     showGeneralSettings(false);
   };
-  const history = useHistory();
   return (
     <div>
       {onlySection && (
-        <div className="grid grid-cols-6 gap-4">
-          <div className="col-start-2 col-span-4">
-            <Section />
-          </div>
-          <div className="col-end-7">
-            <button className="pl-6" onClick={() => history.goBack()}><HomeOutlined style={{color: '#4ca1cf'}} /></button>
-          </div>
-        </div>
+        <Section />
       )}
   
       {normalHeader && (
-        <div>
+        <>
           <NormalHeader
             importSeed={importSeed}
             generalSettingsShowed={generalSettingsShowed}
@@ -61,10 +61,8 @@ const Header = ({
               isUnlocked={isUnlocked}
             />
           )}
-        </div>
+        </>
       )}
     </div>
   )
 }
-
-export default Header;

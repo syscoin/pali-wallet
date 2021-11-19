@@ -1,9 +1,8 @@
 import React from 'react';
-import { Link } from 'components/index';
+import { Button, Link } from 'components/index';
 import { useController } from 'hooks/index';
 import LogoImage from 'assets/images/logo-s.svg';
-import { Button, Form, Input } from 'antd';
-import { changeBackgroundLinear, changeBackground } from '../../../constants'
+import { Form, Input } from 'antd';
 
 export const Start = () => {
   const controller = useController();
@@ -52,15 +51,11 @@ export const Start = () => {
         >
           <Input.Password placeholder="Enter your password" />
         </Form.Item>
-        <div className="p-0.5 bg-primary rounded-full">
-          <Button
-            onMouseEnter={changeBackgroundLinear}
-            onMouseLeave={changeBackground}
-            className="bg-brand-navy tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white"
-          >
-            Unlock
-          </Button>
-        </div>
+        <Button
+          type="submit"
+        >
+          Unlock
+        </Button>
       </Form>
       
       <Link className="font-light mt-12 text-base text-brand-graylight hover:text-brand-royalBlue transition-all duration-300" to="/import">
@@ -69,5 +64,3 @@ export const Start = () => {
     </div>
   );
 };
-
-export default Start;

@@ -13,15 +13,16 @@ const AboutView: FC = () => {
         window.open('https://discord.gg/8QKeyurHRd')
       }
     });
-
   };
+  
   const handleDocsClick = () => {
     window.open('https://docs.paliwallet.com/');
   };
+
   return (
     <AuthViewLayout title="INFO & HELP">
       <span>Pali Wallet Chrome Extension v1.0</span>
-      <span>Version: 1.0.13</span>
+      <span>Version: 1.0.15</span>
       <span>
         Support:{' '}
         <a

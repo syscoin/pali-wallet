@@ -2,15 +2,16 @@ import React, {
   useState,
   // useMemo
 } from 'react';
-import { useController, useUtils } from 'hooks/index';
+import { useHistory } from 'react-router-dom';
+import { useController } from 'hooks/index';
+import { Button } from 'components/index';;
 import shuffle from 'lodash/shuffle';
 // import isEqual from 'lodash/isEqual';
-import { changeBackgroundLinear, changeBackground } from '../../../constants'
-import { Layout } from '../../common/Layout';
-import { Button } from 'antd';
 
-const ConfirmPhrase = () => {
-  const { history } = useUtils();
+import { Layout } from '../../common/Layout';
+
+export const ConfirmPhrase = () => {
+  const history = useHistory();
   const controller = useController();
   const phrases = controller.wallet.generatePhrase();
 
@@ -53,57 +54,57 @@ const ConfirmPhrase = () => {
   };
 
   return (
-    <Layout title="Confirm Recovery Phrase" onlySection>
-      <div className="text-brand-white transition-all duration-300 ease-in-out flex justify-center items-center flex-col gap-4 mt-2">
+    <Layout title="Verify your recovery phrase" onlySection>
+      <div className="transition-all duration-300 ease-in-out flex justify-center items-center flex-col gap-4 mt-8">
         <>
+          <span className="font-light text-brand-graylight text-xs">
+            Select the words in the correct order.
+          </span>
           <section className="flex p-4 flex-wrap box-border min-h-full transition-all duration-300 items-center justify-center gap-4 border-b border-brand-graylight w-11/12">
             {newList.map((phrase, idx) => (
               <Button
-                className="px-6 text-brand-white min-w-xs h-7 text-xs flex items-center justify-center tracking-normal bg-brand-royalBlue border border-brand-royalBlue gap-4 rounded-md "
+                className="min-w-xs h-7 font-bold text-xs leading-4 flex items-center justify-center tracking-normal bg-brand-royalBlue p-1 border border-brand-royalBlue gap-4 rounded-md text-brand-navy"
                 key={idx}
+                type="button"
                 onClick={() => handleNewPhrase(idx)}
               >
                 {phrase}
               </Button>
             ))}
           </section>
-          <section className="flex p-6 w-full flex-wrap box-border min-h-full transition-all duration-300 items-center justify-center gap-4 pb-10">
+          <section className="flex p-4 w-full flex-wrap box-border min-h-full transition-all duration-300 items-center justify-center gap-4">
             {orgList.map((phrase, idx) => (
               <Button
-                className="px-2 min-w-xs h-7 font-bold text-xs leading-4 flex items-center justify-center tracking-normal bg-brand-navy p-1 border-2 border-brand-royalBlue gap-4 rounded-md text-brand-white"
+                className="min-w-xs h-7 font-bold text-xs leading-4 flex items-center justify-center tracking-normal bg-brand-navy p-1 border border-brand-navymedium gap-4 rounded-md text-brand-white"
                 key={idx}
+                type="button"
                 onClick={() => handleOrgPhrase(idx)}
               >
                 {phrase}
               </Button>
             ))}
           </section>
-          <div className="p-0.5 bg-primary rounded-full">
-            <Button
-              onClick={handleConfirm}
-              onMouseEnter={changeBackgroundLinear}
-              onMouseLeave={changeBackground}
-              className="bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white"
-            >
-              Validate
-            </Button>
-          </div>
+          <Button
+            type="button"
+            className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
+            onClick={handleConfirm}
+          >
+            Validate
+          </Button>
         </>
         {passed && (
           <div className="transition-all duration-300 ease-in-out">
-            <div className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-darktransparent" />
+            <div className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-darktransparent"></div>
 
             <div className="transition-all duration-300 ease-in-out fixed z-10 flex flex-col bg-brand-deepPink top-1/3 left-8 right-8 p-6 rounded-3xl">
-              <h2 className="pb-4 text-brand-white border-b border-dashed border-brand-graylight w-full text-center mb-4">
-                YOUR WALLET IS READY!
-              </h2>
+              <h2 className="pb-4 text-brand-white border-b border-dashed border-brand-graylight w-full text-center mb-4">YOUR WALLET IS READY</h2>
 
               <span className="font-light text-brand-graylight text-xs">
-                You should now have your recovery phrase and your wallet
-                password written down for future reference.
+                You should now have your recovery phrase and your wallet password written down for future reference.
               </span>
 
               <Button
+                type="button"
                 className="tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-deepPink text-brand-white font-light border border-brand-white hover:bg-brand-white hover:text-brand-deepPink transition-all duration-300 mt-8"
                 onClick={handleConfirm}
               >
@@ -116,5 +117,3 @@ const ConfirmPhrase = () => {
     </Layout>
   );
 };
-
-export default ConfirmPhrase;

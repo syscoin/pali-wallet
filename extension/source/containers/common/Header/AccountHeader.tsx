@@ -13,7 +13,7 @@ interface IAccountHeader {
   isUnlocked: boolean;
 }
 
-const AccountHeader: FC <IAccountHeader> = ({
+export const AccountHeader: FC <IAccountHeader> = ({
   encriptedMnemonic,
   importSeed,
   accountSettingsShowed,
@@ -64,5 +64,3 @@ const AccountHeader: FC <IAccountHeader> = ({
     </div>
   )
 }
-
-export default AccountHeader;

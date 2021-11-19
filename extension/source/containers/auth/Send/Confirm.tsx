@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import Header from 'containers/common/Header';
+import { Header } from 'containers/common/Header';
 import { Layout } from 'containers/common/Layout';
 import { Button, Icon } from 'components/index';;
 import { useController, useFiat, useStore, useUtils, useFormat } from 'hooks/index';

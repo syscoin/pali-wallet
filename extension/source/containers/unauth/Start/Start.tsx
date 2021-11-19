@@ -3,7 +3,7 @@ import LogoImage from 'assets/images/logo-s.svg';
 import { Button, Link } from 'components/index';
 import { useUtils } from 'hooks/index';
 
-const Start = () => {
+export const Start = () => {
   const { history } = useUtils();
 
   return (
@@ -16,7 +16,6 @@ const Start = () => {
       <img src={LogoImage} className="w-52 my-8" alt="syscoin" />
 
       <Button
-        className="bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full"
         type="submit"
         onClick={() => history.push('/create/pass')}
       >
@@ -29,5 +28,3 @@ const Start = () => {
     </div>
   );
 };
-
-export default Start;

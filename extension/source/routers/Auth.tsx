@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import Import from 'containers/common/Import';
+import { Import } from 'containers/common/Import';
 
 import {
   Switch,
@@ -56,7 +56,7 @@ import {
 
 import { SendMatchProps } from './types';
 
-const Auth = () => {
+export const AuthRouter = () => {
   const location = useLocation();
   const controller = useController();
   const isUnlocked = !controller.wallet.isLocked();
@@ -349,5 +349,3 @@ const Auth = () => {
     </>
   );
 };
-
-export default Auth;

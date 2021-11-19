@@ -18,7 +18,8 @@ import {
   PartitionOutlined,
   LockOutlined,
   MoreOutlined,
-  QuestionCircleOutlined
+  QuestionCircleOutlined,
+  HomeOutlined
 } from '@ant-design/icons';
 
 const icons = {
@@ -41,6 +42,7 @@ const icons = {
   'lock': LockOutlined,
   'dots': MoreOutlined,
   'question': QuestionCircleOutlined,
+  'home': HomeOutlined,
 }
 
 interface IIcon {

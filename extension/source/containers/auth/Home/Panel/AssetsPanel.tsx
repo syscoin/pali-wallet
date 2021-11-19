@@ -2,12 +2,12 @@ import React, { FC } from 'react';
 
 interface IAssetsPanel {
   show: boolean;
-  classNames: any
+  className: any
 }
 
-const AssetsPanel: FC<IAssetsPanel> = ({ show, classNames }) => {
+export const AssetsPanel: FC<IAssetsPanel> = ({ show, className }) => {
   return (
-    <ul className={classNames}>
+    <ul className={className}>
 
       {show ? (
         <ul>show assets panel</ul>
@@ -56,5 +56,3 @@ const AssetsPanel: FC<IAssetsPanel> = ({ show, classNames }) => {
     </ul>
   )
 }
-
-export default AssetsPanel;
