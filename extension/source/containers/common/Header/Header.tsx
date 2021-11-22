@@ -3,9 +3,8 @@ import AccountHeader from './AccountHeader';
 import Section from './Section';
 import NormalHeader from './NormalHeader';
 import { useController, useStore } from 'hooks/index';
-
 import { useHistory } from 'react-router-dom';
-import { HomeOutlined } from '@ant-design/icons';
+import { Icon } from 'components/Icon';
 
 const Header = ({
   importSeed = false,
@@ -35,7 +34,7 @@ const Header = ({
             <Section />
           </div>
           <div className="col-end-7">
-            <button className="pl-6" onClick={() => history.goBack()}><HomeOutlined style={{color: '#4ca1cf'}} /></button>
+            <button className="pl-6" onClick={() => history.goBack()}><Icon name="home" className="inline-flex self-center text-base bg-brand-royalblue" /></button>
           </div>
         </div>
       )}

@@ -1,13 +1,7 @@
 import React, { FC } from 'react';
 import { useController/*, useStore */, useUtils} from 'hooks/index';
 import { Icon } from 'components/index';
-import {
-  ClockCircleOutlined,
-  DeleteOutlined,
-  DollarOutlined,
-  WalletOutlined,
-  WarningOutlined,
-} from '@ant-design/icons';
+
 // import AccountSelect from 'components/AccountSelect';
 
 interface IMainView {
@@ -31,48 +25,50 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
     controller.wallet.logOut();
     history.push('/app.html');
   };
-
+ 
   return (
     <div className="text-brand-white">
       {generalSettings && (
         <ul>
           <li
-            className="m-px pt-6 justify-center"
+            className="inline-flex m-px pt-6 text-base"
             onClick={() => history.push('/general-autolock')}
           >
-            <ClockCircleOutlined style={{ marginBottom: '2px' }} />
+            <Icon name="clock" className="pr-4 inline-flex self-center text-base mb-0.5" />
             Auto lock timer
           </li>
 
           <li
-            className="m-px pt-6"
-            onClick={() => history.push('/general-phrase')}
+            className="inline-flex m-px pt-6 text-base"
+            onClick={() => history.push('/general-currency')}
           >
-            <DollarOutlined />
+            <Icon name="dolar" className="pr-4 inline-flex self-center text-base mb-0.5" />
             Currency
           </li>
 
           <li
-            className="m-px pt-6"
+            className="inline-flex m-px pt-6 text-base"
             onClick={() => history.push('/general-phrase')}
           >
-            <WalletOutlined />
+            <Icon name="wallet" className="pr-4 inline-flex self-center text-base mb-0.5" />
+            
             Wallet Seed Phrase
           </li>
 
           <li
-            className="m-px pt-6"
+            className="inline-flex m-px pt-6 text-base"
             onClick={() => history.push('/general-about')}
           >
-            <WarningOutlined />
+            <Icon name="warning" className="pr-4 inline-flex self-center text-base mb-0.5" />
+            
             Info/Help
           </li>
 
           <li
-            className="m-px pt-6"
-            onClick={() => history.push('/general-about')}
+            className="inline-flex m-px pt-6 text-base"
+            onClick={() => history.push('/general-delete')}
           >
-            <DeleteOutlined />
+            <Icon name="delete" className="pr-4 inline-flex self-center text-base mb-0.5" />
             Delete Wallet
           </li>
         </ul>

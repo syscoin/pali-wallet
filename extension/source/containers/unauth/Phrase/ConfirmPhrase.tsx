@@ -78,7 +78,7 @@ const ConfirmPhrase = () => {
               </Button>
             ))}
           </section>
-          <div className="p-0.5 bg-primary rounded-full">
+          <div className="p-0.5 bg-primary rounded-full">'
             <Button
               onClick={handleConfirm}
               onMouseEnter={changeBackgroundLinear}

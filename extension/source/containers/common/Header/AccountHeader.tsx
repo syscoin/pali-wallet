@@ -1,8 +1,8 @@
 import React, { FC } from 'react';
 import LogoImage from 'assets/images/logo-s.svg';
 import { Settings } from 'containers/auth/index';
-import { CopyOutlined, MoreOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
+import { Icon } from 'components/Icon';
 
 interface IAccountHeader {
   encriptedMnemonic: string;
@@ -23,7 +23,7 @@ const AccountHeader: FC <IAccountHeader> = ({
 }) => {
   return (
     <div className="flex items-center bg-brand-navyborder p-1">
-      <div className="flex items-center pr-16 text-brand-white ">
+      <div className="flex items-center pr-14 text-brand-white ">
         <div>
           <img src={`/${LogoImage}`} className="mx-auto w-14 rounded-full" alt="Syscoin" />
         </div>
@@ -32,7 +32,7 @@ const AccountHeader: FC <IAccountHeader> = ({
           <p className="text-xs">0x0000....0000000000000  </p>
         </div>
         <div>
-          <Button className="w-1 pt-4 pl-1"> <CopyOutlined style={{display: 'inline-flex', alignSelf : 'center', fontSize: '12px'}}/> </Button>
+          <Button className="w-1 pt-4 pl-1"><Icon name="copy" className="inline-flex self-center text-xs" /></Button>
         </div>
       </div>
 
@@ -48,7 +48,7 @@ const AccountHeader: FC <IAccountHeader> = ({
                accountSettingsShowed ? handleCloseSettings() : showSettings(!accountSettingsShowed)
              }
            }>
-            <MoreOutlined style={{display: 'inline-flex', alignSelf : 'center', fontSize: '16px'}} />
+            <Icon name="dots" className="inline-flex self-center text-base " />
           </Button>
         </div>
       ) : (

@@ -1,10 +1,10 @@
 import React, { FC, useEffect, useState, ChangeEvent } from 'react';
-import { Modal, Select } from 'components/index';
+import { Icon, Modal, Select } from 'components/index';
 import { Settings } from 'containers/auth/index';
 import { SYS_NETWORK } from 'constants/index';
 import { browser } from 'webextension-polyfill-ts';
 import { useController, useStore, useUtils } from 'hooks/index';
-import { SettingOutlined } from '@ant-design/icons';
+
 import { Button } from 'antd';
 
 interface INormalHeader {
@@ -140,10 +140,11 @@ const NormalHeader: FC<INormalHeader> = ({
 
       {encriptedMnemonic && !importSeed ? (
 
-        <Button className="pl-20" onClick={() => {
+        <Button className="pl-16" onClick={() => {
           generalSettingsShowed ? handleCloseSettings() : showSettings(!generalSettingsShowed)}}
           >
-            <SettingOutlined style={{display: 'inline-flex', alignSelf : 'center', fontSize: '16px'}} />
+            <Icon name="settings" className="inline-flex self-center text-base" />
+            
         </Button>
       ) : (
         null

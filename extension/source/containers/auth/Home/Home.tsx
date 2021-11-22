@@ -4,7 +4,7 @@ import { useController, useStore, useFiat, useFormat, useUtils } from 'hooks/ind
 
 import Header from 'containers/common/Header';
 import { TxsPanel } from './TxsPanel';
-import { ArrowDownOutlined, ArrowUpOutlined, ReloadOutlined } from '@ant-design/icons';
+
 import { Button } from 'antd';
 
 export const Home = () => {
@@ -207,7 +207,7 @@ export const Home = () => {
 
           <section className="flex items-center flex-col gap-1 text-brand-white bg-brand-navydarker pb-14">
             <button onClick={handleRefresh} className="ml-10 pl-72">
-              <ReloadOutlined style={{display: 'inline-flex', alignSelf : 'center', fontSize: '16px'}} />
+              <Icon name="reload" className="inline-flex self-center text-base" />
             </button>
 
             {changingNetwork ? (
@@ -239,19 +239,19 @@ export const Home = () => {
             )}
             <div className="pt-8">
               <Button
-                className="bg-brand-navydarker rounded-l-full border border-brand-deepPink tracking-normal text-base py-1 px-6 cursor-pointer mr-px hover:bg-brand-deepPink"
-              
+                className="inline-flex bg-brand-navydarker rounded-l-full border border-brand-deepPink tracking-normal text-base py-1 px-6 cursor-pointer mr-px hover:bg-brand-deepPink"
                 onClick={() => history.push('/send')}
               
               >
-                <ArrowUpOutlined rotate={40} style={{display: 'inline-flex', alignSelf : 'center', fontSize: '14px', paddingRight: '4px'}}/>
+                <Icon name="arrow-up" className="inline-flex self-center text-sm pr-1" rotate={40} />
                   Send
               </Button>
               <Button
-                className="bg-brand-navydarker rounded-r-full border border-brand-royalBlue tracking-normal text-base py-1 px-6 cursor-pointer ml-px hover:bg-brand-royalBlue"
+                className="inline-flex bg-brand-navydarker rounded-r-full border border-brand-royalBlue tracking-normal text-base py-1 px-6 cursor-pointer ml-px hover:bg-brand-royalBlue"
                 onClick={() => history.push('/receive')}
               >
-                <ArrowDownOutlined style={{display: 'inline-flex', alignSelf : 'center', fontSize: '14px', paddingRight: '4px'}} />
+                <Icon name="arrow-down" className="inline-flex self-center text-sm pr-1" />
+                
                   Receive
               </Button>
             </div>
