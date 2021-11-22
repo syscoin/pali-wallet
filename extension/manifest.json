@@ -26,12 +26,7 @@
   },
   "__firefox__applications": {
     "gecko": {
-      "id": "pali@pollum.io"
-    }
-  },
-  "applications": {
-    "gecko": {
-      "id": "pali@pollum.io"
+      "id": "{b3e96b5f-b5bf-8b48-846b-52f430365e80}"
     }
   },
   "__chrome__minimum_chrome_version": "49",
