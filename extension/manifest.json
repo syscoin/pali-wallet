@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Pali Wallet",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "icons": {
     "16": "assets/icons/favicon-16.png",
     "32": "assets/icons/favicon-32.png",
@@ -26,7 +26,12 @@
   },
   "__firefox__applications": {
     "gecko": {
-      "id": "{b3e96b5f-b5bf-8b48-846b-52f430365e80}"
+      "id": "pali@pollum.io"
+    }
+  },
+  "applications": {
+    "gecko": {
+      "id": "pali@pollum.io"
     }
   },
   "__chrome__minimum_chrome_version": "49",
