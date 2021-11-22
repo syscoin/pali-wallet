@@ -1,8 +1,10 @@
 /* eslint-disable no-nested-ternary */
 import * as React from 'react';
-import { FC,
+import {
+  FC,
   // useCallback,
-  useState } from 'react';
+  useState
+} from 'react';
 // import { v4 as uuid } from 'uuid';
 import { Icon, IconButton, Button } from 'components/index';
 // eslint-disable-next-line import/order
@@ -13,10 +15,7 @@ import {
 
 // import SyscoinIcon from 'assets/images/logo-s.svg';
 import { Transaction, Assets } from 'scripts/types';
-
-// import { AssetsPanel, ActivityPanel  } from '../../auth/Home/Panel'
-import ActivityPanel from "./Panel/ActivityPanel"
-import AssetsPanel from "./Panel/AssetsPanel"
+import { ActivityPanel, AssetsPanel } from "./Panel/index";
 
 interface ITxsPanel {
   address: string;
@@ -37,19 +36,19 @@ interface ITxsPanel {
   txidSelected: any;
 }
 
-export const TxsPanel: FC<ITxsPanel> = ({ 
-                                   //transactions,
-                                   //assets,
-                                   // setOpenBlockExplorer,
-                                   // setTxidSelected,
-                                   // setAssetSelected,
-                                   // setOpenAssetBlockExplorer,
-                                   // setTxType,
-                                   // setAssetType,
-                                   // getTransactionData,
-                                   // setTx,
-                                   // setAssetTx,
-                                   // getTransactionAssetData
+export const TxsPanel: FC<ITxsPanel> = ({
+  //transactions,
+  //assets,
+  // setOpenBlockExplorer,
+  // setTxidSelected,
+  // setAssetSelected,
+  // setOpenAssetBlockExplorer,
+  // setTxType,
+  // setAssetType,
+  // getTransactionData,
+  // setTx,
+  // setAssetTx,
+  // getTransactionAssetData
 }) => {
   // const controller = useController();
   const [isShowed, setShowed] = useState<boolean>(false);
@@ -122,6 +121,7 @@ export const TxsPanel: FC<ITxsPanel> = ({
           <Button
             className={!isActivity ? "w-1/2 flex-2 p-2 text-white text-base bg-brand-navyborder" : "flex-2 p-2 text-white text-base w-1/2 bg-brand-navydarker"}
             type="button"
+            noStandard
             onClick={() => { setActivity(false) }}
           >
             Assets
@@ -130,6 +130,7 @@ export const TxsPanel: FC<ITxsPanel> = ({
           <Button
             className={isActivity ? "w-1/2 flex-2 p-2 text-white text-base bg-brand-navyborder" : "flex-2 p-2 text-white text-base w-1/2 bg-brand-navydarker"}
             type="button"
+            noStandard
             onClick={() => { setActivity(true) }}
           >
             Activity
@@ -156,12 +157,12 @@ export const TxsPanel: FC<ITxsPanel> = ({
 
       {isActivity ? (
         <ActivityPanel
-          classNames={isActivity ? "h-full w-full flex-2 p-4 pr-12 text-white text-base bg-brand-navyborder" : "flex-2 p-4 pr-12 text-white text-base"}
+          className={isActivity ? "h-full w-full flex-2 p-4 pr-12 text-white text-base bg-brand-navyborder" : "flex-2 p-4 pr-12 text-white text-base"}
           show={/* transactions && !changingNetwork */ false}
         />
       ) : (
         <AssetsPanel
-          classNames={!isActivity ? "w-full h-full flex-2 p-4 pr-12 text-white text-base bg-brand-navyborder" : "flex-2 p-4 pr-12 text-white text-base"}
+          className={!isActivity ? "w-full h-full flex-2 p-4 pr-12 text-white text-base bg-brand-navyborder" : "flex-2 p-4 pr-12 text-white text-base"}
           show={/* assets && !changingNetwork */ false}
         />
       )}
@@ -169,5 +170,3 @@ export const TxsPanel: FC<ITxsPanel> = ({
     </div>
   );
 };
-
-export default TxsPanel;

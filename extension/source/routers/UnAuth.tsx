@@ -1,13 +1,10 @@
 import React, { useEffect } from 'react';
 import { Switch, Route, useLocation } from 'react-router-dom';
-import Start from 'containers/unauth/Start';
-import Remind from 'containers/unauth/Remind';
-import CreatePass from 'containers/unauth/CreatePass';
-import Import from 'containers/common/Import';
+import { Import } from 'containers/common/Import';
 import { useController, useUtils } from 'hooks/index';
-import { CreatePhrase, ConfirmPhrase } from 'containers/unauth/Phrase';
+import { CreatePhrase, ConfirmPhrase, Start, WelcomeWallet, CreatePass } from 'containers/unauth/index';
 
-const UnAuth = () => {
+export const UnAuthRouter = () => {
   const location = useLocation();
   const controller = useController();
   const { history } = useUtils();
@@ -26,7 +23,7 @@ const UnAuth = () => {
       <Switch>
         <Route path="/app.html" component={Start} exact />
         <Route path="/import" component={Import} exact />
-        <Route path="/remind" component={Remind} exact />
+        <Route path="/remind" component={WelcomeWallet} exact />
         <Route path="/create/pass" component={CreatePass} exact />
         <Route
           path="/create/phrase/generated"
@@ -42,5 +39,3 @@ const UnAuth = () => {
     </>
   );
 };
-
-export default UnAuth;

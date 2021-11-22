@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from 'components/index';;
-import Header from 'containers/common/Header';
+import { Header } from 'containers/common/Header';
 import { useFormat, useUtils, useStore, useDappConnection, usePopup } from 'hooks/index';
 
 export const ConnectedAccounts = () => {

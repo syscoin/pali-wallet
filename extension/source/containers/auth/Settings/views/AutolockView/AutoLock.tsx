@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 // import { useSelector } from 'react-redux';
 // import { RootState } from 'state/store';
 
-import Header from 'containers/common/Header';
+import { Header } from 'containers/common/Header';
 
 import { Button, Form, Input } from 'antd';
 import { changeBackgroundLinear, changeBackground } from '../../../../../constants'

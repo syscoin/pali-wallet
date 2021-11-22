@@ -17,6 +17,8 @@ module.exports = {
     deepPink: '#cb2c70',
     deepPink100: '#ff3e91',
 
+    error: '#AF0404',
+
     green: '#4E9F3D',
 
     gold: '#ff9900',

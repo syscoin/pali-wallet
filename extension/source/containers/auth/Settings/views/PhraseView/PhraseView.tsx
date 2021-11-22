@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button, Card, Form, Input } from 'antd';
 import { useController, useUtils } from 'hooks/index';
-import Header from 'containers/common/Header';
+import { Header } from 'containers/common/Header';
 import { changeBackgroundLinear, changeBackground } from '../../../../../constants'
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
 import { Icon } from 'components/Icon';

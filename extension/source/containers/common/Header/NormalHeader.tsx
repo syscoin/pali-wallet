@@ -16,7 +16,7 @@ interface INormalHeader {
   encriptedMnemonic: string;
 }
 
-const NormalHeader: FC<INormalHeader> = ({
+export const NormalHeader: FC<INormalHeader> = ({
   importSeed,
   generalSettingsShowed,
   handleCloseSettings,
@@ -159,5 +159,3 @@ const NormalHeader: FC<INormalHeader> = ({
     </div>
   )
 }
-
-export default NormalHeader;

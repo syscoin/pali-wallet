@@ -1,1 +1,4 @@
-export { default } from './Header';
+export * from './Header';
+export * from './AccountHeader';
+export * from './NormalHeader';
+export * from './Section';

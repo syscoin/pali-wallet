@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Icon, ModalBlock } from 'components/index';
 import { useController, useStore, useFiat, useFormat, useUtils } from 'hooks/index';
 
-import Header from 'containers/common/Header';
+import { Header } from 'containers/common/Header';
 import { TxsPanel } from './TxsPanel';
 
 import { Button } from 'antd';
@@ -294,5 +294,3 @@ export const Home = () => {
     </div>
   );
 };
-
-export default Home;

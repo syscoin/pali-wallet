@@ -6,6 +6,7 @@
     "@reduxjs/toolkit": "^1.5.1",
     "autoprefixer": "^10.2.5",
     "axios": "^0.21.1",
+    "bowser": "^2.11.0",
     "node-sass": "^5.0.0",
     "popper.js": "^1.16.1",
     "postcss": "^8.2.9",

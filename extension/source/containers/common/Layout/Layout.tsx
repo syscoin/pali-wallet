@@ -1,5 +1,5 @@
 import React, { ReactNode, FC, useEffect } from 'react';
-import Header from 'containers/common/Header';
+import { Header } from 'containers/common/Header';
 import { Tooltip } from 'antd';
 import { Icon } from 'components/index';
 

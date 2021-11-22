@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
 import { useUtils } from 'hooks/index';
 import { Button, Card } from 'antd';
-import Header from 'containers/common/Header';
+import { Header } from 'containers/common/Header';
 //import { AuthViewLayout } from 'containers/common/Layout';
 import { changeBackgroundLinear, changeBackground } from '../../../../../constants'
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';

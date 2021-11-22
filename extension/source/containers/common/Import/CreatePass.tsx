@@ -94,7 +94,7 @@ const CreatePass = () => {
         <Button
           type={passed ? 'button' : 'submit'}
           onClick={nextHandler}
-          className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
+          className="absolute bottom-12"
         >
           Next
         </Button>

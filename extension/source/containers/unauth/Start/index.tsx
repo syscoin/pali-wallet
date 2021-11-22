@@ -1,1 +1,1 @@
-export { default } from './Start';
+export * from './Start';

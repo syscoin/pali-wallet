@@ -2,12 +2,12 @@ import React, { FC } from 'react';
 
 interface IActivityPanel {
   show: boolean;
-  classNames: any
+  className: any
 }
 
-const ActivityPanel: FC<IActivityPanel> = ({ show, classNames }) => {
+export const ActivityPanel: FC<IActivityPanel> = ({ show, className }) => {
   return (
-    <ul className={classNames}>
+    <ul className={className}>
      
       {show ? (
         <ul>show activity panel</ul>
@@ -67,5 +67,3 @@ const ActivityPanel: FC<IActivityPanel> = ({ show, classNames }) => {
     </ul>
   )
 }
-
-export default ActivityPanel;

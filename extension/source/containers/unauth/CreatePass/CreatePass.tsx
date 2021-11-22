@@ -1,11 +1,12 @@
 import React from 'react';
-import { useController, useUtils } from 'hooks/index';
-import { Button, Form, Input } from 'antd';
-import { changeBackgroundLinear, changeBackground } from '../../../constants'
-import { Layout } from '../../common/Layout';
+import { useHistory } from 'react-router-dom';
+import { useController } from 'hooks/index';
+import { Form, Input } from 'antd';
+import { Button } from 'components/index';;
+import { Layout } from 'containers/common/Layout';
 
-const CreatePass = () => {
-  const { history } = useUtils();
+export const CreatePass = () => {
+  const history = useHistory();
   const controller = useController();
 
   const onSubmit = (data: any) => {
@@ -30,7 +31,7 @@ const CreatePass = () => {
         initialValues={{ remember: true }}
         onFinish={onSubmit}
         autoComplete="off"
-        className="flex justify-center text-justify items-center flex-col gap-4 mt-8 text-center"
+        className="flex justify-center items-center flex-col gap-4 mt-8 text-center"
       >
         <Form.Item
           name="password"
@@ -72,26 +73,21 @@ const CreatePass = () => {
           <Input.Password placeholder="Confirm password" />
         </Form.Item>
 
-        <span className="font-light text-brand-graylight text-sm">
+        <span className="font-light text-brand-graylight text-xs">
           At least 8 characters, 1 lower-case and 1 numeral.
         </span>
 
-        <span className="font-light text-brand-royalBlue text-sm mx-4 p-7">
+        <span className="font-light text-brand-royalBlue text-xs mx-4">
           Do not forget to save your password. You will need this password to unlock your wallet.
         </span>
-        <div className="p-0.5 bg-primary rounded-full">
-          <Button
-            htmlType="submit"
-            onMouseEnter={changeBackgroundLinear}
-            onMouseLeave={changeBackground}
-            className="bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light"
-          >
-            Next
-          </Button>
-        </div>
+
+        <Button
+          type="submit"
+          className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
+        >
+          Next
+        </Button>
       </Form>
     </Layout>
   );
 };
-
-export default CreatePass;

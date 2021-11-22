@@ -1,7 +1,7 @@
 import React from 'react';
 import { useController } from 'hooks/index';
 
-import {SiteTransaction} from '../SiteTransaction';
+import { SiteTransaction } from '../SiteTransaction';
 
 export const IssueNFT = () => {
   const controller = useController();
