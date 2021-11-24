@@ -41,7 +41,7 @@ export const Layout: FC<ILayout> = ({
             </span>
 
             <Tooltip placement="bottom" title={tooltipText}>
-              <Icon name="question" className="text-brand-graylight w-4" />
+              <Icon name="question" className="inline-flex self-center text-base text-brand-graylight w-3" />
             </Tooltip>
           </div>
         ) : (

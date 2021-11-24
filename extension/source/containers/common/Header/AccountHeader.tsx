@@ -23,11 +23,11 @@ export const AccountHeader: FC <IAccountHeader> = ({
 }) => {
   return (
     <div className="flex items-center bg-brand-navyborder p-1">
-      <div className="flex items-center pr-14 text-brand-white ">
+      <div className="flex items-center pr-12 mr-1 text-brand-white ">
         <div>
           <img src={`/${LogoImage}`} className="mx-auto w-14 rounded-full" alt="Syscoin" />
         </div>
-        <div className="text-brand-white pl-1 justify-center items-center">
+        <div className="text-brand-white pl-1 justify-center items-center pr-1">
           <p className="text-base">Account 1</p>
           <p className="text-xs">0x0000....0000000000000  </p>
         </div>
@@ -48,7 +48,7 @@ export const AccountHeader: FC <IAccountHeader> = ({
                accountSettingsShowed ? handleCloseSettings() : showSettings(!accountSettingsShowed)
              }
            }>
-            <Icon name="dots" className="inline-flex self-center text-base " />
+            <Icon name="dots" className="inline-flex self-center text-lg" maxWidth={"1"} />
           </Button>
         </div>
       ) : (

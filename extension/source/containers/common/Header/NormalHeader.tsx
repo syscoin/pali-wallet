@@ -104,15 +104,17 @@ export const NormalHeader: FC<INormalHeader> = ({
 
       {isConnected ? (
         <small
+          className="iinline-flex py-0.5 px-2 text-xs font-bold leading-none text-green-100 bg-green-600 rounded-full"
           onClick={() => setIsOpenModal(!isOpenModal)}
         >
-          Connected
+          connected
         </small>
       ) : (
         <small
+          className="inline-flex py-0.5 px-2 text-xs font-bold text-red-100 bg-red-600 rounded-full"
           onClick={() => setIsOpenModal(!isOpenModal)}
         >
-          Not connected
+          not connected
         </small>
       )}
 
@@ -140,10 +142,10 @@ export const NormalHeader: FC<INormalHeader> = ({
 
       {encriptedMnemonic && !importSeed ? (
 
-        <Button className="pl-16" onClick={() => {
+        <Button className="pl-20" onClick={() => {
           generalSettingsShowed ? handleCloseSettings() : showSettings(!generalSettingsShowed)}}
           >
-            <Icon name="settings" className="inline-flex self-center text-base" />
+            <Icon name="settings" className="inline-flex self-center text-lg" maxWidth={"1"}/>
             
         </Button>
       ) : (

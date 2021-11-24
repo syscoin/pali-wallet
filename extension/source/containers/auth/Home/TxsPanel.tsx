@@ -157,13 +157,13 @@ export const TxsPanel: FC<ITxsPanel> = ({
 
       {isActivity ? (
         <ActivityPanel
-          className={isActivity ? "h-full w-full flex-2 p-4 pr-12 text-white text-base bg-brand-navyborder" : "flex-2 p-4 pr-12 text-white text-base"}
-          show={/* transactions && !changingNetwork */ false}
+          className={isActivity ? "h-full w-full flex-2 p-4 text-white text-base bg-brand-navyborder" : "flex-2 p-4 text-white text-base"}
+          show={/* transactions && !changingNetwork */ true}
         />
       ) : (
         <AssetsPanel
-          className={!isActivity ? "w-full h-full flex-2 p-4 pr-12 text-white text-base bg-brand-navyborder" : "flex-2 p-4 pr-12 text-white text-base"}
-          show={/* assets && !changingNetwork */ false}
+          className={!isActivity ? "w-full h-full flex-2 p-4 text-white text-base bg-brand-navyborder" : "flex-2 p-4 text-white text-base"}
+          show={/* assets && !changingNetwork */ true}
         />
       )}
 

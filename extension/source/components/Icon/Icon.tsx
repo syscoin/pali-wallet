@@ -24,7 +24,8 @@ import {
   DollarOutlined,
   WalletOutlined,
   DeleteOutlined,
-  CloseOutlined
+  CloseOutlined,
+  SelectOutlined
   
 } from '@ant-design/icons';
 
@@ -53,7 +54,8 @@ const icons = {
   'dolar': DollarOutlined,
   'wallet': WalletOutlined,
   'delete': DeleteOutlined,
-  'close': CloseOutlined
+  'close': CloseOutlined,
+  'select': SelectOutlined
 }
 
 interface IIcon {
