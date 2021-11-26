@@ -26,7 +26,6 @@ import {
   DeleteOutlined,
   CloseOutlined,
   SelectOutlined
-  
 } from '@ant-design/icons';
 
 const icons = {
@@ -65,8 +64,12 @@ interface IIcon {
   rotate?: number
 }
 
-export const Icon: FC<IIcon> = ({ name, className, maxWidth, rotate }) => {
-  {/* @ts-ignore */}
+export const Icon: FC<IIcon> = ({
+  name,
+  className,
+  maxWidth,
+  rotate
+}) => {
   const Component = icons[name];
 
   return (

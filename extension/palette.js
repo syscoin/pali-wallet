@@ -13,6 +13,7 @@ module.exports = {
 
     royalBlue: '#4d76b8',
     royalBluemedium: '#4ca1cf',
+    darkRoyalBlue: '#364d72',
 
     deepPink: '#cb2c70',
     deepPink100: '#ff3e91',
@@ -34,6 +35,5 @@ module.exports = {
     graymedium: '#979797',
     grayhover: '#dedede',
     graydisabled: '#dadada',
-    primary: 'linear-gradient(to right top, #ff3e91, #da53b2, #ab66c3, #7971c5, #4d76b8)'
   }
 }

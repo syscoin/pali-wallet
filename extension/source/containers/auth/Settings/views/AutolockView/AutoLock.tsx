@@ -8,7 +8,6 @@ import React, { useState } from 'react';
 import { Header } from 'containers/common/Header';
 
 import { Button, Form, Input } from 'antd';
-import { changeBackgroundLinear, changeBackground } from '../../../../../constants'
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
 const AutolockView = () => {
     const [autolock, setAutolock] = useState<boolean>(false);
@@ -64,8 +63,6 @@ const AutolockView = () => {
         <div className="flex justify-center items-center pt-60">
             <div className="p-0.5 bg-primary rounded-full">
                 <Button
-                  onMouseEnter={changeBackgroundLinear}
-                  onMouseLeave={changeBackground}
                   onClick={handleConfirm}
                   className="bg-brand-navy tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white"
                 >

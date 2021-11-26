@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Button, Card, Form, Input } from 'antd';
 import { useController, useUtils } from 'hooks/index';
 import { Header } from 'containers/common/Header';
-import { changeBackgroundLinear, changeBackground } from '../../../../../constants'
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
 import { Icon } from 'components/Icon';
 const PhraseView = () => {
@@ -96,8 +95,6 @@ const PhraseView = () => {
         
         <div className="p-0.5 bg-primary rounded-full ">
           <Button
-            onMouseEnter={changeBackgroundLinear}
-            onMouseLeave={changeBackground}
             className="bg-brand-navy tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white hover:backgroundImage"
           >
             Close

@@ -3,7 +3,6 @@ import { useUtils } from 'hooks/index';
 import { Button, Card } from 'antd';
 import { Header } from 'containers/common/Header';
 //import { AuthViewLayout } from 'containers/common/Layout';
-import { changeBackgroundLinear, changeBackground } from '../../../../../constants'
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
 
 const AboutView: FC = () => {
@@ -58,8 +57,6 @@ const AboutView: FC = () => {
           </div>
           <div className="p-0.5 bg-primary rounded-full ">
             <Button
-              onMouseEnter={changeBackgroundLinear}
-              onMouseLeave={changeBackground}
               className="bg-brand-navy tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white hover:backgroundImage"
             >
               Close

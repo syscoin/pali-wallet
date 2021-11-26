@@ -77,13 +77,13 @@ export const CreatePass = () => {
           At least 8 characters, 1 lower-case and 1 numeral.
         </span>
 
-        <span className="text-left font-light text-brand-royalBlue text-xs mx-16 pt-2">
+        <span className="text-center font-light text-brand-royalBlue text-xs mx-8 pt-2">
           Do not forget to save your password. You will need this password to unlock your wallet.
         </span>
 
         <Button
           type="submit"
-          className="absolute bottom-12 tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navy text-brand-white font-light border border-brand-royalBlue hover:bg-brand-royalBlue hover:text-brand-navy transition-all duration-300"
+          classNameBorder="absolute bottom-12"
         >
           Next
         </Button>

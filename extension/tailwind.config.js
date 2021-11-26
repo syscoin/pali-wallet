@@ -22,7 +22,7 @@ module.exports = {
       maxWidth: {
         popup: '600px',
         input: '18rem',
-        '1/2': '50%', 
+        '1/2': '50%',
         '70': '70%'
       },
       minWidth: {
@@ -42,7 +42,7 @@ module.exports = {
         widest: '.9em',
       },
       backgroundImage: {
-        primary: 'linear-gradient(to right top, #ff3e91, #da53b2, #ab66c3, #7971c5, #4d76b8)'
+        primary: 'linear-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 0)), linear-gradient(30deg, rgba(255, 62, 145, 0.8) 20%, #4d76b8 50%)'
       }
     },
   },
