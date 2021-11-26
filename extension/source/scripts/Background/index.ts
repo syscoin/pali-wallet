@@ -31,6 +31,7 @@ declare global {
   interface Window {
     controller: Readonly<IMasterController>;
     senderURL: string;
+    syspopup: any;
   }
 }
 
@@ -204,15 +205,25 @@ const createPopup = async (url: string) => {
     return;
   }
 
-  await browser.windows.create({
+  const sysPopup = await browser.windows.create({
     url,
     type: "popup",
-    height: 600,
+    height: 640,
     width: 372,
     left: 900,
     top: 90,
   });
+
+  window.syspopup = sysPopup.id;
 };
+
+browser.windows.onRemoved.addListener((windowId: any) => {
+  if (windowId > -1 && windowId === window.syspopup) {
+    console.log('clearing all transactions')
+    
+    store.dispatch(clearAllTransactions());
+  }
+})
 
 browser.runtime.onMessage.addListener(async (request, sender) => {
   const {

@@ -219,6 +219,16 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
       setTimeout(() => {
         if (isPending && !confirmed) {
           alert.removeAll();
+          if (itemStringToClearData === 'mintNFT') {
+            alert.error('You can check this transaction in your history.');
+
+            setTimeout(() => {
+              handleCancelTransactionOnSite();
+            }, 4000);
+
+            return;
+          }
+
           alert.error(errorMessage);
 
           setTimeout(() => {
