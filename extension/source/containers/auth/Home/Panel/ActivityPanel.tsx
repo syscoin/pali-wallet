@@ -1,3 +1,5 @@
+import { Button } from 'antd';
+import { Icon } from 'components/Icon';
 import React, { FC } from 'react';
 
 interface IActivityPanel {
@@ -10,7 +12,18 @@ export const ActivityPanel: FC<IActivityPanel> = ({ show, className }) => {
     <ul className={className}>
      
       {show ? (
-        <ul>show activity panel</ul>
+        <>
+          {/*<ul>show activity panel</ul>*/}
+          <ul>
+            <li>
+              <span className="text-sm m-1 w-12">0x3126...7d3864c983</span>
+              <span className="text-sm m-1 w-4">2:55AM</span>
+              <Button className="w-4 m-1">
+                <Icon name="select" className="inline-flex self-center text-lg" maxWidth={"1"}></Icon>
+              </Button>
+            </li>
+          </ul>
+        </>
       ) : (
         <>
           <p className="justify-center items-center text-sm text-brand-gray">

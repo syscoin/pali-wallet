@@ -4,7 +4,7 @@ import { useController, useStore, useFiat, useFormat, useUtils } from 'hooks/ind
 
 import { Header } from 'containers/common/Header';
 import { TxsPanel } from './TxsPanel';
-import { ArrowDownOutlined, ArrowUpOutlined, ReloadOutlined } from '@ant-design/icons';
+
 import { Button } from 'antd';
 
 export const Home = () => {
@@ -206,29 +206,29 @@ export const Home = () => {
           <Header accountHeader />
 
           <section className="flex items-center flex-col gap-1 text-brand-white bg-brand-navydarker pb-14">
-            <button onClick={handleRefresh} className="ml-10 pl-72">
-              <ReloadOutlined style={{display: 'inline-flex', alignSelf : 'center', fontSize: '16px'}} />
+            <button onClick={handleRefresh} className="ml-3 pl-72 w-1">
+              <Icon name="reload" className="inline-flex self-center text-lg" maxWidth={"1"} />
             </button>
 
             {changingNetwork ? (
               <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
             ) : (
               <div className="flex justify-center">
-                <h3 className="text-5xl flex-1">
+                <p className="text-5xl flex-1 font-medium">
                   {formatNumber(
                     accounts.find((element) => element.id === activeAccountId)
                       ?.balance || 5268
                   )}{' '}
-                </h3>
-                <small className="flex-1 ">{activeNetwork == 'testnet' ? 'TSYS' : 'SYS'}</small>
+                </p>
+                <p className="flex-1 self-end pl-0.5">{activeNetwork == 'testnet' ? 'TSYS' : 'SYS'}</p>
               </div>
 
             )}
 
             {changingNetwork ? (
-              <p style={{ color: 'white' }}>...</p>
+              <p className="text-royalBlue">...</p>
             ) : (
-              <small style={{ marginTop: '5px', marginBottom: '5px' }}>
+              <small className="mt-1.5 mb-1.5 text-brand-royalblue">
                 {activeNetwork !== 'testnet'
                   ? getFiatAmount(
                     accounts.find((element) => element.id === activeAccountId)
@@ -239,19 +239,19 @@ export const Home = () => {
             )}
             <div className="pt-8">
               <Button
-                className="bg-brand-navydarker rounded-l-full border border-brand-deepPink tracking-normal text-base py-1 px-6 cursor-pointer mr-px hover:bg-brand-deepPink"
-              
+                className="inline-flex bg-brand-navydarker rounded-l-full border border-brand-deepPink tracking-normal text-base py-1 px-6 cursor-pointer mr-px hover:bg-brand-deepPink"
                 onClick={() => history.push('/send')}
               
               >
-                <ArrowUpOutlined rotate={40} style={{display: 'inline-flex', alignSelf : 'center', fontSize: '14px', paddingRight: '4px'}}/>
+                <Icon name="arrow-up" className="inline-flex self-center text-sm pr-1 text-brand-deepPink" rotate={40} />
                   Send
               </Button>
               <Button
-                className="bg-brand-navydarker rounded-r-full border border-brand-royalBlue tracking-normal text-base py-1 px-6 cursor-pointer ml-px hover:bg-brand-royalBlue"
+                className="inline-flex bg-brand-navydarker rounded-r-full border border-brand-royalBlue tracking-normal text-base py-1 px-6 cursor-pointer ml-px hover:bg-brand-royalBlue"
                 onClick={() => history.push('/receive')}
               >
-                <ArrowDownOutlined style={{display: 'inline-flex', alignSelf : 'center', fontSize: '14px', paddingRight: '4px'}} />
+                <Icon name="arrow-down" className="inline-flex self-center text-sm pr-1 text-brand-royalBlue" />
+                
                   Receive
               </Button>
             </div>

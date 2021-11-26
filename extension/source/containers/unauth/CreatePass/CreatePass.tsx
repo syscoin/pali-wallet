@@ -77,7 +77,7 @@ export const CreatePass = () => {
           At least 8 characters, 1 lower-case and 1 numeral.
         </span>
 
-        <span className="font-light text-brand-royalBlue text-xs mx-4">
+        <span className="text-left font-light text-brand-royalBlue text-xs mx-16 pt-2">
           Do not forget to save your password. You will need this password to unlock your wallet.
         </span>
 

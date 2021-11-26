@@ -19,7 +19,14 @@ import {
   LockOutlined,
   MoreOutlined,
   QuestionCircleOutlined,
-  HomeOutlined
+  SettingOutlined,
+  HomeOutlined,
+  DollarOutlined,
+  WalletOutlined,
+  DeleteOutlined,
+  CloseOutlined,
+  SelectOutlined
+  
 } from '@ant-design/icons';
 
 const icons = {
@@ -42,22 +49,29 @@ const icons = {
   'lock': LockOutlined,
   'dots': MoreOutlined,
   'question': QuestionCircleOutlined,
+  'settings': SettingOutlined,
   'home': HomeOutlined,
+  'dolar': DollarOutlined,
+  'wallet': WalletOutlined,
+  'delete': DeleteOutlined,
+  'close': CloseOutlined,
+  'select': SelectOutlined
 }
 
 interface IIcon {
   name: string;
   className?: string;
   maxWidth?: string;
+  rotate?: number
 }
 
-export const Icon: FC<IIcon> = ({ name, className, maxWidth }) => {
+export const Icon: FC<IIcon> = ({ name, className, maxWidth, rotate }) => {
   {/* @ts-ignore */}
   const Component = icons[name];
 
   return (
     <div className={maxWidth ? maxWidth : "w-8"}>
-      {Component ? <Component className={className} /> : null}
+      {Component ? <Component className={className}  rotate={rotate} /> : null}
     </div>
   );
 };

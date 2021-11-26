@@ -1,10 +1,10 @@
 import React, { FC, useEffect, useState, ChangeEvent } from 'react';
-import { Modal, Select } from 'components/index';
+import { Icon, Modal, Select } from 'components/index';
 import { Settings } from 'containers/auth/index';
 import { SYS_NETWORK } from 'constants/index';
 import { browser } from 'webextension-polyfill-ts';
 import { useController, useStore, useUtils } from 'hooks/index';
-import { SettingOutlined } from '@ant-design/icons';
+
 import { Button } from 'antd';
 
 interface INormalHeader {
@@ -104,15 +104,17 @@ export const NormalHeader: FC<INormalHeader> = ({
 
       {isConnected ? (
         <small
+          className="iinline-flex py-0.5 px-2 text-xs font-bold leading-none text-green-100 bg-green-600 rounded-full"
           onClick={() => setIsOpenModal(!isOpenModal)}
         >
-          Connected
+          connected
         </small>
       ) : (
         <small
+          className="inline-flex py-0.5 px-2 text-xs font-bold text-red-100 bg-red-600 rounded-full"
           onClick={() => setIsOpenModal(!isOpenModal)}
         >
-          Not connected
+          not connected
         </small>
       )}
 
@@ -143,7 +145,8 @@ export const NormalHeader: FC<INormalHeader> = ({
         <Button className="pl-20" onClick={() => {
           generalSettingsShowed ? handleCloseSettings() : showSettings(!generalSettingsShowed)}}
           >
-            <SettingOutlined style={{display: 'inline-flex', alignSelf : 'center', fontSize: '16px'}} />
+            <Icon name="settings" className="inline-flex self-center text-lg" maxWidth={"1"}/>
+            
         </Button>
       ) : (
         null

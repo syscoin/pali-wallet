@@ -1,7 +1,6 @@
 import React, { ReactNode, FC, useEffect } from 'react';
 import { Header } from 'containers/common/Header';
 import { Tooltip } from 'antd';
-import { QuestionCircleOutlined } from '@ant-design/icons';
 
 interface ILayout {
   accountHeader?: boolean;
@@ -45,7 +44,7 @@ export const Layout: FC<ILayout> = ({
               title={tooltipText}
               overlayClassName="box-border m-0 p-0 text-sm leading-normal list-none absolute z-50 block w-max visible max-w-xs p-2 text-brand-white text-center no-underline break-words bg-brand-black bg-opacity-90 rounded shadow-2xl"
             >
-              <QuestionCircleOutlined className="text-brand-graylight w-4" /> 
+              <Icon name="question" className="inline-flex self-center text-base text-brand-graylight w-3" />
             </Tooltip>
           </div>
         ) : (
