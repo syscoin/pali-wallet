@@ -286,8 +286,6 @@ const WalletController = (): IWalletController => {
     });
   }
 
-  
-
   const switchNetwork = async (networkId: string) => {
     store.dispatch(changeActiveNetwork(SYS_NETWORK[networkId]!.id));
 
@@ -347,8 +345,6 @@ const WalletController = (): IWalletController => {
 
       address = account0.getAddress(receivingIndex + 1);
     } else {
-      sjs.Signer.Signer.receivingIndex = -1;
-
       try {
         address = await sjs.Signer.getNewReceivingAddress();
       } catch (error: any) {
