@@ -51,10 +51,9 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
             }),
           ]}
         >
-          <Input.TextArea
-            autoSize={{ minRows: 3, maxRows: 8 }}
+          <Input
             placeholder="Paste your wallet seed phrase"
-            className="text-xs w-72 h-44 rounded-md py-4 pl-4 bg-brand-navydarker border border-brand-navymedium text-brand-white outline-none focus:border-brand-navylight"
+            className="mb-2 text-xs w-72 h-24 rounded-md text-center bg-brand-navydarker border border-brand-navymedium text-brand-white outline-none focus:border-brand-navylight"
           />
         </Form.Item>
 

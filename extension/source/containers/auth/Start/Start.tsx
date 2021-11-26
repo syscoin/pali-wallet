@@ -39,7 +39,6 @@ export const Start = () => {
             },
             ({}) => ({
               validator(_, value) {
-                console.log('value pass',controller.wallet.unLock(value))
                 if (controller.wallet.unLock(value)) {
                   return Promise.resolve();
                 }
@@ -51,6 +50,7 @@ export const Start = () => {
         >
           <Input.Password placeholder="Enter your password" />
         </Form.Item>
+        
         <Button
           type="submit"
         >
@@ -58,7 +58,10 @@ export const Start = () => {
         </Button>
       </Form>
       
-      <Link className="font-light mt-12 text-base hover:text-brand-graylight text-brand-royalBlue transition-all duration-300" to="/import">
+      <Link
+        className="font-light mt-12 text-base hover:text-brand-graylight text-brand-royalBlue transition-all duration-300"
+        to="/import"
+      >
         Import using wallet seed phrase
       </Link>
     </div>
