@@ -25,7 +25,8 @@ import {
   WalletOutlined,
   DeleteOutlined,
   CloseOutlined,
-  SelectOutlined
+  SelectOutlined,
+  
   
 } from '@ant-design/icons';
 
@@ -53,7 +54,7 @@ const icons = {
   'home': HomeOutlined,
   'dolar': DollarOutlined,
   'wallet': WalletOutlined,
-  'delete': DeleteOutlined,
+  'delete': DeleteOutlined, 
   'close': CloseOutlined,
   'select': SelectOutlined
 }

@@ -5,6 +5,7 @@ import { Header } from 'containers/common/Header';
 import { changeBackgroundLinear, changeBackground } from '../../../../../constants'
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
 import { Icon } from 'components/Icon';
+import { WarningCard } from 'containers/common/Layout/WarningCard';
 const PhraseView = () => {
   const [checked, setChecked] = useState<boolean>(false);
   const [phrase, setPhrase] = useState<string>(
@@ -81,19 +82,11 @@ const PhraseView = () => {
            </div>
           </Card>
         </div>
-
-        <div className="flex items-center justify-center pt-2 pb-8">
-          <Card className="w-full rounded text-brand-white border-dashed border border-light-blue-500" style={{ width: 320}}>
-           <div className="p-2">
-               <div className="text-sm pt-1">
-               <b>Warning:</b> Keep your seed phrase secret! Anyone with your seed
+        <WarningCard>Keep your seed phrase secret! Anyone with your seed
                 phrase can access any account connected to this wallet and steal your
-                assets.
-              </div>
-           </div>
-          </Card>
-        </div>
-        
+                assets. 
+        </WarningCard>
+
         <div className="p-0.5 bg-primary rounded-full ">
           <Button
             onMouseEnter={changeBackgroundLinear}

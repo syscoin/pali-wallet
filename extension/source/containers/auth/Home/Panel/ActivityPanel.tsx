@@ -15,12 +15,24 @@ export const ActivityPanel: FC<IActivityPanel> = ({ show, className }) => {
         <>
           {/*<ul>show activity panel</ul>*/}
           <ul>
-            <li>
-              <span className="text-sm m-1 w-12">0x3126...7d3864c983</span>
-              <span className="text-sm m-1 w-4">2:55AM</span>
-              <Button className="w-4 m-1">
-                <Icon name="select" className="inline-flex self-center text-lg" maxWidth={"1"}></Icon>
-              </Button>
+            <li className="border-dashed border-b border-gray-400">
+              <div className="bg-brand-navydarker text-sm">
+                17-09-21
+              </div>
+              <div className="grid grid-cols-3 gap-1 text-sm">
+                <div>
+                  <p>0x3126...7d3864c983</p>
+                  <p>Pending</p>
+                </div>
+                <div>
+                  <p>2:55AM</p>
+                </div> 
+                <div className="col-end-4">
+                  <Button className="w-1">
+                    <Icon name="select" className="inline-flex self-center text-lg" maxWidth={"1"}></Icon>
+                  </Button>
+                </div>
+              </div> 
             </li>
           </ul>
         </>

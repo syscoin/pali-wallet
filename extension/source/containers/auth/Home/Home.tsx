@@ -237,7 +237,7 @@ export const Home = () => {
                   : ''}
               </small>
             )}
-            <div className="pt-8">
+            <div className="pt-8"> 
               <Button
                 className="inline-flex bg-brand-navydarker rounded-l-full border border-brand-deepPink tracking-normal text-base py-1 px-6 cursor-pointer mr-px hover:bg-brand-deepPink"
                 onClick={() => history.push('/send')}

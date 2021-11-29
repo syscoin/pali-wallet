@@ -11,6 +11,8 @@ module.exports = {
     navylight: '#233f6c',
     navyborder: '#162742',
 
+    textareabg: '#4D76B8',
+
     royalBlue: '#4d76b8',
     royalBluemedium: '#4ca1cf',
 
