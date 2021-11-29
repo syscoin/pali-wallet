@@ -14,8 +14,6 @@ export const RemindPhrase = () => {
 
       <Button
         type="button"
-        theme="btn-gradient-primary"
-        linkTo="/create/phrase/generated"
       >
         Start
       </Button>

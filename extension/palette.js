@@ -12,9 +12,11 @@ module.exports = {
     navyborder: '#162742',
 
     textareabg: '#4D76B8',
+    blueWarningTest: '#85B6FF',
 
     royalBlue: '#4d76b8',
     royalBluemedium: '#4ca1cf',
+    darkRoyalBlue: '#364d72',
 
     deepPink: '#cb2c70',
     deepPink100: '#ff3e91',
@@ -36,6 +38,5 @@ module.exports = {
     graymedium: '#979797',
     grayhover: '#dedede',
     graydisabled: '#dadada',
-    primary: 'linear-gradient(to right top, #ff3e91, #da53b2, #ab66c3, #7971c5, #4d76b8)'
   }
 }

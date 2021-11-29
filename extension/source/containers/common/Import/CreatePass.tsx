@@ -1,4 +1,4 @@
-import React, { useState } from 'react';  
+import React from 'react';
 import { useController, useStore, useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Button } from 'components/index';
@@ -10,23 +10,15 @@ const CreatePass = () => {
   const { canConnect } = useStore();
   const { history } = useUtils();
 
-  const [passed, setPassed] = useState<boolean>(false);
-
-  const nextHandler = () => {
-    if (passed) {
-      controller.wallet.createWallet(true);
-
-      if (canConnect) {
-        history.push('/connect-wallet');
-      } else {
-        history.push('/home');
-      }
-    }
-  };
-
   const onSubmit = (data: any) => {
     controller.wallet.setWalletPassword(data.password);
-    setPassed(true);
+    controller.wallet.createWallet(true);
+
+    if (canConnect) {
+      history.push('/connect-wallet');
+    } else {
+      history.push('/home');
+    }
   };
 
   return (
@@ -87,14 +79,13 @@ const CreatePass = () => {
           At least 8 characters, 1 lower-case and 1 numeral.
         </span>
 
-        <span className="text-left font-light text-brand-royalBlue text-xs mx-10">
+        <span className="text-center font-light text-brand-royalBlue text-xs mx-10">
           Do not forget to save your password. You will need this password to unlock your wallet.
         </span>
 
         <Button
-          type={passed ? 'button' : 'submit'}
-          onClick={nextHandler}
-          className="absolute bottom-12"
+          type="submit"
+          classNameBorder="absolute bottom-12"
         >
           Next
         </Button>

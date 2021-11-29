@@ -1,14 +1,11 @@
 import React, { useState } from 'react';
-// import { Button } from 'components/index';;
+import { Button } from 'components/index';;
 // import { useController, useUtils, useStore } from 'hooks/index';
 // import IWalletState from 'state/wallet/types';
 // import { useSelector } from 'react-redux';
 // import { RootState } from 'state/store';
 
-import { Header } from 'containers/common/Header';
-
-import { Button, Form, Input } from 'antd';
-import { changeBackgroundLinear, changeBackground } from '../../../../../constants'
+import { Form, Input } from 'antd';
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
 const AutolockView = () => {
     const [autolock, setAutolock] = useState<boolean>(false);
@@ -45,7 +42,6 @@ const AutolockView = () => {
   };
   return (
     <div >
-        <Header normalHeader />
         <AuthViewLayout title="AUTO LOCK TIMER">You can set auto lock timer. Default is 5 minutes after no activity</AuthViewLayout>
         <Form
           className="flex justify-center items-center flex-col gap-8 text-center pt-4"
@@ -62,16 +58,12 @@ const AutolockView = () => {
             </Form.Item>
         </Form>
         <div className="flex justify-center items-center pt-60">
-            <div className="p-0.5 bg-primary rounded-full">
-                <Button
-                  onMouseEnter={changeBackgroundLinear}
-                  onMouseLeave={changeBackground}
-                  onClick={handleConfirm}
-                  className="bg-brand-navy tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white"
-                >
-                    Save
-                </Button>
-            </div>
+          <Button
+            type="submit"
+            onClick={handleConfirm}
+          >
+              Save
+          </Button>
         </div>
         {autolock && (
           <div className="transition-all duration-300 ease-in-out">
@@ -87,7 +79,7 @@ const AutolockView = () => {
               </span>
 
               <Button
-                className="tracking-normal text-base cursor-pointer rounded-full bg-brand-royalBlue text-brand-white border border-brand-white hover:bg-brand-white hover:text-brand-royalBlue transition-all duration-300 mt-8"
+                type="submit"
                 onClick={handleConfirm}
               >
                 Ok!

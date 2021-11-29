@@ -81,13 +81,17 @@ export const SendConfirm = () => {
         setConfirmed(true);
         setLoading(false);
       }).catch((error: any) => {
+        console.log('error', error)
+
         if (error && tempTx.fee > recommendedFee) {
           alert.removeAll();
           alert.error(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
         }
 
         if (error && tempTx.fee <= recommendedFee) {
-          const max = 100 * tempTx.amount / accounts[activeAccountId].balance;
+          const currentAccountIndex = accounts.findIndex((account: any) => account.id === activeAccountId);
+
+          const max = 100 * tempTx.amount / accounts[currentAccountIndex].balance;
 
           if (tempTx.amount >= (max * tempTx.amount / 100)) {
             alert.removeAll();

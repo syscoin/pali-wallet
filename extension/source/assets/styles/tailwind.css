@@ -28,7 +28,7 @@
 }
 
 div[role=alert] {
-  @apply text-brand-deepPink text-base font-bold mx-4 absolute mt-2;
+  @apply text-brand-white text-base font-light text-center absolute left-1/4 right-1/4;
 }
 
 .anticon.anticon-check-circle {
@@ -39,30 +39,6 @@ div[role=alert] {
   @apply text-brand-error;
 }
 
-.ant-tooltip {
-  @apply box-border m-0 p-0 text-brand-darktransparent text-sm leading-normal list-none absolute z-50 block w-max visible max-w-xs;
-}
-
 .ant-tooltip-hidden {
   @apply hidden;
-}
-
-.ant-tooltip-placement-bottom {
-  @apply pt-2;
-}
-
-.ant-tooltip-inner {
-  @apply p-2 text-brand-white text-center no-underline break-words bg-brand-black bg-opacity-90 rounded shadow-2xl;
-}
-
-.ant-tooltip-arrow {
-  @apply absolute block w-3.5 h-3.5 overflow-hidden bg-none pointer-events-none;
-}
-
-.ant-tooltip-arrow-content {
-  @apply absolute inset-0 block w-1.5 h-1.5 m-auto bg-brand-black bg-opacity-80 content-none pointer-events-auto;
-}
-
-.ant-tooltip-placement-bottom .ant-tooltip-arrow {
-  @apply -top-1;
 }

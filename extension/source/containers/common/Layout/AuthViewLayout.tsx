@@ -1,6 +1,7 @@
 import { Button } from 'antd';
 import { Icon } from 'components/Icon';
 import React, { FC } from 'react';
+import { Header } from '../Header';
 
 
 interface IAuthViewLayout {
@@ -14,6 +15,7 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
 }) => {
   return (
     <>
+      <Header normalHeader />
       <div className="w-full flex justify-center items-center text-brand-white bg-brand-navyborder py-4 px-4">
         <p className="text-xl max-w-sm">{title}</p>
         <Button ><Icon name="close" className="inline-flex self-center text-base" /></Button>

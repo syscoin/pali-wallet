@@ -1,40 +1,37 @@
-import { Button } from 'antd';
-import { Icon } from 'components/Icon';
 import React, { FC } from 'react';
+import { PanelList } from './components/PanelList';
 
 interface IActivityPanel {
   show: boolean;
-  className: any
+  className: any;
 }
-
+const dataFAke = [
+  {
+    account: '0x3126...7d3864c983',
+    status: 'Pending',
+    hour: '2:55AM',
+    stp: 'SPT Update',
+  },
+  {
+    account: '0x3126...7d3864c983',
+    status: 'Pending',
+    hour: '5:23PM',
+    stp: 'SPT Update',
+  },
+  {
+    account: '0x3126...7d3864c983',
+    status: 'Completed',
+    hour: '7:12PM',
+    stp: 'SPT Update',
+  },
+];
 export const ActivityPanel: FC<IActivityPanel> = ({ show, className }) => {
   return (
     <ul className={className}>
-     
       {show ? (
         <>
           {/*<ul>show activity panel</ul>*/}
-          <ul>
-            <li className="border-dashed border-b border-gray-400">
-              <div className="bg-brand-navydarker text-sm">
-                17-09-21
-              </div>
-              <div className="grid grid-cols-3 gap-1 text-sm">
-                <div>
-                  <p>0x3126...7d3864c983</p>
-                  <p>Pending</p>
-                </div>
-                <div>
-                  <p>2:55AM</p>
-                </div> 
-                <div className="col-end-4">
-                  <Button className="w-1">
-                    <Icon name="select" className="inline-flex self-center text-lg" maxWidth={"1"}></Icon>
-                  </Button>
-                </div>
-              </div> 
-            </li>
-          </ul>
+          <PanelList dataFAke={dataFAke} activity={true} assets={false}/>
         </>
       ) : (
         <>
@@ -90,5 +87,5 @@ export const ActivityPanel: FC<IActivityPanel> = ({ show, className }) => {
         );
       })} */}
     </ul>
-  )
-}
+  );
+};

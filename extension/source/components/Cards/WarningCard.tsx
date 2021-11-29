@@ -3,16 +3,23 @@ import React, { FC, ReactNode } from 'react'
 
 interface IWarningCard {
     children: ReactNode;
+    className?: string;
+    warningText?: string;
+    warningClassName?: string;
 }
 export const WarningCard: FC<IWarningCard> = ({
     children,
+    className = "",
+    warningText = "",
+    warningClassName = "",
   }) => {
     return (
         <div className="flex items-center justify-center pt-2">
-            <Card className="w-full rounded text-brand-white border-dashed border border-light-blue-500 text-justify" style={{ width: 320}}>
+            <Card className={className} style={{ width: 320}}>
              <div className="p-2">
-                 <div className="text-sm pt-1">
-                      <b>Warning:</b> {children}
+                 <div className="text-sm p-2">
+                      <b className={warningClassName}>{warningText}</b> 
+                      {children}
                   </div>
              </div>
             </Card>

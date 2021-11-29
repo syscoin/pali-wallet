@@ -28,7 +28,7 @@ export const Start = () => {
         Get started
       </Button>
 
-      <Link className="font-light mt-20 text-base text-brand-graylight hover:text-brand-royalBlue transition-all duration-300" to="/import">
+      <Link className="font-light mt-20 text-base hover:text-brand-graylight text-brand-royalBluemedium transition-all duration-300" to="/import">
         Import using wallet seed phrase
       </Link>
     </div>

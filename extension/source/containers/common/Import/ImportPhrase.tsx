@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import React, { FC, useState } from 'react';
 import { Layout } from 'containers/common/Layout';
 import { useController } from 'hooks/index';
 import { Button } from 'components/index';
@@ -10,6 +10,8 @@ interface IImportPhrase {
 
 const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
   const controller = useController();
+
+  const [seedIsValid, setSeedIsValid] = useState<boolean>(false);
 
   const onSubmit = (data: any) => {
     if (controller.wallet.importPhrase(data.phrase)) {
@@ -38,6 +40,8 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
             },
             ({ }) => ({
               validator(_, value) {
+                setSeedIsValid(controller.wallet.importPhrase(value));
+
                 if (controller.wallet.importPhrase(value)) {
                   return Promise.resolve();
                 }
@@ -48,19 +52,20 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           ]}
         >
           <Input.TextArea
-            autoSize={{ minRows: 3, maxRows: 5 }}
+            autoSize={{ minRows: 3, maxRows: 8 }}
             placeholder="Paste your wallet seed phrase"
-            className="text-xs w-72 h-32 rounded-md p-2 pl-4 bg-brand-navydarker border border-brand-navymedium text-brand-royalBlue outline-none focus:border-brand-navylight"
+            className="text-xs w-72 h-44 rounded-md py-4 pl-4 bg-brand-navydarker border border-brand-navymedium text-brand-white outline-none focus:border-brand-navylight"
           />
         </Form.Item>
 
-        <span className="font-light text-brand-royalBlue text-xs mx-12 mt-8 pb-12 text-center">
+        <span className="font-light text-brand-royalBlue text-xs mx-12 mt-12 pb-12 text-center">
           Importing your wallet seed automatically import a wallet associated with this seed phrase.
         </span>
 
         <Button
-          className="absolute bottom-12"
+          classNameBorder="absolute bottom-12"
           type="submit"
+          disabled={!seedIsValid}
         >
           Import
         </Button>

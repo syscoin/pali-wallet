@@ -26,8 +26,8 @@ import {
   DeleteOutlined,
   CloseOutlined,
   SelectOutlined,
-  
-  
+  DownOutlined,
+  UpOutlined
 } from '@ant-design/icons';
 
 const icons = {
@@ -56,7 +56,9 @@ const icons = {
   'wallet': WalletOutlined,
   'delete': DeleteOutlined, 
   'close': CloseOutlined,
-  'select': SelectOutlined
+  'select': SelectOutlined,
+  'down': DownOutlined,
+  'up': UpOutlined
 }
 
 interface IIcon {
@@ -66,8 +68,12 @@ interface IIcon {
   rotate?: number
 }
 
-export const Icon: FC<IIcon> = ({ name, className, maxWidth, rotate }) => {
-  {/* @ts-ignore */}
+export const Icon: FC<IIcon> = ({
+  name,
+  className,
+  maxWidth,
+  rotate
+}) => {
   const Component = icons[name];
 
   return (

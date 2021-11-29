@@ -7,7 +7,6 @@ import {
 import {
   useController,
   useStore,
-  
 } from 'hooks/index';
 
 export const Header = ({
@@ -22,13 +21,13 @@ export const Header = ({
   const { encriptedMnemonic } = useStore();
 
   const controller = useController();
-
   const isUnlocked = !controller.wallet.isLocked();
 
   const handleCloseSettings = () => {
     showAccountSettings(false);
     showGeneralSettings(false);
   };
+
   return (
     <div>
       {onlySection && (

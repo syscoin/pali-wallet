@@ -4,9 +4,9 @@ import React, { FC } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout';
 import { Header } from 'containers/common/Header';
 import { Button } from 'antd';
-import { changeBackgroundLinear, changeBackground } from '../../../../../constants'
-import { WarningCard } from 'containers/common/Layout/WarningCard';
-import { AddresCard } from 'containers/common/Layout/AddresCard';
+
+import { WarningCard } from 'components/Cards';
+import { AddresCard } from 'components/Cards';
 interface IPrivateKeyView {
   id?: string;
 }
@@ -95,8 +95,6 @@ const PrivateKeyView: FC<IPrivateKeyView> = (/*{ id }*/) => {
       <div className="flex items-center justify-center pt-32">
         <div className="p-0.5 bg-primary rounded-full ">
           <Button
-            onMouseEnter={changeBackgroundLinear}
-            onMouseLeave={changeBackground}
             className="bg-brand-navy tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white hover:backgroundImage"
           >
             Close
