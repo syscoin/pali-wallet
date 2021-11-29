@@ -220,7 +220,7 @@ const createPopup = async (url: string) => {
 browser.windows.onRemoved.addListener((windowId: any) => {
   if (windowId > -1 && windowId === window.syspopup) {
     console.log('clearing all transactions')
-    
+
     store.dispatch(clearAllTransactions());
   }
 })
@@ -905,6 +905,12 @@ browser.runtime.onConnect.addListener((port) => {
       store.dispatch(updateCurrentURL(String(tabs[0].url)));
     });
 });
+
+browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  console.log('tabId, changeInfo, tab', tabId, changeInfo, tab);
+  
+  store.dispatch(updateCurrentURL(String(tab.url)));
+})
 
 browser.runtime.onInstalled.addListener(() => {
   if (!window.controller) {
