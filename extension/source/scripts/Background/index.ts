@@ -906,6 +906,12 @@ browser.runtime.onConnect.addListener((port) => {
     });
 });
 
+// browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+//   console.log('tabId, changeInfo, tab', tabId, changeInfo, tab);
+  
+//   store.dispatch(updateCurrentURL(String(tab.url)));
+// })
+
 browser.runtime.onInstalled.addListener(() => {
   if (!window.controller) {
     window.controller = Object.freeze(MasterController());
