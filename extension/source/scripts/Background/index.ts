@@ -220,7 +220,7 @@ const createPopup = async (url: string) => {
 browser.windows.onRemoved.addListener((windowId: any) => {
   if (windowId > -1 && windowId === window.syspopup) {
     console.log('clearing all transactions')
-    
+
     store.dispatch(clearAllTransactions());
   }
 })
