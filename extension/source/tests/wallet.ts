@@ -3,27 +3,123 @@ export const wallet = [
     description: 'controller.wallet.setWalletPassword()',
     params: ['pwd: string'],
     returns: 'void',
-    stateBefore: 'store.initialState',
+    stateBefore: {
+      status: 0,
+      accounts: [],
+      activeAccountId: 0,
+      activeNetwork: 'main',
+      encriptedMnemonic: null,
+      confirmingTransaction: false,
+      creatingAsset: false,
+      issuingAsset: false,
+      issuingNFT: false,
+      mintNFT: false,
+      updatingAsset: false,
+      transferringOwnership: false,
+      changingNetwork: false,
+      signingTransaction: false,
+      signingPSBT: false,
+      walletTokens: [],
+      tabs: {
+        currentSenderURL: '',
+        currentURL: '',
+        canConnect: false,
+        connections: []
+      },
+      timer: 5
+    },
     test: {
       params: {
-        pwd: 'pali123',
+        pwd: 'paliwallet123',
       },
       expected: {
         returns: 'void',
-        state: {} // check state before and after call
+        state: {
+          status: 0,
+          accounts: [],
+          activeAccountId: 0,
+          activeNetwork: 'main',
+          encriptedMnemonic: null,
+          confirmingTransaction: false,
+          creatingAsset: false,
+          issuingAsset: false,
+          issuingNFT: false,
+          mintNFT: false,
+          updatingAsset: false,
+          transferringOwnership: false,
+          changingNetwork: false,
+          signingTransaction: false,
+          signingPSBT: false,
+          walletTokens: [],
+          tabs: {
+            currentSenderURL: '',
+            currentURL: 'chrome://extensions/',
+            canConnect: false,
+            connections: []
+          },
+          timer: 5
+        }
       }
     }
   },
   {
     description: 'controller.wallet.generatePhrase()',
     params: [],
-    returns: 'string || null',
-    stateBefore: 'check state after setWalletPassword',
+    returns: 'potato lecture version social short monitor sick traffic furnace sure gun negative || null',
+    stateBefore: {
+      status: 0,
+      accounts: [],
+      activeAccountId: 0,
+      activeNetwork: 'main',
+      encriptedMnemonic: null,
+      confirmingTransaction: false,
+      creatingAsset: false,
+      issuingAsset: false,
+      issuingNFT: false,
+      mintNFT: false,
+      updatingAsset: false,
+      transferringOwnership: false,
+      changingNetwork: false,
+      signingTransaction: false,
+      signingPSBT: false,
+      walletTokens: [],
+      tabs: {
+        currentSenderURL: '',
+        currentURL: 'chrome://extensions/',
+        canConnect: false,
+        connections: []
+      },
+      timer: 5
+    },
     test: {
       params: {},
       expected: {
-        returns: '12 words - seed phrase || null',
-        state: {} // check state before and after call
+        returns: 'potato lecture version social short monitor sick traffic furnace sure gun negative',
+        state: {
+          status: 0,
+          accounts: [],
+          activeAccountId: 0,
+          activeNetwork: 'main',
+          encriptedMnemonic: null,
+          confirmingTransaction: false,
+          creatingAsset: false,
+          issuingAsset: false,
+          issuingNFT: false,
+          mintNFT: false,
+          updatingAsset: false,
+          transferringOwnership: false,
+          changingNetwork: false,
+          signingTransaction: false,
+          signingPSBT: false,
+          walletTokens: [],
+          tabs: {
+            currentSenderURL: '',
+            currentURL: 'chrome://extensions/',
+            canConnect: false,
+            connections: []
+          },
+          timer: 5
+        } // check state before and after call
       }
     }
   },

@@ -91,6 +91,7 @@ module.exports = {
       constants: path.resolve(__dirname, 'source/constants'),
       services: path.resolve(__dirname, 'source/services'),
       hooks: path.resolve(__dirname, 'source/hooks'),
+      tests: path.resolve(__dirname, 'source/tests'),
       fs: require.resolve("fs-extra"),
     },
   },

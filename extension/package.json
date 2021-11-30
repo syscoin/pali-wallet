@@ -21,7 +21,8 @@
     "build:opera": "cross-env NODE_ENV=production cross-env TARGET_BROWSER=opera webpack",
     "build": "yarn run build:chrome && yarn run build:firefox && yarn run build:opera",
     "lint": "eslint . --ext .ts,.tsx",
-    "lint:fix": "eslint . --ext .ts,.tsx --fix"
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "test": "jest"
   },
   "dependencies": {
     "@ant-design/icons": "^4.7.0",
@@ -30,6 +31,7 @@
     "@reduxjs/toolkit": "^1.4.0",
     "@types/chrome": "^0.0.134",
     "@types/crypto-js": "^4.0.2",
+    "@types/jest": "^27.0.3",
     "@types/lodash": "^4.14.162",
     "@types/qrcode.react": "^1.0.1",
     "@types/react-redux": "^7.1.9",
@@ -51,6 +53,7 @@
     "emoji-log": "^1.0.2",
     "filemanager-webpack-plugin": "^6.1.7",
     "fs-extra": "^10.0.0",
+    "jest": "^27.4.0",
     "lodash": "^4.17.20",
     "neo-async": "^2.6.2",
     "npm-check-updates": "^11.8.5",

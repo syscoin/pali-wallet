@@ -35,9 +35,12 @@ const WalletController = (): IWalletController => {
   };
 
   const setWalletPassword = (pwd: string) => {
+    console.log('setting wallet password before', pwd, store.getState().wallet)
+
     password = pwd;
     encriptedPassword = CryptoJS.SHA3(pwd).toString();
 
+    console.log('setting wallet password after', pwd, store.getState().wallet)
   };
 
   const checkPassword = (pwd: string) => {
@@ -64,11 +67,18 @@ const WalletController = (): IWalletController => {
   };
 
   const generatePhrase = () => {
+    console.log('generating phrase store before', store.getState().wallet)
+
     if (retrieveEncriptedMnemonic()) {
+      console.log('generating phrase', retrieveEncriptedMnemonic())
+
       return null;
     }
 
     if (!mnemonic) mnemonic = generateMnemonic();
+
+    console.log('generating phrase', mnemonic)
+    console.log('generating phrase store after', store.getState().wallet)
 
     return mnemonic;
   };
@@ -357,6 +367,14 @@ const WalletController = (): IWalletController => {
     return account.setNewAddress(address);
   }
 
+  const isPass = (papa) => {
+    if (papa) {
+      return true;
+    }
+
+    return false;
+  }
+
   return {
     account,
     isLocked,
@@ -373,7 +391,8 @@ const WalletController = (): IWalletController => {
     switchNetwork,
     getNewAddress,
     logOut,
-    addNewAccount
+    addNewAccount,
+    isPass
   };
 };
 
