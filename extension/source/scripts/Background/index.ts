@@ -2,6 +2,7 @@
 import 'emoji-log';
 import { STORE_PORT } from 'constants/index';
 import { wrapStore } from 'webext-redux';
+import Bowser from 'bowser';
 
 import { browser } from 'webextension-polyfill-ts';
 import store from 'state/store';
@@ -906,11 +907,31 @@ browser.runtime.onConnect.addListener((port) => {
     });
 });
 
-// browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-//   console.log('tabId, changeInfo, tab', tabId, changeInfo, tab);
-  
-//   store.dispatch(updateCurrentURL(String(tab.url)));
-// })
+const bowser = Bowser.getParser(window.navigator.userAgent);
+
+browser.tabs.onUpdated.addListener((tabId, _, tab) => {
+  if (bowser.getBrowserName() === 'Firefox') {
+    console.log('browser is firefox, do nothing', tab, tab.title);
+
+    // fix issue between sysmint & bridge
+
+    return;
+  }
+
+  console.log('browser is chromium')
+
+  if (
+    tab.url !== browser.runtime.getURL('app.html') &&
+    tab.url !== store.getState().wallet.tabs.currentURL &&
+    tab.title !== 'Pali Wallet'
+  ) {
+    store.dispatch(updateCurrentURL(String(tab.url)));
+
+    return;
+  }
+
+  console.log('dont update', tabId)
+});
 
 browser.runtime.onInstalled.addListener(() => {
   if (!window.controller) {
