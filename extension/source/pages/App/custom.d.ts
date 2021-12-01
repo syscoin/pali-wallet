@@ -12,6 +12,8 @@ declare module 'react-alert';
 
 declare module 'bip84';
 
+declare module 'constants/index';
+
 declare module 'extensionizer';
 
 declare interface IWalletController {

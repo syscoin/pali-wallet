@@ -58,6 +58,7 @@
   },
   "include": [
     "source",
-    "webpack.config.ts"
+    "webpack.config.ts",
+    "cypress"
   ]
 }

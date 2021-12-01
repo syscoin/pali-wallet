@@ -10,6 +10,7 @@ import { updateFiatPrice } from 'state/price';
 export interface IControllerUtils {
   appRoute: (newRoute?: string) => string;
   updateFiat: (currency?: string, assetId?: string) => Promise<void>;
+  updateFiatTest: (currency?: string, asset?: string) => string;
 }
 
 const ControllerUtils = (): IControllerUtils => {
@@ -19,6 +20,7 @@ const ControllerUtils = (): IControllerUtils => {
     if (newRoute) {
       route = newRoute;
     }
+
     return route;
   };
 
@@ -40,9 +42,14 @@ const ControllerUtils = (): IControllerUtils => {
     }
   };
 
+  const updateFiatTest = (currency, asset) => {
+    return `${currency} ${asset}`;
+  }
+
   return {
     appRoute,
     updateFiat,
+    updateFiatTest
   };
 };
 

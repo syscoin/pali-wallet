@@ -1,6 +1,6 @@
 import { SYS_NETWORK } from 'constants/index';
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { Transaction } from '../../scripts/types';
+import { Transaction } from 'scripts/types';
 // import { useUtils } from 'hooks/index';
 
 import IWalletState, {

@@ -10,7 +10,7 @@ import {
 import { Header } from 'containers/common/Header';
 // import { Button, IconButton, Icon } from 'components/index';;
 // import { useController, useFiat, useStore, useUtils } from 'hooks/index';
-// import { Assets } from '../../../scripts/types';
+// import { Assets } from 'scripts/types';
 // import { Form, Input } from 'antd';
 
 interface ISend {

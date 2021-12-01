@@ -367,12 +367,8 @@ const WalletController = (): IWalletController => {
     return account.setNewAddress(address);
   }
 
-  const isPass = (papa) => {
-    if (papa) {
-      return true;
-    }
-
-    return false;
+  const isPass = () => {
+    return true;
   }
 
   return {

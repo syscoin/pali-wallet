@@ -1194,7 +1194,7 @@ const AccountController = (actions: {
       }]
     ]);
 
-    let sysChangeAddress = null;
+    let sysChangeAddress: any = null;
 
     if (getConnectedAccount().isTrezorWallet) {
       sysChangeAddress = await getNewChangeAddress(true);

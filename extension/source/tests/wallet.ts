@@ -1,64 +1,18 @@
+import { useController } from 'hooks/useController';
+
 export const wallet = [
   {
     description: 'controller.wallet.setWalletPassword()',
     params: ['pwd: string'],
     returns: 'void',
-    stateBefore: {
-      status: 0,
-      accounts: [],
-      activeAccountId: 0,
-      activeNetwork: 'main',
-      encriptedMnemonic: null,
-      confirmingTransaction: false,
-      creatingAsset: false,
-      issuingAsset: false,
-      issuingNFT: false,
-      mintNFT: false,
-      updatingAsset: false,
-      transferringOwnership: false,
-      changingNetwork: false,
-      signingTransaction: false,
-      signingPSBT: false,
-      walletTokens: [],
-      tabs: {
-        currentSenderURL: '',
-        currentURL: '',
-        canConnect: false,
-        connections: []
-      },
-      timer: 5
-    },
+    stateBefore: {},
     test: {
       params: {
         pwd: 'paliwallet123',
       },
       expected: {
         returns: 'void',
-        state: {
-          status: 0,
-          accounts: [],
-          activeAccountId: 0,
-          activeNetwork: 'main',
-          encriptedMnemonic: null,
-          confirmingTransaction: false,
-          creatingAsset: false,
-          issuingAsset: false,
-          issuingNFT: false,
-          mintNFT: false,
-          updatingAsset: false,
-          transferringOwnership: false,
-          changingNetwork: false,
-          signingTransaction: false,
-          signingPSBT: false,
-          walletTokens: [],
-          tabs: {
-            currentSenderURL: '',
-            currentURL: 'chrome://extensions/',
-            canConnect: false,
-            connections: []
-          },
-          timer: 5
-        }
+        state: {}
       }
     }
   },
@@ -66,60 +20,12 @@ export const wallet = [
     description: 'controller.wallet.generatePhrase()',
     params: [],
     returns: 'potato lecture version social short monitor sick traffic furnace sure gun negative || null',
-    stateBefore: {
-      status: 0,
-      accounts: [],
-      activeAccountId: 0,
-      activeNetwork: 'main',
-      encriptedMnemonic: null,
-      confirmingTransaction: false,
-      creatingAsset: false,
-      issuingAsset: false,
-      issuingNFT: false,
-      mintNFT: false,
-      updatingAsset: false,
-      transferringOwnership: false,
-      changingNetwork: false,
-      signingTransaction: false,
-      signingPSBT: false,
-      walletTokens: [],
-      tabs: {
-        currentSenderURL: '',
-        currentURL: 'chrome://extensions/',
-        canConnect: false,
-        connections: []
-      },
-      timer: 5
-    },
+    stateBefore: {},
     test: {
       params: {},
       expected: {
         returns: 'potato lecture version social short monitor sick traffic furnace sure gun negative',
-        state: {
-          status: 0,
-          accounts: [],
-          activeAccountId: 0,
-          activeNetwork: 'main',
-          encriptedMnemonic: null,
-          confirmingTransaction: false,
-          creatingAsset: false,
-          issuingAsset: false,
-          issuingNFT: false,
-          mintNFT: false,
-          updatingAsset: false,
-          transferringOwnership: false,
-          changingNetwork: false,
-          signingTransaction: false,
-          signingPSBT: false,
-          walletTokens: [],
-          tabs: {
-            currentSenderURL: '',
-            currentURL: 'chrome://extensions/',
-            canConnect: false,
-            connections: []
-          },
-          timer: 5
-        } // check state before and after call
+        state: {} // check state before and after call
       }
     }
   },
@@ -1482,3 +1388,5 @@ export const connection = [
     }
   },
 ];
+
+export const controller = useController();
