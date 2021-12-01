@@ -775,7 +775,7 @@ const AccountController = (actions: {
     }
 
     account = {
-      id: sysjs.Signer.Signer.accountIndex,
+      id: sysjs.Signer.Signer.accountIndex === 0 ? 0 : sysjs.Signer.Signer.accountIndex,
       label: label || `Account ${sysjs.Signer.Signer.accountIndex + 1}`,
       balance: res.balance,
       transactions: res.transactions,
