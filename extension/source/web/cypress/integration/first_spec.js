@@ -8,7 +8,7 @@ import fixture from '../fixtures/example.json';
 
 describe('wallet controller tests', () => {
   it('Does not do much', () => {
-    cy.visit('https://github.com/');
+    cy.visit("http://google.com");
 
     expect(fixture.name).to.equal('Using fixtures to represent data')
   })
