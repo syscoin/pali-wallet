@@ -41,10 +41,10 @@ const WalletController = (): IWalletController => {
   };
 
   const checkPassword = (pwd: string) => {
-    if(encriptedPassword === CryptoJS.SHA3(pwd).toString()) {
+    if (encriptedPassword === CryptoJS.SHA3(pwd).toString()) {
       return true;
     }
-    
+
     return encriptedPassword === pwd;
   };
 
@@ -295,6 +295,8 @@ const WalletController = (): IWalletController => {
 
       store.dispatch(updateSwitchNetwork(true));
 
+      console.log('new signer main', sjs, HDsigner)
+
       _getAccountDataByNetwork(sjs);
 
       return;
@@ -346,7 +348,11 @@ const WalletController = (): IWalletController => {
       address = account0.getAddress(receivingIndex + 1);
     } else {
       try {
+        // sjs.Signer.Signer.receivingIndex = -1;
+
         address = await sjs.Signer.getNewReceivingAddress();
+
+        console.log('new address from sjs', address);
       } catch (error: any) {
         console.log('error getting receiving address from sysjs', error);
 
