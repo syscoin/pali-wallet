@@ -305,6 +305,7 @@ const WalletController = (): IWalletController => {
     setSjs({ SignerIn: HDsigner, blockbookURL: SYS_NETWORK.testnet.beUrl });
 
     store.dispatch(updateSwitchNetwork(true));
+    console.log('new signer testnet', sjs, HDsigner)
 
     _getAccountDataByNetwork(sjs);
   };
