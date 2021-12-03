@@ -355,6 +355,7 @@ const WalletController = (): IWalletController => {
         address = await sjs.Signer.getNewReceivingAddress();
 
         console.log('sjs signer receiving index get new receiving', sjs.Signer.Signer.receivingIndex, sjs.Signer.Signer, address)
+        // console.log('sjs signer receiving index get new receiving', sjs.Signer, sjs.Signer.blockbookURL)
       } catch (error: any) {
         console.log('error getting receiving address from sysjs', error);
 

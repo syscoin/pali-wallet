@@ -283,7 +283,7 @@ const AccountController = (actions: {
       return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=nonzero&details=txs', true);
     }
 
-    return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, connectedAccount.xpub, 'details=txs&assetMask=non-token-transfers', true, sysjs.Signer);
+    return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, connectedAccount.xpub, 'details=txs&assetMask=non-token-transfers', true);
   };
 
   const getChangeAddress = async () => {
@@ -329,7 +329,7 @@ const AccountController = (actions: {
     return await Promise.all(accounts.map(async (account: IAccountState) => {
       const assetsData: any = {};
 
-      const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=derived&details=txs', true, sysjs.Signer);
+      const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=derived&details=txs', true);
       const { transactions } = await fetchBackendConnectedAccount(account);
 
       let tokensMap: any = {};
@@ -640,9 +640,7 @@ const AccountController = (actions: {
         response
       };
     }
-
-    response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.Signer.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.Signer);
-
+      response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.Signer.getAccountXpub(), 'tokens=nonzero&details=txs', true);
     return {
       address,
       response
