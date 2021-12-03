@@ -766,8 +766,6 @@ const AccountController = (actions: {
 
     try {
       mainAddress = await sysjs.Signer.getNewReceivingAddress();
-
-      console.log('address from sys', mainAddress)
     } catch (error: any) {
       console.log('error getting receiving address from sys', error)
 
@@ -798,7 +796,6 @@ const AccountController = (actions: {
     if (!accounts.find((account: IAccountState) => account.id === activeAccountId)) {
       return;
     }
-
 
     account = accounts.find((account: IAccountState) => account.id === activeAccountId)!;
 
