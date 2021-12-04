@@ -21,12 +21,6 @@ export const Start = () => {
       >
         Get started
       </Button>
-      <Button
-        type="submit"
-        onClick={() => history.push('/create/pass')}
-      >
-        Get started
-      </Button>
 
       <Link className="font-light mt-20 text-base hover:text-brand-graylight text-brand-royalBluemedium transition-all duration-300" to="/import">
         Import using wallet seed phrase
