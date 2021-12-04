@@ -37,7 +37,6 @@ const WalletController = (): IWalletController => {
   const setWalletPassword = (pwd: string) => {
     password = pwd;
     encriptedPassword = CryptoJS.SHA3(pwd).toString();
-
   };
 
   const checkPassword = (pwd: string) => {
@@ -346,7 +345,7 @@ const WalletController = (): IWalletController => {
       address = account0.getAddress(receivingIndex + 1);
     } else {
       try {
-        address = await sjs.Signer.getNewReceivingAddress();
+        address = await sjs.Signer.getNewReceivingAddress(true);
       } catch (error: any) {
         console.log('error getting receiving address from sysjs', error);
 
@@ -373,7 +372,7 @@ const WalletController = (): IWalletController => {
     switchNetwork,
     getNewAddress,
     logOut,
-    addNewAccount
+    addNewAccount,
   };
 };
 
