@@ -46,10 +46,6 @@ describe('SendUtil Test', () => {
       expect(value).toBe('10000');
     });
 
-    ////////////////////////
-    // Negative Test
-    ////////////////////////
-
     test('should return 0 for alpha inputs', () => {
       const value = inputValToString('abc');
       expect(value).toBe('0');
@@ -57,10 +53,6 @@ describe('SendUtil Test', () => {
   });
 
   describe('getChangeAmount', () => {
-    ////////////////////////
-    // Positive Test
-    ////////////////////////
-
     test('should handle no decimal place', () => {
       const changeAmount = getChangeAmount(
         '1',
@@ -87,10 +79,6 @@ describe('SendUtil Test', () => {
       );
       expect(changeAmount).toBe('0');
     });
-
-    ////////////////////////
-    // Negative Test
-    ////////////////////////
 
     test('should return null for decimals that are too long', () => {
       const changeAmount = getChangeAmount(
