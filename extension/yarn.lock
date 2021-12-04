@@ -9677,10 +9677,10 @@ synchronous-promise@^2.0.13:
   resolved "https://registry.yarnpkg.com/synchronous-promise/-/synchronous-promise-2.0.15.tgz#07ca1822b9de0001f5ff73595f3d08c4f720eb8e"
   integrity sha512-k8uzYIkIVwmT+TcglpdN50pS2y1BDcUnBPK9iJeGu0Pl1lOI8pD6wtzgw91Pjpe+RxtTncw32tLxs/R0yNL2Mg==
 
-syscoinjs-lib@^1.0.196:
-  version "1.0.196"
-  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.196.tgz#c486678ff92355c82215a1e1c7321197898f0fae"
-  integrity sha512-VWkQeuamvErKv4MAAp2IfSKVmXNOZ1onB6ily86qMKXN4uioMkf+n3SRf8bm6wwWOuaZXqziMj+tOi3AKsLamQ==
+syscoinjs-lib@^1.0.199:
+  version "1.0.199"
+  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.199.tgz#bf344006abe7bda6a64e295bb4c725903c9e20ee"
+  integrity sha512-kUdRQEQaywGjtjY5kr/pu6sRLR5OJYpRQUtIchwk/SuygGVzD5i5qNCSdQn2L3YBcSufTmdPjGA8mCNYViSjeQ==
   dependencies:
     "@trezor/utxo-lib" "^0.1.2"
     axios "^0.21.1"

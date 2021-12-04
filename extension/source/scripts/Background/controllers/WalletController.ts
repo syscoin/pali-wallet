@@ -37,14 +37,13 @@ const WalletController = (): IWalletController => {
   const setWalletPassword = (pwd: string) => {
     password = pwd;
     encriptedPassword = CryptoJS.SHA3(pwd).toString();
-
   };
 
   const checkPassword = (pwd: string) => {
-    if (encriptedPassword === CryptoJS.SHA3(pwd).toString()) {
+    if(encriptedPassword === CryptoJS.SHA3(pwd).toString()) {
       return true;
     }
-
+    
     return encriptedPassword === pwd;
   };
 
@@ -295,8 +294,6 @@ const WalletController = (): IWalletController => {
 
       store.dispatch(updateSwitchNetwork(true));
 
-      console.log('new signer main', sjs, HDsigner)
-
       _getAccountDataByNetwork(sjs);
 
       return;
@@ -305,7 +302,6 @@ const WalletController = (): IWalletController => {
     setSjs({ SignerIn: HDsigner, blockbookURL: SYS_NETWORK.testnet.beUrl });
 
     store.dispatch(updateSwitchNetwork(true));
-    console.log('new signer testnet', sjs, HDsigner)
 
     _getAccountDataByNetwork(sjs);
   };
@@ -348,14 +344,8 @@ const WalletController = (): IWalletController => {
 
       address = account0.getAddress(receivingIndex + 1);
     } else {
-      console.log('sjs signer receiving index', sjs.Signer.Signer.receivingIndex, sjs.Signer.Signer)
-      // sjs.Signer.Signer.receivingIndex = -1;
-
       try {
-        address = await sjs.Signer.getNewReceivingAddress();
-
-        console.log('sjs signer receiving index get new receiving', sjs.Signer.Signer.receivingIndex, sjs.Signer.Signer, address)
-        // console.log('sjs signer receiving index get new receiving', sjs.Signer, sjs.Signer.blockbookURL)
+        address = await sjs.Signer.getNewReceivingAddress(true);
       } catch (error: any) {
         console.log('error getting receiving address from sysjs', error);
 
@@ -382,7 +372,7 @@ const WalletController = (): IWalletController => {
     switchNetwork,
     getNewAddress,
     logOut,
-    addNewAccount
+    addNewAccount,
   };
 };
 
