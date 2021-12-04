@@ -19,6 +19,11 @@
     "storage",
     "notifications"
   ],
+  "options_ui": {
+    "page": "app.html",
+    "open_in_tab": true,
+    "__chrome__chrome_style": false
+  },
   "content_security_policy": "script-src 'self'; object-src 'self'",
   "__chrome|firefox__author": "Pollum Sys Teams",
   "__opera__developer": {

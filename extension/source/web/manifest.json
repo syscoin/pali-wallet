@@ -1,0 +1,93 @@
+{
+  "manifest_version": 2,
+  "name": "Pali Wallet",
+  "version": "1.0.19",
+  "icons": {
+    "16": "assets/icons/favicon-16.png",
+    "32": "assets/icons/favicon-32.png",
+    "48": "assets/icons/favicon-48.png",
+    "128": "assets/icons/favicon-128.png"
+  },
+  "description": "A Non-Custodial Crypto Wallet for Syscoin that Supports Trezor™",
+  "short_name": "pali",
+  "permissions": [
+    "http://*/*",
+    "https://*/*",
+    "*://connect.trezor.io/8/*",
+    "https://localhost:8088/",
+    "tabs",
+    "storage",
+    "notifications"
+  ],
+  "options_ui": {
+    "page": "app.html",
+    "open_in_tab": true,
+    "__chrome__chrome_style": false
+  },
+  "content_security_policy": "script-src 'self'; object-src 'self'",
+  "__chrome|firefox__author": "Pollum Sys Teams",
+  "__opera__developer": {
+    "name": "pollum labs"
+  },
+  "__firefox__applications": {
+    "gecko": {
+      "id": "{b3e96b5f-b5bf-8b48-846b-52f430365e80}"
+    }
+  },
+  "__chrome__minimum_chrome_version": "49",
+  "__opera__minimum_opera_version": "36",
+  "browser_action": {
+    "default_popup": "app.html",
+    "default_icon": {
+      "16": "assets/icons/favicon-16.png",
+      "32": "assets/icons/favicon-32.png",
+      "48": "assets/icons/favicon-48.png",
+      "128": "assets/icons/favicon-128.png"
+    },
+    "default_title": "Pali Wallet",
+    "__chrome|opera__chrome_style": false,
+    "__firefox__browser_style": false
+  },
+  "background": {
+    "scripts": [
+      "js/webextension.bundle.js",
+      "js/background.bundle.js"
+    ],
+    "__chrome|opera__persistent": true
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "run_at": "document_start",
+      "js": [
+        "js/webextension.bundle.js",
+        "js/contentScript.bundle.js"
+      ]
+    },
+    {
+      "matches": [
+        "*://connect.trezor.io/8/popup.html",
+        "https://localhost:8088/*"
+      ],
+      "js": [
+        "js/webextension.bundle.js",
+        "js/trezorScript.bundle.js"
+      ]
+    }
+  ],
+  "web_accessible_resources": [
+    "app.html",
+    "inpage.ts",
+    "js/inpage.bundle.js"
+  ],
+  "commands": {
+    "_execute_browser_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+P"
+      }
+    }
+  }
+}

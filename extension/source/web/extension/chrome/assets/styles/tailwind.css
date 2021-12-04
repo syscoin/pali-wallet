@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* unauth/create/pass inputs */
+.ant-input-affix-wrapper.ant-input-password {
+  @apply relative;
+}
+
+#basic_password, #basic_repassword {
+  @apply w-72 rounded-full p-2 pl-4 bg-brand-navydarker border border-brand-navymedium text-brand-graylight text-sm outline-none focus:border-brand-navylight;
+}
+
+.ant-input-suffix {
+  @apply absolute right-2 text-brand-navymedium; 
+}
+
+.ant-form-item-control-input {
+  @apply relative max-w-input flex justify-center items-center mx-auto;
+}
+
+.ant-form-item-children-icon {
+  @apply absolute right-10 text-brand-navymedium top-0;
+}
+
+.ant-form-item-explain.ant-form-item-explain-error {
+  @apply relative;
+}
+
+div[role=alert] {
+  @apply text-brand-white text-base font-light text-center absolute left-1/4 right-1/4;
+}
+
+.anticon.anticon-check-circle {
+  @apply text-brand-green;
+}
+
+.anticon.anticon-close-circle {
+  @apply text-brand-error;
+}
+
+.ant-tooltip-hidden {
+  @apply hidden;
+}

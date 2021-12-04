@@ -206,6 +206,12 @@ module.exports = {
       filename: 'trezor-usb-permissions.html',
       chunks: ['trezorUSB'],
     }),
+    new HtmlWebpackPlugin({
+      template: path.join(viewsPath, 'app.html'),
+      inject: 'body',
+      chunks: ['app'],
+      filename: 'app.html',
+    }),
     // write css file(s) to build folder
     new MiniCssExtractPlugin({ filename: 'css/[name].css' }),
     // copy static assets
