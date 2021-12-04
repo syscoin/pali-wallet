@@ -35,12 +35,8 @@ const WalletController = (): IWalletController => {
   };
 
   const setWalletPassword = (pwd: string) => {
-    console.log('setting wallet password before', pwd, store.getState().wallet)
-
     password = pwd;
     encriptedPassword = CryptoJS.SHA3(pwd).toString();
-
-    console.log('setting wallet password after', pwd, store.getState().wallet)
   };
 
   const checkPassword = (pwd: string) => {
@@ -67,18 +63,11 @@ const WalletController = (): IWalletController => {
   };
 
   const generatePhrase = () => {
-    console.log('generating phrase store before', store.getState().wallet)
-
     if (retrieveEncriptedMnemonic()) {
-      console.log('generating phrase', retrieveEncriptedMnemonic())
-
       return null;
     }
 
     if (!mnemonic) mnemonic = generateMnemonic();
-
-    console.log('generating phrase', mnemonic)
-    console.log('generating phrase store after', store.getState().wallet)
 
     return mnemonic;
   };
@@ -356,7 +345,7 @@ const WalletController = (): IWalletController => {
       address = account0.getAddress(receivingIndex + 1);
     } else {
       try {
-        address = await sjs.Signer.getNewReceivingAddress();
+        address = await sjs.Signer.getNewReceivingAddress(true);
       } catch (error: any) {
         console.log('error getting receiving address from sysjs', error);
 
@@ -365,10 +354,6 @@ const WalletController = (): IWalletController => {
     }
 
     return account.setNewAddress(address);
-  }
-
-  const isPass = () => {
-    return true;
   }
 
   return {
@@ -388,7 +373,6 @@ const WalletController = (): IWalletController => {
     getNewAddress,
     logOut,
     addNewAccount,
-    isPass
   };
 };
 

@@ -1,5 +1,5 @@
 import React, { FC } from 'react';
-import { useController/*, useStore */, useUtils} from 'hooks/index';
+import { useController,/* useStore */ useUtils} from 'hooks/index';
 import { Icon } from 'components/index';
 
 // import AccountSelect from 'components/AccountSelect';
@@ -14,6 +14,7 @@ interface IMainView {
 const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
   const { history } = useUtils();
   const controller = useController();
+  //const [collapsed, setCollapsed] = useState(false)
   // const { accounts, activeAccountId } = useStore();
 
   // const handleSelectAccount = (id: string) => {
@@ -78,18 +79,20 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
 
       {accountSettings && (
         <ul>
-          <li onClick={() => history.push('/account-priv')}>
+        <div>
+          <li className="inline-flex" onClick={() => history.push('/account-priv')}>
             <Icon
               name="key"
-              className="bg-brand-deepPink text-brand-white w-4"
+              className="inline-flex self-center bg-brand-deepPink text-brand-white w-4"
             />
             XPUB
           </li>
-
-          <li onClick={() => history.push('/account-details')}>
+        </div>
+        <div>
+          <li className="inline-flex" onClick={() => history.push('/account-details')}>
             <Icon
               name="user"
-              className="bg-brand-deepPink text-brand-white w-4"
+              className="inline-flex self-center bg-brand-deepPink text-brand-white w-4"
             />
             Accounts
           </li>
@@ -97,23 +100,26 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings }) => {
           <li onClick={() => history.push('/account-newaccount')}>
             new account
           </li>
-
-          <li onClick={() => history.push('/account-hardware')}>
+        </div>
+        <div>
+          <li className="inline-flex" onClick={() => history.push('/account-hardware')}>
             <Icon
               name="partition"
-              className="bg-brand-deepPink text-brand-white w-4"
+              className="inline-flex self-center bg-brand-deepPink text-brand-white w-4"
             />
             Connect hardware wallet
           </li>
-
-          <li onClick={handleLogout}>
+        </div>
+        <div>
+          <li className="inline-flex" onClick={handleLogout}>
             <Icon
               name="lock"
-              className="bg-brand-deepPink text-brand-white w-4"
+              className="inline-flex self-center bg-brand-deepPink text-brand-white w-4"
             />
             Lock
           </li>
-        </ul>
+        </div>
+      </ul>
       )}
     </div>
   );

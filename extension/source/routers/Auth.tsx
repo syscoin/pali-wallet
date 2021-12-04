@@ -30,6 +30,7 @@ import {
   AccountView,
   AutolockView,
   ConnectHardwareWalletView,
+  CurrencyView,
   DeleteWalletView,
   MainView,
   NewAccountView,
@@ -306,6 +307,7 @@ export const AuthRouter = () => {
               <Route path="/general-about" component={AboutView} exact />
               <Route path="/general-phrase" component={PhraseView} exact />
               <Route path="/general-delete" component={DeleteWalletView} exact />
+              <Route path="/general-currency" component={CurrencyView} exact />
 
               <Route
                 path='/account'

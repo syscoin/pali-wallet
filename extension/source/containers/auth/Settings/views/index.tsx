@@ -7,3 +7,4 @@ export { default as NewAccountView } from './NewAccountView';
 export { default as AboutView } from './AboutView';
 export { default as ConnectHardwareWalletView } from './ConnectHardwareWalletView';
 export { default as AutolockView } from './AutolockView';
+export { default as CurrencyView } from './CurrencyView';

@@ -1,4 +1,5 @@
 import React, { FC } from 'react';
+import { PanelList } from './components/PanelList';
 
 interface IAssetsPanel {
   show: boolean;
@@ -6,11 +7,21 @@ interface IAssetsPanel {
 }
 
 export const AssetsPanel: FC<IAssetsPanel> = ({ show, className }) => {
+  const dataFAke = [
+    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'},
+    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'},
+    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'},
+    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'},
+    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'},
+    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'}
+  ]
   return (
     <ul className={className}>
 
       {show ? (
-        <ul>show assets panel</ul>
+        <>
+          <PanelList dataFAke={dataFAke} activity={false} assets={true}></PanelList>
+        </>
       ) : (
         <p className="justify-center items-center text-sm text-brand-gray">
           You have no tokens or NFTs.

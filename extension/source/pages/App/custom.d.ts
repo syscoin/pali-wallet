@@ -33,7 +33,6 @@ declare interface IWalletController {
   switchWallet: (id: number) => void;
   unLock: (pwd: string) => boolean;
   addNewAccount: (label: string) => Promise<string | null>;
-  isPass: (papa: boolean) => boolean;
 }
 
 declare interface IMessagesController { }

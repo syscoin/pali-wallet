@@ -23,6 +23,7 @@
     }
   ],
   "rules": {
+    "no-unused-vars": "off",
     "no-console": "off",
     "no-extend-native": "off",
     "no-alert": "off",

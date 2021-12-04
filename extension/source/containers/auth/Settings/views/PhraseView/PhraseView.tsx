@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Button, Card, Form, Input } from 'antd';
+import { Card, Form, Input } from 'antd';
 import { useController, useUtils } from 'hooks/index';
-import { Header } from 'containers/common/Header';
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
 import { Icon } from 'components/Icon';
+import { WarningCard } from 'components/Cards';
+import { Button } from 'components/Button';
 const PhraseView = () => {
   const [checked, setChecked] = useState<boolean>(false);
   const [phrase, setPhrase] = useState<string>(
@@ -32,9 +33,13 @@ const PhraseView = () => {
 
   return (
     <>
-      <Header normalHeader />
+      <AuthViewLayout title="WALLET SEED PHRASE"> </AuthViewLayout>
       <div className="flex justify-center items-center flex-col min-w-full">
-        <AuthViewLayout title="WALLET SEED PHRASE">Please input your wallet password and press enter</AuthViewLayout>
+        <div className="flex justify-center items-center text-brand-gray pt-4">
+          <p className="pl-6 text-base">
+            Please input your wallet password and press enter
+          </p>
+        </div>
         <Form
           className="flex justify-center items-center flex-col gap-8 text-center pt-4"
           name="basic"
@@ -50,9 +55,9 @@ const PhraseView = () => {
             rules={[
               {
                 required: true,
-                message: ''
+                message: '',
               },
-              ({ }) => ({
+              ({}) => ({
                 validator(_, value) {
                   if (controller.wallet.getPhrase(value)) {
                     return Promise.resolve();
@@ -68,39 +73,32 @@ const PhraseView = () => {
         </Form>
 
         <div className="flex items-center justify-center pt-4">
-          <Card className="w-full rounded text-brand-white" style={{ width: 320, border: '1px', background: '#4d76b8' }}>
-           <div className="p-4">
-              <div className="flex text-brand-white">
-                  <p className="text-base">Seed Phrase: (click to copy)</p>
-                  <Icon name="copy" className="pl-20 inline-flex self-center text-base pr-1" />
-               </div>
-               <div className="text-base pt-1" onClick={handleCopySeed}>
-                 {phrase}
-              </div>
-           </div>
-          </Card>
-        </div>
-
-        <div className="flex items-center justify-center pt-2 pb-8">
-          <Card className="w-full rounded text-brand-white border-dashed border border-light-blue-500" style={{ width: 320}}>
-           <div className="p-2">
-               <div className="text-sm pt-1">
-               <b>Warning:</b> Keep your seed phrase secret! Anyone with your seed
-                phrase can access any account connected to this wallet and steal your
-                assets.
-              </div>
-           </div>
-          </Card>
-        </div>
-        
-        <div className="p-0.5 bg-primary rounded-full ">
-          <Button
-            className="bg-brand-navy tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white hover:backgroundImage"
+          <Card
+            className="w-full rounded text-brand-white"
+            style={{ width: 320, border: '1px', background: '#4d76b8' }}
           >
-            Close
-          </Button>
+            <div className="p-4">
+              <div className="flex text-brand-white">
+                <p className="text-base">Seed Phrase: (click to copy)</p>
+                <Icon
+                  name="copy"
+                  className="pl-20 inline-flex self-center text-base pr-1"
+                />
+              </div>
+              <div className="text-base pt-1" onClick={handleCopySeed}>
+                {phrase}
+              </div>
+            </div>
+          </Card>
         </div>
-
+        <WarningCard
+          className="w-full rounded text-brand-white border-dashed border border-light-blue-500 text-justify"
+          warningText="Warning:"
+        >
+          Keep your seed phrase secret! Anyone with your seed phrase can access
+          any account connected to this wallet and steal your assets.
+        </WarningCard>
+        <Button type="submit">Close</Button>
       </div>
     </>
   );
