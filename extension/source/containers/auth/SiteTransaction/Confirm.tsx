@@ -156,12 +156,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
       item: itemStringToClearData || null,
     });
 
-    browser.runtime.sendMessage({
-      type: 'CLOSE_POPUP',
-      target: 'background',
-    });
-
-    history.push('/home');
+    handleClosePopup();
   };
 
   const handleConfirm = () => {
@@ -219,8 +214,12 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
       setTimeout(() => {
         if (isPending && !confirmed) {
           alert.removeAll();
+          
           if (itemStringToClearData === 'mintNFT') {
-            alert.error('You can check this transaction in your history.');
+            alert.show('Waiting for confirmation to create and issue your NFT. You can check this transaction in your history.', {
+              timeout: 5000,
+              type: 'success'
+            });
 
             setTimeout(() => {
               handleCancelTransactionOnSite();

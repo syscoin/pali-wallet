@@ -17,7 +17,7 @@ const NewAccountView = () => {
   const controller = useController();
   const { handleSubmit, register } = useForm({
     validationSchema: yup.object().shape({
-      name: yup.string().required(),
+      name: yup.string(),
     }),
   });
   const [isCopied, copyText] = useCopyClipboard();
@@ -67,7 +67,7 @@ const NewAccountView = () => {
         </>
       ) : (
         <form onSubmit={handleSubmit(onSubmit)}>
-          <span>Please name your new account:</span>
+          <span>Please name your new account if you want:</span>
           <TextInput
             type="text"
             name="name"

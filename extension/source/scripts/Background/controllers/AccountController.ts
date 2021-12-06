@@ -1332,6 +1332,8 @@ const AccountController = (actions: {
 
     const newParentAsset = await createParentAsset(assetOpts, fee);
 
+    console.log('current parent asset', newParentAsset);
+
     if (newParentAsset?.asset_guid) {
       let theNFTTx: any = null;
       let parentConfirmed = false;
@@ -1349,6 +1351,8 @@ const AccountController = (actions: {
             if (newParentTx.confirmations > 1 && !parentConfirmed) {
               parentConfirmed = true;
 
+              console.log('confirmations parent tx > 1', newParentAsset)
+
               const assetMap = new Map([
                 [newParentAsset!.asset_guid,
                 {
@@ -1361,10 +1365,6 @@ const AccountController = (actions: {
               ]);
 
               try {
-                if (!getConnectedAccount().isTrezorWallet) {
-                  sysjs.Signer.setAccountIndex(getConnectedAccount().id);
-                }
-
                 const pendingTx = await sysjs.assetSend(txOpts, assetMap, null, feeRate);
 
                 if (!pendingTx) {
@@ -1413,6 +1413,8 @@ const AccountController = (actions: {
                 ]);
 
                 const psbt = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, issuer, feeRate);
+
+                console.log('after update psbt', psbt)
 
                 if (!psbt) {
                   console.log('Could not create transaction, not enough funds?');
