@@ -174,7 +174,7 @@ const closePopup = () => {
     })
     .catch((error) => {
       console.log('error removing window', error);
-    });;
+    });
 
   return;
 }
@@ -911,14 +911,12 @@ const bowser = Bowser.getParser(window.navigator.userAgent);
 
 browser.tabs.onUpdated.addListener((tabId, _, tab) => {
   if (bowser.getBrowserName() === 'Firefox') {
-    console.log('browser is firefox, do nothing', tab, tab.title);
+    console.log('browser is firefox, do nothing', tab, tab.title, tabId);
 
     // fix issue between sysmint & bridge
 
     return;
   }
-
-  console.log('browser is chromium')
 
   if (
     tab.url !== browser.runtime.getURL('app.html') &&
@@ -929,8 +927,6 @@ browser.tabs.onUpdated.addListener((tabId, _, tab) => {
 
     return;
   }
-
-  console.log('dont update', tabId)
 });
 
 browser.runtime.onInstalled.addListener(() => {
