@@ -22,10 +22,7 @@ const CreatePass = () => {
   };
 
   return (
-    <Layout
-      title="Password"
-      onlySection
-    >
+    <Layout title="Password" onlySection>
       <Form
         name="basic"
         labelCol={{ span: 8 }}
@@ -41,12 +38,12 @@ const CreatePass = () => {
           rules={[
             {
               required: true,
-              message: ''
+              message: '',
             },
             {
               pattern: /^(?=.*[a-z])(?=.*[0-9])(?=.{8,})/,
-              message: ''
-            }
+              message: '',
+            },
           ]}
         >
           <Input.Password placeholder="New password (min 8 chars)" />
@@ -59,7 +56,7 @@ const CreatePass = () => {
           rules={[
             {
               required: true,
-              message: ''
+              message: '',
             },
             ({ getFieldValue }) => ({
               validator(_, value) {
@@ -75,18 +72,16 @@ const CreatePass = () => {
           <Input.Password placeholder="Confirm password" />
         </Form.Item>
 
-        <span className="font-light text-brand-graylight text-xs">
+        <span className="text-brand-graylight text-xs">
           At least 8 characters, 1 lower-case and 1 numeral.
         </span>
 
-        <span className="text-center font-light text-brand-royalBlue text-xs mx-10">
-          Do not forget to save your password. You will need this password to unlock your wallet.
+        <span className="text-justify text-center text-brand-royalBlue text-xs mx-14">
+          Do not forget to save your password. You will need this password to
+          unlock your wallet.
         </span>
 
-        <Button
-          type="submit"
-          classNameBorder="absolute bottom-12"
-        >
+        <Button type="submit" classNameBorder="absolute bottom-12">
           Next
         </Button>
       </Form>

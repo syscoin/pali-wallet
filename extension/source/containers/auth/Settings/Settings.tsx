@@ -5,6 +5,7 @@ import * as Views from './views';
 interface ISettings {
   accountSettings?: boolean;
   generalSettings?: boolean;
+  networkSettings?: boolean;
   onClose?: () => void;
   open: boolean;
 }
@@ -14,6 +15,7 @@ export const Settings: FC<ISettings> = ({
   open,
   generalSettings = true,
   accountSettings = false,
+  networkSettings = false,
 }) => {
   return (
     <div>
@@ -28,16 +30,23 @@ export const Settings: FC<ISettings> = ({
             className={
               generalSettings
                 ? 'transition-all duration-300 ease-in-out fixed z-10 flex flex-col bg-brand-royalBlue max-w-70 top-3rem right-4 p-6 rounded-3xl'
+                : networkSettings
+                ? 'transition-all duration-300 ease-in-out mt-6 fixed flex flex-col bg-brand-bluesettings bg-opacity-95 right-16 mr-6 ml-5 p-4 rounded-3xl'
                 : 'transition-all duration-300 ease-in-out fixed z-10 flex flex-col bg-brand-deepPink max-w-70 top-3rem right-4 p-6 rounded-3xl'
             }
           >
-            <h2 className="pb-4 text-brand-white border-b border-dashed border-brand-graylight w-full text-center mb-4">
-              {generalSettings ? 'GENERAL SETTINGS' : 'ACCOUNT SETTINGS'}
+            <h2 className="pb-4 text-brand-white border-b border-dashed border-opacity-10 border-brand-graylight w-full text-center mb-4">
+              {generalSettings
+                ? 'GENERAL SETTINGS'
+                : networkSettings
+                ? 'NETWORKS'
+                : 'ACCOUNT SETTINGS'}
             </h2>
 
             <Views.MainView
               accountSettings={accountSettings}
               generalSettings={generalSettings}
+              networkSetting={networkSettings}
               onClose={onClose}
             />
           </div>

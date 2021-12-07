@@ -36,9 +36,9 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           rules={[
             {
               required: true,
-              message: ''
+              message: '',
             },
-            ({ }) => ({
+            ({}) => ({
               validator(_, value) {
                 setSeedIsValid(controller.wallet.importPhrase(value));
 
@@ -46,7 +46,11 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
                   return Promise.resolve();
                 }
 
-                return Promise.reject('Seed phrase is not valid');
+                return Promise.reject(
+                  <p className="text-red fixed h-12">
+                    Seed phrase is not valid
+                  </p>
+                );
               },
             }),
           ]}
@@ -54,12 +58,13 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           <Input.TextArea
             autoSize={{ minRows: 3, maxRows: 8 }}
             placeholder="Paste your wallet seed phrase"
-            className="text-xs w-72 h-44 rounded-md py-4 pl-4 bg-brand-navydarker border border-brand-navymedium text-brand-white outline-none focus:border-brand-navylight"
+            className="placeholder-royalBlue text-xs w-72 h-44 rounded-md py-4 px-4 bg-brand-navydarker border border-brand-navymedium text-brand-white outline-none focus:border-brand-navylight"
           />
         </Form.Item>
 
-        <span className="font-light text-brand-royalBlue text-xs mx-12 mt-12 pb-12 text-center">
-          Importing your wallet seed automatically import a wallet associated with this seed phrase.
+        <span className="font-light text-brand-royalBlue text-xs mx-12 mt-2 pb-12 text-center">
+          Importing your wallet seed automatically import a wallet associated
+          with this seed phrase.
         </span>
 
         <Button

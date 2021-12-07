@@ -228,14 +228,14 @@ export const Home = () => {
             {changingNetwork ? (
               <p className="text-royalBlue">...</p>
             ) : (
-              <small className="mt-1.5 mb-1.5 text-brand-royalblue">
+              <p className="text-base mt-1.5 mb-1.5 text-brand-royalBlue">
                 {activeNetwork !== 'testnet'
                   ? getFiatAmount(
                     accounts.find((element) => element.id === activeAccountId)
                       ?.balance || 0
                   )
                   : ''}
-              </small>
+              </p>
             )}
             <div className="pt-8"> 
               <Button

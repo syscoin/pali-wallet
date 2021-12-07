@@ -9,11 +9,11 @@ interface IAssetsPanel {
 export const AssetsPanel: FC<IAssetsPanel> = ({ show, className }) => {
   const dataFAke = [
     {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'},
-    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'},
-    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'},
-    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'},
-    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'},
-    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'}
+    {idk: '12.03040834', value: '$77.25', idk2: 'ASD'},
+    {idk: '12.03040834', value: '$99.45', idk2: 'outroSPT'},
+    {idk: '12.03040834', value: '$100.25', idk2: 'Lorem Ipsum'},
+    {idk: '12.03040834', value: '$9.25', idk2: 'Test text'},
+    {idk: '12.03040834', value: '$3.25', idk2: 'Dolor asi met'}
   ]
   return (
     <ul className={className}>

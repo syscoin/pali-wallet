@@ -35,7 +35,12 @@ import {
   MainView,
   NewAccountView,
   PhraseView,
-  PrivateKeyView
+  PrivateKeyView,
+  CustomRpc,
+  EditNetworks,
+  Connectedsites,
+  ConnectWith,
+  CreateToken
 } from 'containers/auth/Settings/views';
 
 import {
@@ -308,6 +313,11 @@ export const AuthRouter = () => {
               <Route path="/general-phrase" component={PhraseView} exact />
               <Route path="/general-delete" component={DeleteWalletView} exact />
               <Route path="/general-currency" component={CurrencyView} exact />
+              <Route path="/general-customrpc" component={CustomRpc} exact />
+              <Route path="/general-editnetworks" component={EditNetworks} exact />
+              <Route path="/general-connectedsites" component={Connectedsites} exact />
+              <Route path="/general-connectwith" component={ConnectWith} exact />
+              <Route path="/general-createtoken" component={CreateToken} exact />
 
               <Route
                 path='/account'

@@ -31,7 +31,7 @@ export const ActivityPanel: FC<IActivityPanel> = ({ show, className }) => {
       {show ? (
         <>
           {/*<ul>show activity panel</ul>*/}
-          <PanelList dataFAke={dataFAke} activity={true} assets={false}/>
+          <PanelList dataFAke={dataFAke} activity={true} assets={false} />
         </>
       ) : (
         <>

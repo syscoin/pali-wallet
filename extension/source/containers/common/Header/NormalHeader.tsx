@@ -22,14 +22,9 @@ export const NormalHeader: FC<INormalHeader> = ({
   handleCloseSettings,
   showSettings,
   isUnlocked,
-  encriptedMnemonic
+  encriptedMnemonic,
 }) => {
-  const {
-    accounts,
-    activeAccountId,
-    currentURL,
-    activeNetwork
-  } = useStore();
+  const { accounts, activeAccountId, currentURL, activeNetwork } = useStore();
 
   const { getHost } = useUtils();
 
@@ -118,11 +113,7 @@ export const NormalHeader: FC<INormalHeader> = ({
         </small>
       )}
 
-      {isOpenModal && (
-        <div
-          onClick={() => setIsOpenModal(false)}
-        />
-      )}
+      {isOpenModal && <div onClick={() => setIsOpenModal(false)} />}
 
       {isOpenModal && isConnected && (
         <Modal
@@ -141,23 +132,29 @@ export const NormalHeader: FC<INormalHeader> = ({
       )}
 
       {encriptedMnemonic && !importSeed ? (
-
-        <Button className="pl-20" onClick={() => {
-          generalSettingsShowed ? handleCloseSettings() : showSettings(!generalSettingsShowed)}}
-          >
-            <Icon name="settings" className="inline-flex self-center text-lg" maxWidth={"1"}/>
-            
+        <Button
+          className="pl-20"
+          onClick={() => {
+            generalSettingsShowed
+              ? handleCloseSettings()
+              : showSettings(!generalSettingsShowed);
+          }}
+        >
+          <Icon
+            name="settings"
+            className="inline-flex self-center text-lg"
+            maxWidth={'1'}
+          />
         </Button>
-      ) : (
-        null
-      )}
+      ) : null}
 
       <Settings
         accountSettings={false}
-        generalSettings
+        generalSettings={true}
+        networkSettings={false}
         open={generalSettingsShowed && isUnlocked}
         onClose={handleCloseSettings}
       />
     </div>
-  )
-}
+  );
+};

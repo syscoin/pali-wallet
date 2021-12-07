@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import { useHistory } from 'react-router-dom';
-import { Button } from 'components/index';;
+import { Button } from 'components/index';
 import { useController } from 'hooks/index';
 import { Layout } from 'containers/common/Layout';
 
@@ -22,10 +22,10 @@ export const CreatePhrase: FC = () => {
     >
       <div className="flex justify-center items-center flex-col gap-4 mt-8">
         {phrases && (
-          <ul className="list-none m-0 p-0 grid grid-cols-2 w-full gap-x-12">
+          <ul className="list-none m-0 p-0 grid grid-cols-2 w-full gap-x-6">
             {phrases.split(' ').map((phrase: string, index: number) => (
               <li
-                className="font-sans font-light text-sm leading-8 tracking-normal text-brand-graylight border-dashed border-b border-brand-graylight text-left w-32"
+                className="text-sm leading-8 tracking-normal text-brand-graylight border-dashed border-b border-brand-graylight border-opacity-20 text-left w-36"
                 key={index}
               >
                 <span className="w-6 inline-block text-brand-royalBlue">
