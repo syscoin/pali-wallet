@@ -2,6 +2,7 @@
 import 'emoji-log';
 import { STORE_PORT } from 'constants/index';
 import { wrapStore } from 'webext-redux';
+import Bowser from 'bowser';
 
 import { browser } from 'webextension-polyfill-ts';
 import store from 'state/store';
@@ -173,7 +174,7 @@ const closePopup = () => {
     })
     .catch((error) => {
       console.log('error removing window', error);
-    });;
+    });
 
   return;
 }
@@ -220,7 +221,7 @@ const createPopup = async (url: string) => {
 browser.windows.onRemoved.addListener((windowId: any) => {
   if (windowId > -1 && windowId === window.syspopup) {
     console.log('clearing all transactions')
-    
+
     store.dispatch(clearAllTransactions());
   }
 })
@@ -904,6 +905,28 @@ browser.runtime.onConnect.addListener((port) => {
 
       store.dispatch(updateCurrentURL(String(tabs[0].url)));
     });
+});
+
+const bowser = Bowser.getParser(window.navigator.userAgent);
+
+browser.tabs.onUpdated.addListener((tabId, _, tab) => {
+  if (bowser.getBrowserName() === 'Firefox') {
+    console.log('browser is firefox, do nothing', tab, tab.title, tabId);
+
+    // fix issue between sysmint & bridge
+
+    return;
+  }
+
+  if (
+    tab.url !== browser.runtime.getURL('app.html') &&
+    tab.url !== store.getState().wallet.tabs.currentURL &&
+    tab.title !== 'Pali Wallet'
+  ) {
+    store.dispatch(updateCurrentURL(String(tab.url)));
+
+    return;
+  }
 });
 
 browser.runtime.onInstalled.addListener(() => {

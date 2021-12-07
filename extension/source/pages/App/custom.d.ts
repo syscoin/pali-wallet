@@ -30,10 +30,8 @@ declare interface IWalletController {
   switchNetwork: (networkId: string) => void;
   switchWallet: (id: number) => void;
   unLock: (pwd: string) => boolean;
-  addNewAccount: (label: string) => Promise<string | null>;
+  addNewAccount: (label?: string) => Promise<string | null>;
 }
-
-declare interface IMessagesController { }
 
 declare interface IAccountController {
   clearTransactionItem: (item: any) => void;

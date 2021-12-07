@@ -283,7 +283,7 @@ const AccountController = (actions: {
       return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=nonzero&details=txs', true);
     }
 
-    return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, connectedAccount.xpub, 'details=txs&assetMask=non-token-transfers', true, sysjs.Signer);
+    return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, connectedAccount.xpub, 'details=txs&assetMask=non-token-transfers', true);
   };
 
   const getChangeAddress = async () => {
@@ -306,7 +306,7 @@ const AccountController = (actions: {
       return addr;
     }
 
-    return await sysjs.Signer.getNewChangeAddress();
+    return await sysjs.Signer.getNewChangeAddress(true);
   }
 
   const sortList = (list: any) => {
@@ -329,7 +329,7 @@ const AccountController = (actions: {
     return await Promise.all(accounts.map(async (account: IAccountState) => {
       const assetsData: any = {};
 
-      const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=derived&details=txs', true, sysjs.Signer);
+      const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=derived&details=txs', true);
       const { transactions } = await fetchBackendConnectedAccount(account);
 
       let tokensMap: any = {};
@@ -641,7 +641,7 @@ const AccountController = (actions: {
       };
     }
 
-    response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.Signer.getAccountXpub(), 'tokens=nonzero&details=txs', true, sysjs.Signer);
+    response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.Signer.getAccountXpub(), 'tokens=nonzero&details=txs', true);
 
     return {
       address,
@@ -765,9 +765,12 @@ const AccountController = (actions: {
     let mainAddress = '';
 
     try {
-      mainAddress = await sysjs.Signer.getNewReceivingAddress();
+      mainAddress = await sysjs.Signer.getNewReceivingAddress(true);
 
-      console.log('address from sys', mainAddress)
+      console.log('sysjs signer', sysjs.Signer.Signer.blockbookURL)
+      console.log('sysjs signer', sysjs.Signer)
+
+      console.log('main address get new receiving address', mainAddress)
     } catch (error: any) {
       console.log('error getting receiving address from sys', error)
 
@@ -775,7 +778,7 @@ const AccountController = (actions: {
     }
 
     account = {
-      id: sysjs.Signer.Signer.accountIndex,
+      id: sysjs.Signer.Signer.accountIndex === 0 ? 0 : sysjs.Signer.Signer.accountIndex,
       label: label || `Account ${sysjs.Signer.Signer.accountIndex + 1}`,
       balance: res.balance,
       transactions: res.transactions,
@@ -798,7 +801,6 @@ const AccountController = (actions: {
     if (!accounts.find((account: IAccountState) => account.id === activeAccountId)) {
       return;
     }
-
 
     account = accounts.find((account: IAccountState) => account.id === activeAccountId)!;
 
@@ -1075,7 +1077,7 @@ const AccountController = (actions: {
 
     sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
-    const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, await sysjs.Signer.getNewChangeAddress(), receiver, new sys.utils.BN(fee * 1e8));
+    const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, await sysjs.Signer.getNewChangeAddress(true), receiver, new sys.utils.BN(fee * 1e8));
 
     const txInfoNew = pendingTx.extractTransaction().getId();
 
@@ -1095,7 +1097,7 @@ const AccountController = (actions: {
 
             if (sptCreated?.confirmations > 1) {
               console.log('confirmations > 1', createdAsset)
-              const changeaddress = await sysjs.Signer.getNewChangeAddress();
+              const changeaddress = await sysjs.Signer.getNewChangeAddress(true);
 
               try {
                 const assetMap = new Map([
@@ -1182,7 +1184,7 @@ const AccountController = (actions: {
     }
 
     const { decimals } = await getDataAsset(assetGuid);
-    const receivingAddress = await sysjs.Signer.getNewReceivingAddress();
+    const receivingAddress = await sysjs.Signer.getNewReceivingAddress(true);
 
     const assetMap = new Map([
       [assetGuid, {
@@ -1194,7 +1196,7 @@ const AccountController = (actions: {
       }]
     ]);
 
-    let sysChangeAddress = null ;
+    let sysChangeAddress: any = null ;
 
     if (getConnectedAccount().isTrezorWallet) {
       sysChangeAddress = await getNewChangeAddress(true);
@@ -1206,7 +1208,7 @@ const AccountController = (actions: {
 
       if (!txData) {
         console.log('Could not create transaction, not enough funds?')
-        //TODO: add error and show on the UI for user
+        
         return;
       }
 
@@ -1240,7 +1242,7 @@ const AccountController = (actions: {
         return;
       }
     } else {
-      const pendingTx = await sysjs.assetSend(txOpts, assetMap, await sysjs.Signer.getNewChangeAddress(), feeRate);
+      const pendingTx = await sysjs.assetSend(txOpts, assetMap, await sysjs.Signer.getNewChangeAddress(true), feeRate);
 
       if (!pendingTx) {
         console.log('Could not create transaction, not enough funds?');
@@ -1280,7 +1282,7 @@ const AccountController = (actions: {
       sysjs.Signer.setAccountIndex(getConnectedAccount().id);
     }
 
-    let assetChangeAddress = await sysjs.Signer.getNewChangeAddress();
+    let assetChangeAddress = await sysjs.Signer.getNewChangeAddress(true);
 
     const psbt = await sysjs.assetNew(assetOpts, txOpts, assetChangeAddress, assetChangeAddress, feeRate);
 
@@ -1330,6 +1332,8 @@ const AccountController = (actions: {
 
     const newParentAsset = await createParentAsset(assetOpts, fee);
 
+    console.log('current parent asset', newParentAsset);
+
     if (newParentAsset?.asset_guid) {
       let theNFTTx: any = null;
       let parentConfirmed = false;
@@ -1347,6 +1351,8 @@ const AccountController = (actions: {
             if (newParentTx.confirmations > 1 && !parentConfirmed) {
               parentConfirmed = true;
 
+              console.log('confirmations parent tx > 1', newParentAsset)
+
               const assetMap = new Map([
                 [newParentAsset!.asset_guid,
                 {
@@ -1359,10 +1365,6 @@ const AccountController = (actions: {
               ]);
 
               try {
-                if (!getConnectedAccount().isTrezorWallet) {
-                  sysjs.Signer.setAccountIndex(getConnectedAccount().id);
-                }
-
                 const pendingTx = await sysjs.assetSend(txOpts, assetMap, null, feeRate);
 
                 if (!pendingTx) {
@@ -1412,6 +1414,8 @@ const AccountController = (actions: {
 
                 const psbt = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, issuer, feeRate);
 
+                console.log('after update psbt', psbt)
+
                 if (!psbt) {
                   console.log('Could not create transaction, not enough funds?');
                 }
@@ -1459,10 +1463,10 @@ const AccountController = (actions: {
     const assetMap = new Map([
       [assetGuid,
         {
-          changeAddress: await sysjs.Signer.getNewChangeAddress(),
+          changeAddress: await sysjs.Signer.getNewChangeAddress(true),
           outputs: [{
             value: new sys.utils.BN(amount * (10 ** decimals)),
-            address: await sysjs.Signer.getNewReceivingAddress()
+            address: await sysjs.Signer.getNewReceivingAddress(true)
           }]
         }]
     ]);
@@ -1472,7 +1476,7 @@ const AccountController = (actions: {
         sysjs.Signer.setAccountIndex(getConnectedAccount().id);
       }
 
-      const pendingTx = await sysjs.assetSend(txOpts, assetMap, await sysjs.Signer.getNewChangeAddress(), feeRate);
+      const pendingTx = await sysjs.assetSend(txOpts, assetMap, await sysjs.Signer.getNewChangeAddress(true), feeRate);
 
       if (!pendingTx) {
         console.log('Could not create transaction, not enough funds?')
@@ -1585,7 +1589,7 @@ const AccountController = (actions: {
       const txOpts = { rbf };
       let txInfo;
 
-      const changeAddress = await sysjs.Signer.getNewChangeAddress();
+      const changeAddress = await sysjs.Signer.getNewChangeAddress(true);
 
       if (account.isTrezorWallet) {
         const txData = await sysjs.createTransaction(txOpts, await getNewChangeAddress(false), outputsArray, new sys.utils.BN(fee * 1e8), account.xpub);
@@ -1735,10 +1739,10 @@ const AccountController = (actions: {
 
     const thisAssetMap = new Map([
       [assetGuid, {
-        changeAddress: await sysjs.Signer.getNewChangeAddress(),
+        changeAddress: await sysjs.Signer.getNewChangeAddress(true),
         outputs: [{
           value: new sys.utils.BN(0),
-          address: await sysjs.Signer.getNewReceivingAddress()
+          address: await sysjs.Signer.getNewReceivingAddress(true)
         }]
       }]
     ]);
@@ -1802,7 +1806,7 @@ const AccountController = (actions: {
 
     const assetMap = new Map([
       [assetGuid, {
-        changeAddress: await sysjs.Signer.getNewChangeAddress(),
+        changeAddress: await sysjs.Signer.getNewChangeAddress(true),
         outputs: [{
           value: new sys.utils.BN(0),
           address: newOwner
