@@ -1,5 +1,5 @@
 import { Icon } from 'components/Icon';
-import React, { FC, useEffect, useState } from 'react';
+import React, { FC } from 'react';
 
 interface IPanelList {
   dataFAke: any;
@@ -12,7 +12,6 @@ export const PanelList: FC<IPanelList> = ({
   assets = false,
   activity = false,
 }) => {
-  const [status, setStatus] = useState<string>('');
 
   return (
     <div>

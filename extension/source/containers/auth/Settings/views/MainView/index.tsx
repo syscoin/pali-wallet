@@ -21,6 +21,7 @@ const MainView: FC<IMainView> = ({
   const controller = useController();
   const [showSyscoinjsNetWork, setShowSyscoinjsNetWork] =
     useState<boolean>(false);
+  const [showAccounts, setShowAccounts] = useState<boolean>(false);
   //const [collapsed, setCollapsed] = useState(false)
   // const { accounts, activeAccountId } = useStore();
 
@@ -101,49 +102,70 @@ const MainView: FC<IMainView> = ({
         <ul>
           <div>
             <li
-              className="inline-flex"
+              className="inline-flex text-base pt-5"
               onClick={() => history.push('/account-priv')}
             >
               <Icon
                 name="key"
-                className="inline-flex self-center bg-brand-deepPink text-brand-white w-4"
+                className="text-xl inline-flex self-center bg-brand-deepPink text-brand-white w-5"
               />
-              XPUB
+              X - PUB
             </li>
           </div>
           <div>
             <li
-              className="inline-flex"
-              onClick={() => history.push('/account-details')}
+              className="inline-flex text-base pt-5"
+              onClick={() => setShowAccounts(!showAccounts)}
             >
               <Icon
                 name="user"
-                className="inline-flex self-center bg-brand-deepPink text-brand-white w-4"
+                className="text-xl inline-flex self-center bg-brand-deepPink text-brand-white w-5"
               />
               Accounts
+              {showAccounts ? (
+                <Icon
+                  name="up"
+                  className="inline-flex self-center text-sm pl-28 leading-2"
+                  maxWidth={'1'}
+                ></Icon>
+              ) : (
+                <Icon
+                  name="down"
+                  className="inline-flex self-center text-sm pl-28 leading-2"
+                  maxWidth={'1'}
+                ></Icon>
+              )}
             </li>
-
-            <li onClick={() => history.push('/account-newaccount')}>
-              new account
-            </li>
+            {showAccounts && (
+              <div className="bg-brand-deepPink100">
+                <ul >
+                  <li
+                    className="px-4 text-base mt-2 pt-5"
+                    onClick={() => history.push('/account-newaccount')}
+                  >
+                    Create new account
+                  </li>
+                </ul>
+              </div>
+            )}
           </div>
           <div>
             <li
-              className="inline-flex"
+              className="inline-flex text-base pt-5"
               onClick={() => history.push('/account-hardware')}
             >
               <Icon
                 name="partition"
-                className="inline-flex self-center bg-brand-deepPink text-brand-white w-4"
+                className="text-xl inline-flex self-center bg-brand-deepPink text-brand-white w-5"
               />
               Connect hardware wallet
             </li>
           </div>
           <div>
-            <li className="inline-flex" onClick={handleLogout}>
+            <li className="inline-flex text-base pt-5" onClick={handleLogout}>
               <Icon
                 name="lock"
-                className="inline-flex self-center bg-brand-deepPink text-brand-white w-4"
+                className="text-xl inline-flex self-center bg-brand-deepPink text-brand-white w-5"
               />
               Lock
             </li>

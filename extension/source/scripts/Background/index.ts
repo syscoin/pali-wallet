@@ -1,9 +1,9 @@
 /* eslint-disable prettier/prettier */
 import 'emoji-log';
 import { STORE_PORT } from 'constants/index';
-import { wrapStore } from 'webext-redux';
-import Bowser from 'bowser';
 
+import { wrapStore } from 'webext-redux';
+import Bowser from "bowser";
 import { browser } from 'webextension-polyfill-ts';
 import store from 'state/store';
 import {
