@@ -12,8 +12,6 @@ declare module 'react-alert';
 
 declare module 'bip84';
 
-declare module 'constants/index';
-
 declare module 'extensionizer';
 
 declare interface IWalletController {
@@ -32,7 +30,7 @@ declare interface IWalletController {
   switchNetwork: (networkId: string) => void;
   switchWallet: (id: number) => void;
   unLock: (pwd: string) => boolean;
-  addNewAccount: (label: string) => Promise<string | null>;
+  addNewAccount: (label?: string) => Promise<string | null>;
 }
 
 declare interface IMessagesController { }
