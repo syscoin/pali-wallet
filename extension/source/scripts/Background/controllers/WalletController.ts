@@ -249,7 +249,7 @@ const WalletController = (): IWalletController => {
     accountsToBeRemoved[accounts[index].id] = accounts[index].id;
   }
 
-  const addNewAccount = async (label: string) => {
+  const addNewAccount = async (label?: string) => {
     return await account.subscribeAccount(encriptedPassword, false, null, label, false);
   };
 
