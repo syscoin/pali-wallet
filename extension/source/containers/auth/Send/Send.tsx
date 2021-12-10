@@ -56,9 +56,10 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
   const [checked, setChecked] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
   const [expanded, setExpanded] = useState<boolean>(false);
+  const [verification, setVerification] = useState<boolean>(true);
 
   const isValidAddress = useMemo(() => {
-    return controller.wallet.account.isValidSYSAddress(address, activeNetwork);
+    return controller.wallet.account.isValidSYSAddress(address, activeNetwork, verification);
   }, [address]);
 
   const addressInputClass = clsx(styles.input, styles.address, {
@@ -110,7 +111,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
       return;
     }
-    
+
     controller.wallet.account.updateTempTx({
       fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
       toAddress: address,
@@ -138,7 +139,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       if (Number(event.target.value) > 0.1) {
         alert.removeAll();
         alert.error(`Error: Fee too high, maximum 0.1 SYS.`, { timeout: 2000 });
-  
+
         return;
       }
     },
@@ -157,6 +158,15 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       checked: boolean
     ) => {
       setChecked(checked);
+    },
+    []
+  )
+
+  const handleAddressTypeChanged = useCallback(
+    (
+      checked: boolean
+    ) => {
+      setVerification(checked);
     },
     []
   )
@@ -219,7 +229,19 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
           <ul className={styles.form}>
             <li className={styles.item}>
               <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label htmlFor="address">Recipient Address</label>
+                <div>
+                  <label htmlFor="address">Recipient Address</label>
+                </div>
+
+                <div style={{ columnGap: '3px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label htmlFor="address">Verify address</label>
+
+                  <HelpOutlineIcon
+                    style={{ width: '17px', height: '17px' }}
+                    data-tip
+                    data-for="address_info"
+                  />
+                </div>
               </div>
 
               <img
@@ -244,6 +266,46 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 onChange={handleAddressChange}
                 variant={addressInputClass}
               />
+
+              <li className={styles.item}>
+                <div className={styles.textBtn} style={{ top: '-49px' }}>
+                  <div >
+                    <div className={styles.tooltip}>
+                      <ReactTooltip id="address_info"
+                        getContent={() =>
+                          <div style={{ backgroundColor: 'white' }}>
+                            <small style={{ fontWeight: 'bold' }}>
+                              ON for enable verification (recommended): Pali verify that is a valid SYS address <br />
+                              OFF for disable address verification: only disable this verification if you are <br /> fully aware of what you are doing and if you trust the recipient address you want to send for.<br />
+                              <br />
+                            </small>
+                          </div>
+                        }
+                        backgroundColor="white"
+                        textColor="black"
+                        borderColor="#4d76b8"
+                        effect='solid'
+                        delayHide={300}
+                        delayShow={300}
+                        delayUpdate={300}
+                        place="top"
+                        border
+                        type="info"
+                        multiline
+                      />
+                    </div>
+                  </div>
+
+                  <Switch
+                    offColor="#1b2e4d"
+                    height={20}
+                    width={60}
+                    checked={verification}
+                    onChange={handleAddressTypeChanged}
+                  />
+                </div>
+
+              </li>
             </li>
 
             <div className={!selectedAsset ? styles.formBlockOne : styles.formBlock}>
