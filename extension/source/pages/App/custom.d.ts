@@ -33,8 +33,6 @@ declare interface IWalletController {
   addNewAccount: (label?: string) => Promise<string | null>;
 }
 
-declare interface IMessagesController { }
-
 declare interface IAccountController {
   clearTransactionItem: (item: any) => void;
   confirmIssueNFT: () => Promise<any>;

@@ -1208,7 +1208,7 @@ const AccountController = (actions: {
 
       if (!txData) {
         console.log('Could not create transaction, not enough funds?')
-        //TODO: add error and show on the UI for user
+        
         return;
       }
 
