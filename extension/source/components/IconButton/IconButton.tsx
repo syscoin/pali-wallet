@@ -14,7 +14,7 @@ export const IconButton: FC<IIconButton> = ({
   type = "primary",
   onClick,
   shape = "circle",
-  className = "bg-brand-royalBlue"
+  className = ""
 }) => {
   return (
     <AntButton

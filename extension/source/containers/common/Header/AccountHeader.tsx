@@ -1,8 +1,8 @@
 import React, { FC } from 'react';
 import LogoImage from 'assets/images/logo-s.svg';
 import { Settings } from 'containers/auth/index';
-import { Button } from 'antd';
-import { Icon } from 'components/Icon';
+import { IconButton, Icon } from 'components/index';
+import { useFormat, useAccount } from 'hooks/index';
 
 interface IAccountHeader {
   encriptedMnemonic: string;
@@ -13,7 +13,7 @@ interface IAccountHeader {
   isUnlocked: boolean;
 }
 
-export const AccountHeader: FC <IAccountHeader> = ({
+export const AccountHeader: FC<IAccountHeader> = ({
   encriptedMnemonic,
   importSeed,
   accountSettingsShowed,
@@ -21,39 +21,43 @@ export const AccountHeader: FC <IAccountHeader> = ({
   showSettings,
   isUnlocked
 }) => {
+  const { activeAccount } = useAccount();
+  const { ellipsis } = useFormat();
+
   return (
-    <div className="flex items-center bg-brand-navyborder p-1">
-      <div className="flex items-center pr-12 mr-1 text-brand-white ">
-        <div>
-          <img src={`/${LogoImage}`} className="mx-auto w-14 rounded-full" alt="Syscoin" />
+    <div>
+      <div className="flex items-center justify-between bg-brand-navyborder p-1">
+        <img src={`/${LogoImage}`} className="mx-0 w-14 rounded-full" alt="Syscoin" />
+
+        <div className="flex items-center w-full text-brand-white">
+          <div className="text-brand-white px-1 justify-center items-center">
+            <p className="text-base">{activeAccount!.label}</p>
+            <p className="text-xs">{ellipsis(activeAccount!.address.main, 6, 14)}</p>
+          </div>
+
+          <IconButton
+            type="primary"
+            shape="circle"
+            className="mt-3"
+          >
+            <Icon name="copy" className="text-xs" />
+          </IconButton>
         </div>
-        <div className="text-brand-white pl-1 justify-center items-center pr-1">
-          <p className="text-base">Account 1</p>
-          <p className="text-xs">0x0000....0000000000000  </p>
-        </div>
-        <div>
-          <Button className="w-1 pt-4 pl-1"><Icon name="copy" className="inline-flex self-center text-xs" /></Button>
-        </div>
+
+
+        {encriptedMnemonic && !importSeed ? (
+          <IconButton
+            type="primary"
+            shape="circle"
+            className="mb-2"
+            onClick={() => accountSettingsShowed ? handleCloseSettings() : showSettings(!accountSettingsShowed)}
+          >
+            <Icon name="dots" className="text-brand-white" />
+          </IconButton>
+        ) : (
+          null
+        )}
       </div>
-
-
-      {encriptedMnemonic && !importSeed ? (
-        <div className="pl-20  text-brand-white">
-          <Button
-             type="primary"
-             shape="circle"
-             className="bg-brand-navyborder"
-             onClick={() => {
-               console.log('accountSettingsShowed', accountSettingsShowed)
-               accountSettingsShowed ? handleCloseSettings() : showSettings(!accountSettingsShowed)
-             }
-           }>
-            <Icon name="dots" className="inline-flex self-center text-lg" maxWidth={"1"} />
-          </Button>
-        </div>
-      ) : (
-        null
-      )}
 
       <Settings
         accountSettings

@@ -11,3 +11,4 @@ export * from './useWalletController';
 export * from './useController';
 export * from './usePrice';
 export * from './useDappConnection';
+export * from './useAccount';

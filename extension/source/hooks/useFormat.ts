@@ -8,7 +8,6 @@ const getYesterday = () => {
   return d;
 };
 
-
 export const useFormat = () => {
   const ellipsis = (str: any, start = 7, end = 4) => {
     if (typeof str !== 'string') {
