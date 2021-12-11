@@ -845,7 +845,11 @@ const AccountController = (actions: {
     store.dispatch(updateSwitchNetwork(false))
   };
 
-  const isValidSYSAddress = (address: string, network: string) => {
+  const isValidSYSAddress = (address: string, network: string, verification: boolean = true) => {
+    if (!verification) {
+      return true;
+    }
+
     if (address && typeof address === 'string') {
       try {
         resAddress = bech32.decode(address);
