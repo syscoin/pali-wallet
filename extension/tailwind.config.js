@@ -19,6 +19,9 @@ module.exports = {
       right: {
         '5percent': '5%'
       },
+      margin: {
+        '0.8': '0.2rem'
+      },
       maxWidth: {
         popup: '600px',
         input: '18rem',

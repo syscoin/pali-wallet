@@ -49,7 +49,7 @@ export const AccountHeader: FC<IAccountHeader> = ({
           <IconButton
             type="primary"
             shape="circle"
-            className="mb-2"
+            className="mb-2 mr-2"
             onClick={() => accountSettingsShowed ? handleCloseSettings() : showSettings(!accountSettingsShowed)}
           >
             <Icon name="dots" className="text-brand-white" />

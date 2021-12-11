@@ -17,6 +17,7 @@ export const Header = ({
 }) => {
   const [generalSettingsShowed, showGeneralSettings] = useState<boolean>(false);
   const [accountSettingsShowed, showAccountSettings] = useState<boolean>(false);
+  const [networkSettingsShowed, showNetworkSettings] = useState<boolean>(false);
 
   const { encriptedMnemonic } = useStore();
 
@@ -26,6 +27,7 @@ export const Header = ({
   const handleCloseSettings = () => {
     showAccountSettings(false);
     showGeneralSettings(false);
+    showNetworkSettings(false);
   };
 
   return (
@@ -41,8 +43,10 @@ export const Header = ({
             generalSettingsShowed={generalSettingsShowed}
             handleCloseSettings={handleCloseSettings}
             showSettings={showGeneralSettings}
+            showNetworkSettings={showNetworkSettings}
             isUnlocked={isUnlocked}
             encriptedMnemonic={encriptedMnemonic}
+            networkSettingsShowed={networkSettingsShowed}
           />
 
           {accountHeader && (

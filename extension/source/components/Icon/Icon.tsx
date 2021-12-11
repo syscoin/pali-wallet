@@ -27,7 +27,11 @@ import {
   CloseOutlined,
   SelectOutlined,
   DownOutlined,
-  UpOutlined
+  UpOutlined,
+  CaretDownOutlined,
+  GlobalOutlined,
+  AppstoreAddOutlined,
+  EditOutlined
 } from '@ant-design/icons';
 
 const icons = {
@@ -58,7 +62,11 @@ const icons = {
   'close': CloseOutlined,
   'select': SelectOutlined,
   'down': DownOutlined,
-  'up': UpOutlined
+  'up': UpOutlined,
+  'select-down': CaretDownOutlined,
+  'globe': GlobalOutlined,
+  'appstoreadd': AppstoreAddOutlined,
+  'edit': EditOutlined,
 }
 
 interface IIcon {

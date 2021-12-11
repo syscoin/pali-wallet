@@ -125,26 +125,14 @@ export const ConfirmPhrase = () => {
                 password written down for future reference.
               </span>
 
-              <div className="transition-all duration-300 ease-in-out">
-                <div className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-darktransparent"></div>
-
-                <div className="transition-all duration-300 ease-in-out fixed z-10 flex flex-col bg-brand-navymedium top-1/3 left-8 right-8 p-6 rounded-3xl">
-                  <h2 className="pb-4 text-brand-white border-b border-dashed border-brand-graylight w-full text-center mb-4">YOUR WALLET IS READY</h2>
-
-                  <span className="font-light text-brand-graylight text-xs">
-                    You should now have your recovery phrase and your wallet password written down for future reference.
-                  </span>
-
-                  <Button
-                    type="button"
-                    className="tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navymedium text-brand-white font-light border border-brand-white hover:bg-brand-white hover:text-brand-navymedium transition-all duration-300 mt-8"
-                    onClick={handleConfirm}
-                    noStandard
-                  >
-                    Ok, let's get started
-                  </Button>
-                </div>
-              </div>
+              <Button
+                type="button"
+                className="tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navymedium text-brand-white font-light border border-brand-white hover:bg-brand-white hover:text-brand-navymedium transition-all duration-300 mt-8"
+                onClick={handleConfirm}
+                noStandard
+              >
+                Ok, let's get started
+              </Button>
             </div>
           </div>
         )}

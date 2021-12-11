@@ -10,6 +10,7 @@ module.exports = {
     navymedium: '#1e365c',
     navylight: '#233f6c',
     navyborder: '#162742',
+    lightnavyborder: '#1E365CF7',
 
     textareabg: '#4D76B8',
     blueWarningTest: '#85B6FF',
@@ -22,8 +23,11 @@ module.exports = {
     deepPink100: '#ff3e91',
 
     error: '#AF0404',
+    transparentred: '#641a1a',
 
     green: '#4E9F3D',
+    transparentgreen: '#4E9F3D',
+    lightgreen: '#00b900',
 
     gold: '#ff9900',
 

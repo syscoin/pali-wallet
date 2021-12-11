@@ -89,9 +89,29 @@ export const useWindowsAPI = () => {
     await browser.windows.create(options);
   }
 
+  const getCurrentOrigin = async () => {
+    const windows = await browser.windows.getAll({ populate: true })
+    
+    for (const window of windows) {
+      const views = browser.extension.getViews({ windowId: window.id });
+
+      if (views) {
+        const tabs = await getTabs({
+          active: true,
+          currentWindow: true,
+        });
+
+        return String(tabs[0].url);
+      }
+
+      return null;
+    }
+  }
+
   return {
     updateWindow,
     closeWindow,
     createWindow,
+    getCurrentOrigin
   }
 }

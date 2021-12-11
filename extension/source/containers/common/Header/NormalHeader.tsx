@@ -1,11 +1,7 @@
-import React, { FC, useEffect, useState, ChangeEvent } from 'react';
-import { Icon, Modal, Select } from 'components/index';
+import React, { FC } from 'react';
+import { Icon, Button, IconButton } from 'components/index';
 import { Settings } from 'containers/auth/index';
-import { SYS_NETWORK } from 'constants/index';
-import { browser } from 'webextension-polyfill-ts';
-import { useController, useStore, useUtils } from 'hooks/index';
-
-import { Button } from 'antd';
+import { useStore, useAccount } from 'hooks/index';
 
 interface INormalHeader {
   importSeed: boolean;
@@ -14,6 +10,8 @@ interface INormalHeader {
   showSettings: any;
   isUnlocked: boolean;
   encriptedMnemonic: string;
+  networkSettingsShowed: boolean;
+  showNetworkSettings: any;
 }
 
 export const NormalHeader: FC<INormalHeader> = ({
@@ -22,140 +20,62 @@ export const NormalHeader: FC<INormalHeader> = ({
   handleCloseSettings,
   showSettings,
   isUnlocked,
-  encriptedMnemonic
+  encriptedMnemonic,
+  networkSettingsShowed,
+  showNetworkSettings
 }) => {
-  const {
-    accounts,
-    activeAccountId,
-    currentURL,
-    activeNetwork
-  } = useStore();
-
-  const { getHost } = useUtils();
+  const { activeNetwork } = useStore();
+  const { connectedAccount } = useAccount();
 
   const network = activeNetwork;
 
-  const [currentTabURL, setCurrentTabURL] = useState<string>(currentURL);
-  const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-
-  const controller = useController();
-
-  const handleSetModalIsOpen = () => {
-    setIsOpenModal(!isOpenModal);
-  };
-
-  const handleChangeNetwork = (
-    event: ChangeEvent<{
-      name?: string | undefined;
-      value: unknown;
-    }>
-  ) => {
-    controller.wallet.switchNetwork(event.target.value as string);
-    controller.wallet.getNewAddress();
-  };
-
-  useEffect(() => {
-    browser.windows.getAll({ populate: true }).then((windows) => {
-      for (const window of windows) {
-        const views = browser.extension.getViews({ windowId: window.id });
-
-        if (views) {
-          browser.tabs
-            .query({ active: true, currentWindow: true })
-            .then((tabs) => {
-              setCurrentTabURL(String(tabs[0].url));
-            });
-
-          return;
-        }
-      }
-    });
-  }, [!controller.wallet.isLocked()]);
-
-  useEffect(() => {
-    const acc = accounts.find((element) => element.id === activeAccountId);
-
-    if (acc && acc.connectedTo !== undefined) {
-      if (acc.connectedTo.length > 0) {
-        setIsConnected(
-          acc.connectedTo.findIndex((url: any) => {
-            return url == getHost(currentTabURL);
-          }) > -1
-        );
-        return;
-      }
-
-      setIsConnected(false);
-    }
-  }, [accounts, activeAccountId, currentTabURL]);
-
   return (
-    <div className="flex items-center bg-brand-navydarker text-gray-300 p-2">
-      <Select
-        value={network || SYS_NETWORK.main.id}
-        className="bg-brand-navydarker text-gray-300 "
-        onChange={handleChangeNetwork}
-        options={[
-          { [SYS_NETWORK.main.id]: SYS_NETWORK.main.label },
-          { [SYS_NETWORK.testnet.id]: SYS_NETWORK.testnet.label },
-        ]}
-      />
+    <div className="flex items-center justify-between bg-brand-navydarker text-gray-300 p-2 w-full">
+      {/* <Modal type="connection" open={isOpenModal} onClose={() => setIsOpenModal(false)} connectedAccount={connectedAccount} /> */}
 
-      {isConnected ? (
-        <small
-          className="iinline-flex py-0.5 px-2 text-xs font-bold leading-none text-green-100 bg-green-600 rounded-full"
-          onClick={() => setIsOpenModal(!isOpenModal)}
+      <Button
+        className="w-full text-left"
+        noStandard
+        type="button"
+        onClick={() => networkSettingsShowed ? handleCloseSettings() : showNetworkSettings(!networkSettingsShowed)}
+      >
+        <span className="ml-1">
+          {network}
+        </span>
+
+        <span
+          className={
+            connectedAccount ?
+              "rounded-full py-1 px-2 border bg-brand-transparentgreen border-brand-green ml-4 text-sm text-brand-white" :
+              "rounded-full py-1 px-2 border bg-brand-transparentred border-brand-error ml-4 text-sm text-brand-white"
+          }
         >
-          connected
-        </small>
-      ) : (
-        <small
-          className="inline-flex py-0.5 px-2 text-xs font-bold text-red-100 bg-red-600 rounded-full"
-          onClick={() => setIsOpenModal(!isOpenModal)}
-        >
-          not connected
-        </small>
-      )}
+          {connectedAccount ? 'connected' : 'not connected'}
+        </span>
 
-      {isOpenModal && (
-        <div
-          onClick={() => setIsOpenModal(false)}
-        />
-      )}
-
-      {isOpenModal && isConnected && (
-        <Modal
-          title={currentTabURL}
-          connected
-          callback={handleSetModalIsOpen}
-        />
-      )}
-
-      {isOpenModal && !isConnected && (
-        <Modal
-          title={currentTabURL}
-          message="This account is not connected to this site. To connect to a sys platform site, find the connect button on their site."
-          callback={handleSetModalIsOpen}
-        />
-      )}
+        <IconButton>
+          <Icon name="select-down" className="text-brand-white" />
+        </IconButton>
+      </Button>
 
       {encriptedMnemonic && !importSeed ? (
-
-        <Button className="pl-20" onClick={() => {
-          generalSettingsShowed ? handleCloseSettings() : showSettings(!generalSettingsShowed)}}
-          >
-            <Icon name="settings" className="inline-flex self-center text-lg" maxWidth={"1"}/>
-            
-        </Button>
+        <IconButton
+          type="primary"
+          shape="circle"
+          className="mb-2 mr-0.8"
+          onClick={() => generalSettingsShowed ? handleCloseSettings() : showSettings(!generalSettingsShowed)}
+        >
+          <Icon name="settings" className="text-brand-white" />
+        </IconButton>
       ) : (
         null
       )}
 
       <Settings
         accountSettings={false}
-        generalSettings
-        open={generalSettingsShowed && isUnlocked}
+        generalSettings={generalSettingsShowed}
+        networkSettings={networkSettingsShowed}
+        open={generalSettingsShowed && isUnlocked || networkSettingsShowed && isUnlocked}
         onClose={handleCloseSettings}
       />
     </div>
