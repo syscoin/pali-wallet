@@ -25,7 +25,7 @@ export const CreatePhrase: FC = () => {
           <ul className="list-none m-0 p-0 grid grid-cols-2 w-full gap-x-12">
             {phrases.split(' ').map((phrase: string, index: number) => (
               <li
-                className="font-sans font-light text-sm leading-8 tracking-normal text-brand-graylight border-dashed border-b border-brand-graylight text-left w-32"
+                className="font-poppins font-light text-sm leading-8 tracking-normal text-brand-graylight border-dashed border-b border-brand-graylight text-left w-32"
                 key={index}
               >
                 <span className="w-6 inline-block text-brand-royalBlue">

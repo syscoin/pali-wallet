@@ -46,7 +46,10 @@ module.exports = {
       },
       backgroundImage: {
         primary: 'linear-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 0)), linear-gradient(30deg, rgba(255, 62, 145, 0.8) 20%, #4d76b8 50%)'
-      }
+      },
+      fontFamily: {
+        'poppins': 'Poppins'
+      },
     },
   },
   variants: {

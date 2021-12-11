@@ -6,7 +6,7 @@ interface IContainer {
 
 const Container: FC<IContainer> = ({ children }) => {
   return (
-    <div className="w-full min-w-popup max-w-popup h-popup text-xl p-0 m-0">
+    <div className="font-poppins w-full min-w-popup max-w-popup h-popup text-xl p-0 m-0">
       {children}
     </div>
   );

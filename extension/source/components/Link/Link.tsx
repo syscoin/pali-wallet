@@ -10,7 +10,7 @@ interface ILink {
 
 export const Link: FC<ILink> = ({
   to,
-  className = "no-underline font-medium text-base font-sans",
+  className = "no-underline font-medium text-base font-poppins",
   children,
   onClick,
 }) => {
