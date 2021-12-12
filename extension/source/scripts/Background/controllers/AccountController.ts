@@ -657,6 +657,7 @@ const AccountController = (actions: {
     let transactions: Transaction[] = [];
 
     if (response.transactions) {
+      console.log('response transactions', response.transactions)
       transactions = response.transactions.map(({
         txid,
         value,

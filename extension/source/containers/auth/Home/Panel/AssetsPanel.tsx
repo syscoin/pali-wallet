@@ -1,3 +1,4 @@
+import { useAccount } from 'hooks/useAccount';
 import React, { FC } from 'react';
 import { PanelList } from './components/PanelList';
 
@@ -7,30 +8,29 @@ interface IAssetsPanel {
 }
 
 export const AssetsPanel: FC<IAssetsPanel> = ({ show, className }) => {
-  const dataFAke = [
-    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'},
-    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'},
-    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'},
-    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'},
-    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'},
-    {idk: '12.03040834', value: '$300.45', idk2: 'NikiBar'}
+  const data = [
+    { idk: '12.03040834', value: '$300.45', idk2: 'NikiBar' },
+    { idk: '12.03040834', value: '$300.45', idk2: 'NikiBar' },
+    { idk: '12.03040834', value: '$300.45', idk2: 'NikiBar' },
+    { idk: '12.03040834', value: '$300.45', idk2: 'NikiBar' },
+    { idk: '12.03040834', value: '$300.45', idk2: 'NikiBar' },
+    { idk: '12.03040834', value: '$300.45', idk2: 'NikiBar' }
   ]
+
+  const assets = useAccount().activeAccount!.assets || [];
+
   return (
     <ul className={className}>
-
       {show ? (
-        <>
-          <PanelList dataFAke={dataFAke} activity={false} assets={true}></PanelList>
-        </>
+        <PanelList
+          data={data}
+          activity={false}
+          assets={true}
+        />
       ) : (
         <p className="justify-center items-center text-sm text-brand-gray">
           You have no tokens or NFTs.
         </p>
-
-        //       {!changingNetwork && (
-        //         <img src={`/${SyscoinIcon}`} className="w-40 max-w-40 mx-auto mt-8" alt="Syscoin" />
-        //       )}
-        //     </>
       )}
 
       {/* <ul>

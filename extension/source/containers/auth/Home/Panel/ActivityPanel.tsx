@@ -1,4 +1,5 @@
-import React, { FC } from 'react';
+import { useAccount } from 'hooks/useAccount';
+import React, { FC, useEffect } from 'react';
 import { PanelList } from './components/PanelList';
 
 interface IActivityPanel {
@@ -25,14 +26,25 @@ const dataFAke = [
     stp: 'SPT Update',
   },
 ];
-export const ActivityPanel: FC<IActivityPanel> = ({ show, className }) => {
+
+export const ActivityPanel: FC<IActivityPanel> = ({
+  show,
+  className
+}) => {
+  const { activeAccount } = useAccount();
+
+  useEffect(() => {
+    console.log(activeAccount?.transactions, activeAccount)
+  }, [])
+
   return (
-    <ul className={className}>
+    <div className={className}>
       {show ? (
-        <>
-          {/*<ul>show activity panel</ul>*/}
-          <PanelList dataFAke={dataFAke} activity={true} assets={false}/>
-        </>
+        <PanelList
+          data={activeAccount!.transactions}
+          activity={true}
+          assets={false}
+        />
       ) : (
         <>
           <p className="justify-center items-center text-sm text-brand-gray">
@@ -44,48 +56,6 @@ export const ActivityPanel: FC<IActivityPanel> = ({ show, className }) => {
           )} */}
         </>
       )}
-      {/* {transactions.map((tx: Transaction, idx: number) => {
-        const isConfirmed = tx.confirmations > 0;
-
-        return (
-          <Fragment key={uuid()}>
-            {isShowedGroupBar(tx, idx) && (
-              <li >
-                {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}
-              </li>
-            )}
-            <li
-              onClick={() => {
-                setOpenBlockExplorer(true);
-                setTxidSelected(tx.txid);
-                setTxType(tx.tokenType);
-                getTransactionData(tx.txid).then((response: any) => {
-                  setTx(response);
-                })
-              }}>
-              <div>
-                {isConfirmed ? null : <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />}
-              </div>
-              <div>
-                <span title="Click here to go to view transaction in sys block explorer">
-                  <span>
-                    {new Date(tx.blockTime * 1000).toLocaleTimeString(navigator.language, {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </span>
-                  <small>{tx.txid}</small>
-                  <small>{isConfirmed ? "Confirmed" : "Unconfirmed"}</small>
-                  <small>{getTxType(tx)}</small>
-                </span>
-                <div>
-                  <Icon name="arrow-up" className="w-4 bg-brand-gray200 text-brand-navy" />
-                </div>
-              </div>
-            </li>
-          </Fragment>
-        );
-      })} */}
-    </ul>
+    </div>
   );
 };
