@@ -65,7 +65,7 @@ export const Home = () => {
   
 
   return (
-    <div>
+    <div className="overflow-auto">
       {openBlockExplorer && (
         <div
           onClick={() => {
@@ -205,7 +205,7 @@ export const Home = () => {
         <>
           <Header accountHeader />
 
-          <section className="flex items-center flex-col gap-1 text-brand-white bg-brand-navydarker pb-14">
+          <section className="pt-32 flex items-center flex-col gap-1 text-brand-white bg-brand-navydarker pb-14">
             <button onClick={handleRefresh} className="ml-3 pl-72 w-1">
               <Icon name="reload" className="inline-flex self-center text-lg" maxWidth={"1"} />
             </button>

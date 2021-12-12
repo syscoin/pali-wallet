@@ -35,32 +35,34 @@ export const Header = ({
       {onlySection && (
         <Section />
       )}
-  
-      {normalHeader && (
-        <>
-          <NormalHeader
-            importSeed={importSeed}
-            generalSettingsShowed={generalSettingsShowed}
-            handleCloseSettings={handleCloseSettings}
-            showSettings={showGeneralSettings}
-            showNetworkSettings={showNetworkSettings}
-            isUnlocked={isUnlocked}
-            encriptedMnemonic={encriptedMnemonic}
-            networkSettingsShowed={networkSettingsShowed}
-          />
 
-          {accountHeader && (
-            <AccountHeader
-              encriptedMnemonic={encriptedMnemonic}
+      <div className="fixed w-full z-10">
+        {normalHeader && (
+          <>
+            <NormalHeader
               importSeed={importSeed}
-              accountSettingsShowed={accountSettingsShowed}
+              generalSettingsShowed={generalSettingsShowed}
               handleCloseSettings={handleCloseSettings}
-              showSettings={showAccountSettings}
+              showSettings={showGeneralSettings}
+              showNetworkSettings={showNetworkSettings}
               isUnlocked={isUnlocked}
+              encriptedMnemonic={encriptedMnemonic}
+              networkSettingsShowed={networkSettingsShowed}
             />
-          )}
-        </>
-      )}
+
+            {accountHeader && (
+              <AccountHeader
+                encriptedMnemonic={encriptedMnemonic}
+                importSeed={importSeed}
+                accountSettingsShowed={accountSettingsShowed}
+                handleCloseSettings={handleCloseSettings}
+                showSettings={showAccountSettings}
+                isUnlocked={isUnlocked}
+              />
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }
