@@ -141,6 +141,11 @@ module.exports = {
       },
 
       {
+        test: /\.(ttf)$/,
+        loader: 'url-loader',
+      },
+
+      {
         test: /\.(sa|sc|c)ss$/,
         use: [
           {

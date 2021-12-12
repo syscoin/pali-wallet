@@ -23,7 +23,7 @@ module.exports = {
     deepPink100: '#ff3e91',
 
     error: '#AF0404',
-    transparentred: '#641a1a',
+    transparentred: '#db0000',
 
     green: '#4E9F3D',
     transparentgreen: '#4E9F3D',

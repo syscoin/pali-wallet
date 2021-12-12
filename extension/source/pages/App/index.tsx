@@ -9,6 +9,7 @@ import { transitions, positions, Provider as AlertProvider } from 'react-alert';
 import { ToastAlert } from 'components/index';
 import appStore from 'state/store';
 import 'assets/styles/tailwind.css';
+import 'assets/fonts/index.css';
 
 import App from './App';
 

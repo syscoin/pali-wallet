@@ -214,7 +214,7 @@ export const Home = () => {
               <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
             ) : (
               <div className="flex justify-center">
-                <p className="text-5xl flex-1 font-medium">
+                <p className="text-5xl flex-1 font-medium font-rubik">
                   {formatNumber(
                     accounts.find((element) => element.id === activeAccountId)
                       ?.balance || 5268
