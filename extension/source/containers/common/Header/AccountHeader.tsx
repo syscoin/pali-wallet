@@ -1,8 +1,8 @@
-import React, { FC } from 'react';
-import LogoImage from 'assets/images/logo-s.svg';
+import React, { FC, useEffect } from 'react';
 import { Settings } from 'containers/auth/index';
 import { IconButton, Icon } from 'components/index';
 import { useFormat, useAccount } from 'hooks/index';
+import { toSvg } from 'jdenticon';
 
 interface IAccountHeader {
   encriptedMnemonic: string;
@@ -24,12 +24,21 @@ export const AccountHeader: FC<IAccountHeader> = ({
   const { activeAccount } = useAccount();
   const { ellipsis } = useFormat();
 
+  useEffect(() => {
+    const placeholder = document.querySelector('.add-identicon');
+
+    placeholder!.innerHTML += toSvg(activeAccount?.address.main, 50, {
+      backColor: '#fff',
+      padding: 1
+    });
+  }, [activeAccount?.address.main]);
+
   return (
     <div>
       <div className="flex items-center justify-between bg-brand-navyborder p-1">
-        <img src={`/${LogoImage}`} className="mx-0 w-14 rounded-full" alt="Syscoin" />
-
         <div className="flex items-center w-full text-brand-white">
+          <div className="add-identicon mr-2 ml-1 my-2"></div>
+
           <div className="text-brand-white px-1 justify-center items-center">
             <p className="text-base">{activeAccount!.label}</p>
             <p className="text-xs">{ellipsis(activeAccount!.address.main, 6, 14)}</p>

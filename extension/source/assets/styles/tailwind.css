@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+.add-identicon svg {
+  @apply rounded-full;
+}
+
 /* unauth/create/pass inputs */
 .ant-input-affix-wrapper.ant-input-password {
   @apply relative;
