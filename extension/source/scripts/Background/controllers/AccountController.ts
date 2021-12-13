@@ -676,7 +676,7 @@ const AccountController = (actions: {
             blockTime,
             tokenType,
           }
-      }).slice(0, 10);
+      }).slice(0, 20);
     }
 
     if (response.tokensAsset) {

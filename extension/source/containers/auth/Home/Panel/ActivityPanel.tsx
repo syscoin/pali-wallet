@@ -36,7 +36,7 @@ export const ActivityPanel: FC<IActivityPanel> = ({
   useEffect(() => {
     console.log(activeAccount?.transactions, activeAccount)
   }, [])
-
+  
   return (
     <div className={className}>
       {show ? (

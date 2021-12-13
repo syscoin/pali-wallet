@@ -54,7 +54,7 @@ export const TxsPanel: FC<ITxsPanel> = ({
   const [isShowed, setShowed] = useState<boolean>(false);
   const [isActivity, setActivity] = useState<boolean>(true);
   const [scrollArea,
-    // setScrollArea
+    setScrollArea
   ] = useState<HTMLElement>();
 
   // const { changingNetwork } = useStore();
@@ -71,26 +71,6 @@ export const TxsPanel: FC<ITxsPanel> = ({
   //   [transactions]
   // );
 
-  // const handleFetchMoreTxs = () => {
-  //   if (transactions.length) {
-  //     controller.wallet.account.updateTxs();
-  //   }
-  // };
-
-  // const handleScroll = useCallback((event) => {
-  //   event.persist();
-  //
-  //   if (event.target.scrollTop) setShowed(true);
-  //
-  //   setScrollArea(event.target);
-  //   const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
-  //
-  //   if (scrollOffset === event.target.clientHeight) {
-  //     if (!changingNetwork) {
-  //       handleFetchMoreTxs();
-  //     }
-  //   }
-  // }, []);
 
   const handleGoTop = () => {
     // eslint-disable-next-line prettier/prettier

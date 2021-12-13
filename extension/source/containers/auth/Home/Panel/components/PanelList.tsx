@@ -2,7 +2,7 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { randomUUID } from 'crypto';
 import { useController, useFormat } from 'hooks/index';
-import React, { FC, useCallback, Fragment } from 'react';
+import React, { FC, useCallback, Fragment, useState } from 'react';
 import { Transaction } from 'scripts/types';
 
 interface IPanelList {
@@ -31,12 +31,6 @@ export const PanelList: FC<IPanelList> = ({
     [data]
   );
 
-  const handleFetchMoreTxs = () => {
-    if (data.length) {
-      controller.wallet.account.updateTxs();
-    }
-  };
-
   const getTxType = (tx: Transaction) => {
     if (tx.tokenType === "SPTAssetActivate") {
       return 'SPT creation';
@@ -57,7 +51,7 @@ export const PanelList: FC<IPanelList> = ({
     <div>
       {activity && (
         <>
-          <ul>
+          <ul className="pb-4">
             {data.map((tx: Transaction, idx: number) => {
               const isConfirmed = tx.confirmations > 0;
 
@@ -103,36 +97,7 @@ export const PanelList: FC<IPanelList> = ({
               );
             })}
           </ul>
-
-          <ul>
-            {data.map((data: any) => {
-              return (
-                <li className="border-dashed border-b border-gray-200 py-2">
-                  <div className="flex text-xs">
-                    <div>
-                      <p>{data.account}</p>
-                      <p className="text-yellow-300">{data.status}</p>
-                    </div>
-                    <div className="pl-16">
-                      <p className="text-blue-300">{data.hour}</p>
-                      <p>{data.stp}</p>
-                    </div>
-                    <div className="pl-20 leading-8">
-                      <button className="w-1" type="submit">
-                        <Icon
-                          name="select"
-                          className="text-base"
-                          maxWidth={'1'}
-                        ></Icon>
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
         </>
-
       )}
 
       {assets && (

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Icon, ModalBlock } from 'components/index';
-import { useController, useStore, useFiat, useFormat, useUtils } from 'hooks/index';
+import { useController, useStore, useFiat, useFormat, useUtils, useAccount } from 'hooks/index';
 
 import { Header } from 'containers/common/Header';
 import { TxsPanel } from './TxsPanel';
@@ -31,11 +31,18 @@ export const Home = () => {
   const [tx, setTx] = useState(null);
   const [assetTx, setAssetTx] = useState(null);
 
+  const { activeAccount } = useAccount();
+
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();
     controller.wallet.account.watchMemPool(accounts[activeAccountId]);
     controller.stateUpdater();
   };
+
+  const [isShowed, setShowed] = useState<boolean>(false);
+  const [scrollArea,
+    setScrollArea
+  ] = useState<HTMLElement>();
 
   const getTransactionData = async (txid: string) => {
     return await controller.wallet.account.getTransactionData(txid);
@@ -62,10 +69,31 @@ export const Home = () => {
   const handleOpenAssetExplorer = (assetGuid: number) => {
     window.open(`${sysExplorer}/asset/${assetGuid}`);
   };
+
+  const handleFetchMoreTxs = () => {
+    if (activeAccount!.transactions.length) {
+      controller.wallet.account.updateTxs();
+    }
+  };
+
+  const handleScroll = React.useCallback((event) => {
+    event.persist();
+  
+    if (event.target.scrollTop) {
+      console.log('scroll top', event.target.scrollTop)
+    };
+  
+    setScrollArea(event.target);
+    const scrollOffset = event.target.scrollHeight - event.target.scrollTop;
+  
+    if (scrollOffset === event.target.clientHeight) {
+      handleFetchMoreTxs();
+    }
+  }, []);
   
 
   return (
-    <div className="overflow-auto">
+    <div onScroll={handleScroll} className="overflow-auto">
       {openBlockExplorer && (
         <div
           onClick={() => {
