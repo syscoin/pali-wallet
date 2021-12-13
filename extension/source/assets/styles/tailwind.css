@@ -6,6 +6,22 @@
   @apply rounded-full;
 }
 
+.home::-webkit-scrollbar {
+  @apply w-1;
+}
+
+.home::-webkit-scrollbar-track-piece {
+  @apply bg-transparent rounded-full;
+}
+
+.home::-webkit-scrollbar-button {
+  @apply hidden;
+}
+
+.home::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-brand-royalBlue transition-all duration-300;
+}
+
 /* unauth/create/pass inputs */
 .ant-input-affix-wrapper.ant-input-password {
   @apply relative;
