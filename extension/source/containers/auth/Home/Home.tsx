@@ -84,7 +84,7 @@ export const Home = () => {
                   {formatNumber(activeAccount?.balance || 0)}{' '}
                 </p>
 
-                <p className="font-poppins">
+                <p className="font-poppins mt-4">
                   {activeNetwork == 'testnet' ? 'TSYS' : 'SYS'}
                 </p>
               </div>
