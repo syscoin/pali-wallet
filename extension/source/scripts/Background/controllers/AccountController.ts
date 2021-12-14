@@ -1517,7 +1517,7 @@ const AccountController = (actions: {
       changeAddress,
       feeRateBN
     } = items;
-
+    
     const txOpts = { rbf: false };
 
     const utxos = await sys.utils.fetchBackendUTXOS(sysjs.blockbookURL, account.xpub);
