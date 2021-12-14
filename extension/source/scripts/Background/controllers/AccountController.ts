@@ -1,5 +1,7 @@
 /* eslint-disable */
 import { sys } from 'constants/index';
+const sysTx = require('syscointx-js');
+const coinSelSys = require('coinselectsyscoin');
 import store from 'state/store';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { bech32 } from 'bech32';
@@ -1510,6 +1512,25 @@ const AccountController = (actions: {
     });
   };
 
+  const estimateSysTxFee = async (items: any) => {
+    const {
+      outputsArray,
+      changeAddress,
+      feeRateBN
+    } = items;
+    const txOpts = { rbf: false };
+
+    const utxos = await sys.utils.fetchBackendUTXOS(sysjs.blockbookURL, account.xpub);
+    const utxosSanitized = sys.utils.sanitizeBlockbookUTXOs(null, utxos, sysjs.network);
+
+    // 0 feerate to create tx, then find bytes and multiply feeRate by bytes to get estimated txfee
+    const tx = await sysTx.createTransaction(txOpts, utxosSanitized, changeAddress, outputsArray, new sys.utils.BN(0));
+    const bytes = coinSelSys.utils.transactionBytes(tx.inputs, tx.outputs);
+    const txFee = feeRateBN.mul(new sys.utils.BN(bytes));
+    return txFee;
+  }
+
+
   const confirmTransactionTx = async (
     items: {
       amount: number,
@@ -1529,6 +1550,8 @@ const AccountController = (actions: {
       isToken,
       rbf
     } = items;
+
+    const feeRateBN = new sys.utils.BN(fee * 1e8);
 
     if (isToken && token) {
       let txInfo;
@@ -1555,7 +1578,7 @@ const AccountController = (actions: {
         // @ts-ignore: Unreachable code error
         assetMap.get(token)!.changeAddress = changeAddress;
 
-        const txData = await sysjs.assetAllocationSend(txOpts, assetMap, changeAddress, new sys.utils.BN(fee * 1e8), account.xpub);
+        const txData = await sysjs.assetAllocationSend(txOpts, assetMap, changeAddress, feeRateBN, account.xpub);
 
         if (!txData) {
           console.log('Could not create transaction, not enough funds?')
@@ -1578,25 +1601,37 @@ const AccountController = (actions: {
           return;
         }
       } else {
-        const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, new sys.utils.BN(fee * 1e8));
+        const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, feeRateBN);
 
         txInfo = pendingTx.extractTransaction().getId();
       }
 
       updateTransactionData('confirmingTransaction', txInfo);
     } else {
-      const outputsArray = [{
+      const backendAccount = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, {}, true);
+      var value = new sys.utils.BN(amount * 1e8);
+
+      var outputsArray = [{
         address: toAddress,
-        value: new sys.utils.BN(amount * 1e8)
+        value: value
       }];
 
-      const txOpts = { rbf };
+      const txOpts = { rbf: false };
       let txInfo;
 
       const changeAddress = await sysjs.Signer.getNewChangeAddress(true);
 
+      const txFee = await estimateSysTxFee({outputsArray, changeAddress, feeRateBN});
+
+      if (value.add(txFee).gte(backendAccount.balance)) {
+        outputsArray = [{
+          address: toAddress,
+          value: value.sub(txFee)
+        }]
+      }
+
       if (account.isTrezorWallet) {
-        const txData = await sysjs.createTransaction(txOpts, await getNewChangeAddress(false), outputsArray, new sys.utils.BN(fee * 1e8), account.xpub);
+        const txData = await sysjs.createTransaction(txOpts, await getNewChangeAddress(false), outputsArray, feeRateBN, account.xpub);
 
         if (!txData) {
           console.log('Could not create transaction, not enough funds?')
@@ -1625,7 +1660,7 @@ const AccountController = (actions: {
 
       } else {
         try {
-          const pendingTx = await sysjs.createTransaction(txOpts, changeAddress, outputsArray, new sys.utils.BN(fee * 1e8));
+          const pendingTx = await sysjs.createTransaction(txOpts, changeAddress, outputsArray, feeRateBN);
 
           txInfo = pendingTx.extractTransaction().getId();
         } catch (error) {
