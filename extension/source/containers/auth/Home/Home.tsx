@@ -95,21 +95,30 @@ export const Home = () => {
                 : ''}
             </small>
 
-
-            <div className="pt-8">
+            <div className="pt-8 w-3/4 flex justify-center items-center gap-x-0.5">
               <Button
-                className="inline-flex bg-brand-navydarker rounded-l-full border border-brand-deepPink tracking-normal text-base py-1 px-6 cursor-pointer mr-px hover:bg-brand-white"
+                className="flex items-center justify-center flex-1 text-base rounded-l-full border border-brand-deepPink text-brand-white hover:bg-brand-deepPink transition-all duration-300"
                 onClick={() => history.push('/send')}
-
               >
-                <Icon name="arrow-up" className="inline-flex self-center text-sm pr-1 text-brand-deepPink" rotate={40} />
+                <Icon
+                  name="arrow-up"
+                  className="w-4"
+                  wrapperClassname="mb-2 mr-2"
+                  rotate={40}
+                />
+
                 Send
               </Button>
+              
               <Button
-                className="inline-flex bg-brand-navydarker rounded-r-full border border-brand-royalBlue tracking-normal text-base py-1 px-6 cursor-pointer ml-px hover:bg-brand-white"
+                className="flex items-center justify-center flex-1 text-base rounded-r-full border border-brand-royalBlue text-brand-white hover:bg-brand-royalBlue transition-all duration-300"
                 onClick={() => history.push('/receive')}
               >
-                <Icon name="arrow-down" className="inline-flex self-center text-sm pr-1 text-brand-royalBlue" />
+                <Icon
+                  name="arrow-down"
+                  className="w-4"
+                  wrapperClassname="mb-2 mr-2"
+                />
 
                 Receive
               </Button>
