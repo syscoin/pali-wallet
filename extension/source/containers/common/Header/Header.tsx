@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AccountHeader,
   NormalHeader,
@@ -8,6 +8,7 @@ import {
   useController,
   useStore,
 } from 'hooks/index';
+import { Icon } from 'components/Icon';
 
 export const Header = ({
   importSeed = false,
@@ -19,7 +20,7 @@ export const Header = ({
   const [accountSettingsShowed, showAccountSettings] = useState<boolean>(false);
   const [networkSettingsShowed, showNetworkSettings] = useState<boolean>(false);
 
-  const { encriptedMnemonic } = useStore();
+  const { encriptedMnemonic, changingNetwork } = useStore();
 
   const controller = useController();
   const isUnlocked = !controller.wallet.isLocked();
@@ -30,8 +31,18 @@ export const Header = ({
     showNetworkSettings(false);
   };
 
+  useEffect(() => {
+    handleCloseSettings();
+  }, [changingNetwork]);
+
   return (
-    <div>
+    <div className={normalHeader && accountHeader ? "pb-32" : onlySection ? "" : "pb-14"}>
+      {changingNetwork && (
+        <div className="bg-brand-darktransparent z-20 flex justify-center items-center fixed w-full h-full">
+          <Icon name="loading" className="w-4 ml-2 text-brand-white" />
+        </div>
+      )}
+
       {onlySection && (
         <Section />
       )}

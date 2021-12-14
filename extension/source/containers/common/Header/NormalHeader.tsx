@@ -34,7 +34,7 @@ export const NormalHeader: FC<INormalHeader> = ({
       {/* <Modal type="connection" open={isOpenModal} onClose={() => setIsOpenModal(false)} connectedAccount={connectedAccount} /> */}
 
       <Button
-        className="w-full ml-2 flex items-center justify-start gap-x-4"
+        className="w-full ml-2 flex items-center justify-start gap-x-2"
         noStandard
         type="button"
         onClick={() => networkSettingsShowed ? handleCloseSettings() : showNetworkSettings(!networkSettingsShowed)}
@@ -42,12 +42,14 @@ export const NormalHeader: FC<INormalHeader> = ({
         <div
           className={
             connectedAccount ?
-              "rounded-full w-4 h-4 border border-brand-lightgreen bg-brand-lightgreen text-brand-white" :
-              "rounded-full w-4 h-4 border bg-brand-transparentred border-brand-error text-brand-white"
+              "rounded-full text-xs w-28 h-5 flex justify-center items-center border border-brand-lightgreen bg-brand-lightgreen text-brand-white" :
+              "rounded-full text-xs w-28 h-5 flex justify-center items-center border bg-brand-transparentred border-brand-error text-brand-white"
           }
-        ></div>
+        >
+          {connectedAccount ? 'connected' : 'not connected'}
+        </div>
 
-        <span className="ml-1">
+        <span>
           {network}
         </span>
 

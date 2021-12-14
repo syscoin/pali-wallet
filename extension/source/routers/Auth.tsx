@@ -35,7 +35,9 @@ import {
   MainView,
   NewAccountView,
   PhraseView,
-  PrivateKeyView
+  PrivateKeyView,
+  EditNetworkView,
+  CustomRPCView
 } from 'containers/auth/Settings/views';
 
 import {
@@ -324,6 +326,14 @@ export const AuthRouter = () => {
               <Route path="/account-hardware" component={ConnectHardwareWalletView} exact />
               <Route path="/account-newaccount" component={NewAccountView} exact />
               <Route path="/account-details" component={AccountView} exact />
+
+              <Route
+                path='/networks'
+                component={MainView}
+                exact
+              />
+              <Route path="/networks-edit" component={EditNetworkView} exact />
+              <Route path="/networks-custom" component={CustomRPCView} exact />
 
               {canConnect && (
                 <>

@@ -1,17 +1,17 @@
 import * as React from 'react';
 import {
-  // ChangeEvent,
-  // useState,
-  // useCallback,
-  // useMemo,
-  // useEffect,
+  ChangeEvent,
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
   FC,
 } from 'react';
 import { Header } from 'containers/common/Header';
-// import { Button, IconButton, Icon } from 'components/index';;
-// import { useController, useFiat, useStore, useUtils } from 'hooks/index';
-// import { Assets } from 'scripts/types';
-// import { Form, Input } from 'antd';
+import { Button, IconButton, Icon } from 'components/index';;
+import { useController, useFiat, useStore, useUtils } from 'hooks/index';
+import { Assets } from 'scripts/types';
+import { Form, Input } from 'antd';
 
 interface ISend {
   initAddress?: string;
@@ -19,9 +19,9 @@ interface ISend {
 export const Send: FC<ISend> = (/*{ initAddress = '' }*/) => {
   // // const getFiatAmount = useFiat();
   // const controller = useController();
-  // const { alert, history } = useUtils();
+  const { alert, history } = useUtils();
   // const { accounts, activeAccountId, activeNetwork, changingNetwork } = useStore();
-  
+
   // const [address, setAddress] = useState<string>(initAddress);
   // const [amount, setAmount] = useState<string>('');
   // const [fee, setFee] = useState<string>('0.00001');
@@ -149,10 +149,18 @@ export const Send: FC<ISend> = (/*{ initAddress = '' }*/) => {
   // }
 
   return (
-    <div className="bg-brand-gray">
+    <div>
       <Header normalHeader />
 
-      <p>send component - replace with antd</p>
+      <div>
+        <IconButton
+          type="primary"
+          shape="circle"
+          onClick={() => history.goBack()}
+        >
+          <Icon name="arrow-left" className="w-4 bg-brand-graydark100 text-brand-white" />
+        </IconButton>
+      </div>
 
       {/* <IconButton
         type="primary"

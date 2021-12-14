@@ -22,47 +22,50 @@ export const Receive = () => {
   }, []);
 
   return (
-    <div className="bg-brand-gray">
+    <div>
       <Header normalHeader />
-      <IconButton
-        type="primary"
-        shape="circle"
-        onClick={() => history.push('/home')}
-      >
-        <Icon name="arrow-left" className="w-4 bg-brand-graydark100 text-brand-white" />
-      </IconButton>
-      <section>Receive SYS</section>
 
-      <section>
-        {loaded ? (
-          <div>
-            <div>
-              <QRCode
-                value={accounts.find(element => element.id === activeAccountId)!.address.main}
-                bgColor="#fff"
-                fgColor="#000"
-                size={180}
-              />
-              {accounts.find(element => element.id === activeAccountId)!.address.main}
-            </div>
-            <div>
-              <IconButton
-                type="primary"
-                shape="circle"
-                onClick={() =>
-                  copyText(accounts.find(element => element.id === activeAccountId)!.address.main)
-                }
-              >
-                <Icon name="copy" className="w-4 bg-brand-graydark100 text-brand-white" />
-              </IconButton>
-              <span>
-                {isCopied ? 'Copied address' : 'Copy'}
-              </span>
-            </div>
-          </div>
-        ) : <Icon name="loading" className="w-4 bg-brand-graydark100 text-brand-white" />}
+      <div>
+        <IconButton
+          type="primary"
+          shape="circle"
+          onClick={() => history.push('/home')}
+        >
+          <Icon name="arrow-left" className="w-4 bg-brand-graydark100 text-brand-white" />
+        </IconButton>
+        <section>Receive SYS</section>
 
-      </section>
+        <section>
+          {loaded ? (
+            <div>
+              <div>
+                <QRCode
+                  value={accounts.find(element => element.id === activeAccountId)!.address.main}
+                  bgColor="#fff"
+                  fgColor="#000"
+                  size={180}
+                />
+                {accounts.find(element => element.id === activeAccountId)!.address.main}
+              </div>
+              <div>
+                <IconButton
+                  type="primary"
+                  shape="circle"
+                  onClick={() =>
+                    copyText(accounts.find(element => element.id === activeAccountId)!.address.main)
+                  }
+                >
+                  <Icon name="copy" className="w-4 bg-brand-graydark100 text-brand-white" />
+                </IconButton>
+                <span>
+                  {isCopied ? 'Copied address' : 'Copy'}
+                </span>
+              </div>
+            </div>
+          ) : <Icon name="loading" className="w-4 bg-brand-graydark100 text-brand-white" />}
+
+        </section>
+      </div>
     </div>
   );
 };

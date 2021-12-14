@@ -71,41 +71,34 @@ export const Home = () => {
         <>
           <Header accountHeader />
 
-          <section className="pt-32 flex items-center flex-col gap-1 text-brand-white bg-brand-navydarker pb-14">
+          <section className="flex items-center flex-col gap-1 text-brand-white bg-brand-navydarker pb-14">
             <button onClick={handleRefresh} className="ml-3 pl-72 w-1">
-              <Icon name="reload" className="inline-flex self-center text-lg" maxWidth={"1"} />
+              <Icon name="reload" className="inline-flex self-center text-lg" />
             </button>
 
-            {changingNetwork ? (
-              <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
-            ) : (
-              <div className="flex justify-center">
-                <p className="text-5xl font-medium font-rubik">
-                  {formatNumber(activeAccount?.balance || 0)}{' '}
-                </p>
+            <div className="flex justify-center">
+              <p className="text-5xl font-medium font-rubik">
+                {formatNumber(activeAccount?.balance || 0)}{' '}
+              </p>
 
-                <p className="font-poppins mt-4">
-                  {activeNetwork == 'testnet' ? 'TSYS' : 'SYS'}
-                </p>
-              </div>
+              <p className="font-poppins mt-4">
+                {activeNetwork == 'testnet' ? 'TSYS' : 'SYS'}
+              </p>
+            </div>
 
-            )}
+            <small className="mt-1.5 mb-1.5 text-brand-royalblue">
+              {activeNetwork !== 'testnet'
+                ? getFiatAmount(
+                  accounts.find((element) => element.id === activeAccountId)
+                    ?.balance || 0
+                )
+                : ''}
+            </small>
 
-            {changingNetwork ? (
-              <p className="text-royalBlue">...</p>
-            ) : (
-              <small className="mt-1.5 mb-1.5 text-brand-royalblue">
-                {activeNetwork !== 'testnet'
-                  ? getFiatAmount(
-                    accounts.find((element) => element.id === activeAccountId)
-                      ?.balance || 0
-                  )
-                  : ''}
-              </small>
-            )}
+
             <div className="pt-8">
               <Button
-                className="inline-flex bg-brand-navydarker rounded-l-full border border-brand-deepPink tracking-normal text-base py-1 px-6 cursor-pointer mr-px hover:bg-brand-deepPink"
+                className="inline-flex bg-brand-navydarker rounded-l-full border border-brand-deepPink tracking-normal text-base py-1 px-6 cursor-pointer mr-px hover:bg-brand-white"
                 onClick={() => history.push('/send')}
 
               >
@@ -113,7 +106,7 @@ export const Home = () => {
                 Send
               </Button>
               <Button
-                className="inline-flex bg-brand-navydarker rounded-r-full border border-brand-royalBlue tracking-normal text-base py-1 px-6 cursor-pointer ml-px hover:bg-brand-royalBlue"
+                className="inline-flex bg-brand-navydarker rounded-r-full border border-brand-royalBlue tracking-normal text-base py-1 px-6 cursor-pointer ml-px hover:bg-brand-white"
                 onClick={() => history.push('/receive')}
               >
                 <Icon name="arrow-down" className="inline-flex self-center text-sm pr-1 text-brand-royalBlue" />

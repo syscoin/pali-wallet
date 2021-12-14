@@ -32,7 +32,7 @@ export const useFormat = () => {
     return formatedDate;
   };
 
-  const formatNumber = (num: number, min = 4, max = 4, maxSig = 12) => {
+  const formatNumber = (num: number, min = 4, max = 4, maxSig = 8) => {
     return num.toLocaleString(navigator.language, {
       minimumFractionDigits: min,
       maximumFractionDigits: max,

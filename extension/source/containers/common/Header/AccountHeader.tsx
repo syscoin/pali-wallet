@@ -27,8 +27,8 @@ export const AccountHeader: FC<IAccountHeader> = ({
   useEffect(() => {
     const placeholder = document.querySelector('.add-identicon');
 
-    placeholder!.innerHTML += toSvg(activeAccount?.address.main, 50, {
-      backColor: '#fff',
+    placeholder!.innerHTML = toSvg(activeAccount?.address.main, 50, {
+      backColor: '#07152B',
       padding: 1
     });
   }, [activeAccount?.address.main]);
@@ -40,7 +40,7 @@ export const AccountHeader: FC<IAccountHeader> = ({
           <div className="add-identicon mr-2 ml-1 my-2"></div>
 
           <div className="text-brand-white px-1 justify-center items-center">
-            <p className="text-base">{activeAccount!.label}</p>
+            <p className="text-base mb-1">{activeAccount!.label}</p>
             <p className="text-xs">{ellipsis(activeAccount!.address.main, 6, 14)}</p>
           </div>
 

@@ -8,3 +8,5 @@ export { default as AboutView } from './AboutView';
 export { default as ConnectHardwareWalletView } from './ConnectHardwareWalletView';
 export { default as AutolockView } from './AutolockView';
 export { default as CurrencyView } from './CurrencyView';
+export { default as EditNetworkView } from './EditNetworkView';
+export { default as CustomRPCView } from './CustomRPCView';

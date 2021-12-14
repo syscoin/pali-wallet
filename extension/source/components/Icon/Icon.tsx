@@ -31,7 +31,9 @@ import {
   CaretDownOutlined,
   GlobalOutlined,
   AppstoreAddOutlined,
-  EditOutlined
+  EditOutlined,
+  CheckCircleOutlined,
+  CaretUpOutlined
 } from '@ant-design/icons';
 
 const icons = {
@@ -67,25 +69,27 @@ const icons = {
   'globe': GlobalOutlined,
   'appstoreadd': AppstoreAddOutlined,
   'edit': EditOutlined,
+  'check': CheckCircleOutlined,
+  'select-up': CaretUpOutlined
 }
 
 interface IIcon {
   name: string;
   className?: string;
-  maxWidth?: string;
+  wrapperClassname?: string;
   rotate?: number
 }
 
 export const Icon: FC<IIcon> = ({
   name,
   className,
-  maxWidth,
+  wrapperClassname,
   rotate
 }) => {
   const Component = icons[name];
 
   return (
-    <div className={maxWidth ? maxWidth : "w-8"}>
+    <div className={wrapperClassname ? wrapperClassname : "w-8"}>
       {Component ? <Component className={className}  rotate={rotate} /> : null}
     </div>
   );
