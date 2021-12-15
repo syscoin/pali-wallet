@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
-import { Icon, Button, IconButton } from 'components/index';
+import { Icon, IconButton } from 'components/index';
 import { Settings } from 'containers/auth/index';
-import { useStore, useAccount } from 'hooks/index';
+import { useStore, useAccount, useUtils } from 'hooks/index';
 
 interface INormalHeader {
   importSeed: boolean;
@@ -25,6 +25,7 @@ export const NormalHeader: FC<INormalHeader> = ({
   showNetworkSettings
 }) => {
   const { activeNetwork } = useStore();
+  const { handleRefresh } = useUtils();
   const { connectedAccount } = useAccount();
 
   const network = activeNetwork;
@@ -33,10 +34,8 @@ export const NormalHeader: FC<INormalHeader> = ({
     <div className="flex items-center justify-between bg-brand-navydarker text-gray-300 p-2 w-full">
       {/* <Modal type="connection" open={isOpenModal} onClose={() => setIsOpenModal(false)} connectedAccount={connectedAccount} /> */}
 
-      <Button
-        className="w-full ml-2 flex items-center justify-start gap-x-2"
-        noStandard
-        type="button"
+      <div
+        className="cursor-pointer w-full ml-2 flex items-center justify-start gap-x-2"
         onClick={() => networkSettingsShowed ? handleCloseSettings() : showNetworkSettings(!networkSettingsShowed)}
       >
         <div
@@ -56,7 +55,17 @@ export const NormalHeader: FC<INormalHeader> = ({
         <IconButton className="mb-2">
           <Icon name="select-down" className="text-brand-white" />
         </IconButton>
-      </Button>
+      </div>
+
+      <IconButton
+        onClick={handleRefresh}
+        className="text-brand-white"
+      >
+        <Icon
+          name="reload"
+          wrapperClassname="mb-2 mr-2"
+        />
+      </IconButton>
 
       {encriptedMnemonic && !importSeed ? (
         <IconButton

@@ -57,7 +57,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           />
         </Form.Item>
 
-        <span className="font-light text-brand-royalBlue text-xs mx-12 mt-12 pb-12 text-center">
+        <span className="font-light text-brand-royalBlue text-xs mx-6 mt-12 pb-12 text-center">
           Importing your wallet seed automatically import a wallet associated with this seed phrase.
         </span>
 

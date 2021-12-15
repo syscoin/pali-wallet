@@ -1,6 +1,7 @@
 import { useHistory } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
 import { useAlert } from 'react-alert';
+import { IAccountState } from 'state/wallet/types';
 
 export const useUtils = () => {
   const history = useHistory();
@@ -10,6 +11,12 @@ export const useUtils = () => {
       history.push(view);
     }, []);
   }
+
+  const handleRefresh = (controller: any, activeAccount: IAccountState) => {
+    controller.wallet.account.getLatestUpdate();
+    controller.wallet.account.watchMemPool(activeAccount);
+    controller.stateUpdater();
+  };
 
   const useCopyClipboard = (
     timeout = 1000
@@ -83,6 +90,7 @@ export const useUtils = () => {
     alert,
     getHost,
     history,
-    sendMessage
+    sendMessage,
+    handleRefresh
   }
 }

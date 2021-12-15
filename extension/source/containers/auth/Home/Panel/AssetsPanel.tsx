@@ -2,19 +2,14 @@ import { useAccount } from 'hooks/useAccount';
 import React, { FC } from 'react';
 import { PanelList } from './components/PanelList';
 
-interface IAssetsPanel {
-  show: boolean;
-  className: any
-}
-
-export const AssetsPanel: FC<IAssetsPanel> = ({ show, className }) => {
-  const assets = useAccount().activeAccount!.assets || [];
+export const AssetsPanel: FC = () => {
+  const { activeAccount } = useAccount(); 
 
   return (
-    <ul className={className}>
-      {show ? (
+    <ul className="h-full w-full p-4 text-white text-base bg-brand-navyborder">
+      {activeAccount?.assets ? (
         <PanelList
-          data={assets}
+          data={activeAccount?.assets}
           activity={false}
           assets={true}
         />
