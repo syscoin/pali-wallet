@@ -51,7 +51,7 @@ export const PanelList: FC<IPanelList> = ({
   return (
     <div>
       {activity && (
-        <ul className="pb-4">
+        <ul className="pb-8">
           {data.map((tx: Transaction, idx: number) => {
             const isConfirmed = tx.confirmations > 0;
             const timestamp = new Date(tx.blockTime * 1000).toLocaleTimeString(navigator.language, {

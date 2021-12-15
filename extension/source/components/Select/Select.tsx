@@ -31,7 +31,7 @@ export const Select: FC<any> = ({
 
           setExpanded(!expanded);
         }}
-        className="flex items-center pt-6 text-base px-6"
+        className="flex items-center pt-6 px-6 text-base"
       >
         {icon && (
           <Icon

@@ -138,7 +138,6 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings, networkSett
 
           <Select
             value="Mainnet"
-            className="px-6"
             title="Syscoin networks"
             icon="dolar"
             expanded={expandedSYS}
@@ -167,7 +166,6 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings, networkSett
 
           <Select
             value="Mainnet"
-            className="px-6"
             title="Ethereum networks"
             icon="dolar"
             expanded={expandedETH}
