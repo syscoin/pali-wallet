@@ -40,7 +40,7 @@ const MainView: FC<IMainView> = ({
       {generalSettings && (
         <ul className="px-3">
           <li
-            className="inline-flex m-px pt-4 text-base"
+            className="inline-flex m-px pt-4 text-base cursor-pointer"
             onClick={() => history.push('/general-autolock')}
           >
             <Icon
@@ -51,7 +51,7 @@ const MainView: FC<IMainView> = ({
           </li>
 
           <li
-            className="inline-flex m-px pt-4 text-base"
+            className="inline-flex m-px pt-4 text-base cursor-pointer"
             onClick={() => history.push('/general-currency')}
           >
             <Icon
@@ -62,7 +62,7 @@ const MainView: FC<IMainView> = ({
           </li>
 
           <li
-            className="inline-flex m-px pt-4 text-base"
+            className="inline-flex m-px pt-4 text-base cursor-pointer"
             onClick={() => history.push('/general-phrase')}
           >
             <Icon
@@ -73,7 +73,7 @@ const MainView: FC<IMainView> = ({
           </li>
 
           <li
-            className="inline-flex m-px pt-4 text-base"
+            className="inline-flex m-px pt-4 text-base cursor-pointer"
             onClick={() => history.push('/general-about')}
           >
             <Icon
@@ -84,7 +84,7 @@ const MainView: FC<IMainView> = ({
           </li>
 
           <li
-            className="inline-flex m-px pt-4 text-base"
+            className="inline-flex m-px pt-4 text-base cursor-pointer"
             onClick={() => history.push('/general-delete')}
           >
             <Icon
@@ -102,7 +102,7 @@ const MainView: FC<IMainView> = ({
         <ul>
           <div>
             <li
-              className="inline-flex text-base pt-5"
+              className="inline-flex text-base pt-5 cursor-pointer"
               onClick={() => history.push('/account-priv')}
             >
               <Icon
@@ -114,7 +114,7 @@ const MainView: FC<IMainView> = ({
           </div>
           <div>
             <li
-              className="inline-flex text-base pt-5"
+              className="inline-flex text-base pt-5 cursor-pointer"
               onClick={() => setShowAccounts(!showAccounts)}
             >
               <Icon
@@ -140,7 +140,7 @@ const MainView: FC<IMainView> = ({
               <div className="bg-brand-deepPink100">
                 <ul >
                   <li
-                    className="px-4 text-base mt-2 pt-5"
+                    className="px-4 text-base mt-2 pt-5 cursor-pointer"
                     onClick={() => history.push('/account-newaccount')}
                   >
                     Create new account
@@ -151,7 +151,7 @@ const MainView: FC<IMainView> = ({
           </div>
           <div>
             <li
-              className="inline-flex text-base pt-5"
+              className="inline-flex text-base pt-5 cursor-pointer"
               onClick={() => history.push('/account-hardware')}
             >
               <Icon
@@ -162,7 +162,7 @@ const MainView: FC<IMainView> = ({
             </li>
           </div>
           <div>
-            <li className="inline-flex text-base pt-5" onClick={handleLogout}>
+            <li className="inline-flex text-base pt-5 cursor-pointer" onClick={handleLogout}>
               <Icon
                 name="lock"
                 className="text-xl inline-flex self-center bg-brand-deepPink text-brand-white w-5"
@@ -175,7 +175,7 @@ const MainView: FC<IMainView> = ({
       {networkSetting && (
         <ul>
           <li
-            className="inline-flex py-1 px-4 text-base font-bold text-white bg-brand-greensettings rounded-full mt-4"
+            className="w-full inline-flex py-1 px-4 text-base font-bold text-white bg-brand-greensettings rounded-full mt-4 cursor-pointer"
             onClick={() => history.push('/general-connectedsites')}
           >
             <Icon
@@ -183,6 +183,16 @@ const MainView: FC<IMainView> = ({
               className="pr-4 inline-flex self-center text-base mb-0.5"
             />
             Show Connected sites
+          </li>
+          <li
+            className="w-full inline-flex py-1 px-4 text-base font-bold text-white bg-black rounded-full mt-4 cursor-pointer"
+            onClick={() => history.push('/general-blacklist')}
+          >
+            <Icon
+              name="clock"
+              className="pr-4 inline-flex self-center text-base mb-0.5"
+            />
+            Black List
           </li>
           <li
             className="inline-flex py-1 px-4 text-base font-bold text-white rounded-full mt-4"
@@ -217,7 +227,7 @@ const MainView: FC<IMainView> = ({
             </div>
           )}
           <li
-            className="inline-flex py-1 px-4 text-base font-bold text-white rounded-full mt-4"
+            className="inline-flex py-1 px-4 text-base font-bold text-white rounded-full mt-4 cursor-pointer"
             onClick={() => history.push('/general-autolock')}
           >
             <Icon
@@ -227,7 +237,7 @@ const MainView: FC<IMainView> = ({
             WEB3 Networks
           </li>
           <li
-            className="inline-flex py-1 px-4 text-base font-bold text-white rounded-full mt-4"
+            className="inline-flex py-1 px-4 text-base font-bold text-white rounded-full mt-4 cursor-pointer"
             onClick={() => history.push('/general-autolock')}
           >
             <Icon
@@ -237,7 +247,7 @@ const MainView: FC<IMainView> = ({
             Localhost
           </li>
           <li
-            className="inline-flex py-1 px-4 text-base font-bold text-white rounded-full mt-4"
+            className="inline-flex py-1 px-4 text-base font-bold text-white rounded-full mt-4 cursor-pointer"
             onClick={() => history.push('/general-customrpc')}
           >
             <Icon
@@ -247,7 +257,7 @@ const MainView: FC<IMainView> = ({
             Custom RPC
           </li>
           <li
-            className="inline-flex py-1 px-4 text-base font-bold text-white rounded-full mt-4"
+            className="inline-flex py-1 px-4 text-base font-bold text-white rounded-full mt-4 cursor-pointer"
             onClick={() => history.push('/general-editnetworks')}
           >
             <Icon
@@ -257,7 +267,7 @@ const MainView: FC<IMainView> = ({
             Edit Networks
           </li>
           <li
-            className="inline-flex py-1 px-4 text-base font-bold text-white rounded-full mt-4"
+            className="inline-flex py-1 px-4 text-base font-bold text-white rounded-full mt-4 cursor-pointer"
             onClick={() => history.push('/general-connectwith')}
           >
             <Icon
@@ -267,7 +277,7 @@ const MainView: FC<IMainView> = ({
             Connect with View
           </li>
           <li
-            className="inline-flex py-1 px-4 text-base font-bold text-white rounded-full mt-4"
+            className="inline-flex py-1 px-4 text-base font-bold text-white rounded-full mt-4 cursor-pointer"
             onClick={() => history.push('/general-createtoken')}
           >
             <Icon

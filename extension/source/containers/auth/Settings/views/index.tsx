@@ -13,3 +13,4 @@ export { default as EditNetworks } from './EditNetworksView';
 export { default as Connectedsites } from './ConnectedSitesView';
 export { default as ConnectWith } from './ConnectWithView';
 export { default as CreateToken } from './CreateTokenView';
+export { default as BlackList } from './BlackListView';

@@ -21,49 +21,77 @@ const ConnectedSites: FC<IConnectedSites> = ({}) => {
             address.
           </p>
         </div>
-        <div className="inline-flex pt-2 border-dashed border-b border-gray-100">
-          <p className="text-sm">app.uniswap.org</p>
-          <button
-            onClick={() => setShowModal(!showModal)}
-            className="w-1"
-            type="submit"
-          >
-            <Icon
-              name="select"
-              className="text-base inline-flex self-center pb-1"
-              maxWidth={'1'}
-            ></Icon>
-          </button>
+        <div className="grid grid-cols-6 gap-1 inline-flex pt-2 border-dashed border-b border-gray-100 border-opacity-10">
+          <div className="col-span-5">
+            <p className="text-sm">app.uniswap.org</p>
+          </div>
+          <div className="justify-self-end mr-3">
+            <button
+              onClick={() => setShowModal(!showModal)}
+              className="w-1"
+              type="submit"
+            >
+              <Icon
+                name="select"
+                className="text-base inline-flex self-center pb-1"
+                maxWidth={'1'}
+              ></Icon>
+            </button>
+          </div>
         </div>
-        <div className="inline-flex pt-2 border-dashed border-b border-gray-100">
-          <p className="text-sm">pancakeswap.finance</p>
-          <button className="w-1" type="submit">
-            <Icon
-              name="select"
-              className="text-base inline-flex self-center pb-1"
-              maxWidth={'1'}
-            ></Icon>
-          </button>
+        <div className="grid grid-cols-6 gap-1 inline-flex pt-2 border-dashed border-b border-gray-100 border-opacity-10">
+          <div className="col-span-5">
+            <p className="text-sm">pancakeswap.finance</p>
+          </div>
+          <div className="justify-self-end mr-3">
+            <button
+              onClick={() => setShowModal(!showModal)}
+              className="w-1"
+              type="submit"
+            >
+              <Icon
+                name="select"
+                className="text-base inline-flex self-center pb-1"
+                maxWidth={'1'}
+              ></Icon>
+            </button>
+          </div>
         </div>
-        <div className="inline-flex pt-2 border-dashed border-b border-gray-100">
-          <p className="text-sm">app.sushi.com/swap</p>
-          <button className="w-1" type="submit">
-            <Icon
-              name="select"
-              className="text-base inline-flex self-center pb-1"
-              maxWidth={'1'}
-            ></Icon>
-          </button>
+        <div className="grid grid-cols-6 gap-1 inline-flex pt-2 border-dashed border-b border-gray-100 border-opacity-10">
+          <div className="col-span-5">
+            <p className="text-sm">app.sushi.com/swap</p>
+          </div>
+          <div className="justify-self-end mr-3">
+            <button
+              onClick={() => setShowModal(!showModal)}
+              className="w-1"
+              type="submit"
+            >
+              <Icon
+                name="select"
+                className="text-base inline-flex self-center pb-1"
+                maxWidth={'1'}
+              ></Icon>
+            </button>
+          </div>
         </div>
-        <div className="inline-flex pt-2 border-dashed border-b border-gray-100">
-          <p className="text-sm">traderjoexyz.com</p>
-          <button className="w-1" type="submit">
-            <Icon
-              name="select"
-              className="text-base inline-flex self-center pb-1"
-              maxWidth={'1'}
-            ></Icon>
-          </button>
+        <div className="grid grid-cols-6 gap-1 inline-flex pt-2 border-dashed border-b border-gray-100 border-opacity-10">
+          <div className="col-span-5">
+            <p className="text-sm">traderjoexyz.com</p>
+          </div>
+          <div className="justify-self-end mr-3">
+            <button
+              onClick={() => setShowModal(!showModal)}
+              className="w-1"
+              type="submit"
+            >
+              <Icon
+                name="select"
+                className="text-base inline-flex self-center pb-1"
+                maxWidth={'1'}
+              ></Icon>
+            </button>
+          </div>
         </div>
         <div className="flex justify-center items-center pt-40">
           <Button type="submit">Close</Button>
@@ -79,11 +107,19 @@ const ConnectedSites: FC<IConnectedSites> = ({}) => {
               <div>
                 <div>
                   <p className="text-base">Delete connected site:</p>
-                  <p className="text-sm">Account123</p>
+                  <p className="text-sm text-brand-royalBlue mt-4">
+                    Account123
+                  </p>
                 </div>
                 <div className="inline-flex">
-                  <p className="text-base">app.uniswap.org</p>{' '}
-                  <Icon name="delete" className="text-base" />
+                  <div className="grid grid-cols-4 gap-1">
+                    <div className="col-span-3">
+                      <p className="text-base">app.uniswap.org</p>{' '}
+                    </div>
+                    <div className="justify-self-end">
+                      <Icon name="delete" className="text-base" />
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="bg-brand-navydarker p-2">

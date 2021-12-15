@@ -40,7 +40,8 @@ import {
   EditNetworks,
   Connectedsites,
   ConnectWith,
-  CreateToken
+  CreateToken,
+  BlackList
 } from 'containers/auth/Settings/views';
 
 import {
@@ -318,6 +319,7 @@ export const AuthRouter = () => {
               <Route path="/general-connectedsites" component={Connectedsites} exact />
               <Route path="/general-connectwith" component={ConnectWith} exact />
               <Route path="/general-createtoken" component={CreateToken} exact />
+              <Route path="/general-blacklist" component={BlackList} exact />
 
               <Route
                 path='/account'

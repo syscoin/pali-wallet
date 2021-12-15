@@ -150,8 +150,8 @@ export const NormalHeader: FC<INormalHeader> = ({
 
       <Settings
         accountSettings={false}
-        generalSettings={true}
-        networkSettings={false}
+        generalSettings={false}
+        networkSettings={true}
         open={generalSettingsShowed && isUnlocked}
         onClose={handleCloseSettings}
       />

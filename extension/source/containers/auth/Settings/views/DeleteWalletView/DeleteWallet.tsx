@@ -87,7 +87,7 @@ const DeleteWalletView = () => {
           </div>
           <Form.Item rules={[{ required: true }]}>
             <Input.TextArea
-              className="bg-brand-textareabg rounded w-80 text-base"
+              className="bg-brand-textareabg rounded w-80 text-base p-2 text-white"
               rows={3}
             />
           </Form.Item>
