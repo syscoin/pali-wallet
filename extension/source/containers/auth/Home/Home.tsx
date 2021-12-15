@@ -3,7 +3,7 @@ import { Icon, Button } from 'components/index';
 import {
   useController,
   useStore,
-  useFiat,
+  usePrice,
   useFormat,
   useUtils,
   useAccount
@@ -14,7 +14,7 @@ import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = useController();
-  const getFiatAmount = useFiat();
+  const getFiatAmount = usePrice();
 
   const { history, handleRefresh } = useUtils();
   const { formatNumber } = useFormat();

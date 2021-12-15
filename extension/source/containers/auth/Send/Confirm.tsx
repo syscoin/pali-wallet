@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Header } from 'containers/common/Header';
 import { Layout } from 'containers/common/Layout';
 import { Button, Icon } from 'components/index';;
-import { useController, useFiat, useStore, useUtils, useFormat } from 'hooks/index';
+import { useController, usePrice, useStore, useUtils, useFormat } from 'hooks/index';
 import { IAccountState } from 'state/wallet/types';
 import { browser } from 'webextension-polyfill-ts';
 
@@ -11,7 +11,7 @@ import { Assets } from 'scripts/types';
 
 export const SendConfirm = () => {
   const controller = useController();
-  const getFiatAmount = useFiat();
+  const getFiatAmount = usePrice();
 
   const { alert, getHost, history } = useUtils();
   const { ellipsis, formatURL } = useFormat();

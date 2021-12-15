@@ -9,27 +9,29 @@ import {
 } from 'react';
 import { Header } from 'containers/common/Header';
 import { Button, IconButton, Icon } from 'components/index';;
-import { useController, useFiat, useStore, useUtils, useAccount } from 'hooks/index';
+import { useController, usePrice, useStore, useUtils, useAccount } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { AuthViewLayout } from 'containers/common/Layout';
+import { Assets } from 'scripts/types';
 
 interface ISend {
   initAddress?: string;
 }
-export const Send: FC<ISend> = (/*{ initAddress = '' }*/) => {
-  // // const getFiatAmount = useFiat();
-  // const controller = useController();
-  const { alert, history } = useUtils();
-  // const { accounts, activeAccountId, activeNetwork, changingNetwork } = useStore();
+export const Send: FC<ISend> = ({ initAddress = '' }) => {
+  const getFiatAmount = usePrice();
+  const controller = useController();
+  // const { alert, history } = useUtils();
+  const { changingNetwork, activeNetwork } = useStore();
   const { activeAccount } = useAccount();
 
-  // const [address, setAddress] = useState<string>(initAddress);
-  // const [amount, setAmount] = useState<string>('');
-  // const [fee, setFee] = useState<string>('0.00001');
-  // const [recommend, setRecommend] = useState<number>(0);
-  // const [checked, setChecked] = useState<boolean>(false);
-  // const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
-  // const [expanded, setExpanded] = useState<boolean>(false);
+  const [address, setAddress] = useState<string>(initAddress);
+  const [amount, setAmount] = useState<string>('');
+  const [fee, setFee] = useState<string>('0.00001');
+  const [recommend, setRecommend] = useState<number>(0);
+  const [confirmed, setConfirmed] = useState<boolean>(false);
+  const [verifyAddress, setVerifyAddress] = useState<boolean>(false);
+  const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
+  const [expanded, setExpanded] = useState<boolean>(false);
 
   // const onSubmit = (data: any) => {
   //   const {
@@ -149,37 +151,78 @@ export const Send: FC<ISend> = (/*{ initAddress = '' }*/) => {
   //     accounts.find(element => element.id === activeAccountId)!.balance.toFixed(8))
   // }
 
+  const onSubmit = (data: any) => {
+    console.log('submit', data);
+  }
+
   return (
     <AuthViewLayout title="SEND SYS">
-      {loaded && activeAccount ? (
-        <div className="flex flex-col justify-center items-center pt-8">
-          <QRCode
-            value={activeAccount.address.main}
-            bgColor="#fff"
-            fgColor="#000"
-            style={{ height: '240px', width: '225px' }}
-          />
-
-          <p className="mt-4 text-base">{ellipsis(activeAccount.address.main, 4, 10)}</p>
-
-          <Button
-            type="button"
-            padding="py-1"
-            classNameBorder="absolute bottom-14"
-            onClick={() =>
-              copyText(activeAccount.address.main)
-            }
-          >
-            <span className="text-base">
-              {isCopied ? 'Copied address' : 'Copy'}
-            </span>
-          </Button>
+      {confirmed ? (
+        <div>
+          confirmed
         </div>
       ) : (
-        <Icon
-          name="loading"
-          className="w-4 text-brand-white"
-        />
+        <div>
+          not confirmed
+
+          <Form
+            name="basic"
+            labelCol={{ span: 8 }}
+            wrapperCol={{ span: 8 }}
+            initialValues={{ remember: true }}
+            onFinish={onSubmit}
+            autoComplete="off"
+            className="flex justify-center items-center flex-col gap-4 mt-8 text-center"
+          >
+            <Form.Item
+              name="receiver"
+              hasFeedback
+              rules={[
+                {
+                  required: true,
+                  message: ''
+                },
+                () => ({
+                  validator(_, value) {
+                    if (!value || controller.wallet.account.isValidSYSAddress(value, activeNetwork, verifyAddress)) {
+                      return Promise.resolve();
+                    }
+
+                    return Promise.reject('');
+                  },
+                }),
+              ]}
+            >
+              <Input
+                type="text"
+                placeholder="Receiver"
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="amount"
+              hasFeedback
+              rules={[
+                {
+                  required: true,
+                  message: ''
+                },
+              ]}
+            >
+              <Input
+                type="number"
+                placeholder="Amount"
+              />
+            </Form.Item>
+
+            <Button
+              type="submit"
+              classNameBorder="absolute bottom-12"
+            >
+              Next
+            </Button>
+          </Form>
+        </div>
       )}
     </AuthViewLayout>
   );

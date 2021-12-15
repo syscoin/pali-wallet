@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { useController, useFormat, useStore, useFiat } from 'hooks/index';
+import { useController, useFormat, useStore, usePrice } from 'hooks/index';
 import { Icon } from 'components/Icon';
 import { Button } from 'components/Button';
 import { Input } from 'antd';
@@ -10,7 +10,7 @@ const DeleteWalletView = () => {
   const controller = useController();
   const { accounts, activeAccountId, activeNetwork, changingNetwork } =
     useStore();
-  const getFiatAmount = useFiat();
+  const getFiatAmount = usePrice();
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();
     controller.wallet.account.watchMemPool(accounts[activeAccountId]);
