@@ -8,7 +8,6 @@ interface IOption {
 
 export const Select: FC<any> = ({
   value,
-  className,
   onChange,
   disabled = false,
   expanded,
@@ -16,24 +15,30 @@ export const Select: FC<any> = ({
   setExpanded,
   children,
   icon,
-  close
+  close,
+  className = "bg-brand-lightnavyborder",
+  standardClass = "relative w-full transition-all duration-300 cursor-pointer text-brand-white z-10"
 }) => {
   return (
     <div
-      className="relative w-full transition-all duration-300 cursor-pointer bg-brand-lightnavyborder text-brand-white z-10"
+      className={`${className} ${standardClass}`}
     >
       <p
         onClick={() => {
-          close(false);
+          if (close) {
+            close(false);
+          }
 
           setExpanded(!expanded);
         }}
         className="flex items-center pt-6 text-base px-6"
       >
-        <Icon
-          name={icon}
-          className="pr-4 inline-flex self-center text-base mb-0.5"
-        />
+        {icon && (
+          <Icon
+            name={icon}
+            className="pr-4 inline-flex self-center text-base mb-0.5"
+          />
+        )}
 
         <span>{title}</span>
 

@@ -8,7 +8,7 @@ import {
   FC,
 } from 'react';
 import { Header } from 'containers/common/Header';
-import { Button, IconButton, Icon } from 'components/index';;
+import { Button, IconButton, Icon, Select } from 'components/index';;
 import { useController, usePrice, useStore, useUtils, useAccount } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { AuthViewLayout } from 'containers/common/Layout';
@@ -163,8 +163,6 @@ export const Send: FC<ISend> = ({ initAddress = '' }) => {
         </div>
       ) : (
         <div>
-          not confirmed
-
           <Form
             name="basic"
             labelCol={{ span: 8 }}
@@ -199,6 +197,76 @@ export const Send: FC<ISend> = ({ initAddress = '' }) => {
               />
             </Form.Item>
 
+            <div className="flex justify-center items-center">
+              <Form.Item
+                name="asset"
+                className=""
+                hasFeedback
+                rules={[
+                  {
+                    required: true,
+                    message: ''
+                  },
+                ]}
+              >
+                <Select
+                  className="bg-brand-white"
+                  expanded={expanded}
+                  title={selectedAsset}
+                  setExpanded={setExpanded}
+                >
+                  <li>sys</li>
+                  <li>eth</li>
+                </Select>
+              </Form.Item>
+
+              <div className="flex justify-center items-center">
+                <Form.Item
+                  name="asset"
+                  className=""
+                  hasFeedback
+                  rules={[
+                    {
+                      required: true,
+                      message: ''
+                    },
+                  ]}
+                >
+                  <Select
+                    className="bg-brand-white"
+                    expanded={expanded}
+                    title={selectedAsset}
+                    setExpanded={setExpanded}
+                  >
+                    <li>sys</li>
+                    <li>eth</li>
+                  </Select>
+                </Form.Item>
+
+                <Form.Item
+                  name="asset"
+                  className=""
+                  hasFeedback
+                  rules={[
+                    {
+                      required: true,
+                      message: ''
+                    },
+                  ]}
+                >
+                  <Select
+                    className="bg-brand-white"
+                    expanded={expanded}
+                    title={selectedAsset}
+                    setExpanded={setExpanded}
+                  >
+                    <li>sys</li>
+                    <li>eth</li>
+                  </Select>
+                </Form.Item>
+              </div>
+            </div>
+
             <Form.Item
               name="amount"
               hasFeedback
@@ -214,6 +282,28 @@ export const Send: FC<ISend> = ({ initAddress = '' }) => {
                 placeholder="Amount"
               />
             </Form.Item>
+
+            <Form.Item
+              name="fee"
+              hasFeedback
+              rules={[
+                {
+                  required: true,
+                  message: ''
+                },
+              ]}
+            >
+              <Input
+                type="number"
+                placeholder="Fee"
+              />
+            </Form.Item>
+
+            <p>
+              With current network conditions we recommend a fee of 0.00001 SYS:
+              
+              <span>{recommend}</span>
+            </p>
 
             <Button
               type="submit"
