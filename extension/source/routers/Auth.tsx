@@ -37,7 +37,10 @@ import {
   PhraseView,
   PrivateKeyView,
   EditNetworkView,
-  CustomRPCView
+  CustomRPCView,
+  Connectedsites,
+  ConnectWith,
+  CreateToken
 } from 'containers/auth/Settings/views';
 
 import {
@@ -334,6 +337,10 @@ export const AuthRouter = () => {
               />
               <Route path="/networks-edit" component={EditNetworkView} exact />
               <Route path="/networks-custom" component={CustomRPCView} exact />
+              <Route path="/networks-sites" component={Connectedsites} exact />
+
+              <Route path="/connections-connect-with" component={ConnectWith} exact />
+              <Route path="/connections-transaction" component={CreateToken} exact />
 
               {canConnect && (
                 <>

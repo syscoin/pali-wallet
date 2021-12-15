@@ -93,7 +93,7 @@ const DeleteWalletView = () => {
           </Form.Item>
           <div className="inline-flex">
             <button
-              className="mr-14 inline-flex tracking-normal text-base leading-4 py-2.5 px-8 cursor-pointer font-light border border-brand-white transition-all duration-300 bg-gradient-to-r from-blue-500 via-pink-500 to-green-500 tracking-normal text-base rounded-full hover:from-pink-500 hover:via-green-500 hover:to-yellow-500"
+              className="text-white mr-14 inline-flex tracking-normal text-base leading-4 py-2.5 px-8 cursor-pointer font-light border border-brand-royalBlue transition-all duration-300 tracking-normal text-base rounded-full hover:bg-brand-royalBlue hove:text-white"
               type="button"
               onClick={() => history.goBack()}
             >
@@ -105,7 +105,7 @@ const DeleteWalletView = () => {
               Cancel
             </button>
             <button
-              className="inline-flex tracking-normal text-base leading-4 py-2.5 px-8 cursor-pointer font-light border border-brand-white transition-all duration-300 bg-gradient-to-r from-blue-500 via-pink-500 to-green-500 tracking-normal text-base rounded-full hover:from-pink-500 hover:via-green-500 hover:to-yellow-500"
+              className="text-white inline-flex tracking-normal text-base leading-4 py-2.5 px-8 cursor-pointer font-light border border-brand-deepPink transition-all duration-300 tracking-normal text-base rounded-full hover:bg-brand-deepPink hover:text-white"
               type="submit"
             >
               <Icon

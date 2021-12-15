@@ -2,7 +2,6 @@ import React, { FC } from 'react';
 // import { useController, useFormat, useUtils, useStore } from 'hooks/index';
 // import CryptoJS from 'crypto-js';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { Header } from 'containers/common/Header';
 import { Button } from 'antd';
 
 import { WarningCard } from 'components/Cards';
@@ -51,9 +50,8 @@ const PrivateKeyView: FC<IPrivateKeyView> = (/*{ id }*/) => {
 
   return (
     <>
-      <Header normalHeader />
       <AuthViewLayout title="X - PUB">
-        <div >
+        <div>
           {/* {accounts[Number(id)] && (
             <>
               <div >
@@ -85,18 +83,21 @@ const PrivateKeyView: FC<IPrivateKeyView> = (/*{ id }*/) => {
           )} */}
         </div>
       </AuthViewLayout>
-        <AddresCard title={'X - Pub'} account={'0x3126...jdi84r4js0i937d3864c983'}></AddresCard>
-        <WarningCard >
-        this action will delete your wallet and all accounts
-                  associated with this wallet. Please make sure to back up your Wallet
-                  seed phase if you would like to access this wallet and associated
-                  accounts in the future.
-        </WarningCard>
+      <AddresCard
+        title={'X - Pub'}
+        account={'0x3126...jdi84r4js0i937d3864c983'}
+      ></AddresCard>
+      <WarningCard
+        className="w-full rounded text-white border-dashed border border-white text-justify "
+        warningText="WARNING : "
+      >
+        This is your account root indexer to check your full balance for this
+        account, it isn’t a receiving address. DO NOT SEND FUNDS TO THIS
+        ADDRESS, YOU WILL LOOSE THEM!
+      </WarningCard>
       <div className="flex items-center justify-center pt-32">
         <div className="p-0.5 bg-primary rounded-full ">
-          <Button
-            className="bg-brand-navy tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white hover:backgroundImage"
-          >
+          <Button className="bg-brand-navy tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white hover:backgroundImage">
             Close
           </Button>
         </div>

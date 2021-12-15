@@ -54,22 +54,15 @@ export const ConfirmPhrase = () => {
   };
 
   return (
-    <Layout
-      title="Confirm Recovery Phrase"
-      onlySection
-    >
-      <div
-        className="text-brand-white transition-all duration-300 ease-in-out flex justify-center items-center flex-col gap-4 mt-2"
-      >
+    <Layout title="Confirm Recovery Phrase" onlySection>
+      <div className="text-brand-white transition-all duration-300 ease-in-out flex justify-center items-center flex-col gap-4 mt-2">
         <>
-          <section
-            className="flex p-4 flex-wrap box-border min-h-full transition-all duration-300 items-center justify-center gap-4 border-b border-brand-graylight w-11/12"
-          >
+          <section className="flex pt-6 h-32 pb-2 flex-wrap box-border min-h-full transition-all duration-300 gap-1 border-b border-brand-graylight w-11/12">
             {newList.map((phrase, idx) => (
               <Button
                 noStandard
                 type="button"
-                className="px-6 text-brand-white min-w-xs h-7 text-xs flex items-center justify-center tracking-normal bg-brand-royalBlue border border-brand-royalBlue rounded-md"
+                className="px-3 text-brand-white min-w-xs h-7 text-base flex items-center justify-center tracking-normal bg-brand-royalBlue border border-brand-royalBlue rounded"
                 key={idx}
                 onClick={() => handleNewPhrase(idx)}
               >
@@ -78,14 +71,12 @@ export const ConfirmPhrase = () => {
             ))}
           </section>
 
-          <section
-            className="flex p-6 w-full flex-wrap box-border min-h-full transition-all duration-300 items-center justify-center gap-4 pb-10"
-          >
+          <section className="flex px-4 pt-3 w-full flex-wrap box-border min-h-full transition-all duration-300 gap-1 pb-10">
             {orgList.map((phrase, idx) => (
               <Button
                 noStandard
                 type="button"
-                className="px-2 min-w-xs h-7 text-xs leading-4 flex items-center justify-center tracking-normal bg-brand-navy p-1 border-2 border-brand-royalBlue rounded-md text-brand-white"
+                className="px-3 min-w-xs h-7 text-base leading-4 flex items-center justify-center tracking-normal bg-brand-navy p-1 border border-brand-royalBlue rounded-md text-brand-white"
                 key={idx}
                 onClick={() => handleOrgPhrase(idx)}
               >
@@ -105,22 +96,14 @@ export const ConfirmPhrase = () => {
 
         {passed && (
           <div className="transition-all duration-300 ease-in-out">
-            <div
-              className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-darktransparent"
-            />
+            <div className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-darktransparent" />
 
-            <div
-              className="transition-all duration-300 ease-in-out fixed z-10 flex flex-col bg-brand-navymedium top-1/3 left-8 right-8 p-6 rounded-3xl"
-            >
-              <h2
-                className="pb-4 text-brand-white border-b border-dashed border-brand-graylight w-full text-center mb-4"
-              >
+            <div className="transition-all duration-300 ease-in-out fixed z-10 flex flex-col bg-brand-deepPink top-1/3 left-8 right-8 p-6 rounded-3xl">
+              <h2 className="pb-4 text-brand-white border-b border-dashed border-brand-graylight w-full text-center mb-4">
                 YOUR WALLET IS READY
               </h2>
 
-              <span
-                className="font-light text-brand-graylight text-xs"
-              >
+              <span className="font-light text-brand-graylight text-sm">
                 You should now have your recovery phrase and your wallet
                 password written down for future reference.
               </span>

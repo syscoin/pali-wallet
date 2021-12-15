@@ -1,23 +1,15 @@
 import React, { FC, useState } from 'react';
 import { Button, Icon } from 'components/index';;
-import { useController } from 'hooks/index';
-import TutorialPanel from './TutorialPanel';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { Header } from 'containers/common/Header';
+
 import { Form, Input } from 'antd';
 import { WarningCard } from 'components/Cards';
 
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
-  const controller = useController();
-
-  const onclick = async () => {
-    controller.wallet.createHardwareWallet();
-  };
 
   return (
     <>
-      <Header normalHeader />
       <AuthViewLayout title="CONNECT HARDWARE WALLET"> </AuthViewLayout>
       <Form
           className="flex justify-center items-center flex-col gap-2 text-center pt-4"

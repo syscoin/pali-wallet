@@ -38,7 +38,7 @@ export const Receive = () => {
 
           <Button
             type="button"
-            padding="py-1"
+            padding="py-1 bg-brand-navydarker"
             classNameBorder="absolute bottom-14"
             onClick={() =>
               copyText(activeAccount.address.main)
@@ -52,6 +52,7 @@ export const Receive = () => {
       ) : (
         <Icon
           name="loading"
+          wrapperClassname="absolute top-1/2 left-1/2"
           className="w-4 text-brand-white"
         />
       )}

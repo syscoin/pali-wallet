@@ -32,25 +32,31 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings, networkSett
   return (
     <div className="text-brand-white">
       {generalSettings && (
-        <ul>
+        <ul className="px-3">
           <li
-            className="inline-flex m-px pt-6 text-base"
+            className="inline-flex m-px pt-4 text-base"
             onClick={() => history.push('/general-autolock')}
           >
-            <Icon name="clock" className="pr-4 inline-flex self-center text-base mb-0.5" />
+            <Icon
+              name="clock"
+              className="pr-4 inline-flex self-center text-xl mb-0.5"
+            />
             Auto lock timer
           </li>
 
           <li
-            className="inline-flex m-px pt-6 text-base"
+            className="inline-flex m-px pt-4 text-base"
             onClick={() => history.push('/general-currency')}
           >
-            <Icon name="dolar" className="pr-4 inline-flex self-center text-base mb-0.5" />
+            <Icon
+              name="dolar"
+              className="pr-4 inline-flex self-center text-xl mb-0.5"
+            />
             Currency
           </li>
 
           <li
-            className="inline-flex m-px pt-6 text-base"
+            className="inline-flex m-px pt-4 text-base"
             onClick={() => history.push('/general-phrase')}
           >
             <Icon name="wallet" className="pr-4 inline-flex self-center text-base mb-0.5" />
@@ -59,7 +65,7 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings, networkSett
           </li>
 
           <li
-            className="inline-flex m-px pt-6 text-base"
+            className="inline-flex m-px pt-4 text-base"
             onClick={() => history.push('/general-about')}
           >
             <Icon name="warning" className="pr-4 inline-flex self-center text-base mb-0.5" />
@@ -68,10 +74,13 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings, networkSett
           </li>
 
           <li
-            className="inline-flex m-px pt-6 text-base"
+            className="inline-flex m-px pt-4 text-base"
             onClick={() => history.push('/general-delete')}
           >
-            <Icon name="delete" className="pr-4 inline-flex self-center text-base mb-0.5" />
+            <Icon
+              name="delete"
+              className="pr-4 inline-flex self-center text-xl mb-0.5"
+            />
             Delete Wallet
           </li>
         </ul>

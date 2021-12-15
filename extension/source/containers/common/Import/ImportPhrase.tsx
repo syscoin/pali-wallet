@@ -36,9 +36,9 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           rules={[
             {
               required: true,
-              message: ''
+              message: '',
             },
-            ({ }) => ({
+            ({}) => ({
               validator(_, value) {
                 setSeedIsValid(controller.wallet.importPhrase(value));
 
@@ -46,7 +46,11 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
                   return Promise.resolve();
                 }
 
-                return Promise.reject('Seed phrase is not valid');
+                return Promise.reject(
+                  <p className="text-red fixed h-12">
+                    Seed phrase is not valid
+                  </p>
+                );
               },
             }),
           ]}

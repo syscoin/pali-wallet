@@ -35,7 +35,7 @@ const PhraseView = () => {
     <>
       <AuthViewLayout title="WALLET SEED PHRASE"> </AuthViewLayout>
       <div className="flex justify-center items-center flex-col min-w-full">
-        <div className="flex justify-center items-center text-brand-gray pt-4">
+        <div className="flex justify-center items-center text-white pt-4">
           <p className="pl-6 text-base">
             Please input your wallet password and press enter
           </p>
@@ -73,19 +73,22 @@ const PhraseView = () => {
         </Form>
 
         <div className="flex items-center justify-center pt-4">
-          <Card
-            className="w-full rounded text-brand-white"
-            style={{ width: 320, border: '1px', background: '#4d76b8' }}
-          >
+          <Card className="h-24 rounded text-brand-white bg-brand-textareabg w-80">
             <div className="p-4">
               <div className="flex text-brand-white">
-                <p className="text-base">Seed Phrase: (click to copy)</p>
-                <Icon
-                  name="copy"
-                  className="pl-20 inline-flex self-center text-base pr-1"
-                />
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2">
+                    <p className="text-sm">Seed Phrase: (click to copy)</p>
+                  </div>
+                  <div className="justify-self-end">
+                    <Icon
+                      name="copy"
+                      className="inline-flex self-center text-base pl-10"
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="text-base pt-1" onClick={handleCopySeed}>
+              <div className="text-sm pt-1" onClick={handleCopySeed}>
                 {phrase}
               </div>
             </div>
@@ -93,10 +96,10 @@ const PhraseView = () => {
         </div>
         <WarningCard
           className="w-full rounded text-brand-white border-dashed border border-light-blue-500 text-justify"
-          warningText="Warning:"
+          warningText="Warning : "
         >
           Keep your seed phrase secret! Anyone with your seed phrase can access
-          any account connected to this wallet and steal your assets.
+          any account connected to this wallet and steal your assets
         </WarningCard>
         <Button type="submit">Close</Button>
       </div>

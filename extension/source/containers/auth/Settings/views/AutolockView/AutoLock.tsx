@@ -42,7 +42,10 @@ const AutolockView = () => {
   };
   return (
     <div >
-        <AuthViewLayout title="AUTO LOCK TIMER">You can set auto lock timer. Default is 5 minutes after no activity</AuthViewLayout>
+        <AuthViewLayout title="AUTO LOCK TIMER"> </AuthViewLayout>
+        <div className="px-4">
+          <p className="text-white text-base ">You can set auto lock timer. Default is 5 minutes after no activity</p>
+        </div>
         <Form
           className="flex justify-center items-center flex-col gap-8 text-center pt-4"
           name="basic"
@@ -69,7 +72,7 @@ const AutolockView = () => {
           <div className="transition-all duration-300 ease-in-out">
             <div className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-darktransparent" />
 
-            <div className="transition-all duration-300 ease-in-out fixed z-10 flex flex-col bg-brand-royalBlue top-1/3 left-8 right-8 p-6 rounded-3xl">
+            <div className="items-center justify-self-center transition-all duration-300 ease-in-out fixed z-10 flex flex-col bg-brand-royalBlue top-1/3 left-8 right-8 p-6 rounded-3xl">
               <h2 className="pb-4 text-brand-white border-b border-dashed border-brand-graylight w-full text-center mb-4">
                 AUTO LOCK TIMER
               </h2>
@@ -78,12 +81,13 @@ const AutolockView = () => {
                 After 20 minutes of no activity, your wallet will be locked
               </span>
 
-              <Button
-                type="submit"
+              <button
+                type="button"
+                className="w-14 tracking-normal text-base leading-4 py-2.5 px-4 cursor-pointer rounded-full bg-brand-royalBlue text-brand-white font-light border border-brand-white hover:bg-brand-white hover:text-brand-royalBlue transition-all duration-300 mt-8"
                 onClick={handleConfirm}
               >
                 Ok!
-              </Button>
+              </button>
             </div>
           </div>
         )}

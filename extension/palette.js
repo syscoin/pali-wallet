@@ -14,6 +14,8 @@ module.exports = {
 
     textareabg: '#4D76B8',
     blueWarningTest: '#85B6FF',
+    greensettings: "#079C31",
+    bluesettings: "#1E365C",
 
     royalBlue: '#4d76b8',
     royalBluemedium: '#4ca1cf',

@@ -88,5 +88,5 @@ export const NormalHeader: FC<INormalHeader> = ({
         onClose={handleCloseSettings}
       />
     </div>
-  )
-}
+  );
+};
