@@ -1,8 +1,7 @@
-import { Button } from 'antd';
-import { Icon } from 'components/Icon';
 import React, { FC } from 'react';
+import { Icon, IconButton } from 'components/index';
 import { Header } from '../Header';
-
+import { useUtils } from 'hooks/useUtils';
 
 interface IAuthViewLayout {
   title: string;
@@ -13,15 +12,24 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
   title,
   children
 }) => {
+  const { history } = useUtils();
+
   return (
     <>
       <Header normalHeader />
-      <div className="w-full flex justify-center items-center text-brand-white bg-brand-navyborder py-4 px-4">
-        <p className="text-xl max-w-sm">{title}</p>
-        <Button ><Icon name="close" className="inline-flex self-center text-base" /></Button>
+
+      <div className="w-full flex justify-center items-center text-brand-white bg-brand-navyborder p-6 relative">
+        <p className="text-xl max-w-sm flex-1 text-center">{title}</p>
+
+        <IconButton
+          onClick={() => history.push('/home')}
+        >
+          <Icon name="close" wrapperClassname="flex 1" />
+        </IconButton>
       </div>
-      <div className="flex justify-center items-center text-brand-gray pt-6">
-        <p className="pl-6 text-base">{children}</p>
+
+      <div className="text-brand-white">
+        {children}
       </div>
     </>
   );

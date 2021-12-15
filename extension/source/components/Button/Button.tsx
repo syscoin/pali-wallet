@@ -10,6 +10,8 @@ interface IButton {
   className?: string;
   noStandard?: boolean;
   classNameBorder?: string;
+  standardPadding?: string;
+  padding?: string;
 }
 
 export const Button: FC<IButton> = ({
@@ -19,9 +21,11 @@ export const Button: FC<IButton> = ({
   type = 'button',
   onClick,
   className = "",
-  standardClass = "text-brand-white tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer font-light transition-all duration-300 rounded-full bg-brand-navy hover:bg-transparent",
+  standardClass = "text-brand-white tracking-normal text-base leading-4 px-12 cursor-pointer font-light transition-all duration-300 rounded-full bg-brand-navy hover:bg-transparent",
   noStandard = false,
   classNameBorder = "",
+  standardPadding = 'py-2.5',
+  padding = ""
 }) => {
   return (
     <>
@@ -37,7 +41,7 @@ export const Button: FC<IButton> = ({
       ) : (
         <div className={`p-0.5 bg-primary rounded-full ${classNameBorder}`}>
           <button
-            className={`${className} ${standardClass}`}
+            className={`${padding ? padding : standardPadding}${className} ${standardClass}`}
             disabled={disabled || loading}
             onClick={onClick}
             type={type}
