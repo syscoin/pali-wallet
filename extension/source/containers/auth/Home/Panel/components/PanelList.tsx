@@ -72,7 +72,7 @@ export const PanelList: FC<IPanelList> = ({
                 <li
                   className="border-dashed border-b border-gray-600 py-2"
                 >
-                  <div className="flex justify-between pr-6 text-xs">
+                  <div className="flex justify-between pr-6 text-xs relative">
                     <div>
                       <p>{ellipsis(String(tx.txid), 4, 14)}</p>
 
@@ -84,7 +84,7 @@ export const PanelList: FC<IPanelList> = ({
                     </div>
 
                     <div className="flex justify-self-end">
-                      <div className="mr-12">
+                      <div className="mr-6 text-right">
                         <p className="text-blue-300">
                           {timestamp}
                         </p>

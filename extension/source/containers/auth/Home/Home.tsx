@@ -42,7 +42,7 @@ export const Home = () => {
           <Header accountHeader />
 
           <section
-            className="flex items-center flex-col gap-1 text-brand-white bg-brand-navydarker pb-14 pt-8"
+            className="flex items-center flex-col gap-1 text-brand-white bg-brand-navydarker py-14"
           >
             <div className="text-center flex justify-center flex-col items-center">
               {activeNetwork == 'testnet' ? (
