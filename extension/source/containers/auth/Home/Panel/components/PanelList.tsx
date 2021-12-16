@@ -77,7 +77,7 @@ export const PanelList: FC<IPanelList> = ({
                       <p>{ellipsis(String(tx.txid), 4, 14)}</p>
 
                       <p
-                        className="text-yellow-300"
+                        className={isConfirmed ? "text-brand-green" : "text-yellow-300"}
                       >
                         {isConfirmed ? 'Confirmed' : 'Pending'}
                       </p>
