@@ -26,7 +26,8 @@ module.exports = {
         popup: '600px',
         input: '18rem',
         '1/2': '50%',
-        '70': '70%'
+        '70': '70%',
+        '95': '95%'
       },
       minWidth: {
         popup: '372px'
@@ -52,7 +53,8 @@ module.exports = {
         'rubik': 'Rubik'
       },
       fontSize: {
-        'xxs': '0.01px'
+        'xxs': '0.01px',
+        '10px': '10px'
       }
     },
   },

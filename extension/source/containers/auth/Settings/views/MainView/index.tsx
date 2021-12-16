@@ -2,6 +2,8 @@ import React, { FC, useState } from 'react';
 import { useController, useUtils, useStore } from 'hooks/index';
 import { Icon, Select } from 'components/index';
 import { SYS_NETWORK, ETH_NETWORK } from 'constants/index';
+import { Disclosure } from '@headlessui/react';
+import { ChevronUpIcon } from '@heroicons/react/solid';
 
 interface IMainView {
   accountSettings?: boolean;
@@ -156,7 +158,7 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings, networkSett
             {Object.values(SYS_NETWORK).map((network: any) => {
               return (
                 <li
-                  className="flex items-center justify-around p-2 hover:bg-brand-lightnavyborder transition-all duration-300"
+                  className="flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95"
                   onClick={() => handleChangeNetwork(network.id)}
                 >
                   <span>{network.label}</span>
@@ -181,10 +183,10 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings, networkSett
             setExpanded={setExpandedETH}
             close={setExpandedSYS}
           >
-            {Object.values(ETH_NETWORK).map((network: any) => {
+            {Object.values(SYS_NETWORK).map((network: any) => {
               return (
                 <li
-                  className="flex items-center justify-around p-2 hover:bg-brand-lightnavyborder transition-all duration-300"
+                  className="flex items-center flex-col p-2 text-sm font-medium text-white transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95"
                   onClick={() => handleChangeNetwork(network.id)}
                 >
                   <span>{network.label}</span>

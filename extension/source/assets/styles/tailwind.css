@@ -43,6 +43,10 @@
   @apply absolute right-10 text-brand-navymedium top-0;
 }
 
+#send .ant-form-item-children-icon {
+  @apply absolute right-2 text-brand-navymedium top-1;
+}
+
 .ant-form-item-explain.ant-form-item-explain-error {
   @apply relative;
 }

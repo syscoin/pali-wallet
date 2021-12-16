@@ -41,7 +41,7 @@ export const Button: FC<IButton> = ({
       ) : (
         <div className={`p-0.5 bg-primary rounded-full ${classNameBorder}`}>
           <button
-            className={`${padding ? padding : standardPadding}${className} ${standardClass}`}
+            className={`${padding ? padding : standardPadding} ${className} ${standardClass}`}
             disabled={disabled || loading}
             onClick={onClick}
             type={type}

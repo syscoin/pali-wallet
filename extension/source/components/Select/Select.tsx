@@ -58,7 +58,7 @@ export const Select: FC<any> = ({
 
       <ul
         className={expanded ?
-          'block bg-brand-navy my-2 text-sm' :
+          'block bg-brand-navydarker py-2 my-2 text-sm' :
           'hidden'
         }
       >
