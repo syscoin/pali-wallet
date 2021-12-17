@@ -32,7 +32,6 @@ import {
   ConnectHardwareWalletView,
   CurrencyView,
   DeleteWalletView,
-  MainView,
   NewAccountView,
   PhraseView,
   PrivateKeyView,
@@ -303,22 +302,13 @@ export const AuthRouter = () => {
                 exact
               />
               <Route path="/receive" component={Receive} exact />
-              <Route
-                path='/general'
-                component={MainView}
-                exact
-              />
+         
               <Route path="/general-autolock" component={AutolockView} exact />
               <Route path="/general-about" component={AboutView} exact />
               <Route path="/general-phrase" component={PhraseView} exact />
               <Route path="/general-delete" component={DeleteWalletView} exact />
               <Route path="/general-currency" component={CurrencyView} exact />
-
-              <Route
-                path='/account'
-                component={MainView}
-                exact
-              />
+           
               <Route
                 path='/account-priv'
                 render={(props) => (
@@ -330,11 +320,6 @@ export const AuthRouter = () => {
               <Route path="/account-newaccount" component={NewAccountView} exact />
               <Route path="/account-details" component={AccountView} exact />
 
-              <Route
-                path='/networks'
-                component={MainView}
-                exact
-              />
               <Route path="/networks-edit" component={EditNetworkView} exact />
               <Route path="/networks-custom" component={CustomRPCView} exact />
               <Route path="/networks-sites" component={Connectedsites} exact />
