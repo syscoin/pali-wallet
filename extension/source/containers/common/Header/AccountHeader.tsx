@@ -118,7 +118,7 @@ export const AccountHeader: FC<IAccountHeader> = ({
                       {accounts.map((account: IAccountState) => {
                         return (
                           <li
-                            className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95"
+                            className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
                             onClick={() => switchAccount(account.id)}
                           >
                             <span>{account.label} ({ellipsis(account.address.main, 4, 8)})</span>
@@ -134,7 +134,14 @@ export const AccountHeader: FC<IAccountHeader> = ({
                         )
                       })}
 
-                      <li onClick={() => history.push('/account-newaccount')} className="mt-4 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 border-t border-dashed border-brand-deepPink100">Create new account</li>
+                      <li
+                        onClick={() => history.push('/account-newaccount')}
+                        className="mt-4 flex w-full items-center p-2.5 text-sm font-medium text-brand-deepPink100 transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-center duration-300 mx-auto max-w-95 border-t border-dashed border-brand-deepPink100 cursor-pointer"
+                      >
+                        <Icon name="appstoreadd" className="text-brand-deepPink100 mb-1" />
+
+                        <span>Create new account</span>
+                      </li>
                     </Disclosure.Panel>
                   </>
                 )}

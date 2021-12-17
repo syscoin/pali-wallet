@@ -118,7 +118,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                           {Object.values(SYS_NETWORK).map((network: any) => {
                             return (
                               <li
-                                className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95"
+                                className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
                                 onClick={() => handleChangeNetwork(network.id)}
                               >
                                 <span>{network.label}</span>
@@ -172,7 +172,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                           {Object.values(SYS_NETWORK).map((network: any) => {
                             return (
                               <li
-                                className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95"
+                                className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
                                 onClick={() => handleChangeNetwork(network.id)}
                               >
                                 <span>{network.label}</span>
@@ -206,7 +206,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                       <Icon
                         name="check"
                         className="w-4 mb-1"
-                        wrapperClassname="w-6 absolute right-1"
+                        wrapperClassname="w-6"
                       />
                     )}
                   </li>
@@ -214,7 +214,7 @@ export const NormalHeader: FC<INormalHeader> = ({
 
                 <Menu.Item>
                   <li
-                    onClick={() => history.push('/networks-custom-rpc')}
+                    onClick={() => history.push('/networks-custom')}
                     className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:text-brand-graylight"
                   >
                     <Icon name="appstoreadd" className="text-yellow-300 ml-1 mr-4" />

@@ -32,8 +32,8 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            placeholder="Receiver"
-            className="rounded-full py-2 px-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
+            placeholder="Network name"
+            className="ant-input rounded-full py-3 pl-4 pr-24 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
           />
         </Form.Item>
 
@@ -49,8 +49,8 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            placeholder="Receiver"
-            className="rounded-full py-2 px-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
+            placeholder="Blockbook URL"
+            className="ant-input rounded-full py-3 pl-4 pr-24 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
           />
         </Form.Item>
 
@@ -67,13 +67,14 @@ const CustomRPCView = () => {
           <Input
             disabled={true}
             type="text"
-            placeholder="Receiver"
-            className="rounded-full py-2 px-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
+            placeholder="Chain ID"
+            className={`${true ? 'ant-input rounded-full py-3 pl-4 pr-24 bg-brand-navydarker bg-opacity-60 border border-brand-gray100 cursor-not-allowed text-sm' : 'ant-input rounded-full py-3 pl-4 pr-24 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none'}`}
           />
         </Form.Item>
        
         <Button
           type="submit"
+          className="bg-brand-navydarker"
           classNameBorder="absolute bottom-12"
         >
           Next
