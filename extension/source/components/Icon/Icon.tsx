@@ -33,7 +33,8 @@ import {
   AppstoreAddOutlined,
   EditOutlined,
   CheckCircleOutlined,
-  CaretUpOutlined
+  CaretUpOutlined,
+  MessageOutlined
 } from '@ant-design/icons';
 
 const icons = {
@@ -70,7 +71,8 @@ const icons = {
   'appstoreadd': AppstoreAddOutlined,
   'edit': EditOutlined,
   'check': CheckCircleOutlined,
-  'select-up': CaretUpOutlined
+  'select-up': CaretUpOutlined,
+  'message': MessageOutlined
 }
 
 interface IIcon {
