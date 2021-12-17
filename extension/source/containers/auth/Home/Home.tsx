@@ -12,7 +12,6 @@ export const Home = () => {
   const getFiatAmount = useFiat();
   const { history } = useUtils();
   const { formatNumber } = useFormat();
-
   const {
     accounts,
     activeAccountId,
@@ -62,7 +61,6 @@ export const Home = () => {
   const handleOpenAssetExplorer = (assetGuid: number) => {
     window.open(`${sysExplorer}/asset/${assetGuid}`);
   };
-  
 
   return (
     <div>
@@ -224,6 +222,7 @@ export const Home = () => {
               </div>
 
             )}
+          
 
             {changingNetwork ? (
               <p className="text-royalBlue">...</p>

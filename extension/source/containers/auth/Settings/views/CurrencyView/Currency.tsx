@@ -4,9 +4,10 @@ import { useController, useFormat, useStore, useFiat } from 'hooks/index';
 import { Icon } from 'components/Icon';
 import { Button } from 'components/Button';
 import { Input } from 'antd';
+
 const { formatNumber } = useFormat();
 const DeleteWalletView = () => {
-  // const controller = useController();
+
   const controller = useController();
   const { accounts, activeAccountId, activeNetwork, changingNetwork } =
     useStore();
@@ -25,6 +26,12 @@ const DeleteWalletView = () => {
       handleRefresh();
     }
   }, [!controller.wallet.isLocked(), accounts.length > 0]);
+
+  const handleCoingeckoSimplePrice = async ( ) => {
+    let data = await controller.Coingecko.simplePrice('syscoin', 'USD') // example
+    console.log(data)
+  
+  }
   return (
     <>
       <AuthViewLayout title="CURRENCY"> </AuthViewLayout>
@@ -84,6 +91,9 @@ const DeleteWalletView = () => {
         </div>
       </div>
       <div className="bg-brand-darkRoyalBlue px-4 h-40">
+        <div>
+          <button onClick={handleCoingeckoSimplePrice}>Test</button>
+        </div>
         <div>
           <p className="text-base pt-4 text-white">
             Check your balance in different currencies

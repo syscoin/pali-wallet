@@ -83,4 +83,5 @@ export default interface IWalletState {
   updatingAsset: boolean;
   walletTokens: IWalletTokenState[];
   timer: number;
+  fiat: number;
 }

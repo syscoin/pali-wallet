@@ -44,6 +44,7 @@ const initialState: IWalletState = {
     connections: [],
   },
   timer: 5,
+  fiat: 0
 };
 
 const WalletState = createSlice({
@@ -435,6 +436,12 @@ const WalletState = createSlice({
 
       state.accounts[indexOf].label = action.payload.label;
     },
+    setFiat(state: IWalletState, value: PayloadAction<number>) {
+      return {
+        ...state,
+        fiat: value.payload,
+      };
+    },
   },
 });
 
@@ -470,6 +477,7 @@ export const {
   signPSBTState,
   setIssueNFT,
   setTimer,
+  setFiat
 } = WalletState.actions;
 
 export default WalletState.reducer;

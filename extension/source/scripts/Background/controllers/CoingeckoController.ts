@@ -1,11 +1,13 @@
-const { CoinGecko } = require('coingecko-api');
-export interface ICoingeckoController {
-  ping: () => Promise<any>;
-}
+import CoinGeckoClient from './CoingeckoClient';
+import store from 'state/store';
+import {
+  setFiat
+} from 'state/wallet';
+import {
+  updateFiatPrice
+} from 'state/price'
 
 const CoingeckoController = (): ICoingeckoController => {
-  const CoinGeckoClient = new CoinGecko();
-
   // Check API server status.
   const ping = async () => {
     let data = await CoinGeckoClient.ping();
@@ -14,19 +16,32 @@ const CoingeckoController = (): ICoingeckoController => {
 
   /*
   Get the current price of any cryptocurrencies in any other supported currencies that you need.
+  @params
   params: Object - Parameters to pass through to the request
   params.ids: Array|String - (Required) A single id or a list of coin ids to filter if you want specific results. Use coins.list() for a list of coin ids.
   params.vs_currencies: Array|String - [default: usd] - A single id or a list of ids. Use simple.supportedVsCurrencies() for a list of vsCurrency ids.
   params.include_24hr_vol: Boolean - [default: false] - To include 24hr volume.
   params.include_last_updated_at: Boolean - [default: false] - To include last_updated_at of price.
   */
- const simplePrice = async () => {
-   
- }
+  const simplePrice = async (coin: string, fiat : string) => {
+    try {
+      let data = await CoinGeckoClient.simple.price({
+        ids: [coin],
+        vs_currencies: [fiat],
+      });
+      if(data){
+        setFiatValue(coin, data.data.syscoin.usd)
+      }
+      return data;
+    } catch (err) {
+      return err
+    }
+  };
 
   // Get cryptocurrency global data.
   const global = async () => {
     let data = await CoinGeckoClient.global();
+    return data;
   };
 
   /* List all coins with data (name, price, market, developer, community, etc) - paginated by 50.
@@ -40,15 +55,18 @@ const CoingeckoController = (): ICoingeckoController => {
   */
   const coinsAll = async () => {
     let data = await CoinGeckoClient.coins.all();
+    return data;
   };
 
   // Use this to obtain all the coins’ id in order to make API calls
   const coinsList = async () => {
     let data = await CoinGeckoClient.coins.list();
-  }
+    return data;
+  };
 
   /*
   Use this to obtain all the coins market data (price, market cap, volume).
+  @params
   params: Object - Parameters to pass through to the request
   params.order: String - Order results by CoinGecko.ORDER[*]
   params.per_page: Number - Total results per page
@@ -58,12 +76,14 @@ const CoingeckoController = (): ICoingeckoController => {
   params.vs_currency: String [default: usd] - The target currency of market data (usd, eur, jpy, etc.)
   params.ids: Array|String - List of coin id to filter if you want specific results
   */
- const coinsMarkets = async () => {
-  let data = await CoinGeckoClient.coins.markets();
- }
+  const coinsMarkets = async () => {
+    let data = await CoinGeckoClient.coins.markets();
+    return data;
+  };
 
- /*
+  /*
  Get current data (name, price, market, … including exchange tickers) for a coin.
+ @params
  coinId: String - (Required) The coin id (can be obtained from coins.list()) eg. bitcoin
  params: Object - Parameters to pass through to the request
  params.tickers: Boolean - [default: true] - Include ticker data
@@ -73,23 +93,39 @@ const CoingeckoController = (): ICoingeckoController => {
  params.localization: Boolean [default: true] - Set to false to exclude localized languages in response
  params.sparkline: Boolean [default: false] - Include sparkline 7 days data
  */
-const coinsFetch = async () => {
-  let data = await CoinGeckoClient.coins.fetch('bitcoin', {});
-}
+  const coinsFetch = async () => {
+    let data = await CoinGeckoClient.coins.fetch('bitcoin', {});
+    return data;
+  };
 
-/*
+  /*
 Get coin tickers (paginated to 100 items).
+@params
 coinId: String - (Required) The coin id (can be obtained from coins.list()) eg. bitcoin
 params: Object - Parameters to pass through to the request
 params.page: Number - Page through results
 params.exchange_ids: Array|String - Filter tickers by exchange_ids (can be obtained from exchanges.list()) eg. binance
 params.order: String - [default: trust_score_desc] - Order results by CoinGecko.ORDER.TRUST_SCORE_DESC or CoinGecko.ORDER.VOLUME_DESC
 */
-const coinsFectchTickers = async () => {
-  let data = await CoinGeckoClient.coins.fetchTickers('bitcoin');
-}
+  const coinsFectchTickers = async () => {
+    let data = await CoinGeckoClient.coins.fetchTickers('bitcoin');
+    return data;
+  };
+
+  const setFiatValue = (coin: string, price : number) => {
+    store.dispatch(setFiat(price));
+    store.dispatch(updateFiatPrice({ assetId: coin, price: price }))
+  }
+
   return {
     ping,
+    simplePrice,
+    global,
+    coinsAll,
+    coinsList,
+    coinsMarkets,
+    coinsFetch,
+    coinsFectchTickers,
   };
 };
 

@@ -201,3 +201,14 @@ declare interface IConnectionsController {
   signAndSend: (psbt: any) => Promise<any> | null;
   signPSBT: (psbtToSign: any) => Promise<any> | null;
 }
+
+declare interface ICoingeckoController {
+  ping: () => Promise<object>;
+  simplePrice: (coin, fiat) => Promise<any>;
+  global: () => Promise<any>;
+  coinsAll: () => Promise<any>;
+  coinsList: () => Promise<any>;
+  coinsMarkets: () => Promise<any>;
+  coinsFetch: () => Promise<any>;
+  coinsFectchTickers: () => Promise<any>;
+}
