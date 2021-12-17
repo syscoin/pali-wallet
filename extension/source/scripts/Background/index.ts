@@ -115,21 +115,6 @@ const checkToCallPrivateMethods = () => {
   }
 };
 
-const checkAndSendMessages = async () => {
-  if (checkToCallPrivateMethods().error) {
-    const tabs: any = await getTabs({ active: true, windowType: 'normal' });
-
-    for (const tab of tabs) {
-      if (tab) {
-        runtimeSendMessageToTabs({ tabId: tab.id, messageDetails: { type: 'WALLET_ERROR', target: 'contentScript', transactionError: true, invalidParams: false, message: checkToCallPrivateMethods().message } });
-        console.log('errorroror state to page')
-      }
-    }
-
-    return;
-  };
-}
-
 const runtimeSendMessageToTabs = async ({ tabId, messageDetails }: any) => {
   return await browser.tabs.sendMessage(Number(tabId), messageDetails);
 }

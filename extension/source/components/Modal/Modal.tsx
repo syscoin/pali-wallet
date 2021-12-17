@@ -180,7 +180,7 @@ export const Modal: FC<IModal> = ({
         />
       )}
 
-      {type === 'standard' && (
+      {type === 'default' && (
         <DefaultModal
           onClose={onClose}
           open={open}

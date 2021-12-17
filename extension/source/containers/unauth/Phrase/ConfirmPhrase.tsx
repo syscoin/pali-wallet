@@ -95,7 +95,7 @@ export const ConfirmPhrase = () => {
 
         {passed && (
           <Modal
-            type="standard"
+            type="default"
             title="YOUR WALLET IS READY"
             description="You should now have your recovery phrase and your wallet password written down for future reference."
             open={passed}

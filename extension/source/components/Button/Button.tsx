@@ -47,7 +47,7 @@ export const Button: FC<IButton> = ({
             onClick={onClick}
             type={type}
           >
-            {loading ? <Icon name="loading" className="text-brand-white" /> : children}
+            {loading ? <Icon name="loading" className="text-brand-white m-0 w-5 h-5" /> : children}
           </button>
         </div>
       )}

@@ -63,6 +63,10 @@
   @apply absolute right-2 text-brand-navymedium top-1;
 }
 
+#autolock .ant-form-item-children-icon {
+  @apply absolute right-9 text-brand-navymedium top-1;
+}
+
 .ant-form-item-explain.ant-form-item-explain-error {
   @apply relative;
 }

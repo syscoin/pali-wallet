@@ -44,7 +44,7 @@ export const SendConfirm = () => {
     <AuthViewLayout title="SEND SYS">
       {confirmed ? (
         <Modal
-          type="standard"
+          type="default"
           title="Transaction successful"
           description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
           open={confirmed}

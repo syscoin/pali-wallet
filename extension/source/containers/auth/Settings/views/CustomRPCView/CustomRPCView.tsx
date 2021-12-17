@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
 import { Form, Input } from 'antd';
 import { Button } from 'components/Button';
@@ -6,13 +6,18 @@ import axios from 'axios';
 import { useUtils, useController } from 'hooks/index';
 import { EditNetworkView } from '..';
 
-const CustomRPCView = () => {
+const CustomRPCView = ({
+  selectedToEdit
+}) => {
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState('');
   const [edit, setEdit] = useState(false);
 
   const { alert } = useUtils();
   const controller = useController();
+
+  useEffect(() => {
+    console.log(selectedToEdit, 'selected')
+  }, [selectedToEdit]);
 
   const onSubmit = async ({ network, blockbookURL }: any) => {
     setLoading(true);
@@ -24,16 +29,15 @@ const CustomRPCView = () => {
       if (response && coin) {
         if (coin === 'Syscoin' || coin === 'Syscoin Testnet') {
           controller.wallet.account.updateNetworkData({
-            id: selected ?
-              selected :
+            id: selectedToEdit ?
+              selectedToEdit.id :
               network.toString().toLowerCase(),
             label: network,
             beUrl: blockbookURL
           });
 
           setLoading(false);
-          setSelected('');
-          setEdit(false);
+          setEdit(true);
 
           return;
         }
@@ -51,7 +55,7 @@ const CustomRPCView = () => {
   return (
     <>
       {edit ? (
-        <EditNetworkView onSubmit={onSubmit} loading={loading} />
+        <EditNetworkView />
       ) : (
         <AuthViewLayout title="CUSTOM RPC">
           <Form
@@ -59,7 +63,11 @@ const CustomRPCView = () => {
             name="send"
             labelCol={{ span: 8 }}
             wrapperCol={{ span: 8 }}
-            initialValues={{ remember: true }}
+            initialValues={{
+              blockbookURL: selectedToEdit ? selectedToEdit.beUrl : '',
+              network: selectedToEdit ? selectedToEdit.label : '',
+              chainID: selectedToEdit ? selectedToEdit.chainID : ''
+            }}
             onFinish={onSubmit}
             autoComplete="off"
             className="flex justify-center items-center flex-col gap-4 mt-8 text-center"
@@ -77,7 +85,7 @@ const CustomRPCView = () => {
               <Input
                 type="text"
                 placeholder="Network name"
-                className="ant-input rounded-full py-3 pl-4 pr-24 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
+                className="ant-input ant-input rounded-full py-3 pl-4 w-72 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
               />
             </Form.Item>
 
@@ -94,7 +102,7 @@ const CustomRPCView = () => {
               <Input
                 type="text"
                 placeholder="Blockbook URL"
-                className="ant-input rounded-full py-3 pl-4 pr-24 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
+                className="ant-input ant-input rounded-full py-3 pl-4 w-72 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
               />
             </Form.Item>
 
@@ -112,9 +120,11 @@ const CustomRPCView = () => {
                 disabled={true}
                 type="text"
                 placeholder="Chain ID"
-                className={`${true ? 'ant-input rounded-full py-3 pl-4 pr-24 bg-brand-navydarker bg-opacity-60 border border-brand-gray100 cursor-not-allowed text-sm' : 'ant-input rounded-full py-3 pl-4 pr-24 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none'}`}
+                className={`${true ? 'ant-input rounded-full py-3 pl-4 w-72 bg-brand-navydarker bg-opacity-60 border border-brand-gray100 cursor-not-allowed text-sm' : 'ant-input ant-input rounded-full py-3 pl-4 w-72 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none'}`}
               />
             </Form.Item>
+
+            <p className="text-brand-white font-poppins py-4 text-center px-8 text-sm">You can edit this later if you need on network settings menu.</p>
 
             <Button
               type="submit"
