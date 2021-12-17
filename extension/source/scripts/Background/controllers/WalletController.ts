@@ -155,6 +155,7 @@ const WalletController = (): IWalletController => {
 
       if (!HDsigner || !sjs) {
         const response = await axios.get(`${store.getState().wallet.currentBlockbookURL}/api/v2`);
+        
         const { blockbook, backend } = response.data;
 
         if (response && blockbook && backend) {
