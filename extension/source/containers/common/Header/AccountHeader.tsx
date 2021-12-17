@@ -66,7 +66,7 @@ export const AccountHeader: FC<IAccountHeader> = ({
 
           <Menu.Items
             as="div"
-            className="menu bg-brand-navyborder pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 right-0 h-96 origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
+            className="menu bg-brand-navyborder pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 right-0 h-85 origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
           >
             <h2
               className="bg-brand-navydarker pt-8 pb-6 text-brand-white border-b border-dashed border-brand-deepPink100 w-full text-center mb-6"
@@ -134,7 +134,7 @@ export const AccountHeader: FC<IAccountHeader> = ({
                         )
                       })}
 
-                      <li onClick={() => history.push('/account-newaccount')} className="text-brand-white">Create new account</li>
+                      <li onClick={() => history.push('/account-newaccount')} className="mt-4 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 border-t border-dashed border-brand-deepPink100">Create new account</li>
                     </Disclosure.Panel>
                   </>
                 )}

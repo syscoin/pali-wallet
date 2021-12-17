@@ -50,15 +50,15 @@ export const NormalHeader: FC<INormalHeader> = ({
                 </div>
 
                 <span>
-                  {network}
-                </span>
+                    {network}
+                  </span>
 
-                <IconButton className="mb-1">
-                  <Icon name="select-down"
-                    className={`${open ? 'transform rotate-180' : ''
-                      } text-brand-white`}
-                  />
-                </IconButton>
+                  <IconButton className="mb-1">
+                    <Icon name="select-down"
+                      className={`${open ? 'transform rotate-180' : ''
+                        } text-brand-white`}
+                    />
+                  </IconButton>
               </div>
             </Menu.Button>
 
@@ -257,7 +257,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                   type="primary"
                   shape="circle"
                 >
-                  <Icon name="settings" className="text-brand-white z-0" />
+                  <Icon name="settings" className="hover:text-brand-royalBlue text-brand-white z-0" />
                 </IconButton>
               ) : (
                 null
@@ -355,7 +355,7 @@ export const NormalHeader: FC<INormalHeader> = ({
 
       <IconButton
         onClick={handleRefresh}
-        className="text-brand-white absolute right-10"
+        className="hover:text-brand-deepPink100 text-brand-white absolute right-10"
       >
         <Icon
           name="reload"
