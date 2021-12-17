@@ -1,8 +1,8 @@
-import React, { FC, useState } from 'react';
+import React, { FC, Fragment, useState } from 'react';
 import { useController, useUtils, useStore } from 'hooks/index';
 import { Icon, Select } from 'components/index';
 import { SYS_NETWORK, ETH_NETWORK } from 'constants/index';
-import { Disclosure } from '@headlessui/react';
+import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { ChevronUpIcon } from '@heroicons/react/solid';
 
 interface IMainView {
@@ -33,62 +33,7 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings, networkSett
 
   return (
     <div className="text-brand-white">
-      {generalSettings && (
-        <ul className="px-3">
-          <li
-            className="inline-flex m-px pt-4 text-base"
-            onClick={() => history.push('/general-autolock')}
-          >
-            <Icon
-              name="clock"
-              className="pr-4 inline-flex self-center text-xl mb-0.5"
-            />
-            Auto lock timer
-          </li>
 
-          <li
-            className="inline-flex m-px pt-4 text-base"
-            onClick={() => history.push('/general-currency')}
-          >
-            <Icon
-              name="dolar"
-              className="pr-4 inline-flex self-center text-xl mb-0.5"
-            />
-            Currency
-          </li>
-
-          <li
-            className="inline-flex m-px pt-4 text-base"
-            onClick={() => history.push('/general-phrase')}
-          >
-            <Icon name="wallet" className="pr-4 inline-flex self-center text-base mb-0.5" />
-
-            Wallet Seed Phrase
-          </li>
-
-          <li
-            className="inline-flex m-px pt-4 text-base"
-            onClick={() => history.push('/general-about')}
-          >
-            <Icon name="warning" className="pr-4 inline-flex self-center text-base mb-0.5" />
-
-            Info/Help
-          </li>
-
-          <li
-            className="inline-flex m-px pt-4 text-base"
-            onClick={() => history.push('/general-delete')}
-          >
-            <Icon
-              name="delete"
-              className="pr-4 inline-flex self-center text-xl mb-0.5"
-            />
-            Delete Wallet
-          </li>
-        </ul>
-      )}
-
-      {/* <DollarOutlined /> */}
 
       {accountSettings && (
         <ul>
@@ -135,99 +80,6 @@ const MainView: FC<IMainView> = ({ accountSettings, generalSettings, networkSett
         </ul>
       )}
 
-      {networkSettings && (
-        <ul>
-          <div className="px-6">
-            <li
-              className="px-3 flex items-center bg-brand-lightgreen rounded-full text-sm w-full py-1"
-              onClick={() => history.push('/networks-sites')}
-            >
-              <Icon name="globe" className="pr-4 inline-flex self-center text-base mb-0.5" />
-              Show connected sites
-            </li>
-          </div>
-
-          <Select
-            value="Mainnet"
-            title="Syscoin networks"
-            icon="dolar"
-            expanded={expandedSYS}
-            setExpanded={setExpandedSYS}
-            close={setExpandedETH}
-          >
-            {Object.values(SYS_NETWORK).map((network: any) => {
-              return (
-                <li
-                  className="flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95"
-                  onClick={() => handleChangeNetwork(network.id)}
-                >
-                  <span>{network.label}</span>
-
-                  {activeNetwork === network.id && (
-                    <Icon
-                      name="check"
-                      className="w-4 mb-1"
-                      wrapperClassname="w-6 absolute right-1"
-                    />
-                  )}
-                </li>
-              )
-            })}
-          </Select>
-
-          <Select
-            value="Mainnet"
-            title="Ethereum networks"
-            icon="dolar"
-            expanded={expandedETH}
-            setExpanded={setExpandedETH}
-            close={setExpandedSYS}
-          >
-            {Object.values(SYS_NETWORK).map((network: any) => {
-              return (
-                <li
-                  className="flex items-center flex-col p-2 text-sm font-medium text-white transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95"
-                  onClick={() => handleChangeNetwork(network.id)}
-                >
-                  <span>{network.label}</span>
-
-                  {activeNetwork === network.id && (
-                    <Icon
-                      name="check"
-                      className="w-4 mb-1"
-                      wrapperClassname="w-6 absolute right-1"
-                    />
-                  )}
-                </li>
-              )
-            })}
-          </Select>
-
-          <li
-            className="px-6 flex items-center pt-6 text-base"
-          >
-            <Icon name="home" className="pr-4 inline-flex self-center text-base mb-0.5" />
-
-            Localhost 8545
-          </li>
-
-          <li
-            className="px-6 flex items-center pt-6 text-base"
-            onClick={() => history.push('/networks-custom')}
-          >
-            <Icon name="appstoreadd" className="pr-4 inline-flex self-center text-base mb-0.5" />
-            Custom RPC
-          </li>
-
-          <li
-            className="px-6 flex items-center pt-6 text-base"
-            onClick={() => history.push('/networks-edit')}
-          >
-            <Icon name="edit" className="pr-4 inline-flex self-center text-base mb-0.5" />
-            Edit networks
-          </li>
-        </ul>
-      )}
     </div>
   );
 };

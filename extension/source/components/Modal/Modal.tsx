@@ -1,124 +1,18 @@
-// import React, { FC } from 'react';
-// import { useFormat, useUtils, useBrowser, useStore } from 'hooks/index';
-
-// interface IModal {
-//   callback?: any;
-//   connected?: boolean;
-//   message?: any;
-//   title: any;
-// }
-
-// export const Modal: FC<IModal> = ({ title, message, connected, callback }) => {
-//   const { accounts } = useStore();
-//   const { ellipsis, formatURL } = useFormat();
-//   const { getHost } = useUtils();
-//   const { browser } = useBrowser();
-
-//   const handleDisconnect = (id: number) => {
-//     browser.runtime.sendMessage({
-//       type: 'RESET_CONNECTION_INFO',
-//       target: 'background',
-//       id,
-//       url: title,
-//     });
-//   };
-
-//   const connectedAccounts = accounts.filter((account) => {
-//     return account.connectedTo.find((url: any) => url === getHost(title));
-//   });
-
-//   return (
-//     <div>
-//       <div>
-//         <small>{formatURL(title)}</small>
-
-//         {connected && (
-//           <small>
-//             You have {connectedAccounts.length} account connected to this site
-//           </small>
-//         )}
-//       </div>
-
-//       <p>{message}</p>
-
-//       {!connected && (
-//         <div>
-//           <button
-//             type="button"
-//             onClick={() => callback()
-//           }>
-//             Close
-//           </button>
-//         </div>
-//       )}
-
-//       {connected && (
-//         <div>
-//           {connectedAccounts.map((item) => {
-//             return (
-//               <div key={item.id}>
-//                 <div >
-//                   <p>{item.label}</p>
-//                   <small>{ellipsis(item.address.main)}</small>
-//                 </div>
-
-//                 <svg
-//                   onClick={() => handleDisconnect(item.id)}
-//                   width="13"
-//                   height="16"
-//                   viewBox="0 0 13 16"
-//                   fill="none"
-//                   xmlns="http://www.w3.org/2000/svg"
-//                 >
-//                   <path
-//                     d="M12.3077 0.888889H9.23077L8.35165 0H3.95604L3.07692 0.888889H0V2.66667H12.3077V0.888889ZM0.879121 3.55556V14.2222C0.879121 15.2 1.67033 16 2.63736 16H9.67033C10.6374 16 11.4286 15.2 11.4286 14.2222V3.55556H0.879121ZM7.91209 9.77778V13.3333H4.3956V9.77778H2.63736L6.15385 6.22222L9.67033 9.77778H7.91209Z"
-//                     fill="#4ca1cf"
-//                   />
-//                 </svg>
-//               </div>
-//             );
-//           })}
-
-//           <div>
-//             <p>Permissions</p>
-
-//             <div>
-//               <input
-//                 disabled
-//                 type="checkbox"
-//                 name="permission"
-//                 id="permission"
-//                 checked
-//               />
-//               <small>View the adresses of your permitted accounts.</small>
-//             </div>
-//           </div>
-
-//           <div>
-//             <button
-//               type="button"
-//               onClick={() => callback()
-//             }>
-//               Close
-//             </button>
-//           </div>
-//         </div>
-//       )}
-//     </div>
-//   );
-// };
-
+import { Dialog, Transition } from '@headlessui/react';
 import { useWindowsAPI } from 'hooks/useBrowser';
-import React, { FC, useMemo } from 'react';
+import { useUtils } from 'hooks/useUtils';
+import React, { FC, Fragment, useMemo } from 'react';
 import { Button } from '..';
 
 interface IModal {
-  title?: string;
+  title: string;
   onClose: any;
   closeMessage?: string;
-  connectedAccount: any;
+  connectedAccount?: any;
   open: boolean;
   type: string;
+  description: string;
+  doNothing?: boolean;
 }
 
 const ConnectionModal = ({
@@ -176,11 +70,97 @@ const ConnectionModal = ({
   )
 }
 
+const DefaultModal = ({
+  onClose,
+  open,
+  goTo = '/home',
+  background = 'bg-brand-navyborder',
+  textColor = 'text-gray-300',
+  title = '',
+  description = '',
+  closeMessage = 'Ok',
+  doNothing = false,
+}) => {
+  const { history } = useUtils();
+
+  return (
+    <Transition appear show={open} as={Fragment}>
+      <Dialog
+        as="div"
+        className="fixed inset-0 z-10 overflow-y-auto"
+        onClose={onClose}
+      >
+        <div
+          onClick={goTo && doNothing ? () => null : goTo && !doNothing ? () => history.push(goTo) : onClose}
+          className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-darktransparent"
+        />
+
+        <div className="min-h-screen px-4 text-center">
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-300"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-200"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <Dialog.Overlay className="fixed inset-0" />
+          </Transition.Child>
+
+          <span
+            className="inline-block h-screen align-middle"
+            aria-hidden="true"
+          >
+            &#8203;
+          </span>
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-300"
+            enterFrom="opacity-0 scale-95"
+            enterTo="opacity-100 scale-100"
+            leave="ease-in duration-200"
+            leaveFrom="opacity-100 scale-100"
+            leaveTo="opacity-0 scale-95"
+          >
+            <div className={`font-poppins inline-block w-full max-w-md p-6 my-8 overflow-hidden text-center align-middle transition-all transform ${background} shadow-xl rounded-2xl`}>
+              <Dialog.Title
+                as="h3"
+                className="text-lg font-medium leading-6 text-brand-white"
+              >
+                {title}
+              </Dialog.Title>
+              <div className="mt-2">
+                <p className={`text-sm ${textColor}`}>
+                  {description}
+                </p>
+              </div>
+
+              <div className="mt-4">
+                <button
+                  type="button"
+                  className="inline-flex justify-center px-12 py-2 text-sm font-medium text-brand-royalBlue bg-blue-100 border border-transparent rounded-full hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalBlue"
+                  onClick={goTo ? () => history.push(goTo) : onClose}
+                >
+                  {closeMessage}
+                </button>
+              </div>
+            </div>
+          </Transition.Child>
+        </div>
+      </Dialog>
+    </Transition>
+  )
+}
+
 export const Modal: FC<IModal> = ({
   onClose,
   open,
   connectedAccount,
   type,
+  description,
+  title,
+  doNothing
 }) => {
   const { getCurrentOrigin } = useWindowsAPI();
 
@@ -194,9 +174,20 @@ export const Modal: FC<IModal> = ({
         <ConnectionModal
           onClose={onClose}
           open={open}
-          closeMessage = 'Close'
+          closeMessage='Close'
           connectedAccount={connectedAccount}
           currentOrigin={currentOrigin}
+        />
+      )}
+
+      {type === 'standard' && (
+        <DefaultModal
+          onClose={onClose}
+          open={open}
+          closeMessage='Got it'
+          title={title}
+          description={description}
+          doNothing={doNothing}
         />
       )}
     </>

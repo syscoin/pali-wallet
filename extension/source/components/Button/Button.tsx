@@ -1,4 +1,5 @@
 import React, { ReactNode, FC } from 'react';
+import { Icon } from '..';
 
 interface IButton {
   children: ReactNode;
@@ -41,12 +42,12 @@ export const Button: FC<IButton> = ({
       ) : (
         <div className={`p-0.5 bg-primary rounded-full ${classNameBorder}`}>
           <button
-            className={`${padding ? padding : standardPadding} ${className} ${standardClass}`}
+            className={disabled ? 'text-brand-white tracking-normal text-base leading-4 px-12 font-light transition-all duration-300 rounded-full bg-brand-navy cursor-not-allowed border-brand-graysemi  hover:bg-transparent' : `${padding ? padding : standardPadding} ${className} ${standardClass}`}
             disabled={disabled || loading}
             onClick={onClick}
             type={type}
           >
-            {children}
+            {loading ? <Icon name="loading" className="text-brand-white" /> : children}
           </button>
         </div>
       )}

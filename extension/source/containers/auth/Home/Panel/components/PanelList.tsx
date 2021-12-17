@@ -127,7 +127,7 @@ export const PanelList: FC<IPanelList> = ({
                   <IconButton>
                     <Icon
                       name="arrow-up"
-                      className="w-4 bg-brand-gray200 text-brand-navy"
+                      className="w-4 text-brand-gray200"
                     />
                   </IconButton>
                 </li>
