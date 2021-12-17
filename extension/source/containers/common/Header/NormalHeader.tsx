@@ -25,12 +25,6 @@ export const NormalHeader: FC<INormalHeader> = ({
     controller.wallet.getNewAddress();
   };
 
-  // const handleLogout = () => {
-  //   controller.wallet.logOut();
-
-  //   history.push('/app.html');
-  // };
-
   const NetworkMenu = () => {
     return (
       <Menu
@@ -86,7 +80,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                 className="menu bg-brand-navyborder pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 left-0 h-96 origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
               >
                 <h2
-                  className=" bg-brand-navydarker pt-8 pb-6 text-brand-white border-b border-dashed border-brand-graylight w-full text-center mb-6"
+                  className=" bg-brand-navydarker pt-8 pb-6 text-brand-white border-b border-dashed border-yellow-300 w-full text-center mb-6"
                 >
                   NETWORK SETTINGS
                 </h2>
@@ -100,7 +94,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                         >
                           <Icon
                             name="dolar"
-                            className="ml-1 mr-4"
+                            className="ml-1 mr-4 text-yellow-300"
                           />
 
                           <span
@@ -114,7 +108,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                             className={`${open ?
                               'transform rotate-180' :
                               ''
-                              } mb-1 text-brand-white`}
+                              } text-yellow-300 mb-1`}
                           />
                         </Disclosure.Button>
 
@@ -154,7 +148,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                         >
                           <Icon
                             name="dolar"
-                            className="ml-1 mr-4"
+                            className="ml-1 mr-4 text-yellow-300"
                           />
 
                           <span
@@ -168,7 +162,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                             className={`${open ?
                               'transform rotate-180' :
                               ''
-                              } mb-1 text-brand-white`}
+                              } mb-1 text-yellow-300`}
                           />
                         </Disclosure.Button>
 
@@ -204,7 +198,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                     onClick={() => handleChangeNetwork('localhost')}
                     className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:text-brand-graylight"
                   >
-                    <Icon name="home" className="ml-1 mr-4" />
+                    <Icon name="home" className="ml-1 mr-4 text-yellow-300" />
 
                     <span className="px-3">Localhost 8545</span>
 
@@ -223,7 +217,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                     onClick={() => history.push('/networks-custom-rpc')}
                     className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:text-brand-graylight"
                   >
-                    <Icon name="appstoreadd" className="ml-1 mr-4" />
+                    <Icon name="appstoreadd" className="text-yellow-300 ml-1 mr-4" />
 
                     <span className="px-3">Custom RPC</span>
                   </li>
@@ -234,7 +228,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                     onClick={() => history.push('/networks-edit')}
                     className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:text-brand-graylight"
                   >
-                    <Icon name="edit" className="ml-1 mr-4" />
+                    <Icon name="edit" className="text-yellow-300 ml-1 mr-4" />
 
                     <span className="px-3">Edit networks</span>
                   </li>
@@ -251,7 +245,7 @@ export const NormalHeader: FC<INormalHeader> = ({
     return (
       <Menu
         as="div"
-        className="absolute right-2 inline-block text-right z-0"
+        className="absolute right-2 inline-block text-right z-10"
       >
         {() => (
           <>
@@ -288,7 +282,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                 className="menu bg-brand-navyborder pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 right-0 h-96 origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
               >
                 <h2
-                  className=" bg-brand-navydarker pt-8 pb-6 text-brand-white border-b border-dashed border-brand-graylight w-full text-center mb-6"
+                  className=" bg-brand-navydarker pt-8 pb-6 text-brand-white border-b border-dashed border-brand-royalBlue w-full text-center mb-6"
                 >
                   GENERAL SETTINGS
                 </h2>
@@ -298,7 +292,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                     onClick={() => history.push('/general-autolock')}
                     className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:text-brand-graylight"
                   >
-                    <Icon name="clock" className="ml-1 mr-4" />
+                    <Icon name="clock" className="text-brand-royalBlue ml-1 mr-4" />
 
                     <span className="px-3">Auto lock timer</span>
                   </li>
@@ -309,7 +303,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                     onClick={() => history.push('/general-currency')}
                     className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:text-brand-graylight"
                   >
-                    <Icon name="dolar" className="ml-1 mr-4" />
+                    <Icon name="dolar" className="text-brand-royalBlue ml-1 mr-4" />
 
                     <span className="px-3">Currency</span>
                   </li>
@@ -320,7 +314,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                     onClick={() => history.push('/general-phrase')}
                     className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:text-brand-graylight"
                   >
-                    <Icon name="wallet" className="ml-1 mr-4" />
+                    <Icon name="wallet" className="text-brand-royalBlue ml-1 mr-4" />
 
                     <span className="px-3">Wallet Seed Phrase</span>
                   </li>
@@ -331,7 +325,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                     onClick={() => history.push('/general-about')}
                     className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:text-brand-graylight"
                   >
-                    <Icon name="warning" className="ml-1 mr-4" />
+                    <Icon name="warning" className="text-brand-royalBlue ml-1 mr-4" />
 
                     <span className="px-3">Info/Help</span>
                   </li>
@@ -342,7 +336,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                     onClick={() => history.push('/general-delete')}
                     className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:text-brand-graylight"
                   >
-                    <Icon name="delete" className="ml-1 mr-4" />
+                    <Icon name="delete" className="text-brand-royalBlue ml-1 mr-4" />
 
                     <span className="px-3">Delete wallet</span>
                   </li>
@@ -356,7 +350,7 @@ export const NormalHeader: FC<INormalHeader> = ({
   }
 
   return (
-    <div className="relative flex items-center justify-between bg-brand-navydarker text-gray-300 p-2 py-6 w-full z-10">
+    <div className="relative flex items-center justify-between bg-brand-navydarker text-gray-300 p-2 py-6 w-full">
       <NetworkMenu />
 
       <IconButton

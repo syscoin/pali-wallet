@@ -17,9 +17,6 @@ interface ISettings {
 export const Settings: FC<ISettings> = ({
   onClose,
   open,
-  generalSettings = true,
-  accountSettings = false,
-  networkSettings = false,
 }) => {
   const { changingNetwork } = useStore();
 
