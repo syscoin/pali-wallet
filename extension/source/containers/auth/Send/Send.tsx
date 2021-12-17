@@ -29,7 +29,6 @@ export const Send: FC<ISend> = () => {
   // const getFiatAmount = usePrice();
   const controller = useController();
 
-
   const { alert, history } = useUtils();
   const { getAssetBalance, updateSendTemporaryTx } = useTransaction();
   const { activeAccount } = useAccount();

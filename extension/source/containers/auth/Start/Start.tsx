@@ -7,8 +7,8 @@ import { Form, Input } from 'antd';
 export const Start = () => {
   const controller = useController();
 
-  const onSubmit = (data: any) => {
-    controller.wallet.unLock(data.password);
+  const onSubmit = async (data: any) => {
+    await controller.wallet.unLock(data.password);
   };
   
   return (
@@ -38,8 +38,8 @@ export const Start = () => {
               message: ''
             },
             ({}) => ({
-              validator(_, value) {
-                if (controller.wallet.unLock(value)) {
+              async validator(_, value) {
+                if (await controller.wallet.unLock(value)) {
                   return Promise.resolve();
                 }
 

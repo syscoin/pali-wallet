@@ -1,4 +1,4 @@
-import { sys, SYS_NETWORK } from 'constants/index';
+import { sys } from 'constants/index';
 import { generateMnemonic, validateMnemonic } from 'bip39';
 import { fromZPrv, fromZPub } from 'bip84';
 import {
@@ -78,8 +78,10 @@ const WalletController = (): IWalletController => {
       return;
     }
 
+    const { networks } = store.getState().wallet;
+
     setHDSigner({ mnemonic, password: null, isTestnet: false });
-    setSjs({ SignerIn: HDsigner, blockbookURL: SYS_NETWORK.main.beUrl });
+    setSjs({ SignerIn: HDsigner, blockbookURL: networks.main.beUrl });
 
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
@@ -142,7 +144,7 @@ const WalletController = (): IWalletController => {
     return checkPassword(pwd) ? HDsigner.mnemonic : null;
   };
 
-  const unLock = (pwd: string): boolean => {
+  const unLock = async (pwd: string) => {
     try {
       const encriptedMnemonic = retrieveEncriptedMnemonic();
       const decriptedMnemonic = CryptoJS.AES.decrypt(encriptedMnemonic, pwd).toString(CryptoJS.enc.Utf8);
@@ -152,11 +154,25 @@ const WalletController = (): IWalletController => {
       }
 
       if (!HDsigner || !sjs) {
-        const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
-        const backendURl: string = store.getState().wallet.activeNetwork === 'testnet' ? SYS_NETWORK.testnet.beUrl : SYS_NETWORK.main.beUrl;
+        const response = await axios.get(`${store.getState().wallet.currentBlockbookURL}/api/v2`);
+        const { blockbook, backend } = response.data;
 
-        setHDSigner({ mnemonic: decriptedMnemonic, password: null, isTestnet, networks: sys.utils.syscoinNetworks, SLIP44: 57, pubTypes: sys.utils.syscoinZPubTypes });
-        setSjs({ SignerIn: HDsigner, blockbookURL: backendURl });
+        if (response && blockbook && backend) {
+          let isTestnet: boolean = false;
+
+          if (blockbook.coin === 'Syscoin' || blockbook.coin === 'Syscoin Testnet') {
+            if (backend.chain === 'main') {
+              isTestnet = false;
+            }
+
+            if (backend.chain === 'test') {
+              isTestnet = true;
+            }
+
+            setHDSigner({ mnemonic: decriptedMnemonic, password: null, isTestnet, networks: sys.utils.syscoinNetworks, SLIP44: 57, pubTypes: sys.utils.syscoinZPubTypes });
+            setSjs({ SignerIn: HDsigner, blockbookURL: store.getState().wallet.currentBlockbookURL });
+          }
+        }
 
         const { activeAccountId, accounts } = store.getState().wallet;
 
@@ -287,45 +303,23 @@ const WalletController = (): IWalletController => {
   }
 
   const switchNetwork = async (networkId: string) => {
-    // store.dispatch(changeActiveNetwork(SYS_NETWORK[networkId]!.id));
-
-    // if (SYS_NETWORK[networkId]!.id === 'main') {
-    //   setHDSigner({ mnemonic: HDsigner.mnemonic, password: null, isTestnet: false });
-    //   setSjs({ SignerIn: HDsigner, blockbookURL: SYS_NETWORK.main.beUrl });
-
-    //   store.dispatch(updateSwitchNetwork(true));
-
-    //   _getAccountDataByNetwork(sjs);
-
-    //   return;
-    // }
-    // setHDSigner({ mnemonic: HDsigner.mnemonic, password: null, isTestnet: true });
-    // setSjs({ SignerIn: HDsigner, blockbookURL: SYS_NETWORK.testnet.beUrl });
-
-    // store.dispatch(updateSwitchNetwork(true));
-
-    // _getAccountDataByNetwork(sjs);
-
-
     const { networks } = store.getState().wallet;
 
-    store.dispatch(changeActiveNetwork({
-      id: networks[networkId]!.id,
-      beUrl: networks[networkId]!.beUrl
-    }));
+    store.dispatch(changeActiveNetwork({ id: networks[networkId]!.id, beUrl: networks[networkId]!.beUrl }));
 
     try {
       const response = await axios.get(`${networks[networkId].beUrl}/api/v2`);
+      const { blockbook, backend } = response.data;
 
-      if (response && response.data) {
+      if (response && blockbook && backend) {
         let isTestnet: boolean = false;
 
-        if (response.data.blockbook.coin === 'Syscoin' || response.data.blockbook.coin === 'Syscoin Testnet') {
-          if (response.data.backend.chain === 'main') {
+        if (blockbook.coin === 'Syscoin' || blockbook.coin === 'Syscoin Testnet') {
+          if (backend.chain === 'main') {
             isTestnet = false;
           }
 
-          if (response.data.backend.chain === 'test') {
+          if (backend.chain === 'test') {
             isTestnet = true;
           }
 

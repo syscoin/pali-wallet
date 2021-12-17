@@ -1,4 +1,4 @@
 export * from './Header';
-export * from './AccountHeader';
-export * from './NormalHeader';
+export { AccountHeader } from './AccountHeader';
+export { NormalHeader } from './NormalHeader';
 export * from './Section';

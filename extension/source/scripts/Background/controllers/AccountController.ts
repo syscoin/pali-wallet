@@ -14,7 +14,8 @@ import {
   updateAccountXpub,
   updateSwitchNetwork,
   updateAllTokens,
-  setTimer
+  setTimer,
+  updateNetwork
 } from 'state/wallet';
 
 import {
@@ -1922,7 +1923,12 @@ const AccountController = (actions: {
     store.dispatch(setTimer(minutes));
   }
 
+  const updateNetworkData = ({ id, label, beUrl }: any) => {
+    store.dispatch(updateNetwork({ id, label, beUrl }));
+  }
+
   return {
+    updateNetworkData,
     subscribeAccount,
     getPrimaryAccount,
     updateAccountLabel,

@@ -29,13 +29,14 @@ declare interface IWalletController {
   setWalletPassword: (pwd: string) => void;
   switchNetwork: (networkId: string) => void;
   switchWallet: (id: number) => void;
-  unLock: (pwd: string) => boolean;
+  unLock: (pwd: string) => Promise<boolean>;
   addNewAccount: (label?: string) => Promise<string | null>;
 }
 
 declare interface IMessagesController { }
 
 declare interface IAccountController {
+  updateNetworkData: ({ id, label, beUrl }: any) => any;
   clearTransactionItem: (item: any) => void;
   confirmIssueNFT: () => Promise<any>;
   confirmIssueSPT: () => Promise<any>;
