@@ -1,108 +1,82 @@
-import React, { FC } from 'react';
-// import { useController, useFormat, useUtils, useStore } from 'hooks/index';
-// import CryptoJS from 'crypto-js';
+import React from 'react';
+import { useFormat, useUtils, useStore, useController } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { Button } from 'antd';
+import { Icon } from 'components/index';
+import { IAccountState } from 'state/wallet/types';
+import { Disclosure } from '@headlessui/react';
 
-import { WarningCard } from 'components/Cards';
-import { AddresCard } from 'components/Cards';
-interface IPrivateKeyView {
-  id?: string;
-}
+const PrivateKeyView = () => {
+  const controller = useController();
+  const { alert, useCopyClipboard } = useUtils();
+  const { accounts } = useStore();
+  const { ellipsis } = useFormat();
 
-const PrivateKeyView: FC<IPrivateKeyView> = (/*{ id }*/) => {
-  // const controller = useController();
-  // const { alert, useCopyClipboard } = useUtils();
-  // const { accounts } = useStore();
-  // const { ellipsis } = useFormat();
+  const [copied, copyText] = useCopyClipboard();
 
-  // // const [isCopied, copyText] = useCopyClipboard();
-  // const [checked, setChecked] = useState<boolean>(false);
-  // // const [isCopiedAddress, copyAddress] = useState<boolean>(false);
-  // const [privKey, setPrivKey] = useState<string>(
-  //   '*************************************************************'
-  // );
-
-  // const addressClass = clsx(styles.address, {
-  //   [styles.copied]: isCopied && isCopiedAddress,
-  // });
-  // const privKeyClass = clsx(styles.privKey, {
-  //   [styles.copied]: isCopied && !isCopiedAddress,
-  //   [styles.notAllowed]: !checked,
-  // });
-
-  // const onSubmit = (data: any) => {
-  //   if (controller.wallet.checkPassword(data.password)) {
-  //     setPrivKey(controller.wallet.account.decryptAES(accounts[Number(id)].xprv, CryptoJS.SHA3(data.password).toString()));
-  //     setChecked(true);
-  //     return;
-  //   }
-
-  //   alert.removeAll();
-  //   alert.error('Error: Invalid password');
-  // };
-
-  // const handleCopyPrivKey = () => {
-  //   if (!checked) return;
-  //   // copyAddress(false);
-  //   // copyText(privKey);
-  // };
+  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   return (
-    <>
-      <AuthViewLayout title="X - PUB">
-        <div>
-          {/* {accounts[Number(id)] && (
-            <>
-              <div >
-                <div>Click to copy your account xpub:</div>
-                <span
-                // onClick={() => {
-                //   copyText(accounts[Number(id)].xpub);
-                //   copyAddress(true);
-                // }}
-                >
-                  {ellipsis(accounts[Number(id)].xpub)}
-                </span>
-              </div>
-              <div >
-                <span>Please input your wallet password and press enter:</span>
-                <form onSubmit={handleSubmit(onSubmit)}>
-                  input
-                </form>
-                <span>Click to copy your private key:</span>
-                <div onClick={handleCopyPrivKey}>
-                  <span>{ellipsis(privKey)}</span>
-                </div>
-                <span>
-                  <b>Warning:</b> Keep your keys secret! Anyone with your private
-                  keys can steal your assets .
-                </span>
-              </div>
-            </>
-          )} */}
-        </div>
-      </AuthViewLayout>
-      <AddresCard
-        title={'X - Pub'}
-        account={'0x3126...jdi84r4js0i937d3864c983'}
-      ></AddresCard>
-      <WarningCard
-        className="w-full rounded text-white border-dashed border border-white text-justify "
-        warningText="WARNING : "
-      >
-        This is your account root indexer to check your full balance for this
-        account, it isn’t a receiving address. DO NOT SEND FUNDS TO THIS
-        ADDRESS, YOU WILL LOOSE THEM!
-      </WarningCard>
-      <div className="flex items-center justify-center pt-32">
-        <div className="p-0.5 bg-primary rounded-full ">
-          <Button className="bg-brand-navy tracking-normal text-base py-2.5 px-12 cursor-pointer rounded-full text-brand-white hover:backgroundImage">
-            Close
-          </Button>
-        </div>
-      </div>
-    </>
+    <AuthViewLayout title="XPUB">
+      <ul className="text-sm overflow-auto px-4 h-96">
+        {accounts.map((account: IAccountState) => {
+          return (
+            <Disclosure
+              key={account.id}
+            >
+              {({ open }) => (
+                <>
+                  <Disclosure.Button
+                    className="my-3 py-2 px-4 flex justify-between items-center rounded-lg w-full border border-brand-royalBlue cursor-pointer transition-all duration-300 bg-brand-navydarker"
+                  >
+                    {account.label}
+
+                    <Icon
+                      name="select-up"
+                      className={`${open ?
+                        'transform rotate-180' :
+                        ''
+                        } mb-1 text-brand-deepPink100`}
+                    />
+
+                  </Disclosure.Button>
+
+                  <Disclosure.Panel>
+                    <div
+                      className="my-3 py-4 px-4 rounded-lg w-full border border-dashed border-brand-royalBlue flex flex-col transition-all duration-300 bg-brand-navydarker text-sm text-brand-white"
+                    >
+                      <span>XPUB</span>
+
+                      <span className="flex justify-between gap-x-1 items-center w-full mt-4 cursor-pointer rounded-lg bg-brand-navydark border border-dashed border-brand-deepPink100 p-2 text-sm">
+                        WARNING: This is your account root indexer to check your full balance for this account, it isn’t a receiving address. DO NOT SEND FUNDS TO THIS ADDRESS, YOU WILL LOOSE THEM!
+                      </span>
+
+                      <div
+                        className="flex justify-between gap-x-1 items-center w-full mt-4 cursor-pointer rounded-lg bg-brand-navydarker hover:bg-brand-navydark transition-all duration-200 border border-dashed border-brand-royalBlue p-2"
+                        onClick={() => copyText(account.xpub)}
+                      >
+                        <p>{ellipsis(account.xpub, 4, 16)}</p>
+
+                        <Icon name="copy" className="text-brand-deepPink100 mb-1" />
+                      </div>
+
+                      <div
+                        className="flex justify-between mt-4 items-center gap-x-1 cursor-pointer rounded-lg bg-brand-navydarker hover:bg-brand-navydark transition-all duration-200 border border-dashed border-brand-royalBlue p-2"
+                        onClick={() => window.open(`${sysExplorer}/xpub/${account.xpub}`)}
+                      >
+                        <p>View on explorer</p>
+
+                        <Icon name="select" className="text-brand-deepPink100 mb-1" />
+                      </div>
+                    </div>
+
+                  </Disclosure.Panel>
+                </>
+              )}
+            </Disclosure>
+          )
+        })}
+      </ul>
+    </AuthViewLayout >
   );
 };
 

@@ -1,58 +1,44 @@
 import React from 'react';
-import { Icon } from 'components/index';
+import { Button } from 'components/index';
 import {
-  // useController,
   useUtils,
 } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout';
 import { Form, Input } from 'antd';
 import { useController } from 'hooks/index';
-import { WarningCard } from 'components/Cards';
 
 const DeleteWalletView = () => {
-  // const controller = useController();
   const {
-    //alert,
     history,
   } = useUtils();
 
-  const onSubmit = () => {
-    console.log('d');
-  };
   const controller = useController();
-  // const onSubmit = (data: any) => {
-  //   if (controller.wallet.checkPassword(data.password)) {
-  //     controller.wallet.deleteWallet(data.password);
-  //     history.push('/app.html');
 
-  //     return;
-  //   }
+  const onSubmit = (data: any) => {
+    if (controller.wallet.checkPassword(data.password)) {
+      controller.wallet.deleteWallet(data.password);
 
-  //   alert.removeAll();
-  //   alert.error('Error: Invalid password');
-  // };
+      history.push('/app.html');
+
+      return;
+    }
+  };
 
   return (
-    <>
-      <AuthViewLayout title="DELETE WALLET"> </AuthViewLayout>
-      <div>
+    <AuthViewLayout title="DELETE WALLET">
+      <p className="text-white text-sm py-3 px-10 mt-8">
+        Please input your wallet password
+      </p>
+
+      <div className="flex justify-center items-center flex-col">
         <Form
-          className="flex justify-center items-center flex-col gap-4 text-center"
-          name="basic"
+          onFinish={onSubmit}
+          className="flex justify-center items-center flex-col gap-8 text-center pt-4 mb-12"
+          name="phraseview"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
-          initialValues={{ remember: true }}
-          onFinish={onSubmit}
           autoComplete="off"
         >
-          <WarningCard
-            warningText="WARNING:"
-            className="w-full rounded text-brand-white border-dashed border border-light-blue-500 text-justify"
-          >
-            {' '}
-            Keep your seed phrase secret! Anyone with your seed phrase can
-            access any account connected to this wallet and steal your assets
-          </WarningCard>
           <Form.Item
             name="password"
             hasFeedback
@@ -61,10 +47,11 @@ const DeleteWalletView = () => {
                 required: true,
                 message: '',
               },
-              ({}) => ({
+              ({ }) => ({
                 validator(_, value) {
-                  console.log('value pass', controller.wallet.unLock(value));
-                  if (controller.wallet.unLock(value)) {
+                  const seed = controller.wallet.getPhrase(value);
+
+                  if (seed) {
                     return Promise.resolve();
                   }
 
@@ -73,52 +60,68 @@ const DeleteWalletView = () => {
               }),
             ]}
           >
-            <Input
-              size={'large'}
+            <Input.Password
+              className="phrase-input rounded-full py-3 px-4 w-72 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
               placeholder="Enter your password"
-              className="w-80"
             />
           </Form.Item>
-          <div className="text-sm pt-1 text-brand-white text-justify">
-            <p className="px-7">
-              You still have funds at wallet. Remove funds or to delete fill
-              seed phrase below.
-            </p>
+
+          <p className="bg-brand-navydark border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
+            <b>WARNING:</b> You still have funds in your wallet. Paste your seed phrase below to delete wallet.
+          </p>
+
+          <div
+            className="flex flex-col justify-center items-center gap-3 bg-brand-navydarker border border-dashed border-brand-royalBlue mx-6 my-8 p-4 text-xs rounded-lg"
+          >
+            <Form.Item
+              name="seed"
+              dependencies={['password']}
+              rules={[
+                {
+                  required: true,
+                  message: '',
+                },
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    const seed = controller.wallet.getPhrase(getFieldValue('password'));
+
+                    if (seed === value) {
+                      return Promise.resolve();
+                    }
+
+                    return Promise.reject('');
+                  },
+                }),
+              ]}
+            >
+              <Input
+                className="bg-brand-navydarker outline-none w-72"
+                placeholder="Your seed phrase"
+              />
+            </Form.Item>
           </div>
-          <Form.Item rules={[{ required: true }]}>
-            <Input.TextArea
-              className="bg-brand-textareabg rounded w-80 text-base"
-              rows={3}
-            />
-          </Form.Item>
-          <div className="inline-flex">
-            <button
-              className="text-white mr-14 inline-flex tracking-normal text-base leading-4 py-2.5 px-8 cursor-pointer font-light border border-brand-royalBlue transition-all duration-300 tracking-normal text-base rounded-full hover:bg-brand-royalBlue hove:text-white"
+
+          <div className="absolute bottom-12 flex justify-between gap-x-4">
+            <Button
               type="button"
-              onClick={() => history.goBack()}
+              className="bg-brand-navydarker hover:bg-brand-navydarker"
+              onClick={() => history.push('/home')}
             >
-              <Icon
-                name="close"
-                className="inline-flex self-center text-base"
-                maxWidth={'1'}
-              />
               Cancel
-            </button>
-            <button
-              className="text-white inline-flex tracking-normal text-base leading-4 py-2.5 px-8 cursor-pointer font-light border border-brand-deepPink transition-all duration-300 tracking-normal text-base rounded-full hover:bg-brand-deepPink hover:text-white"
+            </Button>
+
+            <Button
               type="submit"
+              className="bg-primary"
             >
-              <Icon
-                name="delete"
-                className="inline-flex self-center text-base"
-                maxWidth={'1'}
-              />
               Delete
-            </button>
+            </Button>
           </div>
         </Form>
+
+
       </div>
-    </>
+    </AuthViewLayout>
   );
 };
 

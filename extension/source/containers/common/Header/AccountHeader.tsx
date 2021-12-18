@@ -138,7 +138,7 @@ export const AccountHeader: FC<IAccountHeader> = ({
                         onClick={() => history.push('/account-newaccount')}
                         className="mt-4 flex w-full items-center p-2.5 text-sm font-medium text-brand-deepPink100 transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-center duration-300 mx-auto max-w-95 border-t border-dashed border-brand-deepPink100 cursor-pointer"
                       >
-                        <Icon name="appstoreadd" className="text-brand-deepPink100 mb-1" />
+                        <Icon name="appstoreadd" className="text-brand-white mb-1" />
 
                         <span>Create new account</span>
                       </li>
