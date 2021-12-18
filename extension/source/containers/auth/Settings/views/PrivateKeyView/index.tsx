@@ -1,13 +1,13 @@
 import React from 'react';
 import { useFormat, useUtils, useStore, useController } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { Icon } from 'components/index';
+import { Icon, Button } from 'components/index';
 import { IAccountState } from 'state/wallet/types';
 import { Disclosure } from '@headlessui/react';
 
 const PrivateKeyView = () => {
   const controller = useController();
-  const { alert, useCopyClipboard } = useUtils();
+  const { history, useCopyClipboard } = useUtils();
   const { accounts } = useStore();
   const { ellipsis } = useFormat();
 
@@ -42,7 +42,7 @@ const PrivateKeyView = () => {
 
                   <Disclosure.Panel>
                     <div
-                      className="my-3 py-4 px-4 rounded-lg w-full border border-dashed border-brand-royalBlue flex flex-col transition-all duration-300 bg-brand-navydarker text-sm text-brand-white"
+                      className="my-3 py-4 px-4 rounded-lg w-full border border-dashed border-brand-royalBlue flex flex-col transition-all duration-300 bg-brand-navydarker text-sm text-brand-white border-t-0 rounded-t-none"
                     >
                       <span>XPUB</span>
 
@@ -76,6 +76,15 @@ const PrivateKeyView = () => {
           )
         })}
       </ul>
+
+      <Button
+        type="button"
+        className="bg-brand-navydarker"
+        classNameBorder="absolute bottom-8 ml-28"
+        onClick={() => history.push('/home')}
+      >
+        {copied ? 'Copied' : 'Close'}
+      </Button>
     </AuthViewLayout >
   );
 };

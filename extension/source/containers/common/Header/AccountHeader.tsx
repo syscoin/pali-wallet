@@ -30,7 +30,8 @@ export const AccountHeader: FC<IAccountHeader> = ({
   }, [activeAccount?.address.main]);
 
   const switchAccount = (id: number) => {
-    console.log(id)
+    controller.wallet.switchWallet(Number(id));
+    controller.wallet.account.watchMemPool(accounts[Number(id)]);
   }
 
   const handleLogout = () => {
@@ -93,14 +94,14 @@ export const AccountHeader: FC<IAccountHeader> = ({
                       className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:text-brand-graylight"
                     >
                       <Icon
-                        name="dolar"
+                        name="user"
                         className="ml-1 mr-4 text-brand-deepPink100"
                       />
 
                       <span
                         className="text-base px-3"
                       >
-                        Syscoin networks
+                        Accounts
                       </span>
 
                       <Icon
@@ -113,8 +114,17 @@ export const AccountHeader: FC<IAccountHeader> = ({
                     </Disclosure.Button>
 
                     <Disclosure.Panel
-                      className="pt-0.5 pb-2 text-sm bg-brand-navydarker"
+                      className="pt-0.5 pb-2 text-sm bg-brand-navydarker h-32 overflow-auto"
                     >
+                      <li
+                        onClick={() => history.push('/account-newaccount')}
+                        className="flex w-full items-center p-2.5 text-sm font-medium text-brand-deepPink100 transition transform bg-brand-navydarker mb-4 backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-center duration-300 mx-auto max-w-95 border-b border-dashed border-brand-deepPink100 cursor-pointer"
+                      >
+                        <Icon name="appstoreadd" className="text-brand-white mb-1" />
+
+                        <span>Create new account</span>
+                      </li>
+
                       {accounts.map((account: IAccountState) => {
                         return (
                           <li
@@ -133,15 +143,6 @@ export const AccountHeader: FC<IAccountHeader> = ({
                           </li>
                         )
                       })}
-
-                      <li
-                        onClick={() => history.push('/account-newaccount')}
-                        className="mt-4 flex w-full items-center p-2.5 text-sm font-medium text-brand-deepPink100 transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-center duration-300 mx-auto max-w-95 border-t border-dashed border-brand-deepPink100 cursor-pointer"
-                      >
-                        <Icon name="appstoreadd" className="text-brand-white mb-1" />
-
-                        <span>Create new account</span>
-                      </li>
                     </Disclosure.Panel>
                   </>
                 )}

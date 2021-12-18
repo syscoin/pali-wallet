@@ -88,7 +88,7 @@ const PhraseView = () => {
           classNameBorder="absolute bottom-12"
           onClick={() => history.push('/home')}
         >
-          Close
+          {copied ? 'Copied' : 'Close'}
         </Button>
       </div>
     </AuthViewLayout>
