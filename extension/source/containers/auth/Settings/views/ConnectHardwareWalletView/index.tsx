@@ -1,16 +1,17 @@
 import React, { FC, useState } from 'react';
 import { Button, Icon } from 'components/index';;
 import { AuthViewLayout } from 'containers/common/Layout';
-
-import { Form, Input } from 'antd';
-import { WarningCard } from 'components/Cards';
-import { useUtils } from 'hooks/useUtils';
+import { useController } from 'hooks/index';
 import { Disclosure } from '@headlessui/react';
 
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
 
-  const { history } = useUtils();
+  const controller = useController();
+
+  const handleCreateHardwareWallet = () => {
+    controller.wallet.createHardwareWallet();
+  };
 
   return (
     <AuthViewLayout title="CONNECT HARDWARE WALLET">
@@ -21,14 +22,15 @@ const ConnectHardwareWalletView: FC = () => {
           </p>
 
           <p
-            className="rounded-full py-3 px-4 w-44 mx-auto text-center bg-brand-navyborder border border-brand-royalBlue text-sm mb-6 mt-3"
+            className={`${selected ? 'border-brand-deepPink100 bg-brand-navydarker' : 'bg-brand-navyborder border-brand-royalBlue'} rounded-full py-3 px-4 w-44 mx-auto text-center  border  text-sm mb-6 mt-3 cursor-pointer active:bg-brand-navydarker  focus:bg-brand-navydarker`}
+            onClick={() => setSelected(!selected)}
           >
             Trezor
           </p>
 
           <div className="bg-brand-navydarker border border-dashed border-brand-royalBlue text-brand-white mx-2 p-4 text-xs rounded-lg">
             <p>
-              <b>Don't have a hardware wallet?</b><br />
+              <b>Don't have a hardware wallet?</b><br /><br />
 
               Order a Trezor wallet and keep your funds in cold storage.
             </p>
@@ -41,33 +43,30 @@ const ConnectHardwareWalletView: FC = () => {
           <Disclosure>
             {({ open }) => (
               <>
-                <Disclosure.Button>
-                  <Disclosure.Button
-                    className="my-3 py-2 px-4 flex justify-between items-center rounded-lg w-full border border-brand-royalBlue cursor-pointer transition-all duration-300 bg-brand-navydarker"
-                  >
-                    Learn more
+                <Disclosure.Button
+                  className="my-3 w-80 py-2 px-4 flex justify-between items-center rounded-lg ml-2 border border-brand-royalBlue cursor-pointer transition-all duration-300 bg-brand-navydarker"
+                >
+                  Learn more
 
-                    <Icon
-                      name="select-up"
-                      className={`${open ?
-                        'transform rotate-180' :
-                        ''
-                        } mb-1 text-brand-deepPink100`}
-                    />
+                  <Icon
+                    name="select-up"
+                    className={`${open ?
+                      'transform rotate-180' :
+                      ''
+                      } mb-1 text-brand-deepPink100`}
+                  />
 
-                  </Disclosure.Button>
                 </Disclosure.Button>
 
                 <Disclosure.Panel>
-                  <div className="mx-2 my-6 py-2 px-4 flex justify-between items-center rounded-lg w-80 border border-brand-royalBlue cursor-pointer transition-all duration-300 bg-brand-navydarker">
-                    <p>
-                      1 - Connect a hardware wallet
-                      Connect your hardware wallet directly to your computer.
+                  <div className="mx-2 mt-2 py-2 px-4 flex flex-col justify-start items-start rounded-lg w-80 border border-brand-royalBlue cursor-pointer transition-all duration-300 bg-brand-navydarker">
+                    <p className="text-sm my-2">1 - Connect a hardware wallet</p>
 
-                      2 - Start using sys powered sites and more!
-                      Use your hardware account like you would with any SYS account. Connect to SYS web3 sites, send SYS, buy and store SPT tokens.
+                    <span className="text-xs mb-4">Connect your hardware wallet directly to your computer.</span>
 
-                    </p>
+                    <p className="text-sm my-2">2 - Start using SYS powered sites and more</p>
+
+                    <span className="text-xs mb-1">Use your hardware account like you would with any SYS account. Connect to SYS web3 sites, send SYS, buy and store SPT tokens.</span>
                   </div>
 
                 </Disclosure.Panel>
@@ -78,9 +77,10 @@ const ConnectHardwareWalletView: FC = () => {
 
         <Button
           type="button"
-          className="bg-brand-navydarker"
-          classNameBorder="absolute bottom-12"
-          onClick={() => history.push('/home')}
+          padding="p-2.5"
+          className={`${!selected ? 'bg-opacity-80' : 'cursor-pointer'} bg-brand-navydarker  p-2.5`}
+          classNameBorder="absolute bottom-8"
+          onClick={handleCreateHardwareWallet}
           disabled={!selected}
         >
           Connect
