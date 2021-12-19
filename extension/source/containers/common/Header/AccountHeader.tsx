@@ -165,7 +165,7 @@ export const AccountHeader: FC<IAccountHeader> = ({
                 onClick={handleLogout}
                 className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:text-brand-graylight"
               >
-                <Icon name="appstoreadd" className="text-brand-deepPink100 ml-1 mr-4" />
+                <Icon name="key" className="text-brand-deepPink100 ml-1 mr-4" />
 
                 <span className="px-3">Lock</span>
               </li>

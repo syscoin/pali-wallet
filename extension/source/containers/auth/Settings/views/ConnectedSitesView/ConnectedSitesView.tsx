@@ -1,122 +1,173 @@
-import { Button } from 'components/Button';
-import { Icon } from 'components/Icon';
-import { AuthViewLayout } from 'containers/common/Layout';
-import React, { FC, useState } from 'react';
-import LogoImage from 'assets/images/logo-s.svg';
-import { Checkbox } from 'antd';
+import { Button } from "components/Button";
+import { Icon } from "components/Icon";
+import { AuthViewLayout } from "containers/common/Layout";
+import React, { FC, Fragment, useState } from "react";
+import LogoImage from "assets/images/logo-s.svg";
+import { Checkbox } from "antd";
+import { useAccount } from "hooks/useAccount";
+import { useFormat } from "hooks/useFormat";
+import { IconButton } from "components/IconButton";
+import { Dialog, Transition } from "@headlessui/react";
+import { useUtils, useBrowser } from "hooks/index";
 
-interface IConnectedSites {}
-const ConnectedSites: FC<IConnectedSites> = ({}) => {
-  const [showModal, setShowModal] = useState<boolean>(false);
+interface IConnectedSites { }
+const ConnectedSites: FC<IConnectedSites> = ({ }) => {
+  const [selected, setSelected] = useState<string>("");
   const onChange = (e) => {
     console.log(`checked = ${e.target.checked}`);
   };
+
+  const { activeAccount } = useAccount();
+  const { formatURL, ellipsis } = useFormat();
+  const { history } = useUtils();
+  const { browser } = useBrowser()
+
+  const disconnectSite = (id: any) => {
+    browser.runtime.sendMessage({
+      type: "RESET_CONNECTION_INFO",
+      target: "background",
+      id,
+      url: selected,
+    });
+    console.log("id disconnect", id)
+  }
+
   return (
-    <div>
-      <AuthViewLayout title="CONNECTED SITES"> </AuthViewLayout>
-      <div className="flex flex-col gap-1 pt-4 p-4 text-white">
-        <div>
-          <p className="text-sm">
-            Account1 is connected to these site. They can view your account
-            address.
-          </p>
-        </div>
-        <div className="inline-flex pt-2 border-dashed border-b border-gray-100">
-          <p className="text-sm">app.uniswap.org</p>
-          <button
-            onClick={() => setShowModal(!showModal)}
-            className="w-1"
-            type="submit"
-          >
-            <Icon
-              name="select"
-              className="text-base inline-flex self-center pb-1"
-              maxWidth={'1'}
-            ></Icon>
-          </button>
-        </div>
-        <div className="inline-flex pt-2 border-dashed border-b border-gray-100">
-          <p className="text-sm">pancakeswap.finance</p>
-          <button className="w-1" type="submit">
-            <Icon
-              name="select"
-              className="text-base inline-flex self-center pb-1"
-              maxWidth={'1'}
-            ></Icon>
-          </button>
-        </div>
-        <div className="inline-flex pt-2 border-dashed border-b border-gray-100">
-          <p className="text-sm">app.sushi.com/swap</p>
-          <button className="w-1" type="submit">
-            <Icon
-              name="select"
-              className="text-base inline-flex self-center pb-1"
-              maxWidth={'1'}
-            ></Icon>
-          </button>
-        </div>
-        <div className="inline-flex pt-2 border-dashed border-b border-gray-100">
-          <p className="text-sm">traderjoexyz.com</p>
-          <button className="w-1" type="submit">
-            <Icon
-              name="select"
-              className="text-base inline-flex self-center pb-1"
-              maxWidth={'1'}
-            ></Icon>
-          </button>
-        </div>
-        <div className="flex justify-center items-center pt-40">
-          <Button type="submit">Close</Button>
-        </div>
-      </div>
-      {showModal ? (
-        <>
-          <div className="fixed inset-0 bg-gray-900 bg-opacity-50 overflow-y-auto h-full w-full">
-            <div className="absolute text-white flex-col gap-1 p-4 justify-center bg-brand-darkRoyalBlue rounded-lg w-80 ml-6 mt-24">
-              <div className="border-dashed border-b border-light-blue-500 text-center p-4">
-                <p>EDIT CONNECTED SITE</p>
-              </div>
-              <div>
-                <div>
-                  <p className="text-base">Delete connected site:</p>
-                  <p className="text-sm">Account123</p>
-                </div>
-                <div className="inline-flex">
-                  <p className="text-base">app.uniswap.org</p>{' '}
-                  <Icon name="delete" className="text-base" />
-                </div>
-              </div>
-              <div className="bg-brand-navydarker p-2">
-                <p className="text-base">Edit permissions:</p>
-                <div className="flex items-center pr-12 mr-1 text-brand-white border-b border-light-blue-500">
-                  <div>
-                    <img
-                      src={`/${LogoImage}`}
-                      className="mx-auto w-10 rounded-full"
-                      alt="Syscoin"
+    <AuthViewLayout title="CONNECTED SITES">
+      <p className="text-white text-sm py-3 ml-4 mt-3">
+        {activeAccount?.connectedTo ? `${activeAccount.label} is connected to:` : `${activeAccount?.label} is not connected to any sites.`}
+      </p>
+
+      <div className="flex flex-col justify-center items-center">
+        {activeAccount?.connectedTo && (
+          activeAccount.connectedTo.map((url: string) => {
+            return (
+              <ul className="h-80 overflow-auto w-full p-2">
+                <li className="flex justify-between p-3 my-2 border-b border-dashed border-yellow-300 items-center w-full text-sm">
+                  <p>{formatURL(url, 25)}</p>
+
+                  <IconButton
+                    onClick={() => setSelected(url)}
+                  >
+                    <Icon
+                      name="edit"
+                      className="text-yellow-300"
+                      wrapperClassname="w-4"
                     />
+                  </IconButton>
+                </li>
+              </ul>
+            )
+          })
+        )}
+
+        {selected && (
+          <Transition appear show={selected !== ""} as={Fragment}>
+            <Dialog
+              as="div"
+              className="fixed inset-0 z-10 overflow-y-auto"
+              onClose={() => setSelected("")}
+            >
+              <div
+                className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-darktransparent"
+              />
+
+              <div className="min-h-screen px-4">
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-300"
+                  enterFrom="opacity-0"
+                  enterTo="opacity-100"
+                  leave="ease-in duration-200"
+                  leaveFrom="opacity-100"
+                  leaveTo="opacity-0"
+                >
+                  <Dialog.Overlay className="fixed inset-0" />
+                </Transition.Child>
+
+                <span
+                  className="inline-block h-screen align-middle"
+                  aria-hidden="true"
+                >
+                  &#8203;
+                </span>
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-300"
+                  enterFrom="opacity-0 scale-95"
+                  enterTo="opacity-100 scale-100"
+                  leave="ease-in duration-200"
+                  leaveFrom="opacity-100 scale-100"
+                  leaveTo="opacity-0 scale-95"
+                >
+                  <div className="font-poppins inline-block w-full max-w-md py-6 my-8 overflow-hidden align-middle transition-all transform bg-brand-navydark shadow-xl rounded-2xl">
+                    <Dialog.Title
+                      as="h3"
+                      className="text-lg font-medium leading-6 text-brand-white text-center border-b pb-3 border-dashed border-brand-white"
+                    >
+                      Edit connection
+                    </Dialog.Title>
+                    <div className="my-4">
+                      <p className="text-sm text-brand-white m-3">
+                        Delete connected site:
+                      </p>
+
+                      <div className="flex justify-between text-brand-white items-center m-3">
+                        <p>{formatURL(selected, 20)}</p>
+
+                        <IconButton
+                          onClick={() => disconnectSite(activeAccount?.id)}
+                        >
+                          <Icon name="delete" className="text-yellow-300" />
+                        </IconButton>
+                      </div>
+
+                      <div className="bg-brand-navydarker p-4">
+                        <p className="text-brand-white mb-3">Permissions</p>
+
+                        <div className="flex justify-between items-center">
+                          <p className="text-brand-white text-xs">{activeAccount?.label}</p>
+
+                          <p className="text-brand-white text-xs">{ellipsis(activeAccount?.address.main)}</p>
+                        </div>
+
+                        <p className="text-brand-white cursor-not-allowed opacity-60 pt-3 border-t border-dashed border-brand-white mt-4">
+                          <input type="checkbox" />
+
+                          <span className="mb-1 ml-3">
+                            View the addresses of your permitted
+                            accounts
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 text-center">
+                      <button
+                        type="button"
+                        className="inline-flex justify-center px-12 py-2 text-sm font-medium text-brand-royalBlue bg-blue-100 border border-transparent rounded-full hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalBlue"
+                        onClick={() => setSelected("")}
+                      >
+                        Close
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-brand-white pl-1 justify-center items-center pr-1">
-                    <p className="text-xs">Account123</p>
-                    <p className="text-xs">0x3126...7d3864c983 </p>
-                  </div>
-                </div>
-                <div>
-                  <Checkbox onChange={onChange} className="text-sm">
-                    View the addresses of your permitted accounts
-                  </Checkbox>
-                </div>
+                </Transition.Child>
               </div>
-              <div className="mt-2 flex justify-center items-center flex-col p-2">
-                <Button type="submit">Save</Button>
-              </div>
-            </div>
-          </div>
-        </>
-      ) : (
-        ''
-      )}
-    </div>
+            </Dialog>
+          </Transition>
+        )}
+
+        <Button
+          type="button"
+          className="bg-brand-navydarker"
+          classNameBorder="absolute bottom-8"
+          onClick={() => history.push("/home")}
+        >
+          Close
+        </Button>
+      </div>
+    </AuthViewLayout>
   );
 };
 export default ConnectedSites;

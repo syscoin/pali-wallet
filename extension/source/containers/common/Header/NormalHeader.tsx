@@ -50,15 +50,15 @@ export const NormalHeader: FC<INormalHeader> = ({
                 </div>
 
                 <span>
-                    {network}
-                  </span>
+                  {network}
+                </span>
 
-                  <IconButton className="mb-1">
-                    <Icon name="select-down"
-                      className={`${open ? 'transform rotate-180' : ''
-                        } text-brand-white`}
-                    />
-                  </IconButton>
+                <IconButton className="mb-1">
+                  <Icon name="select-down"
+                    className={`${open ? 'transform rotate-180' : ''
+                      } text-brand-white`}
+                  />
+                </IconButton>
               </div>
             </Menu.Button>
 
@@ -77,13 +77,24 @@ export const NormalHeader: FC<INormalHeader> = ({
 
               <Menu.Items
                 as="div"
-                className="menu bg-brand-navyborder pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 left-0 h-96 origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
+                className="menu bg-brand-navyborder pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 left-0 h-menu origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
               >
                 <h2
                   className=" bg-brand-navydarker pt-8 pb-6 text-brand-white border-b border-dashed border-yellow-300 w-full text-center mb-6"
                 >
                   NETWORK SETTINGS
                 </h2>
+
+                <Menu.Item>
+                  <li
+                    onClick={() => history.push('/networks-sites')}
+                    className="flex py-1 justify-start items-center text-base px-2 cursor-pointer transition-all duration-200 border border-solid border-transparent hover:border-yellow-300 rounded-full bg-brand-green mx-3 mb-4"
+                  >
+                    <Icon name="globe" className="text-yellow-300 ml-1 mr-4" />
+
+                    <span className="px-3">Connected sites</span>
+                  </li>
+                </Menu.Item>
 
                 <Menu.Item>
                   <Disclosure>
