@@ -97,7 +97,7 @@ export const useCopyClipboard = (
   const [isCopied, setIsCopied] = useState<boolean>(false);
 
   const staticCopy = useCallback(async (text) => {
-    await navigator.clipboard.writeText(text);
+    await navigator?.clipboard?.writeText(text);
     setIsCopied(true);
   }, []);
 
