@@ -37,7 +37,6 @@ const PrivateKeyView = () => {
                         ''
                         } mb-1 text-brand-deepPink100`}
                     />
-
                   </Disclosure.Button>
 
                   <Disclosure.Panel>
@@ -68,7 +67,6 @@ const PrivateKeyView = () => {
                         <Icon name="select" className="text-brand-deepPink100 mb-1" />
                       </div>
                     </div>
-
                   </Disclosure.Panel>
                 </>
               )}

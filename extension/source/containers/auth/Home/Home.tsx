@@ -72,7 +72,7 @@ export const Home = () => {
               <Button
                 type="button"
                 noStandard
-                className="flex items-center justify-center flex-1 text-base rounded-l-full border border-brand-deepPink text-brand-white hover:bg-brand-deepPink transition-all duration-300"
+                className="flex items-center justify-center flex-1 text-base rounded-l-full border border-brand-deepPink bg-brand-deepPink bg-opacity-20 text-brand-white hover:bg-opacity-90 transition-all duration-300"
                 onClick={() => history.push('/send')}
               >
                 <Icon
@@ -88,7 +88,7 @@ export const Home = () => {
               <Button
                 type="button"
                 noStandard
-                className="flex items-center justify-center flex-1 text-base rounded-r-full border border-brand-royalBlue text-brand-white hover:bg-brand-royalBlue transition-all duration-300"
+                className="flex items-center justify-center flex-1 text-base rounded-r-full border border-brand-royalBlue bg-brand-royalBlue bg-opacity-20 text-brand-white hover:bg-opacity-90 transition-all duration-300"
                 onClick={() => history.push('/receive')}
               >
                 <Icon

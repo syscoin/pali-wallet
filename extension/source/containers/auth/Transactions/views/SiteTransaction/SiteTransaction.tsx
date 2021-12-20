@@ -1,7 +1,8 @@
 import React, { useState, FC } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout';
 import { Button } from 'components/index';;
-import { useController, useUtils, useBrowser } from 'hooks/index';
+import { useController, useUtils, useBrowser, useStore } from 'hooks/index';
+import { Form, Input } from 'antd';
 
 interface ISiteTransaction {
   callbackToSetDataFromWallet: any;
@@ -19,13 +20,14 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
   layoutTitle,
 }) => {
   const controller = useController();
-  const { history } = useUtils();
+  const { history, getHost } = useUtils();
   const { browser } = useBrowser();
+  const { currentSenderURL } = useStore();
 
-  // const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState('0');
   const [recommend, setRecommend] = useState(0.00001);
-  // const [transacting, setTransacting] = useState(false);
+  const [transacting, setTransacting] = useState(false);
 
   const handleGetFee = async () => {
     const recommendFee = await controller.wallet.account.getRecommendFee();
@@ -34,7 +36,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
     setFee(String(recommendFee));
   };
 
-  const handleMessageToSetDataFromWallet = () => {
+  const handleMessageToSetDataFromWallet = ({ fee }) => {
     callbackToSetDataFromWallet({
       fee,
     });
@@ -44,25 +46,11 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
       target: 'background',
     });
 
-    // setTransacting(true);
-    // setLoading(true);
+    setTransacting(true);
+    setLoading(true);
 
     history.push(confirmRoute);
   };
-
-  // const handleFeeChange = useCallback(
-  //   (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-  //     setFee(event.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'));
-
-  //     if (Number(event.target.value) > 0.1) {
-  //       alert.removeAll();
-  //       alert.error(`Error: Fee too high, maximum 0.1 SYS.`, { timeout: 2000 });
-
-  //       return;
-  //     }
-  //   },
-  //   []
-  // );
 
   const handleRejectTransaction = () => {
     history.push('/home');
@@ -88,37 +76,61 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
   };
 
   return (
-    <div>
-      <AuthViewLayout title={layoutTitle}>
-        <form>
-          <label htmlFor="fee">Fee</label>
+    <AuthViewLayout canGoBack={false} title={layoutTitle.toUpperCase()}>
+      <div className="flex flex-col justify-center items-center">
+        <h1 className="text-sm mt-4">FEE</h1>
 
-          <section>
-            <input type="text" />
+        <p className="text-brand-royalBlue text-sm">{getHost(`${currentSenderURL}`)}</p>
 
-            <Button type="button" onClick={handleGetFee}>
-              Recommend
-            </Button>
-          </section>
+        <Form
+          id="site"
+          labelCol={{ span: 8 }}
+          wrapperCol={{ span: 8 }}
+          onFinish={handleMessageToSetDataFromWallet}
+          autoComplete="off"
+          className="flex justify-center items-center flex-col gap-3 mt-4 text-center"
+        >
+          <Form.Item
+            name="fee"
+            hasFeedback
+            rules={[
+              {
+                required: true,
+                message: '',
+                min: 0.00001
+              },
+            ]}
+          >
+            <Input
+              className="rounded-full my-8 py-3 pr-8 w-72 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
+              type="number"
+              placeholder="Fee"
+            />
+          </Form.Item>
 
-          <p>
-            With current network conditions, we recommend a fee of {recommend}{' '}
-            SYS.
+          <p className="bg-brand-navydarker border text-left border-dashed border-brand-royalBlue mx-4 p-4 mt-4 text-xs rounded-lg">
+            With current network conditions, we recommend a fee of {recommend} SYS.
           </p>
 
-          <section>
-            <div>
-              <Button type="button" onClick={handleRejectTransaction}>
-                Reject
-              </Button>
+          <div className="flex justify-between items-center absolute bottom-10 gap-3">
+            <Button
+              type="button"
+              className="bg-brand-navydarker"
+              onClick={handleRejectTransaction}
+            >
+              Cancel
+            </Button>
 
-              <Button type="button" onClick={handleMessageToSetDataFromWallet}>
-                Next
-              </Button>
-            </div>
-          </section>
-        </form>
-      </AuthViewLayout>
-    </div>
+            <Button
+              type="submit"
+              loading={loading}
+              className="bg-brand-navydarker"
+            >
+              Next
+            </Button>
+          </div>
+        </Form>
+      </div>
+    </AuthViewLayout>
   );
 };

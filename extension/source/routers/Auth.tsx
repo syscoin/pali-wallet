@@ -22,7 +22,8 @@ import {
   ConnectedAccounts,
   Send,
   SendConfirm,
-  Start
+  Start,
+  DetailsView
 } from 'containers/auth/index';
 
 import {
@@ -250,6 +251,7 @@ export const AuthRouter = () => {
           {isUnlocked ? (
             <>
               <Route path="/home" component={Home} exact />
+              <Route path="/home-tx-details" component={DetailsView} exact />
               <Route path="/send/confirm" component={SendConfirm} exact />
               <Route path="/sign" component={SignAndSend} exact />
               <Route path="/signPsbt" component={SignPSBT} exact />
@@ -312,7 +314,7 @@ export const AuthRouter = () => {
               <Route
                 path='/account-priv'
                 render={(props) => (
-                  <PrivateKeyView {...props} id='0' />
+                  <PrivateKeyView {...props} />
                 )}
                 exact
               />

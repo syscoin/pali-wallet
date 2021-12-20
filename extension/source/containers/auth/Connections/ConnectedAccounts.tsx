@@ -1,27 +1,20 @@
 import React, { useState } from 'react';
-import { Button } from 'components/index';;
-import { Header } from 'containers/common/Header';
-import { useFormat, useUtils, useStore, useDappConnection, usePopup } from 'hooks/index';
+import { Button } from 'components/index';
+import { useFormat, useAccount, useUtils, useStore, useDappConnection, usePopup } from 'hooks/index';
+import { AuthViewLayout } from 'containers/common/Layout';
 
 export const ConnectedAccounts = () => {
   const { ellipsis } = useFormat();
   const { getHost } = useUtils();
   const { closePopup } = usePopup();
+  const { connectedAccount } = useAccount();
   const { changeConnectedAccount } = useDappConnection();
-  const { accounts, currentSenderURL, activeAccountId } = useStore();
+  const { accounts, currentSenderURL } = useStore();
 
-  const [changeAccountIsOpen, setChangeAccountIsOpen] =
-    useState<boolean>(false);
-  const [accountId, setAccountId] = useState<number>(-1);
-
-  const connectedAccount = accounts.filter((account) => {
-    return account.connectedTo.find((url: any) => {
-      return url == getHost(currentSenderURL);
-    });
-  });
+  const [accountId, setAccountId] = useState<number>(connectedAccount?.id || -1);
 
   const handleChangeAccount = (id: number) => {
-    if (id === connectedAccount[0].id) {
+    if (id === connectedAccount?.id) {
       return;
     }
 
@@ -29,93 +22,49 @@ export const ConnectedAccounts = () => {
   };
 
   return (
-    <div >
-      <Header />
+    <AuthViewLayout title="CONNECTED ACCOUNT">
+      <div className="flex flex-col justify-center items-center">
+        <h1 className="text-sm mt-4">PALI WALLET</h1>
 
-      {changeAccountIsOpen ? (
-        <div >
-          <p >Choose your account</p>
+        <p className="text-brand-royalBlue text-sm">{getHost(`${currentSenderURL}`)}</p>
 
-          <ul >
-            {accounts.map((account) => {
-              return (
-                <li
-                  key={account.id}
-                  onClick={() => handleChangeAccount(account.id)}
-                > 
-                  <div >
-                    <p>{account.label}</p>
-                    <small>{ellipsis(account.address.main)}</small>
-                  </div>
-                  {account.id === activeAccountId && <small>(active)</small>}
-                  {account.id === accountId && account.id !== connectedAccount[0].id && (
-                    // <img src={checkGreen} alt="check" />
-                    <p>check</p>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-
-          <div >
-            <Button
-              type="button"
-              onClick={() => setChangeAccountIsOpen(false)}
+        <ul className="w-full flex flex-col gap-4 h-72 mt-4 overflow-auto px-8">
+          {accounts.map((account: any) => (
+            <li
+              className={`${connectedAccount && account.id === connectedAccount.id ? 'cursor-not-allowed bg-opacity-50 border-brand-royalBlue' : 'cursor-pointer hover:bg-brand-navylight border-brand-royalBlue'} border border-solid  rounded-lg px-2 py-4 text-xs bg-brand-navydark flex justify-between items-center transition-all duration-200`}
+              key={account.id}
+              onClick={() => handleChangeAccount(account.id)}
             >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={() => changeConnectedAccount(accountId)}
-            >
-              Confirm
-            </Button>
-          </div>
+              <p>
+                {account.label}
+              </p>
+
+              <small>{ellipsis(account.address.main)}</small>
+
+              <div className={`${account.id === accountId ? 'bg-brand-green' : 'bg-brand-gray100'} w-3 h-3 rounded-full border border-brand-royalBlue`}></div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="flex justify-between items-center absolute bottom-8 gap-3">
+          <Button
+            type="button"
+            className="bg-brand-navydarker"
+            onClick={closePopup}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            type="button"
+            className="bg-brand-navydarker"
+            disabled={accountId === -1}
+            onClick={() => changeConnectedAccount(accountId)}
+          >
+            Change
+          </Button>
         </div>
-      ) : (
-        <div >
-          <div>
-            <p>
-              This account is connected to
-              <br />
-              {getHost(currentSenderURL)}
-            </p>
-            {connectedAccount[0].isTrezorWallet ? (
-              <small>
-                To change your connected Trezor account, you need to disconnect and connect the account you want.
-              </small>
-            ) : (
-              <small>
-                To change your connected account you need to have more than one
-                account.
-              </small>
-            )}
-          </div>
-
-          <div >
-            <div>
-              <p>{connectedAccount[0].label}</p>
-              <small>{ellipsis(connectedAccount[0].address.main)}</small>
-            </div>
-          </div>
-
-          <div >
-            <Button
-              type="button"
-              onClick={closePopup}
-            >
-              Close
-            </Button>
-
-            <Button
-              type="button"
-              onClick={() => setChangeAccountIsOpen(!changeAccountIsOpen)}
-            >
-              Change
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
+      </div>
+    </AuthViewLayout>
   );
 };

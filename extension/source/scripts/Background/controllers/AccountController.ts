@@ -404,11 +404,21 @@ const AccountController = (actions: {
               assetGuid
             }: any = value;
 
-            const { pubData } = await getDataAsset(assetGuid);
+            const {
+              pubData,
+              contract,
+              totalSupply,
+              maxSupply,
+              updateCapabilityFlags,
+             } = await getDataAsset(assetGuid);
 
             const { baseAssetID, NFTID } = sys.utils.getAssetIDs(assetGuid);
 
             const assetData = {
+              contract,
+              totalSupply,
+              maxSupply,
+              updateCapabilityFlags,
               balance,
               type,
               decimals,

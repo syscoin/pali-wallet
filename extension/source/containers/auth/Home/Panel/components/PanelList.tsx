@@ -1,7 +1,6 @@
-import { Icon } from 'components/Icon';
-import { IconButton } from 'components/IconButton';
-import { useFormat } from 'hooks/index';
 import React, { FC, useCallback, Fragment } from 'react';
+import { IconButton, Icon } from 'components/index';
+import { useFormat, useUtils } from 'hooks/index';
 import { Assets, Transaction } from 'scripts/types';
 
 interface IPanelList {
@@ -20,6 +19,8 @@ export const PanelList: FC<IPanelList> = ({
     ellipsis,
     formatCurrency
   } = useFormat();
+
+  const { history } = useUtils();
 
   const isShowedGroupBar = useCallback(
     (tx: Transaction, idx: number) => {
@@ -49,7 +50,7 @@ export const PanelList: FC<IPanelList> = ({
   }
 
   return (
-    <div>
+    <>
       {activity && (
         <ul className="pb-8">
           {data.map((tx: Transaction, idx: number) => {
@@ -92,7 +93,15 @@ export const PanelList: FC<IPanelList> = ({
                         <p>{getTxType(tx)}</p>
                       </div>
 
-                      <IconButton className="w-1">
+                      <IconButton
+                        className="w-1"
+                        onClick={() => history.push('/home-tx-details', {
+                          tx: tx,
+                          type: getTxType(tx),
+                          assetGuid: null,
+                          assetType: null,
+                        })}
+                      >
                         <Icon
                           name="select"
                           className="text-base"
@@ -110,7 +119,7 @@ export const PanelList: FC<IPanelList> = ({
       {assets && (
         <ul className="pb-4">
           {data.map((asset: Assets) => {
-            if (asset.assetGuid) {
+            if (asset.assetGuid && asset.balance > 0) {
               return (
                 <li
                   key={asset.assetGuid}
@@ -124,7 +133,14 @@ export const PanelList: FC<IPanelList> = ({
                     </span>
                   </p>
 
-                  <IconButton>
+                  <IconButton
+                    onClick={() => history.push('/home-tx-details', {
+                      tx: null,
+                      type: null,
+                      assetGuid: asset.assetGuid,
+                      assetType: asset.type
+                    })}
+                  >
                     <Icon
                       name="select"
                       className="w-4 text-brand-gray200"
@@ -138,6 +154,6 @@ export const PanelList: FC<IPanelList> = ({
           })}
         </ul>
       )}
-    </div>
+    </>
   );
 };

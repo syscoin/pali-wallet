@@ -59,8 +59,8 @@ const CustomRPCView = ({
       ) : (
         <AuthViewLayout title="CUSTOM RPC">
           <Form
-            id="send"
-            name="send"
+            id="rpc"
+            name="rpc"
             labelCol={{ span: 8 }}
             wrapperCol={{ span: 8 }}
             initialValues={{

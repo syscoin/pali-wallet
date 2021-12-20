@@ -13,6 +13,10 @@ export const ConnectWallet = () => {
   const [accountId, setAccountId] = useState<number>(-1);
 
   const handleSelectAccount = (id: number) => {
+    if (connectedAccount && id === connectedAccount.id) {
+      return;
+    }
+    
     setAccountId(id);
   };
 
@@ -24,7 +28,7 @@ export const ConnectWallet = () => {
         <p className="text-brand-royalBlue text-sm">{getHost(`${currentSenderURL}`)}</p>
 
         {accounts.length > 0 ? (
-          <ul className="w-full flex flex-col gap-4 h-72 mt-4 overflow-auto px-8">
+          <ul className="w-full flex flex-col gap-4 h-64 mt-4 overflow-auto px-8">
             {accounts.map((acc: any) => (
               <li
                 className={`${connectedAccount && acc.id === connectedAccount.id ? 'cursor-not-allowed bg-opacity-50 border-brand-royalBlue' : 'cursor-pointer hover:bg-brand-navylight border-brand-royalBlue'} border border-solid  rounded-lg px-2 py-4 text-xs bg-brand-navydark flex justify-between items-center transition-all duration-200`}
@@ -43,11 +47,11 @@ export const ConnectWallet = () => {
           </ul>
         ) : (
           <div>
-            <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
+            <Icon name="loading" className="w-4 text-brand-gray200" />
           </div>
         )}
 
-        <small className="text-brand-royalBlue text-sm text-center">
+        <small className="text-brand-royalBlue text-sm text-center mb-8">
           Only connect with sites you trust. <a href="#">Learn more.</a>
         </small>
 

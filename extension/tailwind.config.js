@@ -17,7 +17,8 @@ module.exports = {
         '3rem': '4rem'
       },
       right: {
-        '5percent': '5%'
+        '5percent': '5%',
+        '45r': '0.45rem',
       },
       margin: {
         '0.8': '0.2rem'

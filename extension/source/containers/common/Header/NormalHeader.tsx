@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import React, { FC, useMemo } from 'react';
 import { Icon, IconButton } from 'components/index';
 import { useStore, useAccount, useUtils, useController } from 'hooks/index';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
@@ -17,6 +17,10 @@ export const NormalHeader: FC<INormalHeader> = ({
   const { activeNetwork, encriptedMnemonic } = useStore();
   const { handleRefresh, history } = useUtils();
   const { connectedAccount } = useAccount();
+
+  const isConnectedAccount = useMemo(() => {
+    return connectedAccount;
+  }, [connectedAccount]);
 
   const network = activeNetwork;
 
@@ -41,12 +45,12 @@ export const NormalHeader: FC<INormalHeader> = ({
               >
                 <div
                   className={
-                    connectedAccount ?
+                    isConnectedAccount ?
                       "rounded-full text-xs w-28 h-5 flex justify-center items-center border border-brand-lightgreen bg-brand-lightgreen text-brand-white" :
                       "rounded-full text-xs w-28 h-5 flex justify-center items-center border bg-brand-transparentred border-brand-error text-brand-white"
                   }
                 >
-                  {connectedAccount ? 'connected' : 'not connected'}
+                  {isConnectedAccount ? 'connected' : 'not connected'}
                 </div>
 
                 <span>

@@ -1,4 +1,4 @@
-import React, { ReactNode, FC, useEffect } from 'react';
+import React, { ReactNode, FC } from 'react';
 import { Header } from 'containers/common/Header';
 import { Tooltip } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
@@ -21,10 +21,6 @@ export const Layout: FC<ILayout> = ({
   normalHeader = false,
   tooltipText = '',
 }) => {
-  useEffect(() => {
-    console.log('tooltip', tooltipText);
-  }, [tooltipText]);
-
   return (
     <div className="flex flex-col justify-center items-center">
       <Header

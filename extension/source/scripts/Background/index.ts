@@ -213,7 +213,7 @@ const createPopup = async (url: string) => {
   const sysPopup = await browser.windows.create({
     url,
     type: "popup",
-    height: 640,
+    height: 600,
     width: 372,
     left: 900,
     top: 90,

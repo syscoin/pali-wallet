@@ -1,21 +1,13 @@
 import { Button } from "components/Button";
-import { Icon } from "components/Icon";
+import { Icon, IconButton } from "components/index";
 import { AuthViewLayout } from "containers/common/Layout";
 import React, { FC, Fragment, useState } from "react";
-import LogoImage from "assets/images/logo-s.svg";
-import { Checkbox } from "antd";
-import { useAccount } from "hooks/useAccount";
-import { useFormat } from "hooks/useFormat";
-import { IconButton } from "components/IconButton";
 import { Dialog, Transition } from "@headlessui/react";
-import { useUtils, useBrowser } from "hooks/index";
+import { useUtils, useBrowser, useAccount, useFormat } from "hooks/index";
 
 interface IConnectedSites { }
 const ConnectedSites: FC<IConnectedSites> = ({ }) => {
   const [selected, setSelected] = useState<string>("");
-  const onChange = (e) => {
-    console.log(`checked = ${e.target.checked}`);
-  };
 
   const { activeAccount } = useAccount();
   const { formatURL, ellipsis } = useFormat();
@@ -29,13 +21,15 @@ const ConnectedSites: FC<IConnectedSites> = ({ }) => {
       id,
       url: selected,
     });
-    console.log("id disconnect", id)
   }
 
   return (
     <AuthViewLayout title="CONNECTED SITES">
       <p className="text-white text-sm py-3 ml-4 mt-3">
-        {activeAccount?.connectedTo ? `${activeAccount.label} is connected to:` : `${activeAccount?.label} is not connected to any sites.`}
+        {activeAccount?.connectedTo.length ?
+          `${activeAccount.label} is connected to:` :
+          `${activeAccount?.label} is not connected to any sites. To connect to a SYS platform site, find the connect button on their site.`
+        }
       </p>
 
       <div className="flex flex-col justify-center items-center">
