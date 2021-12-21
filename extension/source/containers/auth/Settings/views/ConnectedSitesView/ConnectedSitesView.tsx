@@ -1,5 +1,4 @@
-import { Button } from "components/Button";
-import { Icon, IconButton } from "components/index";
+import { Icon, IconButton, SecondaryButton } from "components/index";
 import { AuthViewLayout } from "containers/common/Layout";
 import React, { FC, Fragment, useState } from "react";
 import { Dialog, Transition } from "@headlessui/react";
@@ -25,14 +24,14 @@ const ConnectedSites: FC<IConnectedSites> = ({ }) => {
 
   return (
     <AuthViewLayout title="CONNECTED SITES">
-      <p className="text-white text-sm py-3 ml-4 mt-3">
+      <p className="text-white text-sm py-3 ml-4 mt-3 w-full">
         {activeAccount?.connectedTo.length ?
           `${activeAccount.label} is connected to:` :
           `${activeAccount?.label} is not connected to any sites. To connect to a SYS platform site, find the connect button on their site.`
         }
       </p>
 
-      <div className="flex flex-col justify-center items-center">
+      <div className="flex flex-col justify-center items-center w-full">
         {activeAccount?.connectedTo && (
           activeAccount.connectedTo.map((url: string) => {
             return (
@@ -152,14 +151,12 @@ const ConnectedSites: FC<IConnectedSites> = ({ }) => {
           </Transition>
         )}
 
-        <Button
+        <SecondaryButton
           type="button"
-          className="bg-brand-navydarker"
-          classNameBorder="absolute bottom-8"
           onClick={() => history.push("/home")}
         >
           Close
-        </Button>
+        </SecondaryButton>
       </div>
     </AuthViewLayout>
   );

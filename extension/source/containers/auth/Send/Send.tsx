@@ -17,7 +17,7 @@ import {
 import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { Button, Tooltip } from 'components/index';
+import { PrimaryButton, Tooltip } from 'components/index';
 import { Assets } from 'scripts/types';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 
@@ -336,12 +336,11 @@ export const Send: FC<ISend> = () => {
           </span>
         </p>
 
-        <Button
+        <PrimaryButton
           type="submit"
-          className="bg-brand-navydarker"
         >
           Next
-        </Button>
+        </PrimaryButton>
       </Form>
     </div>
   )

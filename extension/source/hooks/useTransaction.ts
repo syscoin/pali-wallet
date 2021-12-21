@@ -39,7 +39,7 @@ export const useTransaction = () => {
     browser.runtime.sendMessage({
       type: "CANCEL_TRANSACTION",
       target: "background",
-      item: tempTx ? 'tempTx' : null
+      item: tempTx ? tempTx : null
     });
 
     browser.runtime.sendMessage({
@@ -47,7 +47,6 @@ export const useTransaction = () => {
       target: "background"
     });
   }
-
 
   const handleConfirmSendTransaction = async ({
     setLoading,
@@ -82,7 +81,7 @@ export const useTransaction = () => {
             });
 
             setTimeout(() => {
-              handleCancelTransactionOnSite(browser, tempTx);
+              handleCancelTransactionOnSite(browser, 'tempTx');
             }, 4000);
           }
 
@@ -167,103 +166,11 @@ export const useTransaction = () => {
     });
   }
 
-  const handleConfirmSiteTransaction = (
-    setLoading,
-    setConfirmed,
-    activeAccount,
-    formatURL,
-    browser,
-    tempTx,
-    alert,
-    confirmTransaction,
-    errorMessage,
-    recommendedFee,
-    confirmed,
-    setConfirmedAfterTx
-  ) => {
-    let isPending = false;
-
-    if ((activeAccount ? activeAccount.balance : -1) > 0) {
-      setLoading(true);
-      setConfirmedAfterTx(true);
-      
-      isPending = true;
-
-      confirmTransaction()
-        .then((response: any) => {
-          isPending = false;
-
-          setConfirmed(true);
-          setLoading(false);
-          setConfirmedAfterTx(false);
-
-          if (response) {
-            browser.runtime.sendMessage({
-              type: 'TRANSACTION_RESPONSE',
-              target: 'background',
-              response,
-            });
-          }
-        })
-        .catch((error: any) => {
-          if (error && tempTx.fee > recommendedFee) {
-            alert.removeAll();
-            alert.error(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
-          }
-
-          if (error && tempTx.fee < recommendedFee) {
-            alert.removeAll();
-            alert.error(errorMessage);
-          }
-
-          browser.runtime.sendMessage({
-            type: 'WALLET_ERROR',
-            target: 'background',
-            transactionError: true,
-            invalidParams: false,
-            message: errorMessage
-          });
-
-          alert.removeAll();
-          alert.error(errorMessage);
-
-          setTimeout(() => {
-            handleCancelTransactionOnSite(browser, tempTx);
-          }, 4000);
-        });
-
-      setTimeout(() => {
-        if (isPending && !confirmed) {
-          alert.removeAll();
-
-          if (tempTx === 'mintNFT') {
-            alert.show('Waiting for confirmation to create and issue your NFT. You can check this transaction in your history.', {
-              timeout: 5000,
-              type: 'success'
-            });
-
-            setTimeout(() => {
-              handleCancelTransactionOnSite(browser, tempTx);
-            }, 4000);
-
-            return;
-          }
-
-          alert.error(errorMessage);
-
-          setTimeout(() => {
-            handleCancelTransactionOnSite(browser, tempTx);
-          }, 4000);
-        }
-      }, 8 * 60 * 1000);
-    }
-  };
-
   return {
     getAssetBalance,
     updateSendTemporaryTx,
     handleConfirmSendTransaction,
     handleRejectTransaction,
-    handleConfirmSiteTransaction
+    handleCancelTransactionOnSite
   }
 }

@@ -1,7 +1,7 @@
 import React, { FC, useState } from 'react';
 import { Layout } from 'containers/common/Layout';
 import { useController } from 'hooks/index';
-import { Button } from 'components/index';
+import { PrimaryButton } from 'components/index';
 import { Form, Input } from 'antd';
 
 interface IImportPhrase {
@@ -38,7 +38,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
               required: true,
               message: '',
             },
-            ({}) => ({
+            ({ }) => ({
               validator(_, value) {
                 setSeedIsValid(controller.wallet.importPhrase(value));
 
@@ -65,13 +65,14 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           Importing your wallet seed automatically import a wallet associated with this seed phrase.
         </span>
 
-        <Button
-          classNameBorder="absolute bottom-12"
-          type="submit"
-          disabled={!seedIsValid}
-        >
-          Import
-        </Button>
+        <div className="absolute bottom-12">
+          <PrimaryButton
+            type="submit"
+            disabled={!seedIsValid}
+          >
+            Import
+          </PrimaryButton>
+        </div>
       </Form>
     </Layout>
   );

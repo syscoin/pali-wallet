@@ -19,7 +19,7 @@ const EditNetworkView = () => {
         <AuthViewLayout title="EDIT NETWORK">
           <p className="text-brand-white font-poppins py-4 pl-6 text-sm">Click on network to edit</p>
 
-          <ul className="text-sm overflow-auto px-4 h-96">
+          <ul className="text-sm overflow-auto px-4 h-96 w-full">
             {Object.values(networks).map((network: any) => {
               return (
                 <li

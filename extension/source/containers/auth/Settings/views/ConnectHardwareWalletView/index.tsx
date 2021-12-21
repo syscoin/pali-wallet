@@ -1,5 +1,5 @@
 import React, { FC, useState } from 'react';
-import { Button, Icon } from 'components/index';;
+import { PrimaryButton, Icon } from 'components/index';;
 import { AuthViewLayout } from 'containers/common/Layout';
 import { useController } from 'hooks/index';
 import { Disclosure } from '@headlessui/react';
@@ -75,16 +75,13 @@ const ConnectHardwareWalletView: FC = () => {
           </Disclosure>
         </div>
 
-        <Button
+        <PrimaryButton
           type="button"
-          padding="p-2.5"
-          className={`${!selected ? 'bg-opacity-80' : 'cursor-pointer'} bg-brand-navydarker  p-2.5`}
-          classNameBorder="absolute bottom-8"
           onClick={handleCreateHardwareWallet}
           disabled={!selected}
         >
           Connect
-        </Button>
+        </PrimaryButton>
       </div>
     </AuthViewLayout>
   );

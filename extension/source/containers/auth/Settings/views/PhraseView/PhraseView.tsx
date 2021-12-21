@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Form, Input } from 'antd';
 import { useController, useUtils } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
-import { Icon, Button, IconButton } from 'components/index';
+import { Icon, PrimaryButton, IconButton } from 'components/index';
 
 const PhraseView = () => {
   const [phrase, setPhrase] = useState<string>(
@@ -82,14 +82,14 @@ const PhraseView = () => {
           <b>WARNING:</b> Keep your seed phrase secret! Anyone with your seed phrase can access any account connected to this wallet and steal your assets
         </p>
 
-        <Button
-          type="button"
-          className="bg-brand-navydarker"
-          classNameBorder="absolute bottom-12"
-          onClick={() => history.push('/home')}
-        >
-          {copied ? 'Copied' : 'Close'}
-        </Button>
+        <div className="absolute bottom-12">
+          <PrimaryButton
+            type="button"
+            onClick={() => history.push('/home')}
+          >
+            {copied ? 'Copied' : 'Close'}
+          </PrimaryButton>
+        </div>
       </div>
     </AuthViewLayout>
   );

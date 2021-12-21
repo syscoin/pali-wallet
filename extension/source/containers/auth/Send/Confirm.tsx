@@ -1,7 +1,7 @@
 import React, { Fragment, useState } from 'react';
 import { Header } from 'containers/common/Header';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { Button, Modal } from 'components/index';;
+import { PrimaryButton, Modal } from 'components/index';;
 import { usePopup, useController, usePrice, useStore, useUtils, useFormat, useAccount, useBrowser, useTransaction } from 'hooks/index';
 
 export const SendConfirm = () => {
@@ -89,15 +89,13 @@ export const SendConfirm = () => {
                 </p>
               </div>
 
-              <Button
+              <PrimaryButton
                 loading={loading}
                 onClick={handleConfirm}
                 type="button"
-                className="bg-brand-navydarker"
-                classNameBorder="absolute bottom-12"
               >
                 Confirm
-              </Button>
+              </PrimaryButton>
             </div >
           )}
         </>

@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
 import { useUtils } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
-import { Icon, Button } from 'components/index';
+import { Icon, SecondaryButton } from 'components/index';
 
 const AboutView: FC = () => {
   const handleRedirect = (url: string) => {
@@ -12,7 +12,7 @@ const AboutView: FC = () => {
 
   return (
     <AuthViewLayout title="INFO & HELP">
-      <div className="text-brand-white text-sm mx-4 mt-8 flex flex-col gap-y-4">
+      <div className="text-brand-white text-sm mx-4 mt-8 flex flex-col gap-y-4 w-full">
         <p>Pali Wallet Browser Extension v2.0</p>
         <p>Version: 1.0.23</p>
 
@@ -23,7 +23,7 @@ const AboutView: FC = () => {
         </p>
       </div>
 
-      <div className="flex flex-col justify-center items-center">
+      <div className="flex flex-col justify-center items-center w-full">
         <div
           className="bg-brand-navydark border border-dashed border-brand-royalBlue mx-6 my-8 p-4 text-xs rounded-lg cursor-pointer"
           onClick={() => handleRedirect('https://discord.gg/8QKeyurHRd')}
@@ -39,14 +39,14 @@ const AboutView: FC = () => {
           </p>
         </div>
 
-        <Button
-          type="button"
-          className="bg-brand-navydarker"
-          classNameBorder="absolute bottom-12"
-          onClick={() => history.push('/home')}
-        >
-          Close
-        </Button>
+        <div className="absolute bottom-12">
+          <SecondaryButton
+            type="button"
+            onClick={() => history.push('/home')}
+          >
+            Close
+          </SecondaryButton>
+        </div>
       </div>
     </AuthViewLayout>
   );

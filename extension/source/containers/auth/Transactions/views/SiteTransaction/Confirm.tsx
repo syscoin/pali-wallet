@@ -1,491 +1,387 @@
-import React, { useState, useEffect, FC } from 'react';
+import React, { useEffect, useState } from 'react';
+import {
+  useController,
+  usePopup,
+  useUtils,
+  useFormat,
+  useTransaction,
+  useAccount,
+  useBrowser
+} from 'hooks/index';
+
 import { AuthViewLayout } from 'containers/common/Layout';
-import { Button, Icon } from 'components/index';;
-import { useController } from 'hooks/index';
-import { IAccountState } from 'state/wallet/types';
-import { browser } from 'webextension-polyfill-ts';
+import {
+  Icon,
+  PrimaryButton,
+  Modal,
+  SecondaryButton
+} from 'components/index';
 
-import { useStore, useUtils, useFormat } from 'hooks/index';
-import { Disclosure } from '@headlessui/react';
+// import { Disclosure } from '@headlessui/react';
 
-// interface IConfirmTransaction {
-//   confirmTransaction: any;
-//   data: any[];
-//   errorMessage: string;
-//   itemStringToClearData: string;
-//   layoutTitle: string;
-//   transactingStateItem: boolean;
-//   transactionItem: any;
-// }
+const ConfirmDefaultTransaction = ({
+  confirmTransaction,
+  temporaryTransaction,
+  temporaryTransactionStringToClear,
+  submittingData,
+  title
+}) => {
+  const controller = useController();
 
-// export const ConfirmTransaction: FC<IConfirmTransaction> = ({
-// transactionItem,
-// itemStringToClearData,
-// confirmTransaction,
-// errorMessage,
-// layoutTitle,
-// data,
-// transactingStateItem,
-// }) => {
-// const controller = useController();
+  const { ellipsis, formatURL } = useFormat();
+  const { closePopup } = usePopup();
+  const { history, alert } = useUtils();
+  const { activeAccount } = useAccount();
+  const { browser } = useBrowser();
+  const {
+    handleRejectTransaction,
+    handleCancelTransactionOnSite,
+  } = useTransaction();
 
-// const { getHost, alert, history } = useUtils();
-// const { ellipsis, formatURL } = useFormat();
-// const { accounts, currentSenderURL } = useStore();
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [logError, setLogError] = useState('');
+  const [submitted, setSubmitted] = useState(false);
 
-// const [connectedAccountId, setConnectedAccountId] = useState(-1);
-// const transactionItemData =
-//   controller.wallet.account.getTransactionItem()[transactionItem];
-// const [confirmed, setConfirmed] = useState<boolean>(false);
-// const [loading, setLoading] = useState<boolean>(false);
-// const [expanded, setExpanded] = useState<boolean>(false);
-// const [loadingConfirm, setLoadingConfirm] = useState<boolean>(false);
-// const [dataToRender, setDataToRender] = useState<any[]>([]);
-// const [advancedOptions, setAdvancedOptions] = useState<any[]>([]); const [recommendedFee, setRecommendedFee] = useState(0.00001);
-// const [assetData, setAssetData] = useState<any>({});
+  const advancedOptionsArray = [
+    'notarydetails',
+    'notaryAddress',
+    'auxfeedetails',
+    'payoutAddress',
+    'capabilityflags',
+    'contract',
+  ];
 
-  // const advancedOptionsArray = [
-  //   'notarydetails',
-  //   'notaryAddress',
-  //   'auxfeedetails',
-  //   'payoutAddress',
-  //   'capabilityflags',
-  //   'contract',
-  // ];
+  useEffect(() => {
+    if (temporaryTransaction) {
+      const newData: any = {};
 
-//   useEffect(() => {
-//     controller.wallet.account.getRecommendFee().then((response: any) => {
-//       setRecommendedFee(response);
-//     })
-//   }, []);
+      Object.entries(temporaryTransaction).map(([key, value]) => {
+        if (!newData[key]) {
+          newData[key] = {
+            label: key,
+            value,
+            advanced: advancedOptionsArray.includes(key),
+          };
+        }
+      });
 
-// useEffect(() => {
-//   if (data) {
-//     console.log('data', data)
-//     let newData: any = {};
-//     let newAdvancedOptions: any = {};
+      setData(Object.values(newData));
+    }
+  }, [temporaryTransaction]);
 
-//     Object.entries(data).map(([key, value]) => {
-//       if (!newData[key]) {
-//         newData[key] = {
-//           label: key,
-//           value,
-//         };
-//       }
+  const handleConfirmSiteTransaction = async () => {
+    const recommendedFee = await controller.wallet.account.getRecommendFee();
 
-//       if (advancedOptionsArray.includes(key) && !newAdvancedOptions[key]) {
-//         newAdvancedOptions[key] = {
-//           label: key,
-//           value,
-//         };;
-//       }
-//     });
+    let isPending = false;
 
-//     setDataToRender(Object.values(newData))
-//     setAdvancedOptions(Object.values(newAdvancedOptions))
-//   }
+    setLoading(true);
 
-//   setConnectedAccountId(
-//     accounts.findIndex((account: IAccountState) => {
-//       return account.connectedTo.filter((url: string) => {
-//         return url === getHost(currentSenderURL);
-//       });
-//     })
-//   );
-// }, [data]);
+    if ((activeAccount ? activeAccount.balance : -1) > 0) {
+      console.log('submitted true')
 
-//   useEffect(() => {
-//     dataToRender.map((data) => {
-//       if (data.label === 'assetGuid' && itemStringToClearData !== 'newSPT' && itemStringToClearData !== 'mintNFT') {
-//         controller.wallet.account.getDataAsset(data.value).then((response: any) => {
-//           setAssetData(response);
-//         })
-//       }
-//     })
-//   }, [dataToRender]);
+      setConfirmed(true);
+      setLoading(false);
+      setSubmitted(true);
 
-  // const handleRejectTransaction = () => {
-  //   history.push('/home');
+      isPending = true;
 
-  //   browser.runtime.sendMessage({
-  //     type: 'WALLET_ERROR',
-  //     target: 'background',
-  //     transactionError: true,
-  //     invalidParams: false,
-  //     message: "Transaction rejected.",
-  //   });
+      confirmTransaction()
+        .then((response: any) => {
+          isPending = false;
 
-  //   browser.runtime.sendMessage({
-  //     type: 'CANCEL_TRANSACTION',
-  //     target: 'background',
-  //     item: itemStringToClearData || null,
-  //   });
 
-  //   browser.runtime.sendMessage({
-  //     type: 'CLOSE_POPUP',
-  //     target: 'background',
-  //   });
-  // }
+          console.log('ytndsctin response', response)
 
-//   const handleClosePopup = () => {
-//     browser.runtime.sendMessage({
-//       type: 'CLOSE_POPUP',
-//       target: 'background',
-//     });
+          if (response) {
+            browser.runtime.sendMessage({
+              type: 'TRANSACTION_RESPONSE',
+              target: 'background',
+              response,
+            });
+          }
+        })
+        .catch((error: any) => {
+          setFailed(true);
+          setLogError(error.message);
 
-//     history.push('/home');
-//   };
+          if (error && temporaryTransaction.fee > recommendedFee) {
+            setLogError(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
+          }
 
-//   const handleCancelTransactionOnSite = () => {
-//     browser.runtime.sendMessage({
-//       type: 'CANCEL_TRANSACTION',
-//       target: 'background',
-//       item: itemStringToClearData || null,
-//     });
+          if (error && temporaryTransaction.fee < recommendedFee) {
+            setLogError(error.message);
+          }
 
-//     handleClosePopup();
-//   };
+          browser.runtime.sendMessage({
+            type: 'WALLET_ERROR',
+            target: 'background',
+            transactionError: true,
+            invalidParams: false,
+            message: "Sorry, we could not submit your request. Try again later."
+          });
+        });
 
-  // const handleConfirm = () => {
-  //   const acc = accounts.find((element) => element.id === connectedAccountId);
-  //   let isPending = false;
+      setTimeout(() => {
+        if (isPending && !confirmed) {
+          alert.removeAll();
+          alert.error("Sorry, we could not submit your request. Try again later.");
 
-  //   if ((acc ? acc.balance : -1) > 0) {
-  //     setLoadingConfirm(true);
-  //     setLoading(true);
-  //     isPending = true;
-
-  //     confirmTransaction()
-  //       .then((response: any) => {
-  //         isPending = false;
-
-  //         setConfirmed(true);
-  //         setLoading(false);
-  //         setLoadingConfirm(false);
-
-  //         if (response) {
-  //           browser.runtime.sendMessage({
-  //             type: 'TRANSACTION_RESPONSE',
-  //             target: 'background',
-  //             response,
-  //           });
-  //         }
-  //       })
-  //       .catch((error: any) => {
-  //         if (error && transactionItemData.fee > recommendedFee) {
-  //           alert.removeAll();
-  //           alert.error(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
-  //         }
-
-  //         if (error && transactionItemData < recommendedFee) {
-  //           alert.removeAll();
-  //           alert.error(errorMessage);
-  //         }
-
-  //         browser.runtime.sendMessage({
-  //           type: 'WALLET_ERROR',
-  //           target: 'background',
-  //           transactionError: true,
-  //           invalidParams: false,
-  //           message: errorMessage
-  //         });
-
-  //         alert.removeAll();
-  //         alert.error(errorMessage);
-
-  //         setTimeout(() => {
-  //           handleCancelTransactionOnSite();
-  //         }, 4000);
-  //       });
-
-  //     setTimeout(() => {
-  //       if (isPending && !confirmed) {
-  //         alert.removeAll();
-
-  //         if (itemStringToClearData === 'mintNFT') {
-  //           alert.show('Waiting for confirmation to create and issue your NFT. You can check this transaction in your history.', {
-  //             timeout: 5000,
-  //             type: 'success'
-  //           });
-
-  //           setTimeout(() => {
-  //             handleCancelTransactionOnSite();
-  //           }, 4000);
-
-  //           return;
-  //         }
-
-  //         alert.error(errorMessage);
-
-  //         setTimeout(() => {
-  //           handleCancelTransactionOnSite();
-  //         }, 4000);
-  //       }
-  //     }, 8 * 60 * 1000);
-  //   }
-  // };
-
-//   const renderData = () => {
-//     return dataToRender.map(({ label, value }) => {
-//       if (label) {
-//         if (
-//           label === 'receiver' ||
-//           label === 'issuer' ||
-//           label === 'newOwner' ||
-//           label === 'description'
-//         ) {
-//           return (
-//             <div className="flex justify-between p-2 my-2 border-b border-dashed border-brand-royalBlue items-center w-full text-sm" key={label}>
-//               <p>{label}</p>
-//               <p>{ellipsis(value)}</p>
-//             </div>
-
-//           );
-//         }
-
-//         if (advancedOptionsArray.includes(label)) {
-//           return;
-//         }
-
-//         if (label === "assetGuid") {
-//           return;
-//         }
-
-//         return (
-//           <div className="flex justify-between p-2 my-2 border-b border-dashed border-brand-royalBlue items-center w-full text-sm" key={label}>
-//             <p>{label}</p>
-//             <p>{value}</p>
-//           </div>
-//         );
-//       }
-
-//       return null;
-//     });
-//   };
-
-//   const renderOptions = () => {
-//     return advancedOptions.map(({ label, value }) => {
-//       if (label && value) {
-//         if (label == 'contract') {
-//           return (
-//             <div key={label}>
-//               <p>{label}</p>
-//               <p>{formatURL(value)}</p>
-//             </div>
-//           );
-//         }
-
-//         if (label == 'notaryAddress' || label == 'payoutAddress') {
-//           return (
-//             <div key={label}>
-//               <p>{label}</p>
-//               <p>{ellipsis(value)}</p>
-//             </div>
-//           );
-//         }
-
-//         if (label == 'notarydetails' || label == 'auxfeedetails') {
-//           return <div className="flex justify-between p-3 my-2 border-b border-dashed border-brand-navy items-center w-full text-sm" key={label}>{renderAdvancedDetails(value, label)}</div>;
-//         }
-
-//         return (
-//           <div className="flex justify-between p-3 my-2 border-b border-dashed border-brand-navy items-center w-full text-sm" key={label}>
-//             <p>{label}</p>
-//             <p>{value}</p>
-//           </div>
-//         );
-//       }
-
-//       return null;
-//     });
-//   };
-
-//   const renderAdvancedDetails = (items: any, itemName: string) => {
-//     return (
-//       <div>
-//         {itemName == 'notarydetails' && items && items.endpoint !== '' && (
-//           <div>
-//             <div>
-//               <p>Endpoint</p>
-//               <p>{formatURL(items.endpoint)}</p>
-//             </div>
-
-//             <div>
-//               <p>Instant transfers</p>
-//               <p>{items.instanttransfers || 0}</p>
-//             </div>
-
-//             <div>
-//               <p>HD required</p>
-//               <p>{items.hdrequired ? 'Yes' : 'No'}</p>
-//             </div>
-//           </div>
-//         )}
-
-//         {itemName == 'auxfeedetails' && items && (
-//           <div>
-//             {items.auxfees.map((auxfee: any, index: number) => {
-//               return (
-//                 <div key={index} >
-//                   <div>
-//                     <p>Bound</p>
-//                     <p>{auxfee.bound}</p>
-//                   </div>
-
-//                   <div>
-//                     <p>Percent</p>
-//                     <p>{auxfee.percent}</p>
-//                   </div>
-//                 </div>
-//               );
-//             })}
-//           </div>
-//         )}
-//       </div>
-//     );
-//   };
-
-//   return confirmed ? (
-//     <AuthViewLayout title="Your transaction is underway">
-//       <div className="body-description">
-//         You can follow your transaction under activity on your account screen.
-//       </div>
-//       <Button
-//         type="button"
-//         onClick={handleClosePopup}
-//       >
-//         Ok
-//       </Button>
-//     </AuthViewLayout>
-//   ) : (
-//     <div>
-//       {transactingStateItem && loading ? (
-//         <AuthViewLayout title="">
-//           <div >
-//             <section>
-//               <Icon name="loading" className="w-4 bg-brand-graydark100 text-brand-white" />
-//             </section>
-//           </div>
-//         </AuthViewLayout>
-//       ) : (
-//         <div>
-//           {transactionItemData && data && !loading && (
-//             <AuthViewLayout title={layoutTitle.toUpperCase()}>
-//               <div className="flex flex-col justify-center px-3 items-center">
-//                 <ul className="h-80 mt-4 overflow-auto w-full p-2">
-//                   {renderData()}
-
-//                   {/* {assetData && itemStringToClearData !== 'newSPT' && itemStringToClearData !== 'mintNFT' && (
-//                     <div>
-//                       <div key="symbol">
-//                         <p>symbol</p>
-//                         <p>{assetData && assetData.symbol ? atob(String(assetData.symbol)) : 'Not found'}</p>
-//                       </div>
-//                       <div key="assetGuid">
-//                         <p>assetGuid</p>
-//                         <p>{assetData && assetData.assetGuid ? String(assetData.assetGuid) : 'Not found'}</p>
-//                       </div>
-//                     </div>
-//                   )} */}
-
-//                   <li className="flex justify-between p-3 my-2 border-b border-dashed border-brand-royalBlue items-center w-full text-sm">
-//                     <p>Site</p>
-//                     <p>{getHost(`${currentSenderURL}`)}</p>
-//                   </li>
-
-//                   <Disclosure>
-//                     {({ open }) => (
-//                       <>
-//                         <Disclosure.Button
-//                           className="text-sm py-2 px-4 flex justify-between items-center rounded-lg w-full border border-brand-royalBlue cursor-pointer transition-all duration-300 bg-brand-navydarker"
-//                         >
-//                           Advanced options
-
-//                           <Icon
-//                             name="select-up"
-//                             className={`${open ?
-//                               'transform rotate-180' :
-//                               ''
-//                               } mb-1 text-brand-deepPink100`}
-//                           />
-//                         </Disclosure.Button>
-
-//                         <Disclosure.Panel>
-//                           <div
-//                             className="py-2 px-4 rounded-lg w-full border border-solid border-brand-royalBlue flex flex-col transition-all duration-300 bg-brand-navyborder text-sm text-brand-white border-t-0 rounded-t-none"
-//                           >
-//                             {renderOptions()}
-//                           </div>
-//                         </Disclosure.Panel>
-//                       </>
-//                     )}
-//                   </Disclosure>
-//                 </ul>
-
-                // <div className="flex justify-between items-center absolute bottom-10 gap-3">
-                //   <Button
-                //     type="button"
-                //     className="bg-brand-navydarker"
-                //     onClick={handleRejectTransaction}
-                //   >
-                //     Cancel
-                //   </Button>
-
-                //   <Button
-                //     type="submit"
-                //     loading={loading}
-                //     className="bg-brand-navydarker"
-                //     onClick={handleConfirm}
-                //   >
-                //     Confirm
-                //   </Button>
-                // </div>
-//               </div>
-//             </AuthViewLayout>
-//           )}
-//         </div>
-//       )}
-//     </div>
-//   );
-// };
-
-const RenderData = (data) => {
+          setTimeout(() => {
+            handleCancelTransactionOnSite(browser, temporaryTransactionStringToClear);
+          }, 4000);
+        }
+      }, 8 * 60 * 1000);
+    }
+  };
 
   return (
     <>
-      <li
-        className="flex justify-between p-2 my-2 border-b border-dashed border-brand-royalBlue items-center w-full text-sm"
-      >
-        <p>Precision</p>
+      {submitted && (
+        <Modal
+          type="default"
+          closePopup={closePopup}
+          onClose={closePopup}
+          open={submitted && !failed}
+          title={`${title.toLowerCase()} request successfully submitted`}
+          description="You can check your request under activity on your home screen."
+          closeMessage="Got it"
+        />
+      )}
 
-        <p>asdkjakefe</p>
-      </li>
+      {failed && (
+        <Modal
+          type="error"
+          onClose={closePopup}
+          open={failed}
+          title="Token creation request failed"
+          description="Sorry, we could not submit your request. Try again later."
+          log={logError ? logError : '...'}
+          closeMessage="Ok"
+        />
+      )}
+
+      {temporaryTransaction && !loading && (
+        <div className="flex justify-center flex-col items-center w-full">
+          <ul className="text-xs overflow-auto w-full px-4 h-80 mt-4">
+            {data && data.map((item: any) => (
+              <>
+                {!item.advanced && (
+                  <li
+                    key={item.label}
+                    className="flex justify-between p-2 my-2 border-b border-dashed border-brand-royalBlue items-center w-full text-xs"
+                  >
+                    <p>{item.label}</p>
+                    <p>{typeof item.value === 'string' && item.value.length > 10 ? ellipsis(item.value) : item.value}</p>
+                  </li>
+                )}
+              </>
+            ))}
+          </ul>
+
+          <div className="flex justify-between items-center absolute bottom-10 gap-3">
+            <SecondaryButton
+              type="button"
+              onClick={() => handleRejectTransaction(browser, temporaryTransaction, history)}
+            >
+              Cancel
+            </SecondaryButton>
+
+            <PrimaryButton
+              type="submit"
+              disabled={submitted}
+              loading={loading}
+              onClick={handleConfirmSiteTransaction}
+            >
+              Confirm
+            </PrimaryButton>
+          </div>
+        </div>
+      )}
+
+      {submittingData || loading && (
+        <Icon
+          name="loading"
+          wrapperClassname="absolute top-1/2 left-1/2"
+          className="w-4 text-brand-white"
+        />
+      )}
+    </>
+  )
+}
+
+const ConfirmSignTransaction = ({
+  temporaryTransaction,
+  signAndSend = false,
+  title = 'SIGNATURE REQUEST',
+  submittingData
+}) => {
+  const controller = useController();
+  const base64 = /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
+
+  const psbt = controller.wallet.account.getTransactionItem()[temporaryTransaction];
+
+  const { closePopup } = usePopup();
+  const { history, alert } = useUtils();
+  const { browser } = useBrowser();
+  const {
+    handleRejectTransaction,
+    handleCancelTransactionOnSite,
+  } = useTransaction();
+
+  const [loading, setLoading] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [logError, setLogError] = useState('');
+
+  const handleConfirmSignature = () => {
+    setLoading(true);
+
+    if (!base64.test(psbt.psbt) || typeof psbt.assets !== 'string') {
+      alert.removeAll();
+      alert.error(`PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.`);
+
+      setTimeout(() => {
+        handleCancelTransactionOnSite(browser, temporaryTransaction);
+      }, 10000);
+
+      return;
+    }
+
+    controller.wallet.account
+      .confirmSignature(signAndSend)
+      .then((response: any) => {
+        if (response) {
+          setConfirmed(true);
+          setLoading(false);
+
+          setTimeout(() => {
+            handleCancelTransactionOnSite(browser, temporaryTransaction);
+          }, 4000);
+
+          browser.runtime.sendMessage({
+            type: 'TRANSACTION_RESPONSE',
+            target: 'background',
+            response,
+          });
+        }
+      })
+      .catch((error: any) => {
+        if (error) {
+          setFailed(true);
+          setLogError(error.message);
+
+          browser.runtime.sendMessage({
+            type: 'WALLET_ERROR',
+            target: 'background',
+            transactionError: true,
+            invalidParams: false,
+            message: "Can't sign transaction. Try again later.",
+          });
+
+          setTimeout(() => {
+            handleCancelTransactionOnSite(browser, temporaryTransaction);
+          }, 4000);
+        }
+      });
+  };
+
+  return (
+    <>
+      {confirmed && (
+        <Modal
+          type="default"
+          closePopup={closePopup}
+          onClose={closePopup}
+          open={confirmed && !failed}
+          title={`${title.toLowerCase()} request successfully submitted`}
+          description="You can check your request under activity on your home screen."
+          closeMessage="Got it"
+        />
+      )}
+
+      {failed && (
+        <Modal
+          type="error"
+          onClose={closePopup}
+          open={failed}
+          title="Token creation request failed"
+          description="Sorry, we could not submit your request. Try again later."
+          log={logError ? logError : '...'}
+          closeMessage="Ok"
+        />
+      )}
+
+      {temporaryTransaction && !loading && (
+        <div className="flex justify-center flex-col items-center w-full">
+          <ul className="text-xs overflow-auto w-full px-4 h-80 mt-4">
+            <pre>{`${JSON.stringify(
+              controller.wallet.account.importPsbt(psbt),
+              null,
+              2
+            )}`}</pre>
+          </ul>
+
+          <div className="flex justify-between items-center absolute bottom-10 gap-3">
+            <SecondaryButton
+              type="button"
+              onClick={() => handleRejectTransaction(browser, temporaryTransaction, history)}
+            >
+              Cancel
+            </SecondaryButton>
+
+            <PrimaryButton
+              type="submit"
+              disabled={confirmed}
+              loading={loading}
+              onClick={handleConfirmSignature}
+            >
+              Confirm
+            </PrimaryButton>
+          </div>
+        </div>
+      )}
+
+      {submittingData || loading && (
+        <Icon
+          name="loading"
+          wrapperClassname="absolute top-1/2 left-1/2"
+          className="w-4 text-brand-white"
+        />
+      )}
     </>
   )
 }
 
 export const ConfirmTransaction = ({
-  transactionItem,
-  itemStringToClearData,
+  sign,
+  title,
   confirmTransaction,
-  errorMessage,
-  layoutTitle,
-  data,
-  transactingStateItem,
+  temporaryTransaction,
+  temporaryTransactionStringToClear,
+  submittingData,
+  signAndSend
 }) => {
-  const controller = useController();
-
-  // const { getHost, alert, history } = useUtils();
-  // const { ellipsis, formatURL } = useFormat();
-  // const { accounts, currentSenderURL } = useStore();
-
   return (
-    <AuthViewLayout title={layoutTitle.toUpperCase()}>
-      <div className="flex justify-center flex-col items-center">
-        ola
-
-        <RenderData data={data} />
-      </div>
+    <AuthViewLayout canGoBack={false} title={title}>
+      {sign ? (
+        <ConfirmSignTransaction
+          temporaryTransaction={temporaryTransaction}
+          signAndSend={signAndSend}
+          title="SIGNATURE REQUEST"
+          submittingData={submittingData}
+        />
+      ) : (
+        <ConfirmDefaultTransaction
+          confirmTransaction={confirmTransaction}
+          temporaryTransaction={temporaryTransaction}
+          temporaryTransactionStringToClear={temporaryTransactionStringToClear}
+          submittingData={submittingData}
+          title={title}
+        />
+      )}
     </AuthViewLayout>
-  )
+  );
 }

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useFormat, useUtils, useStore, useController } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { Icon, Button } from 'components/index';
+import { Icon, PrimaryButton } from 'components/index';
 import { IAccountState } from 'state/wallet/types';
 import { Disclosure } from '@headlessui/react';
 
@@ -17,7 +17,7 @@ const PrivateKeyView = () => {
 
   return (
     <AuthViewLayout title="XPUB">
-      <ul className="text-sm overflow-auto px-4 h-96">
+      <ul className="text-sm overflow-auto px-4 h-96 w-full">
         {accounts.map((account: IAccountState) => {
           return (
             <Disclosure
@@ -75,14 +75,12 @@ const PrivateKeyView = () => {
         })}
       </ul>
 
-      <Button
+      <PrimaryButton
         type="button"
-        className="bg-brand-navydarker"
-        classNameBorder="absolute bottom-8 ml-28"
         onClick={() => history.push('/home')}
       >
         {copied ? 'Copied' : 'Close'}
-      </Button>
+      </PrimaryButton>
     </AuthViewLayout >
   );
 };

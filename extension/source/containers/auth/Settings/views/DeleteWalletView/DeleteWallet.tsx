@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from 'components/index';
+import { SecondaryButton, PrimaryButton } from 'components/index';
 import {
   useUtils,
 } from 'hooks/index';
@@ -102,20 +102,18 @@ const DeleteWalletView = () => {
           </div>
 
           <div className="absolute bottom-12 flex justify-between gap-x-4">
-            <Button
+            <SecondaryButton
               type="button"
-              className="bg-brand-navydarker hover:bg-brand-navydarker"
               onClick={() => history.push('/home')}
             >
               Cancel
-            </Button>
+            </SecondaryButton>
 
-            <Button
+            <PrimaryButton
               type="submit"
-              className="bg-primary"
             >
               Delete
-            </Button>
+            </PrimaryButton>
           </div>
         </Form>
 

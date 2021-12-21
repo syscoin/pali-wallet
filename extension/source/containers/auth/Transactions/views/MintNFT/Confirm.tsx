@@ -1,25 +1,22 @@
 import React from 'react';
 import { useController, useStore } from 'hooks/index';
+import { ConfirmTransaction } from '../index';
 
-import { ConfirmTransaction } from '../SiteTransaction';
-
-export const MintNFTConfirm = () => {
+export const CreateTokenConfirm = () => {
   const controller = useController();
-  const { mintNFT } = useStore();
 
-  const { issueNFTItem } = controller.wallet.account.getTransactionItem();
+  const { issueNFTITem } = controller.wallet.account.getTransactionItem();
+  const { issuingNFT } = useStore();
 
   return (
-    <div>
-      <ConfirmTransaction
-        transactionItem="issueNFTItem"
-        itemStringToClearData="issueNFTItem"
-        confirmTransaction={controller.wallet.account.confirmIssueNFTTx}
-        errorMessage="Can't issue NFT. Try again later."
-        layoutTitle="Confirm NFT mint"
-        data={issueNFTItem}
-        transactingStateItem={mintNFT}
-      />
-    </div>
+    <ConfirmTransaction
+      sign={false}
+      signAndSend={false}
+      title="NFT MINT"
+      confirmTransaction={controller.wallet.account.confirmIssueNFT}
+      temporaryTransaction={issueNFTITem}
+      temporaryTransactionStringToClear="issueNFTITem"
+      submittingData={issuingNFT}
+    />
   );
 };

@@ -8,7 +8,7 @@ import { useController } from 'hooks/index';
 import shuffle from 'lodash/shuffle';
 // import isEqual from 'lodash/isEqual';
 import { Layout } from '../../common/Layout';
-import { Button, Modal } from 'components/index';
+import { Button, Modal, PrimaryButton } from 'components/index';
 
 export const ConfirmPhrase = () => {
   const history = useHistory();
@@ -63,7 +63,6 @@ export const ConfirmPhrase = () => {
                 className="min-w-xs h-7 font-bold text-xs leading-4 flex items-center justify-center tracking-normal bg-brand-royalBlue p-1 border border-brand-royalBlue gap-4 rounded-md text-brand-white"
                 key={idx}
                 type="button"
-                noStandard
                 onClick={() => handleNewPhrase(idx)}
               >
                 {phrase}
@@ -76,7 +75,6 @@ export const ConfirmPhrase = () => {
                 className="min-w-xs h-7 font-bold text-xs leading-4 flex items-center justify-center tracking-normal bg-brand-navy p-1 border border-brand-navymedium gap-4 rounded-md text-brand-white"
                 key={idx}
                 type="button"
-                noStandard
                 onClick={() => handleOrgPhrase(idx)}
               >
                 {phrase}
@@ -84,13 +82,12 @@ export const ConfirmPhrase = () => {
             ))}
           </section>
 
-          <Button
+          <PrimaryButton
             type="button"
             onClick={handleConfirm}
-            classNameBorder="absolute bottom-12"
           >
             Validate
-          </Button>
+          </PrimaryButton>
         </>
 
         {passed && (

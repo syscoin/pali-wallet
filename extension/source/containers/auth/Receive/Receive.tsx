@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useController, useUtils, useAccount, useFormat } from 'hooks/index';
 import QRCode from 'qrcode.react';
-import { Button, Icon } from 'components/index';
+import { PrimaryButton, Icon } from 'components/index';
 import { AuthViewLayout } from 'containers/common/Layout';
 
 export const Receive = () => {
@@ -26,7 +26,7 @@ export const Receive = () => {
   return (
     <AuthViewLayout title="RECEIVE SYS">
       {loaded && activeAccount ? (
-        <div className="flex flex-col justify-center items-center pt-8">
+        <div className="flex flex-col justify-center items-center pt-8 w-full">
           <QRCode
             value={activeAccount.address.main}
             bgColor="#fff"
@@ -36,18 +36,18 @@ export const Receive = () => {
 
           <p className="mt-4 text-base">{ellipsis(activeAccount.address.main, 4, 10)}</p>
 
-          <Button
-            type="button"
-            padding="py-1 bg-brand-navydarker"
-            classNameBorder="absolute bottom-14"
-            onClick={() =>
-              copyText(activeAccount.address.main)
-            }
-          >
-            <span className="text-base">
-              {isCopied ? 'Copied address' : 'Copy'}
-            </span>
-          </Button>
+          <div className="absolute bottom-12">
+            <PrimaryButton
+              type="button"
+              onClick={() =>
+                copyText(activeAccount.address.main)
+              }
+            >
+              <span className="text-xs">
+                {isCopied ? 'Copied address' : 'Copy'}
+              </span>
+            </PrimaryButton>
+          </div>
         </div>
       ) : (
         <Icon

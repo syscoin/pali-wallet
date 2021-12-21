@@ -34,7 +34,7 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
         )}
       </div>
 
-      <div className={`${background} text-brand-white`}>
+      <div className={`${background} text-brand-white flex flex-col justify-center items-center w-full`}>
         {children}
       </div>
     </div>

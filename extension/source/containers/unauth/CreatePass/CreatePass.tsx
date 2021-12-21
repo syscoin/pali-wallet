@@ -2,7 +2,7 @@ import React from 'react';
 import { useHistory } from 'react-router-dom';
 import { useController } from 'hooks/index';
 import { Form, Input } from 'antd';
-import { Button } from 'components/index';
+import { PrimaryButton } from 'components/index';
 import { Layout } from 'containers/common/Layout';
 
 export const CreatePass = () => {
@@ -83,9 +83,15 @@ export const CreatePass = () => {
           unlock your wallet.
         </span>
 
-        <Button type="submit" classNameBorder="absolute bottom-12">
-          Next
-        </Button>
+        <div className="absolute bottom-12">
+          <PrimaryButton
+            type="submit"
+          >
+            Next
+          </PrimaryButton>
+        </div>
+
+
       </Form>
     </Layout>
   );

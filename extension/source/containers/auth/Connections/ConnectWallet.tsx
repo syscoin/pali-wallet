@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, Icon } from 'components/index';
+import { PrimaryButton, SecondaryButton, Icon } from 'components/index';
 import { useStore, useUtils, useFormat, useDappConnection, useAccount } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout';
 
@@ -22,7 +22,7 @@ export const ConnectWallet = () => {
 
   return (
     <AuthViewLayout title="CONNECT WITH">
-      <div className="flex flex-col justify-center items-center">
+      <div className="flex flex-col justify-center items-center w-full">
         <h1 className="text-sm mt-4">PALI WALLET</h1>
 
         <p className="text-brand-royalBlue text-sm">{getHost(`${currentSenderURL}`)}</p>
@@ -56,22 +56,20 @@ export const ConnectWallet = () => {
         </small>
 
         <div className="flex justify-between items-center absolute bottom-8 gap-3">
-          <Button
+          <SecondaryButton
             type="button"
-            className="bg-brand-navydarker"
             onClick={() => cancelConnection(accountId)}
           >
             Cancel
-          </Button>
+          </SecondaryButton>
 
-          <Button
+          <PrimaryButton
             type="button"
-            className="bg-brand-navydarker"
             disabled={accountId === -1}
             onClick={() => confirmConnection(accountId)}
           >
             {accountId > -1 ? 'Confirm' : 'Next'}
-          </Button>
+          </PrimaryButton>
         </div>
       </div>
     </AuthViewLayout>

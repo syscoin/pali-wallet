@@ -1,6 +1,6 @@
 import React, { useState, FC } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { Button } from 'components/index';;
+import { PrimaryButton, SecondaryButton } from 'components/index';
 import { useController, useUtils, useBrowser, useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
 
@@ -102,32 +102,30 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
             ]}
           >
             <Input
-              className="rounded-full my-8 py-3 pr-8 w-72 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
+              className="rounded-full my-8 p-2 w-72 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
               type="number"
               placeholder="Fee"
             />
           </Form.Item>
 
-          <p className="bg-brand-navydarker border text-left border-dashed border-brand-royalBlue mx-4 p-4 mt-4 text-xs rounded-lg">
+          <p className="bg-brand-navydarker border text-left border-dashed border-brand-royalBlue mx-12 p-4 mt-4 text-xs rounded-lg">
             With current network conditions, we recommend a fee of {recommend} SYS.
           </p>
 
           <div className="flex justify-between items-center absolute bottom-10 gap-3">
-            <Button
+            <SecondaryButton
               type="button"
-              className="bg-brand-navydarker"
               onClick={handleRejectTransaction}
             >
               Cancel
-            </Button>
+            </SecondaryButton>
 
-            <Button
+            <PrimaryButton
               type="submit"
               loading={loading}
-              className="bg-brand-navydarker"
             >
               Next
-            </Button>
+            </PrimaryButton>
           </div>
         </Form>
       </div>

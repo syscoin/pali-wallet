@@ -15,7 +15,12 @@ import {
   updateSwitchNetwork,
   updateAllTokens,
   setTimer,
-  updateNetwork
+  updateNetwork,
+  createAsset,
+  issueAsset,
+  issueNFT as setIssuingNFT,
+  setUpdateAsset as setUpdateAssetItem,
+  setTransferOwnership,
 } from 'state/wallet';
 
 import {
@@ -76,6 +81,8 @@ const AccountController = (actions: {
   const getConnectedAccount = (): IAccountState => {
     const { accounts, tabs }: IWalletState = store.getState().wallet;
     const { currentURL } = tabs;
+
+    console.log(currentURL, 'currenturl get connected account')
 
     return accounts.find((account: IAccountState) => {
       return account.connectedTo.find((url: string) => {
@@ -954,7 +961,9 @@ const AccountController = (actions: {
   const createSPT = (spt: ISPTInfo) => {
     newSPT = spt;
 
-    return true;
+    console.log('new spt', newSPT)
+
+    store.dispatch(createAsset(false));
   }
 
   const setNewIssueNFT = (nft: any) => {
@@ -966,24 +975,25 @@ const AccountController = (actions: {
   const issueSPT = (spt: ISPTIssue) => {
     mintSPT = spt;
 
-    return true;
+    store.dispatch(issueAsset(false));
   }
 
   const issueNFT = (nft: INFTIssue) => {
     mintNFT = nft;
 
-    return true;
+    store.dispatch(setIssuingNFT(false));
   }
+
   const setUpdateAsset = (asset: any) => {
     updateAssetItem = asset;
 
-    return true;
+    store.dispatch(setUpdateAssetItem(false));
   }
 
   const setNewOwnership = (asset: any) => {
     transferOwnershipData = asset;
 
-    return true;
+    store.dispatch(setTransferOwnership(false));
   }
 
   const handleTransactions = async (item: any, executeTransaction: any, condition?: boolean) => {
@@ -1157,10 +1167,10 @@ const AccountController = (actions: {
             }
           }, 16000);
         });
-      } catch (error) {
+      } catch (error: any) {
         console.log(error);
 
-        return error;
+        throw new Error(error);
       }
     }
 
@@ -1462,7 +1472,7 @@ const AccountController = (actions: {
         reject(error);
       });
 
-      mintNFT = null;
+      // mintNFT = null;
     });
   };
 

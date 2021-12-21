@@ -10,5 +10,3 @@ export { default as CurrencyView } from './CurrencyView';
 export { default as EditNetworkView } from './EditNetworkView';
 export { default as CustomRPCView } from './CustomRPCView';
 export { default as Connectedsites } from './ConnectedSitesView';
-export { default as ConnectWith } from './ConnectWithView';
-export { default as CreateToken } from './CreateTokenView';

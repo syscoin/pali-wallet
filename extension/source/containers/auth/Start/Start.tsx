@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Link } from 'components/index';
+import { PrimaryButton, Link } from 'components/index';
 import { useController } from 'hooks/index';
 import LogoImage from 'assets/images/logo-s.svg';
 import { Form, Input } from 'antd';
@@ -51,11 +51,11 @@ export const Start = () => {
           <Input.Password placeholder="Enter your password" />
         </Form.Item>
         
-        <Button
+        <PrimaryButton 
           type="submit"
         >
           Unlock
-        </Button>
+        </PrimaryButton>
       </Form>
       
       <Link

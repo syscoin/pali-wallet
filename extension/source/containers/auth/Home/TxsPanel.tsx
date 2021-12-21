@@ -15,7 +15,6 @@ export const TxsPanel: FC = () => {
         <Button
           className={`flex-1 p-2 ${!isActivity ? 'bg-brand-navyborder' : 'bg-brand-navydarker'}`}
           type="button"
-          noStandard
           onClick={() => setActivity(false)}
         >
           Assets
@@ -24,7 +23,6 @@ export const TxsPanel: FC = () => {
         <Button
           className={`flex-1 p-2 ${isActivity ? 'bg-brand-navyborder' : 'bg-brand-navydarker'}`}
           type="button"
-          noStandard
           onClick={() => setActivity(true)}
         >
           Activity

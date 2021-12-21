@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, Modal } from 'components/index';;
+import { PrimaryButton, Modal } from 'components/index';;
 import { useController, useStore } from 'hooks/index';
 
 import { Form, Input } from 'antd';
@@ -66,14 +66,14 @@ const AutolockView = () => {
           />
         </Form.Item>
 
-        <Button
-          type="submit"
-          loading={loading}
-          className="bg-brand-navydarker"
-          classNameBorder="absolute bottom-12"
-        >
-          Save
-        </Button>
+        <div className="absolute bottom-12">
+          <PrimaryButton
+            type="submit"
+            loading={loading}
+          >
+            Save
+          </PrimaryButton>
+        </div>
       </Form>
     </AuthViewLayout>
   );

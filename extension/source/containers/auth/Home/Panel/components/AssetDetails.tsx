@@ -113,7 +113,6 @@ export const AssetDetails = ({
         <Button
           type="button"
           onClick={() => window.open('')}
-          noStandard
           className="inline-flex justify-center px-6 py-1 text-sm font-medium text-brand-royalBlue bg-blue-100 border border-transparent rounded-full hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalBlue"
         >
           Go

@@ -72,6 +72,10 @@
   @apply absolute right-2 text-brand-navymedium top-1;
 }
 
+#site .ant-form-item-children-icon {
+  @apply absolute right-8 text-brand-navymedium top-8;
+}
+
 #autolock .ant-form-item-children-icon {
   @apply absolute right-9 text-brand-navymedium top-1;
 }

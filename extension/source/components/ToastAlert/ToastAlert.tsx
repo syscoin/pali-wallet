@@ -10,10 +10,16 @@ interface IAlertTemplate {
 export const ToastAlert: FC<IAlertTemplate> = ({ message, options, close }) => {
   return (
     <div
-      className="mb-20 w-72 text-center"
+      className={`${options.type === 'error' ? 'bg-brand-navydarker border-brand-error' : 'bg-brand-navydark border-brand-royalBlue'} p-3 mb-20 w-72 text-center rounded-lg border flex justify-between text-brand-white text-sm`}
       onClick={close}
     >
-      {options.type === 'error' && <Icon name="close-circle" className="w-4 bg-brand-gray200 text-brand-navy" />}
+      {options.type === 'error' && (
+        <Icon
+          name="close-circle"
+          className="w-4 text-brand-white"
+        />
+      )}
+
       {message}
     </div>
   );

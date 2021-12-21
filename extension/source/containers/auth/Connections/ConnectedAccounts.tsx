@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button } from 'components/index';
+import { Button, SecondaryButton, PrimaryButton } from 'components/index';
 import { useFormat, useAccount, useUtils, useStore, useDappConnection, usePopup } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout';
 
@@ -47,22 +47,20 @@ export const ConnectedAccounts = () => {
         </ul>
 
         <div className="flex justify-between items-center absolute bottom-8 gap-3">
-          <Button
+          <SecondaryButton
             type="button"
-            className="bg-brand-navydarker"
             onClick={closePopup}
           >
             Cancel
-          </Button>
+          </SecondaryButton>
 
-          <Button
+          <PrimaryButton
             type="button"
-            className="bg-brand-navydarker"
             disabled={accountId === -1}
             onClick={() => changeConnectedAccount(accountId)}
           >
             Change
-          </Button>
+          </PrimaryButton>
         </div>
       </div>
     </AuthViewLayout>
