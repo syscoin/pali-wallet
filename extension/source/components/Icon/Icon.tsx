@@ -34,7 +34,8 @@ import {
   EditOutlined,
   CheckCircleOutlined,
   CaretUpOutlined,
-  MessageOutlined
+  MessageOutlined,
+  VerifiedOutlined
 } from '@ant-design/icons';
 
 const icons = {
@@ -72,7 +73,8 @@ const icons = {
   'edit': EditOutlined,
   'check': CheckCircleOutlined,
   'select-up': CaretUpOutlined,
-  'message': MessageOutlined
+  'message': MessageOutlined,
+  'verified': VerifiedOutlined,
 }
 
 interface IIcon {

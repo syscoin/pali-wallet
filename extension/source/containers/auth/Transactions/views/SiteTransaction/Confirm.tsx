@@ -17,8 +17,6 @@ import {
   SecondaryButton
 } from 'components/index';
 
-// import { Disclosure } from '@headlessui/react';
-
 const ConfirmDefaultTransaction = ({
   confirmTransaction,
   temporaryTransaction,
@@ -30,7 +28,7 @@ const ConfirmDefaultTransaction = ({
 
   const { ellipsis, formatURL } = useFormat();
   const { closePopup } = usePopup();
-  const { history, alert } = useUtils();
+  const { history } = useUtils();
   const { activeAccount } = useAccount();
   const { browser } = useBrowser();
   const {
@@ -82,52 +80,57 @@ const ConfirmDefaultTransaction = ({
     if ((activeAccount ? activeAccount.balance : -1) > 0) {
       console.log('submitted true')
 
-      setConfirmed(true);
-      setLoading(false);
-      setSubmitted(true);
-
       isPending = true;
 
-      confirmTransaction()
-        .then((response: any) => {
-          isPending = false;
+      try {
+        if (temporaryTransactionStringToClear === 'mintNFT') {
+          setConfirmed(true);
+          setLoading(false);
+          setSubmitted(true);
+        }
 
+        const response = await confirmTransaction();
 
-          console.log('ytndsctin response', response)
+        isPending = false;
 
-          if (response) {
-            browser.runtime.sendMessage({
-              type: 'TRANSACTION_RESPONSE',
-              target: 'background',
-              response,
-            });
-          }
-        })
-        .catch((error: any) => {
-          setFailed(true);
-          setLogError(error.message);
+        setConfirmed(true);
+        setLoading(false);
+        setSubmitted(true);
 
-          if (error && temporaryTransaction.fee > recommendedFee) {
-            setLogError(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
-          }
-
-          if (error && temporaryTransaction.fee < recommendedFee) {
-            setLogError(error.message);
-          }
-
+        if (response) {
           browser.runtime.sendMessage({
-            type: 'WALLET_ERROR',
+            type: 'TRANSACTION_RESPONSE',
             target: 'background',
-            transactionError: true,
-            invalidParams: false,
-            message: "Sorry, we could not submit your request. Try again later."
+            response,
           });
+        }
+
+      } catch (error: any) {
+        setFailed(true);
+        setLogError(error.message);
+
+        if (error && temporaryTransaction.fee > recommendedFee) {
+          setLogError(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
+        }
+
+        if (error && temporaryTransaction.fee < recommendedFee) {
+          setLogError(error.message);
+        }
+
+        browser.runtime.sendMessage({
+          type: 'WALLET_ERROR',
+          target: 'background',
+          transactionError: true,
+          invalidParams: false,
+          message: "Sorry, we could not submit your request. Try again later."
         });
+      }
 
       setTimeout(() => {
         if (isPending && !confirmed) {
-          alert.removeAll();
-          alert.error("Sorry, we could not submit your request. Try again later.");
+          setSubmitted(true);
+          setFailed(false)
+          setLogError('');
 
           setTimeout(() => {
             handleCancelTransactionOnSite(browser, temporaryTransactionStringToClear);
@@ -139,28 +142,30 @@ const ConfirmDefaultTransaction = ({
 
   return (
     <>
-      {submitted && (
-        <Modal
-          type="default"
-          closePopup={closePopup}
-          onClose={closePopup}
-          open={submitted && !failed}
-          title={`${title.toLowerCase()} request successfully submitted`}
-          description="You can check your request under activity on your home screen."
-          closeMessage="Got it"
-        />
-      )}
-
-      {failed && (
+      {failed ? (
         <Modal
           type="error"
           onClose={closePopup}
           open={failed}
-          title="Token creation request failed"
+          title={`${title.toLowerCase()} request failed`}
           description="Sorry, we could not submit your request. Try again later."
-          log={logError ? logError : '...'}
+          log={logError ? logError : 'No description provided'}
           closeMessage="Ok"
         />
+      ) : (
+        <>
+          {submitted && (
+            <Modal
+              type="default"
+              closePopup={closePopup}
+              onClose={closePopup}
+              open={submitted && !failed}
+              title={`${title.toLowerCase()} request successfully submitted`}
+              description="You can check your request under activity on your home screen."
+              closeMessage="Got it"
+            />
+          )}
+        </>
       )}
 
       {temporaryTransaction && !loading && (

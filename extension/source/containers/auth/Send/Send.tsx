@@ -1,23 +1,25 @@
 import * as React from 'react';
 import {
   useState,
+  useEffect,
   Fragment,
   FC,
 } from 'react';
 
 import {
   useController,
-  // usePrice,
+  usePrice,
   useStore,
   useUtils,
   useAccount,
-  useTransaction
+  useTransaction,
+  useFormat
 } from 'hooks/index';
 
 import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { PrimaryButton, Tooltip } from 'components/index';
+import { PrimaryButton, Tooltip, Icon, IconButton } from 'components/index';
 import { Assets } from 'scripts/types';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 
@@ -26,17 +28,43 @@ interface ISend {
 }
 
 export const Send: FC<ISend> = () => {
-  // const getFiatAmount = usePrice();
+  const getFiatAmount = usePrice();
   const controller = useController();
 
   const { alert, history } = useUtils();
   const { getAssetBalance, updateSendTemporaryTx } = useTransaction();
   const { activeAccount } = useAccount();
   const { activeNetwork } = useStore();
+  const { formatURL } = useFormat();
 
-  const [verifyAddress, setVerifyAddress] = useState<boolean>(false);
+  const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
+  const [recommend, setRecommend] = useState(0.00001);
+  const [form] = Form.useForm();
+
+  const handleGetFee = async () => {
+    const recommendFee = await controller.wallet.account.getRecommendFee();
+
+    setRecommend(recommendFee);
+
+    form.setFieldsValue({
+      fee: recommendFee,
+    });
+  };
+
+  const handleInitForm = () => {
+    handleGetFee();
+
+    form.setFieldsValue({
+      verify: true,
+      ZDAG: false,
+    });
+  }
+
+  useEffect(() => {
+    handleInitForm();
+  }, []);
 
   const handleSelectedAsset = (item: number) => {
     if (activeAccount?.assets) {
@@ -52,52 +80,43 @@ export const Send: FC<ISend> = () => {
     }
   };
 
-  const [form] = Form.useForm();
+  const verifyOnChange = (value: any) => {
+    setVerifyAddress(value);
+
+    form.setFieldsValue({
+      verify: value,
+    });
+  }
+
+  const ZDAGOnChange = (value: any) => {
+    setZDAG(value);
+
+    form.setFieldsValue({
+      ZDAG: value,
+    });
+  }
 
   const nextStep = (data: any) => {
     const {
       receiver,
       amount,
-      fee
+      fee,
     } = data;
 
-    // if (fee > 0.1) {
-    //   alert.removeAll();
-    //   alert.error(`Error: Fee too high, maximum 0.1 SYS`, {
-    //     timeout: 2000
-    //   });
-
-    //   return;
-    // }
-
-    if (selectedAsset) {
-      try {
-        updateSendTemporaryTx({
-          receiver,
-          amount,
-          fee,
-          token: selectedAsset.assetGuid,
-          controller,
-          activeAccount,
-          history
-        });
-      } catch (error) {
-        alert.removeAll();
-        alert.error('An internal error has occurred.');
-      }
-
-      return;
+    try {
+      updateSendTemporaryTx({
+        receiver,
+        amount,
+        fee,
+        token: selectedAsset ? selectedAsset.assetGuid : null,
+        controller,
+        activeAccount,
+        history
+      });
+    } catch (error) {
+      alert.removeAll();
+      alert.error('An internal error has occurred.');
     }
-
-    updateSendTemporaryTx({
-      receiver,
-      amount,
-      fee,
-      token: null,
-      controller,
-      activeAccount,
-      history
-    });
   }
 
   const SendForm = (
@@ -116,7 +135,11 @@ export const Send: FC<ISend> = () => {
         id="send"
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
-        initialValues={{ remember: true }}
+        initialValues={{
+          verify: true,
+          ZDAG: false,
+          fee: recommend
+        }}
         onFinish={nextStep}
         autoComplete="off"
         className="flex justify-center items-center flex-col gap-3 mt-4 text-center"
@@ -143,7 +166,7 @@ export const Send: FC<ISend> = () => {
           <Input
             type="text"
             placeholder="Receiver"
-            className="rounded-full py-3 pr-8 w-72 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
+            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
           />
         </Form.Item>
 
@@ -166,7 +189,7 @@ export const Send: FC<ISend> = () => {
                 disabled={!activeAccount?.assets}
                 className="bg-brand-navyborder border border-brand-royalBlue inline-flex justify-center w-full px-4 py-3 text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
               >
-                {selectedAsset?.symbol || 'SYS'}
+                {selectedAsset?.symbol ? formatURL(String(selectedAsset?.symbol), 2) : 'SYS'}
 
                 <ChevronDoubleDownIcon
                   className="w-5 h-5 ml-2 -mr-1 text-violet-200 hover:text-violet-100"
@@ -244,7 +267,7 @@ export const Send: FC<ISend> = () => {
 
               <Switch
                 checked={verifyAddress}
-                onChange={setVerifyAddress}
+                onChange={verifyOnChange}
                 className="relative inline-flex items-center h-4 rounded-full w-9 border border-brand-royalBlue"
               >
                 <span className="sr-only">Verify address</span>
@@ -277,7 +300,7 @@ export const Send: FC<ISend> = () => {
 
               <Switch
                 checked={ZDAG}
-                onChange={setZDAG}
+                onChange={ZDAGOnChange}
                 className="bg-transparent relative inline-flex items-center h-4 rounded-full w-9 border border-brand-royalBlue"
               >
                 <span className="sr-only">Z-DAG</span>
@@ -304,35 +327,66 @@ export const Send: FC<ISend> = () => {
           ]}
         >
           <Input
-            className="rounded-full py-3 pr-8 w-72 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
+            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
             type="number"
             placeholder="Amount"
           />
         </Form.Item>
 
-        <Form.Item
-          name="fee"
-          hasFeedback
-          rules={[
-            {
-              required: true,
-              message: '',
-            },
-          ]}
-        >
-          <Input
-            className="rounded-full py-3 pr-8 w-72 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
-            type="number"
-            placeholder="Fee"
-          />
-        </Form.Item>
 
-        <p className="flex justify-center items-center flex-col text-center p-0 text-brand-royalBlue text-xs mx-14">
-          With current network conditions we recommend a fee of 0.00001 SYS
+        <div className="mx-2 flex gap-x-0.5 justify-center items-center">
+          <Form.Item
+            name="recommend"
+            className="w-12 py-1.5 bg-brand-navyborder border border-brand-royalBlue rounded-l-full text-center"
+            rules={[
+              {
+                required: false,
+                message: ''
+              },
+            ]}
+          >
+            <Tooltip content="Click to use the recommended fee">
+              <IconButton
+                onClick={handleGetFee}
+              >
+                <Icon
+                  wrapperClassname="w-6 mb-1"
+                  name="verified"
+                  className="text-brand-green"
+                />
+              </IconButton>
+            </Tooltip>
+          </Form.Item>
 
-          <span className="font-rubik text-brand-white mt-0.5">
-            {/* ≈ {selectedAsset ? getFiatAmount(Number(form.) + Number(fee), 6) : getFiatAmount(Number(fee), 6)} */}
-            0
+          <Form.Item
+            name="fee"
+            hasFeedback
+            rules={[
+              {
+                required: true,
+                message: '',
+              },
+            ]}
+          >
+            <Input
+              className="outline-none rounded-r-full py-3 pr-8 w-60 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
+              type="number"
+              placeholder="Fee"
+            />
+          </Form.Item>
+        </div>
+
+        <p className="flex justify-center items-center flex-col text-center p-0 text-brand-royalBlue mx-14">
+          <span
+            className="text-xs"
+          >
+            With current network conditions we recommend a fee of {recommend} SYS
+          </span>
+
+          <span className="font-rubik text-brand-white mt-0.5 text-xs">
+            ≈ {selectedAsset ?
+              getFiatAmount(Number(recommend) + Number(recommend), 6) :
+              getFiatAmount(Number(recommend), 6)}
           </span>
         </p>
 

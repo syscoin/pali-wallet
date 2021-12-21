@@ -211,7 +211,7 @@ const ErrorModal = ({
             leaveFrom="opacity-100 scale-100"
             leaveTo="opacity-0 scale-95"
           >
-            <div className={`font-poppins inline-block w-full max-w-md p-6 my-8 overflow-hidden text-center align-middle transition-all transform ${background} shadow-xl rounded-2xl`}>
+            <div className={`font-poppins inline-block w-full max-w-md p-6 my-8 overflow-hidden text-center align-middle transition-all border border-red-500 transform ${background} shadow-xl rounded-2xl`}>
               <Dialog.Title
                 as="h3"
                 className="text-lg font-medium leading-6 text-brand-white"

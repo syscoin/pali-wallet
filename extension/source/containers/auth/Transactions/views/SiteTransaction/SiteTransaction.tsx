@@ -1,6 +1,6 @@
-import React, { useState, FC } from 'react';
+import React, { useState, FC, useEffect } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { PrimaryButton, SecondaryButton } from 'components/index';
+import { PrimaryButton, SecondaryButton, Tooltip, Icon, IconButton } from 'components/index';
 import { useController, useUtils, useBrowser, useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
 
@@ -25,16 +25,22 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
   const { currentSenderURL } = useStore();
 
   const [loading, setLoading] = useState<boolean>(false);
-  const [fee, setFee] = useState('0');
   const [recommend, setRecommend] = useState(0.00001);
-  const [transacting, setTransacting] = useState(false);
+  const [form] = Form.useForm();
 
   const handleGetFee = async () => {
     const recommendFee = await controller.wallet.account.getRecommendFee();
 
     setRecommend(recommendFee);
-    setFee(String(recommendFee));
+
+    form.setFieldsValue({
+      fee: recommendFee,
+    });
   };
+
+  useEffect(() => {
+    handleGetFee();
+  }, []);
 
   const handleMessageToSetDataFromWallet = ({ fee }) => {
     callbackToSetDataFromWallet({
@@ -46,7 +52,6 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
       target: 'background',
     });
 
-    setTransacting(true);
     setLoading(true);
 
     history.push(confirmRoute);
@@ -83,8 +88,10 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
         <p className="text-brand-royalBlue text-sm">{getHost(`${currentSenderURL}`)}</p>
 
         <Form
+          form={form}
           id="site"
           labelCol={{ span: 8 }}
+          initialValues={{ fee: recommend }}
           wrapperCol={{ span: 8 }}
           onFinish={handleMessageToSetDataFromWallet}
           autoComplete="off"
@@ -97,7 +104,6 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
               {
                 required: true,
                 message: '',
-                min: 0.00001
               },
             ]}
           >
@@ -106,6 +112,19 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
               type="number"
               placeholder="Fee"
             />
+
+            <Tooltip content="Click to use the recommended fee">
+              <IconButton
+                className="w-1"
+                onClick={handleGetFee}
+              >
+                <Icon
+                  wrapperClassname="w-1"
+                  name="verified"
+                  className="text-brand-green"
+                />
+              </IconButton>
+            </Tooltip>
           </Form.Item>
 
           <p className="bg-brand-navydarker border text-left border-dashed border-brand-royalBlue mx-12 p-4 mt-4 text-xs rounded-lg">
