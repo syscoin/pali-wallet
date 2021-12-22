@@ -47,12 +47,19 @@
   @apply w-72 rounded-full p-2 pl-4 bg-brand-navydarker border border-brand-navymedium text-brand-graylight text-sm outline-none focus:border-brand-navylight;
 }
 
-
 #phraseview_password {
   @apply bg-brand-navyborder w-60 outline-none;
 }
 
 #phraseview .ant-form-item-children-icon {
+  @apply absolute right-8 text-brand-navymedium -top-1;
+}
+
+#delete_password {
+  @apply bg-brand-navyborder w-60 outline-none;
+}
+
+#delete .ant-form-item-children-icon {
   @apply absolute right-8 text-brand-navymedium -top-1;
 }
 
