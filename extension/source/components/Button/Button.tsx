@@ -29,6 +29,8 @@ export const Button = ({
   );
 };
 
+const disabledStyle = "text-brand-white cursor-not-allowed font-light border border-brand-gray bg-brand-navyborder";
+
 export const PrimaryButton: FC<IPrimaryButton> = ({
   children,
   disabled = false,
@@ -38,7 +40,7 @@ export const PrimaryButton: FC<IPrimaryButton> = ({
 }) => {
   return (
     <button
-      className="text-brand-white tracking-normal text-sm leading-4 w-36 cursor-pointer font-light transition-all duration-300 rounded-full border border-brand-pinkborder bg-primary hover:border-brand-deepPink py-2.5 flex justify-center items-center"
+      className={`${disabled || loading ? disabledStyle : 'text-brand-white cursor-pointer border border-brand-pinkborder bg-primary hover:border-brand-deepPink'} tracking-normal text-sm leading-4 w-36 font-light transition-all duration-300 rounded-full py-2.5 flex justify-center items-center`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}

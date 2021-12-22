@@ -63,6 +63,7 @@ const NewAccountView = () => {
             <PrimaryButton
               type="submit"
               loading={loading}
+              disabled={loading}
             >
               Create
             </PrimaryButton>

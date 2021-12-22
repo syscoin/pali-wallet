@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Form, Input } from 'antd';
 import { useController, useUtils } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
-import { Icon, PrimaryButton, IconButton } from 'components/index';
+import { Icon, SecondaryButton, IconButton } from 'components/index';
 
 const PhraseView = () => {
   const [phrase, setPhrase] = useState<string>(
@@ -83,12 +83,12 @@ const PhraseView = () => {
         </p>
 
         <div className="absolute bottom-12">
-          <PrimaryButton
+          <SecondaryButton
             type="button"
             onClick={() => history.push('/home')}
           >
             {copied ? 'Copied' : 'Close'}
-          </PrimaryButton>
+          </SecondaryButton>
         </div>
       </div>
     </AuthViewLayout>

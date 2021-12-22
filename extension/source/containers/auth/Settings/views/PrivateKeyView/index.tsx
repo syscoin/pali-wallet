@@ -1,7 +1,7 @@
 import React from 'react';
 import { useFormat, useUtils, useStore, useController } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { Icon, PrimaryButton } from 'components/index';
+import { Icon, SecondaryButton } from 'components/index';
 import { IAccountState } from 'state/wallet/types';
 import { Disclosure } from '@headlessui/react';
 
@@ -75,12 +75,12 @@ const PrivateKeyView = () => {
         })}
       </ul>
 
-      <PrimaryButton
+      <SecondaryButton
         type="button"
         onClick={() => history.push('/home')}
       >
         {copied ? 'Copied' : 'Close'}
-      </PrimaryButton>
+      </SecondaryButton>
     </AuthViewLayout >
   );
 };
