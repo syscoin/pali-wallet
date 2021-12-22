@@ -54,7 +54,7 @@ export const SendConfirm = () => {
       ) : (
         <>
           {tempTx && (
-            <div className="mt-4 flex justify-center items-center flex-col">
+            <div className="mt-4 flex justify-center items-center flex-col w-full">
               <p className="flex flex-col justify-center text-center items-center font-rubik">
                 <span className="text-brand-royalBlue font-thin font-poppins">
                   Send
@@ -63,7 +63,7 @@ export const SendConfirm = () => {
                 {tempTx.amount} {tempTx.token ? tempTx.token.symbol : 'SYS'}
               </p >
 
-              <div className="w-full flex justify-center divide-y divide-dashed divide-slate-200 items-start flex-col gap-3 py-2 px-4 text-base mt-4 text-left">
+              <div className="w-full flex justify-center divide-y divide-dashed divide-brand-navyborder items-start flex-col gap-3 py-2 px-4 text-sm mt-4 text-left">
                 <p className="text-brand-royalBlue font-thin font-poppins flex flex-col w-full pt-2">
                   From
 
@@ -89,14 +89,16 @@ export const SendConfirm = () => {
                 </p>
               </div>
 
-              <PrimaryButton
-                loading={loading}
-                onClick={handleConfirm}
-                type="button"
-              >
-                Confirm
-              </PrimaryButton>
-            </div >
+              <div className="absolute bottom-12">
+                <PrimaryButton
+                  loading={loading}
+                  onClick={handleConfirm}
+                  type="button"
+                >
+                  Confirm
+                </PrimaryButton>
+              </div>
+            </div>
           )}
         </>
       )}

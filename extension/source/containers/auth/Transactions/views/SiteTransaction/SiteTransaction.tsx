@@ -97,35 +97,47 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
           autoComplete="off"
           className="flex justify-center items-center flex-col gap-3 mt-4 text-center"
         >
-          <Form.Item
-            name="fee"
-            hasFeedback
-            rules={[
-              {
-                required: true,
-                message: '',
-              },
-            ]}
-          >
-            <Input
-              className="rounded-full my-8 p-2 w-72 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
-              type="number"
-              placeholder="Fee"
-            />
+          <div className="mx-2 flex gap-x-0.5 justify-center items-center">
+            <Form.Item
+              name="recommend"
+              className="w-12 py-1.5 bg-brand-navyborder border border-brand-royalBlue rounded-l-full text-center"
+              rules={[
+                {
+                  required: false,
+                  message: ''
+                },
+              ]}
+            >
+              <Tooltip content="Click to use the recommended fee">
+                <IconButton
+                  onClick={handleGetFee}
+                >
+                  <Icon
+                    wrapperClassname="w-6 mb-1"
+                    name="verified"
+                    className="text-brand-green"
+                  />
+                </IconButton>
+              </Tooltip>
+            </Form.Item>
 
-            <Tooltip content="Click to use the recommended fee">
-              <IconButton
-                className="w-1"
-                onClick={handleGetFee}
-              >
-                <Icon
-                  wrapperClassname="w-1"
-                  name="verified"
-                  className="text-brand-green"
-                />
-              </IconButton>
-            </Tooltip>
-          </Form.Item>
+            <Form.Item
+              name="fee"
+              hasFeedback
+              rules={[
+                {
+                  required: true,
+                  message: '',
+                },
+              ]}
+            >
+              <Input
+                className="outline-none rounded-r-full py-3 pr-8 w-60 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
+                type="number"
+                placeholder="Fee"
+              />
+            </Form.Item>
+          </div>
 
           <p className="bg-brand-navydarker border text-left border-dashed border-brand-royalBlue mx-12 p-4 mt-4 text-xs rounded-lg">
             With current network conditions, we recommend a fee of {recommend} SYS.

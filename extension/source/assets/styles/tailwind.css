@@ -73,7 +73,7 @@
 }
 
 #site .ant-form-item-children-icon {
-  @apply absolute right-8 text-brand-navymedium top-8;
+  @apply absolute right-1 text-brand-navymedium top-1;
 }
 
 #autolock .ant-form-item-children-icon {

@@ -38,7 +38,7 @@ export const PrimaryButton: FC<IPrimaryButton> = ({
 }) => {
   return (
     <button
-      className="text-brand-white tracking-normal text-sm leading-4 w-36 cursor-pointer font-light transition-all duration-300 rounded-full border border-brand-royalBlue bg-primary hover:border-brand-royalBluemedium py-2.5 flex justify-center items-center"
+      className="text-brand-white tracking-normal text-sm leading-4 w-36 cursor-pointer font-light transition-all duration-300 rounded-full border border-brand-pinkborder bg-primary hover:border-brand-deepPink py-2.5 flex justify-center items-center"
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
