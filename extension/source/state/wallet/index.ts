@@ -56,6 +56,11 @@ const initialState: IWalletState = {
       label: 'Test Network',
       beUrl: 'https://blockbook-dev.elint.services/',
     },
+  },
+  trustedApps: {
+    0: 'app.uniswap.org',
+    1: 'app.uniswap.org',
+    3: 'app.uniswap.org',
   }
 };
 

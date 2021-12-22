@@ -91,4 +91,7 @@ export default interface IWalletState {
     },
   };
   currentBlockbookURL: string;
+  trustedApps: {
+    [id: number]: string,
+  }
 }

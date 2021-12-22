@@ -1,11 +1,10 @@
 import { Icon, IconButton, SecondaryButton } from "components/index";
 import { AuthViewLayout } from "containers/common/Layout";
-import React, { FC, Fragment, useState } from "react";
+import React, { Fragment, useState } from "react";
 import { Dialog, Transition } from "@headlessui/react";
 import { useUtils, useBrowser, useAccount, useFormat } from "hooks/index";
 
-interface IConnectedSites { }
-const ConnectedSites: FC<IConnectedSites> = ({ }) => {
+const ConnectedSites = () => {
   const [selected, setSelected] = useState<string>("");
 
   const { activeAccount } = useAccount();
@@ -27,7 +26,7 @@ const ConnectedSites: FC<IConnectedSites> = ({ }) => {
 
   return (
     <AuthViewLayout title="CONNECTED SITES">
-      <p className="text-white text-sm m-4">
+      <p className="text-white text-xs m-4">
         {activeAccount?.connectedTo.length ?
           `${activeAccount.label} is connected to:` :
           `${activeAccount?.label} is not connected to any sites. To connect to a SYS platform site, find the connect button on their site.`
@@ -39,7 +38,7 @@ const ConnectedSites: FC<IConnectedSites> = ({ }) => {
           activeAccount.connectedTo.map((url: string) => {
             return (
               <ul className="h-80 overflow-auto w-full p-2">
-                <li className="flex justify-between p-3 my-2 border-b border-dashed border-yellow-300 items-center w-full text-sm">
+                <li className="flex justify-between p-3 my-2 border-b border-dashed border-yellow-300 items-center w-full text-xs">
                   <p>{formatURL(url, 25)}</p>
 
                   <IconButton

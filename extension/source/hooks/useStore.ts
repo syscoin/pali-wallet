@@ -22,7 +22,8 @@ export const useStore = () => {
     walletTokens,
     tabs,
     timer,
-    networks
+    networks,
+    trustedApps
   }: IWalletState = useSelector((state: RootState) => state.wallet);
 
   const {
@@ -55,6 +56,7 @@ export const useStore = () => {
     currentURL,
     canConnect,
     connections,
-    networks
+    networks,
+    trustedApps
   }
 }

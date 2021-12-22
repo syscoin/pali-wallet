@@ -38,7 +38,8 @@ import {
   PrivateKeyView,
   EditNetworkView,
   CustomRPCView,
-  Connectedsites,
+  ConnectedSitesView,
+  TrustedSitesView
 } from 'containers/auth/Settings/views';
 
 import {
@@ -320,7 +321,8 @@ export const AuthRouter = () => {
 
               <Route path="/networks-edit" component={EditNetworkView} exact />
               <Route path="/networks-custom" component={CustomRPCView} exact />
-              <Route path="/networks-sites" component={Connectedsites} exact />
+              <Route path="/networks-sites" component={ConnectedSitesView} exact />
+              <Route path="/networks-trusted" component={TrustedSitesView} exact />
 
               {canConnect && (
                 <>
