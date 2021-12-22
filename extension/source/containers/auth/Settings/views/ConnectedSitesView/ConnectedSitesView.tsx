@@ -14,17 +14,20 @@ const ConnectedSites: FC<IConnectedSites> = ({ }) => {
   const { browser } = useBrowser()
 
   const disconnectSite = (id: any) => {
+    console.log('id selected', id, selected)
     browser.runtime.sendMessage({
       type: "RESET_CONNECTION_INFO",
       target: "background",
       id,
       url: selected,
     });
+
+    setSelected("");
   }
 
   return (
     <AuthViewLayout title="CONNECTED SITES">
-      <p className="text-white text-sm py-3 ml-4 mt-3 w-full">
+      <p className="text-white text-sm m-4">
         {activeAccount?.connectedTo.length ?
           `${activeAccount.label} is connected to:` :
           `${activeAccount?.label} is not connected to any sites. To connect to a SYS platform site, find the connect button on their site.`
@@ -151,12 +154,14 @@ const ConnectedSites: FC<IConnectedSites> = ({ }) => {
           </Transition>
         )}
 
-        <SecondaryButton
-          type="button"
-          onClick={() => history.push("/home")}
-        >
-          Close
-        </SecondaryButton>
+        <div className="absolute bottom-12">
+          <SecondaryButton
+            type="button"
+            onClick={() => history.push("/home")}
+          >
+            Close
+          </SecondaryButton>
+        </div>
       </div>
     </AuthViewLayout>
   );

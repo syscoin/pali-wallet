@@ -224,7 +224,7 @@ const WalletState = createSlice({
     },
     removeConnection(state: IWalletState, action: PayloadAction<any>) {
       const connectionIndex: number = state.tabs.connections.findIndex(
-        (connection: any) => connection.url === getHost(action.payload.url)
+        (connection: any) => connection.url === action.payload.url
       );
 
       const account = state.accounts.find(
@@ -238,7 +238,7 @@ const WalletState = createSlice({
       state.tabs.connections.splice(connectionIndex, 1);
 
       account?.connectedTo.splice(
-        account?.connectedTo.indexOf(getHost(action.payload.url)),
+        account?.connectedTo.indexOf(action.payload.url),
         1
       );
     },
