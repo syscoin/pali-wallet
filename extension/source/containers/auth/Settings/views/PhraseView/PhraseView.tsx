@@ -63,7 +63,7 @@ const PhraseView = () => {
 
         <div
           className="flex flex-col justify-center items-center gap-3 bg-brand-navydarker border border-dashed border-brand-royalBlue mx-6 my-8 p-4 text-xs rounded-lg transition-all duration-200 hover:bg-brand-navydark cursor-pointer"
-          onClick={handleCopySeed}
+          onClick={() => phrase !== '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****' && handleCopySeed()}
         >
           <div className="flex justify-between items-center w-full">
             <p>Seed Phrase: (click to copy)</p>
