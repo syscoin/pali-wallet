@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
 import { Form, Input } from 'antd';
 import { PrimaryButton } from 'components/index';
@@ -14,10 +14,6 @@ const CustomRPCView = ({
 
   const { alert } = useUtils();
   const controller = useController();
-
-  useEffect(() => {
-    console.log(selectedToEdit, 'selected')
-  }, [selectedToEdit]);
 
   const onSubmit = async ({ network, blockbookURL }: any) => {
     setLoading(true);
@@ -46,7 +42,7 @@ const CustomRPCView = ({
       }
     } catch (error) {
       alert.removeAll();
-      alert.error('Invalid blockbook URL.', { timeout: 2000 });
+      alert.error('Invalid blockbook URL.');
 
       setLoading(false);
     }
@@ -97,6 +93,22 @@ const CustomRPCView = ({
                   required: true,
                   message: ''
                 },
+                () => ({
+                  async validator(_, value) {
+                    try {
+                      const response = await axios.get(`${value}/api/v2`);
+                      const { coin } = response.data.blockbook;
+                
+                      if (response && coin) {
+                        if (coin === 'Syscoin' || coin === 'Syscoin Testnet' || !value) {
+                          return Promise.resolve();
+                        }
+                      }
+                    } catch (error) {
+                      return Promise.reject('');
+                    }
+                  },
+                }),
               ]}
             >
               <Input

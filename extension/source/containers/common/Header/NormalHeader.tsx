@@ -2,7 +2,6 @@ import React, { FC, useEffect, useState } from 'react';
 import { Icon, IconButton } from 'components/index';
 import { useStore, useAccount, useUtils, useController, useBrowser } from 'hooks/index';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
-import { SYS_NETWORK } from 'constants/index';
 
 interface INormalHeader {
   importSeed: boolean;
@@ -14,7 +13,7 @@ export const NormalHeader: FC<INormalHeader> = ({
 }) => {
   const controller = useController();
 
-  const { activeNetwork, encriptedMnemonic } = useStore();
+  const { activeNetwork, encriptedMnemonic, networks } = useStore();
   const { handleRefresh, history, getHost } = useUtils();
   const { activeAccount } = useAccount();
   const { browser } = useBrowser();
@@ -156,9 +155,9 @@ export const NormalHeader: FC<INormalHeader> = ({
                         </Disclosure.Button>
 
                         <Disclosure.Panel
-                          className="pt-0.5 pb-2 text-sm bg-brand-navydarker"
+                          className="pt-0.5 pb-2 text-sm bg-brand-navydarker h-28 overflow-auto"
                         >
-                          {Object.values(SYS_NETWORK).map((network: any) => {
+                          {Object.values(networks).map((network: any) => {
                             return (
                               <li
                                 className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
@@ -212,24 +211,20 @@ export const NormalHeader: FC<INormalHeader> = ({
                         <Disclosure.Panel
                           className="pt-0.5 pb-2 text-sm bg-brand-navydarker"
                         >
-                          {Object.values(SYS_NETWORK).map((network: any) => {
-                            return (
-                              <li
-                                className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
-                                onClick={() => handleChangeNetwork(network.id)}
-                              >
-                                <span>{network.label}</span>
+                          <li
+                            className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-brand-navydarker backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
+                            onClick={() => handleChangeNetwork('main')}
+                          >
+                            <span>Main network</span>
 
-                                {activeNetwork === network.id && (
-                                  <Icon
-                                    name="check"
-                                    className="w-4 mb-1"
-                                    wrapperClassname="w-6 absolute right-1"
-                                  />
-                                )}
-                              </li>
-                            )
-                          })}
+                            {activeNetwork === 'main' && (
+                              <Icon
+                                name="check"
+                                className="w-4 mb-1"
+                                wrapperClassname="w-6 absolute right-1"
+                              />
+                            )}
+                          </li>
                         </Disclosure.Panel>
                       </>
                     )}

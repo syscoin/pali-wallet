@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
-import { useStore, useFormat } from 'hooks/index';
+import { useStore, useFormat, useUtils } from 'hooks/index';
+import { SecondaryButton } from 'components/index';
 import { CustomRPCView } from '..';
 
 const EditNetworkView = () => {
   const { networks } = useStore();
   const { formatURL } = useFormat();
+  const { history } = useUtils();
 
   const defaultNetworks = ['main', 'testnet'];
 
@@ -14,12 +16,19 @@ const EditNetworkView = () => {
   return (
     <>
       {selected ? (
-        <CustomRPCView selectedToEdit={selected || { id: -1, label: '', beUrl: '', chainID: -1 }} />
+        <CustomRPCView
+          selectedToEdit={selected || {
+            id: -1,
+            lael: '',
+            berl: '',
+            chinID: -1
+          }}
+        />
       ) : (
         <AuthViewLayout title="EDIT NETWORK">
-          <p className="text-brand-white font-poppins py-4 pl-6 text-sm">Click on network to edit</p>
+          <p className="text-brand-white font-poppins mt-6 text-left text-sm">Click on network to edit</p>
 
-          <ul className="text-sm overflow-auto px-4 h-96 w-full">
+          <ul className="text-sm overflow-auto px-4 h-80 w-full">
             {Object.values(networks).map((network: any) => {
               return (
                 <li
@@ -41,6 +50,15 @@ const EditNetworkView = () => {
               )
             })}
           </ul>
+
+          <div className="absolute bottom-12">
+            <SecondaryButton
+              type="button"
+              onClick={() => history.push('/home')}
+            >
+              Close
+            </SecondaryButton>
+          </div>
         </AuthViewLayout >
       )
       }

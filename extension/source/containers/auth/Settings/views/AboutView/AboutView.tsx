@@ -12,7 +12,7 @@ const AboutView: FC = () => {
 
   return (
     <AuthViewLayout title="INFO & HELP">
-      <div className="text-brand-white text-sm mx-4 mt-8 flex flex-col gap-y-4 w-full">
+      <div className="text-brand-white text-sm mt-8 w-full pl-8 flex flex-col gap-y-4">
         <p>Pali Wallet Browser Extension v2.0</p>
         <p>Version: 1.0.23</p>
 

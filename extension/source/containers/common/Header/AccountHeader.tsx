@@ -118,7 +118,7 @@ export const AccountHeader: FC<IAccountHeader> = ({
                     >
                       <li
                         onClick={() => history.push('/account-newaccount')}
-                        className="flex w-full items-center p-2.5 text-sm font-medium text-brand-deepPink100 transition transform bg-brand-navydarker mb-4 backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-center duration-300 mx-auto max-w-95 border-b border-dashed border-brand-deepPink100 cursor-pointer"
+                        className="flex w-full items-center p-2.5 text-sm font-medium text-brand-deepPink100 transition transform bg-brand-navydarker mb-4 backface-visibility-hidden active:bg-opacity-40 focus:outline-none justify-center duration-300 mx-auto max-w-95 border-b border-dashed border-brand-deepPink100 cursor-pointer"
                       >
                         <Icon name="appstoreadd" className="text-brand-white mb-1" />
 

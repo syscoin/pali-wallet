@@ -72,6 +72,10 @@
   @apply absolute right-2 text-brand-navymedium top-1;
 }
 
+#rpc .ant-form-item-children-icon {
+  @apply absolute right-2 top-1.5
+}
+
 #site .ant-form-item-children-icon {
   @apply absolute right-1 text-brand-navymedium top-1;
 }
