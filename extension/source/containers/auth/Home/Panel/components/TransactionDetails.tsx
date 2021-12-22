@@ -75,6 +75,8 @@ export const TransactionDetails = ({
 
         setNewRecipients(recipients);
         setNewSenders(senders);
+
+        console.log(copy)
       }
     }
   }, [transactionDetails]);

@@ -1,2 +1,1 @@
-export { IssueAsset } from './IssueAsset';
-export { IssueAssetConfirm } from './Confirm';
+export { IssueAsset, IssueAssetConfirm } from './IssueAsset';

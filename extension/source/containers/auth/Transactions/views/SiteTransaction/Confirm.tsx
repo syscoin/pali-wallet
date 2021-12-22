@@ -78,8 +78,6 @@ const ConfirmDefaultTransaction = ({
     setLoading(true);
 
     if ((activeAccount ? activeAccount.balance : -1) > 0) {
-      console.log('submitted true')
-
       isPending = true;
 
       try {

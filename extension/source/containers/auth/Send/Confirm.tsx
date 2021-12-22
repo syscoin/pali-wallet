@@ -1,12 +1,12 @@
-import React, { Fragment, useState } from 'react';
-import { Header } from 'containers/common/Header';
+import React, { useState } from 'react';
+// import { Header } from 'containers/common/Header';
 import { AuthViewLayout } from 'containers/common/Layout';
 import { PrimaryButton, Modal } from 'components/index';;
-import { usePopup, useController, usePrice, useStore, useUtils, useFormat, useAccount, useBrowser, useTransaction } from 'hooks/index';
+import { useController, useStore, useUtils, useFormat, useAccount, useBrowser, useTransaction } from 'hooks/index';
 
 export const SendConfirm = () => {
   const controller = useController();
-  const getFiatAmount = usePrice();
+  // const getFiatAmount = usePrice();
 
   const { activeAccount } = useAccount();
   const { alert } = useUtils();
@@ -17,14 +17,16 @@ export const SendConfirm = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
-  const { getHost, history } = useUtils();
+  const { history } = useUtils();
   const { ellipsis, formatURL } = useFormat();
-  const { closePopup } = usePopup();
+  // const { closePopup } = usePopup();
   const { tempTx } = controller.wallet.account.getTransactionItem();
 
-  const handleCancel = () => {
-    history.push("/home");
-  }
+  // const handleCancel = () => {
+  //   history.push("/home");
+
+  //   closePopup();
+  // }
 
   const handleConfirm = async () => {
     await handleConfirmSendTransaction({

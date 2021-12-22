@@ -1,2 +1,1 @@
-export { MintNFT } from './MintNFT';
-export { MintNFTConfirm } from './Confirm';
+export { MintNFT, MintNFTConfirm } from './MintNFT';

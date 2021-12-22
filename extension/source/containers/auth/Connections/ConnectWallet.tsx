@@ -21,7 +21,7 @@ export const ConnectWallet = () => {
   };
 
   return (
-    <AuthViewLayout title="CONNECT WITH">
+    <AuthViewLayout canGoBack={false}  title="CONNECT WITH">
       <div className="flex flex-col justify-center items-center w-full">
         <h1 className="text-sm mt-4">PALI WALLET</h1>
 

@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { Switch, Route, useLocation } from 'react-router-dom';
 import { Import } from 'containers/common/Import';
 import { useController, useUtils } from 'hooks/index';
-import { ConfirmPhrase, Start, WelcomeWallet, CreatePass } from 'containers/unauth/index';
+import { ConfirmPhrase, Start, CreatePass } from 'containers/unauth/index';
 
 export const UnAuthRouter = () => {
   const location = useLocation();

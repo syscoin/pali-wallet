@@ -987,6 +987,8 @@ const AccountController = (actions: {
   const setUpdateAsset = (asset: any) => {
     updateAssetItem = asset;
 
+    console.log('new update asset item', updateAssetItem)
+
     store.dispatch(setUpdateAssetItem(false));
   }
 

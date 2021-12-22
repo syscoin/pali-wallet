@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, SecondaryButton, PrimaryButton } from 'components/index';
+import { SecondaryButton, PrimaryButton } from 'components/index';
 import { useFormat, useAccount, useUtils, useStore, useDappConnection, usePopup } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout';
 
@@ -22,8 +22,8 @@ export const ConnectedAccounts = () => {
   };
 
   return (
-    <AuthViewLayout title="CONNECTED ACCOUNT">
-      <div className="flex flex-col justify-center items-center">
+    <AuthViewLayout canGoBack={false} title="CONNECTED ACCOUNT">
+      <div className="flex flex-col justify-center items-center w-full">
         <h1 className="text-sm mt-4">PALI WALLET</h1>
 
         <p className="text-brand-royalBlue text-sm">{getHost(`${currentSenderURL}`)}</p>

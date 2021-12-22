@@ -1,7 +1,27 @@
 import React from 'react';
 import { useController } from 'hooks/index';
+import { SiteTransaction } from '../SiteTransaction';
+import { useStore } from 'hooks/index';
+import { ConfirmTransaction } from '../index';
 
-import {SiteTransaction} from '../SiteTransaction';
+export const MintNFTConfirm = () => {
+  const controller = useController();
+
+  const { issueNFTITem } = controller.wallet.account.getTransactionItem();
+  const { issuingNFT } = useStore();
+
+  return (
+    <ConfirmTransaction
+      sign={false}
+      signAndSend={false}
+      title="NFT MINT"
+      confirmTransaction={controller.wallet.account.confirmIssueNFT}
+      temporaryTransaction={issueNFTITem}
+      temporaryTransactionStringToClear="issueNFTITem"
+      submittingData={issuingNFT}
+    />
+  );
+};
 
 export const MintNFT = () => {
   const controller = useController();

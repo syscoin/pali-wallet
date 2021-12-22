@@ -1,2 +1,1 @@
-export { TransferOwnership } from './TransferOwnership';
-export { TransferOwnershipConfirm } from './Confirm';
+export { TransferOwnership, TransferOwnershipConfirm } from './TransferOwnership';

@@ -1,7 +1,27 @@
 import React from 'react';
 import { useController } from 'hooks/index';
+import { SiteTransaction } from '../SiteTransaction';
+import { useStore } from 'hooks/index';
+import { ConfirmTransaction } from '../index';
 
-import {SiteTransaction} from '../SiteTransaction';
+export const TransferOwnershipConfirm = () => {
+  const controller = useController();
+
+  const { transferOwnershipData } = controller.wallet.account.getTransactionItem();
+  const { transferringOwnership } = useStore();
+
+  return (
+    <ConfirmTransaction
+      sign={false}
+      signAndSend={false}
+      title="TOKEN UPDATE"
+      confirmTransaction={controller.wallet.account.confirmTransferOwnership}
+      temporaryTransaction={transferOwnershipData}
+      temporaryTransactionStringToClear="updateAssetItem"
+      submittingData={transferringOwnership}
+    />
+  );
+};
 
 export const TransferOwnership = () => {
   const controller = useController();
