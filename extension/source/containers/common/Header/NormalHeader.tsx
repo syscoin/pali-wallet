@@ -1,6 +1,6 @@
-import React, { FC, useMemo } from 'react';
+import React, { FC, useEffect, useState } from 'react';
 import { Icon, IconButton } from 'components/index';
-import { useStore, useAccount, useUtils, useController } from 'hooks/index';
+import { useStore, useAccount, useUtils, useController, useBrowser } from 'hooks/index';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { SYS_NETWORK } from 'constants/index';
 
@@ -15,19 +15,47 @@ export const NormalHeader: FC<INormalHeader> = ({
   const controller = useController();
 
   const { activeNetwork, encriptedMnemonic } = useStore();
-  const { handleRefresh, history } = useUtils();
-  const { connectedAccount } = useAccount();
-
-  const isConnectedAccount = useMemo(() => {
-    return connectedAccount;
-  }, [connectedAccount]);
+  const { handleRefresh, history, getHost } = useUtils();
+  const { activeAccount } = useAccount();
+  const { browser } = useBrowser();
 
   const network = activeNetwork;
+
+  const [isConnected, setIsConnected] = useState<any>(null);
+  const [currentTabURL, setCurrentTabURL] = useState<any>(null);
 
   const handleChangeNetwork = (value: string) => {
     controller.wallet.switchNetwork(value as string);
     controller.wallet.getNewAddress();
   };
+
+  useEffect(() => {
+    browser.windows.getAll({ populate: true }).then((windows) => {
+      for (const window of windows) {
+        const views = browser.extension.getViews({ windowId: window.id });
+
+        if (views) {
+          browser.tabs
+            .query({ active: true, currentWindow: true })
+            .then((tabs) => {
+              setCurrentTabURL(String(tabs[0].url));
+            });
+
+          return;
+        }
+      }
+    });
+  }, [!controller.wallet.isLocked()]);
+
+  useEffect(() => {
+    if (activeAccount && activeAccount.connectedTo.length > 0) {
+      setIsConnected(
+        activeAccount.connectedTo.findIndex((url: any) => {
+          return url == getHost(currentTabURL);
+        }) > -1
+      );
+    }
+  }, [activeAccount, currentTabURL]);
 
   const NetworkMenu = () => {
     return (
@@ -45,12 +73,12 @@ export const NormalHeader: FC<INormalHeader> = ({
               >
                 <div
                   className={
-                    isConnectedAccount ?
+                    isConnected ?
                       "rounded-full text-xs w-28 h-5 flex justify-center items-center border border-brand-lightgreen bg-brand-lightgreen text-brand-white" :
                       "rounded-full text-xs w-28 h-5 flex justify-center items-center border bg-brand-transparentred border-brand-error text-brand-white"
                   }
                 >
-                  {isConnectedAccount ? 'connected' : 'not connected'}
+                  {isConnected ? 'connected' : 'not connected'}
                 </div>
 
                 <span>

@@ -1,8 +1,6 @@
 import { Dialog, Transition } from '@headlessui/react';
-import { useWindowsAPI } from 'hooks/useBrowser';
 import { useUtils } from 'hooks/useUtils';
-import React, { FC, Fragment, useMemo } from 'react';
-import { Button } from '..';
+import React, { FC, Fragment } from 'react';
 
 interface IModal {
   title: string;
@@ -15,60 +13,6 @@ interface IModal {
   doNothing?: boolean;
   log?: any;
   closePopup?: any;
-}
-
-const ConnectionModal = ({
-  onClose,
-  title = '',
-  open,
-  closeMessage = 'Close',
-  connectedAccount,
-  currentOrigin
-}) => {
-  return (
-    <>
-      {open && (
-        <div className="transition-all duration-300 ease-in-out">
-          <div
-            onClick={onClose}
-            className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-darktransparent"
-          />
-
-          <div
-            className="transition-all duration-300 ease-in-out fixed z-10 flex flex-col bg-brand-navymedium top-1/3 left-8 right-8 p-6 rounded-3xl"
-          >
-            <h2
-              className="pb-4 text-brand-white border-b border-dashed border-brand-graylight w-full text-center mb-4"
-            >
-              {title}
-            </h2>
-
-            {connectedAccount ? (
-              <span
-                className="font-light text-brand-graylight text-xs"
-              >
-                This account is connected to {currentOrigin || ''}.
-              </span>
-            ) : (
-              <span
-                className="font-light text-brand-graylight text-xs"
-              >
-                This account is not connected to this site. To connect to a sys platform site, find the connect button on their site.
-              </span>
-            )}
-
-            <Button
-              type="button"
-              className="tracking-normal text-base leading-4 py-2.5 px-12 cursor-pointer rounded-full bg-brand-navymedium text-brand-white font-light border border-brand-white hover:bg-brand-white hover:text-brand-navymedium transition-all duration-300 mt-8"
-              onClick={onClose}
-            >
-              {closeMessage}
-            </Button>
-          </div>
-        </div>
-      )}
-    </>
-  )
 }
 
 const DefaultModal = ({
@@ -254,7 +198,6 @@ const ErrorModal = ({
 export const Modal: FC<IModal> = ({
   onClose,
   open,
-  connectedAccount,
   type,
   description,
   title,
@@ -262,24 +205,9 @@ export const Modal: FC<IModal> = ({
   log,
   closePopup
 }) => {
-  const { getCurrentOrigin } = useWindowsAPI();
-
-  const currentOrigin = useMemo(async () => {
-    return await getCurrentOrigin();
-  }, []);
 
   return (
     <>
-      {type === 'connection' && (
-        <ConnectionModal
-          onClose={onClose}
-          open={open}
-          closeMessage='Close'
-          connectedAccount={connectedAccount}
-          currentOrigin={currentOrigin}
-        />
-      )}
-
       {type === 'default' && (
         <DefaultModal
           closePopup={closePopup}
