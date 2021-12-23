@@ -11,9 +11,9 @@ const TrustedSitesView = () => {
 
   const [filteredSearch, setFilteredSearch] = useState<any>(Object.values(trustedApps));
 
-  let newList: string[] = [];
-
   const handleSearch = (event) => {
+    let newList: string[] = [];
+
     if (event.target.value) {
       newList = Object.values(trustedApps).filter((item: string) => {
         const url = item.toLowerCase();
@@ -26,10 +26,8 @@ const TrustedSitesView = () => {
 
       return;
     }
-    
-    newList = Object.values(trustedApps);
 
-    setFilteredSearch(newList);
+    setFilteredSearch(Object.values(trustedApps));
   }
 
   return (
