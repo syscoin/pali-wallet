@@ -74,11 +74,11 @@ export const CreatePass = () => {
           <Input.Password placeholder="Confirm password" />
         </Form.Item>
 
-        <span className="text-brand-graylight text-xs">
+        <span className="text-brand-graylight text-xs mt-3">
           At least 8 characters, 1 lower-case and 1 numeral.
         </span>
 
-        <span className="text-justify text-brand-royalBlue text-xs mx-14 pt-4">
+        <span className="text-center text-brand-royalBlue text-xs mx-8 pt-4">
           Do not forget to save your password. You will need this password to
           unlock your wallet.
         </span>

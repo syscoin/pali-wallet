@@ -1,6 +1,6 @@
 import { SecondaryButton } from "components/index";
 import { AuthViewLayout } from "containers/common/Layout";
-import React from "react";
+import React, { useState } from "react";
 import { useUtils, useFormat, useStore } from "hooks/index";
 import { Form, Input } from 'antd';
 
@@ -9,27 +9,67 @@ const TrustedSitesView = () => {
   const { history } = useUtils();
   const { trustedApps } = useStore();
 
+  const [filteredSearch, setFilteredSearch] = useState<any>(Object.values(trustedApps));
+
+  let newList: string[] = [];
+
+  const handleSearch = (event) => {
+    if (event.target.value) {
+      newList = Object.values(trustedApps).filter((item: string) => {
+        const url = item.toLowerCase();
+        const typedValue = event.target.value.toLowerCase();
+
+        return url.includes(typedValue);
+      });
+
+      setFilteredSearch(newList);
+
+      return;
+    }
+    
+    newList = Object.values(trustedApps);
+
+    setFilteredSearch(newList);
+  }
+
   return (
     <AuthViewLayout title="TRUSTED WEBSITES">
       <p className="text-white text-sm m-4">
         Check all sites included on our trusted list.
       </p>
 
-      <Form>
-        <Form.Item>
-          <Input.Search
-            allowClear 
-            defaultValue="26888888"
+      <Form
+        id="trusted"
+        name="trusted"
+        labelCol={{ span: 8 }}
+        wrapperCol={{ span: 8 }}
+        autoComplete="off"
+        className="flex justify-center items-center flex-col gap-4 mt-8 text-center"
+      >
+        <Form.Item
+          name="search"
+          rules={[
+            {
+              required: false,
+              message: ''
+            },
+          ]}
+        >
+          <Input
+            onChange={(event) => handleSearch(event)}
+            type="text"
+            placeholder="Search"
+            className="ant-input ant-input rounded-full py-2 pl-4 w-72 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
           />
         </Form.Item>
       </Form>
 
       <div className="flex flex-col justify-center items-center w-full">
-        <ul className="h-80 overflow-auto w-full p-2">
-          {Object.values(trustedApps).map((url: string) => {
+        <ul className="h-60 overflow-auto w-full p-2">
+          {filteredSearch && filteredSearch.map((url: string) => {
             return (
               <li className="my-2 p-2 border-b border-dashed border-brand-navyborder w-full text-xs">
-                <p>{formatURL(url, 25)}</p>
+                <p>{formatURL(url, 40)}</p>
               </li>
             )
           })}

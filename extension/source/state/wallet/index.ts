@@ -59,8 +59,16 @@ const initialState: IWalletState = {
   },
   trustedApps: {
     0: 'app.uniswap.org',
-    1: 'app.uniswap.org',
-    3: 'app.uniswap.org',
+    1: 'https://trello.com/b/0grd7QPC/dev',
+    3: 'https://twitter.com/home',
+    4: 'https://maps.google.com/',
+    5: 'https://accounts.google.com/b/0/AddMailService',
+    6: 'https://github.com/CryptoOutcasts/Candy_Machine_Whitelist_Site/blob/main/src/App.tsx',
+    7: 'https://github.com/',
+    8: 'https://web.whatsapp.com/',
+    9: 'https://www.linkedin.com/feed/',
+    10: 'https://www.facebook.com/',
+    11: 'app.uniswap.org',
   }
 };
 

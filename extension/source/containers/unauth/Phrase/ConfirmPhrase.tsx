@@ -42,15 +42,11 @@ export const ConfirmPhrase = () => {
   };
 
   const handleConfirm = () => {
-    if (!passed) {
-      setPassed(true);
-
-      return;
-    }
-
     controller.wallet.createWallet();
 
     history.push('/app.html');
+    
+    setPassed(true);
   };
 
   return (
@@ -82,12 +78,14 @@ export const ConfirmPhrase = () => {
             ))}
           </section>
 
-          <PrimaryButton
-            type="button"
-            onClick={handleConfirm}
-          >
-            Validate
-          </PrimaryButton>
+          <div className="absolute bottom-12">
+            <PrimaryButton
+              type="button"
+              onClick={handleConfirm}
+            >
+              Validate
+            </PrimaryButton>
+          </div>
         </>
 
         {passed && (
