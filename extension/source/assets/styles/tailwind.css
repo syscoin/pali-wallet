@@ -6,35 +6,19 @@
   @apply rounded-full;
 }
 
-.home::-webkit-scrollbar {
+.scrollbar-styled::-webkit-scrollbar {
   @apply w-1;
 }
 
-.home::-webkit-scrollbar-track-piece {
+.scrollbar-styled::-webkit-scrollbar-track-piece {
   @apply bg-transparent rounded-full;
 }
 
-.home::-webkit-scrollbar-button {
+.scrollbar-styled::-webkit-scrollbar-button {
   @apply hidden;
 }
 
-.home::-webkit-scrollbar-thumb {
-  @apply rounded-full bg-brand-royalBlue transition-all duration-300;
-}
-
-.menu::-webkit-scrollbar {
-  @apply w-1;
-}
-
-.menu::-webkit-scrollbar-track-piece {
-  @apply bg-transparent rounded-full;
-}
-
-.menu::-webkit-scrollbar-button {
-  @apply hidden;
-}
-
-.menu::-webkit-scrollbar-thumb {
+.scrollbar-styled::-webkit-scrollbar-thumb {
   @apply rounded-full bg-brand-royalBlue transition-all duration-300;
 }
 

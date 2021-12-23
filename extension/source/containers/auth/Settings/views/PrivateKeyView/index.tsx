@@ -17,7 +17,7 @@ const PrivateKeyView = () => {
 
   return (
     <AuthViewLayout title="XPUB">
-      <ul className="text-sm overflow-auto px-4 h-96 w-full">
+      <ul className="scrollbar-styled text-sm overflow-auto px-4 h-96 w-full">
         {accounts.map((account: IAccountState) => {
           return (
             <Disclosure

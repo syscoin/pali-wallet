@@ -28,7 +28,7 @@ export const ConnectWallet = () => {
         <p className="text-brand-royalBlue text-sm">{getHost(`${currentSenderURL}`)}</p>
 
         {accounts.length > 0 ? (
-          <ul className="w-full flex flex-col gap-4 h-64 mt-4 overflow-auto px-8">
+          <ul className="scrollbar-styled w-full flex flex-col gap-4 h-64 mt-4 overflow-auto px-8">
             {accounts.map((acc: any) => (
               <li
                 className={`${connectedAccount && acc.id === connectedAccount.id ? 'cursor-not-allowed bg-opacity-50 border-brand-royalBlue' : 'cursor-pointer hover:bg-brand-navylight border-brand-royalBlue'} border border-solid  rounded-lg px-2 py-4 text-xs bg-brand-navydark flex justify-between items-center transition-all duration-200`}

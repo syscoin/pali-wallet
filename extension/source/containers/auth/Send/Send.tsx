@@ -208,7 +208,7 @@ export const Send: FC<ISend> = () => {
               >
                 {activeAccount?.assets && activeAccount?.assets.length > 0 && (
                   <Menu.Items
-                    className="overflow-auto h-56 bg-brand-navyborder border border-brand-royalBlue text-brand-white w-40 font-poppins shadow-2xl absolute z-10 left-0 mt-2 origin-top-right divide-y divide-gray-100 rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none p-1"
+                    className="scrollbar-styled overflow-auto h-56 bg-brand-navyborder border border-brand-royalBlue text-brand-white w-40 font-poppins shadow-2xl absolute z-10 left-0 mt-2 origin-top-right divide-y divide-gray-100 rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none p-1"
                   >
                     <Menu.Item>
                       <button

@@ -41,7 +41,7 @@ export const DetailsView = ({ location }) => {
       }
     >
       {transactionDetails ? (
-        <ul className="text-sm overflow-auto px-4 mt-4 h-96 w-full">
+        <ul className="scrollbar-styled text-sm overflow-auto px-4 mt-4 h-96 w-full">
           {location.state.assetGuid ? (
             <AssetDetails
               assetType={location.state.assetType}

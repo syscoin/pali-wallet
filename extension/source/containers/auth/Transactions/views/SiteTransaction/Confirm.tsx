@@ -168,7 +168,7 @@ const ConfirmDefaultTransaction = ({
 
       {temporaryTransaction && !loading && (
         <div className="flex justify-center flex-col items-center w-full">
-          <ul className="text-xs overflow-auto w-full px-4 h-80 mt-4">
+          <ul className="scrollbar-styled text-xs overflow-auto w-full px-4 h-80 mt-4">
             {data && data.map((item: any) => (
               <>
                 {!item.advanced && (
@@ -319,7 +319,7 @@ const ConfirmSignTransaction = ({
 
       {temporaryTransaction && !loading && (
         <div className="flex justify-center flex-col items-center w-full">
-          <ul className="text-xs overflow-auto w-full px-4 h-80 mt-4">
+          <ul className="scrollbar-styled text-xs overflow-auto w-full px-4 h-80 mt-4">
             <pre>{`${JSON.stringify(
               controller.wallet.account.importPsbt(psbt),
               null,

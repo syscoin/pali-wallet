@@ -16,7 +16,7 @@ const ConnectHardwareWalletView: FC = () => {
   return (
     <AuthViewLayout title="CONNECT HARDWARE WALLET">
       <div className="flex items-center flex-col justify-center w-full">
-        <div className="text-sm overflow-auto px-4 h-96">
+        <div className="scrollbar-styled text-sm overflow-auto px-4 h-96">
           <p className="text-white text-sm py-3 pl-1 mt-3">
             Select the hardware wallet you'd like to connect to Pali
           </p>

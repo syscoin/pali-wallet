@@ -108,7 +108,7 @@ export const NormalHeader: FC<INormalHeader> = ({
 
               <Menu.Items
                 as="div"
-                className="menu bg-brand-navyborder pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 left-0 h-bigmenu origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
+                className="scrollbar-styled bg-brand-navyborder pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 left-0 h-bigmenu origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
               >
                 <h2
                   className=" bg-brand-navydarker pt-8 pb-6 text-brand-white border-b border-dashed border-yellow-300 w-full text-center mb-6"
@@ -166,7 +166,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                         </Disclosure.Button>
 
                         <Disclosure.Panel
-                          className="pt-0.5 pb-2 text-sm bg-brand-navydarker h-28 overflow-auto"
+                          className="scrollbar-styled pt-0.5 pb-2 text-sm bg-brand-navydarker h-28 overflow-auto"
                         >
                           {Object.values(networks).map((network: any) => {
                             return (
@@ -328,7 +328,7 @@ export const NormalHeader: FC<INormalHeader> = ({
 
               <Menu.Items
                 as="div"
-                className="menu bg-brand-navyborder pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 right-0 h-96 origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
+                className="scrollbar-styled bg-brand-navyborder pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 right-0 h-96 origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
               >
                 <h2
                   className=" bg-brand-navydarker pt-8 pb-6 text-brand-white border-b border-dashed border-brand-royalBlue w-full text-center mb-6"

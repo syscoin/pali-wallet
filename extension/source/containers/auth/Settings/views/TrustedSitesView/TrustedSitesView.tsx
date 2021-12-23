@@ -63,7 +63,7 @@ const TrustedSitesView = () => {
       </Form>
 
       <div className="flex flex-col justify-center items-center w-full">
-        <ul className="h-60 overflow-auto w-full p-2">
+        <ul className="scrollbar-styled h-60 overflow-auto w-full p-2">
           {filteredSearch && filteredSearch.map((url: string) => {
             return (
               <li className="my-2 p-2 border-b border-dashed border-brand-navyborder w-full text-xs">

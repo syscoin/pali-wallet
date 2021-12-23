@@ -22,15 +22,6 @@ const DeleteWalletView = () => {
 
   const [form] = Form.useForm();
 
-  const password = form.getFieldValue('password');
-  const seed = form.getFieldValue('seed');
-  const walletSeedPhrase = controller.wallet.getPhrase(password);
-
-  const canDeleteWallet = !password ||
-    !seed ||
-    !walletSeedPhrase ||
-    walletSeedPhrase !== seed;
-
   return (
     <AuthViewLayout title="DELETE WALLET">
       <p className="text-white text-sm py-3 px-10 mt-8">
@@ -74,12 +65,18 @@ const DeleteWalletView = () => {
             />
           </Form.Item>
 
+          {activeAccount && activeAccount.balance > 0 ? (
+            <p className="leading-4 bg-brand-navydark border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
+              <b>WARNING:</b> You still have funds in your wallet. Paste your seed phrase below to delete wallet.
+            </p>
+          ) : (
+            <p className="leading-4 bg-brand-navydark border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
+              <b>WARNING:</b> This will delete the wallet created with your current seed phrase. If in the future you want to use Pali again, you will need to create a new wallet.
+            </p>
+          )}
+
           {activeAccount && activeAccount.balance > 0 && (
             <>
-              <p className="bg-brand-navydark border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
-                <b>WARNING:</b> You still have funds in your wallet. Paste your seed phrase below to delete wallet.
-              </p>
-
               <div
                 className="flex flex-col justify-center items-center gap-3 bg-brand-navydarker border border-dashed border-brand-royalBlue mx-6 my-8 p-2 text-xs w-72 rounded-lg"
               >
@@ -123,7 +120,6 @@ const DeleteWalletView = () => {
 
             <PrimaryButton
               type="submit"
-              disabled={canDeleteWallet}
             >
               Delete
             </PrimaryButton>

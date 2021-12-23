@@ -7,14 +7,14 @@ export const ActivityPanel: FC = () => {
 
   return (
     <div className="h-full w-full p-4 text-white text-base bg-brand-navyborder">
-      {activeAccount!.transactions ? (
+      {activeAccount?.transactions && activeAccount!.transactions.length > 0 ? (
         <PanelList
-          data={activeAccount!.transactions}
+          data={activeAccount?.transactions}
           activity={true}
           assets={false}
         />
       ) : (
-        <p className="justify-center items-center text-sm text-brand-gray">
+        <p className="flex justify-center items-center text-sm text-brand-white">
           You have no transaction history.
         </p>
       )}

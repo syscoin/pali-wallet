@@ -67,7 +67,7 @@ export const AccountHeader: FC<IAccountHeader> = ({
 
           <Menu.Items
             as="div"
-            className="menu bg-brand-navyborder pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 right-0 h-85 origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
+            className="scrollbar-styled bg-brand-navyborder pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 right-0 h-85 origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
           >
             <h2
               className="bg-brand-navydarker pt-8 pb-6 text-brand-white border-b border-dashed border-brand-deepPink100 w-full text-center mb-6"
@@ -114,7 +114,7 @@ export const AccountHeader: FC<IAccountHeader> = ({
                     </Disclosure.Button>
 
                     <Disclosure.Panel
-                      className="pt-0.5 pb-2 text-sm bg-brand-navydarker h-32 overflow-auto"
+                      className="scrollbar-styled pt-0.5 pb-2 text-sm bg-brand-navydarker h-32 overflow-auto"
                     >
                       <li
                         onClick={() => history.push('/account-newaccount')}
