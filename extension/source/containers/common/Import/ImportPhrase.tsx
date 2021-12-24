@@ -36,9 +36,9 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           rules={[
             {
               required: true,
-              message: ''
+              message: '',
             },
-            ({ }) => ({
+            ({}) => ({
               validator(_, value) {
                 setSeedIsValid(controller.wallet.importPhrase(value));
 
@@ -58,13 +58,15 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
         </Form.Item>
 
         <span className="font-light text-brand-royalBlue text-xs mx-12 mt-12 pb-12 text-center">
-          Importing your wallet seed automatically import a wallet associated with this seed phrase.
+          Importing your wallet seed automatically import a wallet associated
+          with this seed phrase.
         </span>
 
         <Button
           classNameBorder="absolute bottom-12"
           type="submit"
           disabled={!seedIsValid}
+          id="import-btn"
         >
           Import
         </Button>

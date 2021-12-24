@@ -1,25 +1,26 @@
 import * as React from 'react';
 import {
-  ChangeEvent,
-  useState,
-  useCallback,
-  useMemo,
-  useEffect,
+  // ChangeEvent,
+  // useState,
+  // useCallback,
+  // useMemo,
+  // useEffect,
   FC,
 } from 'react';
 import { Header } from 'containers/common/Header';
-import { Button, IconButton, Icon } from 'components/index';;
-import { useController, useFiat, useStore, useUtils } from 'hooks/index';
-import { Assets } from 'scripts/types';
-import { Form, Input } from 'antd';
+import { IconButton, Icon } from 'components/index';
+import { useUtils } from 'hooks/index';
+
+// import { Assets } from 'scripts/types';
+// import { Form, Input } from 'antd';
 
 interface ISend {
   initAddress?: string;
 }
-export const Send: FC<ISend> = (/*{ initAddress = '' }*/) => {
+export const Send: FC<ISend> = (/* { initAddress = '' } */) => {
   // // const getFiatAmount = useFiat();
   // const controller = useController();
-  const { alert, history } = useUtils();
+  const { history } = useUtils();
   // const { accounts, activeAccountId, activeNetwork, changingNetwork } = useStore();
 
   // const [address, setAddress] = useState<string>(initAddress);
@@ -158,7 +159,10 @@ export const Send: FC<ISend> = (/*{ initAddress = '' }*/) => {
           shape="circle"
           onClick={() => history.goBack()}
         >
-          <Icon name="arrow-left" className="w-4 bg-brand-graydark100 text-brand-white" />
+          <Icon
+            name="arrow-left"
+            className="w-4 bg-brand-graydark100 text-brand-white"
+          />
         </IconButton>
       </div>
 
@@ -196,22 +200,6 @@ export const Send: FC<ISend> = (/*{ initAddress = '' }*/) => {
           </div>
         </section>
 
-<<<<<<< HEAD
-        <Form.Item
-          label="Recipient Address"
-          name="address"
-          hasFeedback
-          rules={[
-            {
-              required: true,
-              message: ''
-            },
-            ({ }) => ({
-              validator(_, value) {
-                if (controller.wallet.account.isValidSYSAddress(value, activeNetwork)) {
-                  return Promise.resolve();
-                }
-=======
         <section className={styles.content}>
           <ul className={styles.form}>
             <li className={styles.item}>
@@ -428,7 +416,6 @@ export const Send: FC<ISend> = (/*{ initAddress = '' }*/) => {
                   Max
                 </Button>
               </li>
->>>>>>> master
 
                 return Promise.reject('');
               }

@@ -1,20 +1,19 @@
+/* eslint-disable */
 import { browser, Runtime } from 'webextension-polyfill-ts';
 import { v4 as uuid } from 'uuid';
-import { Message } from './types';
 import { IMasterController } from '../';
 
 export const enable = async (
     port: Runtime.Port,
     masterController: IMasterController,
-    message: Message,
     origin: string,
     setPendingWindow: (isPending: boolean) => void,
     isPendingWindow: () => boolean
 ) => {
-    const { asset } = message.data;
-    const provider = asset === 'SYS' && masterController.syscoinProvider;
+    // const { asset } = message?.data;
+    // const provider = asset === 'SYS' && masterController;
 
-    const allowed = masterController.dapp.isDAppConnected(origin);
+    const allowed = masterController?.dapp?.isDAppConnected(origin);
 
     if (origin && !allowed) {
         if (isPendingWindow()) {
@@ -25,7 +24,7 @@ export const enable = async (
         const windowId = uuid();
         const popup = await masterController.createPopup(
             windowId,
-            message.data.network,
+            // message.data.network,
             'selectAccounts'
         );
         setPendingWindow(true);
@@ -35,10 +34,10 @@ export const enable = async (
             (ev: any) => {
                 if (ev.detail.windowId === windowId) {
                     port.postMessage({
-                        id: message.id,
+                        // id: message.id,
                         data: {
                             result: true,
-                            data: { accounts: provider.getAccounts() }
+                            // data: { accounts: provider?.getAccounts() }
                         },
                     });
                     setPendingWindow(false);
@@ -49,7 +48,7 @@ export const enable = async (
 
         browser.windows.onRemoved.addListener((id) => {
             if (popup && id === popup.id) {
-                port.postMessage({ id: message.id, data: { result: origin && allowed } });
+                port.postMessage({ data: { result: origin && allowed } });
                 setPendingWindow(false);
             }
         });
@@ -59,5 +58,5 @@ export const enable = async (
     }
 
     console.log('Sending message id')
-    return Promise.resolve({ id: message.id, result: origin && allowed });
+    return Promise.resolve({ result: origin && allowed });
 }

@@ -56,6 +56,7 @@ export const TxsPanel: FC<ITxsPanel> = ({
   const [scrollArea,
     setScrollArea
   ] = useState<HTMLElement>();
+  console.log(setScrollArea)
 
   // const { changingNetwork } = useStore();
   // const { formatDistanceDate, formatCurrency } = useFormat();

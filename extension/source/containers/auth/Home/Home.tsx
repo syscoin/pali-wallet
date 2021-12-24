@@ -1,6 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Icon, ModalBlock } from 'components/index';
-import { useController, useStore, useFiat, useFormat, useUtils, useAccount } from 'hooks/index';
+import { Icon } from 'components/index';
+import {
+  useController,
+  useStore,
+  useFiat,
+  useFormat,
+  useUtils,
+  useAccount,
+} from 'hooks/index';
 
 import { Header } from 'containers/common/Header';
 import { TxsPanel } from './TxsPanel';
@@ -13,12 +20,7 @@ export const Home = () => {
   const { history } = useUtils();
   const { formatNumber } = useFormat();
 
-  const {
-    accounts,
-    activeAccountId,
-    changingNetwork,
-    activeNetwork,
-  } = useStore();
+  const { accounts, activeAccountId, activeNetwork } = useStore();
 
   const [openBlockExplorer, setOpenBlockExplorer] = useState<boolean>(false);
   const [openAssetBlockExplorer, setOpenAssetBlockExplorer] =
@@ -27,9 +29,10 @@ export const Home = () => {
   const [assetSelected, setAssetSelected] = useState(-1);
   const [txType, setTxType] = useState('');
   const [assetType, setAssetType] = useState('');
-  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
+  // const sysExplorer = controller.wallet.account.getSysExplorerSearch();
   const [tx, setTx] = useState(null);
   const [assetTx, setAssetTx] = useState(null);
+  console.log(assetSelected, txType, assetType, tx, assetTx);
 
   const { activeAccount } = useAccount();
 
@@ -57,13 +60,13 @@ export const Home = () => {
     }
   }, [!controller.wallet.isLocked(), accounts.length > 0]);
 
-  const handleOpenExplorer = (txid: string) => {
-    window.open(`${sysExplorer}/tx/${txid}`);
-  };
+  // const handleOpenExplorer = (txid: string) => {
+  //   window.open(`${sysExplorer}/tx/${txid}`);
+  // };
 
-  const handleOpenAssetExplorer = (assetGuid: number) => {
-    window.open(`${sysExplorer}/asset/${assetGuid}`);
-  };
+  // const handleOpenAssetExplorer = (assetGuid: number) => {
+  //   window.open(`${sysExplorer}/asset/${assetGuid}`);
+  // };
 
   return (
     <div className="bg-brand-navyborder overflow-auto home">
@@ -89,9 +92,9 @@ export const Home = () => {
             <small className="mt-1.5 mb-1.5 text-brand-royalblue">
               {activeNetwork !== 'testnet'
                 ? getFiatAmount(
-                  accounts.find((element) => element.id === activeAccountId)
-                    ?.balance || 0
-                )
+                    accounts.find((element) => element.id === activeAccountId)
+                      ?.balance || 0
+                  )
                 : ''}
             </small>
 
@@ -106,10 +109,9 @@ export const Home = () => {
                   wrapperClassname="mb-2 mr-2"
                   rotate={40}
                 />
-
                 Send
               </Button>
-              
+
               <Button
                 className="flex items-center justify-center flex-1 text-base rounded-r-full border border-brand-royalBlue text-brand-white hover:bg-brand-royalBlue transition-all duration-300"
                 onClick={() => history.push('/receive')}
@@ -119,7 +121,6 @@ export const Home = () => {
                   className="w-4"
                   wrapperClassname="mb-2 mr-2"
                 />
-
                 Receive
               </Button>
             </div>
@@ -139,21 +140,17 @@ export const Home = () => {
             setOpenBlockExplorer={setOpenBlockExplorer}
             openAssetBlockExplorer={openAssetBlockExplorer}
             setOpenAssetBlockExplorer={setOpenAssetBlockExplorer}
-            address={
-              activeAccount?.address.main || 'no addr'
-            }
-            transactions={
-              activeAccount?.transactions || []
-            }
-            assets={
-              activeAccount?.assets || []
-            }
+            address={activeAccount?.address.main || 'no addr'}
+            transactions={activeAccount?.transactions || []}
+            assets={activeAccount?.assets || []}
           />
         </>
       ) : (
-        <section
-        >
-          <Icon name="loading" className="w-4 bg-brand-gray200 text-brand-navy" />
+        <section>
+          <Icon
+            name="loading"
+            className="w-4 bg-brand-gray200 text-brand-navy"
+          />
         </section>
       )}
     </div>

@@ -100,7 +100,7 @@ const DeleteWalletView = () => {
               <Icon
                 name="close"
                 className="inline-flex self-center text-base"
-                maxWidth={'1'}
+                // maxWidth={'1'}
               />
               Cancel
             </button>
@@ -111,7 +111,7 @@ const DeleteWalletView = () => {
               <Icon
                 name="delete"
                 className="inline-flex self-center text-base"
-                maxWidth={'1'}
+                // maxWidth={'1'}
               />
               Delete
             </button>

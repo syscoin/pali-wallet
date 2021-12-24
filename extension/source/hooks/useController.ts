@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { browser } from 'webextension-polyfill-ts';
 
 export const useController = () => {
@@ -6,8 +7,8 @@ export const useController = () => {
   if (controller) {
     return controller;
   }
-  
+
   browser.runtime.reload();
 
   return controller;
-}
+};

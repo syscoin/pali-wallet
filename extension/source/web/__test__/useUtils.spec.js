@@ -2,7 +2,7 @@
 const { isString } = require('lodash');
 const { renderHook, act } = require('@testing-library/react-hooks');
 
-const { getHost, useCopyClipboard, sendMessage } = require('../../../hooks/useUtils');
+const { getHost, useCopyClipboard, sendMessage } = require('../../hooks/useUtils');
 
 describe('useUtils test', () => {
   it('should test getHost method', () => {
@@ -22,23 +22,23 @@ describe('useUtils test', () => {
 
   }); 
 
-  it('should test sendMessage method', () => {
-    let assetGuid
-    let amount
-    const value = sendMessage(
-      {
-        type: 'ISSUE_NFT',
-        target: 'connectionsController',
-        freeze: true,
-        eventResult: 'complete',
-      },
-      {
-        type: 'ISSUE_NFT',
-        target: 'contentScript',
-        assetGuid,
-        amount
-      }
-    );
-    console.log(value)
-  })
+  // it('should test sendMessage method', async () => {
+  //   let assetGuid
+  //   let amount
+  //   const value = await sendMessage(
+  //     {
+  //       type: 'test',
+  //       target: 'connectionsController',
+  //       freeze: true,
+  //       eventResult: 'complete',
+  //     },
+  //     {
+  //       type: 'test',
+  //       target: 'contentScript',
+  //       assetGuid,
+  //       amount
+  //     }
+  //   );
+  //   console.log(value)
+  // })
 });

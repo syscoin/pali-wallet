@@ -2,7 +2,7 @@ import React from 'react';
 import { useHistory } from 'react-router-dom';
 import { useController } from 'hooks/index';
 import { Form, Input } from 'antd';
-import { Button } from 'components/index';;
+import { Button } from 'components/index';
 import { Layout } from 'containers/common/Layout';
 
 export const CreatePass = () => {
@@ -20,10 +20,7 @@ export const CreatePass = () => {
   };
 
   return (
-    <Layout
-      title="Password"
-      onlySection
-    >
+    <Layout title="Password" onlySection>
       <Form
         name="basic"
         labelCol={{ span: 8 }}
@@ -39,12 +36,12 @@ export const CreatePass = () => {
           rules={[
             {
               required: true,
-              message: ''
+              message: '',
             },
             {
               pattern: /^(?=.*[a-z])(?=.*[0-9])(?=.{8,})/,
-              message: ''
-            }
+              message: '',
+            },
           ]}
         >
           <Input.Password placeholder="New password (min 8 chars)" />
@@ -57,7 +54,7 @@ export const CreatePass = () => {
           rules={[
             {
               required: true,
-              message: ''
+              message: '',
             },
             ({ getFieldValue }) => ({
               validator(_, value) {
@@ -78,12 +75,14 @@ export const CreatePass = () => {
         </span>
 
         <span className="text-center font-light text-brand-royalBlue text-xs mx-8 pt-2">
-          Do not forget to save your password. You will need this password to unlock your wallet.
+          Do not forget to save your password. You will need this password to
+          unlock your wallet.
         </span>
 
         <Button
           type="submit"
           classNameBorder="absolute bottom-12"
+          id="next-btn"
         >
           Next
         </Button>

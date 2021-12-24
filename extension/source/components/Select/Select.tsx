@@ -2,15 +2,15 @@ import * as React from 'react';
 import { FC } from 'react';
 import { Icon } from '..';
 
-interface IOption {
-  [key: string]: string;
-}
+// interface IOption {
+//   [key: string]: string;
+// }
 
 export const Select: FC<any> = ({
-  value,
-  className,
-  onChange,
-  disabled = false,
+  // value,
+  // className,
+  // onChange,
+  // disabled = false,
   expanded,
   title,
   setExpanded,
