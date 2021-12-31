@@ -23,7 +23,7 @@ export const AccountHeader: FC<IAccountHeader> = ({
   useEffect(() => {
     const placeholder = document.querySelector('.add-identicon');
 
-    placeholder!.innerHTML = toSvg(activeAccount?.address.main, 50, {
+    placeholder!.innerHTML = toSvg(activeAccount?.xpub, 50, {
       backColor: '#07152B',
       padding: 1
     });

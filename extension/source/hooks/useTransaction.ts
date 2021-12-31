@@ -22,14 +22,17 @@ export const useTransaction = () => {
     activeAccount,
     history
   }: any) => {
-    controller.wallet.account.updateTempTx({
-      fromAddress: activeAccount?.address.main,
-      toAddress: receiver,
-      amount,
-      fee,
-      token: token,
-      isToken: true,
-      rbf: !ZDAG,
+    controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        fromAddress: activeAccount?.address.main,
+        toAddress: receiver,
+        amount,
+        fee,
+        token: token,
+        isToken: true,
+        rbf: !ZDAG,
+      },
+      type: 'sendAsset'
     });
 
     history.push('/send/confirm');
@@ -59,6 +62,8 @@ export const useTransaction = () => {
     tempTx,
     alert
   }) => {
+    console.log('calling xonfirm send', tempTx)
+
     const recommendedFee = await controller.wallet.account.getRecommendFee();
 
     if ((activeAccount ? activeAccount.balance : -1) > 0) {
@@ -66,6 +71,7 @@ export const useTransaction = () => {
 
       try {
         const response = await controller.wallet.account.confirmTempTx();
+        console.log(response)
 
         if (response) {
           alert.removeAll();

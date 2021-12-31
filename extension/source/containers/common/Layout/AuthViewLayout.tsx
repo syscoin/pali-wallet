@@ -20,6 +20,7 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
 
   return (
     <div className={`${background} w-full bg-brand-navydarker h-popup text-brand-white`}>
+      {/* firulinha */}
       <Header normalHeader />
 
       <div className={`w-full flex justify-center items-center text-brand-white  p-6 relative bg-brand-navyborder`}>

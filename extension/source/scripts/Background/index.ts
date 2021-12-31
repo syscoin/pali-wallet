@@ -356,7 +356,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
       store.dispatch(clearAllTransactions());
 
-      window.controller.wallet.account.clearTransactionItem(item);
+      window.controller.wallet.account.clearTemporaryTransaction(item);
 
       return;
     }
@@ -508,48 +508,6 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
     }
 
-    if (type == 'DATA_FROM_WALLET_TO_CREATE_TOKEN' && target == 'background') {
-      window.controller.wallet.account.createSPT({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToCreateSPT,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToCreateSPT
-      });
-    }
-
-    if (type == 'DATA_FROM_WALLET_TO_MINT_TOKEN' && target == 'background') {
-      window.controller.wallet.account.issueSPT({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToMintSPT,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToMintSPT
-      });
-    }
-
-    if (type == 'DATA_FROM_WALLET_TO_MINT_NFT' && target == 'background') {
-      window.controller.wallet.account.issueNFT({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToMintNFT,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToMintNFT
-      });
-    }
-
-    if (type == 'DATA_FROM_WALLET_TO_UPDATE_TOKEN' && target == 'background') {
-      window.controller.wallet.account.setUpdateAsset({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToUpdateAsset,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToUpdateAsset
-      });
-    }
-
-    if (type == 'DATA_FROM_WALLET_TO_TRANSFER_OWNERSHIP' && target == 'background') {
-      window.controller.wallet.account.setNewOwnership({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToTransferOwnership,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToTransferOwnership
-      });
-    }
-
-    if (type == 'DATA_FROM_WALLET_TO_ISSUE_NFT' && target == 'background') {
-      window.controller.wallet.account.setNewIssueNFT({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToIssueNFT,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToIssueNFT
-      });
-    }
-
     if (type == 'GET_USER_MINTED_TOKENS' && target == 'background') {
       checkToCallPrivateMethods();
 
@@ -641,14 +599,17 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       rbf
     } = request.messageData;
 
-    window.controller.wallet.account.updateTempTx({
-      fromAddress: fromConnectedAccount,
-      toAddress,
-      amount,
-      fee,
-      token,
-      isToken,
-      rbf
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        fromAddress: fromConnectedAccount,
+        toAddress,
+        amount,
+        fee,
+        token,
+        isToken,
+        rbf
+      },
+      type: 'sendAsset'
     });
 
     store.dispatch(updateCanConfirmTransaction(true));
@@ -667,16 +628,9 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
   if (type == 'DATA_FROM_PAGE_TO_CREATE_TOKEN' && target == 'background') {
     const {
       precision,
-      symbol,
       maxsupply,
-      description,
       receiver,
       initialSupply,
-      capabilityflags,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress
     } = request.messageData;
 
     if (precision < 0 || precision > 8) {
@@ -695,31 +649,15 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       throw new Error('invalid receiver address');
     }
 
-    window.controller.wallet.account.setDataFromPageToCreateNewSPT({
-      precision,
-      symbol,
-      maxsupply,
-      description,
-      receiver,
-      initialSupply,
-      capabilityflags,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress
-    });
+    const fee = await window.controller.wallet.account.getRecommendFee();
+
+    window.controller.wallet.account.createSPT(Object.assign(request.messageData, { fee }));
 
     store.dispatch(createAsset(true));
 
     const appURL = browser.runtime.getURL('app.html');
 
     await createPopup(appURL);
-
-    browser.tabs.sendMessage(Number(sender.tab?.id), {
-      type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
-      target: 'contentScript',
-      complete: true
-    });
   }
 
   if (type == 'ISSUE_SPT' && target == 'background') {
@@ -736,10 +674,9 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       throw new Error('invalid amount value');
     }
 
-    window.controller.wallet.account.setDataFromPageToMintSPT({
-      assetGuid,
-      amount: Number(amount)
-    });
+    const fee = await window.controller.wallet.account.getRecommendFee();
+
+    window.controller.wallet.account.issueSPT(Object.assign(request.messageData, { fee }));
 
     store.dispatch(issueAsset(true));
 
@@ -759,14 +696,8 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     checkToCallPrivateMethods();
 
     const {
-      symbol,
       issuer,
       precision,
-      description,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress,
     } = request.messageData;
 
     if (precision < 0 || precision > 8) {
@@ -777,16 +708,9 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       throw new Error('invalid receiver address');
     }
 
-    window.controller.wallet.account.setDataFromPageToMintNFT({
-      symbol,
-      issuer,
-      precision,
-      description,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress,
-    });
+    const fee = await window.controller.wallet.account.getRecommendFee();
+
+    window.controller.wallet.account.issueNFT(Object.assign(request.messageData, { fee }));
 
     store.dispatch(issueNFT(true));
 
@@ -804,27 +728,9 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
   if (type == 'UPDATE_ASSET' && target == 'background') {
     checkToCallPrivateMethods();
 
-    const {
-      assetGuid,
-      contract,
-      capabilityflags,
-      description,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress
-    } = request.messageData;
+    const fee = await window.controller.wallet.account.getRecommendFee();
 
-    window.controller.wallet.account.setDataFromPageToUpdateAsset({
-      assetGuid,
-      contract,
-      capabilityflags,
-      description,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress
-    });
+    window.controller.wallet.account.setUpdateAsset(Object.assign(request.messageData, { fee }));
 
     store.dispatch(setUpdateAsset(true));
 
@@ -843,7 +749,6 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     checkToCallPrivateMethods();
 
     const {
-      assetGuid,
       newOwner
     } = request.messageData;
 
@@ -851,10 +756,9 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       throw new Error('invalid new owner address');
     }
 
-    window.controller.wallet.account.setDataFromPageToTransferOwnership({
-      assetGuid,
-      newOwner
-    });
+    const fee = await window.controller.wallet.account.getRecommendFee();
+
+    window.controller.wallet.account.setNewOwnership(Object.assign(request.messageData, { fee }));
 
     store.dispatch(setTransferOwnership(true));
 
@@ -872,15 +776,9 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
   if (type == 'ISSUE_NFT' && target == 'background') {
     checkToCallPrivateMethods();
 
-    const {
-      assetGuid,
-      amount
-    } = request.messageData;
+    const fee = await window.controller.wallet.account.getRecommendFee();
 
-    window.controller.wallet.account.setDataFromPageToIssueNFT({
-      assetGuid,
-      amount
-    });
+    window.controller.wallet.account.setNewIssueNFT(Object.assign(request.messageData, { fee }));
 
     store.dispatch(setIssueNFT(true));
 

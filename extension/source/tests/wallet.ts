@@ -220,7 +220,7 @@ export const wallet = [
 
 export const account = [
   {
-    description: 'controller.wallet.account.clearTransactionItem()',
+    description: 'controller.wallet.account.clearTemporaryTransaction()',
     params: ['item: string'],
     returns: 'void',
     stateBefore: 'check state before call',
@@ -751,19 +751,6 @@ export const account = [
       },
       expected: {
         returns: 'void',
-        state: {} // check state before and after call
-      }
-    }
-  },
-  {
-    description: 'controller.wallet.account.getDataFromPageToInitTransaction()',
-    params: [],
-    returns: 'any',
-    stateBefore: 'check state before call',
-    test: {
-      params: {},
-      expected: {
-        returns: 'any',
         state: {} // check state before and after call
       }
     }

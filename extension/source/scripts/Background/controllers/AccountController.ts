@@ -31,14 +31,6 @@ import {
   ISPTInfo,
   ISPTIssue,
   INFTIssue,
-  ISPTPageInfo,
-  ISPTWalletInfo,
-  INFTPageInfo,
-  INFTWalletInfo,
-  ISPTIssuePage,
-  ISPTIssueWallet,
-  UpdateTokenPageInfo,
-  UpdateTokenWalletInfo
 } from '../../types';
 import CryptoJS from 'crypto-js';
 // import axios from 'axios';
@@ -59,24 +51,25 @@ const AccountController = (actions: {
   let updateAssetItem: any | null;
   let transferOwnershipData: any;
   let mintNFT: INFTIssue | null;
-  let dataFromPageToCreateSPT: ISPTPageInfo;
-  let dataFromWalletToCreateSPT: ISPTWalletInfo;
-  let dataFromPageToMintSPT: ISPTIssuePage;
-  let dataFromWalletToMintSPT: ISPTIssueWallet;
-  let dataFromPageToMintNFT: INFTPageInfo;
-  let dataFromWalletToMintNFT: INFTWalletInfo;
-  let dataFromWalletToUpdateAsset: UpdateTokenWalletInfo;
-  let dataFromPageToUpdateAsset: UpdateTokenPageInfo;
-  let dataFromWalletToTransferOwnership: any;
-  let dataFromPageToTransferOwnership: any;
-  let dataFromPageToIssueNFT: any;
-  let dataFromWalletToIssueNFT: any;
   let resAddress: any;
   let encode: any;
   let currentPSBT: any;
   let TrezorSigner: any;
   let currentPsbtToSign: any;
   let issueNFTItem: any | null;
+
+  const temporaryTransaction: TemporaryTransaction = {
+    newAsset: null,
+    mintedAsset: null,
+    newNFT: null,
+    updatedAsset: null,
+    transferredAsset: null,
+    sendAsset: null,
+  }
+
+  const getTemporaryTransaction = (type: string) => {
+    return temporaryTransaction[type];
+  }
 
   const getConnectedAccount = (): IAccountState => {
     const { accounts, tabs }: IWalletState = store.getState().wallet;
@@ -160,36 +153,8 @@ const AccountController = (actions: {
     getLatestUpdate();
   };
 
-  const clearTransactionItem = (item: string) => {
-    switch (item) {
-      case 'issueNFTItem':
-        issueNFTItem = null;
-        break;
-      case 'currentPSBT':
-        currentPSBT = null;
-        break
-      case 'currentPsbtToSign':
-        currentPsbtToSign = null;
-        break
-      case 'newSPT':
-        newSPT = null;
-        break;
-      case 'mintNFT':
-        mintNFT = null;
-        break;
-      case 'mintSPT':
-        mintSPT = null;
-        break;
-      case 'transferOwnershipData':
-        transferOwnershipData = null;
-        break;
-      case 'updateAssetItem':
-        updateAssetItem = null;
-        break;
-      case 'tempTx':
-        tempTx = null;
-        break;
-    }
+  const clearTemporaryTransaction = (item: string) => {
+    temporaryTransaction[item] = null;
   }
 
   const updateTempTx = (tx: ITransactionInfo) => {
@@ -197,6 +162,13 @@ const AccountController = (actions: {
     tempTx.fromAddress = tempTx.fromAddress.trim();
     tempTx.toAddress = tempTx.toAddress.trim();
   };
+
+  const updateTemporaryTransaction = ({
+    tx,
+    type,
+  }) => {
+    temporaryTransaction[type] = { ...tx };
+  }
 
   const setNewAddress = (addr: string) => {
     const { activeAccountId }: IWalletState = store.getState().wallet;
@@ -893,71 +865,6 @@ const AccountController = (actions: {
     return false;
   };
 
-  const getDataFromPageToInitTransaction = () => {
-    return {
-      dataFromPageToIssueNFT: dataFromPageToIssueNFT || null,
-      dataFromWalletToIssueNFT: dataFromWalletToIssueNFT || null,
-      dataFromPageToCreateSPT: dataFromPageToCreateSPT || null,
-      dataFromWalletToCreateSPT: dataFromWalletToCreateSPT || null,
-      dataFromPageToMintSPT: dataFromPageToMintSPT || null,
-      dataFromWalletToMintSPT: dataFromWalletToMintSPT || null,
-      dataFromPageToMintNFT: dataFromPageToMintNFT || null,
-      dataFromWalletToMintNFT: dataFromWalletToMintNFT || null,
-      dataFromPageToUpdateAsset: dataFromPageToUpdateAsset || null,
-      dataFromWalletToUpdateAsset: dataFromWalletToUpdateAsset || null,
-      dataFromPageToTransferOwnership: dataFromPageToTransferOwnership || null,
-      dataFromWalletToTransferOwnership: dataFromWalletToTransferOwnership || null
-    }
-  }
-
-  const setDataFromPageToIssueNFT = (data: any) => {
-    dataFromPageToIssueNFT = data;
-  }
-
-  const setDataFromWalletToIssueNFT = (data: any) => {
-    dataFromWalletToIssueNFT = data;
-  }
-
-  const setDataFromPageToCreateNewSPT = (data: ISPTPageInfo) => {
-    dataFromPageToCreateSPT = data;
-  }
-
-  const setDataFromWalletToCreateSPT = (data: ISPTWalletInfo) => {
-    dataFromWalletToCreateSPT = data;
-  }
-
-  const setDataFromPageToMintSPT = (data: ISPTIssuePage) => {
-    dataFromPageToMintSPT = data;
-  }
-
-  const setDataFromWalletToMintSPT = (data: ISPTIssueWallet) => {
-    dataFromWalletToMintSPT = data;
-  }
-
-  const setDataFromPageToMintNFT = (data: INFTPageInfo) => {
-    dataFromPageToMintNFT = data;
-  }
-
-  const setDataFromWalletToMintNFT = (data: INFTWalletInfo) => {
-    dataFromWalletToMintNFT = data;
-  }
-
-  const setDataFromPageToUpdateAsset = (data: UpdateTokenPageInfo) => {
-    dataFromPageToUpdateAsset = data;
-  }
-
-  const setDataFromWalletToUpdateAsset = (data: UpdateTokenWalletInfo) => {
-    dataFromWalletToUpdateAsset = data;
-  }
-
-  const setDataFromPageToTransferOwnership = (data: any) => {
-    dataFromPageToTransferOwnership = data;
-  }
-
-  const setDataFromWalletToTransferOwnership = (data: any) => {
-    dataFromWalletToTransferOwnership = data;
-  }
-
   const createSPT = (spt: ISPTInfo) => {
     newSPT = spt;
 
@@ -1577,6 +1484,8 @@ const AccountController = (actions: {
 
     const feeRateBN = new sys.utils.BN(fee * 1e8);
 
+    console.log('call confirm temptx', temporaryTransaction['sendAsset'])
+
     if (isToken && token) {
       let txInfo;
       const { decimals } = await getDataAsset(token);
@@ -1618,7 +1527,8 @@ const AccountController = (actions: {
             const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
             watchMemPool(acc);
           })
-          tempTx = null;
+
+          clearTemporaryTransaction('sendAsset')
           return
         }
         catch (e) {
@@ -1673,7 +1583,7 @@ const AccountController = (actions: {
 
             watchMemPool(acc);
           })
-          tempTx = null;
+          clearTemporaryTransaction('sendAsset');
 
           return
         }
@@ -1696,7 +1606,7 @@ const AccountController = (actions: {
       updateTransactionData('confirmingTransaction', txInfo);
     }
 
-    tempTx = null;
+    clearTemporaryTransaction('sendAsset');
 
     const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
 
@@ -1965,7 +1875,6 @@ const AccountController = (actions: {
     setNewAddress,
     setNewXpub,
     isNFT,
-    getDataFromPageToInitTransaction,
     createSPT,
     confirmNewSPT,
     issueSPT,
@@ -1975,23 +1884,13 @@ const AccountController = (actions: {
     getUserMintedTokens,
     getTransactionInfoByTxId,
     getSysExplorerSearch,
-    setDataFromPageToCreateNewSPT,
-    setDataFromWalletToCreateSPT,
-    setDataFromPageToMintSPT,
-    setDataFromWalletToMintSPT,
-    setDataFromPageToMintNFT,
-    setDataFromWalletToMintNFT,
-    setDataFromPageToUpdateAsset,
-    setDataFromWalletToUpdateAsset,
-    setDataFromPageToTransferOwnership,
-    setDataFromWalletToTransferOwnership,
     confirmUpdateAssetTransaction,
     confirmTransferOwnership,
     setUpdateAsset,
     setNewOwnership,
     getHoldingsData,
     getDataAsset,
-    clearTransactionItem,
+    clearTemporaryTransaction,
     confirmSignature,
     getConnectedAccount,
     getConnectedAccountXpub,
@@ -2004,11 +1903,11 @@ const AccountController = (actions: {
     setHDSigner,
     confirmIssueNFTTx,
     setNewIssueNFT,
-    setDataFromPageToIssueNFT,
-    setDataFromWalletToIssueNFT,
     importPsbt,
     decryptAES,
     setAutolockTimer,
+    updateTemporaryTransaction,
+    getTemporaryTransaction
   };
 };
 

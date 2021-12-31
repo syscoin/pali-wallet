@@ -37,7 +37,7 @@ declare interface IMessagesController { }
 
 declare interface IAccountController {
   updateNetworkData: ({ id, label, beUrl }: any) => any;
-  clearTransactionItem: (item: any) => void;
+  clearTemporaryTransaction: (item: string) => void;
   confirmIssueNFT: () => Promise<any>;
   confirmIssueSPT: () => Promise<any>;
   confirmNewSPT: () => Promise<any>;
@@ -50,7 +50,6 @@ declare interface IAccountController {
   getConnectedAccount: () => IAccountState;
   getConnectedAccountXpub: () => string | null;
   getDataAsset: (assetGuid: any) => any;
-  getDataFromPageToInitTransaction: () => any;
   getHoldingsData: () => any;
   getLatestUpdate: () => void;
   getPrimaryAccount: (pwd: string, sjs: any) => void;
@@ -67,22 +66,12 @@ declare interface IAccountController {
   issueSPT: (spt: ISPTIssue) => void;
   setCurrentPSBT: (psbt: any) => any;
   setCurrentPsbtToSign: (psbtToSign: any) => any;
-  setDataFromPageToCreateNewSPT: (data: any) => void;
-  setDataFromPageToMintNFT: (data: any) => void;
-  setDataFromPageToMintSPT: (data: any) => void;
-  setDataFromPageToTransferOwnership: (data: any) => void;
-  setDataFromPageToUpdateAsset: (data: any) => void;
-  setDataFromWalletToCreateSPT: (data: any) => void;
-  setDataFromWalletToMintNFT: (data: any) => void;
-  setDataFromWalletToMintSPT: (data: any) => void;
   updateAccountLabel: (id: number, label: string) => void;
-  updateTempTx: (tx: ITransactionInfo) => void;
+  updateTempTx: (tx: any, item: string) => void;
   updateTokensState: () => any;
   updateTxs: () => void;
   watchMemPool: (currentAccount: IAccountState) => void;
-  setDataFromWalletToTransferOwnership: (data: any) => void;
   setNewXpub: (id: number, xpub: string, xprv: string, key: string) => boolean;
-  setDataFromWalletToUpdateAsset: (data: any) => void;
   setUpdateAsset: (asset: any) => any;
   updateTokensState: () => any;
   setNewAddress: (addr: string) => boolean;
@@ -91,94 +80,110 @@ declare interface IAccountController {
   setNewOwnership: (data: any) => any;
   confirmIssueNFTTx: () => any;
   setNewIssueNFT: (data: any) => any;
-  setDataFromPageToIssueNFT: (data: any) => any;
-  setDataFromWalletToIssueNFT: (data: any) => any;
   importPsbt: (psbt: any) => any;
   decryptAES: (encryptedString: any, key: string) => any;
   setAutolockTimer: (minutes: number) => any;
+  updateTemporaryTransaction: (params: any) => any;
+  getTemporaryTransaction: (type: string) => any;
 }
 
-declare type CreateTokenItems = {
-  auxfeedetails?: {
-    auxfees: [{
-      bound: any,
-      percent: any,
-    }]
-  },
-  capabilityflags?: string | '127',
-  description: string,
-  initialSupply?: number | 0,
-  maxsupply: number,
-  notaryAddress?: string,
-  notarydetails?: {
-    endpoint?: string | null,
-    hdrequired?: boolean,
-    instanttransfers?: boolean
-  },
-  payoutAddress?: string,
-  precision: number,
-  receiver: string,
-  symbol: string
+declare type NotaryDetails = {
+  endpoint?: string | null;
+  hdrequired?: boolean;
+  instanttransfers?: boolean;
 }
 
-declare type SendTokenItems = {
-  amount: number,
-  fee: number,
-  isToken: boolean,
-  rbf: boolean,
-  receiver: string,
-  sender: string,
-  token: string
+declare type AuxFees = {
+  [auxfees: number]: {
+    bound: number;
+    percent: number;
+  }
 }
 
-declare type IssueTokenItems = {
-  amount: number,
-  assetGuid: string
+declare type NewAsset = {
+  precision: number | 8;
+  symbol: string;
+  maxsupply: number;
+  description?: string;
+  receiver?: string;
+  fee: number;
+  advanced?: {
+    initialSupply?: number;
+    capabilityflags?: string | '127';
+    notarydetails?: NotaryDetails;
+    auxfeedetails?: AuxFees[];
+    notaryAddress?: string;
+    payoutAddress?: string;
+  }
 }
 
-declare type CreateAndIssueNFTItems = {
-  auxfeedetails?: {
-    auxfees: [{
-      bound: any,
-      percent: any
-    }]
-  },
-  description: string,
-  issuer: string,
-  notaryAddress?: string,
-  notarydetails?: {
-    endpoint?: string | null,
-    hdrequired?: boolean,
-    instanttransfers?: boolean
-  },
-  payoutAddress?: string,
-  precision: number,
-  symbol: string
+declare type SentAsset = {
+  amount: number;
+  fee: number;
+  isToken: boolean;
+  rbf?: boolean;
+  receiver: string;
+  sender: string;
+  token: string;
 }
 
-declare type UpdateAssetItems = {
-  assetGuid: string,
-  auxfeedetails?: {
-    auxfees: [{
-      bound: any,
-      percent: any
-    }]
-  },
-  capabilityflags?: string | '127',
-  contract?: string,
-  description?: string,
-  notaryAddress?: string,
-  notarydetails?: {
-    endpoint?: string | null,
-    hdrequired?: boolean,
-    instanttransfers?: boolean
-  },
-  payoutAddress?: string
+declare type MintedAsset = {
+  amount: number;
+  assetGuid: string;
 }
 
-declare type TransferOwnershipItems = {
-  assetGuid: string,
-  newOwner: string
+declare type NewNFT = {
+  fee: number;
+  symbol: string;
+  description: string;
+  receiver: string;
+  precision: number;
+}
+
+declare type UpdatedAsset = {
+  fee: number;
+  assetGuid: number;
+  assetWhiteList: string;
+  capabilityflags: string | '127';
+  contract: string;
+  description: string;
+  advanced?: {
+    notarydetails?: NotaryDetails;
+    auxfeedetails?: AuxFees[];
+    notaryAddress?: string;
+    payoutAddress?: string;
+  }
+}
+
+declare type TransferredAsset = {
+  assetGuid: string;
+  newOwner: string;
+}
+
+declare type SendAsset = {
+  amount: number;
+  fee: number;
+  fromAddress: string;
+  isToken: boolean;
+  rbf?: boolean;
+  toAddress: string;
+  token: Assets | null;
+}
+
+declare type TemporaryTransaction = {
+  newAsset: NewAsset | null;
+  mintedAsset: MintedAsset | null;
+  newNFT: NewNFT | null;
+  updatedAsset: UpdatedAsset | null;
+  transferredAsset: TransferredAsset | null;
+  sendAsset: SendAsset | null;
+}
+
+enum TxTypes {
+  Creation,
+  Mint,
+  Update,
+  Ownership
 }
 
 declare interface IConnectionsController {
@@ -191,7 +196,7 @@ declare interface IConnectionsController {
   getUserMintedTokens: () => Promise<any> | null;
   getWalletState: () => any | null;
   handleCreateNFT: (items: CreateAndIssueNFTItems) => Promise<any> | null;
-  handleCreateToken: (items: CreateTokenItems) => Promise<any> | null;
+  handleCreateToken: (items: NewAsset) => Promise<any> | null;
   handleIssueNFT: (amount: number, assetGuid: string) => Promise<any> | null;
   handleIssueSPT: (items: IssueTokenItems) => Promise<any> | null;
   handleSendToken: (items: SendTokenItems) => Promise<any> | null;

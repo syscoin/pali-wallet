@@ -59,7 +59,7 @@ const ConnectHardwareWalletView: FC = () => {
                 </Disclosure.Button>
 
                 <Disclosure.Panel>
-                  <div className="mx-2 mt-2 py-2 px-4 flex flex-col justify-start items-start rounded-lg w-80 border border-brand-royalBlue cursor-pointer transition-all duration-300 bg-brand-navydarker">
+                  <div className="mx-2 py-2 px-4 flex flex-col justify-start items-start rounded-lg w-80 border border-brand-navyborder cursor-pointer transition-all duration-300 bg-brand-navyborder">
                     <p className="text-sm my-2">1 - Connect a hardware wallet</p>
 
                     <span className="text-xs mb-4">Connect your hardware wallet directly to your computer.</span>

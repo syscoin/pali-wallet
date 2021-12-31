@@ -19,7 +19,7 @@ import {
 import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { PrimaryButton, Tooltip, Icon, IconButton } from 'components/index';
+import { PrimaryButton, Tooltip } from 'components/index';
 import { Assets } from 'scripts/types';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 
@@ -47,10 +47,6 @@ export const Send: FC<ISend> = () => {
     const recommendFee = await controller.wallet.account.getRecommendFee();
 
     setRecommend(recommendFee);
-
-    form.setFieldsValue({
-      fee: recommendFee,
-    });
   };
 
   const handleInitForm = () => {
@@ -100,14 +96,13 @@ export const Send: FC<ISend> = () => {
     const {
       receiver,
       amount,
-      fee,
     } = data;
 
     try {
       updateSendTemporaryTx({
         receiver,
         amount,
-        fee,
+        fee: recommend,
         token: selectedAsset ? selectedAsset.assetGuid : null,
         controller,
         activeAccount,
@@ -138,7 +133,6 @@ export const Send: FC<ISend> = () => {
         initialValues={{
           verify: true,
           ZDAG: false,
-          fee: recommend
         }}
         onFinish={nextStep}
         autoComplete="off"
@@ -247,7 +241,6 @@ export const Send: FC<ISend> = () => {
 
           <div className="mx-2 flex w-48 gap-x-0.5 justify-center items-center">
             <Form.Item
-              name="verify"
               className="flex-1 w-32 bg-brand-navyborder border border-brand-royalBlue rounded-l-full text-center"
               rules={[
                 {
@@ -280,7 +273,6 @@ export const Send: FC<ISend> = () => {
             </Form.Item>
 
             <Form.Item
-              name="ZDAG"
               className="flex-1 w-32 rounded-r-full text-center  bg-brand-navyborder border border-brand-royalBlue"
               rules={[
                 {
@@ -315,7 +307,6 @@ export const Send: FC<ISend> = () => {
         </div>
 
         <Form.Item
-          name="amount"
           hasFeedback
           rules={[
             {
@@ -333,48 +324,22 @@ export const Send: FC<ISend> = () => {
           />
         </Form.Item>
 
-
-        <div className="mx-2 flex gap-x-0.5 justify-center items-center">
-          <Form.Item
-            name="recommend"
-            className="w-12 py-1.5 bg-brand-navyborder border border-brand-royalBlue rounded-l-full text-center"
-            rules={[
-              {
-                required: false,
-                message: ''
-              },
-            ]}
+        <Tooltip content="Transaction fee">
+          <div
+            className="outline-none rounded-full opacity-50 cursor-not-allowed py-3 w-72 px-4 bg-brand-navyborder border border-brand-royalBlue text-sm flex justify-between items-center"
           >
-            <Tooltip content="Click to use the recommended fee">
-              <IconButton
-                onClick={handleGetFee}
-              >
-                <Icon
-                  wrapperClassname="w-6 mb-1"
-                  name="verified"
-                  className="text-brand-green"
-                />
-              </IconButton>
-            </Tooltip>
-          </Form.Item>
+            <p>
+              {recommend} SYS
+            </p>
 
-          <Form.Item
-            name="fee"
-            hasFeedback
-            rules={[
-              {
-                required: true,
-                message: '',
-              },
-            ]}
-          >
-            <Input
-              className="outline-none rounded-r-full py-3 pr-8 w-60 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
-              type="number"
-              placeholder="Fee"
-            />
-          </Form.Item>
-        </div>
+            <span className="font-rubik text-brand-white mt-0.5 text-xs">
+              ≈ {selectedAsset ?
+                getFiatAmount(Number(recommend) + Number(recommend), 6) :
+                getFiatAmount(Number(recommend), 6)}
+            </span>
+          </div>
+        </Tooltip>
+
 
         <p className="flex justify-center items-center flex-col text-center p-0 text-brand-royalBlue mx-14">
           <span
@@ -390,11 +355,13 @@ export const Send: FC<ISend> = () => {
           </span>
         </p>
 
-        <PrimaryButton
-          type="submit"
-        >
-          Next
-        </PrimaryButton>
+        <div className="absolute bottom-12">
+          <PrimaryButton
+            type="submit"
+          >
+            Next
+          </PrimaryButton>
+        </div>
       </Form>
     </div>
   )
