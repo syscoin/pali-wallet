@@ -37,51 +37,67 @@ export const Send: FC<ISend> = () => {
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
   const [recommend, setRecommend] = useState(0.00001);
   const [form] = Form.useForm();
+
   const handleGetFee = async () => {
     const recommendFee = await controller.wallet.account.getRecommendFee();
+
     setRecommend(recommendFee);
+
     form.setFieldsValue({
       fee: recommendFee,
     });
   };
+
   const handleInitForm = () => {
     handleGetFee();
+
     form.setFieldsValue({
       verify: true,
       ZDAG: false,
     });
   }
+
   useEffect(() => {
     handleInitForm();
   }, []);
+
   const handleSelectedAsset = (item: number) => {
     if (activeAccount?.assets) {
       const getAsset = activeAccount?.assets.find((asset: Assets) => asset.assetGuid == item);
+
       if (getAsset) {
         setSelectedAsset(getAsset);
+
         return;
       }
+
       setSelectedAsset(null);
     }
   };
+
   const verifyOnChange = (value: any) => {
     setVerifyAddress(value);
+
     form.setFieldsValue({
       verify: value,
     });
   }
+
   const ZDAGOnChange = (value: any) => {
     setZDAG(value);
+
     form.setFieldsValue({
       ZDAG: value,
     });
   }
+
   const nextStep = (data: any) => {
     const {
       receiver,
       amount,
       fee,
     } = data;
+
     try {
       updateSendTemporaryTx({
         receiver,
@@ -97,6 +113,7 @@ export const Send: FC<ISend> = () => {
       alert.error('An internal error has occurred.');
     }
   }
+
   const SendForm = (
   ) => (
     <div className="mt-4">
@@ -106,6 +123,7 @@ export const Send: FC<ISend> = () => {
         </span>
         {getAssetBalance(selectedAsset)}
       </p>
+
       <Form
         form={form}
         id="send"
@@ -144,6 +162,7 @@ export const Send: FC<ISend> = () => {
             className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
           />
         </Form.Item>
+
         <div className="flex justify-center items-center">
           <Form.Item
             name="asset"
@@ -169,7 +188,7 @@ export const Send: FC<ISend> = () => {
                   aria-hidden="true"
                 />
               </Menu.Button>
-              
+
               <Transition
                 as={Fragment}
                 enter="transition ease-out duration-100"
@@ -214,7 +233,7 @@ export const Send: FC<ISend> = () => {
               </Transition>
             </Menu>
           </Form.Item>
-          
+
           <div className="mx-2 flex w-48 gap-x-0.5 justify-center items-center">
             <Form.Item
               name="verify"
@@ -301,28 +320,30 @@ export const Send: FC<ISend> = () => {
         </Form.Item>
 
         <div className="mx-2 flex gap-x-0.5 justify-center items-center">
-          <Form.Item
-            name="recommend"
-            className="w-12 py-1.5 bg-brand-navyborder border border-brand-royalBlue rounded-l-full text-center"
-            rules={[
-              {
-                required: false,
-                message: ''
-              },
-            ]}
-          >
-            <Tooltip content="Click to use the recommended fee">
-              <IconButton
-                onClick={handleGetFee}
-              >
-                <Icon
-                  wrapperClassname="w-6 mb-1"
-                  name="verified"
-                  className="text-brand-green"
-                />
-              </IconButton>
-            </Tooltip>
-          </Form.Item>
+          {activeNetwork !== 'main' && activeNetwork !== 'testnet' && (
+            <Form.Item
+              name="recommend"
+              className="w-12 py-1.5 bg-brand-navyborder border border-brand-royalBlue rounded-l-full text-center"
+              rules={[
+                {
+                  required: false,
+                  message: ''
+                },
+              ]}
+            >
+              <Tooltip content="Click to use the recommended fee">
+                <IconButton
+                  onClick={handleGetFee}
+                >
+                  <Icon
+                    wrapperClassname="w-6 mb-1"
+                    name="verified"
+                    className="text-brand-green"
+                  />
+                </IconButton>
+              </Tooltip>
+            </Form.Item>
+          )}
 
           <Form.Item
             name="fee"
@@ -334,11 +355,15 @@ export const Send: FC<ISend> = () => {
               },
             ]}
           >
-            <Input
-              className="outline-none rounded-r-full py-3 pr-8 w-60 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
-              type="number"
-              placeholder="Fee"
-            />
+            <Tooltip content={activeNetwork === 'main' || activeNetwork === 'testnet' ? 'Fee network' : ''}>
+              <Input
+                disabled={activeNetwork === 'main' || activeNetwork === 'testnet'}
+                className={`${activeNetwork === 'main' || activeNetwork === 'testnet' ? 'opacity-20 bg-brand-black rounded-full w-72 cursor-not-allowed' : 'border border-brand-royalBlue rounded-r-full w-60'} outline-none py-3 pr-8 pl-4 text-sm bg-brand-navyborder`}
+                type="number"
+                placeholder="Fee network"
+                value={recommend}
+              />
+            </Tooltip>
           </Form.Item>
         </div>
 
