@@ -5,7 +5,6 @@ import {
   Fragment,
   FC,
 } from 'react';
-
 import {
   useController,
   usePrice,
@@ -15,7 +14,6 @@ import {
   useTransaction,
   useFormat
 } from 'hooks/index';
-
 import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { AuthViewLayout } from 'containers/common/Layout';
@@ -26,83 +24,69 @@ import { Assets } from 'types/transactions';
 interface ISend {
   initAddress?: string;
 }
-
 export const Send: FC<ISend> = () => {
   const getFiatAmount = usePrice();
   const controller = useController();
-
   const { alert, history } = useUtils();
   const { getAssetBalance, updateSendTemporaryTx } = useTransaction();
   const { activeAccount } = useAccount();
   const { activeNetwork } = useStore();
   const { formatURL } = useFormat();
-
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
   const [recommend, setRecommend] = useState(0.00001);
   const [form] = Form.useForm();
-
   const handleGetFee = async () => {
     const recommendFee = await controller.wallet.account.getRecommendFee();
-
     setRecommend(recommendFee);
+    form.setFieldsValue({
+      fee: recommendFee,
+    });
   };
-
   const handleInitForm = () => {
     handleGetFee();
-
     form.setFieldsValue({
       verify: true,
       ZDAG: false,
     });
   }
-
   useEffect(() => {
     handleInitForm();
   }, []);
-
   const handleSelectedAsset = (item: number) => {
     if (activeAccount?.assets) {
       const getAsset = activeAccount?.assets.find((asset: Assets) => asset.assetGuid == item);
-
       if (getAsset) {
         setSelectedAsset(getAsset);
-
         return;
       }
-
       setSelectedAsset(null);
     }
   };
-
   const verifyOnChange = (value: any) => {
     setVerifyAddress(value);
-
     form.setFieldsValue({
       verify: value,
     });
   }
-
   const ZDAGOnChange = (value: any) => {
     setZDAG(value);
-
     form.setFieldsValue({
       ZDAG: value,
     });
   }
-
   const nextStep = (data: any) => {
     const {
       receiver,
       amount,
+      fee,
     } = data;
-
     try {
       updateSendTemporaryTx({
         receiver,
         amount,
-        fee: recommend,
+        fee,
         token: selectedAsset ? selectedAsset.assetGuid : null,
         controller,
         activeAccount,
@@ -113,7 +97,6 @@ export const Send: FC<ISend> = () => {
       alert.error('An internal error has occurred.');
     }
   }
-
   const SendForm = (
   ) => (
     <div className="mt-4">
@@ -121,10 +104,8 @@ export const Send: FC<ISend> = () => {
         <span className="text-brand-royalBlue font-thin font-poppins">
           Balance
         </span>
-
         {getAssetBalance(selectedAsset)}
       </p>
-
       <Form
         form={form}
         id="send"
@@ -133,6 +114,7 @@ export const Send: FC<ISend> = () => {
         initialValues={{
           verify: true,
           ZDAG: false,
+          fee: recommend
         }}
         onFinish={nextStep}
         autoComplete="off"
@@ -151,7 +133,6 @@ export const Send: FC<ISend> = () => {
                 if (!value || controller.wallet.account.isValidSYSAddress(value, activeNetwork, verifyAddress)) {
                   return Promise.resolve();
                 }
-
                 return Promise.reject('');
               },
             }),
@@ -163,7 +144,6 @@ export const Send: FC<ISend> = () => {
             className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
           />
         </Form.Item>
-
         <div className="flex justify-center items-center">
           <Form.Item
             name="asset"
@@ -184,13 +164,12 @@ export const Send: FC<ISend> = () => {
                 className="bg-brand-navyborder border border-brand-royalBlue inline-flex justify-center w-full px-4 py-3 text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
               >
                 {selectedAsset?.symbol ? formatURL(String(selectedAsset?.symbol), 2) : 'SYS'}
-
                 <ChevronDoubleDownIcon
                   className="w-5 h-5 ml-2 -mr-1 text-violet-200 hover:text-violet-100"
                   aria-hidden="true"
                 />
               </Menu.Button>
-
+              
               <Transition
                 as={Fragment}
                 enter="transition ease-out duration-100"
@@ -210,13 +189,11 @@ export const Send: FC<ISend> = () => {
                         className="hover:text-brand-royalBlue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between"
                       >
                         <p>SYS</p>
-
                         <small>
                           Native
                         </small>
                       </button>
                     </Menu.Item>
-
                     {activeAccount?.assets.map((item) => {
                       return (
                         <Menu.Item>
@@ -225,7 +202,6 @@ export const Send: FC<ISend> = () => {
                             className="hover:text-brand-royalBlue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between"
                           >
                             <p>{item.symbol}</p>
-
                             <small>
                               {controller.wallet.account.isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
                             </small>
@@ -238,9 +214,10 @@ export const Send: FC<ISend> = () => {
               </Transition>
             </Menu>
           </Form.Item>
-
+          
           <div className="mx-2 flex w-48 gap-x-0.5 justify-center items-center">
             <Form.Item
+              name="verify"
               className="flex-1 w-32 bg-brand-navyborder border border-brand-royalBlue rounded-l-full text-center"
               rules={[
                 {
@@ -264,7 +241,6 @@ export const Send: FC<ISend> = () => {
                 className="relative inline-flex items-center h-4 rounded-full w-9 border border-brand-royalBlue"
               >
                 <span className="sr-only">Verify address</span>
-
                 <span
                   className={`${verifyAddress ? 'translate-x-6 bg-brand-green' : 'translate-x-1'
                     } inline-block w-2 h-2 transform bg-brand-error rounded-full`}
@@ -273,6 +249,7 @@ export const Send: FC<ISend> = () => {
             </Form.Item>
 
             <Form.Item
+              name="ZDAG"
               className="flex-1 w-32 rounded-r-full text-center  bg-brand-navyborder border border-brand-royalBlue"
               rules={[
                 {
@@ -289,14 +266,12 @@ export const Send: FC<ISend> = () => {
                   Z-DAG
                 </p>
               </Tooltip>
-
               <Switch
                 checked={ZDAG}
                 onChange={ZDAGOnChange}
                 className="bg-transparent relative inline-flex items-center h-4 rounded-full w-9 border border-brand-royalBlue"
               >
                 <span className="sr-only">Z-DAG</span>
-
                 <span
                   className={`${ZDAG ? 'bg-brand-green translate-x-6' : 'bg-brand-error translate-x-1'
                     } inline-block w-2 h-2 transform rounded-full`}
@@ -307,6 +282,7 @@ export const Send: FC<ISend> = () => {
         </div>
 
         <Form.Item
+          name="amount"
           hasFeedback
           rules={[
             {
@@ -324,22 +300,47 @@ export const Send: FC<ISend> = () => {
           />
         </Form.Item>
 
-        <Tooltip content="Transaction fee">
-          <div
-            className="outline-none rounded-full opacity-50 cursor-not-allowed py-3 w-72 px-4 bg-brand-navyborder border border-brand-royalBlue text-sm flex justify-between items-center"
+        <div className="mx-2 flex gap-x-0.5 justify-center items-center">
+          <Form.Item
+            name="recommend"
+            className="w-12 py-1.5 bg-brand-navyborder border border-brand-royalBlue rounded-l-full text-center"
+            rules={[
+              {
+                required: false,
+                message: ''
+              },
+            ]}
           >
-            <p>
-              {recommend} SYS
-            </p>
+            <Tooltip content="Click to use the recommended fee">
+              <IconButton
+                onClick={handleGetFee}
+              >
+                <Icon
+                  wrapperClassname="w-6 mb-1"
+                  name="verified"
+                  className="text-brand-green"
+                />
+              </IconButton>
+            </Tooltip>
+          </Form.Item>
 
-            <span className="font-rubik text-brand-white mt-0.5 text-xs">
-              ≈ {selectedAsset ?
-                getFiatAmount(Number(recommend) + Number(recommend), 6) :
-                getFiatAmount(Number(recommend), 6)}
-            </span>
-          </div>
-        </Tooltip>
-
+          <Form.Item
+            name="fee"
+            hasFeedback
+            rules={[
+              {
+                required: true,
+                message: '',
+              },
+            ]}
+          >
+            <Input
+              className="outline-none rounded-r-full py-3 pr-8 w-60 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
+              type="number"
+              placeholder="Fee"
+            />
+          </Form.Item>
+        </div>
 
         <p className="flex justify-center items-center flex-col text-center p-0 text-brand-royalBlue mx-14">
           <span
@@ -355,17 +356,14 @@ export const Send: FC<ISend> = () => {
           </span>
         </p>
 
-        <div className="absolute bottom-12">
-          <PrimaryButton
-            type="submit"
-          >
-            Next
-          </PrimaryButton>
-        </div>
+        <PrimaryButton
+          type="submit"
+        >
+          Next
+        </PrimaryButton>
       </Form>
     </div>
   )
-
   return (
     <AuthViewLayout title="SEND SYS">
       <SendForm />
