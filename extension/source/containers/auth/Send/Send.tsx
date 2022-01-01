@@ -20,8 +20,8 @@ import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { AuthViewLayout } from 'containers/common/Layout';
 import { PrimaryButton, Tooltip, Icon, IconButton } from 'components/index';
-import { Assets } from 'scripts/types';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
+import { Assets } from 'types/transactions';
 
 interface ISend {
   initAddress?: string;

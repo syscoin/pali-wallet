@@ -1,5 +1,7 @@
 module.exports = {
   brand: {
+    primary: '#bf2b6d',
+    
     black: '#000',
     white: '#fff',
     darktransparent: '#00000094',

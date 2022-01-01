@@ -1,32 +1,31 @@
 import React, { useState, FC, useEffect } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout';
 import { PrimaryButton, SecondaryButton, Tooltip, Icon, IconButton } from 'components/index';
-import { useController, useUtils, useBrowser, useStore } from 'hooks/index';
+import { useTransaction, useController, useUtils, useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
 
 interface ISiteTransaction {
-  callbackToSetDataFromWallet: any;
   confirmRoute: string;
-  itemStringToClearData: string;
+  temporaryTransactionAsString: string;
   layoutTitle: string;
-  messageToSetDataFromWallet: string;
 }
 
 export const SiteTransaction: FC<ISiteTransaction> = ({
-  callbackToSetDataFromWallet,
-  messageToSetDataFromWallet,
   confirmRoute,
-  itemStringToClearData,
+  temporaryTransactionAsString,
   layoutTitle,
 }) => {
   const controller = useController();
+
   const { history, getHost } = useUtils();
-  const { browser } = useBrowser();
   const { currentSenderURL } = useStore();
+  const { handleRejectTransaction } = useTransaction();
 
   const [loading, setLoading] = useState<boolean>(false);
   const [recommend, setRecommend] = useState(0.00001);
   const [form] = Form.useForm();
+
+  const temporaryTransaction = controller.wallet.account.getTransactionItem()[temporaryTransactionAsString];
 
   const handleGetFee = async () => {
     const recommendFee = await controller.wallet.account.getRecommendFee();
@@ -42,14 +41,13 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
     handleGetFee();
   }, []);
 
-  const handleMessageToSetDataFromWallet = ({ fee }) => {
-    callbackToSetDataFromWallet({
-      fee,
-    });
-
-    browser.runtime.sendMessage({
-      type: messageToSetDataFromWallet,
-      target: 'background',
+  const handleCreateTemporaryTransaction = ({ fee }) => {
+    controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        ...temporaryTransaction,
+        fee
+      },
+      type: temporaryTransactionAsString
     });
 
     setLoading(true);
@@ -57,35 +55,14 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
     history.push(confirmRoute);
   };
 
-  const handleRejectTransaction = () => {
-    history.push('/home');
-
-    browser.runtime.sendMessage({
-      type: 'WALLET_ERROR',
-      target: 'background',
-      transactionError: true,
-      invalidParams: false,
-      message: 'Transaction rejected.',
-    });
-
-    browser.runtime.sendMessage({
-      type: 'CANCEL_TRANSACTION',
-      target: 'background',
-      item: itemStringToClearData || null,
-    });
-
-    browser.runtime.sendMessage({
-      type: 'CLOSE_POPUP',
-      target: 'background',
-    });
-  };
-
   return (
     <AuthViewLayout canGoBack={false} title={layoutTitle.toUpperCase()}>
       <div className="flex flex-col justify-center items-center">
         <h1 className="text-sm mt-4">FEE</h1>
 
-        <p className="text-brand-royalBlue text-sm">{getHost(`${currentSenderURL}`)}</p>
+        <p className="text-brand-royalBlue text-sm">
+          {getHost(`${currentSenderURL}`)}
+        </p>
 
         <Form
           form={form}
@@ -93,7 +70,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
           labelCol={{ span: 8 }}
           initialValues={{ fee: recommend }}
           wrapperCol={{ span: 8 }}
-          onFinish={handleMessageToSetDataFromWallet}
+          onFinish={handleCreateTemporaryTransaction}
           autoComplete="off"
           className="flex justify-center items-center flex-col gap-3 mt-4 text-center"
         >

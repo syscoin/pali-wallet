@@ -4,6 +4,7 @@ import { useController, useStore } from 'hooks/index';
 
 import { Form, Input } from 'antd';
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
+
 const AutolockView = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -26,7 +27,7 @@ const AutolockView = () => {
 
   return (
     <AuthViewLayout title="AUTO LOCK TIMER">
-      <p className="text-white text-sm py-6 px-10">You can set auto lock timer. Default is 5 minutes after no activity</p>
+      <p className="text-white text-sm py-6 px-10">You can set auto lock timer. Default is 5 minutes after no activity. Maximum is 30 minutes.</p>
 
       {confirmed && (
         <Modal

@@ -1,6 +1,5 @@
 import { SYS_NETWORK } from 'constants/index';
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { Transaction } from 'scripts/types';
 // import { useUtils } from 'hooks/index';
 
 import IWalletState, {
@@ -10,6 +9,7 @@ import IWalletState, {
   IAccountUpdateXpub,
   IWalletTokenState,
 } from './types';
+import { Transaction } from 'types/transactions';
 
 // const { getHost } = useUtils();
 const getHost = (url: string) => {

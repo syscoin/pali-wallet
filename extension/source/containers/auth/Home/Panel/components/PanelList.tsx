@@ -1,7 +1,7 @@
 import React, { FC, useCallback, Fragment } from 'react';
 import { IconButton, Icon } from 'components/index';
 import { useFormat, useUtils } from 'hooks/index';
-import { Assets, Transaction } from 'scripts/types';
+import { Assets, Transaction } from 'types/transactions';
 
 interface IPanelList {
   data: any;

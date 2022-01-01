@@ -86,7 +86,7 @@ export const TransactionDetails = ({
       return (
         <li
           key={address}
-          className="flex justify-between mt-2 items-center gap-x-1 cursor-pointer rounded-lg bg-brand-navydarker hover:bg-brand-navydark transition-all duration-200 border border-dashed border-brand-navyborder p-2 text-xs"
+          className="flex justify-between mt-2 items-center gap-x-1 cursor-pointer rounded-lg bg-brand-navydarker hover:bg-brand-navydark transition-all duration-200 border border-solid border-brand-navyborder p-2 text-xs"
         >
           <p
             onClick={() => copyText(address)}

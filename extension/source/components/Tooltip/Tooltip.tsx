@@ -26,7 +26,7 @@ export const Tooltip = ({
       interactive
       content={
         <div
-          className={`p-3 text-xs bg-brand-navydarker border border-brand-navyborder rounded-lg bg-opacity-90 leading-5 shadow-md text-brand-white outline-none focus:outline-none ${className}`}
+          className={`p-3 text-xs bg-brand-navydarker border border-brand-navyborder rounded-lg leading-5 shadow-md text-brand-white outline-none focus:outline-none ${className}`}
         >
           {content}
         </div>
@@ -44,7 +44,7 @@ export const Tooltip = ({
 const Content = ({ className = '', children }) => {
   return (
     <div
-      className={`inline-block cursor-help border-b border-fgd-3 border-dashed border-opacity-20 default-transition hover:border-bkg-2 ${className}`}
+      className={`inline-block cursor-help border-b border-fgd-3 border-solid border-opacity-20 default-transition hover:border-bkg-2 ${className}`}
     >
       {children}
     </div>

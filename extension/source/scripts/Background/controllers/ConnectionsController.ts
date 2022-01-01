@@ -231,7 +231,7 @@ const ConnectionsController = () => {
     );
   };
 
-  const handleSendToken = async (items: SendTokenItems) => {
+  const handleSendToken = async (items: any) => {
     checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
 
     if (items.isToken && typeof items.token !== 'string') {
@@ -278,7 +278,7 @@ const ConnectionsController = () => {
     });
   };
 
-  const handleCreateToken = async (items: CreateTokenItems) => {
+  const handleCreateToken = async (items: any) => {
     const connectedAccount: any = await getConnectedAccount();
 
     if (connectedAccount && connectedAccount.isTrezorWallet) {
@@ -354,7 +354,7 @@ const ConnectionsController = () => {
     });
   };
 
-  const handleIssueSPT = async (items: IssueTokenItems) => {
+  const handleIssueSPT = async (items: any) => {
     checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
 
     return new Promise(async (resolve, reject) => {
@@ -401,7 +401,7 @@ const ConnectionsController = () => {
     });
   };
 
-  const handleCreateNFT = async (items: CreateAndIssueNFTItems) => {
+  const handleCreateNFT = async (items: any) => {
     checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
 
     return new Promise(async (_, reject) => {
@@ -568,7 +568,7 @@ const ConnectionsController = () => {
     });
   };
 
-  const handleUpdateAsset = async (items: UpdateAssetItems) => {
+  const handleUpdateAsset = async (items: any) => {
     checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
 
     return new Promise(async (_, reject) => {
@@ -621,7 +621,7 @@ const ConnectionsController = () => {
     });
   };
 
-  const handleTransferOwnership = async (items: TransferOwnershipItems) => {
+  const handleTransferOwnership = async (items: any) => {
     checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
 
     return new Promise(async (_, reject) => {

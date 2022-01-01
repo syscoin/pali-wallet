@@ -12,8 +12,6 @@ declare module 'react-alert';
 
 declare module 'bip84';
 
-declare module 'extensionizer';
-
 declare interface IWalletController {
   account: Readonly<IAccountController>;
   checkPassword: (pwd: string) => boolean;
@@ -33,11 +31,9 @@ declare interface IWalletController {
   addNewAccount: (label?: string) => Promise<string | null>;
 }
 
-declare interface IMessagesController { }
-
 declare interface IAccountController {
   updateNetworkData: ({ id, label, beUrl }: any) => any;
-  clearTransactionItem: (item: any) => void;
+  clearTemporaryTransaction: (item: string) => void;
   confirmIssueNFT: () => Promise<any>;
   confirmIssueSPT: () => Promise<any>;
   confirmNewSPT: () => Promise<any>;
@@ -50,7 +46,6 @@ declare interface IAccountController {
   getConnectedAccount: () => IAccountState;
   getConnectedAccountXpub: () => string | null;
   getDataAsset: (assetGuid: any) => any;
-  getDataFromPageToInitTransaction: () => any;
   getHoldingsData: () => any;
   getLatestUpdate: () => void;
   getPrimaryAccount: (pwd: string, sjs: any) => void;
@@ -67,22 +62,11 @@ declare interface IAccountController {
   issueSPT: (spt: ISPTIssue) => void;
   setCurrentPSBT: (psbt: any) => any;
   setCurrentPsbtToSign: (psbtToSign: any) => any;
-  setDataFromPageToCreateNewSPT: (data: any) => void;
-  setDataFromPageToMintNFT: (data: any) => void;
-  setDataFromPageToMintSPT: (data: any) => void;
-  setDataFromPageToTransferOwnership: (data: any) => void;
-  setDataFromPageToUpdateAsset: (data: any) => void;
-  setDataFromWalletToCreateSPT: (data: any) => void;
-  setDataFromWalletToMintNFT: (data: any) => void;
-  setDataFromWalletToMintSPT: (data: any) => void;
   updateAccountLabel: (id: number, label: string) => void;
-  updateTempTx: (tx: ITransactionInfo) => void;
   updateTokensState: () => any;
   updateTxs: () => void;
   watchMemPool: (currentAccount: IAccountState) => void;
-  setDataFromWalletToTransferOwnership: (data: any) => void;
   setNewXpub: (id: number, xpub: string, xprv: string, key: string) => boolean;
-  setDataFromWalletToUpdateAsset: (data: any) => void;
   setUpdateAsset: (asset: any) => any;
   updateTokensState: () => any;
   setNewAddress: (addr: string) => boolean;
@@ -91,94 +75,11 @@ declare interface IAccountController {
   setNewOwnership: (data: any) => any;
   confirmIssueNFTTx: () => any;
   setNewIssueNFT: (data: any) => any;
-  setDataFromPageToIssueNFT: (data: any) => any;
-  setDataFromWalletToIssueNFT: (data: any) => any;
   importPsbt: (psbt: any) => any;
   decryptAES: (encryptedString: any, key: string) => any;
   setAutolockTimer: (minutes: number) => any;
-}
-
-declare type CreateTokenItems = {
-  auxfeedetails?: {
-    auxfees: [{
-      bound: any,
-      percent: any,
-    }]
-  },
-  capabilityflags?: string | '127',
-  description: string,
-  initialSupply?: number | 0,
-  maxsupply: number,
-  notaryAddress?: string,
-  notarydetails?: {
-    endpoint?: string | null,
-    hdrequired?: boolean,
-    instanttransfers?: boolean
-  },
-  payoutAddress?: string,
-  precision: number,
-  receiver: string,
-  symbol: string
-}
-
-declare type SendTokenItems = {
-  amount: number,
-  fee: number,
-  isToken: boolean,
-  rbf: boolean,
-  receiver: string,
-  sender: string,
-  token: string
-}
-
-declare type IssueTokenItems = {
-  amount: number,
-  assetGuid: string
-}
-
-declare type CreateAndIssueNFTItems = {
-  auxfeedetails?: {
-    auxfees: [{
-      bound: any,
-      percent: any
-    }]
-  },
-  description: string,
-  issuer: string,
-  notaryAddress?: string,
-  notarydetails?: {
-    endpoint?: string | null,
-    hdrequired?: boolean,
-    instanttransfers?: boolean
-  },
-  payoutAddress?: string,
-  precision: number,
-  symbol: string
-}
-
-declare type UpdateAssetItems = {
-  assetGuid: string,
-  auxfeedetails?: {
-    auxfees: [{
-      bound: any,
-      percent: any
-    }]
-  },
-  capabilityflags?: string | '127',
-  contract?: string,
-  description?: string,
-  notaryAddress?: string,
-  notarydetails?: {
-    endpoint?: string | null,
-    hdrequired?: boolean,
-    instanttransfers?: boolean
-  },
-  payoutAddress?: string
-}
-
-declare type TransferOwnershipItems = {
-  assetGuid: string,
-  newOwner: string
+  updateTemporaryTransaction: (params: any) => any;
+  getTemporaryTransaction: (type: string) => any;
 }
 
 declare interface IConnectionsController {
@@ -191,7 +92,7 @@ declare interface IConnectionsController {
   getUserMintedTokens: () => Promise<any> | null;
   getWalletState: () => any | null;
   handleCreateNFT: (items: CreateAndIssueNFTItems) => Promise<any> | null;
-  handleCreateToken: (items: CreateTokenItems) => Promise<any> | null;
+  handleCreateToken: (items: NewAsset) => Promise<any> | null;
   handleIssueNFT: (amount: number, assetGuid: string) => Promise<any> | null;
   handleIssueSPT: (items: IssueTokenItems) => Promise<any> | null;
   handleSendToken: (items: SendTokenItems) => Promise<any> | null;
