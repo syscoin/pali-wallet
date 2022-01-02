@@ -153,7 +153,9 @@ const AccountController = (actions: {
     tx,
     type,
   }) => {
+    console.log('temporary tx', temporaryTransaction, type, temporaryTransaction[type])
     temporaryTransaction[type] = { ...tx };
+    console.log('temporary tx after', temporaryTransaction, )
   }
 
   const setNewAddress = (addr: string) => {
@@ -1600,12 +1602,14 @@ const AccountController = (actions: {
   }
 
   const confirmTempTx = () => {
-    return new Promise((resolve, reject) => {
-      handleTransactions(tempTx, confirmTransactionTx).then((response) => {
-        resolve(response);
-      }).catch((error) => {
+    return new Promise(async (resolve, reject) => {
+      try {
+       const response = await handleTransactions(getTemporaryTransaction('sendAsset'), confirmTransactionTx); 
+
+       resolve(response);
+      } catch (error: any) {
         reject(error);
-      });;
+      }
     });
   };
 

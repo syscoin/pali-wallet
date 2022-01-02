@@ -121,6 +121,7 @@ export const Send: FC<ISend> = () => {
         <span className="text-brand-royalBlue font-thin font-poppins">
           Balance
         </span>
+
         {getAssetBalance(selectedAsset)}
       </p>
 
@@ -307,9 +308,18 @@ export const Send: FC<ISend> = () => {
             {
               required: true,
               message: '',
-              min: 0,
-              max: Number(getAssetBalance(selectedAsset)),
             },
+            ({}) => ({
+              validator(_, value) {
+                const balance = selectedAsset ? selectedAsset.balance / 10 ** selectedAsset.decimals : Number(activeAccount?.balance);
+
+                if (value > balance) {
+                  return Promise.reject('');
+                }
+
+                return Promise.resolve();
+              },
+            }),
           ]}
         >
           <Input

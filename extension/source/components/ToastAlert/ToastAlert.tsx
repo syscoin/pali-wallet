@@ -10,19 +10,28 @@ interface IAlertTemplate {
 export const ToastAlert: FC<IAlertTemplate> = ({ message, options, close }) => {
   return (
     <div
-      className={`${options.type === 'error' ? 'bg-brand-royalBlue border-brand-royalBlue' : 'bg-brand-navydark border-brand-royalBlue'} py-3 px-6 mb-16 w-full text-center rounded-lg border flex justify-between items-center text-brand-white gap-x-2 text-sm`}
+      className={`${options.type === 'error' ? 'bg-brand-navylight border-transparent pr-3 rounded-lg mb-16 w-72 text-center border flex justify-between items-center text-brand-white' : ''}`}
       onClick={close}
     >
-      {options.type === 'error' && (
-        <Icon
-          name="close-circle"
-          className="w-2 mb-1 text-brand-white"
-        />
-      )}
+      <div className="bg-brand-error border border-brand-error rounded-l-lg py-8 px-3">
+        {options.type === 'error' && (
+          <Icon
+            name="close-circle"
+            className="mb-1 bg-brand-white text-brand-white rounded-full"
+            size={24}
+          />
+        )}
+      </div>
 
-      <p>
-        {message}
-      </p>
+      <div className="my-2 ml-2 text-left">
+        <p className="text-sm font-bold">
+          Error
+        </p>
+
+        <p className="text-xs my-2">
+          {message}
+        </p>
+      </div>
     </div>
   );
 };

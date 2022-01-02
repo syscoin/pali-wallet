@@ -81,20 +81,22 @@ interface IIcon {
   name: string;
   className?: string;
   wrapperClassname?: string;
-  rotate?: number
+  rotate?: number;
+  size?: number;
 }
 
 export const Icon: FC<IIcon> = ({
   name,
   className,
   wrapperClassname,
-  rotate
+  rotate,
+  size
 }) => {
   const Component = icons[name];
 
   return (
     <div className={wrapperClassname ? wrapperClassname : "w-8"}>
-      {Component ? <Component className={className}  rotate={rotate} /> : null}
+      {Component ? <Component className={className} style={{ fontSize: size }} rotate={rotate} /> : null}
     </div>
   );
 };

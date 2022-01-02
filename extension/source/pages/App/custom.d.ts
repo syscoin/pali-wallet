@@ -63,10 +63,6 @@ declare interface IAccountController {
   setCurrentPSBT: (psbt: any) => any;
   setCurrentPsbtToSign: (psbtToSign: any) => any;
   updateAccountLabel: (id: number, label: string) => void;
-<<<<<<< HEAD
-=======
-  updateTempTx: (tx: any, item: string) => void;
->>>>>>> 956b6910c9ee27ca58dd368029baf132bec95066
   updateTokensState: () => any;
   updateTxs: () => void;
   watchMemPool: (currentAccount: IAccountState) => void;
@@ -84,108 +80,6 @@ declare interface IAccountController {
   setAutolockTimer: (minutes: number) => any;
   updateTemporaryTransaction: (params: any) => any;
   getTemporaryTransaction: (type: string) => any;
-<<<<<<< HEAD
-=======
-}
-
-declare type NotaryDetails = {
-  endpoint?: string | null;
-  hdrequired?: boolean;
-  instanttransfers?: boolean;
-}
-
-declare type AuxFees = {
-  [auxfees: number]: {
-    bound: number;
-    percent: number;
-  }
-}
-
-declare type NewAsset = {
-  precision: number | 8;
-  symbol: string;
-  maxsupply: number;
-  description?: string;
-  receiver?: string;
-  fee: number;
-  advanced?: {
-    initialSupply?: number;
-    capabilityflags?: string | '127';
-    notarydetails?: NotaryDetails;
-    auxfeedetails?: AuxFees[];
-    notaryAddress?: string;
-    payoutAddress?: string;
-  }
-}
-
-declare type SentAsset = {
-  amount: number;
-  fee: number;
-  isToken: boolean;
-  rbf?: boolean;
-  receiver: string;
-  sender: string;
-  token: string;
-}
-
-declare type MintedAsset = {
-  amount: number;
-  assetGuid: string;
-}
-
-declare type NewNFT = {
-  fee: number;
-  symbol: string;
-  description: string;
-  receiver: string;
-  precision: number;
-}
-
-declare type UpdatedAsset = {
-  fee: number;
-  assetGuid: number;
-  assetWhiteList: string;
-  capabilityflags: string | '127';
-  contract: string;
-  description: string;
-  advanced?: {
-    notarydetails?: NotaryDetails;
-    auxfeedetails?: AuxFees[];
-    notaryAddress?: string;
-    payoutAddress?: string;
-  }
-}
-
-declare type TransferredAsset = {
-  assetGuid: string;
-  newOwner: string;
-}
-
-declare type SendAsset = {
-  amount: number;
-  fee: number;
-  fromAddress: string;
-  isToken: boolean;
-  rbf?: boolean;
-  toAddress: string;
-  token: Assets | null;
-}
-
-declare type TemporaryTransaction = {
-  newAsset: NewAsset | null;
-  mintedAsset: MintedAsset | null;
-  newNFT: NewNFT | null;
-  updatedAsset: UpdatedAsset | null;
-  transferredAsset: TransferredAsset | null;
-  sendAsset: SendAsset | null;
-}
-
-enum TxTypes {
-  Creation,
-  Mint,
-  Update,
-  Ownership
->>>>>>> 956b6910c9ee27ca58dd368029baf132bec95066
 }
 
 declare interface IConnectionsController {
