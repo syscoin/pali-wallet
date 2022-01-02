@@ -1,6 +1,7 @@
 import WalletController from './WalletController';
 import ControllerUtils from './ControllerUtils';
 import ConnectionsController from './ConnectionsController';
+import { IWalletController } from 'types/controllers';
 
 export interface IMasterController {
   appRoute: (newRoute?: string) => string;

@@ -13,15 +13,8 @@ import {
   updateConnectionsArray,
   removeConnection,
   updateCanConfirmTransaction,
-  createAsset,
-  issueAsset,
-  issueNFT,
-  setUpdateAsset,
-  setTransferOwnership,
   clearAllTransactions,
-  signTransactionState,
-  signPSBTState,
-  setIssueNFT,
+  setTemporaryTransactionState,
 } from 'state/wallet';
 import { IAccountState } from 'state/wallet/types';
 
@@ -45,15 +38,7 @@ let timeout: any;
 
 const restartLockTimeout = () => {
   const {
-    confirmingTransaction,
-    creatingAsset,
-    issuingNFT,
-    issuingAsset,
-    updatingAsset,
-    transferringOwnership,
-    signingTransaction,
-    signingPSBT,
-    mintNFT,
+    temporaryTransactionState,
     timer
   } = store.getState().wallet;
 
@@ -64,15 +49,7 @@ const restartLockTimeout = () => {
   timeout = setTimeout(() => {
     if (
       !checkIsLocked()
-      && !confirmingTransaction
-      && !creatingAsset
-      && !issuingNFT
-      && !issuingAsset
-      && !updatingAsset
-      && !transferringOwnership
-      && !signingTransaction
-      && !signingPSBT
-      && !mintNFT
+      && temporaryTransactionState.executing
     ) {
       window.controller.wallet.logOut();
 
@@ -374,12 +351,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         activeAccountId,
         activeNetwork,
         confirmingTransaction,
-        creatingAsset,
-        issuingAsset,
-        issuingNFT,
         mintNFT,
-        updatingAsset,
-        transferringOwnership,
         changingNetwork,
         signingTransaction,
         signingPSBT,
@@ -410,12 +382,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
           activeAccountId,
           activeNetwork,
           confirmingTransaction,
-          creatingAsset,
-          issuingAsset,
-          issuingNFT,
           mintNFT,
-          updatingAsset,
-          transferringOwnership,
           changingNetwork,
           signingTransaction,
           signingPSBT,
@@ -551,9 +518,15 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
     const { messageData } = request;
 
-    window.controller.wallet.account.setCurrentPSBT(messageData);
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: messageData,
+      type: 'signAndSendPSBT'
+    })
 
-    store.dispatch(signTransactionState(true));
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'signAndSendPSBT'
+    }))
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -571,9 +544,15 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
     const { messageData } = request;
 
-    window.controller.wallet.account.setCurrentPsbtToSign(messageData);
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: messageData,
+      type: 'signPSBT'
+    })
 
-    store.dispatch(signPSBTState(true));
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'signPSBT'
+    }))
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -651,9 +630,18 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
     const fee = await window.controller.wallet.account.getRecommendFee();
 
-    window.controller.wallet.account.createSPT(Object.assign(request.messageData, { fee }));
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        ...request.messageData,
+        fee
+      },
+      type: 'newAsset'
+    });
 
-    store.dispatch(createAsset(true));
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'newAsset'
+    }));
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -676,9 +664,18 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
     const fee = await window.controller.wallet.account.getRecommendFee();
 
-    window.controller.wallet.account.issueSPT(Object.assign(request.messageData, { fee }));
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        ...request.messageData,
+        fee
+      },
+      type: 'mintAsset'
+    });
 
-    store.dispatch(issueAsset(true));
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'mintAsset'
+    }));
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -710,9 +707,18 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
     const fee = await window.controller.wallet.account.getRecommendFee();
 
-    window.controller.wallet.account.issueNFT(Object.assign(request.messageData, { fee }));
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        ...request.messageData,
+        fee,
+      },
+      type: 'newNFT'
+    })
 
-    store.dispatch(issueNFT(true));
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'newNFT'
+    }))
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -730,9 +736,18 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
     const fee = await window.controller.wallet.account.getRecommendFee();
 
-    window.controller.wallet.account.setUpdateAsset(Object.assign(request.messageData, { fee }));
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        ...request.messageData,
+        fee,
+      },
+      type: 'updateAsset'
+    })
 
-    store.dispatch(setUpdateAsset(true));
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'updateAsset'
+    }))
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -758,9 +773,18 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
     const fee = await window.controller.wallet.account.getRecommendFee();
 
-    window.controller.wallet.account.setNewOwnership(Object.assign(request.messageData, { fee }));
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        ...request.messageData,
+        fee,
+      },
+      type: 'transferAsset'
+    })
 
-    store.dispatch(setTransferOwnership(true));
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'transferAsset'
+    }))
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -778,9 +802,18 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
     const fee = await window.controller.wallet.account.getRecommendFee();
 
-    window.controller.wallet.account.setNewIssueNFT(Object.assign(request.messageData, { fee }));
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        ...request.messageData,
+        fee,
+      },
+      type: 'mintNFT'
+    })
 
-    store.dispatch(setIssueNFT(true));
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'mintNFT'
+    }))
 
     const appURL = browser.runtime.getURL('app.html');
 

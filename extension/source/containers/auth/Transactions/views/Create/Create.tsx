@@ -1,24 +1,20 @@
 import React from 'react';
 import { useController } from 'hooks/index';
 import { SiteTransaction } from '../SiteTransaction';
-import { useStore } from 'hooks/index';
 import { ConfirmTransaction } from '../index';
 
 export const CreateTokenConfirm = () => {
   const controller = useController();
-
-  const { newSPT } = controller.wallet.account.getTransactionItem();
-  const { creatingAsset } = useStore();
+  const temporaryTransaction = controller.wallet.account.getTemporaryTransaction('newAsset');
 
   return (
     <ConfirmTransaction
       sign={false}
       signAndSend={false}
       title="TOKEN CREATION"
-      confirmTransaction={controller.wallet.account.confirmNewSPT}
-      temporaryTransaction={newSPT}
-      temporaryTransactionStringToClear="newSPT"
-      submittingData={creatingAsset}
+      callback={controller.wallet.account.confirmSPTCreation}
+      temporaryTransaction={temporaryTransaction}
+      temporaryTransactionStringToClear="newAsset"
     />
   );
 };
@@ -28,7 +24,7 @@ export const Create = () => {
     <div>
       <SiteTransaction
         confirmRoute="/create/confirm"
-        temporaryTransactionAsString="newSPT"
+        temporaryTransactionAsString="newAsset"
         layoutTitle="Create token"
       />
     </div>

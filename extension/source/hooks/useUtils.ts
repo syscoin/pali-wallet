@@ -83,7 +83,13 @@ export const useUtils = () => {
       window.postMessage(postMessageDetails, '*');
     });
   };
-  
+
+  const isNFT = (guid: number) => {
+    const assetGuid = BigInt.asUintN(64, BigInt(guid));
+
+    return (assetGuid >> BigInt(32)) > 0;
+  };
+
   return {
     useSettingsView,
     useCopyClipboard,
@@ -91,6 +97,7 @@ export const useUtils = () => {
     getHost,
     history,
     sendMessage,
-    handleRefresh
+    handleRefresh,
+    isNFT,
   }
 }

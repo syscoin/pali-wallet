@@ -1,6 +1,6 @@
 import React, { useState, FC, useEffect } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { PrimaryButton, SecondaryButton, Tooltip, Icon, IconButton } from 'components/index';
+import { PrimaryButton, SecondaryButton, Tooltip, Icon } from 'components/index';
 import { useTransaction, useController, useUtils, useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
 
@@ -18,14 +18,14 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
   const controller = useController();
 
   const { history, getHost } = useUtils();
-  const { currentSenderURL } = useStore();
+  const { currentSenderURL, activeNetwork } = useStore();
   const { handleRejectTransaction } = useTransaction();
 
   const [loading, setLoading] = useState<boolean>(false);
   const [recommend, setRecommend] = useState(0.00001);
   const [form] = Form.useForm();
 
-  const temporaryTransaction = controller.wallet.account.getTransactionItem()[temporaryTransactionAsString];
+  const temporaryTransaction = controller.wallet.account.getTemporaryTransaction(temporaryTransactionAsString);
 
   const handleGetFee = async () => {
     const recommendFee = await controller.wallet.account.getRecommendFee();
@@ -55,6 +55,8 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
     history.push(confirmRoute);
   };
 
+  const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
+
   return (
     <AuthViewLayout canGoBack={false} title={layoutTitle.toUpperCase()}>
       <div className="flex flex-col justify-center items-center">
@@ -77,7 +79,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
           <div className="mx-2 flex gap-x-0.5 justify-center items-center">
             <Form.Item
               name="recommend"
-              className="w-12 py-1.5 bg-brand-navyborder border border-brand-royalBlue rounded-l-full text-center"
+              className={`${disabledFee ? 'opacity-30 bg-brand-graydark border border-brand-gray100 cursor-not-allowed' : 'bg-brand-navyborder border border-brand-royalBlue'} w-12 py-1.5 rounded-l-full text-center`}
               rules={[
                 {
                   required: false,
@@ -85,16 +87,14 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
                 },
               ]}
             >
-              <Tooltip content="Click to use the recommended fee">
-                <IconButton
-                  onClick={handleGetFee}
-                >
+              <Tooltip content={`${disabledFee ? 'Use recommended fee. Disabled for SYS networks because the fee used in transactions is always the recommended for current SYS network conditions.' : 'Click to use the recommended fee'}`}>
+                <div onClick={handleGetFee}>
                   <Icon
                     wrapperClassname="w-6 mb-1"
                     name="verified"
-                    className="text-brand-green"
+                    className={`${disabledFee && 'cursor-not-allowed'} text-brand-green`}
                   />
-                </IconButton>
+                </div>
               </Tooltip>
             </Form.Item>
 
@@ -108,11 +108,15 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
                 },
               ]}
             >
-              <Input
-                className="outline-none rounded-r-full py-3 pr-8 w-60 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
-                type="number"
-                placeholder="Fee"
-              />
+              <Tooltip content={disabledFee ? 'Fee network' : ''}>
+                <Input
+                  disabled={disabledFee}
+                  className={`${disabledFee ? 'opacity-30 bg-brand-graydark border border-brand-gray100 cursor-not-allowed' : 'border border-brand-royalBlue'} rounded-r-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
+                  type="number"
+                  placeholder="Fee network"
+                  value={recommend}
+                />
+              </Tooltip>
             </Form.Item>
           </div>
 

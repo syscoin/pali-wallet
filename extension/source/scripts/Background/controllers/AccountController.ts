@@ -4,6 +4,8 @@ import store from 'state/store';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import { bech32 } from 'bech32';
 import { fromZPub } from 'bip84';
+import CryptoJS from 'crypto-js';
+
 import {
   createAccount,
   updateStatus,
@@ -16,16 +18,23 @@ import {
   updateAllTokens,
   setTimer,
   updateNetwork,
-  createAsset,
-  issueAsset,
-  issueNFT as setIssuingNFT,
-  setUpdateAsset as setUpdateAssetItem,
-  setTransferOwnership,
 } from 'state/wallet';
 
-import CryptoJS from 'crypto-js';
-import { Assets, IAccountInfo, ITransactionInfo, TemporaryTransaction, Transaction } from 'types/transactions';
-// import axios from 'axios';
+import { 
+  Assets,
+  IAccountInfo,
+  SendAsset,
+  TemporaryTransaction,
+  Transaction
+} from 'types/transactions';
+
+import {
+  sortList,
+  isNFT,
+  countDecimals
+} from './utils';
+
+import { IAccountController } from 'types/controllers';
 
 const syscointx = require('syscointx-js');
 const coinSelectSyscoin = require('coinselectsyscoin');
@@ -36,38 +45,53 @@ const AccountController = (actions: {
 }): IAccountController => {
   let intervalId: any;
   let account: IAccountState;
-  let tempTx: ITransactionInfo | null;
   let sysjs: any;
-  let newSPT: any | null;
-  let mintSPT: any | null;
-  let updateAssetItem: any | null;
-  let transferOwnershipData: any;
-  let mintNFT: any | null;
   let resAddress: any;
   let encode: any;
-  let currentPSBT: any;
   let TrezorSigner: any;
-  let currentPsbtToSign: any;
-  let issueNFTItem: any | null;
+
+  const decryptAES = (encryptedString: any, key: string) => {
+    return CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
+  }
+
+  const setAutolockTimer = (minutes: number) => {
+    store.dispatch(setTimer(minutes));
+  }
+
+  const updateNetworkData = ({ id, label, beUrl }: any) => {
+    store.dispatch(updateNetwork({ id, label, beUrl }));
+  }
 
   const temporaryTransaction: TemporaryTransaction = {
     newAsset: null,
-    mintedAsset: null,
+    mintAsset: null,
     newNFT: null,
-    updatedAsset: null,
-    transferredAsset: null,
+    updateAsset: null,
+    transferAsset: null,
     sendAsset: null,
+    signPSBT: null,
+    signAndSendPSBT: null,
+    mintNFT: null,
   }
 
   const getTemporaryTransaction = (type: string) => {
     return temporaryTransaction[type];
   }
 
+  const clearTemporaryTransaction = (item: string) => {
+    temporaryTransaction[item] = null;
+  }
+
+  const updateTemporaryTransaction = ({
+    tx,
+    type,
+  }) => {
+    temporaryTransaction[type] = { ...tx };
+  }
+
   const getConnectedAccount = (): IAccountState => {
     const { accounts, tabs }: IWalletState = store.getState().wallet;
     const { currentURL } = tabs;
-
-    console.log(currentURL, 'currenturl get connected account')
 
     return accounts.find((account: IAccountState) => {
       return account.connectedTo.find((url: string) => {
@@ -86,13 +110,14 @@ const AccountController = (actions: {
     } as Transaction;
   };
 
-  const updateTransactionData = (item: string, txinfo: any) => {
-    const transactionItem = store.getState().wallet[item];
-    const transactions = transactionItem ? getConnectedAccount().transactions : account.transactions;
+  const updateTransactionData = (txinfo: any) => {
+    const transactionItem = store.getState().wallet.temporaryTransactionState.type === 'sendAsset';
+
+    const transactions = transactionItem ? account.transactions : getConnectedAccount().transactions;
 
     store.dispatch(
       updateTransactions({
-        id: transactionItem ? getConnectedAccount().id : account.id,
+        id: transactionItem ? account.id : getConnectedAccount().id,
         txs: [_coventPendingType(txinfo), ...transactions],
       })
     );
@@ -110,11 +135,6 @@ const AccountController = (actions: {
     return await sys.utils.fetchBackendAsset(sysjs.blockbookURL, assetGuid);
   };
 
-  const countDecimals = (x: number) => {
-    if (Math.floor(x) === x) return 0;
-    return x.toString().split(".")[1].length || 0;
-  }
-
   const getSysExplorerSearch = () => {
     return sysjs.blockbookURL;
   };
@@ -125,12 +145,6 @@ const AccountController = (actions: {
     }
 
     store.dispatch(updateLabel({ id, label }));
-  };
-
-  const isNFT = (guid: number) => {
-    const assetGuid = BigInt.asUintN(64, BigInt(guid));
-
-    return (assetGuid >> BigInt(32)) > 0;
   };
 
   const getRecommendFee = async () => {
@@ -144,19 +158,6 @@ const AccountController = (actions: {
 
     getLatestUpdate();
   };
-
-  const clearTemporaryTransaction = (item: string) => {
-    temporaryTransaction[item] = null;
-  }
-
-  const updateTemporaryTransaction = ({
-    tx,
-    type,
-  }) => {
-    console.log('temporary tx', temporaryTransaction, type, temporaryTransaction[type])
-    temporaryTransaction[type] = { ...tx };
-    console.log('temporary tx after', temporaryTransaction, )
-  }
 
   const setNewAddress = (addr: string) => {
     const { activeAccountId }: IWalletState = store.getState().wallet;
@@ -229,34 +230,27 @@ const AccountController = (actions: {
     return true;
   };
 
-  const getTransactionItem = () => {
-    return {
-      issueNFTItem: issueNFTItem || null,
-      currentPSBT: currentPSBT || null,
-      currentPsbtToSign: currentPsbtToSign || null,
-      tempTx: tempTx || null,
-      newSPT: newSPT || null,
-      mintSPT: mintSPT || null,
-      mintNFT: mintNFT || null,
-      updateAssetItem: updateAssetItem || null,
-      transferOwnershipData: transferOwnershipData || null
-    };
-  };
-
-  const getTransactionData = async (txid: string) => {
-    return await getTransactionInfoByTxId(txid);
-  }
-
   const fetchBackendConnectedAccount = async (connectedAccount: IAccountState) => {
-    if (connectedAccount.isTrezorWallet) {
-      return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=nonzero&details=txs', true);
-    }
+    const fetchTrezorBackendAccount = await sys.utils.fetchBackendAccount(
+      sysjs.blockbookURL,
+      account.xpub,
+      'tokens=nonzero&details=txs',
+      true
+    );
 
-    return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, connectedAccount.xpub, 'details=txs&assetMask=non-token-transfers', true);
+    const fetchPaliAccount = await sys.utils.fetchBackendAccount(
+      sysjs.blockbookURL,
+      connectedAccount.xpub,
+      'details=txs&assetMask=non-token-transfers',
+      true
+    );
+
+    return connectedAccount.isTrezorWallet ? fetchTrezorBackendAccount : fetchPaliAccount;
   };
 
   const getChangeAddress = async () => {
     const connectedAccount: IAccountState = getConnectedAccount();
+    
     if (!sysjs) {
       console.log('SYSJS not defined');
 
@@ -276,16 +270,6 @@ const AccountController = (actions: {
     }
 
     return await sysjs.Signer.getNewChangeAddress(true);
-  }
-
-  const sortList = (list: any) => {
-    return list.sort((a: any, b: any) => {
-      const previous = a.symbol.toLowerCase();
-      const next = b.symbol.toLowerCase();
-
-      //@ts-ignore
-      return (previous > next) - (previous < next);
-    })
   }
 
   const updateTokensState = async () => {
@@ -455,13 +439,7 @@ const AccountController = (actions: {
   };
 
   const getConnectedAccountXpub = () => {
-
-    if (getConnectedAccount() === undefined) {
-      return null;
-    }
-    else {
-      return getConnectedAccount().xpub;
-    }
+    return getConnectedAccount() ? getConnectedAccount().xpub : null;
   }
 
   const signTransaction = async (jsonData: any, sendPSBT: boolean) => {
@@ -504,31 +482,6 @@ const AccountController = (actions: {
     } catch (error) {
       return psbt;
     }
-  }
-
-  const confirmSignature = (sendPSBT: boolean) => {
-    return new Promise((resolve, reject) => {
-      const item = sendPSBT ? currentPsbtToSign : currentPSBT;
-      handleTransactions(item, signTransaction, sendPSBT).then((response) => {
-        resolve(response);
-
-        currentPSBT = null;
-      }).catch((error) => {
-        reject(error);
-      });
-    });
-  }
-
-  const setCurrentPSBT = (psbt: any) => {
-    currentPSBT = psbt;
-
-    return;
-  }
-
-  const setCurrentPsbtToSign = (psbtToSign: any) => {
-    currentPsbtToSign = psbtToSign;
-
-    return;
   }
 
   const getNewChangeAddress = async (fromConnectionsController: boolean) => {
@@ -853,46 +806,6 @@ const AccountController = (actions: {
     return false;
   };
 
-  const createSPT = (spt: any) => {
-    newSPT = spt;
-
-    console.log('new spt', newSPT)
-
-    store.dispatch(createAsset(false));
-  }
-
-  const setNewIssueNFT = (nft: any) => {
-    issueNFTItem = nft;
-
-    return true;
-  }
-
-  const issueSPT = (spt: any) => {
-    mintSPT = spt;
-
-    store.dispatch(issueAsset(false));
-  }
-
-  const issueNFT = (nft: any) => {
-    mintNFT = nft;
-
-    store.dispatch(setIssuingNFT(false));
-  }
-
-  const setUpdateAsset = (asset: any) => {
-    updateAssetItem = asset;
-
-    console.log('new update asset item', updateAssetItem)
-
-    store.dispatch(setUpdateAssetItem(false));
-  }
-
-  const setNewOwnership = (asset: any) => {
-    transferOwnershipData = asset;
-
-    store.dispatch(setTransferOwnership(false));
-  }
-
   const handleTransactions = async (item: any, executeTransaction: any, condition?: boolean) => {
     if (!sysjs) {
       throw new Error('Error: No signed account exists');
@@ -1005,7 +918,7 @@ const AccountController = (actions: {
 
     const txInfoNew = pendingTx.extractTransaction().getId();
 
-    updateTransactionData('creatingAsset', txInfoNew);
+    updateTransactionData(txInfoNew);
 
     const transactionData = await getTransactionInfoByTxId(txInfoNew);
     const assets = syscointx.getAssetsFromTx(pendingTx.extractTransaction());
@@ -1044,7 +957,7 @@ const AccountController = (actions: {
 
                 const txInfo = pendingTx.extractTransaction().getId();
 
-                updateTransactionData('issuingSPT', txInfo);
+                updateTransactionData(txInfo);
 
                 watchMemPool(getConnectedAccount());
 
@@ -1071,24 +984,24 @@ const AccountController = (actions: {
       }
     }
 
+    // return {
+    //   transactionData,
+    //   txid: txInfoNew,
+    //   txConfirmations: transactionData.confirmations,
+    //   txAssetGuid: createdAsset,
+    // }
+
+    console.log('psbt', pendingTx)
+    const json = sys.utils.exportPsbtToJson(pendingTx, null);
+
     return {
       transactionData,
       txid: txInfoNew,
       txConfirmations: transactionData.confirmations,
       txAssetGuid: createdAsset,
+      psbt: json.psbt,
+      assets: json.assets
     }
-  };
-
-  const confirmNewSPT = () => {
-    return new Promise((resolve, reject) => {
-      handleTransactions(newSPT, confirmSPTCreation).then((response) => {
-        resolve(response);
-      }).catch((error) => {
-        reject(error);
-      });
-
-      newSPT = null;
-    });
   };
 
   const confirmMintSPT = async (item: any) => {
@@ -1146,7 +1059,7 @@ const AccountController = (actions: {
         let waitTrezor = true;
 
         sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner).then((txInfo: string) => {
-          updateTransactionData('issuingSPT', txInfo);
+          updateTransactionData(txInfo);
 
           watchMemPool(getConnectedAccount());
 
@@ -1177,25 +1090,13 @@ const AccountController = (actions: {
       txInfo = pendingTx.extractTransaction().getId();
     }
 
-    updateTransactionData('issuingSPT', txInfo);
+    updateTransactionData(txInfo);
 
     watchMemPool(getConnectedAccount());
 
     return {
       txid: txInfo
     }
-  };
-
-  const confirmIssueSPT = () => {
-    return new Promise((resolve, reject) => {
-      handleTransactions(mintSPT, confirmMintSPT).then((response) => {
-        resolve(response);
-      }).catch((error) => {
-        reject(error);
-      });
-
-      mintSPT = null;
-    });
   };
 
   const createParentAsset = async (assetOpts: any, fee: number) => {
@@ -1230,7 +1131,7 @@ const AccountController = (actions: {
    * WARNING: It might take a few minutes to execute it be carefull when using it
    */
 
-  const confirmMintNFT = async (item: any) => {
+  const confirmCreateNFT = async (item: any) => {
     const {
       fee,
       symbol,
@@ -1272,7 +1173,7 @@ const AccountController = (actions: {
             const feeRate = new sys.utils.BN(fee * 1e8);
             const txOpts = { rbf: true };
 
-            if (newParentTx.confirmations > 1 && !parentConfirmed) {
+            if (newParentTx.confirmations >= 1 && !parentConfirmed) {
               parentConfirmed = true;
 
               console.log('confirmations parent tx > 1', newParentAsset)
@@ -1299,7 +1200,7 @@ const AccountController = (actions: {
 
                 txInfo = pendingTx.extractTransaction().getId();
 
-                updateTransactionData('issuingNFT', txInfo);
+                updateTransactionData(txInfo);
 
                 theNFTTx = txInfo;
               } catch (error) {
@@ -1361,19 +1262,7 @@ const AccountController = (actions: {
     }
   };
 
-  const confirmIssueNFT = () => {
-    return new Promise((resolve, reject) => {
-      handleTransactions(mintNFT, confirmMintNFT).then((response) => {
-        resolve(response);
-      }).catch((error) => {
-        reject(error);
-      });
-
-      // mintNFT = null;
-    });
-  };
-
-  const confirmTxIssueNFT = async (item: any) => {
+  const confirmMintNFT = async (item: any) => {
     const {
       fee,
       amount,
@@ -1408,7 +1297,7 @@ const AccountController = (actions: {
 
       const txInfo = pendingTx.extractTransaction().getId();
 
-      updateTransactionData('issuingNFT', txInfo);
+      updateTransactionData(txInfo);
 
       return {
         txid: txInfo
@@ -1417,18 +1306,6 @@ const AccountController = (actions: {
       return error;
     }
   }
-
-  const confirmIssueNFTTx = () => {
-    return new Promise((resolve, reject) => {
-      handleTransactions(issueNFTItem, confirmTxIssueNFT).then((response) => {
-        resolve(response);
-      }).catch((error) => {
-        reject(error);
-      });
-
-      issueNFTItem = null;
-    });
-  };
 
   const estimateSysTxFee = async (items: any) => {
     const {
@@ -1450,16 +1327,8 @@ const AccountController = (actions: {
     return txFee;
   }
 
-  const confirmTransactionTx = async (
-    items: {
-      amount: number,
-      fee: number,
-      fromAddress: string,
-      isToken: boolean,
-      rbf: boolean,
-      toAddress: string,
-      token: string
-    }
+  const confirmSendAssetTransaction = async (
+    items: SendAsset
   ) => {
     const {
       toAddress,
@@ -1528,7 +1397,7 @@ const AccountController = (actions: {
         txInfo = pendingTx.extractTransaction().getId();
       }
 
-      updateTransactionData('confirmingTransaction', txInfo);
+      updateTransactionData(txInfo);
     } else {
       const backendAccount = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, {}, true);
       const value = new sys.utils.BN(amount * 1e8);
@@ -1591,7 +1460,7 @@ const AccountController = (actions: {
         }
       }
 
-      updateTransactionData('confirmingTransaction', txInfo);
+      updateTransactionData(txInfo);
     }
 
     clearTemporaryTransaction('sendAsset');
@@ -1601,10 +1470,13 @@ const AccountController = (actions: {
     watchMemPool(acc);
   }
 
-  const confirmTempTx = () => {
+  const confirmTemporaryTransaction = ({
+    type,
+    callback,
+  }) => {
     return new Promise(async (resolve, reject) => {
       try {
-       const response = await handleTransactions(getTemporaryTransaction('sendAsset'), confirmTransactionTx); 
+       const response = await handleTransactions(getTemporaryTransaction(type), callback); 
 
        resolve(response);
       } catch (error: any) {
@@ -1726,7 +1598,7 @@ const AccountController = (actions: {
       return;
     }
 
-    updateTransactionData('updatingAsset', txInfo);
+    updateTransactionData(txInfo);
 
     watchMemPool(getConnectedAccount());
 
@@ -1735,23 +1607,7 @@ const AccountController = (actions: {
     }
   }
 
-  const confirmUpdateAssetTransaction = () => {
-    return new Promise((resolve, reject) => {
-      handleTransactions(updateAssetItem, confirmUpdateAsset).then((response) => {
-        resolve(response)
-
-        updateAssetItem = null;
-      }).catch((error) => {
-        reject(error)
-
-        updateAssetItem = null;
-      });
-
-      updateAssetItem = null;
-    });
-  }
-
-  const transferAsset = async (item: any) => {
+  const confirmAssetTransfer = async (item: any) => {
     const {
       fee,
       assetGuid,
@@ -1797,7 +1653,7 @@ const AccountController = (actions: {
         //TODO: test might have same problem as them mintSPT
         txInfo = await sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner)
 
-        updateTransactionData('transferringOwnership', txInfo);
+        updateTransactionData(txInfo);
 
         watchMemPool(getConnectedAccount());
       }
@@ -1816,37 +1672,13 @@ const AccountController = (actions: {
 
     txInfo = pendingTx.extractTransaction().getId();
 
-    updateTransactionData('transferringOwnership', txInfo);
+    updateTransactionData(txInfo);
 
     watchMemPool(getConnectedAccount());
 
     return {
       txid: txInfo
     }
-  }
-
-  const confirmTransferOwnership = () => {
-    return new Promise((resolve, reject) => {
-      handleTransactions(transferOwnershipData, transferAsset).then((response) => {
-        resolve(response);
-      }).catch((error) => {
-        reject(error)
-      });
-
-      transferOwnershipData = null;
-    });
-  }
-
-  const decryptAES = (encryptedString: any, key: string) => {
-    return CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
-  }
-
-  const setAutolockTimer = (minutes: number) => {
-    store.dispatch(setTimer(minutes));
-  }
-
-  const updateNetworkData = ({ id, label, beUrl }: any) => {
-    store.dispatch(updateNetwork({ id, label, beUrl }));
   }
 
   return {
@@ -1856,47 +1688,37 @@ const AccountController = (actions: {
     updateAccountLabel,
     getLatestUpdate,
     watchMemPool,
-    confirmTempTx,
+    confirmTemporaryTransaction,
     isValidSYSAddress,
     updateTxs,
-    getTransactionItem,
     getRecommendFee,
     setNewAddress,
     setNewXpub,
-    isNFT,
-    createSPT,
-    confirmNewSPT,
-    issueSPT,
-    issueNFT,
-    confirmIssueSPT,
-    confirmIssueNFT,
     getUserMintedTokens,
     getTransactionInfoByTxId,
     getSysExplorerSearch,
-    confirmUpdateAssetTransaction,
-    confirmTransferOwnership,
-    setUpdateAsset,
-    setNewOwnership,
     getHoldingsData,
     getDataAsset,
     clearTemporaryTransaction,
-    confirmSignature,
     getConnectedAccount,
     getConnectedAccountXpub,
     getChangeAddress,
-    setCurrentPSBT,
-    setCurrentPsbtToSign,
     updateTokensState,
-    getTransactionData,
     getRawTransaction,
     setHDSigner,
-    confirmIssueNFTTx,
-    setNewIssueNFT,
     importPsbt,
     decryptAES,
     setAutolockTimer,
     updateTemporaryTransaction,
-    getTemporaryTransaction
+    getTemporaryTransaction,
+    confirmSendAssetTransaction,
+    confirmSPTCreation,
+    confirmMintSPT,
+    confirmCreateNFT,
+    signTransaction,
+    confirmAssetTransfer,
+    confirmMintNFT,
+    confirmUpdateAsset
   };
 };
 

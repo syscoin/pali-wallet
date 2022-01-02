@@ -1,6 +1,5 @@
 import { SYS_NETWORK } from 'constants/index';
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-// import { useUtils } from 'hooks/index';
 
 import IWalletState, {
   IAccountUpdateState,
@@ -11,7 +10,6 @@ import IWalletState, {
 } from './types';
 import { Transaction } from 'types/transactions';
 
-// const { getHost } = useUtils();
 const getHost = (url: string) => {
   if (typeof url === 'string' && url !== '') {
     return new URL(url).host;
@@ -27,12 +25,6 @@ const initialState: IWalletState = {
   activeNetwork: SYS_NETWORK.main.id,
   encriptedMnemonic: null,
   confirmingTransaction: false,
-  creatingAsset: false,
-  issuingAsset: false,
-  issuingNFT: false,
-  mintNFT: false,
-  updatingAsset: false,
-  transferringOwnership: false,
   changingNetwork: false,
   signingTransaction: false,
   signingPSBT: false,
@@ -69,7 +61,11 @@ const initialState: IWalletState = {
     9: 'https://www.linkedin.com/feed/',
     10: 'https://www.facebook.com/',
     11: 'app.uniswap.org',
-  }
+  },
+  temporaryTransactionState: {
+    executing: false,
+    type: ''
+  },
 };
 
 const WalletState = createSlice({
@@ -161,15 +157,10 @@ const WalletState = createSlice({
     clearAllTransactions(state: IWalletState) {
       return {
         ...state,
-        mintNFT: false,
-        signingPSBT: false,
-        confirmingTransaction: false,
-        creatingAsset: false,
-        issuingAsset: false,
-        issuingNFT: false,
-        updatingAsset: false,
-        transferringOwnership: false,
-        signingTransaction: false,
+        temporaryTransactionState: {
+          executing: false,
+          type: ''
+        }
       };
     },
     updateSwitchNetwork(state: IWalletState, action: PayloadAction<boolean>) {
@@ -187,52 +178,13 @@ const WalletState = createSlice({
         confirmingTransaction: action.payload,
       };
     },
-    signTransactionState(state: IWalletState, action: PayloadAction<boolean>) {
+    setTemporaryTransactionState(state: IWalletState, action: PayloadAction<{ executing: boolean, type: string }>) {
       return {
         ...state,
-        signingTransaction: action.payload,
-      };
-    },
-    signPSBTState(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        signingPSBT: action.payload,
-      };
-    },
-    createAsset(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        creatingAsset: action.payload,
-      };
-    },
-    issueAsset(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        issuingAsset: action.payload,
-      };
-    },
-    setIssueNFT(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        mintNFT: action.payload,
-      };
-    },
-    issueNFT(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        issuingNFT: action.payload,
-      };
-    },
-    setUpdateAsset(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        updatingAsset: action.payload,
-      };
-    },
-    setTransferOwnership(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        transferringOwnership: action.payload,
+        temporaryTransactionState: {
+          executing: action.payload.executing,
+          type: action.payload.type
+        },
       };
     },
     removeConnection(state: IWalletState, action: PayloadAction<any>) {
@@ -440,12 +392,7 @@ const WalletState = createSlice({
         connections: []
       };
       state.confirmingTransaction = false;
-      state.creatingAsset = false;
       state.signingPSBT = false;
-      state.issuingAsset = false;
-      state.issuingNFT = false;
-      state.updatingAsset = false;
-      state.transferringOwnership = false;
       state.changingNetwork = false;
       state.signingTransaction = false;
       state.walletTokens = [];
@@ -500,19 +447,12 @@ export const {
   updateConnectionsArray,
   removeConnection,
   updateCanConfirmTransaction,
-  createAsset,
-  issueAsset,
-  issueNFT,
-  setUpdateAsset,
-  setTransferOwnership,
   updateSwitchNetwork,
   clearAllTransactions,
-  signTransactionState,
   updateAllTokens,
-  signPSBTState,
-  setIssueNFT,
   setTimer,
-  updateNetwork
+  updateNetwork,
+  setTemporaryTransactionState
 } = WalletState.actions;
 
 export default WalletState.reducer;

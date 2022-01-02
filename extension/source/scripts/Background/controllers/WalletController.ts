@@ -19,6 +19,7 @@ import CryptoJS from 'crypto-js';
 import store from 'state/store';
 import AccountController from './AccountController';
 import axios from 'axios';
+import { IWalletController } from 'types/controllers';
 
 const WalletController = (): IWalletController => {
   let password: any = '';

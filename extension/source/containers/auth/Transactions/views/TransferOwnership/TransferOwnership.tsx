@@ -1,41 +1,31 @@
 import React from 'react';
 import { useController } from 'hooks/index';
 import { SiteTransaction } from '../SiteTransaction';
-import { useStore } from 'hooks/index';
 import { ConfirmTransaction } from '../index';
 
 export const TransferOwnershipConfirm = () => {
   const controller = useController();
-
-  const { transferOwnershipData } = controller.wallet.account.getTransactionItem();
-  const { transferringOwnership } = useStore();
+  const temporaryTransaction = controller.wallet.account.getTemporaryTransaction('transferAsset');
 
   return (
     <ConfirmTransaction
       sign={false}
       signAndSend={false}
-      title="TOKEN UPDATE"
-      confirmTransaction={controller.wallet.account.confirmTransferOwnership}
-      temporaryTransaction={transferOwnershipData}
-      temporaryTransactionStringToClear="updateAssetItem"
-      submittingData={transferringOwnership}
+      title="TRANSFER ASSET"
+      callback={controller.wallet.account.confirmAssetTransfer}
+      temporaryTransaction={temporaryTransaction}
+      temporaryTransactionStringToClear="transferAsset"
     />
   );
 };
 
 export const TransferOwnership = () => {
-  const controller = useController();
-
   return (
     <div>
       <SiteTransaction
-        callbackToSetDataFromWallet={
-          controller.wallet.account.setDataFromWalletToTransferOwnership
-        }
-        messageToSetDataFromWallet="DATA_FROM_WALLET_TO_TRANSFER_OWNERSHIP"
         confirmRoute="/transferOwnership/confirm"
-        itemStringToClearData="transferOwnershipData"
-        layoutTitle="Transfer ownership"
+        temporaryTransactionAsString="transferAsset"
+        layoutTitle="Transfer Asset"
       />
     </div>
   );

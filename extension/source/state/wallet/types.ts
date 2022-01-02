@@ -1,4 +1,4 @@
-import { Transaction, Assets } from 'scripts/types';
+import { Transaction, Assets } from 'types/transactions';
 
 export interface IAccountState {
   address: { [assetId: string]: string };
@@ -70,17 +70,11 @@ export default interface IWalletState {
   activeNetwork: string;
   changingNetwork: boolean;
   confirmingTransaction: boolean;
-  creatingAsset: boolean;
   encriptedMnemonic: any;
-  issuingAsset: boolean;
-  issuingNFT: boolean;
-  mintNFT: boolean;
   signingTransaction: boolean;
   signingPSBT: boolean;
   status: number;
   tabs: Tabs;
-  transferringOwnership: boolean;
-  updatingAsset: boolean;
   walletTokens: IWalletTokenState[];
   timer: number;
   networks: {
@@ -93,5 +87,9 @@ export default interface IWalletState {
   currentBlockbookURL: string;
   trustedApps: {
     [id: number]: string,
-  }
+  },
+  temporaryTransactionState: {
+    executing: boolean,
+    type: string
+  },
 }

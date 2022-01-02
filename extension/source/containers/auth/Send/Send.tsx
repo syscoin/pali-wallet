@@ -17,7 +17,7 @@ import {
 import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { PrimaryButton, Tooltip, Icon, IconButton } from 'components/index';
+import { PrimaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Assets } from 'types/transactions';
 
@@ -27,8 +27,9 @@ interface ISend {
 export const Send: FC<ISend> = () => {
   const getFiatAmount = usePrice();
   const controller = useController();
-  const { alert, history } = useUtils();
-  const { getAssetBalance, updateSendTemporaryTx } = useTransaction();
+
+  const { alert, history, isNFT } = useUtils();
+  const { getAssetBalance } = useTransaction();
   const { activeAccount } = useAccount();
   const { activeNetwork } = useStore();
   const { formatURL } = useFormat();
@@ -99,20 +100,27 @@ export const Send: FC<ISend> = () => {
     } = data;
 
     try {
-      updateSendTemporaryTx({
-        receiver,
-        amount,
-        fee,
-        token: selectedAsset ? selectedAsset.assetGuid : null,
-        controller,
-        activeAccount,
-        history
+      controller.wallet.account.updateTemporaryTransaction({
+        tx: {
+          fromAddress: activeAccount?.address.main,
+          toAddress: receiver,
+          amount,
+          fee,
+          token: selectedAsset ? selectedAsset : null,
+          isToken: selectedAsset ? true : false,
+          rbf: !ZDAG,
+        },
+        type: 'sendAsset'
       });
+
+      history.push('/send/confirm');
     } catch (error) {
       alert.removeAll();
       alert.error('An internal error has occurred.');
     }
   }
+
+  const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
 
   const SendForm = (
   ) => (
@@ -180,7 +188,7 @@ export const Send: FC<ISend> = () => {
               className="relative inline-block text-left"
             >
               <Menu.Button
-                disabled={!activeAccount?.assets}
+                disabled={activeAccount?.assets.length === 0}
                 className="bg-brand-navyborder border border-brand-royalBlue inline-flex justify-center w-full px-4 py-3 text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
               >
                 {selectedAsset?.symbol ? formatURL(String(selectedAsset?.symbol), 2) : 'SYS'}
@@ -209,11 +217,13 @@ export const Send: FC<ISend> = () => {
                         className="hover:text-brand-royalBlue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between"
                       >
                         <p>SYS</p>
+
                         <small>
                           Native
                         </small>
                       </button>
                     </Menu.Item>
+
                     {activeAccount?.assets.map((item) => {
                       return (
                         <Menu.Item>
@@ -223,7 +233,7 @@ export const Send: FC<ISend> = () => {
                           >
                             <p>{item.symbol}</p>
                             <small>
-                              {controller.wallet.account.isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
+                              {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
                             </small>
                           </button>
                         </Menu.Item>
@@ -309,7 +319,7 @@ export const Send: FC<ISend> = () => {
               required: true,
               message: '',
             },
-            ({}) => ({
+            ({ }) => ({
               validator(_, value) {
                 const balance = selectedAsset ? selectedAsset.balance / 10 ** selectedAsset.decimals : Number(activeAccount?.balance);
 
@@ -330,30 +340,26 @@ export const Send: FC<ISend> = () => {
         </Form.Item>
 
         <div className="mx-2 flex gap-x-0.5 justify-center items-center">
-          {activeNetwork !== 'main' && activeNetwork !== 'testnet' && (
-            <Form.Item
-              name="recommend"
-              className="w-12 py-1.5 bg-brand-navyborder border border-brand-royalBlue rounded-l-full text-center"
-              rules={[
-                {
-                  required: false,
-                  message: ''
-                },
-              ]}
-            >
-              <Tooltip content="Click to use the recommended fee">
-                <IconButton
-                  onClick={handleGetFee}
-                >
-                  <Icon
-                    wrapperClassname="w-6 mb-1"
-                    name="verified"
-                    className="text-brand-green"
-                  />
-                </IconButton>
-              </Tooltip>
-            </Form.Item>
-          )}
+          <Form.Item
+            name="recommend"
+            className={`${disabledFee ? 'opacity-30 bg-brand-graydark border border-brand-gray100 cursor-not-allowed' : 'bg-brand-navyborder border border-brand-royalBlue'} w-12 py-1.5 rounded-l-full text-center`}
+            rules={[
+              {
+                required: false,
+                message: ''
+              },
+            ]}
+          >
+            <Tooltip content={`${disabledFee ? 'Use recommended fee. Disabled for SYS networks because the fee used in transactions is always the recommended for current SYS network conditions.' : 'Click to use the recommended fee'}`}>
+              <div onClick={handleGetFee}>
+                <Icon
+                  wrapperClassname="w-6 mb-1"
+                  name="verified"
+                  className={`${disabledFee && 'cursor-not-allowed'} text-brand-green`}
+                />
+              </div>
+            </Tooltip>
+          </Form.Item>
 
           <Form.Item
             name="fee"
@@ -365,10 +371,10 @@ export const Send: FC<ISend> = () => {
               },
             ]}
           >
-            <Tooltip content={activeNetwork === 'main' || activeNetwork === 'testnet' ? 'Fee network' : ''}>
+            <Tooltip content={disabledFee ? 'Fee network' : ''}>
               <Input
-                disabled={activeNetwork === 'main' || activeNetwork === 'testnet'}
-                className={`${activeNetwork === 'main' || activeNetwork === 'testnet' ? 'opacity-20 bg-brand-black rounded-full w-72 cursor-not-allowed' : 'border border-brand-royalBlue rounded-r-full w-60'} outline-none py-3 pr-8 pl-4 text-sm bg-brand-navyborder`}
+                disabled={disabledFee}
+                className={`${disabledFee ? 'opacity-30 bg-brand-graydark border border-brand-gray100 cursor-not-allowed' : 'border border-brand-royalBlue'} rounded-r-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
                 type="number"
                 placeholder="Fee network"
                 value={recommend}

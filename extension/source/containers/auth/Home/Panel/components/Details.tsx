@@ -24,7 +24,7 @@ export const DetailsView = ({ location }) => {
         return;
       }
 
-      const txData = await controller.wallet.account.getTransactionData(location.state.tx.txid);
+      const txData = await controller.wallet.account.getTransactionInfoByTxId(location.state.tx.txid);
 
       setTransactionDetails(txData);
     };

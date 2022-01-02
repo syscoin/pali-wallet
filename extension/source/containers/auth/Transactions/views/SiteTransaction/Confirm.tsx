@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { FC, useEffect, useState } from 'react';
 import {
   useController,
   usePopup,
@@ -11,17 +11,15 @@ import {
 
 import { AuthViewLayout } from 'containers/common/Layout';
 import {
-  Icon,
   PrimaryButton,
   Modal,
   SecondaryButton
 } from 'components/index';
 
 const ConfirmDefaultTransaction = ({
-  confirmTransaction,
+  callback,
   temporaryTransaction,
   temporaryTransactionStringToClear,
-  submittingData,
   title
 }) => {
   const controller = useController();
@@ -81,13 +79,16 @@ const ConfirmDefaultTransaction = ({
       isPending = true;
 
       try {
-        if (temporaryTransactionStringToClear === 'mintNFT') {
+        if (temporaryTransactionStringToClear === 'newNFT') {
           setConfirmed(true);
           setLoading(false);
           setSubmitted(true);
         }
 
-        const response = await confirmTransaction();
+        const response = await controller.wallet.account.confirmTemporaryTransaction({
+          type: temporaryTransactionStringToClear,
+          callback,
+        });
 
         isPending = false;
 
@@ -166,7 +167,7 @@ const ConfirmDefaultTransaction = ({
         </>
       )}
 
-      {temporaryTransaction && !loading && (
+      {temporaryTransaction && (
         <div className="flex justify-center flex-col items-center w-full">
           <ul className="scrollbar-styled text-xs overflow-auto w-full px-4 h-80 mt-4">
             {data && data.map((item: any) => (
@@ -195,7 +196,7 @@ const ConfirmDefaultTransaction = ({
             <PrimaryButton
               type="submit"
               disabled={submitted}
-              loading={loading}
+              loading={loading && !failed && !submitted}
               onClick={handleConfirmSiteTransaction}
             >
               Confirm
@@ -203,28 +204,17 @@ const ConfirmDefaultTransaction = ({
           </div>
         </div>
       )}
-
-      {submittingData || loading && (
-        <Icon
-          name="loading"
-          wrapperClassname="absolute top-1/2 left-1/2"
-          className="w-4 text-brand-white"
-        />
-      )}
     </>
   )
 }
 
 const ConfirmSignTransaction = ({
-  temporaryTransaction,
+  psbt,
   signAndSend = false,
   title = 'SIGNATURE REQUEST',
-  submittingData
 }) => {
   const controller = useController();
   const base64 = /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
-
-  const psbt = controller.wallet.account.getTransactionItem()[temporaryTransaction];
 
   const { closePopup } = usePopup();
   const { history, alert } = useUtils();
@@ -247,21 +237,21 @@ const ConfirmSignTransaction = ({
       alert.error(`PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.`);
 
       setTimeout(() => {
-        handleCancelTransactionOnSite(browser, temporaryTransaction);
+        handleCancelTransactionOnSite(browser, psbt);
       }, 10000);
 
       return;
     }
 
     controller.wallet.account
-      .confirmSignature(signAndSend)
+      .signTransaction(psbt, signAndSend)
       .then((response: any) => {
         if (response) {
           setConfirmed(true);
           setLoading(false);
 
           setTimeout(() => {
-            handleCancelTransactionOnSite(browser, temporaryTransaction);
+            handleCancelTransactionOnSite(browser, psbt);
           }, 4000);
 
           browser.runtime.sendMessage({
@@ -285,7 +275,7 @@ const ConfirmSignTransaction = ({
           });
 
           setTimeout(() => {
-            handleCancelTransactionOnSite(browser, temporaryTransaction);
+            handleCancelTransactionOnSite(browser, psbt);
           }, 4000);
         }
       });
@@ -317,7 +307,7 @@ const ConfirmSignTransaction = ({
         />
       )}
 
-      {temporaryTransaction && !loading && (
+      {psbt && !loading && (
         <div className="flex justify-center flex-col items-center w-full">
           <ul className="scrollbar-styled text-xs overflow-auto w-full px-4 h-80 mt-4">
             <pre>{`${JSON.stringify(
@@ -330,7 +320,7 @@ const ConfirmSignTransaction = ({
           <div className="flex justify-between items-center absolute bottom-10 gap-3">
             <SecondaryButton
               type="button"
-              onClick={() => handleRejectTransaction(browser, temporaryTransaction, history)}
+              onClick={() => handleRejectTransaction(browser, psbt, history)}
             >
               Cancel
             </SecondaryButton>
@@ -338,7 +328,7 @@ const ConfirmSignTransaction = ({
             <PrimaryButton
               type="submit"
               disabled={confirmed}
-              loading={loading}
+              loading={loading && !failed && !confirmed}
               onClick={handleConfirmSignature}
             >
               Confirm
@@ -346,42 +336,40 @@ const ConfirmSignTransaction = ({
           </div>
         </div>
       )}
-
-      {submittingData || loading && (
-        <Icon
-          name="loading"
-          wrapperClassname="absolute top-1/2 left-1/2"
-          className="w-4 text-brand-white"
-        />
-      )}
     </>
   )
 }
 
-export const ConfirmTransaction = ({
+export type IConfirmTransaction = {
+  sign?: boolean;
+  title: string;
+  callback?: any;
+  temporaryTransaction: string;
+  temporaryTransactionStringToClear: string;
+  signAndSend?: boolean;
+}
+
+export const ConfirmTransaction: FC<IConfirmTransaction> = ({
   sign,
   title,
-  confirmTransaction,
+  callback,
   temporaryTransaction,
   temporaryTransactionStringToClear,
-  submittingData,
   signAndSend
 }) => {
   return (
     <AuthViewLayout canGoBack={false} title={title}>
       {sign ? (
         <ConfirmSignTransaction
-          temporaryTransaction={temporaryTransaction}
+          psbt={temporaryTransaction}
           signAndSend={signAndSend}
           title="SIGNATURE REQUEST"
-          submittingData={submittingData}
         />
       ) : (
         <ConfirmDefaultTransaction
-          confirmTransaction={confirmTransaction}
+          callback={callback}
           temporaryTransaction={temporaryTransaction}
           temporaryTransactionStringToClear={temporaryTransactionStringToClear}
-          submittingData={submittingData}
           title={title}
         />
       )}

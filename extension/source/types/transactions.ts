@@ -80,7 +80,8 @@ export type SentAsset = {
   token: string;
 }
 
-export type MintedAsset = {
+export type MintAsset = {
+  fee: number;
   amount: number;
   assetGuid: string;
 }
@@ -93,7 +94,7 @@ export type NewNFT = {
   precision: number;
 }
 
-export type UpdatedAsset = {
+export type UpdateAsset = {
   fee: number;
   assetGuid: number;
   assetWhiteList: string;
@@ -108,9 +109,10 @@ export type UpdatedAsset = {
   }
 }
 
-export type TransferredAsset = {
+export type TransferAsset = {
   assetGuid: string;
   newOwner: string;
+  fee: number;
 }
 
 export type SendAsset = {
@@ -125,11 +127,14 @@ export type SendAsset = {
 
 export type TemporaryTransaction = {
   newAsset: NewAsset | null;
-  mintedAsset: MintedAsset | null;
+  mintAsset: MintAsset | null;
   newNFT: NewNFT | null;
-  updatedAsset: UpdatedAsset | null;
-  transferredAsset: TransferredAsset | null;
+  updateAsset: UpdateAsset | null;
+  transferAsset: TransferAsset | null;
   sendAsset: SendAsset | null;
+  signPSBT: any | null;
+  signAndSendPSBT: any | null;
+  mintNFT: MintAsset | null;
 }
 
 export enum TxTypes {
