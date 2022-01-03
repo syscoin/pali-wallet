@@ -6,19 +6,19 @@
   @apply rounded-full;
 }
 
-.home::-webkit-scrollbar {
+.scrollbar-styled::-webkit-scrollbar {
   @apply w-1;
 }
 
-.home::-webkit-scrollbar-track-piece {
+.scrollbar-styled::-webkit-scrollbar-track-piece {
   @apply bg-transparent rounded-full;
 }
 
-.home::-webkit-scrollbar-button {
+.scrollbar-styled::-webkit-scrollbar-button {
   @apply hidden;
 }
 
-.home::-webkit-scrollbar-thumb {
+.scrollbar-styled::-webkit-scrollbar-thumb {
   @apply rounded-full bg-brand-royalBlue transition-all duration-300;
 }
 
@@ -31,6 +31,22 @@
   @apply w-72 rounded-full p-2 pl-4 bg-brand-navydarker border border-brand-navymedium text-brand-graylight text-sm outline-none focus:border-brand-navylight;
 }
 
+#phraseview_password {
+  @apply bg-brand-navyborder w-60 outline-none;
+}
+
+#phraseview .ant-form-item-children-icon {
+  @apply absolute right-8 text-brand-navymedium -top-1;
+}
+
+#delete_password {
+  @apply bg-brand-navyborder w-60 outline-none;
+}
+
+#delete .ant-form-item-children-icon {
+  @apply absolute right-8 text-brand-navymedium -top-1;
+}
+
 .ant-input-suffix {
   @apply absolute right-2 text-brand-navymedium; 
 }
@@ -41,6 +57,22 @@
 
 .ant-form-item-children-icon {
   @apply absolute right-10 text-brand-navymedium top-0;
+}
+
+#send .ant-form-item-children-icon {
+  @apply absolute right-2 text-brand-navymedium top-1;
+}
+
+#rpc .ant-form-item-children-icon {
+  @apply absolute right-2 top-1.5
+}
+
+#site .ant-form-item-children-icon {
+  @apply absolute right-1 text-brand-navymedium top-1;
+}
+
+#autolock .ant-form-item-children-icon {
+  @apply absolute right-9 text-brand-navymedium top-1;
 }
 
 .ant-form-item-explain.ant-form-item-explain-error {

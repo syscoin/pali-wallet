@@ -1,21 +1,31 @@
 import React from 'react';
 import { useController } from 'hooks/index';
+import { SiteTransaction } from '../SiteTransaction';
+import { ConfirmTransaction } from '../index';
 
-import {SiteTransaction} from '../SiteTransaction';
+export const UpdateAssetConfirm = () => {
+  const controller = useController();
+  const temporaryTransaction = controller.wallet.account.getTemporaryTransaction('updateAsset');
+
+  return (
+    <ConfirmTransaction
+      sign={false}
+      signAndSend={false}
+      title="UPDATE ASSET"
+      callback={controller.wallet.account.confirmUpdateAsset}
+      temporaryTransaction={temporaryTransaction}
+      temporaryTransactionStringToClear="updateAsset"
+    />
+  );
+};
 
 export const UpdateAsset = () => {
-  const controller = useController();
-
   return (
     <div>
       <SiteTransaction
-        callbackToSetDataFromWallet={
-          controller.wallet.account.setDataFromWalletToUpdateAsset
-        }
-        messageToSetDataFromWallet="DATA_FROM_WALLET_TO_UPDATE_TOKEN"
         confirmRoute="/updateAsset/confirm"
-        itemStringToClearData="updateAssetItem"
-        layoutTitle="Update token"
+        temporaryTransactionAsString="updateAsset"
+        layoutTitle="Update Asset"
       />
     </div>
   );

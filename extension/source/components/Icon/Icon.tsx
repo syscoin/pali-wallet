@@ -33,7 +33,9 @@ import {
   AppstoreAddOutlined,
   EditOutlined,
   CheckCircleOutlined,
-  CaretUpOutlined
+  CaretUpOutlined,
+  MessageOutlined,
+  VerifiedOutlined
 } from '@ant-design/icons';
 
 const icons = {
@@ -70,27 +72,31 @@ const icons = {
   'appstoreadd': AppstoreAddOutlined,
   'edit': EditOutlined,
   'check': CheckCircleOutlined,
-  'select-up': CaretUpOutlined
+  'select-up': CaretUpOutlined,
+  'message': MessageOutlined,
+  'verified': VerifiedOutlined,
 }
 
 interface IIcon {
   name: string;
   className?: string;
   wrapperClassname?: string;
-  rotate?: number
+  rotate?: number;
+  size?: number;
 }
 
 export const Icon: FC<IIcon> = ({
   name,
   className,
   wrapperClassname,
-  rotate
+  rotate,
+  size
 }) => {
   const Component = icons[name];
 
   return (
     <div className={wrapperClassname ? wrapperClassname : "w-8"}>
-      {Component ? <Component className={className}  rotate={rotate} /> : null}
+      {Component ? <Component className={className} style={{ fontSize: size }} rotate={rotate} /> : null}
     </div>
   );
 };

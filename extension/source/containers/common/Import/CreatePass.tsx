@@ -1,9 +1,8 @@
 import React from 'react';
 import { useController, useStore, useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
-import { Button } from 'components/index';
-
-import { Layout } from '../Layout';
+import { PrimaryButton } from 'components/index';
+import { Layout } from '../../common/Layout';
 
 const CreatePass = () => {
   const controller = useController();
@@ -73,22 +72,22 @@ const CreatePass = () => {
           <Input.Password placeholder="Confirm password" />
         </Form.Item>
 
-        <span className="font-light text-brand-graylight text-xs">
+        <span className="text-brand-graylight text-xs">
           At least 8 characters, 1 lower-case and 1 numeral.
         </span>
 
-        <span className="text-center font-light text-brand-royalBlue text-xs mx-10">
+        <span className="text-center text-brand-royalBlue text-xs mx-10">
           Do not forget to save your password. You will need this password to
           unlock your wallet.
         </span>
 
-        <Button
-          type="submit"
-          classNameBorder="absolute bottom-12"
-          id="next-btn"
-        >
-          Next
-        </Button>
+        <div className="absolute bottom-12">
+          <PrimaryButton
+            type="submit"
+          >
+            Next
+          </PrimaryButton>
+        </div>
       </Form>
     </Layout>
   );

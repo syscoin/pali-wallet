@@ -17,7 +17,8 @@ module.exports = {
         '3rem': '4rem'
       },
       right: {
-        '5percent': '5%'
+        '5percent': '5%',
+        '45r': '0.45rem',
       },
       margin: {
         '0.8': '0.2rem'
@@ -26,13 +27,16 @@ module.exports = {
         popup: '600px',
         input: '18rem',
         '1/2': '50%',
-        '70': '70%'
+        '70': '70%',
+        '95': '95%'
       },
       minWidth: {
         popup: '372px'
       },
       height: {
-        popup: '600px'
+        popup: '600px',
+        menu: '27rem',
+        bigmenu: '30rem',
       },
       letterSpacing: {
         tightest: '-.075em',
@@ -52,7 +56,8 @@ module.exports = {
         'rubik': 'Rubik'
       },
       fontSize: {
-        'xxs': '0.01px'
+        'xxs': '0.01px',
+        '10px': '10px'
       }
     },
   },

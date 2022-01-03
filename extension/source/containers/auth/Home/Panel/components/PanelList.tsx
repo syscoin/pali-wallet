@@ -1,8 +1,7 @@
-import { Icon } from 'components/Icon';
-import { IconButton } from 'components/IconButton';
-import { useFormat } from 'hooks/index';
 import React, { FC, useCallback, Fragment } from 'react';
-import { Assets, Transaction } from 'scripts/types';
+import { IconButton, Icon } from 'components/index';
+import { useFormat, useUtils } from 'hooks/index';
+import { Assets, Transaction } from 'types/transactions';
 
 interface IPanelList {
   data: any;
@@ -20,6 +19,8 @@ export const PanelList: FC<IPanelList> = ({
     ellipsis,
     formatCurrency
   } = useFormat();
+
+  const { history } = useUtils();
 
   const isShowedGroupBar = useCallback(
     (tx: Transaction, idx: number) => {
@@ -49,9 +50,9 @@ export const PanelList: FC<IPanelList> = ({
   }
 
   return (
-    <div>
+    <>
       {activity && (
-        <ul className="pb-4">
+        <ul className="pb-8">
           {data.map((tx: Transaction, idx: number) => {
             const isConfirmed = tx.confirmations > 0;
             const timestamp = new Date(tx.blockTime * 1000).toLocaleTimeString(navigator.language, {
@@ -72,19 +73,19 @@ export const PanelList: FC<IPanelList> = ({
                 <li
                   className="border-dashed border-b border-gray-600 py-2"
                 >
-                  <div className="flex justify-between pr-6 text-xs">
+                  <div className="flex justify-between pr-6 text-xs relative">
                     <div>
                       <p>{ellipsis(String(tx.txid), 4, 14)}</p>
 
                       <p
-                        className="text-yellow-300"
+                        className={isConfirmed ? "text-brand-green" : "text-yellow-300"}
                       >
                         {isConfirmed ? 'Confirmed' : 'Pending'}
                       </p>
                     </div>
 
                     <div className="flex justify-self-end">
-                      <div className="mr-12">
+                      <div className="mr-6 text-right">
                         <p className="text-blue-300">
                           {timestamp}
                         </p>
@@ -92,7 +93,15 @@ export const PanelList: FC<IPanelList> = ({
                         <p>{getTxType(tx)}</p>
                       </div>
 
-                      <IconButton className="w-1">
+                      <IconButton
+                        className="w-1"
+                        onClick={() => history.push('/home-tx-details', {
+                          tx: tx,
+                          type: getTxType(tx),
+                          assetGuid: null,
+                          assetType: null,
+                        })}
+                      >
                         <Icon
                           name="select"
                           className="text-base"
@@ -110,7 +119,7 @@ export const PanelList: FC<IPanelList> = ({
       {assets && (
         <ul className="pb-4">
           {data.map((asset: Assets) => {
-            if (asset.assetGuid) {
+            if (asset.assetGuid && asset.balance > 0) {
               return (
                 <li
                   key={asset.assetGuid}
@@ -124,10 +133,17 @@ export const PanelList: FC<IPanelList> = ({
                     </span>
                   </p>
 
-                  <IconButton>
+                  <IconButton
+                    onClick={() => history.push('/home-tx-details', {
+                      tx: null,
+                      type: null,
+                      assetGuid: asset.assetGuid,
+                      assetType: asset.type
+                    })}
+                  >
                     <Icon
-                      name="arrow-up"
-                      className="w-4 bg-brand-gray200 text-brand-navy"
+                      name="select"
+                      className="w-4 text-brand-white"
                     />
                   </IconButton>
                 </li>
@@ -138,6 +154,6 @@ export const PanelList: FC<IPanelList> = ({
           })}
         </ul>
       )}
-    </div>
+    </>
   );
 };

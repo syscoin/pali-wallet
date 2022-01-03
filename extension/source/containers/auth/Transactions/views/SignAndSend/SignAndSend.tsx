@@ -1,18 +1,19 @@
 import React from 'react';
-import { useStore } from 'hooks/index';
-import {SignTransaction} from '../SignTransaction';
+import { useController } from 'hooks/index';
+import { ConfirmTransaction } from '../index';
 
 export const SignAndSend = () => {
-  const { signingTransaction } = useStore();
+  const controller = useController();
+
+  const temporaryTransaction = controller.wallet.account.getTemporaryTransaction('signAndSendPSBT');
 
   return (
-    <div>
-      <SignTransaction
-        item="currentPSBT"
-        transactingStateItem={signingTransaction}
-        sendPSBT={false}
-        warning="Only sign messages from sites you fully trust with your account."
-      />
-    </div>
-  )
+    <ConfirmTransaction
+      sign={true}
+      title="SIGNATURE REQUEST"
+      signAndSend={true}
+      temporaryTransaction={temporaryTransaction}
+      temporaryTransactionStringToClear="signAndSendPSBT"
+    />
+  );
 };

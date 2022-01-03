@@ -15,7 +15,7 @@ export const Section = () => {
       />
 
       <IconButton className="absolute top-0 -right-24" onClick={() => history.goBack()}>
-        <Icon name="home" className="text-brand-white" />
+        <Icon name="home" className="text-brand-royalBlue opacity-60" />
       </IconButton>
     </div>
 

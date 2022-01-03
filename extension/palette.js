@@ -1,5 +1,7 @@
 module.exports = {
   brand: {
+    primary: '#bf2b6d',
+    
     black: '#000',
     white: '#fff',
     darktransparent: '#00000094',
@@ -14,6 +16,8 @@ module.exports = {
 
     textareabg: '#4D76B8',
     blueWarningTest: '#85B6FF',
+    greensettings: "#079C31",
+    bluesettings: "#1E365C",
 
     royalBlue: '#4d76b8',
     royalBluemedium: '#4ca1cf',
@@ -21,6 +25,7 @@ module.exports = {
 
     deepPink: '#cb2c70',
     deepPink100: '#ff3e91',
+    pinkborder: '#bb75b5',
 
     error: '#AF0404',
     transparentred: '#db0000',

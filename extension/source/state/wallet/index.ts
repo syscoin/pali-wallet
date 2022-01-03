@@ -1,7 +1,5 @@
 import { SYS_NETWORK } from 'constants/index';
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { Transaction } from 'scripts/types';
-// import { useUtils } from 'hooks/index';
 
 import IWalletState, {
   IAccountUpdateState,
@@ -10,8 +8,8 @@ import IWalletState, {
   IAccountUpdateXpub,
   IWalletTokenState,
 } from './types';
+import { Transaction } from 'types/transactions';
 
-// const { getHost } = useUtils();
 const getHost = (url: string) => {
   if (typeof url === 'string' && url !== '') {
     return new URL(url).host;
@@ -27,12 +25,6 @@ const initialState: IWalletState = {
   activeNetwork: SYS_NETWORK.main.id,
   encriptedMnemonic: null,
   confirmingTransaction: false,
-  creatingAsset: false,
-  issuingAsset: false,
-  issuingNFT: false,
-  mintNFT: false,
-  updatingAsset: false,
-  transferringOwnership: false,
   changingNetwork: false,
   signingTransaction: false,
   signingPSBT: false,
@@ -44,12 +36,57 @@ const initialState: IWalletState = {
     connections: [],
   },
   timer: 5,
+  currentBlockbookURL: 'https://blockbook.elint.services/',
+  networks: {
+    main: {
+      id: 'main',
+      label: 'Main Network',
+      beUrl: 'https://blockbook.elint.services/',
+    },
+    testnet: {
+      id: 'testnet',
+      label: 'Test Network',
+      beUrl: 'https://blockbook-dev.elint.services/',
+    },
+  },
+  trustedApps: {
+    0: 'app.uniswap.org',
+    1: 'https://trello.com/b/0grd7QPC/dev',
+    3: 'https://twitter.com/home',
+    4: 'https://maps.google.com/',
+    5: 'https://accounts.google.com/b/0/AddMailService',
+    6: 'https://github.com/CryptoOutcasts/Candy_Machine_Whitelist_Site/blob/main/src/App.tsx',
+    7: 'https://github.com/',
+    8: 'https://web.whatsapp.com/',
+    9: 'https://www.linkedin.com/feed/',
+    10: 'https://www.facebook.com/',
+    11: 'app.uniswap.org',
+  },
+  temporaryTransactionState: {
+    executing: false,
+    type: ''
+  },
 };
 
 const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
+    updateBlockbookURL(state: IWalletState, action: PayloadAction<string>) {
+      return {
+        ...state,
+        currentBlockbookURL: action.payload
+      };
+    },
+    updateNetwork(state: IWalletState, action: PayloadAction<any>) {
+      return {
+        ...state,
+        networks: {
+          ...state.networks,
+          [action.payload.id]: action.payload
+        },
+      };
+    },
     setTimer(state: IWalletState, action: PayloadAction<number>) {
       return {
         ...state,
@@ -120,15 +157,10 @@ const WalletState = createSlice({
     clearAllTransactions(state: IWalletState) {
       return {
         ...state,
-        mintNFT: false,
-        signingPSBT: false,
-        confirmingTransaction: false,
-        creatingAsset: false,
-        issuingAsset: false,
-        issuingNFT: false,
-        updatingAsset: false,
-        transferringOwnership: false,
-        signingTransaction: false,
+        temporaryTransactionState: {
+          executing: false,
+          type: ''
+        }
       };
     },
     updateSwitchNetwork(state: IWalletState, action: PayloadAction<boolean>) {
@@ -146,57 +178,18 @@ const WalletState = createSlice({
         confirmingTransaction: action.payload,
       };
     },
-    signTransactionState(state: IWalletState, action: PayloadAction<boolean>) {
+    setTemporaryTransactionState(state: IWalletState, action: PayloadAction<{ executing: boolean, type: string }>) {
       return {
         ...state,
-        signingTransaction: action.payload,
-      };
-    },
-    signPSBTState(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        signingPSBT: action.payload,
-      };
-    },
-    createAsset(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        creatingAsset: action.payload,
-      };
-    },
-    issueAsset(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        issuingAsset: action.payload,
-      };
-    },
-    setIssueNFT(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        mintNFT: action.payload,
-      };
-    },
-    issueNFT(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        issuingNFT: action.payload,
-      };
-    },
-    setUpdateAsset(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        updatingAsset: action.payload,
-      };
-    },
-    setTransferOwnership(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        transferringOwnership: action.payload,
+        temporaryTransactionState: {
+          executing: action.payload.executing,
+          type: action.payload.type
+        },
       };
     },
     removeConnection(state: IWalletState, action: PayloadAction<any>) {
       const connectionIndex: number = state.tabs.connections.findIndex(
-        (connection: any) => connection.url === getHost(action.payload.url)
+        (connection: any) => connection.url === action.payload.url
       );
 
       const account = state.accounts.find(
@@ -210,7 +203,7 @@ const WalletState = createSlice({
       state.tabs.connections.splice(connectionIndex, 1);
 
       account?.connectedTo.splice(
-        account?.connectedTo.indexOf(getHost(action.payload.url)),
+        account?.connectedTo.indexOf(action.payload.url),
         1
       );
     },
@@ -399,12 +392,7 @@ const WalletState = createSlice({
         connections: []
       };
       state.confirmingTransaction = false;
-      state.creatingAsset = false;
       state.signingPSBT = false;
-      state.issuingAsset = false;
-      state.issuingNFT = false;
-      state.updatingAsset = false;
-      state.transferringOwnership = false;
       state.changingNetwork = false;
       state.signingTransaction = false;
       state.walletTokens = [];
@@ -412,8 +400,9 @@ const WalletState = createSlice({
     changeAccountActiveId(state: IWalletState, action: PayloadAction<number>) {
       state.activeAccountId = action.payload;
     },
-    changeActiveNetwork(state: IWalletState, action: PayloadAction<string>) {
-      state.activeNetwork = action.payload;
+    changeActiveNetwork(state: IWalletState, action: PayloadAction<any>) {
+      state.activeNetwork = action.payload.id;
+      state.currentBlockbookURL = action.payload.beUrl;
     },
     updateTransactions(
       state: IWalletState,
@@ -458,18 +447,12 @@ export const {
   updateConnectionsArray,
   removeConnection,
   updateCanConfirmTransaction,
-  createAsset,
-  issueAsset,
-  issueNFT,
-  setUpdateAsset,
-  setTransferOwnership,
   updateSwitchNetwork,
   clearAllTransactions,
-  signTransactionState,
   updateAllTokens,
-  signPSBTState,
-  setIssueNFT,
   setTimer,
+  updateNetwork,
+  setTemporaryTransactionState
 } = WalletState.actions;
 
 export default WalletState.reducer;

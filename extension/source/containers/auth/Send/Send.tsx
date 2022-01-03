@@ -1,556 +1,413 @@
 import * as React from 'react';
 import {
-  // ChangeEvent,
-  // useState,
-  // useCallback,
-  // useMemo,
-  // useEffect,
+  useState,
+  useEffect,
+  Fragment,
   FC,
 } from 'react';
-import { Header } from 'containers/common/Header';
-import { IconButton, Icon } from 'components/index';
-import { useUtils } from 'hooks/index';
-
-// import { Assets } from 'scripts/types';
-// import { Form, Input } from 'antd';
+import {
+  useController,
+  usePrice,
+  useStore,
+  useUtils,
+  useAccount,
+  useTransaction,
+  useFormat
+} from 'hooks/index';
+import { Form, Input } from 'antd';
+import { Switch, Menu, Transition } from '@headlessui/react';
+import { AuthViewLayout } from 'containers/common/Layout';
+import { PrimaryButton, Tooltip, Icon } from 'components/index';
+import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
+import { Assets } from 'types/transactions';
 
 interface ISend {
   initAddress?: string;
 }
-export const Send: FC<ISend> = (/* { initAddress = '' } */) => {
-  // // const getFiatAmount = useFiat();
-  // const controller = useController();
-  const { history } = useUtils();
-  // const { accounts, activeAccountId, activeNetwork, changingNetwork } = useStore();
+export const Send: FC<ISend> = () => {
+  const getFiatAmount = usePrice();
+  const controller = useController();
 
-  // const [address, setAddress] = useState<string>(initAddress);
-  // const [amount, setAmount] = useState<string>('');
-  // const [fee, setFee] = useState<string>('0.00001');
-  // const [recommend, setRecommend] = useState<number>(0);
-  // const [checked, setChecked] = useState<boolean>(false);
-  // const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
-  // const [expanded, setExpanded] = useState<boolean>(false);
+  const { alert, history, isNFT } = useUtils();
+  const { getAssetBalance } = useTransaction();
+  const { activeAccount } = useAccount();
+  const { activeNetwork } = useStore();
+  const { formatURL } = useFormat();
+  const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
+  const [ZDAG, setZDAG] = useState<boolean>(false);
+  const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
+  const [recommend, setRecommend] = useState(0.00001);
+  const [form] = Form.useForm();
 
-  // const onSubmit = (data: any) => {
-  //   const {
-  //     address,
-  //     amount,
-  //     fee
-  //   } = data;
+  const handleGetFee = async () => {
+    const recommendFee = await controller.wallet.account.getRecommendFee();
 
-  //   if (Number(fee) > 0.1) {
-  //     alert.removeAll();
-  //     alert.error(`Error: Fee too high, maximum 0.1 SYS`, { timeout: 2000 });
+    setRecommend(recommendFee);
 
-  //     return;
-  //   }
+    form.setFieldsValue({
+      fee: recommendFee,
+    });
+  };
 
-  //   if (selectedAsset) {
-  //     try {
-  //       controller.wallet.account.updateTempTx({
-  //         fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
-  //         toAddress: address,
-  //         amount: Number(amount - fee),
-  //         fee,
-  //         token: selectedAsset.assetGuid,
-  //         isToken: true,
-  //         rbf: !checked,
-  //       });
+  const handleInitForm = () => {
+    handleGetFee();
 
-  //       history.push('/send/confirm');
-  //     } catch (error) {
-  //       alert.removeAll();
-  //       alert.error('An internal error has occurred.');
-  //     }
+    form.setFieldsValue({
+      verify: true,
+      ZDAG: false,
+    });
+  }
 
-  //     return;
-  //   }
+  useEffect(() => {
+    handleInitForm();
+  }, []);
 
-  //   controller.wallet.account.updateTempTx({
-  //     fromAddress: accounts.find(element => element.id === activeAccountId)!.address.main,
-  //     toAddress: address,
-  //     amount: Number(amount - fee),
-  //     fee,
-  //     token: null,
-  //     isToken: false,
-  //     rbf: true,
-  //   });
+  const handleSelectedAsset = (item: number) => {
+    if (activeAccount?.assets) {
+      const getAsset = activeAccount?.assets.find((asset: Assets) => asset.assetGuid == item);
 
-  //   history.push('/send/confirm');
-  // };
+      if (getAsset) {
+        setSelectedAsset(getAsset);
 
-  // const handleAmountChange = useCallback(
-  //   (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-  //     setAmount(event.target.value);
-  //   },
-  //   []
-  // );
+        return;
+      }
 
-  // const handleFeeChange = useCallback(
-  //   (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-  //     setFee(event.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'));
+      setSelectedAsset(null);
+    }
+  };
 
-  //     if (Number(event.target.value) > 0.1) {
-  //       alert.removeAll();
-  //       alert.error(`Error: Fee too high, maximum 0.1 SYS.`, { timeout: 2000 });
+  const verifyOnChange = (value: any) => {
+    setVerifyAddress(value);
 
-  //       return;
-  //     }
-  //   },
-  //   []
-  // );
+    form.setFieldsValue({
+      verify: value,
+    });
+  }
 
-  // const handleAddressChange = useCallback(
-  //   (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-  //     setAddress(event.target.value.trim());
-  //   },
-  //   []
-  // );
+  const ZDAGOnChange = (value: any) => {
+    setZDAG(value);
 
-  // const handleTypeChanged = useCallback(
-  //   (
-  //     checked: boolean
-  //   ) => {
-  //     setChecked(checked);
-  //   },
-  //   []
-  // )
+    form.setFieldsValue({
+      ZDAG: value,
+    });
+  }
 
-  // const handleGetFee = () => {
-  //   controller.wallet.account.getRecommendFee().then((response: any) => {
-  //     setRecommend(response);
-  //     setFee(response.toString());
-  //   });
-  // };
+  const nextStep = (data: any) => {
+    const {
+      receiver,
+      amount,
+      fee,
+    } = data;
 
-  // const handleAssetSelected = (item: any) => {
-  //   const selectedAsset = accounts.find(element => element.id === activeAccountId)!.assets.filter((asset: Assets) => asset.assetGuid == item);
+    try {
+      controller.wallet.account.updateTemporaryTransaction({
+        tx: {
+          fromAddress: activeAccount?.address.main,
+          toAddress: receiver,
+          amount,
+          fee,
+          token: selectedAsset ? selectedAsset : null,
+          isToken: selectedAsset ? true : false,
+          rbf: !ZDAG,
+        },
+        type: 'sendAsset'
+      });
 
-  //   if (selectedAsset[0]) {
-  //     setSelectedAsset(selectedAsset[0]);
+      history.push('/send/confirm');
+    } catch (error) {
+      alert.removeAll();
+      alert.error('An internal error has occurred.');
+    }
+  }
 
-  //     return;
-  //   }
+  const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
 
-  //   setSelectedAsset(null);
-  // };
+  const SendForm = (
+  ) => (
+    <div className="mt-4">
+      <p className="flex flex-col justify-center text-center items-center font-rubik">
+        <span className="text-brand-royalBlue font-thin font-poppins">
+          Balance
+        </span>
 
-  // useEffect(handleGetFee, []);
-
-  // const checkAssetBalance = () => {
-  //   return Number(selectedAsset ?
-  //     (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
-  //     accounts.find(element => element.id === activeAccountId)!.balance.toFixed(8))
-  // }
-
-  // const showAssetBalance = () => {
-  //   return (selectedAsset ?
-  //     (selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals) :
-  //     accounts.find(element => element.id === activeAccountId)!.balance.toFixed(8))
-  // }
-
-  return (
-    <div>
-      <Header normalHeader />
-
-      <div>
-        <IconButton
-          type="primary"
-          shape="circle"
-          onClick={() => history.goBack()}
-        >
-          <Icon
-            name="arrow-left"
-            className="w-4 bg-brand-graydark100 text-brand-white"
-          />
-        </IconButton>
-      </div>
-
-      {/* <IconButton
-        type="primary"
-        shape="circle"
-        onClick={() => history.goBack()}
-      >
-        <Icon name="arrow-left" className="w-4 bg-brand-graydark100 text-brand-white" />
-      </IconButton>
+        {getAssetBalance(selectedAsset)}
+      </p>
 
       <Form
-        name="basic"
+        form={form}
+        id="send"
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
-        initialValues={{ remember: true }}
-        onFinish={onSubmit}
+        initialValues={{
+          verify: true,
+          ZDAG: false,
+          fee: recommend
+        }}
+        onFinish={nextStep}
         autoComplete="off"
-        className="flex justify-center items-center flex-col gap-4 mt-8 text-center"
+        className="flex justify-center items-center flex-col gap-3 mt-4 text-center"
       >
-        <section>Send {selectedAsset ? selectedAsset.symbol : "SYS"}</section>
-
-        <section>
-          <div>
-            Balance:{' '}
-            {changingNetwork ? (
-              <Icon name="loading" className="w-4 bg-brand-graydark100 text-brand-white" />
-            ) : (
-              <span>{showAssetBalance()}</span>
-            )}
-
-            {selectedAsset
-              ? selectedAsset.symbol
-              : <small>{activeNetwork == "testnet" ? "TSYS" : "SYS"}</small>}
-          </div>
-        </section>
-
-        <section className={styles.content}>
-          <ul className={styles.form}>
-            <li className={styles.item}>
-              <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <label htmlFor="address">Recipient Address</label>
-                </div>
-
-                <div style={{ columnGap: '3px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label htmlFor="address">Verify address</label>
-
-                  <HelpOutlineIcon
-                    style={{ width: '17px', height: '17px' }}
-                    data-tip
-                    data-for="address_info"
-                  />
-                </div>
-              </div>
-
-              <img
-                src={VerifiedIcon}
-                alt="checked"
-                className={statusIconClass}
-              />
-
-              <img
-                src={Close}
-                alt="checked"
-                onClick={() => setAddress("")}
-                className={address && !isValidAddress ? styles.statusIsNotValidClass : styles.hideCloseIcon}
-              />
-
-              <TextInput
-                placeholder="Enter a valid address"
-                fullWidth
-                value={address}
-                name="address"
-                inputRef={register}
-                onChange={handleAddressChange}
-                variant={addressInputClass}
-              />
-
-              <li className={styles.item}>
-                <div className={styles.textBtn} style={{ top: '-49px' }}>
-                  <div >
-                    <div className={styles.tooltip}>
-                      <ReactTooltip id="address_info"
-                        getContent={() =>
-                          <div style={{ backgroundColor: 'white' }}>
-                            <small style={{ fontWeight: 'bold' }}>
-                              ON for enable verification (recommended): Pali verify that is a valid SYS address <br />
-                              OFF for disable address verification: only disable this verification if you are <br /> fully aware of what you are doing and if you trust the recipient address you want to send for.<br />
-                              <br />
-                            </small>
-                          </div>
-                        }
-                        backgroundColor="white"
-                        textColor="black"
-                        borderColor="#4d76b8"
-                        effect='solid'
-                        delayHide={300}
-                        delayShow={300}
-                        delayUpdate={300}
-                        place="top"
-                        border
-                        type="info"
-                        multiline
-                      />
-                    </div>
-                  </div>
-
-                  <Switch
-                    offColor="#1b2e4d"
-                    height={20}
-                    width={60}
-                    checked={verification}
-                    onChange={handleAddressTypeChanged}
-                  />
-                </div>
-
-              </li>
-            </li>
-
-            <div className={!selectedAsset ? styles.formBlockOne : styles.formBlock}>
-              <li className={!selectedAsset ? styles.noAssetItem : styles.item}>
-                <div
-                  className={styles.select}
-                  id="asset"
-                >
-                  <label
-                    htmlFor="asset"
-                    style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                  >
-                    Choose Asset
-                  </label>
-                  <div
-                    className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
-                    onClick={() => setExpanded(!expanded)}
-                  >
-                    <span className={styles.selected}>
-                      {selectedAsset?.symbol || "SYS"}
-                      <DownArrowIcon className={styles.arrow} />
-                    </span>
-                    <ul className={styles.options}>
-                      <li className={styles.option} onClick={() => handleAssetSelected(1)}>
-                        <p>SYS</p>
-                        <p>Native</p>
-                      </li>
-
-                      {accounts.find(element => element.id === activeAccountId)!.assets.map((item, index) => {
-                        if (!controller.wallet.account.isNFT(item.assetGuid)) {
-                          return (
-                            <li className={styles.option} key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
-                              <p>{item.symbol}</p>
-                              <p>SPT</p>
-                            </li>
-                          )
-                        }
-
-                        return (
-                          <li className={styles.option} key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
-                            <p>{item.symbol}</p>
-                            <p>NFT</p>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </div>
-                </div>
-              </li>
-
-              <li className={!selectedAsset ? styles.noAsset : styles.item}>
-                <div className={styles.zDag}>
-                  <label htmlFor="rbf">Z-DAG</label>
-
-                  <div className={styles.tooltip}>
-                    <HelpOutlineIcon
-                      style={{ width: '17px', height: '17px' }}
-                      data-tip
-                      data-for="zdag_info"
-                    />
-                    <ReactTooltip id="zdag_info"
-                      getContent={() =>
-                        <div style={{ backgroundColor: 'white' }}>
-                          <small style={{ fontWeight: 'bold' }}>
-                            OFF for Replace-by-fee (RBF) and ON for Z-DAG <br />
-                            Z-DAG: a exclusive Syscoin feature.<br />
-                            Z-DAG enable faster transactions but should not be used for high amounts
-                            <br />
-                            <strong>To know more:</strong>
-                            <span
-                              style={{ cursor: 'pointer' }}
-                              onClick={() => {
-                                window.open("https://syscoin.org/news/what-is-z-dag");
-                              }}
-                            >
-                              <a href=""> What is Z-DAG?</a>
-                            </span>
-                          </small>
-                        </div>
-                      }
-                      backgroundColor="white"
-                      textColor="black"
-                      borderColor="#4d76b8"
-                      effect='solid'
-                      delayHide={300}
-                      delayShow={300}
-                      delayUpdate={300}
-                      place="top"
-                      border
-                      type="info"
-                      multiline
-                    />
-                  </div>
-                </div>
-
-                <Switch
-                  disabled={!selectedAsset}
-                  offColor="#333f52"
-                  height={20}
-                  width={60}
-                  checked={checked}
-                  onChange={handleTypeChanged}
-                />
-              </li>
-            </div>
-
-            <div>
-              <li className={styles.item}>
-                <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label htmlFor="amount"> {selectedAsset ? selectedAsset.symbol : "SYS"} Amount</label>
-
-                  {accounts.find(element => element.id === activeAccountId)!.balance === 0 && <small className={styles.description} style={{ textAlign: 'left' }}>You don't have SYS available.</small>}
-                </div>
-
-                <TextInput
-                  type="number"
-                  placeholder="Enter amount to send"
-                  fullWidth
-                  inputRef={register}
-                  name="amount"
-                  value={amount}
-                  onChange={handleAmountChange}
-                  variant={clsx(styles.input, styles.amount)}
-                />
-
-                <Button
-                  type="button"
-                  variant={styles.textBtn}
-                  onClick={() =>
-                    setAmount(selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? String(selectedAsset.balance) : String((selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals)) : String(accounts.find(element => element.id === activeAccountId)!.balance))
-                  }
-                >
-                  Max
-                </Button>
-              </li>
-
-                return Promise.reject('');
-              }
-            })
-          ]}
-        >
-          <Input placeholder="address" />
-        </Form.Item>
-
         <Form.Item
-          label="Choose asset"
-          name="asset"
+          name="receiver"
           hasFeedback
           rules={[
             {
               required: true,
               message: ''
             },
+            () => ({
+              validator(_, value) {
+                if (!value || controller.wallet.account.isValidSYSAddress(value, activeNetwork, verifyAddress)) {
+                  return Promise.resolve();
+                }
+                return Promise.reject('');
+              },
+            }),
           ]}
         >
-          <div
-            onClick={() => setExpanded(!expanded)}
-          >
-            <span>
-              {selectedAsset?.symbol || "SYS"}
-              <Icon name="arrow-down" className="w-4 bg-brand-graydark100 text-brand-white" />
-            </span>
-            <ul >
-              <li onClick={() => handleAssetSelected(1)}>
-                <p>SYS</p>
-                <p>Native</p>
-              </li>
-
-              {accounts.find(element => element.id === activeAccountId)!.assets.map((item, index) => {
-                if (!controller.wallet.account.isNFT(item.assetGuid)) {
-                  return (
-                    <li key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
-                      <p>{item.symbol}</p>
-                      <p>SPT</p>
-                    </li>
-                  )
-                }
-
-                return (
-                  <li key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
-                    <p>{item.symbol}</p>
-                    <p>NFT</p>
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
+          <Input
+            type="text"
+            placeholder="Receiver"
+            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
+          />
         </Form.Item>
 
+        <div className="flex justify-center items-center">
+          <Form.Item
+            name="asset"
+            className=""
+            rules={[
+              {
+                required: false,
+                message: ''
+              },
+            ]}
+          >
+            <Menu
+              as="div"
+              className="relative inline-block text-left"
+            >
+              <Menu.Button
+                disabled={activeAccount?.assets.length === 0}
+                className="bg-brand-navyborder border border-brand-royalBlue inline-flex justify-center w-full px-4 py-3 text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+              >
+                {selectedAsset?.symbol ? formatURL(String(selectedAsset?.symbol), 2) : 'SYS'}
+                <ChevronDoubleDownIcon
+                  className="w-5 h-5 ml-2 -mr-1 text-violet-200 hover:text-violet-100"
+                  aria-hidden="true"
+                />
+              </Menu.Button>
+
+              <Transition
+                as={Fragment}
+                enter="transition ease-out duration-100"
+                enterFrom="transform opacity-0 scale-95"
+                enterTo="transform opacity-100 scale-100"
+                leave="transition ease-in duration-75"
+                leaveFrom="transform opacity-100 scale-100"
+                leaveTo="transform opacity-0 scale-95"
+              >
+                {activeAccount?.assets && activeAccount?.assets.length > 0 && (
+                  <Menu.Items
+                    className="scrollbar-styled overflow-auto h-56 bg-brand-navyborder border border-brand-royalBlue text-brand-white w-40 font-poppins shadow-2xl absolute z-10 left-0 mt-2 origin-top-right divide-y divide-gray-100 rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none p-1"
+                  >
+                    <Menu.Item>
+                      <button
+                        onClick={() => handleSelectedAsset(-1)}
+                        className="hover:text-brand-royalBlue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between"
+                      >
+                        <p>SYS</p>
+
+                        <small>
+                          Native
+                        </small>
+                      </button>
+                    </Menu.Item>
+
+                    {activeAccount?.assets.map((item) => {
+                      return (
+                        <Menu.Item>
+                          <button
+                            onClick={() => handleSelectedAsset(item.assetGuid)}
+                            className="hover:text-brand-royalBlue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between"
+                          >
+                            <p>{item.symbol}</p>
+                            <small>
+                              {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
+                            </small>
+                          </button>
+                        </Menu.Item>
+                      )
+                    })}
+                  </Menu.Items>
+                )}
+              </Transition>
+            </Menu>
+          </Form.Item>
+
+          <div className="mx-2 flex w-48 gap-x-0.5 justify-center items-center">
+            <Form.Item
+              name="verify"
+              className="flex-1 w-32 bg-brand-navyborder border border-brand-royalBlue rounded-l-full text-center"
+              rules={[
+                {
+                  required: false,
+                  message: ''
+                },
+              ]}
+            >
+              <Tooltip
+                contentClassName="text-brand-white h-4"
+                content="Pali verifies your address to check if it is a valid SYS address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing."
+              >
+                <p className="text-10px">
+                  Verify address
+                </p>
+              </Tooltip>
+
+              <Switch
+                checked={verifyAddress}
+                onChange={verifyOnChange}
+                className="relative inline-flex items-center h-4 rounded-full w-9 border border-brand-royalBlue"
+              >
+                <span className="sr-only">Verify address</span>
+                <span
+                  className={`${verifyAddress ? 'translate-x-6 bg-brand-green' : 'translate-x-1'
+                    } inline-block w-2 h-2 transform bg-brand-error rounded-full`}
+                />
+              </Switch>
+            </Form.Item>
+
+            <Form.Item
+              name="ZDAG"
+              className="flex-1 w-32 rounded-r-full text-center  bg-brand-navyborder border border-brand-royalBlue"
+              rules={[
+                {
+                  required: false,
+                  message: ''
+                },
+              ]}
+            >
+              <Tooltip
+                contentClassName="text-brand-white h-4"
+                content="Disable this option for Replace-by-fee (RBF) and enable for Z-DAG, a exclusive Syscoin feature. Z-DAG enables faster transactions but should not be used for high amounts."
+              >
+                <p className="text-10px">
+                  Z-DAG
+                </p>
+              </Tooltip>
+              <Switch
+                checked={ZDAG}
+                onChange={ZDAGOnChange}
+                className="bg-transparent relative inline-flex items-center h-4 rounded-full w-9 border border-brand-royalBlue"
+              >
+                <span className="sr-only">Z-DAG</span>
+                <span
+                  className={`${ZDAG ? 'bg-brand-green translate-x-6' : 'bg-brand-error translate-x-1'
+                    } inline-block w-2 h-2 transform rounded-full`}
+                />
+              </Switch>
+            </Form.Item>
+          </div>
+        </div>
+
         <Form.Item
-          label="Asset amount"
           name="amount"
           hasFeedback
           rules={[
             {
               required: true,
-              message: ''
+              message: '',
             },
-          ]}
-        >
-          <Input placeholder="amount" />
-          {accounts.find(element => element.id === activeAccountId)!.balance === 0 && <small >You don't have SYS available.</small>}
-          <Button
-            type="button"
-            onClick={() =>
-              setAmount(selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? String(selectedAsset.balance) : String((selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals)) : String(accounts.find(element => element.id === activeAccountId)!.balance))
-            }
-          >
-            Max
-          </Button>
-        </Form.Item>
+            ({ }) => ({
+              validator(_, value) {
+                const balance = selectedAsset ? selectedAsset.balance / 10 ** selectedAsset.decimals : Number(activeAccount?.balance);
 
-        <Form.Item
-          label="Fee"
-          name="fee"
-          hasFeedback
-          rules={[
-            {
-              required: true,
-              message: ''
-            },
-          ]}
-        >
-          <Input placeholder="fee" />
-          <div>
-            {`With current network conditions we recommend a fee of ${recommend} SYS.`}
-          </div>
-          <Button
-            type="button"
-            onClick={handleGetFee}
-          >
-            Recommend
-          </Button>
-        </Form.Item>
-      </Form> */}
-
-      {/* <form autoComplete="off">
-        <section >
-          <ul >
-            <div >
-              <span>
-                ≈ {!selectedAsset ? getFiatAmount(Number(amount) + Number(fee), 6) : getFiatAmount(Number(fee), 6)}
-              </span>
-            </div>
-
-            <div>
-              <Button
-                type="button"
-              >
-                Close
-              </Button>
-
-              <Button
-                type="submit"
-                disabled={
-                  accounts.find(element => element.id === activeAccountId)!.balance === 0 ||
-                  checkAssetBalance() < Number(amount) ||
-                  !amount ||
-                  !fee ||
-                  Number(fee) > 0.1 ||
-                  !address ||
-                  Number(amount) <= 0
+                if (value > balance) {
+                  return Promise.reject('');
                 }
-              >
-                Send
-              </Button>
-            </div>
-          </ul>
-        </section>
-      </form> */}
+
+                return Promise.resolve();
+              },
+            }),
+          ]}
+        >
+          <Input
+            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
+            type="number"
+            placeholder="Amount"
+          />
+        </Form.Item>
+
+        <div className="mx-2 flex gap-x-0.5 justify-center items-center">
+          <Form.Item
+            name="recommend"
+            className={`${disabledFee ? 'opacity-30 bg-brand-graydark border border-brand-gray100 cursor-not-allowed' : 'bg-brand-navyborder border border-brand-royalBlue'} w-12 py-1.5 rounded-l-full text-center`}
+            rules={[
+              {
+                required: false,
+                message: ''
+              },
+            ]}
+          >
+            <Tooltip content={`${disabledFee ? 'Use recommended fee. Disabled for SYS networks because the fee used in transactions is always the recommended for current SYS network conditions.' : 'Click to use the recommended fee'}`}>
+              <div onClick={handleGetFee}>
+                <Icon
+                  wrapperClassname="w-6 mb-1"
+                  name="verified"
+                  className={`${disabledFee && 'cursor-not-allowed'} text-brand-green`}
+                />
+              </div>
+            </Tooltip>
+          </Form.Item>
+
+          <Form.Item
+            name="fee"
+            hasFeedback
+            rules={[
+              {
+                required: true,
+                message: '',
+              },
+            ]}
+          >
+            <Tooltip content={disabledFee ? 'Fee network' : ''}>
+              <Input
+                disabled={disabledFee}
+                className={`${disabledFee ? 'opacity-30 bg-brand-graydark border border-brand-gray100 cursor-not-allowed' : 'border border-brand-royalBlue'} rounded-r-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
+                type="number"
+                placeholder="Fee network"
+                value={recommend}
+              />
+            </Tooltip>
+          </Form.Item>
+        </div>
+
+        <p className="flex justify-center items-center flex-col text-center p-0 text-brand-royalBlue mx-14">
+          <span
+            className="text-xs"
+          >
+            With current network conditions we recommend a fee of {recommend} SYS
+          </span>
+
+          <span className="font-rubik text-brand-white mt-0.5 text-xs">
+            ≈ {selectedAsset ?
+              getFiatAmount(Number(recommend) + Number(recommend), 6) :
+              getFiatAmount(Number(recommend), 6)}
+          </span>
+        </p>
+
+        <PrimaryButton
+          type="submit"
+        >
+          Next
+        </PrimaryButton>
+      </Form>
     </div>
+  )
+  return (
+    <AuthViewLayout title="SEND SYS">
+      <SendForm />
+    </AuthViewLayout>
   );
 };

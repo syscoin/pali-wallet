@@ -1,6 +1,6 @@
 import React from 'react';
 import LogoImage from 'assets/images/logo-s.svg';
-import { Button, Link } from 'components/index';
+import { PrimaryButton, Link } from 'components/index';
 import { useUtils } from 'hooks/index';
 
 export const Start = () => {
@@ -18,13 +18,13 @@ export const Start = () => {
 
       <img src={LogoImage} className="w-52 my-8" alt="syscoin" />
 
-      <Button
-        id="start-btn"
+      <PrimaryButton
         type="submit"
         onClick={() => history.push('/create/pass')}
+        id="start-btn"
       >
         Get started
-      </Button>
+      </PrimaryButton>
 
       <Link
         className="font-light mt-20 text-base hover:text-brand-graylight text-brand-royalBluemedium transition-all duration-300 font-poppins"

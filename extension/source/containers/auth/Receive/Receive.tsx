@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { useController, useUtils, useStore } from 'hooks/index';
+import { useController, useUtils, useAccount, useFormat } from 'hooks/index';
 import QRCode from 'qrcode.react';
-import { IconButton, Icon } from 'components/index';
-import { Header } from 'containers/common/Header';
+import { PrimaryButton, Icon } from 'components/index';
+import { AuthViewLayout } from 'containers/common/Layout';
 
 export const Receive = () => {
-  const { useCopyClipboard, history } = useUtils();
+  const { useCopyClipboard } = useUtils();
+  const { ellipsis } = useFormat();
   const [isCopied, copyText] = useCopyClipboard();
+  const { activeAccount } = useAccount();
   const controller = useController();
+
   const [loaded, setLoaded] = useState<boolean>(false);
-  const { accounts, activeAccountId } = useStore();
 
   useEffect(() => {
     const getNewAddress = async () => {
@@ -22,50 +24,38 @@ export const Receive = () => {
   }, []);
 
   return (
-    <div>
-      <Header normalHeader />
+    <AuthViewLayout title="RECEIVE SYS">
+      {loaded && activeAccount ? (
+        <div className="flex flex-col justify-center items-center pt-8 w-full">
+          <QRCode
+            value={activeAccount.address.main}
+            bgColor="#fff"
+            fgColor="#000"
+            style={{ height: '240px', width: '225px' }}
+          />
 
-      <div>
-        <IconButton
-          type="primary"
-          shape="circle"
-          onClick={() => history.push('/home')}
-        >
-          <Icon name="arrow-left" className="w-4 bg-brand-graydark100 text-brand-white" />
-        </IconButton>
-        <section>Receive SYS</section>
+          <p className="mt-4 text-base">{ellipsis(activeAccount.address.main, 4, 10)}</p>
 
-        <section>
-          {loaded ? (
-            <div>
-              <div>
-                <QRCode
-                  value={accounts.find(element => element.id === activeAccountId)!.address.main}
-                  bgColor="#fff"
-                  fgColor="#000"
-                  size={180}
-                />
-                {accounts.find(element => element.id === activeAccountId)!.address.main}
-              </div>
-              <div>
-                <IconButton
-                  type="primary"
-                  shape="circle"
-                  onClick={() =>
-                    copyText(accounts.find(element => element.id === activeAccountId)!.address.main)
-                  }
-                >
-                  <Icon name="copy" className="w-4 bg-brand-graydark100 text-brand-white" />
-                </IconButton>
-                <span>
-                  {isCopied ? 'Copied address' : 'Copy'}
-                </span>
-              </div>
-            </div>
-          ) : <Icon name="loading" className="w-4 bg-brand-graydark100 text-brand-white" />}
-
-        </section>
-      </div>
-    </div>
+          <div className="absolute bottom-12">
+            <PrimaryButton
+              type="button"
+              onClick={() =>
+                copyText(activeAccount.address.main)
+              }
+            >
+              <span className="text-xs">
+                {isCopied ? 'Copied address' : 'Copy'}
+              </span>
+            </PrimaryButton>
+          </div>
+        </div>
+      ) : (
+        <Icon
+          name="loading"
+          wrapperClassname="absolute top-1/2 left-1/2"
+          className="w-4 text-brand-white"
+        />
+      )}
+    </AuthViewLayout>
   );
 };

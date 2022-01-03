@@ -1,6 +1,7 @@
 import { useHistory } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
 import { useAlert } from 'react-alert';
+import { IAccountState } from 'state/wallet/types';
 
 export const useUtils = () => {
   const history = useHistory();
@@ -9,6 +10,12 @@ export const useUtils = () => {
     return useCallback((view) => {
       history.push(view);
     }, []);
+  };
+
+  const handleRefresh = (controller: any, activeAccount: IAccountState) => {
+    controller.wallet.account.getLatestUpdate();
+    controller.wallet.account.watchMemPool(activeAccount);
+    controller.stateUpdater();
   };
 
   const useCopyClipboard = (
@@ -73,6 +80,12 @@ export const useUtils = () => {
     });
   };
 
+  const isNFT = (guid: number) => {
+    const assetGuid = BigInt.asUintN(64, BigInt(guid));
+
+    return assetGuid >> BigInt(32) > 0;
+  };
+
   return {
     useSettingsView,
     useCopyClipboard,
@@ -80,6 +93,8 @@ export const useUtils = () => {
     getHost,
     history,
     sendMessage,
+    handleRefresh,
+    isNFT,
   };
 };
 
@@ -87,7 +102,6 @@ export const getHost = (url: string) => {
   if (typeof url === 'string' && url !== '') {
     return new URL(url).host;
   }
-
   return url;
 };
 

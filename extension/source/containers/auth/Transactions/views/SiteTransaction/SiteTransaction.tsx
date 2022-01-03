@@ -1,124 +1,146 @@
-import React, { useState, FC } from 'react';
+import React, { useState, FC, useEffect } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { Button } from 'components/index';;
-import { useController, useUtils, useBrowser } from 'hooks/index';
+import { PrimaryButton, SecondaryButton, Tooltip, Icon } from 'components/index';
+import { useTransaction, useController, useUtils, useStore } from 'hooks/index';
+import { Form, Input } from 'antd';
 
 interface ISiteTransaction {
-  callbackToSetDataFromWallet: any;
   confirmRoute: string;
-  itemStringToClearData: string;
+  temporaryTransactionAsString: string;
   layoutTitle: string;
-  messageToSetDataFromWallet: string;
 }
 
 export const SiteTransaction: FC<ISiteTransaction> = ({
-  callbackToSetDataFromWallet,
-  messageToSetDataFromWallet,
   confirmRoute,
-  itemStringToClearData,
+  temporaryTransactionAsString,
   layoutTitle,
 }) => {
   const controller = useController();
-  const { history } = useUtils();
-  const { browser } = useBrowser();
 
-  // const [loading, setLoading] = useState<boolean>(false);
-  const [fee, setFee] = useState('0');
+  const { history, getHost } = useUtils();
+  const { currentSenderURL, activeNetwork } = useStore();
+  const { handleRejectTransaction } = useTransaction();
+
+  const [loading, setLoading] = useState<boolean>(false);
   const [recommend, setRecommend] = useState(0.00001);
-  // const [transacting, setTransacting] = useState(false);
+  const [form] = Form.useForm();
+
+  const temporaryTransaction = controller.wallet.account.getTemporaryTransaction(temporaryTransactionAsString);
 
   const handleGetFee = async () => {
     const recommendFee = await controller.wallet.account.getRecommendFee();
 
     setRecommend(recommendFee);
-    setFee(String(recommendFee));
+
+    form.setFieldsValue({
+      fee: recommendFee,
+    });
   };
 
-  const handleMessageToSetDataFromWallet = () => {
-    callbackToSetDataFromWallet({
-      fee,
+  useEffect(() => {
+    handleGetFee();
+  }, []);
+
+  const handleCreateTemporaryTransaction = ({ fee }) => {
+    controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        ...temporaryTransaction,
+        fee
+      },
+      type: temporaryTransactionAsString
     });
 
-    browser.runtime.sendMessage({
-      type: messageToSetDataFromWallet,
-      target: 'background',
-    });
-
-    // setTransacting(true);
-    // setLoading(true);
+    setLoading(true);
 
     history.push(confirmRoute);
   };
 
-  // const handleFeeChange = useCallback(
-  //   (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-  //     setFee(event.target.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1'));
-
-  //     if (Number(event.target.value) > 0.1) {
-  //       alert.removeAll();
-  //       alert.error(`Error: Fee too high, maximum 0.1 SYS.`, { timeout: 2000 });
-
-  //       return;
-  //     }
-  //   },
-  //   []
-  // );
-
-  const handleRejectTransaction = () => {
-    history.push('/home');
-
-    browser.runtime.sendMessage({
-      type: 'WALLET_ERROR',
-      target: 'background',
-      transactionError: true,
-      invalidParams: false,
-      message: 'Transaction rejected.',
-    });
-
-    browser.runtime.sendMessage({
-      type: 'CANCEL_TRANSACTION',
-      target: 'background',
-      item: itemStringToClearData || null,
-    });
-
-    browser.runtime.sendMessage({
-      type: 'CLOSE_POPUP',
-      target: 'background',
-    });
-  };
+  const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
 
   return (
-    <div>
-      <AuthViewLayout title={layoutTitle}>
-        <form>
-          <label htmlFor="fee">Fee</label>
+    <AuthViewLayout canGoBack={false} title={layoutTitle.toUpperCase()}>
+      <div className="flex flex-col justify-center items-center">
+        <h1 className="text-sm mt-4">FEE</h1>
 
-          <section>
-            <input type="text" />
+        <p className="text-brand-royalBlue text-sm">
+          {getHost(`${currentSenderURL}`)}
+        </p>
 
-            <Button type="button" onClick={handleGetFee}>
-              Recommend
-            </Button>
-          </section>
+        <Form
+          form={form}
+          id="site"
+          labelCol={{ span: 8 }}
+          initialValues={{ fee: recommend }}
+          wrapperCol={{ span: 8 }}
+          onFinish={handleCreateTemporaryTransaction}
+          autoComplete="off"
+          className="flex justify-center items-center flex-col gap-3 mt-4 text-center"
+        >
+          <div className="mx-2 flex gap-x-0.5 justify-center items-center">
+            <Form.Item
+              name="recommend"
+              className={`${disabledFee ? 'opacity-30 bg-brand-graydark border border-brand-gray100 cursor-not-allowed' : 'bg-brand-navyborder border border-brand-royalBlue'} w-12 py-1.5 rounded-l-full text-center`}
+              rules={[
+                {
+                  required: false,
+                  message: ''
+                },
+              ]}
+            >
+              <Tooltip content={`${disabledFee ? 'Use recommended fee. Disabled for SYS networks because the fee used in transactions is always the recommended for current SYS network conditions.' : 'Click to use the recommended fee'}`}>
+                <div onClick={handleGetFee}>
+                  <Icon
+                    wrapperClassname="w-6 mb-1"
+                    name="verified"
+                    className={`${disabledFee && 'cursor-not-allowed'} text-brand-green`}
+                  />
+                </div>
+              </Tooltip>
+            </Form.Item>
 
-          <p>
-            With current network conditions, we recommend a fee of {recommend}{' '}
-            SYS.
+            <Form.Item
+              name="fee"
+              hasFeedback
+              rules={[
+                {
+                  required: true,
+                  message: '',
+                },
+              ]}
+            >
+              <Tooltip content={disabledFee ? 'Fee network' : ''}>
+                <Input
+                  disabled={disabledFee}
+                  className={`${disabledFee ? 'opacity-30 bg-brand-graydark border border-brand-gray100 cursor-not-allowed' : 'border border-brand-royalBlue'} rounded-r-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
+                  type="number"
+                  placeholder="Fee network"
+                  value={recommend}
+                />
+              </Tooltip>
+            </Form.Item>
+          </div>
+
+          <p className="bg-brand-navydarker border text-left border-dashed border-brand-royalBlue mx-12 p-4 mt-4 text-xs rounded-lg">
+            With current network conditions, we recommend a fee of {recommend} SYS.
           </p>
 
-          <section>
-            <div>
-              <Button type="button" onClick={handleRejectTransaction}>
-                Reject
-              </Button>
+          <div className="flex justify-between items-center absolute bottom-10 gap-3">
+            <SecondaryButton
+              type="button"
+              onClick={handleRejectTransaction}
+            >
+              Cancel
+            </SecondaryButton>
 
-              <Button type="button" onClick={handleMessageToSetDataFromWallet}>
-                Next
-              </Button>
-            </div>
-          </section>
-        </form>
-      </AuthViewLayout>
-    </div>
+            <PrimaryButton
+              type="submit"
+              loading={loading}
+            >
+              Next
+            </PrimaryButton>
+          </div>
+        </Form>
+      </div>
+    </AuthViewLayout>
   );
 };

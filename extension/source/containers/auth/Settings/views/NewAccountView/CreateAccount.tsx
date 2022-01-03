@@ -1,120 +1,76 @@
-import React from 'react';
-// import { Button, Icon } from 'components/index';;
-// import { useController, useFormat, useUtils } from 'hooks/index';
-import LogoImage from 'assets/images/logo-s.svg';
-// import { MAIN_VIEW } from '../routes';
+import React, { useState } from 'react';
+import { useController, useFormat } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout';
 import { Form, Input } from 'antd';
-import { Button } from 'components/Button';
-import { AccountCreated } from './AccountCreated';
+import { PrimaryButton, Modal } from 'components/index';
 
 const NewAccountView = () => {
-  // const [address, setAddress] = useState<string | undefined>();
-  // const controller = useController();
-  // const { ellipsis } = useFormat();
-  // const { history } = useUtils();
-  // const [isCopied, copyText] = useCopyClipboard();
-  // const [loading, setLoading] = useState<boolean>(false);
+  const [address, setAddress] = useState<string | undefined>();
+  const [loading, setLoading] = useState<boolean>(false);
 
-  // const onSubmit = async (data: any) => {
-  //   setLoading(true);
-  //   const res = await controller.wallet.account.addNewAccount(data.name);
+  const controller = useController();
 
-  //   if (res) {
-  //     setAddress(res);
-  //     setLoading(false);
+  const { ellipsis } = useFormat();
 
-  //     await controller.wallet.account.updateTokensState();
-  //   }
-  // };
-  const accountCreate = false;
-  const accountCreated = true;
+  const onSubmit = async (data: any) => {
+    setLoading(true);
+
+    const response = await controller.wallet.addNewAccount(data.label);
+
+    if (response) {
+      setAddress(response);
+      setLoading(false);
+
+      await controller.wallet.account.updateTokensState();
+    }
+  };
+
   return (
-    <>
-      {accountCreate && (
-        <>
-          <AuthViewLayout title="CREATE ACCOUNT">
-            {/* <span>Your new account has been created</span>
-        <span>Click to copy your public address:</span>
-        <span
-        // onClick={() => {
-        //   copyText(address);
-        // }}
+    <AuthViewLayout title="CREATE ACCOUNT">
+      {address ? (
+        <Modal
+          type="default"
+          open={address !== ''}
+          onClose={() => setAddress('')}
+          title="Your new account has been created"
+          description={`${ellipsis(address)}`}
+        />
+      ) : (
+        <Form
+          className="flex justify-center items-center flex-col gap-8 text-center pt-4 mt-8"
+          name="newaccount"
+          labelCol={{ span: 8 }}
+          wrapperCol={{ span: 16 }}
+          autoComplete="off"
+          onFinish={onSubmit}
         >
-          {ellipsis(address)}
-        </span>
-        <div>
-          <Button
-            type="button"
-            onClick={() => history.push('/home')}
+          <Form.Item
+            name="label"
+            rules={[
+              {
+                required: false,
+                message: '',
+              },
+            ]}
           >
-            Finish
-          </Button>
-        </div> */}
+            <Input
+              className="phrase-input rounded-full py-3 px-4 w-72 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
+              placeholder="Name your new account (optional)"
+            />
+          </Form.Item>
 
-            {/* <form>
-          <span>Please name your new account:</span>
-          <input type="text" />
-          <div>
-            <Button
-              type="button"
-              onClick={() => history.push('/home')}
+          <div className="absolute bottom-12">
+            <PrimaryButton
+              type="submit"
+              loading={loading}
+              disabled={loading}
             >
-              Close
-            </Button>
-            {loading ? (
-              <div>
-                <Icon name="loading" className="w-4 bg-brand-graydark100 text-brand-white" />
-              </div>
-            ) : (
-              <Button
-                type="submit"
-                disabled={loading}
-              >
-                Next
-              </Button>
-            )}
+              Create
+            </PrimaryButton>
           </div>
-        </form> */}
-          </AuthViewLayout>
-          <div className="flex justify-center items-center flex-col min-w-full">
-            <div>
-              <img
-                src={`/${LogoImage}`}
-                className="mx-auto w-36 rounded-full"
-                alt="Syscoin"
-              />
-            </div>
-            <div className="pb-8">
-              <p className="text-white">Select Avatar</p>
-            </div>
-            <Form
-              className="flex justify-center items-center flex-col gap-4 text-center"
-              name="basic"
-              labelCol={{ span: 8 }}
-              wrapperCol={{ span: 16 }}
-              initialValues={{ remember: true }}
-              autoComplete="off"
-            >
-              <Form.Item
-                name="Username"
-                rules={[
-                  { required: true, message: 'Please input your username!' },
-                ]}
-              >
-                <Input className="w-80 rounded-full h-10 bg-brand-navydarker" />
-              </Form.Item>
-            </Form>
-            <div className="pt-40">
-              <Button type="submit">Save</Button>
-            </div>
-          </div>
-        </>
+        </Form>
       )}
-      {accountCreated && (
-          <AccountCreated />
-      )}
-    </>
+    </AuthViewLayout>
   );
 };
 

@@ -1,47 +1,45 @@
-import React, { useState, useEffect, FC } from 'react';
+import React, { FC, useEffect, useState } from 'react';
+import {
+  useController,
+  usePopup,
+  useUtils,
+  useFormat,
+  useTransaction,
+  useAccount,
+  useBrowser
+} from 'hooks/index';
+
 import { AuthViewLayout } from 'containers/common/Layout';
-import { Button, Icon } from 'components/index';;
-import { useController } from 'hooks/index';
-import { IAccountState } from 'state/wallet/types';
-import { browser } from 'webextension-polyfill-ts';
+import {
+  PrimaryButton,
+  Modal,
+  SecondaryButton
+} from 'components/index';
 
-import { useStore, useUtils, useFormat } from 'hooks/index';
-
-interface IConfirmTransaction {
-  confirmTransaction: any;
-  data: any[];
-  errorMessage: string;
-  itemStringToClearData: string;
-  layoutTitle: string;
-  transactingStateItem: boolean;
-  transactionItem: any;
-}
-
-export const ConfirmTransaction: FC<IConfirmTransaction> = ({
-  transactionItem,
-  itemStringToClearData,
-  confirmTransaction,
-  errorMessage,
-  layoutTitle,
-  data,
-  transactingStateItem,
+const ConfirmDefaultTransaction = ({
+  callback,
+  temporaryTransaction,
+  temporaryTransactionStringToClear,
+  title
 }) => {
   const controller = useController();
 
-  const { getHost, alert, history } = useUtils();
   const { ellipsis, formatURL } = useFormat();
-  const { accounts, currentSenderURL } = useStore();
+  const { closePopup } = usePopup();
+  const { history } = useUtils();
+  const { activeAccount } = useAccount();
+  const { browser } = useBrowser();
+  const {
+    handleRejectTransaction,
+    handleCancelTransactionOnSite,
+  } = useTransaction();
 
-  const [connectedAccountId, setConnectedAccountId] = useState(-1);
-  const transactionItemData =
-    controller.wallet.account.getTransactionItem()[transactionItem];
-  const [confirmed, setConfirmed] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [expanded, setExpanded] = useState<boolean>(false);
-  const [loadingConfirm, setLoadingConfirm] = useState<boolean>(false);
-  const [dataToRender, setDataToRender] = useState<any[]>([]);
-  const [advancedOptions, setAdvancedOptions] = useState<any[]>([]); const [recommendedFee, setRecommendedFee] = useState(0.00001);
-  const [assetData, setAssetData] = useState<any>({});
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [logError, setLogError] = useState('');
+  const [submitted, setSubmitted] = useState(false);
 
   const advancedOptionsArray = [
     'notarydetails',
@@ -53,389 +51,328 @@ export const ConfirmTransaction: FC<IConfirmTransaction> = ({
   ];
 
   useEffect(() => {
-    controller.wallet.account.getRecommendFee().then((response: any) => {
-      setRecommendedFee(response);
-    })
-  }, []);
+    if (temporaryTransaction) {
+      const newData: any = {};
 
-  useEffect(() => {
-    if (data) {
-      console.log('data', data)
-      let newData: any = {};
-      let newAdvancedOptions: any = {};
-
-      Object.entries(data).map(([key, value]) => {
+      Object.entries(temporaryTransaction).map(([key, value]) => {
         if (!newData[key]) {
           newData[key] = {
             label: key,
             value,
+            advanced: advancedOptionsArray.includes(key),
           };
-        }
-
-        if (advancedOptionsArray.includes(key) && !newAdvancedOptions[key]) {
-          newAdvancedOptions[key] = {
-            label: key,
-            value,
-          };;
         }
       });
 
-      setDataToRender(Object.values(newData))
-      setAdvancedOptions(Object.values(newAdvancedOptions))
+      setData(Object.values(newData));
     }
+  }, [temporaryTransaction]);
 
-    setConnectedAccountId(
-      accounts.findIndex((account: IAccountState) => {
-        return account.connectedTo.filter((url: string) => {
-          return url === getHost(currentSenderURL);
-        });
-      })
-    );
-  }, [data]);
+  const handleConfirmSiteTransaction = async () => {
+    const recommendedFee = await controller.wallet.account.getRecommendFee();
 
-  useEffect(() => {
-    dataToRender.map((data) => {
-      if (data.label === 'assetGuid' && itemStringToClearData !== 'newSPT' && itemStringToClearData !== 'mintNFT') {
-        controller.wallet.account.getDataAsset(data.value).then((response: any) => {
-          setAssetData(response);
-        })
-      }
-    })
-  }, [dataToRender]);
-
-  const handleRejectTransaction = () => {
-    history.push('/home');
-
-    browser.runtime.sendMessage({
-      type: 'WALLET_ERROR',
-      target: 'background',
-      transactionError: true,
-      invalidParams: false,
-      message: "Transaction rejected.",
-    });
-
-    browser.runtime.sendMessage({
-      type: 'CANCEL_TRANSACTION',
-      target: 'background',
-      item: itemStringToClearData || null,
-    });
-
-    browser.runtime.sendMessage({
-      type: 'CLOSE_POPUP',
-      target: 'background',
-    });
-  }
-
-  const handleClosePopup = () => {
-    browser.runtime.sendMessage({
-      type: 'CLOSE_POPUP',
-      target: 'background',
-    });
-
-    history.push('/home');
-  };
-
-  const handleCancelTransactionOnSite = () => {
-    browser.runtime.sendMessage({
-      type: 'CANCEL_TRANSACTION',
-      target: 'background',
-      item: itemStringToClearData || null,
-    });
-
-    handleClosePopup();
-  };
-
-  const handleConfirm = () => {
-    const acc = accounts.find((element) => element.id === connectedAccountId);
     let isPending = false;
 
-    if ((acc ? acc.balance : -1) > 0) {
-      setLoadingConfirm(true);
-      setLoading(true);
+    setLoading(true);
+
+    if ((activeAccount ? activeAccount.balance : -1) > 0) {
       isPending = true;
 
-      confirmTransaction()
-        .then((response: any) => {
-          isPending = false;
-
+      try {
+        if (temporaryTransactionStringToClear === 'newNFT') {
           setConfirmed(true);
           setLoading(false);
-          setLoadingConfirm(false);
+          setSubmitted(true);
+        }
 
-          if (response) {
-            browser.runtime.sendMessage({
-              type: 'TRANSACTION_RESPONSE',
-              target: 'background',
-              response,
-            });
-          }
-        })
-        .catch((error: any) => {
-          if (error && transactionItemData.fee > recommendedFee) {
-            alert.removeAll();
-            alert.error(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
-          }
-
-          if (error && transactionItemData < recommendedFee) {
-            alert.removeAll();
-            alert.error(errorMessage);
-          }
-
-          browser.runtime.sendMessage({
-            type: 'WALLET_ERROR',
-            target: 'background',
-            transactionError: true,
-            invalidParams: false,
-            message: errorMessage
-          });
-
-          alert.removeAll();
-          alert.error(errorMessage);
-
-          setTimeout(() => {
-            handleCancelTransactionOnSite();
-          }, 4000);
+        const response = await controller.wallet.account.confirmTemporaryTransaction({
+          type: temporaryTransactionStringToClear,
+          callback,
         });
+
+        isPending = false;
+
+        setConfirmed(true);
+        setLoading(false);
+        setSubmitted(true);
+
+        if (response) {
+          browser.runtime.sendMessage({
+            type: 'TRANSACTION_RESPONSE',
+            target: 'background',
+            response,
+          });
+        }
+
+      } catch (error: any) {
+        setFailed(true);
+        setLogError(error.message);
+
+        if (error && temporaryTransaction.fee > recommendedFee) {
+          setLogError(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
+        }
+
+        if (error && temporaryTransaction.fee < recommendedFee) {
+          setLogError(error.message);
+        }
+
+        browser.runtime.sendMessage({
+          type: 'WALLET_ERROR',
+          target: 'background',
+          transactionError: true,
+          invalidParams: false,
+          message: "Sorry, we could not submit your request. Try again later."
+        });
+      }
 
       setTimeout(() => {
         if (isPending && !confirmed) {
-          alert.removeAll();
-          
-          if (itemStringToClearData === 'mintNFT') {
-            alert.show('Waiting for confirmation to create and issue your NFT. You can check this transaction in your history.', {
-              timeout: 5000,
-              type: 'success'
-            });
-
-            setTimeout(() => {
-              handleCancelTransactionOnSite();
-            }, 4000);
-
-            return;
-          }
-
-          alert.error(errorMessage);
+          setSubmitted(true);
+          setFailed(false)
+          setLogError('');
 
           setTimeout(() => {
-            handleCancelTransactionOnSite();
+            handleCancelTransactionOnSite(browser, temporaryTransactionStringToClear);
           }, 4000);
         }
       }, 8 * 60 * 1000);
     }
   };
 
-  const renderData = () => {
-    return dataToRender.map(({ label, value }) => {
-      if (label) {
-        if (
-          label === 'receiver' ||
-          label === 'issuer' ||
-          label === 'newOwner' ||
-          label === 'description'
-        ) {
-          return (
-            <div key={label}>
-              <p>{label}</p>
-              <p>{ellipsis(value)}</p>
-            </div>
-          );
-        }
-
-        if (advancedOptionsArray.includes(label)) {
-          return;
-        }
-
-        if (label === "assetGuid") {
-          return;
-        }
-
-        return (
-          <div key={label}>
-            <p>{label}</p>
-            <p>{value}</p>
-          </div>
-        );
-      }
-
-      return null;
-    });
-  };
-
-  const renderOptions = () => {
-    return advancedOptions.map(({ label, value }) => {
-      if (label && value) {
-        if (label == 'contract') {
-          return (
-            <div key={label}>
-              <p>{label}</p>
-              <p>{formatURL(value)}</p>
-            </div>
-          );
-        }
-
-        if (label == 'notaryAddress' || label == 'payoutAddress') {
-          return (
-            <div key={label}>
-              <p>{label}</p>
-              <p>{ellipsis(value)}</p>
-            </div>
-          );
-        }
-
-        if (label == 'notarydetails' || label == 'auxfeedetails') {
-          return <div key={label}>{renderAdvancedDetails(value, label)}</div>;
-        }
-
-        return (
-          <div key={label}>
-            <p>{label}</p>
-            <p>{value}</p>
-          </div>
-        );
-      }
-
-      return null;
-    });
-  };
-
-  const renderAdvancedDetails = (items: any, itemName: string) => {
-    return (
-      <div>
-        {itemName == 'notarydetails' && items && items.endpoint !== '' && (
-          <div>
-            <div>
-              <p>Endpoint</p>
-              <p>{formatURL(items.endpoint)}</p>
-            </div>
-
-            <div>
-              <p>Instant transfers</p>
-              <p>{items.instanttransfers || 0}</p>
-            </div>
-
-            <div>
-              <p>HD required</p>
-              <p>{items.hdrequired ? 'Yes' : 'No'}</p>
-            </div>
-          </div>
-        )}
-
-        {itemName == 'auxfeedetails' && items && (
-          <div>
-            {items.auxfees.map((auxfee: any, index: number) => {
-              return (
-                <div key={index} >
-                  <div>
-                    <p>Bound</p>
-                    <p>{auxfee.bound}</p>
-                  </div>
-
-                  <div>
-                    <p>Percent</p>
-                    <p>{auxfee.percent}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  return confirmed ? (
-    <AuthViewLayout title="Your transaction is underway">
-      <div className="body-description">
-        You can follow your transaction under activity on your account screen.
-      </div>
-      <Button
-        type="button"
-        onClick={handleClosePopup}
-      >
-        Ok
-      </Button>
-    </AuthViewLayout>
-  ) : (
-    <div>
-      {transactingStateItem && loading ? (
-        <AuthViewLayout title="">
-          <div >
-            <section>
-              <Icon name="loading" className="w-4 bg-brand-graydark100 text-brand-white" />
-            </section>
-          </div>
-        </AuthViewLayout>
+  return (
+    <>
+      {failed ? (
+        <Modal
+          type="error"
+          onClose={closePopup}
+          open={failed}
+          title={`${title.toLowerCase()} request failed`}
+          description="Sorry, we could not submit your request. Try again later."
+          log={logError ? logError : 'No description provided'}
+          closeMessage="Ok"
+        />
       ) : (
-        <div>
-          {transactionItemData && data && !loading && (
-            <div>
-              <AuthViewLayout title={layoutTitle}>
-                <div >
-                  <div>
-                    <section >
-                      {renderData()}
-
-                      {assetData && itemStringToClearData !== 'newSPT' && itemStringToClearData !== 'mintNFT' && (
-                        <div>
-                          <div key="symbol">
-                            <p>symbol</p>
-                            <p>{assetData && assetData.symbol ? atob(String(assetData.symbol)) : 'Not found'}</p>
-                          </div>
-                          <div key="assetGuid">
-                            <p>assetGuid</p>
-                            <p>{assetData && assetData.assetGuid ? String(assetData.assetGuid) : 'Not found'}</p>
-                          </div>
-                        </div>
-                      )}
-
-                      <div>
-                        <p>Site</p>
-                        <p>{getHost(`${currentSenderURL}`)}</p>
-                      </div>
-
-                      <div>
-                        <div
-                        >
-                          <span
-                            onClick={() => setExpanded(!expanded)}
-                          >
-                            Advanced options
-                            <Icon name="arrow-down" className="w-4 bg-brand-graydark100 text-brand-white" />
-                          </span>
-
-                          <ul >{renderOptions()}</ul>
-                        </div>
-                      </div>
-                    </section>
-
-                    <section >
-                      <div >
-                        <Button
-                          type="button"
-                          onClick={handleRejectTransaction}
-                        >
-                          Reject
-                        </Button>
-
-                        <Button
-                          type="submit"
-                          onClick={handleConfirm}
-                        >
-                          {loadingConfirm ? (
-                            <Icon name="loading" className="w-4 bg-brand-graydark100 text-brand-white" />
-                          ) : (
-                            'Confirm'
-                          )}
-                        </Button>
-                      </div>
-                    </section>
-                  </div>
-                </div>
-              </AuthViewLayout>
-            </div>
+        <>
+          {submitted && (
+            <Modal
+              type="default"
+              closePopup={closePopup}
+              onClose={closePopup}
+              open={submitted && !failed}
+              title={`${title.toLowerCase()} request successfully submitted`}
+              description="You can check your request under activity on your home screen."
+              closeMessage="Got it"
+            />
           )}
+        </>
+      )}
+
+      {temporaryTransaction && (
+        <div className="flex justify-center flex-col items-center w-full">
+          <ul className="scrollbar-styled text-xs overflow-auto w-full px-4 h-80 mt-4">
+            {data && data.map((item: any) => (
+              <>
+                {!item.advanced && (
+                  <li
+                    key={item.label}
+                    className="flex justify-between p-2 my-2 border-b border-dashed border-brand-royalBlue items-center w-full text-xs"
+                  >
+                    <p>{item.label}</p>
+                    <p>{typeof item.value === 'string' && item.value.length > 10 ? ellipsis(item.value) : item.value}</p>
+                  </li>
+                )}
+              </>
+            ))}
+          </ul>
+
+          <div className="flex justify-between items-center absolute bottom-10 gap-3">
+            <SecondaryButton
+              type="button"
+              onClick={() => handleRejectTransaction(browser, temporaryTransaction, history)}
+            >
+              Cancel
+            </SecondaryButton>
+
+            <PrimaryButton
+              type="submit"
+              disabled={submitted}
+              loading={loading && !failed && !submitted}
+              onClick={handleConfirmSiteTransaction}
+            >
+              Confirm
+            </PrimaryButton>
+          </div>
         </div>
       )}
-    </div>
+    </>
+  )
+}
+
+const ConfirmSignTransaction = ({
+  psbt,
+  signAndSend = false,
+  title = 'SIGNATURE REQUEST',
+}) => {
+  const controller = useController();
+  const base64 = /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
+
+  const { closePopup } = usePopup();
+  const { history, alert } = useUtils();
+  const { browser } = useBrowser();
+  const {
+    handleRejectTransaction,
+    handleCancelTransactionOnSite,
+  } = useTransaction();
+
+  const [loading, setLoading] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [logError, setLogError] = useState('');
+
+  const handleConfirmSignature = () => {
+    setLoading(true);
+
+    if (!base64.test(psbt.psbt) || typeof psbt.assets !== 'string') {
+      alert.removeAll();
+      alert.error(`PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.`);
+
+      setTimeout(() => {
+        handleCancelTransactionOnSite(browser, psbt);
+      }, 10000);
+
+      return;
+    }
+
+    controller.wallet.account
+      .signTransaction(psbt, signAndSend)
+      .then((response: any) => {
+        if (response) {
+          setConfirmed(true);
+          setLoading(false);
+
+          setTimeout(() => {
+            handleCancelTransactionOnSite(browser, psbt);
+          }, 4000);
+
+          browser.runtime.sendMessage({
+            type: 'TRANSACTION_RESPONSE',
+            target: 'background',
+            response,
+          });
+        }
+      })
+      .catch((error: any) => {
+        if (error) {
+          setFailed(true);
+          setLogError(error.message);
+
+          browser.runtime.sendMessage({
+            type: 'WALLET_ERROR',
+            target: 'background',
+            transactionError: true,
+            invalidParams: false,
+            message: "Can't sign transaction. Try again later.",
+          });
+
+          setTimeout(() => {
+            handleCancelTransactionOnSite(browser, psbt);
+          }, 4000);
+        }
+      });
+  };
+
+  return (
+    <>
+      {confirmed && (
+        <Modal
+          type="default"
+          closePopup={closePopup}
+          onClose={closePopup}
+          open={confirmed && !failed}
+          title={`${title.toLowerCase()} request successfully submitted`}
+          description="You can check your request under activity on your home screen."
+          closeMessage="Got it"
+        />
+      )}
+
+      {failed && (
+        <Modal
+          type="error"
+          onClose={closePopup}
+          open={failed}
+          title="Token creation request failed"
+          description="Sorry, we could not submit your request. Try again later."
+          log={logError ? logError : '...'}
+          closeMessage="Ok"
+        />
+      )}
+
+      {psbt && !loading && (
+        <div className="flex justify-center flex-col items-center w-full">
+          <ul className="scrollbar-styled text-xs overflow-auto w-full px-4 h-80 mt-4">
+            <pre>{`${JSON.stringify(
+              controller.wallet.account.importPsbt(psbt),
+              null,
+              2
+            )}`}</pre>
+          </ul>
+
+          <div className="flex justify-between items-center absolute bottom-10 gap-3">
+            <SecondaryButton
+              type="button"
+              onClick={() => handleRejectTransaction(browser, psbt, history)}
+            >
+              Cancel
+            </SecondaryButton>
+
+            <PrimaryButton
+              type="submit"
+              disabled={confirmed}
+              loading={loading && !failed && !confirmed}
+              onClick={handleConfirmSignature}
+            >
+              Confirm
+            </PrimaryButton>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+export type IConfirmTransaction = {
+  sign?: boolean;
+  title: string;
+  callback?: any;
+  temporaryTransaction: string;
+  temporaryTransactionStringToClear: string;
+  signAndSend?: boolean;
+}
+
+export const ConfirmTransaction: FC<IConfirmTransaction> = ({
+  sign,
+  title,
+  callback,
+  temporaryTransaction,
+  temporaryTransactionStringToClear,
+  signAndSend
+}) => {
+  return (
+    <AuthViewLayout canGoBack={false} title={title}>
+      {sign ? (
+        <ConfirmSignTransaction
+          psbt={temporaryTransaction}
+          signAndSend={signAndSend}
+          title="SIGNATURE REQUEST"
+        />
+      ) : (
+        <ConfirmDefaultTransaction
+          callback={callback}
+          temporaryTransaction={temporaryTransaction}
+          temporaryTransactionStringToClear={temporaryTransactionStringToClear}
+          title={title}
+        />
+      )}
+    </AuthViewLayout>
   );
-};
+}

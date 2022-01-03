@@ -1,105 +1,90 @@
 /* eslint-disable */
 import React, { FC, useState } from 'react';
-import { Button, Icon } from 'components/index';
-// import { useController } from 'hooks/index';
-// import TutorialPanel from './TutorialPanel';
+import { PrimaryButton, Icon } from 'components/index';;
 import { AuthViewLayout } from 'containers/common/Layout';
-import { Header } from 'containers/common/Header';
-import { Form, Input } from 'antd';
-import { WarningCard } from 'components/Cards';
+import { useController } from 'hooks/index';
+import { Disclosure } from '@headlessui/react';
 
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
-  // const controller = useController();
 
-  // const onclick = async () => {
-  //   controller.wallet.createHardwareWallet();
-  // };
+  const controller = useController();
+
+  const handleCreateHardwareWallet = () => {
+    controller.wallet.createHardwareWallet();
+  };
 
   return (
-    <>
-      <Header normalHeader />
-      <AuthViewLayout title="CONNECT HARDWARE WALLET"> </AuthViewLayout>
-      <Form
-        className="flex justify-center items-center flex-col gap-2 text-center pt-4"
-        name="basic"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 16 }}
-        initialValues={{ remember: true }}
-        autoComplete="off"
-      >
-        <div>
-          <p className="text-justify text-base text-brand-white px-7">
-            Select a hardware wallet you'd like to use with Pali Wallet
+    <AuthViewLayout title="CONNECT HARDWARE WALLET">
+      <div className="flex items-center flex-col justify-center w-full">
+        <div className="scrollbar-styled text-sm overflow-auto px-4 h-96">
+          <p className="text-white text-sm py-3 pl-1 mt-3">
+            Select the hardware wallet you'd like to connect to Pali
           </p>
-        </div>
-        <Form.Item name="password">
-          <Input className="h-12" />
-        </Form.Item>
-      </Form>
-      <div>
-        <WarningCard
-          className="w-full rounded text-brand-blueWarningTest border-dashed border border-brand-blueWarningTest text-justify "
-          warningText="Don't have a hardware wallet?"
-        >
-          <br />
-          <p className="pt-4">
-            Order a Trezor wallet and keep your founds in cold storage.
-          </p>
-          <br />
-          <a
-            className="text-brand-white"
-            href="https://trezor.io/"
-            target="_blank"
-            rel="noreferrer"
+
+          <p
+            className={`${selected ? 'border-brand-deepPink100 bg-brand-navydarker' : 'bg-brand-navyborder border-brand-royalBlue'} rounded-full py-3 px-4 w-44 mx-auto text-center  border  text-sm mb-6 mt-3 cursor-pointer active:bg-brand-navydarker  focus:bg-brand-navydarker`}
+            onClick={() => setSelected(!selected)}
           >
-            Buy now
-          </a>
-        </WarningCard>
-      </div>
-      <div className="p-7">
-        <button
-          className="inline-flex text-sm text-brand-white w-full text-justify bg-brand-navydarker px-4 py-2"
-          onClick={() => setSelected(!selected)}
-        >
-          Learn more
-          {selected ? (
-            <Icon
-              name="up"
-              className="inline-flex self-center text-sm pl-48"
-              // maxWidth={'1'}
-            ></Icon>
-          ) : (
-            <Icon
-              name="down"
-              className="inline-flex self-center text-sm pl-48"
-              // maxWidth={'1'}
-            ></Icon>
-          )}
-        </button>
-        {selected ? (
-          <div className="text-brand-white text-sm bg-brand-navylight px-4 py-2">
+            Trezor
+          </p>
+
+          <div className="bg-brand-navydarker border border-dashed border-brand-royalBlue text-brand-white mx-2 p-4 text-xs rounded-lg">
             <p>
-              <b>1 - Connect a hardware wallet</b>
-              <br />
-              Connect your hardware wallet directly to your computer.
+              <b>Don't have a hardware wallet?</b><br /><br />
+
+              Order a Trezor wallet and keep your funds in cold storage.
             </p>
-            <p className="pt-4">
-              <b>2 - Start using sys powered sites and more!</b>
-              <br />
-              Use your hardware account like you would with any SYS account.
-              Connect to SYS web3 sites, send SYS, buy and store SPT tokens.
+
+            <p onClick={() => window.open('https://trezor.io/')}>
+              Buy now
             </p>
           </div>
-        ) : (
-          <div></div>
-        )}
-      </div>
 
-      <div className="flex justify-center items-center pt-2">
-        <Button type="submit">Connect</Button>
+          <Disclosure>
+            {({ open }) => (
+              <>
+                <Disclosure.Button
+                  className="my-3 w-80 py-2 px-4 flex justify-between items-center rounded-lg ml-2 border border-brand-royalBlue cursor-pointer transition-all duration-300 bg-brand-navydarker"
+                >
+                  Learn more
+
+                  <Icon
+                    name="select-up"
+                    className={`${open ?
+                      'transform rotate-180' :
+                      ''
+                      } mb-1 text-brand-deepPink100`}
+                  />
+
+                </Disclosure.Button>
+
+                <Disclosure.Panel>
+                  <div className="mx-2 py-2 px-4 flex flex-col justify-start items-start rounded-lg w-80 border border-brand-navyborder cursor-pointer transition-all duration-300 bg-brand-navyborder">
+                    <p className="text-sm my-2">1 - Connect a hardware wallet</p>
+
+                    <span className="text-xs mb-4">Connect your hardware wallet directly to your computer.</span>
+
+                    <p className="text-sm my-2">2 - Start using SYS powered sites and more</p>
+
+                    <span className="text-xs mb-1">Use your hardware account like you would with any SYS account. Connect to SYS web3 sites, send SYS, buy and store SPT tokens.</span>
+                  </div>
+
+                </Disclosure.Panel>
+              </>
+            )}
+          </Disclosure>
+        </div>
+
+        <PrimaryButton
+          type="button"
+          onClick={handleCreateHardwareWallet}
+          disabled={!selected}
+        >
+          Connect
+        </PrimaryButton>
       </div>
-    </>
+    </AuthViewLayout>
   );
 };
 

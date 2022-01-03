@@ -10,18 +10,15 @@ export const useStore = () => {
     activeNetwork,
     encriptedMnemonic,
     confirmingTransaction,
-    creatingAsset,
-    issuingAsset,
-    issuingNFT,
-    mintNFT,
-    updatingAsset,
-    transferringOwnership,
     changingNetwork,
     signingTransaction,
     signingPSBT,
     walletTokens,
     tabs,
     timer,
+    networks,
+    trustedApps,
+    temporaryTransactionState
   }: IWalletState = useSelector((state: RootState) => state.wallet);
 
   const {
@@ -38,12 +35,6 @@ export const useStore = () => {
     activeNetwork,
     encriptedMnemonic,
     confirmingTransaction,
-    creatingAsset,
-    issuingAsset,
-    issuingNFT,
-    mintNFT,
-    updatingAsset,
-    transferringOwnership,
     changingNetwork,
     signingTransaction,
     signingPSBT,
@@ -54,5 +45,8 @@ export const useStore = () => {
     currentURL,
     canConnect,
     connections,
+    networks,
+    trustedApps,
+    temporaryTransactionState
   }
 }

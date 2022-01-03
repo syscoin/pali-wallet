@@ -1,28 +1,43 @@
-import { Button } from 'antd';
-import { Icon } from 'components/Icon';
 import React, { FC } from 'react';
+import { Icon, IconButton } from 'components/index';
 import { Header } from '../Header';
-
+import { useUtils } from 'hooks/useUtils';
 
 interface IAuthViewLayout {
   title: string;
-  children: any
+  children: any;
+  background?: string;
+  canGoBack?: boolean;
 }
 
 export const AuthViewLayout: FC<IAuthViewLayout> = ({
   title,
-  children
+  children,
+  background = 'bg-brand-navydarker',
+  canGoBack = true,
 }) => {
+  const { history } = useUtils();
+
   return (
-    <>
+    <div className={`${background} w-full bg-brand-navydarker h-popup text-brand-white`}>
+      {/* firulinha */}
       <Header normalHeader />
-      <div className="w-full flex justify-center items-center text-brand-white bg-brand-navyborder py-4 px-4">
-        <p className="text-xl max-w-sm">{title}</p>
-        <Button ><Icon name="close" className="inline-flex self-center text-base" /></Button>
+
+      <div className={`w-full flex justify-center items-center text-brand-white  p-6 relative bg-brand-navyborder`}>
+        <p className="text-xl max-w-sm flex-1 text-center">{title}</p>
+
+        {canGoBack && (
+          <IconButton
+            onClick={() => history.push('/home')}
+          >
+            <Icon name="close" />
+          </IconButton>
+        )}
       </div>
-      <div className="flex justify-center items-center text-brand-gray pt-6">
-        <p className="pl-6 text-base">{children}</p>
+
+      <div className={`${background} text-brand-white flex flex-col justify-center items-center w-full`}>
+        {children}
       </div>
-    </>
+    </div>
   );
 };

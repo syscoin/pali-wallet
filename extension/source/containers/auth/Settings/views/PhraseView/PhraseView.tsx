@@ -1,52 +1,34 @@
 import React, { useState } from 'react';
-import { Card, Form, Input } from 'antd';
+import { Form, Input } from 'antd';
 import { useController, useUtils } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
-import { Icon } from 'components/Icon';
-import { WarningCard } from 'components/Cards';
-import { Button } from 'components/Button';
+import { Icon, SecondaryButton, IconButton } from 'components/index';
+
 const PhraseView = () => {
-  const [checked, setChecked] = useState<boolean>(false);
   const [phrase, setPhrase] = useState<string>(
     '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****'
   );
 
-  const { alert } = useUtils();
+  const { useCopyClipboard, history } = useUtils();
   const controller = useController();
-  const onSubmit = (data: any) => {
-    const res = controller.wallet.getPhrase(data.password);
-    if (res) {
-      setPhrase(res);
-      setChecked(true);
-
-      return;
-    }
-
-    alert.removeAll();
-    alert.error('Error: Invalid password');
-  };
+  const [copied, copyText] = useCopyClipboard();
 
   const handleCopySeed = () => {
-    if (!checked) return;
-    // copyText(phrase);
+    copyText(phrase)
   };
 
   return (
-    <>
-      <AuthViewLayout title="WALLET SEED PHRASE"> </AuthViewLayout>
-      <div className="flex justify-center items-center flex-col min-w-full">
-        <div className="flex justify-center items-center text-brand-gray pt-4">
-          <p className="pl-6 text-base">
-            Please input your wallet password and press enter
-          </p>
-        </div>
+    <AuthViewLayout title="WALLET SEED PHRASE">
+      <p className="text-white text-sm py-3 px-10">
+        Please input your wallet password
+      </p>
+
+      <div className="flex justify-center items-center flex-col">
         <Form
           className="flex justify-center items-center flex-col gap-8 text-center pt-4"
-          name="basic"
+          name="phraseview"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
-          initialValues={{ remember: true }}
-          onFinish={onSubmit}
           autoComplete="off"
         >
           <Form.Item
@@ -57,9 +39,13 @@ const PhraseView = () => {
                 required: true,
                 message: '',
               },
-              ({}) => ({
+              ({ }) => ({
                 validator(_, value) {
-                  if (controller.wallet.getPhrase(value)) {
+                  const seed = controller.wallet.getPhrase(value);
+
+                  if (seed) {
+                    setPhrase(seed);
+
                     return Promise.resolve();
                   }
 
@@ -68,39 +54,44 @@ const PhraseView = () => {
               }),
             ]}
           >
-            <Input.Password placeholder="Enter your password" />
+            <Input.Password
+              className="phrase-input rounded-full py-3 px-4 w-72 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
+              placeholder="Enter your password"
+            />
           </Form.Item>
         </Form>
 
-        <div className="flex items-center justify-center pt-4">
-          <Card
-            className="w-full rounded text-brand-white"
-            style={{ width: 320, border: '1px', background: '#4d76b8' }}
-          >
-            <div className="p-4">
-              <div className="flex text-brand-white">
-                <p className="text-base">Seed Phrase: (click to copy)</p>
-                <Icon
-                  name="copy"
-                  className="pl-20 inline-flex self-center text-base pr-1"
-                />
-              </div>
-              <div className="text-base pt-1" onClick={handleCopySeed}>
-                {phrase}
-              </div>
-            </div>
-          </Card>
-        </div>
-        <WarningCard
-          className="w-full rounded text-brand-white border-dashed border border-light-blue-500 text-justify"
-          warningText="Warning:"
+        <div
+          className="flex flex-col justify-center items-center gap-3 bg-brand-navydarker border border-dashed border-brand-royalBlue mx-6 my-8 p-4 text-xs rounded-lg transition-all duration-200 hover:bg-brand-navydark cursor-pointer"
+          onClick={() => phrase !== '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****' && handleCopySeed()}
         >
-          Keep your seed phrase secret! Anyone with your seed phrase can access
-          any account connected to this wallet and steal your assets.
-        </WarningCard>
-        <Button type="submit">Close</Button>
+          <div className="flex justify-between items-center w-full">
+            <p>Seed Phrase: (click to copy)</p>
+
+            <IconButton
+              onClick={handleCopySeed}
+            >
+              <Icon name="copy" className="text-brand-white" />
+            </IconButton>
+          </div>
+
+          <p className="text-xs mt-3">{phrase}</p>
+        </div>
+
+        <p className="bg-brand-navydark border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
+          <b>WARNING:</b> Keep your seed phrase secret! Anyone with your seed phrase can access any account connected to this wallet and steal your assets
+        </p>
+
+        <div className="absolute bottom-12">
+          <SecondaryButton
+            type="button"
+            onClick={() => history.push('/home')}
+          >
+            {copied ? 'Copied' : 'Close'}
+          </SecondaryButton>
+        </div>
       </div>
-    </>
+    </AuthViewLayout>
   );
 };
 

@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import { useHistory } from 'react-router-dom';
-import { Button } from 'components/index';;
+import { PrimaryButton } from 'components/index';;
 import { useController } from 'hooks/index';
 import { Layout } from 'containers/common/Layout';
 
@@ -38,13 +38,14 @@ export const CreatePhrase: FC = () => {
           </ul>
         )}
 
-        <Button
-          type="button"
-          classNameBorder="absolute bottom-12"
-          onClick={nextHandler}
-        >
-          I've written it down
-        </Button>
+        <div className="absolute bottom-12">
+          <PrimaryButton
+            type="button"
+            onClick={nextHandler}
+          >
+            I've written it down
+          </PrimaryButton>
+        </div>
       </div>
     </Layout>
   );

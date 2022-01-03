@@ -1,9 +1,9 @@
 /* eslint-disable prettier/prettier */
 import 'emoji-log';
 import { STORE_PORT } from 'constants/index';
-import { wrapStore } from 'webext-redux';
-import Bowser from 'bowser';
 
+import { wrapStore } from 'webext-redux';
+import Bowser from "bowser";
 import { browser } from 'webextension-polyfill-ts';
 import store from 'state/store';
 import {
@@ -13,15 +13,8 @@ import {
   updateConnectionsArray,
   removeConnection,
   updateCanConfirmTransaction,
-  createAsset,
-  issueAsset,
-  issueNFT,
-  setUpdateAsset,
-  setTransferOwnership,
   clearAllTransactions,
-  signTransactionState,
-  signPSBTState,
-  setIssueNFT,
+  setTemporaryTransactionState,
 } from 'state/wallet';
 import { IAccountState } from 'state/wallet/types';
 
@@ -45,15 +38,7 @@ let timeout: any;
 
 const restartLockTimeout = () => {
   const {
-    confirmingTransaction,
-    creatingAsset,
-    issuingNFT,
-    issuingAsset,
-    updatingAsset,
-    transferringOwnership,
-    signingTransaction,
-    signingPSBT,
-    mintNFT,
+    temporaryTransactionState,
     timer
   } = store.getState().wallet;
 
@@ -64,15 +49,7 @@ const restartLockTimeout = () => {
   timeout = setTimeout(() => {
     if (
       !checkIsLocked()
-      && !confirmingTransaction
-      && !creatingAsset
-      && !issuingNFT
-      && !issuingAsset
-      && !updatingAsset
-      && !transferringOwnership
-      && !signingTransaction
-      && !signingPSBT
-      && !mintNFT
+      && temporaryTransactionState.executing
     ) {
       window.controller.wallet.logOut();
 
@@ -102,12 +79,16 @@ const checkIsLocked = () => {
 };
 
 const checkToCallPrivateMethods = () => {
-  if (checkIsLocked()) {
-    throw new Error('Please, check if your wallet is unlocked and try again.');
+  if (checkIsLocked() || getConnectedAccountIndex({ match: new URL(store.getState().wallet.tabs.currentURL).host }) === -1) {
+    return {
+      error: true,
+      message: 'Please, check if your wallet is unlocked and connected and try again.'
+    }
   }
 
-  if (getConnectedAccountIndex({ match: new URL(store.getState().wallet.tabs.currentURL).host }) === -1) {
-    throw new Error('Connect an account and try again.');
+  return {
+    error: false,
+    message: null
   }
 };
 
@@ -209,7 +190,7 @@ const createPopup = async (url: string) => {
   const sysPopup = await browser.windows.create({
     url,
     type: "popup",
-    height: 640,
+    height: 600,
     width: 372,
     left: 900,
     top: 90,
@@ -352,7 +333,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
       store.dispatch(clearAllTransactions());
 
-      window.controller.wallet.account.clearTransactionItem(item);
+      window.controller.wallet.account.clearTemporaryTransaction(item);
 
       return;
     }
@@ -370,12 +351,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         activeAccountId,
         activeNetwork,
         confirmingTransaction,
-        creatingAsset,
-        issuingAsset,
-        issuingNFT,
         mintNFT,
-        updatingAsset,
-        transferringOwnership,
         changingNetwork,
         signingTransaction,
         signingPSBT,
@@ -406,12 +382,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
           activeAccountId,
           activeNetwork,
           confirmingTransaction,
-          creatingAsset,
-          issuingAsset,
-          issuingNFT,
           mintNFT,
-          updatingAsset,
-          transferringOwnership,
           changingNetwork,
           signingTransaction,
           signingPSBT,
@@ -504,48 +475,6 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
     }
 
-    if (type == 'DATA_FROM_WALLET_TO_CREATE_TOKEN' && target == 'background') {
-      window.controller.wallet.account.createSPT({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToCreateSPT,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToCreateSPT
-      });
-    }
-
-    if (type == 'DATA_FROM_WALLET_TO_MINT_TOKEN' && target == 'background') {
-      window.controller.wallet.account.issueSPT({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToMintSPT,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToMintSPT
-      });
-    }
-
-    if (type == 'DATA_FROM_WALLET_TO_MINT_NFT' && target == 'background') {
-      window.controller.wallet.account.issueNFT({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToMintNFT,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToMintNFT
-      });
-    }
-
-    if (type == 'DATA_FROM_WALLET_TO_UPDATE_TOKEN' && target == 'background') {
-      window.controller.wallet.account.setUpdateAsset({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToUpdateAsset,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToUpdateAsset
-      });
-    }
-
-    if (type == 'DATA_FROM_WALLET_TO_TRANSFER_OWNERSHIP' && target == 'background') {
-      window.controller.wallet.account.setNewOwnership({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToTransferOwnership,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToTransferOwnership
-      });
-    }
-
-    if (type == 'DATA_FROM_WALLET_TO_ISSUE_NFT' && target == 'background') {
-      window.controller.wallet.account.setNewIssueNFT({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToIssueNFT,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToIssueNFT
-      });
-    }
-
     if (type == 'GET_USER_MINTED_TOKENS' && target == 'background') {
       checkToCallPrivateMethods();
 
@@ -589,9 +518,15 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
     const { messageData } = request;
 
-    window.controller.wallet.account.setCurrentPSBT(messageData);
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: messageData,
+      type: 'signAndSendPSBT'
+    })
 
-    store.dispatch(signTransactionState(true));
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'signAndSendPSBT'
+    }))
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -609,9 +544,15 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
     const { messageData } = request;
 
-    window.controller.wallet.account.setCurrentPsbtToSign(messageData);
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: messageData,
+      type: 'signPSBT'
+    })
 
-    store.dispatch(signPSBTState(true));
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'signPSBT'
+    }))
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -637,14 +578,17 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       rbf
     } = request.messageData;
 
-    window.controller.wallet.account.updateTempTx({
-      fromAddress: fromConnectedAccount,
-      toAddress,
-      amount,
-      fee,
-      token,
-      isToken,
-      rbf
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        fromAddress: fromConnectedAccount,
+        toAddress,
+        amount,
+        fee,
+        token,
+        isToken,
+        rbf
+      },
+      type: 'sendAsset'
     });
 
     store.dispatch(updateCanConfirmTransaction(true));
@@ -663,16 +607,9 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
   if (type == 'DATA_FROM_PAGE_TO_CREATE_TOKEN' && target == 'background') {
     const {
       precision,
-      symbol,
       maxsupply,
-      description,
       receiver,
       initialSupply,
-      capabilityflags,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress
     } = request.messageData;
 
     if (precision < 0 || precision > 8) {
@@ -691,31 +628,24 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       throw new Error('invalid receiver address');
     }
 
-    window.controller.wallet.account.setDataFromPageToCreateNewSPT({
-      precision,
-      symbol,
-      maxsupply,
-      description,
-      receiver,
-      initialSupply,
-      capabilityflags,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress
+    const fee = await window.controller.wallet.account.getRecommendFee();
+
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        ...request.messageData,
+        fee
+      },
+      type: 'newAsset'
     });
 
-    store.dispatch(createAsset(true));
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'newAsset'
+    }));
 
     const appURL = browser.runtime.getURL('app.html');
 
     await createPopup(appURL);
-
-    browser.tabs.sendMessage(Number(sender.tab?.id), {
-      type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
-      target: 'contentScript',
-      complete: true
-    });
   }
 
   if (type == 'ISSUE_SPT' && target == 'background') {
@@ -732,12 +662,20 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       throw new Error('invalid amount value');
     }
 
-    window.controller.wallet.account.setDataFromPageToMintSPT({
-      assetGuid,
-      amount: Number(amount)
+    const fee = await window.controller.wallet.account.getRecommendFee();
+
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        ...request.messageData,
+        fee
+      },
+      type: 'mintAsset'
     });
 
-    store.dispatch(issueAsset(true));
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'mintAsset'
+    }));
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -755,14 +693,8 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     checkToCallPrivateMethods();
 
     const {
-      symbol,
       issuer,
       precision,
-      description,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress,
     } = request.messageData;
 
     if (precision < 0 || precision > 8) {
@@ -773,18 +705,20 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       throw new Error('invalid receiver address');
     }
 
-    window.controller.wallet.account.setDataFromPageToMintNFT({
-      symbol,
-      issuer,
-      precision,
-      description,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress,
-    });
+    const fee = await window.controller.wallet.account.getRecommendFee();
 
-    store.dispatch(issueNFT(true));
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        ...request.messageData,
+        fee,
+      },
+      type: 'newNFT'
+    })
+
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'newNFT'
+    }))
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -800,29 +734,20 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
   if (type == 'UPDATE_ASSET' && target == 'background') {
     checkToCallPrivateMethods();
 
-    const {
-      assetGuid,
-      contract,
-      capabilityflags,
-      description,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress
-    } = request.messageData;
+    const fee = await window.controller.wallet.account.getRecommendFee();
 
-    window.controller.wallet.account.setDataFromPageToUpdateAsset({
-      assetGuid,
-      contract,
-      capabilityflags,
-      description,
-      notarydetails,
-      auxfeedetails,
-      notaryAddress,
-      payoutAddress
-    });
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        ...request.messageData,
+        fee,
+      },
+      type: 'updateAsset'
+    })
 
-    store.dispatch(setUpdateAsset(true));
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'updateAsset'
+    }))
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -839,7 +764,6 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     checkToCallPrivateMethods();
 
     const {
-      assetGuid,
       newOwner
     } = request.messageData;
 
@@ -847,12 +771,20 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       throw new Error('invalid new owner address');
     }
 
-    window.controller.wallet.account.setDataFromPageToTransferOwnership({
-      assetGuid,
-      newOwner
-    });
+    const fee = await window.controller.wallet.account.getRecommendFee();
 
-    store.dispatch(setTransferOwnership(true));
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        ...request.messageData,
+        fee,
+      },
+      type: 'transferAsset'
+    })
+
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'transferAsset'
+    }))
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -868,17 +800,20 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
   if (type == 'ISSUE_NFT' && target == 'background') {
     checkToCallPrivateMethods();
 
-    const {
-      assetGuid,
-      amount
-    } = request.messageData;
+    const fee = await window.controller.wallet.account.getRecommendFee();
 
-    window.controller.wallet.account.setDataFromPageToIssueNFT({
-      assetGuid,
-      amount
-    });
+    window.controller.wallet.account.updateTemporaryTransaction({
+      tx: {
+        ...request.messageData,
+        fee,
+      },
+      type: 'mintNFT'
+    })
 
-    store.dispatch(setIssueNFT(true));
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'mintNFT'
+    }))
 
     const appURL = browser.runtime.getURL('app.html');
 

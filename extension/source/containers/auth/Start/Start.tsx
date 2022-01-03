@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Link } from 'components/index';
+import { PrimaryButton, Link } from 'components/index';
 import { useController } from 'hooks/index';
 import LogoImage from 'assets/images/logo-s.svg';
 import { Form, Input } from 'antd';
@@ -7,8 +7,8 @@ import { Form, Input } from 'antd';
 export const Start = () => {
   const controller = useController();
 
-  const onSubmit = (data: any) => {
-    controller.wallet.unLock(data.password);
+  const onSubmit = async (data: any) => {
+    await controller.wallet.unLock(data.password);
   };
 
   return (
@@ -41,8 +41,8 @@ export const Start = () => {
               message: '',
             },
             ({}) => ({
-              validator(_, value) {
-                if (controller.wallet.unLock(value)) {
+              async validator(_, value) {
+                if (await controller.wallet.unLock(value)) {
                   return Promise.resolve();
                 }
 
@@ -53,8 +53,12 @@ export const Start = () => {
         >
           <Input.Password placeholder="Enter your password" />
         </Form.Item>
-
-        <Button type="submit">Unlock</Button>
+        
+        <PrimaryButton 
+          type="submit"
+        >
+          Unlock
+        </PrimaryButton>
       </Form>
 
       <Link

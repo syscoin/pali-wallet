@@ -2,7 +2,7 @@ import React from 'react';
 import { useHistory } from 'react-router-dom';
 import { useController } from 'hooks/index';
 import { Form, Input } from 'antd';
-import { Button } from 'components/index';
+import { PrimaryButton } from 'components/index';
 import { Layout } from 'containers/common/Layout';
 
 export const CreatePass = () => {
@@ -28,7 +28,7 @@ export const CreatePass = () => {
         initialValues={{ remember: true }}
         onFinish={onSubmit}
         autoComplete="off"
-        className="flex justify-center items-center flex-col gap-4 mt-8 text-center"
+        className="flex justify-center items-center flex-col gap-1 mt-8 text-center"
       >
         <Form.Item
           name="password"
@@ -44,10 +44,14 @@ export const CreatePass = () => {
             },
           ]}
         >
-          <Input.Password placeholder="New password (min 8 chars)" />
+          <Input.Password
+            className="placeholder-royalBlue"
+            placeholder="New password (min 8 chars)"
+          />
         </Form.Item>
 
         <Form.Item
+          className="pt-4"
           name="repassword"
           dependencies={['password']}
           hasFeedback
@@ -70,22 +74,25 @@ export const CreatePass = () => {
           <Input.Password placeholder="Confirm password" />
         </Form.Item>
 
-        <span className="font-light text-brand-graylight text-xs">
+        <span className="text-brand-graylight text-xs mt-3">
           At least 8 characters, 1 lower-case and 1 numeral.
         </span>
 
-        <span className="text-center font-light text-brand-royalBlue text-xs mx-8 pt-2">
+        <span className="text-center text-brand-royalBlue text-xs mx-8 pt-4">
           Do not forget to save your password. You will need this password to
           unlock your wallet.
         </span>
 
-        <Button
-          type="submit"
-          classNameBorder="absolute bottom-12"
-          id="next-btn"
-        >
-          Next
-        </Button>
+        <div className="absolute bottom-12">
+          <PrimaryButton
+            type="submit"
+            id="next-btn"
+          >
+            Next
+          </PrimaryButton>
+        </div>
+
+
       </Form>
     </Layout>
   );

@@ -1,58 +1,43 @@
 import React from 'react';
-import { Icon } from 'components/index';
-import {
-  // useController,
-  useUtils,
-} from 'hooks/index';
+import { SecondaryButton, PrimaryButton } from 'components/index';
 import { AuthViewLayout } from 'containers/common/Layout';
 import { Form, Input } from 'antd';
-import { useController } from 'hooks/index';
-import { WarningCard } from 'components/Cards';
+import { useController, useAccount, useUtils } from 'hooks/index';
 
 const DeleteWalletView = () => {
-  // const controller = useController();
-  const {
-    //alert,
-    history,
-  } = useUtils();
+  const { history } = useUtils();
+  const { activeAccount } = useAccount();
 
-  const onSubmit = () => {
-    console.log('d');
-  };
   const controller = useController();
-  // const onSubmit = (data: any) => {
-  //   if (controller.wallet.checkPassword(data.password)) {
-  //     controller.wallet.deleteWallet(data.password);
-  //     history.push('/app.html');
 
-  //     return;
-  //   }
+  const onSubmit = (data: any) => {
+    if (controller.wallet.checkPassword(data.password)) {
+      controller.wallet.deleteWallet(data.password);
 
-  //   alert.removeAll();
-  //   alert.error('Error: Invalid password');
-  // };
+      history.push('/app.html');
+
+      return;
+    }
+  };
+
+  const [form] = Form.useForm();
 
   return (
-    <>
-      <AuthViewLayout title="DELETE WALLET"> </AuthViewLayout>
-      <div>
+    <AuthViewLayout title="DELETE WALLET">
+      <p className="text-white text-sm py-3 px-10 mt-8">
+        Please input your wallet password
+      </p>
+
+      <div className="flex justify-center items-center flex-col">
         <Form
-          className="flex justify-center items-center flex-col gap-4 text-center"
-          name="basic"
+          form={form}
+          onFinish={onSubmit}
+          className="flex justify-center items-center flex-col gap-8 text-center pt-4 mb-12"
+          name="delete"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
-          initialValues={{ remember: true }}
-          onFinish={onSubmit}
           autoComplete="off"
         >
-          <WarningCard
-            warningText="WARNING:"
-            className="w-full rounded text-brand-white border-dashed border border-light-blue-500 text-justify"
-          >
-            {' '}
-            Keep your seed phrase secret! Anyone with your seed phrase can
-            access any account connected to this wallet and steal your assets
-          </WarningCard>
           <Form.Item
             name="password"
             hasFeedback
@@ -61,10 +46,11 @@ const DeleteWalletView = () => {
                 required: true,
                 message: '',
               },
-              ({}) => ({
+              ({ }) => ({
                 validator(_, value) {
-                  console.log('value pass', controller.wallet.unLock(value));
-                  if (controller.wallet.unLock(value)) {
+                  const seed = controller.wallet.getPhrase(value);
+
+                  if (seed) {
                     return Promise.resolve();
                   }
 
@@ -73,53 +59,65 @@ const DeleteWalletView = () => {
               }),
             ]}
           >
-            <Input
-              size={'large'}
+            <Input.Password
+              className="phrase-input rounded-full py-2 px-4 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
               placeholder="Enter your password"
-              className="w-80"
             />
           </Form.Item>
-          <div className="text-sm pt-1 text-brand-white text-justify">
-            <p className="px-7">
-              You still have funds at wallet. Remove funds or to delete fill
-              seed phrase below.
+
+          {activeAccount && activeAccount.balance > 0 ? (
+            <p className="leading-4 bg-brand-navydark border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
+              <b>WARNING:</b> You still have funds in your wallet. Paste your seed phrase below to delete wallet.
             </p>
-          </div>
-          <Form.Item rules={[{ required: true }]}>
-            <Input.TextArea
-              className="bg-brand-textareabg rounded w-80 text-base"
-              rows={3}
-            />
-          </Form.Item>
-          <div className="inline-flex">
-            <button
-              className="mr-14 inline-flex tracking-normal text-base leading-4 py-2.5 px-8 cursor-pointer font-light border border-brand-white transition-all duration-300 bg-gradient-to-r from-blue-500 via-pink-500 to-green-500 tracking-normal text-base rounded-full hover:from-pink-500 hover:via-green-500 hover:to-yellow-500"
+          ) : (
+            <p className="leading-4 bg-brand-navydark border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
+              <b>WARNING:</b> This will delete the wallet created with your current seed phrase. If in the future you want to use Pali again, you will need to create a new wallet.
+            </p>
+          )}
+
+          {activeAccount && activeAccount.balance > 0 && (
+            <>
+              <div
+                className="flex flex-col justify-center items-center gap-3 bg-brand-navydarker border border-dashed border-brand-royalBlue mx-6 my-8 p-2 text-xs w-72 rounded-lg"
+              >
+                <Form.Item
+                  name="seed"
+                  dependencies={['password']}
+                  rules={[
+                    {
+                      required: true,
+                      message: '',
+                    },
+                    ({ getFieldValue }) => ({
+                      validator(_, value) {
+                        const seed = controller.wallet.getPhrase(getFieldValue('password'));
+
+                        if (seed === value) {
+                          return Promise.resolve();
+                        }
+
+                        return Promise.reject('');
+                      },
+                    }),
+                  ]}
+                >
+                  <Input
+                    className="bg-brand-navydarker border border-brand-navydarker text-sm w-60 outline-none py-2"
+                    placeholder="Your seed phrase"
+                  />
+                </Form.Item>
+              </div>
+            </>
+          )}
+
+          <div className="absolute bottom-12 flex justify-between gap-x-4">
+            <SecondaryButton
               type="button"
-              onClick={() => history.goBack()}
+              onClick={() => history.push('/home')}
             >
-              <Icon
-                name="close"
-                className="inline-flex self-center text-base"
-                // maxWidth={'1'}
-              />
               Cancel
-            </button>
-            <button
-              className="inline-flex tracking-normal text-base leading-4 py-2.5 px-8 cursor-pointer font-light border border-brand-white transition-all duration-300 bg-gradient-to-r from-blue-500 via-pink-500 to-green-500 tracking-normal text-base rounded-full hover:from-pink-500 hover:via-green-500 hover:to-yellow-500"
+            </SecondaryButton>
+
+            <PrimaryButton
               type="submit"
             >
-              <Icon
-                name="delete"
-                className="inline-flex self-center text-base"
-                // maxWidth={'1'}
-              />
-              Delete
-            </button>
-          </div>
-        </Form>
-      </div>
-    </>
-  );
-};
-
-export default DeleteWalletView;

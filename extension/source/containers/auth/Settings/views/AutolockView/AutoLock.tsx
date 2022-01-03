@@ -1,93 +1,82 @@
 import React, { useState } from 'react';
-import { Button } from 'components/index';;
-// import { useController, useUtils, useStore } from 'hooks/index';
-// import IWalletState from 'state/wallet/types';
-// import { useSelector } from 'react-redux';
-// import { RootState } from 'state/store';
+import { PrimaryButton, Modal } from 'components/index';;
+import { useController, useStore } from 'hooks/index';
 
 import { Form, Input } from 'antd';
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
+
 const AutolockView = () => {
-    const [autolock, setAutolock] = useState<boolean>(false);
-  // const [confirmed, setConfirmed] = useState<boolean>(false);
-  // const controller = useController();
-  // const { timer } = useStore();
-  // const { alert, history } = useUtils();
+  const [confirmed, setConfirmed] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
 
-  // const [loading, setLoading] = useState<boolean>(false);
-  // const [minutes, setMinutes] = useState<string>(String(timer));
+  const controller = useController();
 
-  // const onSubmit = async (data: any) => {
-  //   setLoading(true);
-  //   controller.wallet.account.setAutolockTimer(data.minutes);
-  //   setConfirmed(true);
-  // };
+  const { timer } = useStore();
 
-  // const handleMinutesChange = useCallback(
-  //   (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-  //     setMinutes(event.target.value.replace(/[^0-9]/g, '').replace(/(\..*?)\*/g, '$1'));
+  const onSubmit = (data: any) => {
+    console.log(confirmed)
+    setLoading(true);
 
-  //     if (Number(event.target.value) > 30 ) {
-  //       alert.removeAll();
-  //       alert.error('Maximum 30 minutes of no activity.', { timeout: 2000 })
-  //     }
-  //   },
-  //   []
-  // );
-  const handleConfirm = () => {
-    if (!autolock) {
-        setAutolock(true);
-      return;
-    }
+    controller.wallet.account.setAutolockTimer(data.minutes);
+
+    setConfirmed(true);
+    setLoading(false);
+
+    console.log(confirmed)
   };
+
   return (
-    <div >
-        <AuthViewLayout title="AUTO LOCK TIMER">You can set auto lock timer. Default is 5 minutes after no activity</AuthViewLayout>
-        <Form
-          className="flex justify-center items-center flex-col gap-8 text-center pt-4"
-          name="basic"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 16 }}
-          initialValues={{ remember: true }}
-          autoComplete="off"
+    <AuthViewLayout title="AUTO LOCK TIMER">
+      <p className="text-white text-sm py-6 px-10">You can set auto lock timer. Default is 5 minutes after no activity. Maximum is 30 minutes.</p>
+
+      {confirmed && (
+        <Modal
+          type="default"
+          open={confirmed}
+          onClose={() => setConfirmed(false)}
+          title="Time set successfully"
+          description={`Your auto lock was configured successfully. You can change it at any time.`}
+        />
+      )}
+
+      <Form
+        className="flex justify-center items-center flex-col gap-8 text-center pt-4"
+        name="autolock"
+        onFinish={onSubmit}
+        labelCol={{ span: 8 }}
+        wrapperCol={{ span: 16 }}
+        initialValues={{ minutes: timer }}
+        autoComplete="off"
+      >
+        <Form.Item
+          name="minutes"
+          hasFeedback
+          rules={[
+            {
+              required: true,
+              message: '',
+              min: 1,
+              max: 30,
+            },
+          ]}
         >
-            <Form.Item
-                name="password"
-            >
-                <Input />
-            </Form.Item>
-        </Form>
-        <div className="flex justify-center items-center pt-60">
-          <Button
+          <Input
+            type="number"
+            placeholder="Minutes"
+            className="ant-input ant-input rounded-full py-3 px-4 w-72 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
+          />
+        </Form.Item>
+
+        <div className="absolute bottom-12">
+          <PrimaryButton
             type="submit"
-            onClick={handleConfirm}
+            loading={loading}
           >
-              Save
-          </Button>
+            Save
+          </PrimaryButton>
         </div>
-        {autolock && (
-          <div className="transition-all duration-300 ease-in-out">
-            <div className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-darktransparent" />
-
-            <div className="transition-all duration-300 ease-in-out fixed z-10 flex flex-col bg-brand-royalBlue top-1/3 left-8 right-8 p-6 rounded-3xl">
-              <h2 className="pb-4 text-brand-white border-b border-dashed border-brand-graylight w-full text-center mb-4">
-                AUTO LOCK TIMER
-              </h2>
-
-              <span className="font-light text-brand-graylight text-base">
-                After 20 minutes of no activity, your wallet will be locked
-              </span>
-
-              <Button
-                type="submit"
-                onClick={handleConfirm}
-              >
-                Ok!
-              </Button>
-            </div>
-          </div>
-        )}
-  </div>
+      </Form>
+    </AuthViewLayout>
   );
 };
 

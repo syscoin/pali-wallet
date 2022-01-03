@@ -2,24 +2,19 @@ import { useAccount } from 'hooks/useAccount';
 import React, { FC } from 'react';
 import { PanelList } from './components/PanelList';
 
-interface IAssetsPanel {
-  show: boolean;
-  className: any
-}
-
-export const AssetsPanel: FC<IAssetsPanel> = ({ show, className }) => {
-  const assets = useAccount().activeAccount!.assets || [];
+export const AssetsPanel: FC = () => {
+  const { activeAccount } = useAccount(); 
 
   return (
-    <ul className={className}>
-      {show ? (
+    <ul className="h-full w-full p-4 text-white text-base bg-brand-navyborder">
+      {activeAccount?.assets && activeAccount?.assets.length > 0 ? (
         <PanelList
-          data={assets}
+          data={activeAccount?.assets}
           activity={false}
           assets={true}
         />
       ) : (
-        <p className="flex justify-center items-center text-sm text-brand-gray">
+        <p className="flex justify-center items-center text-sm text-brand-white">
           You have no tokens or NFTs.
         </p>
       )}

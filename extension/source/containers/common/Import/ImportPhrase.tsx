@@ -1,7 +1,7 @@
 import React, { FC, useState } from 'react';
 import { Layout } from 'containers/common/Layout';
 import { useController } from 'hooks/index';
-import { Button } from 'components/index';
+import { PrimaryButton } from 'components/index';
 import { Form, Input } from 'antd';
 
 interface IImportPhrase {
@@ -46,7 +46,11 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
                   return Promise.resolve();
                 }
 
-                return Promise.reject('Seed phrase is not valid');
+                return Promise.reject(
+                  <p className="text-red fixed h-12">
+                    Seed phrase is not valid
+                  </p>
+                );
               },
             }),
           ]}
@@ -57,19 +61,19 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           />
         </Form.Item>
 
-        <span className="font-light text-brand-royalBlue text-xs mx-12 mt-12 pb-12 text-center">
-          Importing your wallet seed automatically import a wallet associated
-          with this seed phrase.
+        <span className="font-light text-brand-royalBlue text-xs mx-6 mt-12 pb-12 text-center">
+          Importing your wallet seed automatically import a wallet associated with this seed phrase.
         </span>
 
-        <Button
-          classNameBorder="absolute bottom-12"
-          type="submit"
-          disabled={!seedIsValid}
-          id="import-btn"
-        >
-          Import
-        </Button>
+        <div className="absolute bottom-12">
+          <PrimaryButton
+            type="submit"
+            disabled={!seedIsValid}
+            id="import-btn"
+          >
+            Import
+          </PrimaryButton>
+        </div>
       </Form>
     </Layout>
   );
