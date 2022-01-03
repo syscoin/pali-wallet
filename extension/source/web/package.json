@@ -81,6 +81,7 @@
     "@types/query-string": "^6.3.0",
     "@types/react": "^16.9.35",
     "@types/react-dom": "^16.9.8",
+    "@types/webextension-polyfill": "^0.8.2",
     "@types/webpack": "^4.41.17",
     "@typescript-eslint/eslint-plugin": "^2.34.0",
     "@typescript-eslint/parser": "^2.34.0",
@@ -135,7 +136,7 @@
     "verbose": true,
     "testMatch": [
       "**/__tests__/**/*.[jt]s?(x)",
-      "**/?(*.)+(spec|test).[tj]s?(x)"
+      "**/?(*.)+(test).[tj]s?(x)"
     ],
     "testPathIgnorePatterns": [
       "/node_modules/",
