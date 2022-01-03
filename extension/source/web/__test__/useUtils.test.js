@@ -13,7 +13,7 @@ describe('useUtils test', () => {
   it('should test useCopyClipboard method', async () => {
     const { result } = renderHook(() => useCopyClipboard());
     let [isCopied, copyText] = result.current;
-    const text = 'arroz';
+    const text = 'test';
     await act(() => copyText(text));
     [isCopied, copyText] = result.current;
 
