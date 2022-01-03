@@ -91,6 +91,21 @@ class Driver {
     return this.driver.actions();
   }
 
+  async close(){
+    return await this.driver.close();
+  }
+
+  async getTitle(){
+    return await this.driver.getTitle();
+  }
+
+  async executeScript(){
+    return await this.driver.executeScript();
+  }
+  async getWindowHandle(){
+    return await this.driver.getWindowHandle();
+  }
+
   async waitForSelector(
     rawLocator,
     { timeout = this.timeout, state = 'visible' } = {},

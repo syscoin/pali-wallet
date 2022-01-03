@@ -5,12 +5,12 @@ import { useFormat, useAccount } from 'hooks/index';
 import { toSvg } from 'jdenticon';
 
 interface IAccountHeader {
-  encriptedMnemonic: string;
-  importSeed: boolean;
   accountSettingsShowed: boolean;
+  encriptedMnemonic: string;
   handleCloseSettings: any;
-  showSettings: any;
+  importSeed: boolean;
   isUnlocked: boolean;
+  showSettings: any;
 }
 
 export const AccountHeader: FC<IAccountHeader> = ({
@@ -40,7 +40,7 @@ export const AccountHeader: FC<IAccountHeader> = ({
           <div className="add-identicon mr-2 ml-1 my-2"></div>
 
           <div className="text-brand-white px-1 justify-center items-center">
-            <p className="text-base mb-1">{activeAccount!.label}</p>
+            <p className="text-base mb-1" id='active-account'>{activeAccount!.label}</p>
             <p className="text-xs">{ellipsis(activeAccount!.address.main, 6, 14)}</p>
           </div>
 

@@ -21,24 +21,4 @@ describe('useUtils test', () => {
     expect(isCopied).toBe(true);
 
   }); 
-
-  // it('should test sendMessage method', async () => {
-  //   let assetGuid
-  //   let amount
-  //   const value = await sendMessage(
-  //     {
-  //       type: 'test',
-  //       target: 'connectionsController',
-  //       freeze: true,
-  //       eventResult: 'complete',
-  //     },
-  //     {
-  //       type: 'test',
-  //       target: 'contentScript',
-  //       assetGuid,
-  //       amount
-  //     }
-  //   );
-  //   console.log(value)
-  // })
 });
