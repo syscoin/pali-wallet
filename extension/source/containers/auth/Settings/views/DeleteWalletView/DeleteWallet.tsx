@@ -60,7 +60,7 @@ const DeleteWalletView = () => {
             ]}
           >
             <Input.Password
-              className="phrase-input rounded-full py-2 px-4 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
+              className="phrase-input rounded-full py-2 px-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
               placeholder="Enter your password"
             />
           </Form.Item>

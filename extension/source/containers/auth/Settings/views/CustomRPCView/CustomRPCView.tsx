@@ -81,7 +81,7 @@ const CustomRPCView = ({
               <Input
                 type="text"
                 placeholder="Network name"
-                className="ant-input ant-input rounded-full py-2 pl-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
+                className="rounded-full py-2 px-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
               />
             </Form.Item>
 
@@ -114,7 +114,7 @@ const CustomRPCView = ({
               <Input
                 type="text"
                 placeholder="Blockbook URL"
-                className="ant-input ant-input rounded-full py-2 pl-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
+                className="rounded-full py-2 px-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
               />
             </Form.Item>
 
