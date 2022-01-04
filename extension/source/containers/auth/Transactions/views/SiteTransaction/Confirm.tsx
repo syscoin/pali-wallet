@@ -175,7 +175,7 @@ const ConfirmDefaultTransaction = ({
                 {!item.advanced && (
                   <li
                     key={item.label}
-                    className="flex justify-between p-2 my-2 border-b border-dashed border-brand-royalBlue items-center w-full text-xs"
+                    className="flex justify-between p-2 my-2 border-b border-dashed border-brand-royalblue items-center w-full text-xs"
                   >
                     <p>{item.label}</p>
                     <p>{typeof item.value === 'string' && item.value.length > 10 ? ellipsis(item.value) : item.value}</p>

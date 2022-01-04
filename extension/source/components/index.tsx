@@ -6,3 +6,4 @@ export * from './Modal';
 export * from './ModalBlock';
 export * from './ToastAlert';
 export * from './Tooltip';
+export * from './Cards';

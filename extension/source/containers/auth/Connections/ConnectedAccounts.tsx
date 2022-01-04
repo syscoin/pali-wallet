@@ -26,12 +26,12 @@ export const ConnectedAccounts = () => {
       <div className="flex flex-col justify-center items-center w-full">
         <h1 className="text-sm mt-4">PALI WALLET</h1>
 
-        <p className="text-brand-royalBlue text-sm">{getHost(`${currentSenderURL}`)}</p>
+        <p className="text-brand-royalblue text-sm">{getHost(`${currentSenderURL}`)}</p>
 
         <ul className="scrollbar-styled w-full flex flex-col gap-4 h-72 mt-4 overflow-auto px-8">
           {accounts.map((account: any) => (
             <li
-              className={`${connectedAccount && account.id === connectedAccount.id ? 'cursor-not-allowed bg-opacity-50 border-brand-royalBlue' : 'cursor-pointer hover:bg-brand-navylight border-brand-royalBlue'} border border-solid  rounded-lg px-2 py-4 text-xs bg-brand-navydark flex justify-between items-center transition-all duration-200`}
+              className={`${connectedAccount && account.id === connectedAccount.id ? 'cursor-not-allowed bg-opacity-50 border-brand-royalblue' : 'cursor-pointer hover:bg-bkg-4 border-brand-royalblue'} border border-solid  rounded-lg px-2 py-4 text-xs bg-bkg-2 flex justify-between items-center transition-all duration-200`}
               key={account.id}
               onClick={() => handleChangeAccount(account.id)}
             >
@@ -41,7 +41,7 @@ export const ConnectedAccounts = () => {
 
               <small>{ellipsis(account.address.main)}</small>
 
-              <div className={`${account.id === accountId ? 'bg-brand-green' : 'bg-brand-gray100'} w-3 h-3 rounded-full border border-brand-royalBlue`}></div>
+              <div className={`${account.id === accountId ? 'bg-warning-success' : 'bg-brand-graylight'} w-3 h-3 rounded-full border border-brand-royalblue`}></div>
             </li>
           ))}
         </ul>

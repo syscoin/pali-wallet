@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { PrimaryButton, Modal } from 'components/index';;
+import { SecondaryButton, Modal } from 'components/index';;
 import { useController, useStore, useUtils, useFormat, useAccount, useBrowser, useTransaction } from 'hooks/index';
 
 export const SendConfirm = () => {
@@ -129,33 +129,33 @@ export const SendConfirm = () => {
           {tempTx && (
             <div className="mt-4 flex justify-center items-center flex-col w-full">
               <p className="flex flex-col justify-center text-center items-center font-rubik">
-                <span className="text-brand-royalBlue font-thin font-poppins">
+                <span className="text-brand-royalblue font-thin font-poppins">
                   Send
                 </span>
 
                 {tempTx.amount} {tempTx.token ? tempTx.token.symbol : 'SYS'}
               </p >
 
-              <div className="w-full flex justify-center divide-y divide-dashed divide-brand-navyborder items-start flex-col gap-3 py-2 px-4 text-sm mt-4 text-left">
-                <p className="text-brand-royalBlue font-thin font-poppins flex flex-col w-full pt-2">
+              <div className="w-full flex justify-center divide-y divide-dashed divide-bkg-3 items-start flex-col gap-3 py-2 px-4 text-sm mt-4 text-left">
+                <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
                   From
 
                   <span className="text-brand-white">{ellipsis(tempTx.fromAddress, 7, 15)}</span>
                 </p>
 
-                <p className="text-brand-royalBlue font-thin font-poppins flex flex-col w-full pt-2">
+                <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
                   To
 
                   <span className="text-brand-white">{ellipsis(tempTx.toAddress, 7, 15)}</span>
                 </p>
 
-                <p className="text-brand-royalBlue font-thin font-poppins flex flex-col w-full pt-2">
+                <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
                   Fee
 
                   <span className="text-brand-white">{tempTx.fee}</span>
                 </p>
 
-                <p className="text-brand-royalBlue font-thin font-poppins flex flex-col w-full pt-2">
+                <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
                   Max total
 
                   <span className="text-brand-white">{Number(tempTx.fee) + Number(tempTx.amount)} SYS</span>
@@ -163,13 +163,13 @@ export const SendConfirm = () => {
               </div>
 
               <div className="absolute bottom-12">
-                <PrimaryButton
+                <SecondaryButton
                   loading={loading}
                   onClick={handleConfirm}
                   type="button"
                 >
                   Confirm
-                </PrimaryButton>
+                </SecondaryButton>
               </div>
             </div>
           )}

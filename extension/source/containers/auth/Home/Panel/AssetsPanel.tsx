@@ -6,7 +6,7 @@ export const AssetsPanel: FC = () => {
   const { activeAccount } = useAccount(); 
 
   return (
-    <ul className="h-full w-full p-4 text-white text-base bg-brand-navyborder">
+    <ul className="h-full w-full p-4 text-white text-base bg-bkg-3">
       {activeAccount?.assets && activeAccount?.assets.length > 0 ? (
         <PanelList
           data={activeAccount?.assets}

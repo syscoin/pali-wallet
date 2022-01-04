@@ -28,7 +28,7 @@ export const CreatePhrase: FC = () => {
                 className="font-poppins font-light text-sm leading-8 tracking-normal text-brand-graylight border-dashed border-b border-brand-graylight text-left w-32"
                 key={index}
               >
-                <span className="w-6 inline-block text-brand-royalBlue">
+                <span className="w-6 inline-block text-brand-royalblue">
                   {String(index + 1).padStart(2, '0')}
                 </span>
 

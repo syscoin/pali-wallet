@@ -13,29 +13,36 @@ interface IAuthViewLayout {
 export const AuthViewLayout: FC<IAuthViewLayout> = ({
   title,
   children,
-  background = 'bg-brand-navydarker',
+  background = 'bkg-2',
   canGoBack = true,
 }) => {
   const { history } = useUtils();
 
   return (
-    <div className={`${background} w-full bg-brand-navydarker h-popup text-brand-white`}>
-      {/* firulinha */}
+    <div className={`bg-${background} w-full h-popup text-brand-white relative`}>
       <Header normalHeader />
 
-      <div className={`w-full flex justify-center items-center text-brand-white  p-6 relative bg-brand-navyborder`}>
-        <p className="text-xl max-w-sm flex-1 text-center">{title}</p>
+      <div className="w-full relative flex justify-center items-center text-brand-white pt-6 bg-bkg-3">
+        <p className="text-xl w-full text-center">{title}</p>
 
         {canGoBack && (
           <IconButton
             onClick={() => history.push('/home')}
           >
-            <Icon name="close" />
+            <Icon wrapperClassname="absolute bottom-1 right-4" name="close" />
           </IconButton>
         )}
       </div>
 
-      <div className={`${background} text-brand-white flex flex-col justify-center items-center w-full`}>
+      <div className="bg-bkg-3 pt-2 pb-3 mb-3 flex justify-center items-center relative">
+        <Icon
+          size={36}
+          name="select-up"
+          className={`text-${background} fixed top-24`}
+        />
+      </div>
+
+      <div className={`bg-${background} text-brand-white flex flex-col justify-center items-center w-full`}>
         {children}
       </div>
     </div>

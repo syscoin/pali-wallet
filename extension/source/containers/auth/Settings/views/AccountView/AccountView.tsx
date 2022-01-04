@@ -35,11 +35,11 @@ const AccountView: FC<IAccountView> = ({ id }) => {
           </section> */}
       <ul>
         <li onClick={() => history.push('/account-priv')}>
-          <Icon name="export" className="w-4 bg-brand-green" />
+          <Icon name="export" className="w-4 bg-warning-success" />
           Export account keys
         </li>
         <li onClick={handleOpenExplorer}>
-          <Icon name="link" className="w-4 bg-brand-green" />
+          <Icon name="link" className="w-4 bg-warning-success" />
           View on explorer
         </li>
       </ul>

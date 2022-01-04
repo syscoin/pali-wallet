@@ -12,9 +12,8 @@ export const Start = () => {
         WELCOME TO
       </p>
 
-      <h1 className=" text-brand-royalBlue font-bold text-center text-4xl m-0 font-poppins leading-4 tracking-wide">
-        Pali Wallet
-      </h1>
+      <h1 className=" text-brand-royalblue font-bold text-center text-4xl m-0 font-poppins leading-4 tracking-wide"
+      >Pali Wallet</h1>
 
       <img src={LogoImage} className="w-52 my-8" alt="syscoin" />
 
@@ -26,10 +25,7 @@ export const Start = () => {
         Get started
       </PrimaryButton>
 
-      <Link
-        className="font-light mt-20 text-base hover:text-brand-graylight text-brand-royalBluemedium transition-all duration-300 font-poppins"
-        to="/import"
-      >
+      <Link className="font-light mt-20 text-base hover:text-brand-graylight text-brand-royalbluemedium transition-all duration-300 font-poppins" to="/import">
         Import using wallet seed phrase
       </Link>
     </div>

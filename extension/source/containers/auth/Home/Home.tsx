@@ -48,13 +48,13 @@ export const Home = () => {
   }, [!controller.wallet.isLocked(), accounts.length > 0]);
 
   return (
-    <div className="scrollbar-styled bg-brand-navyborder overflow-auto">
+    <div className="scrollbar-styled bg-bkg-3 overflow-auto">
       {activeAccount ? (
         <>
           <Header accountHeader />
 
           <section
-            className="flex items-center flex-col gap-1 text-brand-white bg-brand-navydarker py-14"
+            className="flex items-center flex-col gap-1 text-brand-white bg-bkg-1 py-14"
           >
             <div className="text-center flex justify-center flex-col items-center">
               {activeNetwork == 'testnet' ? (
@@ -83,7 +83,7 @@ export const Home = () => {
             <div className="pt-8 w-3/4 flex justify-center items-center gap-x-0.5">
               <Button
                 type="button"
-                className="flex items-center justify-center flex-1 text-base rounded-l-full border border-brand-deepPink bg-brand-deepPink bg-opacity-40 text-brand-white hover:bg-opacity-90 transition-all duration-300"
+                className="flex items-center justify-center flex-1 text-base rounded-l-full border border-button-primary bg-button-primary text-brand-white transition-all duration-300 hover:bg-button-primaryhover"
                 onClick={() => history.push('/send')}
               >
                 <Icon
@@ -97,7 +97,7 @@ export const Home = () => {
 
               <Button
                 type="button"
-                className="flex items-center justify-center flex-1 text-base rounded-r-full border border-brand-royalBlue bg-brand-royalBlue bg-opacity-40 text-brand-white hover:bg-opacity-90 transition-all duration-300"
+                className="flex items-center justify-center flex-1 text-base rounded-r-full border border-button-secondary bg-button-secondary text-brand-white hover:bg-button-secondaryhover transition-all duration-300"
                 onClick={() => history.push('/receive')}
               >
                 <Icon
@@ -113,7 +113,7 @@ export const Home = () => {
           <TxsPanel />
         </>
       ) : (
-        <div className="bg-brand-navy z-20 flex justify-center items-center fixed w-full h-full">
+        <div className="bg-bkg-2 z-20 flex justify-center items-center fixed w-full h-full">
           <Icon name="loading" className="w-4 ml-2 text-brand-white" />
         </div>
       )}

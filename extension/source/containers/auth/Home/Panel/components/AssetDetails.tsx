@@ -97,7 +97,7 @@ export const AssetDetails = ({
         return (
           <div
             key={label}
-            className="my-1 py-2 px-2 w-full border-b border-dashed border-brand-navydark cursor-default flex justify-between items-center transition-all duration-300 bg-brand-navydarker hover:bg-brand-navydarker text-xs"
+            className="my-1 p-2 w-full border-b border-dashed border-bkg-2 cursor-default flex justify-between items-center transition-all duration-300 text-xs"
           >
             <p>{label}</p>
             <b>{value}</b>
@@ -105,7 +105,7 @@ export const AssetDetails = ({
         );
       })}
 
-      <div className="bg-brand-navyborder fixed gap-x-6 p-4 bottom-0 left-0 text-xs flex justify-between items-center">
+      <div className="bg-bkg-3 fixed gap-x-6 p-4 bottom-0 left-0 text-xs flex justify-between items-center">
         <p>
           Would you like to go to view asset on SYS Block Explorer?
         </p>
@@ -113,7 +113,7 @@ export const AssetDetails = ({
         <Button
           type="button"
           onClick={() => window.open('')}
-          className="inline-flex justify-center px-6 py-1 text-sm font-medium text-brand-royalBlue bg-blue-100 border border-transparent rounded-full hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalBlue"
+          className="inline-flex justify-center px-6 py-1 text-sm font-medium hover:text-brand-royalblue text-brand-white bg-transparent border border-brand-white rounded-full hover:bg-button-popuphover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
         >
           Go
         </Button>

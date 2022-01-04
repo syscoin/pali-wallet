@@ -26,7 +26,7 @@ export const Tooltip = ({
       interactive
       content={
         <div
-          className={`p-3 text-xs bg-brand-navydarker border border-brand-navyborder rounded-lg leading-5 shadow-md text-brand-white outline-none focus:outline-none ${className}`}
+          className={`p-3 text-xs bg-bkg-1 border border-bkg-3 rounded-lg leading-5 shadow-md text-brand-white outline-none focus:outline-none ${className}`}
         >
           {content}
         </div>

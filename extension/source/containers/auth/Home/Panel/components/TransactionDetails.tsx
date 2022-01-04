@@ -1,7 +1,6 @@
 import { useFormat, useController, useStore, useUtils } from 'hooks/index';
 import React, { useState, useEffect } from 'react';
-import { Button } from 'components/Button';
-import { Icon } from 'components/Icon';
+import { Icon, IconButton, Button } from 'components/index';
 import { Disclosure } from '@headlessui/react';
 
 export const TransactionDetails = ({
@@ -85,18 +84,25 @@ export const TransactionDetails = ({
     return Object.values(list).map(({ address, value }: any) => {
       return (
         <li
+          onClick={() => copyText(address)}
           key={address}
-          className="flex justify-between mt-2 items-center gap-x-1 cursor-pointer rounded-lg bg-brand-navydarker hover:bg-brand-navydark transition-all duration-200 border border-solid border-brand-navyborder p-2 text-xs"
+          className="flex justify-between mt-2 items-center gap-x-1 cursor-pointer rounded-lg transition-all duration-200 p-1 text-xs"
         >
-          <p
-            onClick={() => copyText(address)}
-          >
+          <p>
             {ellipsis(address) || '...'}
           </p>
 
-          <small>
-            {formatURL(String(Number(value) / 10 ** 8), 18) ? formatURL(String(Number(value) / 10 ** 8), 18) : 0}   {activeNetwork === 'main' ? 'SYS' : 'tSYS'}
-          </small>
+          <div>
+            <small>
+              {formatURL(String(Number(value) / 10 ** 8), 18) ? formatURL(String(Number(value) / 10 ** 8), 18) : 0}   {activeNetwork === 'main' ? 'SYS' : 'tSYS'}
+            </small>
+
+            <IconButton
+              onClick={() => copyText(address)}
+            >
+              <Icon name="copy" className="text-brand-white hover:text-fields-input-borderfocus" />
+            </IconButton>
+          </div>
         </li>
       );
     });
@@ -150,7 +156,7 @@ export const TransactionDetails = ({
       {txData.map(({ label, value }: any) => {
         return (
           <>
-            <div key={label} className="my-1 py-2 px-2 w-full border-b border-dashed border-brand-navydark cursor-default flex justify-between items-center transition-all duration-300 bg-brand-navydarker hover:bg-brand-navydarker text-xs">
+            <div key={label} className="my-1 py-2 px-2 w-full border-b border-dashed border-bkg-2 cursor-default flex justify-between items-center transition-all duration-300 text-xs">
               <p>{label}</p>
               <b>{value}</b>
             </div>
@@ -164,7 +170,7 @@ export const TransactionDetails = ({
           {({ open }) => (
             <>
               <Disclosure.Button
-                className="my-3 p-2 flex justify-between items-center rounded-lg w-full border border-dashed border-brand-navyborder cursor-pointer transition-all duration-300 bg-brand-navydarker text-xs"
+                className={`${open ? 'rounded-t-md' : 'rounded-md'} mt-3 p-2 flex justify-between items-center  w-full border border-bkg-3 bg-bkg-1 cursor-pointer transition-all duration-300 text-xs`}
               >
                 From
 
@@ -173,14 +179,14 @@ export const TransactionDetails = ({
                   className={`${open ?
                     'transform rotate-180' :
                     ''
-                    } mb-1 text-brand-deepPink100`}
+                    } mb-1 text-brand-white`}
                 />
               </Disclosure.Button>
 
 
               <Disclosure.Panel>
                 <div
-                  className="p-2 rounded-lg w-full border border-dashed border-brand-deepPink flex flex-col transition-all duration-300 bg-brand-navydarker text-sm text-brand-white border-t-0 rounded-t-none"
+                  className="px-2 pb-2 rounded-lg w-full border border-bkg-4 bg-bkg-3 flex flex-col transition-all duration-300 text-sm text-brand-white border-t-0 rounded-t-none"
                 >
                   {Object.values(newSenders).length && renderAddresses(newSenders)}
                 </div>
@@ -197,7 +203,7 @@ export const TransactionDetails = ({
           {({ open }) => (
             <>
               <Disclosure.Button
-                className="my-3 p-2 flex justify-between items-center rounded-lg w-full border border-dashed border-brand-navyborder cursor-pointer transition-all duration-300 bg-brand-navydarker text-xs"
+                className={`${open ? 'rounded-t-md' : 'rounded-md'} mt-3 p-2 flex justify-between items-center  w-full border border-bkg-3 bg-bkg-1 cursor-pointer transition-all duration-300 text-xs`}
               >
                 To
 
@@ -206,14 +212,14 @@ export const TransactionDetails = ({
                   className={`${open ?
                     'transform rotate-180' :
                     ''
-                    } mb-1 text-brand-deepPink100`}
+                    } mb-1 text-brand-white`}
                 />
               </Disclosure.Button>
 
 
               <Disclosure.Panel>
                 <div
-                  className="p-2 rounded-lg w-full flex flex-col transition-all duration-300 bg-brand-navydarker border border-dashed border-brand-royalBlue text-sm text-brand-white border-t-0 rounded-t-none"
+                  className="px-2 pb-2 rounded-lg w-full border border-bkg-4 bg-bkg-3 flex flex-col transition-all duration-300 text-sm text-brand-white border-t-0 rounded-t-none"
                 >
                   {Object.values(newRecipients).length && renderAddresses(newRecipients)}
                 </div>
@@ -224,7 +230,7 @@ export const TransactionDetails = ({
         </Disclosure>
       )}
 
-      <div className="bg-brand-navyborder fixed gap-x-6 p-4 bottom-0 left-0 text-xs flex justify-between items-center">
+      <div className="bg-bkg-3 fixed gap-x-6 p-4 bottom-0 left-0 text-xs flex justify-between items-center">
         <p>
           Would you like to go to view transaction on SYS Block Explorer?
         </p>
@@ -232,7 +238,7 @@ export const TransactionDetails = ({
         <Button
           type="button"
           onClick={() => window.open('')}
-          className="inline-flex justify-center px-6 py-1 text-sm font-medium text-brand-royalBlue bg-blue-100 border border-transparent rounded-full hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalBlue"
+          className="inline-flex justify-center px-6 py-1 text-sm font-medium hover:text-brand-royalblue text-brand-white bg-transparent border border-brand-white rounded-full hover:bg-button-popuphover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
         >
           Go
         </Button>

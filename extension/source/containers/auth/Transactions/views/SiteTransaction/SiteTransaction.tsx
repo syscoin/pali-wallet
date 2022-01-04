@@ -62,7 +62,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
       <div className="flex flex-col justify-center items-center">
         <h1 className="text-sm mt-4">FEE</h1>
 
-        <p className="text-brand-royalBlue text-sm">
+        <p className="text-brand-royalblue text-sm">
           {getHost(`${currentSenderURL}`)}
         </p>
 
@@ -79,7 +79,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
           <div className="mx-2 flex gap-x-0.5 justify-center items-center">
             <Form.Item
               name="recommend"
-              className={`${disabledFee ? 'opacity-30 bg-brand-graydark border border-brand-gray100 cursor-not-allowed' : 'bg-brand-navyborder border border-brand-royalBlue'} w-12 py-1.5 rounded-l-full text-center`}
+              className={`${disabledFee && 'opacity-50 cursor-not-allowed'} bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus w-12 py-1.5 rounded-l-full text-center`}
               rules={[
                 {
                   required: false,
@@ -92,7 +92,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
                   <Icon
                     wrapperClassname="w-6 mb-1"
                     name="verified"
-                    className={`${disabledFee && 'cursor-not-allowed'} text-brand-green`}
+                    className={`${disabledFee && 'cursor-not-allowed'} text-warning-success`}
                   />
                 </div>
               </Tooltip>
@@ -111,7 +111,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
               <Tooltip content={disabledFee ? 'Fee network' : ''}>
                 <Input
                   disabled={disabledFee}
-                  className={`${disabledFee ? 'opacity-30 bg-brand-graydark border border-brand-gray100 cursor-not-allowed' : 'border border-brand-royalBlue'} rounded-r-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
+                  className={`${disabledFee && 'opacity-50 cursor-not-allowed'} bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus w-12 py-1.5 rounded-l-full text-center`}
                   type="number"
                   placeholder="Fee network"
                   value={recommend}
@@ -120,7 +120,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
             </Form.Item>
           </div>
 
-          <p className="bg-brand-navydarker border text-left border-dashed border-brand-royalBlue mx-12 p-4 mt-4 text-xs rounded-lg">
+          <p className="bg-bkg-1 border text-left border-dashed border-brand-royalblue mx-12 p-4 mt-4 text-xs rounded-lg">
             With current network conditions, we recommend a fee of {recommend} SYS.
           </p>
 
