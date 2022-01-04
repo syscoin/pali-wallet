@@ -1,14 +1,3 @@
-<<<<<<< HEAD
-import React, { useEffect, useState } from 'react';
-import { Icon } from 'components/index';
-import {
-  useController,
-  useStore,
-  useFiat,
-  useFormat,
-  useUtils,
-  useAccount,
-=======
 import React, { useEffect } from 'react';
 import { Icon, Button } from 'components/index';
 import {
@@ -18,7 +7,6 @@ import {
   useFormat,
   useUtils,
   useAccount
->>>>>>> 2cd840c1aa5a47c7d3c0347cc3a61462e6525ace
 } from 'hooks/index';
 
 import { Header } from 'containers/common/Header';

@@ -15,8 +15,6 @@ const DeleteWalletView = () => {
       controller.wallet.deleteWallet(data.password);
 
       history.push('/app.html');
-
-      return;
     }
   };
 
@@ -46,7 +44,7 @@ const DeleteWalletView = () => {
                 required: true,
                 message: '',
               },
-              ({ }) => ({
+              ({}) => ({
                 validator(_, value) {
                   const seed = controller.wallet.getPhrase(value);
 
@@ -67,19 +65,20 @@ const DeleteWalletView = () => {
 
           {activeAccount && activeAccount.balance > 0 ? (
             <p className="leading-4 bg-bkg-2 border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
-              <b>WARNING:</b> You still have funds in your wallet. Paste your seed phrase below to delete wallet.
+              <b>WARNING:</b> You still have funds in your wallet. Paste your
+              seed phrase below to delete wallet.
             </p>
           ) : (
             <p className="leading-4 bg-bkg-2 border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
-              <b>WARNING:</b> This will delete the wallet created with your current seed phrase. If in the future you want to use Pali again, you will need to create a new wallet.
+              <b>WARNING:</b> This will delete the wallet created with your
+              current seed phrase. If in the future you want to use Pali again,
+              you will need to create a new wallet.
             </p>
           )}
 
           {activeAccount && activeAccount.balance > 0 && (
             <>
-              <div
-                className="flex flex-col justify-center items-center gap-3 bg-bkg-1 border border-dashed border-brand-royalblue mx-6 my-8 p-2 text-xs w-72 rounded-lg"
-              >
+              <div className="flex flex-col justify-center items-center gap-3 bg-bkg-1 border border-dashed border-brand-royalblue mx-6 my-8 p-2 text-xs w-72 rounded-lg">
                 <Form.Item
                   name="seed"
                   dependencies={['password']}
@@ -90,7 +89,9 @@ const DeleteWalletView = () => {
                     },
                     ({ getFieldValue }) => ({
                       validator(_, value) {
-                        const seed = controller.wallet.getPhrase(getFieldValue('password'));
+                        const seed = controller.wallet.getPhrase(
+                          getFieldValue('password')
+                        );
 
                         if (seed === value) {
                           return Promise.resolve();
@@ -118,6 +119,12 @@ const DeleteWalletView = () => {
               Cancel
             </SecondaryButton>
 
-            <PrimaryButton
-              type="submit"
-            >
+            <PrimaryButton type="submit">Delete</PrimaryButton>
+          </div>
+        </Form>
+      </div>
+    </AuthViewLayout>
+  );
+};
+
+export default DeleteWalletView;
