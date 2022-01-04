@@ -17,7 +17,7 @@ const AboutView: FC = () => {
         <p>Version: 1.0.23</p>
 
         <p
-          className="transition-all duration-200 hover:text-brand-royalBlue"
+          className="transition-all duration-200 hover:text-brand-royalblue"
           onClick={() => handleRedirect('https://docs.paliwallet.com/')}>
           Pali API
         </p>
@@ -25,7 +25,7 @@ const AboutView: FC = () => {
 
       <div className="flex flex-col justify-center items-center w-full">
         <div
-          className="bg-brand-navydark border border-dashed border-brand-royalBlue mx-6 my-8 p-4 text-xs rounded-lg cursor-pointer"
+          className="bg-bkg-2 border border-dashed border-brand-royalblue mx-6 my-8 p-4 text-xs rounded-lg cursor-pointer"
           onClick={() => handleRedirect('https://discord.gg/8QKeyurHRd')}
         >
           <div className="flex justify-start text-base font-bold items-center font-poppins mb-4">

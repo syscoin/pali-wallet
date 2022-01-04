@@ -260,7 +260,7 @@ export const ModalBlock: FC<IModalBlock> = ({
                     onClick={() => setNewExpanded(!newExpanded)}
                   >
                     <p>From</p>
-                    <Icon name="arrow-down" className="w-4 bg-brand-gold text-brand-white" />
+                    <Icon name="arrow-down" className="w-4 bg-warning-info text-brand-white" />
                   </span>
 
                   <ul>
@@ -276,7 +276,7 @@ export const ModalBlock: FC<IModalBlock> = ({
                     onClick={() => setExpanded(!expanded)}
                   >
                     <p>To</p>
-                    <Icon name="arrow-dowm"  className="w-4 bg-brand-gold text-brand-white" />
+                    <Icon name="arrow-dowm"  className="w-4 bg-warning-info text-brand-white" />
                   </span>
 
                   <ul>
@@ -298,7 +298,7 @@ export const ModalBlock: FC<IModalBlock> = ({
                     onClick={() => setTokensExpanded(!tokensExpanded)}
                   >
                     <p>Assets</p>
-                    <Icon name="arrow-down" className="w-4 bg-brand-gold text-brand-white" />
+                    <Icon name="arrow-down" className="w-4 bg-warning-info text-brand-white" />
                   </span>
 
                   <ul
@@ -354,7 +354,7 @@ export const ModalBlock: FC<IModalBlock> = ({
           ) : (
             <div
             >
-              <Icon name="loading" className="w-4 bg-brand-gray text-brand-darktransparent" />
+              <Icon name="loading" className="w-4 bg-brand-gray text-brand-black bg-opacity-50" />
             </div>
           )}
         </div>

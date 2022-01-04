@@ -19,7 +19,7 @@
 }
 
 .scrollbar-styled::-webkit-scrollbar-thumb {
-  @apply rounded-full bg-brand-royalBlue transition-all duration-300;
+  @apply rounded-full bg-brand-royalblue transition-all duration-300;
 }
 
 /* unauth/create/pass inputs */
@@ -28,27 +28,27 @@
 }
 
 #basic_password, #basic_repassword {
-  @apply w-72 rounded-full p-2 pl-4 bg-brand-navydarker border border-brand-navymedium text-brand-graylight text-sm outline-none focus:border-brand-navylight;
+  @apply w-72 rounded-full p-2 pl-4 bg-bkg-1 border border-bkg-4 text-brand-graylight text-sm outline-none focus:border-bkg-4;
 }
 
 #phraseview_password {
-  @apply bg-brand-navyborder w-60 outline-none;
+  @apply bg-bkg-3 w-60 outline-none;
 }
 
 #phraseview .ant-form-item-children-icon {
-  @apply absolute right-8 text-brand-navymedium -top-1;
+  @apply absolute right-8 text-bkg-4 -top-1;
 }
 
 #delete_password {
-  @apply bg-brand-navyborder w-60 outline-none;
+  @apply bg-bkg-3 w-60 outline-none;
 }
 
 #delete .ant-form-item-children-icon {
-  @apply absolute right-8 text-brand-navymedium -top-1;
+  @apply absolute right-8 text-bkg-4 -top-1;
 }
 
 .ant-input-suffix {
-  @apply absolute right-2 text-brand-navymedium; 
+  @apply absolute right-2 text-bkg-4; 
 }
 
 .ant-form-item-control-input {
@@ -56,11 +56,11 @@
 }
 
 .ant-form-item-children-icon {
-  @apply absolute right-10 text-brand-navymedium top-0;
+  @apply absolute right-10 text-bkg-4 top-0;
 }
 
 #send .ant-form-item-children-icon {
-  @apply absolute right-2 text-brand-navymedium top-1;
+  @apply absolute right-2 text-bkg-4 top-1;
 }
 
 #rpc .ant-form-item-children-icon {
@@ -68,11 +68,11 @@
 }
 
 #site .ant-form-item-children-icon {
-  @apply absolute right-1 text-brand-navymedium top-1;
+  @apply absolute right-1 text-bkg-4 top-1;
 }
 
 #autolock .ant-form-item-children-icon {
-  @apply absolute right-9 text-brand-navymedium top-1;
+  @apply absolute right-9 text-bkg-4 top-1;
 }
 
 .ant-form-item-explain.ant-form-item-explain-error {
@@ -84,11 +84,11 @@ div[role=alert] {
 }
 
 .anticon.anticon-check-circle {
-  @apply text-brand-green;
+  @apply text-warning-success;
 }
 
 .anticon.anticon-close-circle {
-  @apply text-brand-error;
+  @apply text-warning-error;
 }
 
 .ant-tooltip-hidden {

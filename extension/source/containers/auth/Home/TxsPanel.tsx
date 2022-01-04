@@ -11,9 +11,9 @@ export const TxsPanel: FC = () => {
 
   return (
     <div className="h-60 w-full flex items-center flex-col">
-      <div className="w-full text-base text-brand-white border-b border-brand-navydarker flex justify-center items-center">
+      <div className="w-full text-base text-brand-white border-b border-bkg-1 flex justify-center items-center">
         <Button
-          className={`flex-1 p-2 ${!isActivity ? 'bg-brand-navyborder' : 'bg-brand-navydarker'}`}
+          className={`flex-1 p-2 ${!isActivity ? 'bg-bkg-3' : 'bg-bkg-1'}`}
           type="button"
           onClick={() => setActivity(false)}
         >
@@ -21,7 +21,7 @@ export const TxsPanel: FC = () => {
         </Button>
 
         <Button
-          className={`flex-1 p-2 ${isActivity ? 'bg-brand-navyborder' : 'bg-brand-navydarker'}`}
+          className={`flex-1 p-2 ${isActivity ? 'bg-bkg-3' : 'bg-bkg-1'}`}
           type="button"
           onClick={() => setActivity(true)}
         >

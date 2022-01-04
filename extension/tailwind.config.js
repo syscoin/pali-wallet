@@ -36,7 +36,8 @@ module.exports = {
       height: {
         popup: '600px',
         menu: '27rem',
-        bigmenu: '30rem',
+        bigmenu: '31rem',
+        '85': '23rem',
       },
       letterSpacing: {
         tightest: '-.075em',

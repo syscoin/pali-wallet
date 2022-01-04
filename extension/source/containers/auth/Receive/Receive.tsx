@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useController, useUtils, useAccount, useFormat } from 'hooks/index';
 import QRCode from 'qrcode.react';
-import { PrimaryButton, Icon } from 'components/index';
+import { SecondaryButton, Icon } from 'components/index';
 import { AuthViewLayout } from 'containers/common/Layout';
 
 export const Receive = () => {
@@ -37,7 +37,7 @@ export const Receive = () => {
           <p className="mt-4 text-base">{ellipsis(activeAccount.address.main, 4, 10)}</p>
 
           <div className="absolute bottom-12">
-            <PrimaryButton
+            <SecondaryButton
               type="button"
               onClick={() =>
                 copyText(activeAccount.address.main)
@@ -46,7 +46,7 @@ export const Receive = () => {
               <span className="text-xs">
                 {isCopied ? 'Copied address' : 'Copy'}
               </span>
-            </PrimaryButton>
+            </SecondaryButton>
           </div>
         </div>
       ) : (

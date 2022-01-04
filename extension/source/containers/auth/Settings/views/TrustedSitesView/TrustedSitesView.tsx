@@ -57,7 +57,7 @@ const TrustedSitesView = () => {
             onChange={(event) => handleSearch(event)}
             type="text"
             placeholder="Search"
-            className="ant-input ant-input rounded-full py-2 pl-4 w-72 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
+            className="rounded-full py-2 pl-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
           />
         </Form.Item>
       </Form>
@@ -66,7 +66,7 @@ const TrustedSitesView = () => {
         <ul className="scrollbar-styled h-60 overflow-auto w-full p-2">
           {filteredSearch && filteredSearch.map((url: string) => {
             return (
-              <li className="my-2 p-2 border-b border-dashed border-brand-navyborder w-full text-xs">
+              <li className="my-2 p-2 border-b border-dashed border-bkg-3 w-full text-xs">
                 <p>{formatURL(url, 40)}</p>
               </li>
             )

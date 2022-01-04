@@ -60,17 +60,17 @@ const DeleteWalletView = () => {
             ]}
           >
             <Input.Password
-              className="phrase-input rounded-full py-2 px-4 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
+              className="phrase-input rounded-full py-2 px-4 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
               placeholder="Enter your password"
             />
           </Form.Item>
 
           {activeAccount && activeAccount.balance > 0 ? (
-            <p className="leading-4 bg-brand-navydark border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
+            <p className="leading-4 bg-bkg-2 border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
               <b>WARNING:</b> You still have funds in your wallet. Paste your seed phrase below to delete wallet.
             </p>
           ) : (
-            <p className="leading-4 bg-brand-navydark border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
+            <p className="leading-4 bg-bkg-2 border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
               <b>WARNING:</b> This will delete the wallet created with your current seed phrase. If in the future you want to use Pali again, you will need to create a new wallet.
             </p>
           )}
@@ -78,7 +78,7 @@ const DeleteWalletView = () => {
           {activeAccount && activeAccount.balance > 0 && (
             <>
               <div
-                className="flex flex-col justify-center items-center gap-3 bg-brand-navydarker border border-dashed border-brand-royalBlue mx-6 my-8 p-2 text-xs w-72 rounded-lg"
+                className="flex flex-col justify-center items-center gap-3 bg-bkg-1 border border-dashed border-brand-royalblue mx-6 my-8 p-2 text-xs w-72 rounded-lg"
               >
                 <Form.Item
                   name="seed"
@@ -102,7 +102,7 @@ const DeleteWalletView = () => {
                   ]}
                 >
                   <Input
-                    className="bg-brand-navydarker border border-brand-navydarker text-sm w-60 outline-none py-2"
+                    className="bg-bkg-1 border border-bkg-1 text-sm w-60 outline-none py-2"
                     placeholder="Your seed phrase"
                   />
                 </Form.Item>

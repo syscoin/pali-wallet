@@ -32,7 +32,7 @@ export const Layout: FC<ILayout> = ({
       <section>
         {tooltipText ? (
           <div className="flex justify-center items-center gap-2">
-            <span className="text-brand-royalBlue font-bold text-xl text-center tracking-normal">
+            <span className="text-brand-royalblue font-bold text-xl text-center tracking-normal">
               {title}
             </span>
 
@@ -45,7 +45,7 @@ export const Layout: FC<ILayout> = ({
             </Tooltip>
           </div>
         ) : (
-          <span className="text-brand-royalBlue font-bold text-xl text-center tracking-normal">
+          <span className="text-brand-royalblue font-bold text-xl text-center tracking-normal">
             {title}
           </span>
         )}

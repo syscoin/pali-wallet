@@ -17,7 +17,7 @@ import {
 import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { PrimaryButton, Tooltip, Icon } from 'components/index';
+import { SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Assets } from 'types/transactions';
 
@@ -126,7 +126,7 @@ export const Send: FC<ISend> = () => {
   ) => (
     <div className="mt-4">
       <p className="flex flex-col justify-center text-center items-center font-rubik">
-        <span className="text-brand-royalBlue font-thin font-poppins">
+        <span className="text-brand-royalblue font-thin font-poppins">
           Balance
         </span>
 
@@ -168,7 +168,7 @@ export const Send: FC<ISend> = () => {
           <Input
             type="text"
             placeholder="Receiver"
-            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
+            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-sm"
           />
         </Form.Item>
 
@@ -189,7 +189,7 @@ export const Send: FC<ISend> = () => {
             >
               <Menu.Button
                 disabled={activeAccount?.assets.length === 0}
-                className="bg-brand-navyborder border border-brand-royalBlue inline-flex justify-center w-full px-4 py-3 text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+                className="bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus inline-flex justify-center w-full px-4 py-3 text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
               >
                 {selectedAsset?.symbol ? formatURL(String(selectedAsset?.symbol), 2) : 'SYS'}
                 <ChevronDoubleDownIcon
@@ -209,12 +209,12 @@ export const Send: FC<ISend> = () => {
               >
                 {activeAccount?.assets && activeAccount?.assets.length > 0 && (
                   <Menu.Items
-                    className="scrollbar-styled overflow-auto h-56 bg-brand-navyborder border border-brand-royalBlue text-brand-white w-40 font-poppins shadow-2xl absolute z-10 left-0 mt-2 origin-top-right divide-y divide-gray-100 rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none p-1"
+                    className="scrollbar-styled overflow-auto h-56 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-brand-white w-40 font-poppins shadow-2xl absolute z-10 left-0 mt-2 origin-top-right divide-y divide-gray-100 rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none p-1"
                   >
                     <Menu.Item>
                       <button
                         onClick={() => handleSelectedAsset(-1)}
-                        className="hover:text-brand-royalBlue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between"
+                        className="hover:text-brand-royalblue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between"
                       >
                         <p>SYS</p>
 
@@ -229,7 +229,7 @@ export const Send: FC<ISend> = () => {
                         <Menu.Item>
                           <button
                             onClick={() => handleSelectedAsset(item.assetGuid)}
-                            className="hover:text-brand-royalBlue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between"
+                            className="hover:text-brand-royalblue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between"
                           >
                             <p>{item.symbol}</p>
                             <small>
@@ -248,7 +248,7 @@ export const Send: FC<ISend> = () => {
           <div className="mx-2 flex w-48 gap-x-0.5 justify-center items-center">
             <Form.Item
               name="verify"
-              className="flex-1 w-32 bg-brand-navyborder border border-brand-royalBlue rounded-l-full text-center"
+              className="flex-1 w-32 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full text-center"
               rules={[
                 {
                   required: false,
@@ -268,19 +268,19 @@ export const Send: FC<ISend> = () => {
               <Switch
                 checked={verifyAddress}
                 onChange={verifyOnChange}
-                className="relative inline-flex items-center h-4 rounded-full w-9 border border-brand-royalBlue"
+                className="relative inline-flex items-center h-4 rounded-full w-9 border border-brand-royalblue"
               >
                 <span className="sr-only">Verify address</span>
                 <span
-                  className={`${verifyAddress ? 'translate-x-6 bg-brand-green' : 'translate-x-1'
-                    } inline-block w-2 h-2 transform bg-brand-error rounded-full`}
+                  className={`${verifyAddress ? 'translate-x-6 bg-warning-success' : 'translate-x-1'
+                    } inline-block w-2 h-2 transform bg-warning-error rounded-full`}
                 />
               </Switch>
             </Form.Item>
 
             <Form.Item
               name="ZDAG"
-              className="flex-1 w-32 rounded-r-full text-center  bg-brand-navyborder border border-brand-royalBlue"
+              className="flex-1 w-32 rounded-r-full text-center  bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus"
               rules={[
                 {
                   required: false,
@@ -299,11 +299,11 @@ export const Send: FC<ISend> = () => {
               <Switch
                 checked={ZDAG}
                 onChange={ZDAGOnChange}
-                className="bg-transparent relative inline-flex items-center h-4 rounded-full w-9 border border-brand-royalBlue"
+                className="bg-transparent relative inline-flex items-center h-4 rounded-full w-9 border border-brand-royalblue"
               >
                 <span className="sr-only">Z-DAG</span>
                 <span
-                  className={`${ZDAG ? 'bg-brand-green translate-x-6' : 'bg-brand-error translate-x-1'
+                  className={`${ZDAG ? 'bg-warning-success translate-x-6' : 'bg-warning-error translate-x-1'
                     } inline-block w-2 h-2 transform rounded-full`}
                 />
               </Switch>
@@ -333,7 +333,7 @@ export const Send: FC<ISend> = () => {
           ]}
         >
           <Input
-            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-brand-navyborder border border-brand-royalBlue text-sm"
+            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-sm"
             type="number"
             placeholder="Amount"
           />
@@ -342,7 +342,7 @@ export const Send: FC<ISend> = () => {
         <div className="mx-2 flex gap-x-0.5 justify-center items-center">
           <Form.Item
             name="recommend"
-            className={`${disabledFee ? 'opacity-30 bg-brand-graydark border border-brand-gray100 cursor-not-allowed' : 'bg-brand-navyborder border border-brand-royalBlue'} w-12 py-1.5 rounded-l-full text-center`}
+            className={`${disabledFee && 'opacity-50 cursor-not-allowed'} bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus w-12 py-1.5 rounded-l-full text-center`}
             rules={[
               {
                 required: false,
@@ -355,7 +355,7 @@ export const Send: FC<ISend> = () => {
                 <Icon
                   wrapperClassname="w-6 mb-1"
                   name="verified"
-                  className={`${disabledFee && 'cursor-not-allowed'} text-brand-green`}
+                  className={`${disabledFee ? 'cursor-not-allowed text-button-disabled' : 'text-warning-success'}`}
                 />
               </div>
             </Tooltip>
@@ -374,7 +374,7 @@ export const Send: FC<ISend> = () => {
             <Tooltip content={disabledFee ? 'Fee network' : ''}>
               <Input
                 disabled={disabledFee}
-                className={`${disabledFee ? 'opacity-30 bg-brand-graydark border border-brand-gray100 cursor-not-allowed' : 'border border-brand-royalBlue'} rounded-r-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
+                className={`${disabledFee && 'opacity-50 cursor-not-allowed text-button-disabled'} border border-fields-input-border bg-fields-input-primary rounded-r-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
                 type="number"
                 placeholder="Fee network"
                 value={recommend}
@@ -383,7 +383,7 @@ export const Send: FC<ISend> = () => {
           </Form.Item>
         </div>
 
-        <p className="flex justify-center items-center flex-col text-center p-0 text-brand-royalBlue mx-14">
+        <p className="flex justify-center items-center flex-col text-center p-0 text-brand-royalblue mx-14">
           <span
             className="text-xs"
           >
@@ -397,11 +397,11 @@ export const Send: FC<ISend> = () => {
           </span>
         </p>
 
-        <PrimaryButton
+        <SecondaryButton
           type="submit"
         >
           Next
-        </PrimaryButton>
+        </SecondaryButton>
       </Form>
     </div>
   )

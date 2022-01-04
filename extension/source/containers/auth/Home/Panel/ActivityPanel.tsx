@@ -6,7 +6,7 @@ export const ActivityPanel: FC = () => {
   const { activeAccount } = useAccount();
 
   return (
-    <div className="h-full w-full p-4 text-white text-base bg-brand-navyborder">
+    <div className="h-full w-full p-4 text-white text-base bg-bkg-3">
       {activeAccount?.transactions && activeAccount!.transactions.length > 0 ? (
         <PanelList
           data={activeAccount?.transactions}

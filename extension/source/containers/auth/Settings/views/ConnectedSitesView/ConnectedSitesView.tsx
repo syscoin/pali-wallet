@@ -64,7 +64,7 @@ const ConnectedSites = () => {
               onClose={() => setSelected("")}
             >
               <div
-                className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-darktransparent"
+                className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50"
               />
 
               <div className="min-h-screen px-4">
@@ -95,7 +95,7 @@ const ConnectedSites = () => {
                   leaveFrom="opacity-100 scale-100"
                   leaveTo="opacity-0 scale-95"
                 >
-                  <div className="font-poppins inline-block w-full max-w-md py-6 my-8 overflow-hidden align-middle transition-all transform bg-brand-navydark shadow-xl rounded-2xl">
+                  <div className="font-poppins inline-block w-full max-w-md py-6 my-8 overflow-hidden align-middle transition-all transform bg-bkg-2 shadow-xl rounded-2xl">
                     <Dialog.Title
                       as="h3"
                       className="text-lg font-medium leading-6 text-brand-white text-center border-b pb-3 border-dashed border-brand-white"
@@ -117,7 +117,7 @@ const ConnectedSites = () => {
                         </IconButton>
                       </div>
 
-                      <div className="bg-brand-navydarker p-4">
+                      <div className="bg-bkg-1 p-4">
                         <p className="text-brand-white mb-3">Permissions</p>
 
                         <div className="flex justify-between items-center">
@@ -140,7 +140,7 @@ const ConnectedSites = () => {
                     <div className="mt-4 text-center">
                       <button
                         type="button"
-                        className="inline-flex justify-center px-12 py-2 text-sm font-medium text-brand-royalBlue bg-blue-100 border border-transparent rounded-full hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalBlue"
+                        className="inline-flex justify-center px-12 py-2 text-sm font-medium text-brand-royalblue bg-blue-100 border border-transparent rounded-full hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
                         onClick={() => setSelected("")}
                       >
                         Close

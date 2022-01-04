@@ -33,7 +33,7 @@ const EditNetworkView = () => {
               return (
                 <li
                   key={network.id}
-                  className={defaultNetworks.includes(network.id) ? 'my-3 py-2 px-4 rounded-lg cursor-not-allowed border border-dashed bg-brand-navydarker bg-opacity-60 border-brand-graydark flex flex-col w-full' : 'my-3 py-2 px-4 rounded-lg w-full border border-dashed border-brand-royalBlue cursor-pointer flex flex-col transition-all duration-300 bg-brand-navydark hover:bg-brand-navydarker'}
+                  className={defaultNetworks.includes(network.id) ? 'my-3 py-2 px-4 rounded-lg cursor-not-allowed border border-dashed bg-bkg-1 bg-opacity-60 border-brand-graylight flex flex-col w-full' : 'my-3 py-2 px-4 rounded-lg w-full border border-dashed border-brand-royalblue cursor-pointer flex flex-col transition-all duration-300 bg-bkg-2 hover:bg-bkg-1'}
                   onClick={() => {
                     !defaultNetworks.includes(network.id) && setSelected(network);
                   }}

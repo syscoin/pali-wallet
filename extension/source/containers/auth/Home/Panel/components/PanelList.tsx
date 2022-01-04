@@ -64,21 +64,21 @@ export const PanelList: FC<IPanelList> = ({
               <Fragment key={tx.txid}>
                 {isShowedGroupBar(tx, idx) && (
                   <li
-                    className="bg-brand-navydarker text-sm text-center my-3"
+                    className="bg-bkg-1 text-sm text-center my-3"
                   >
                     {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}
                   </li>
                 )}
 
                 <li
-                  className="border-dashed border-b border-gray-600 py-2"
+                  className="border-dashed border-b border-dashed-dark py-2"
                 >
                   <div className="flex justify-between pr-6 text-xs relative">
                     <div>
                       <p>{ellipsis(String(tx.txid), 4, 14)}</p>
 
                       <p
-                        className={isConfirmed ? "text-brand-green" : "text-yellow-300"}
+                        className={isConfirmed ? "text-warning-success" : "text-yellow-300"}
                       >
                         {isConfirmed ? 'Confirmed' : 'Pending'}
                       </p>
@@ -123,12 +123,12 @@ export const PanelList: FC<IPanelList> = ({
               return (
                 <li
                   key={asset.assetGuid}
-                  className="border-dashed border-b border-gray-600 py-4 flex justify-between items-center text-xs"
+                  className="border-dashed border-b border-dashed-dark py-3 flex justify-between items-center text-xs"
                 >
                   <p className="font-rubik">
                     {formatCurrency(String(asset.balance / 10 ** asset.decimals), asset.decimals)}
 
-                    <span className="font-poppins">
+                    <span className="font-poppins text-button-secondary">
                       {`  ${asset.symbol}`}
                     </span>
                   </p>

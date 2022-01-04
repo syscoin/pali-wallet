@@ -63,7 +63,7 @@ const AutolockView = () => {
           <Input
             type="number"
             placeholder="Minutes"
-            className="ant-input ant-input rounded-full py-3 px-4 w-72 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
+            className="ant-input ant-input rounded-full py-3 px-4 w-72 bg-bkg-3 border border-brand-royalblue text-sm outline-none"
           />
         </Form.Item>
 

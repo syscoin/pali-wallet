@@ -25,11 +25,11 @@ export const Header = ({
     <div
       className={normalHeader && accountHeader ?
         "pb-32" :
-        onlySection ? "" : "pb-12 mb-1"
+        onlySection ? "" : "pb-12"
       }
     >
       {changingNetwork && (
-        <div className="bg-brand-darktransparent z-20 flex justify-center items-center fixed w-full h-full">
+        <div className="bg-brand-black bg-opacity-50 z-20 flex justify-center items-center fixed w-full h-full">
           <Icon name="loading" className="w-4 ml-2 text-brand-white" />
         </div>
       )}

@@ -55,14 +55,14 @@ const PhraseView = () => {
             ]}
           >
             <Input.Password
-              className="phrase-input rounded-full py-3 px-4 w-72 bg-brand-navyborder border border-brand-royalBlue text-sm outline-none"
+              className="phrase-input rounded-full py-2 px-4 w-72 pl-4 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
               placeholder="Enter your password"
             />
           </Form.Item>
         </Form>
 
         <div
-          className="flex flex-col justify-center items-center gap-3 bg-brand-navydarker border border-dashed border-brand-royalBlue mx-6 my-8 p-4 text-xs rounded-lg transition-all duration-200 hover:bg-brand-navydark cursor-pointer"
+          className="flex flex-col justify-center items-center gap-3 bg-bkg-1 border border-dashed border-brand-royalblue mx-6 my-8 p-4 text-xs rounded-lg transition-all duration-200 hover:bg-bkg-2 cursor-pointer"
           onClick={() => phrase !== '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****' && handleCopySeed()}
         >
           <div className="flex justify-between items-center w-full">
@@ -78,7 +78,7 @@ const PhraseView = () => {
           <p className="text-xs mt-3">{phrase}</p>
         </div>
 
-        <p className="bg-brand-navydark border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
+        <p className="bg-bkg-2 border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
           <b>WARNING:</b> Keep your seed phrase secret! Anyone with your seed phrase can access any account connected to this wallet and steal your assets
         </p>
 

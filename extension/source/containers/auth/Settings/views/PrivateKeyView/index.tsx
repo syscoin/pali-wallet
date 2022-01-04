@@ -26,7 +26,7 @@ const PrivateKeyView = () => {
               {({ open }) => (
                 <>
                   <Disclosure.Button
-                    className="my-3 py-2 px-4 flex justify-between items-center rounded-lg w-full border border-brand-royalBlue cursor-pointer transition-all duration-300 bg-brand-navydarker"
+                    className="my-3 py-2 px-4 flex justify-between items-center rounded-lg w-full border border-brand-royalblue cursor-pointer transition-all duration-300 bg-bkg-1"
                   >
                     {account.label}
 
@@ -41,16 +41,16 @@ const PrivateKeyView = () => {
 
                   <Disclosure.Panel>
                     <div
-                      className="my-3 py-4 px-4 rounded-lg w-full border border-dashed border-brand-royalBlue flex flex-col transition-all duration-300 bg-brand-navydarker text-sm text-brand-white border-t-0 rounded-t-none"
+                      className="my-3 py-4 px-4 rounded-lg w-full border border-dashed border-brand-royalblue flex flex-col transition-all duration-300 bg-bkg-1 text-sm text-brand-white border-t-0 rounded-t-none"
                     >
                       <span>XPUB</span>
 
-                      <span className="flex justify-between gap-x-1 items-center w-full mt-4 cursor-pointer rounded-lg bg-brand-navydark border border-dashed border-brand-deepPink100 p-2 text-sm">
+                      <span className="flex justify-between gap-x-1 items-center w-full mt-4 cursor-pointer rounded-lg bg-bkg-2 border border-dashed border-brand-deepPink100 p-2 text-sm">
                         WARNING: This is your account root indexer to check your full balance for this account, it isn’t a receiving address. DO NOT SEND FUNDS TO THIS ADDRESS, YOU WILL LOOSE THEM!
                       </span>
 
                       <div
-                        className="flex justify-between gap-x-1 items-center w-full mt-4 cursor-pointer rounded-lg bg-brand-navydarker hover:bg-brand-navydark transition-all duration-200 border border-dashed border-brand-royalBlue p-2"
+                        className="flex justify-between gap-x-1 items-center w-full mt-4 cursor-pointer rounded-lg bg-bkg-1 hover:bg-bkg-2 transition-all duration-200 border border-dashed border-brand-royalblue p-2"
                         onClick={() => copyText(account.xpub)}
                       >
                         <p>{ellipsis(account.xpub, 4, 16)}</p>
@@ -59,7 +59,7 @@ const PrivateKeyView = () => {
                       </div>
 
                       <div
-                        className="flex justify-between mt-4 items-center gap-x-1 cursor-pointer rounded-lg bg-brand-navydarker hover:bg-brand-navydark transition-all duration-200 border border-dashed border-brand-royalBlue p-2"
+                        className="flex justify-between mt-4 items-center gap-x-1 cursor-pointer rounded-lg bg-bkg-1 hover:bg-bkg-2 transition-all duration-200 border border-dashed border-brand-royalblue p-2"
                         onClick={() => window.open(`${sysExplorer}/xpub/${account.xpub}`)}
                       >
                         <p>View on explorer</p>

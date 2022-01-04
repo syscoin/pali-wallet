@@ -29,7 +29,7 @@ export const Button = ({
   );
 };
 
-const disabledStyle = "text-brand-white opacity-50 cursor-not-allowed font-light border border-brand-gray bg-brand-navyborder";
+const disabledStyle = "text-button-disabled opacity-50 cursor-not-allowed font-light border border-button-disabled";
 
 export const PrimaryButton: FC<IPrimaryButton> = ({
   children,
@@ -40,7 +40,7 @@ export const PrimaryButton: FC<IPrimaryButton> = ({
 }) => {
   return (
     <button
-      className={`${disabled || loading ? disabledStyle : 'text-brand-white cursor-pointer border border-brand-royalBluemedium bg-brand-royalBluemedium hover:border-brand-royalBlue'} tracking-normal text-sm leading-4 w-36 font-light transition-all duration-300 rounded-full py-2.5 flex justify-center items-center`}
+      className={`${disabled || loading ? disabledStyle : 'text-brand-white cursor-pointer border border-button-primary bg-button-primary hover:bg-button-primaryhover'} tracking-normal text-sm leading-4 w-36 transition-all duration-300 rounded-full py-2.5 flex justify-center items-center font-bold`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
@@ -52,7 +52,7 @@ export const PrimaryButton: FC<IPrimaryButton> = ({
   );
 }
 
-export const SecondaryButton = ({
+export const SecondaryButton: FC<IPrimaryButton> = ({
   children,
   disabled = false,
   loading = false,
@@ -61,7 +61,7 @@ export const SecondaryButton = ({
 }) => {
   return (
     <button
-      className="text-brand-white tracking-normal text-sm leading-4 w-36 cursor-pointer font-light transition-all duration-300 rounded-full border border-brand-royalBlue bg-brand-navydarker hover:border-brand-royalBluemedium py-2.5"
+      className={`${disabled || loading ? disabledStyle : 'text-brand-white cursor-pointer border border-button-secondary bg-button-secondary hover:bg-button-secondaryhover'} tracking-normal text-sm leading-4 w-36 transition-all duration-300 rounded-full py-2.5 flex justify-center items-center font-bold`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}

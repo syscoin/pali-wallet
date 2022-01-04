@@ -19,7 +19,7 @@ const DefaultModal = ({
   onClose,
   open,
   goTo = '/home',
-  background = 'bg-brand-navyborder',
+  background = 'bg-bkg-3',
   textColor = 'text-gray-300',
   title = '',
   description = '',
@@ -38,7 +38,7 @@ const DefaultModal = ({
       >
         <div
           onClick={goTo && doNothing ? () => null : goTo && !doNothing ? () => history.push(goTo) : onClose}
-          className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-darktransparent"
+          className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50"
         />
 
         <div className="min-h-screen px-4 text-center">
@@ -85,7 +85,7 @@ const DefaultModal = ({
               <div className="mt-4">
                 <button
                   type="button"
-                  className="inline-flex justify-center px-12 py-2 text-sm font-medium text-brand-royalBlue bg-blue-100 border border-transparent rounded-full hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalBlue"
+                  className="inline-flex justify-center px-12 py-2 text-sm font-medium text-brand-royalblue bg-blue-100 border border-transparent rounded-full hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
                   onClick={goTo ?
                     closePopup ? closePopup : () => history.push(goTo) 
                     : onClose}
@@ -105,7 +105,7 @@ const ErrorModal = ({
   onClose,
   open,
   goTo = '/home',
-  background = 'bg-brand-navyborder',
+  background = 'bg-bkg-3',
   textColor = 'text-gray-300',
   title = '',
   description = '',
@@ -124,7 +124,7 @@ const ErrorModal = ({
       >
         <div
           onClick={goTo && doNothing ? () => null : goTo && !doNothing ? () => history.push(goTo) : onClose}
-          className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-darktransparent"
+          className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50"
         />
 
         <div className="min-h-screen px-4 text-center">
@@ -173,7 +173,7 @@ const ErrorModal = ({
               <div className="mt-8 flex justify-between items-center">
                 <button
                   type="button"
-                  className="inline-flex justify-center px-12 py-2 text-sm font-medium text-red-500 bg-blue-100 border border-red-500 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalBlue"
+                  className="inline-flex justify-center px-12 py-2 text-sm font-medium text-red-500 bg-blue-100 border border-red-500 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
                   onClick={onClose}
                 >
                   {closeMessage}
@@ -181,7 +181,7 @@ const ErrorModal = ({
 
                 <button
                   type="button"
-                  className="inline-flex justify-center px-12 py-2 text-sm font-medium text-brand-white bg-red-500 border border-transparent rounded-full hover:bg-opacity-70 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalBlue"
+                  className="inline-flex justify-center px-12 py-2 text-sm font-medium text-brand-white bg-red-500 border border-transparent rounded-full hover:bg-opacity-70 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
                   onClick={() => window.open(`mailto:amanda.gonsalves@pollum.io?subject="Pali Error Report: Token creation"&body=${log}`)}
                 >
                   Report

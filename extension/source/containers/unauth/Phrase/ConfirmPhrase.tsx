@@ -56,7 +56,7 @@ export const ConfirmPhrase = () => {
           <section className="flex p-4 flex-wrap box-border min-h-full transition-all duration-300 items-center justify-center gap-4 border-b border-brand-graylight w-11/12">
             {newList.map((phrase, idx) => (
               <Button
-                className="min-w-xs h-7 font-bold text-xs leading-4 flex items-center justify-center tracking-normal bg-brand-royalBlue p-1 border border-brand-royalBlue gap-4 rounded-md text-brand-white"
+                className="min-w-xs h-7 font-bold text-xs leading-4 flex items-center justify-center tracking-normal bg-brand-royalblue p-1 border border-brand-royalblue gap-4 rounded-md text-brand-white"
                 key={idx}
                 type="button"
                 onClick={() => handleNewPhrase(idx)}
@@ -68,7 +68,7 @@ export const ConfirmPhrase = () => {
           <section className="flex p-4 w-full flex-wrap box-border min-h-full transition-all duration-300 items-center justify-center gap-4">
             {orgList.map((phrase, idx) => (
               <Button
-                className="min-w-xs h-7 font-bold text-xs leading-4 flex items-center justify-center tracking-normal bg-brand-navy p-1 border border-brand-navymedium gap-4 rounded-md text-brand-white"
+                className="min-w-xs h-7 font-bold text-xs leading-4 flex items-center justify-center tracking-normal bg-bkg-2 p-1 border border-bkg-4 gap-4 rounded-md text-brand-white"
                 key={idx}
                 type="button"
                 onClick={() => handleOrgPhrase(idx)}
