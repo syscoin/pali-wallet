@@ -65,7 +65,7 @@ export const NormalHeader: FC<INormalHeader> = ({
         {({ open }) => (
           <>
             <Menu.Button
-              className="inline-flex justify-center w-full  text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+              className="inline-flex justify-center w-full  text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75 menu-btn"
             >
               <div
                 className="cursor-pointer w-full ml-2 flex items-center justify-start gap-x-6"
@@ -143,7 +143,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                     {({ open }) => (
                       <>
                         <Disclosure.Button
-                          className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                          className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3 sys-btn"
                         >
                           <Icon
                             name="dolar"
@@ -173,6 +173,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                               <li
                                 className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-menu-secondary backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
                                 onClick={() => handleChangeNetwork(network.id)}
+                                id={network.label === 'Test Network' ? 'test-btn' : 'main-btn'}
                               >
                                 <span>{network.label}</span>
 

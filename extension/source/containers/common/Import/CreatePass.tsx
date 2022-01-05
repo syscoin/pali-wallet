@@ -84,6 +84,7 @@ const CreatePass = () => {
         <div className="absolute bottom-12">
           <PrimaryButton
             type="submit"
+            id="next-btn"
           >
             Next
           </PrimaryButton>
