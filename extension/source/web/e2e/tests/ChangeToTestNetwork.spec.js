@@ -18,5 +18,7 @@ describe('Change Network test', () => {
     await driver.clickElement('.menu-btn');
     await driver.clickElement('.sys-btn');
     await driver.clickElement('#test-btn');
+
+    driver.quit()
   });
 });
