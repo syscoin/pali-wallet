@@ -57,9 +57,10 @@ export const ConnectWallet = () => {
           Only connect with sites you trust. <a href="#">Learn more.</a>
         </small>
 
-        <div className="flex justify-between items-center absolute bottom-12 gap-3">
+        <div className="flex justify-between w-full max-w-xs md:max-w-md items-center absolute bottom-10 gap-3">
           <SecondaryButton
             type="button"
+            action
             onClick={() => cancelConnection(accountId)}
           >
             Cancel
@@ -67,6 +68,7 @@ export const ConnectWallet = () => {
 
           <PrimaryButton
             type="button"
+            action
             disabled={accountId === -1}
             onClick={() => confirmConnection(accountId)}
           >

@@ -35,7 +35,8 @@ import {
   CheckCircleOutlined,
   CaretUpOutlined,
   MessageOutlined,
-  VerifiedOutlined
+  VerifiedOutlined,
+  CheckOutlined,
 } from '@ant-design/icons';
 
 const icons = {
@@ -75,6 +76,7 @@ const icons = {
   'select-up': CaretUpOutlined,
   'message': MessageOutlined,
   'verified': VerifiedOutlined,
+  'check-outlined': CheckOutlined,
 }
 
 interface IIcon {
@@ -95,7 +97,7 @@ export const Icon: FC<IIcon> = ({
   const Component = icons[name];
 
   return (
-    <div className={wrapperClassname ? wrapperClassname : "w-8"}>
+    <div className={wrapperClassname && wrapperClassname}>
       {Component ? <Component className={className} style={{ fontSize: size }} rotate={rotate} /> : null}
     </div>
   );
