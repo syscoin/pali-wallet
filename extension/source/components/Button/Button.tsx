@@ -31,7 +31,7 @@ export const Button = ({
   );
 };
 
-const disabledStyle = "text-button-disabled cursor-not-allowed font-light border border-button-disabled";
+const disabledStyle = "text-button-disabled cursor-not-allowed font-light border-2 border-button-disabled";
 
 export const PrimaryButton: FC<IPrimaryButton> = ({
   children,
@@ -44,7 +44,14 @@ export const PrimaryButton: FC<IPrimaryButton> = ({
 }) => {
   return (
     <button
-      className={`${disabled || loading ? disabledStyle : 'text-brand-white cursor-pointer border border-button-primary bg-button-primary hover:bg-button-primaryhover'} tracking-normal text-sm leading-4 ${action ? 'w-40' : `w-${width}`} transition-all duration-300 h-10 rounded-full ${action ? 'py-2' : 'py-2.5'} flex justify-center items-center gap-x-2 font-bold`}
+      className={`tracking-normal cursor-pointer border-2 text-sm leading-4 ${action ? 'w-40' : `w-${width}`} transition-all duration-300 h-10 ${action ? 'py-2' : 'py-2.5'} rounded-full flex justify-center items-center gap-x-2 font-bold 
+      
+      ${disabled || loading ?
+          disabledStyle :
+          action ?
+            'border-warning-success bg-warning-success hover:bg-warning-success text-brand-white' :
+            'border-button-primary bg-button-primary hover:bg-button-primaryhover text-brand-white'
+        }`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
@@ -55,7 +62,7 @@ export const PrimaryButton: FC<IPrimaryButton> = ({
             <Icon name="loading" className="text-brand-white" />
           ) : (
             <>
-              <Icon name="check-outlined" wrapperClassname="mb-0.5" className="text-brand-white" />
+              <Icon name="check-outlined" wrapperClassname="mb-0.5" className={`${disabled ? 'text-button-disabled' : 'text-brand-white'}`} />
               {children}
             </>
           )}
@@ -81,7 +88,15 @@ export const SecondaryButton: FC<IPrimaryButton> = ({
 }) => {
   return (
     <button
-      className={`${disabled || loading ? disabledStyle : 'text-brand-white cursor-pointer border border-button-secondary bg-button-secondary hover:bg-button-secondaryhover'} tracking-normal text-sm leading-4 ${action ? 'w-40' : 'w-36'} transition-all duration-300 h-10 rounded-full ${action ? 'py-2' : 'py-2.5'} flex justify-center gap-x-2 items-center font-bold`}
+      className={`${disabled || loading ? disabledStyle : 'text-brand-white cursor-pointer border-2 '} tracking-normal text-sm leading-4 ${action ? '' : 'border-button-secondary hover:bg-button-secondaryhover bg-button-secondary'} ${action ? 'w-40' : 'w-36'} transition-all duration-300 h-10 rounded-full ${action ? 'py-2' : 'py-2.5'} flex justify-center gap-x-2 items-center font-bold
+      
+      ${disabled || loading ?
+          disabledStyle :
+          action ?
+            'bg-transparent border-2 border-brand-white hover:bg-warning-error hover:border-warning-error hover:text-brand-white' :
+            'border-button-primary bg-button-primary hover:bg-button-primaryhover text-brand-white'
+        }
+      `}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
@@ -92,7 +107,7 @@ export const SecondaryButton: FC<IPrimaryButton> = ({
             <Icon name="loading" className="text-brand-white" />
           ) : (
             <>
-              <Icon name="close" wrapperClassname="mb-0.5" className="text-brand-white" />
+              <Icon name="close" wrapperClassname="mb-0.5" className="font-bold" />
               {children}
             </>
           )}

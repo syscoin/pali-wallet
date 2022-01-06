@@ -4,6 +4,7 @@ module.exports = {
     2: '#111E33',
     3: '#162742',
     4: '#1E365C',
+    disabled: '#FFFFFF4D'
   },
 
   button: {
