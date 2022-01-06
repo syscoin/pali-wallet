@@ -91,7 +91,7 @@ export const AssetDetails = ({
         </Tooltip>
       ) : (
         <>
-          {!loadingImage ? (
+          {loadingImage ? (
             <div className="flex justify-center h-40 items-center">
               <Icon
                 name="loading"
