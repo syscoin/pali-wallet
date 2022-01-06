@@ -19,8 +19,8 @@ const DefaultModal = ({
   onClose,
   open,
   goTo = '/home',
-  background = 'bg-bkg-3',
-  textColor = 'text-gray-300',
+  background = 'bg-bkg-4',
+  textColor = 'text-white',
   title = '',
   description = '',
   closeMessage = 'Ok',
@@ -72,10 +72,11 @@ const DefaultModal = ({
             <div className={`font-poppins inline-block w-full max-w-md p-6 my-8 overflow-hidden text-center align-middle transition-all transform ${background} shadow-xl rounded-2xl`}>
               <Dialog.Title
                 as="h3"
-                className="text-lg font-medium leading-6 text-brand-white"
+                className="text-lg font-medium pt-2 pb-4 border-b border-dashed border-gray-600 leading-6 text-brand-white"
               >
                 {title}
               </Dialog.Title>
+              
               <div className="mt-2">
                 <p className={`text-sm ${textColor}`}>
                   {description}
@@ -85,7 +86,7 @@ const DefaultModal = ({
               <div className="mt-4">
                 <button
                   type="button"
-                  className="inline-flex justify-center px-12 py-2 text-sm font-medium text-brand-royalblue bg-blue-100 border border-transparent rounded-full hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
+                  className="inline-flex justify-center px-10 transition-all duration-200 py-2 text-sm font-medium hover:text-brand-royalblue text-brand-white bg-transparent border border-brand-white rounded-full hover:bg-button-popuphover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
                   onClick={goTo ?
                     closePopup ? closePopup : () => history.push(goTo) 
                     : onClose}

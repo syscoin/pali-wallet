@@ -59,7 +59,7 @@ module.exports = {
       fontSize: {
         'xxs': '0.01px',
         '10px': '10px'
-      }
+      },
     },
   },
   variants: {

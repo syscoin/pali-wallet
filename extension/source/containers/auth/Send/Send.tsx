@@ -31,7 +31,7 @@ export const Send: FC<ISend> = () => {
   const { alert, history, isNFT } = useUtils();
   const { getAssetBalance } = useTransaction();
   const { activeAccount } = useAccount();
-  const { activeNetwork } = useStore();
+  const { activeNetwork, fiat} = useStore();
   const { formatURL } = useFormat();
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
@@ -209,7 +209,7 @@ export const Send: FC<ISend> = () => {
               >
                 {activeAccount?.assets && activeAccount?.assets.length > 0 && (
                   <Menu.Items
-                    className="scrollbar-styled overflow-auto h-56 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-brand-white w-40 font-poppins shadow-2xl absolute z-10 left-0 mt-2 origin-top-right divide-y divide-gray-100 rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none p-1"
+                    className="scrollbar-styled rounded-lg overflow-auto h-56 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-brand-white w-44 font-poppins shadow-2xl absolute z-10 left-0 mt-2 py-3 origin-top-right"
                   >
                     <Menu.Item>
                       <button
@@ -392,8 +392,8 @@ export const Send: FC<ISend> = () => {
 
           <span className="font-rubik text-brand-white mt-0.5 text-xs">
             ≈ {selectedAsset ?
-              getFiatAmount(Number(recommend) + Number(recommend), 6) :
-              getFiatAmount(Number(recommend), 6)}
+              getFiatAmount(Number(recommend) + Number(recommend), 6, String(fiat.current)) :
+              getFiatAmount(Number(recommend), 6, String(fiat.current))}
           </span>
         </p>
 

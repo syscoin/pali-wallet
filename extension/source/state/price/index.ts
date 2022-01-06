@@ -1,23 +1,53 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
-import IPriceState from './types';
+export interface IFiatState {
+  [assetId: string]: number;
+  price: number;
+  availableCoins: any,
+  //@ts-ignore
+  current: string | 'usd';
+}
 
-const initialState: IPriceState = {
-  fiat: {},
+export interface IPriceState {
+  fiat: IFiatState;
+}
+
+const initialState: {
+  fiat: {
+    [assetId: string]: number,
+    price: number,
+    availableCoins: any,
+    //@ts-ignore
+    current: string | 'usd',
+  }
+} = {
+  //@ts-ignore
+  fiat: {
+    syscoin: 0,
+    price: 0,
+    availableCoins: {},
+    current: 'usd',
+  }
 };
 
-// createSlice comes with immer produce so we don't need to take care of immutational update
 const PriceState = createSlice({
   name: 'price',
   initialState,
   reducers: {
     updateFiatPrice(
       state: IPriceState,
-      action: PayloadAction<{ assetId: string, price: number }>
+      action: PayloadAction<{
+        assetId: string,
+        price: number,
+        availableCoins: any,
+        current: string | 'usd',
+      }>
     ) {
       state.fiat = {
         ...state.fiat,
         [action.payload.assetId]: action.payload.price,
+        availableCoins: action.payload.availableCoins,
+        current: action.payload.current || 'usd'
       };
     },
   },

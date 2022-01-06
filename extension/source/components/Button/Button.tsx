@@ -29,7 +29,7 @@ export const Button = ({
   );
 };
 
-const disabledStyle = "text-button-disabled opacity-50 cursor-not-allowed font-light border border-button-disabled";
+const disabledStyle = "text-button-disabled cursor-not-allowed font-light border border-button-disabled";
 
 export const PrimaryButton: FC<IPrimaryButton> = ({
   children,
@@ -66,7 +66,9 @@ export const SecondaryButton: FC<IPrimaryButton> = ({
       onClick={onClick}
       type={type}
     >
-      {children}
+      {loading ? (
+        <Icon name="loading" className="text-brand-white" />
+      ) : children}
     </button>
   );
 }

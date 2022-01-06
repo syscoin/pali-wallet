@@ -6,6 +6,17 @@
   @apply rounded-full;
 }
 
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Firefox */
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
 .scrollbar-styled::-webkit-scrollbar {
   @apply w-1;
 }
@@ -72,7 +83,7 @@
 }
 
 #autolock .ant-form-item-children-icon {
-  @apply absolute right-9 text-bkg-4 top-1;
+  @apply absolute right-2 text-bkg-4 top-0;
 }
 
 .ant-form-item-explain.ant-form-item-explain-error {
