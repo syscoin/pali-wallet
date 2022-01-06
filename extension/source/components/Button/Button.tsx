@@ -44,20 +44,21 @@ export const PrimaryButton: FC<IPrimaryButton> = ({
 }) => {
   return (
     <button
-      className={`${disabled || loading ? disabledStyle : 'text-brand-white cursor-pointer border border-button-primary bg-button-primary hover:bg-button-primaryhover'} tracking-normal text-sm leading-4 ${action ? 'w-40' : `w-${width}`} transition-all duration-300 rounded-full ${action ? 'py-2' : 'py-2.5'} flex justify-center gap-x-2 h-10 items-center font-bold`}
+      className={`${disabled || loading ? disabledStyle : 'text-brand-white cursor-pointer border border-button-primary bg-button-primary hover:bg-button-primaryhover'} tracking-normal text-sm leading-4 ${action ? 'w-40' : `w-${width}`} transition-all duration-300 h-10 rounded-full ${action ? 'py-2' : 'py-2.5'} flex justify-center items-center gap-x-2 font-bold`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
     >
       {action ? (
         <>
-          <Icon name="check-outlined" wrapperClassname="mb-0.5" className="text-brand-white" />
-
-          <>
-            {loading ? (
-              <Icon name="loading" className="text-brand-white" />
-            ) : children}
-          </>
+          {loading ? (
+            <Icon name="loading" className="text-brand-white" />
+          ) : (
+            <>
+              <Icon name="check-outlined" wrapperClassname="mb-0.5" className="text-brand-white" />
+              {children}
+            </>
+          )}
         </>
       ) : (
         <>
@@ -80,20 +81,21 @@ export const SecondaryButton: FC<IPrimaryButton> = ({
 }) => {
   return (
     <button
-      className={`${disabled || loading ? disabledStyle : 'text-brand-white cursor-pointer border border-button-secondary bg-button-secondary hover:bg-button-secondaryhover'} tracking-normal text-sm leading-4 ${action ? 'w-40' : 'w-36'} transition-all duration-300 rounded-full ${action ? 'py-2' : 'py-2.5'} flex justify-center gap-x-2 h-10 items-center font-bold`}
+      className={`${disabled || loading ? disabledStyle : 'text-brand-white cursor-pointer border border-button-secondary bg-button-secondary hover:bg-button-secondaryhover'} tracking-normal text-sm leading-4 ${action ? 'w-40' : 'w-36'} transition-all duration-300 h-10 rounded-full ${action ? 'py-2' : 'py-2.5'} flex justify-center gap-x-2 items-center font-bold`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
     >
       {action ? (
         <>
-          <Icon name="close" wrapperClassname="mb-0.5" className="text-brand-white" />
-
-          <>
-            {loading ? (
-              <Icon name="loading" className="text-brand-white" />
-            ) : children}
-          </>
+          {loading ? (
+            <Icon name="loading" className="text-brand-white" />
+          ) : (
+            <>
+              <Icon name="close" wrapperClassname="mb-0.5" className="text-brand-white" />
+              {children}
+            </>
+          )}
         </>
       ) : (
         <>
