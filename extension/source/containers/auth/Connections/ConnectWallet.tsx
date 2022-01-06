@@ -16,12 +16,12 @@ export const ConnectWallet = () => {
     if (connectedAccount && id === connectedAccount.id) {
       return;
     }
-    
+
     setAccountId(id);
   };
 
   return (
-    <AuthViewLayout canGoBack={false}  title="CONNECT WITH">
+    <AuthViewLayout canGoBack={false} title="CONNECT WITH">
       <div className="flex flex-col justify-center items-center w-full">
         <h1 className="text-sm mt-4">PALI WALLET</h1>
 
@@ -39,9 +39,11 @@ export const ConnectWallet = () => {
                   {acc.label}
                 </p>
 
-                <small>{ellipsis(acc.address.main)}</small>
+                <div className="flex justify-center items-center gap-3">
+                  <small>{ellipsis(acc.address.main)}</small>
 
-                <div className={`${acc.id === accountId ? 'bg-warning-success' : 'bg-brand-graylight'} w-3 h-3 rounded-full border border-brand-royalblue`}></div>
+                  <div className={`${acc.id === accountId ? 'bg-warning-success' : 'bg-brand-graylight'} w-3 h-3 rounded-full border border-brand-royalblue`}></div>
+                </div>
               </li>
             ))}
           </ul>
@@ -55,7 +57,7 @@ export const ConnectWallet = () => {
           Only connect with sites you trust. <a href="#">Learn more.</a>
         </small>
 
-        <div className="flex justify-between items-center absolute bottom-8 gap-3">
+        <div className="flex justify-between items-center absolute bottom-12 gap-3">
           <SecondaryButton
             type="button"
             onClick={() => cancelConnection(accountId)}

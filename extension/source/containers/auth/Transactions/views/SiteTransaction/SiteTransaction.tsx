@@ -1,7 +1,7 @@
 import React, { useState, FC, useEffect } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout';
 import { PrimaryButton, SecondaryButton, Tooltip, Icon } from 'components/index';
-import { useTransaction, useController, useUtils, useStore } from 'hooks/index';
+import { useTransaction, useController, useUtils, useStore, useBrowser } from 'hooks/index';
 import { Form, Input } from 'antd';
 
 interface ISiteTransaction {
@@ -20,6 +20,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
   const { history, getHost } = useUtils();
   const { currentSenderURL, activeNetwork } = useStore();
   const { handleRejectTransaction } = useTransaction();
+  const { browser } = useBrowser();
 
   const [loading, setLoading] = useState<boolean>(false);
   const [recommend, setRecommend] = useState(0.00001);
@@ -79,7 +80,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
           <div className="mx-2 flex gap-x-0.5 justify-center items-center">
             <Form.Item
               name="recommend"
-              className={`${disabledFee && 'opacity-50 cursor-not-allowed'} bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus w-12 py-1.5 rounded-l-full text-center`}
+              className={`${disabledFee && 'opacity-50 cursor-not-allowed'} bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus w-12 py-1.5 rounded-l-full text-center`}
               rules={[
                 {
                   required: false,
@@ -92,7 +93,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
                   <Icon
                     wrapperClassname="w-6 mb-1"
                     name="verified"
-                    className={`${disabledFee && 'cursor-not-allowed'} text-warning-success`}
+                    className={`${disabledFee ? 'cursor-not-allowed text-button-disabled' : 'text-warning-success'}`}
                   />
                 </div>
               </Tooltip>
@@ -111,7 +112,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
               <Tooltip content={disabledFee ? 'Fee network' : ''}>
                 <Input
                   disabled={disabledFee}
-                  className={`${disabledFee && 'opacity-50 cursor-not-allowed'} bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus w-12 py-1.5 rounded-l-full text-center`}
+                  className={`${disabledFee && 'opacity-50 cursor-not-allowed text-button-disabled'} border border-fields-input-border bg-fields-input-primary rounded-r-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
                   type="number"
                   placeholder="Fee network"
                   value={recommend}
@@ -127,7 +128,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
           <div className="flex justify-between items-center absolute bottom-10 gap-3">
             <SecondaryButton
               type="button"
-              onClick={handleRejectTransaction}
+              onClick={() => handleRejectTransaction(browser, temporaryTransaction, history)}
             >
               Cancel
             </SecondaryButton>
