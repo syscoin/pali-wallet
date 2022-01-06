@@ -14,7 +14,7 @@ const PhraseView = () => {
   const [copied, copyText] = useCopyClipboard();
 
   const handleCopySeed = () => {
-    copyText(phrase)
+    copyText(phrase);
   };
 
   return (
@@ -39,7 +39,7 @@ const PhraseView = () => {
                 required: true,
                 message: '',
               },
-              ({ }) => ({
+              ({}) => ({
                 validator(_, value) {
                   const seed = controller.wallet.getPhrase(value);
 
@@ -55,7 +55,7 @@ const PhraseView = () => {
             ]}
           >
             <Input.Password
-              className="phrase-input rounded-full py-2 px-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
+              className="phrase-input rounded-full py-2 px-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus seed-phrase-password-input"
               placeholder="Enter your password"
             />
           </Form.Item>
@@ -63,14 +63,16 @@ const PhraseView = () => {
 
         <div
           className="flex flex-col justify-center items-center gap-3 bg-bkg-1 border border-dashed border-brand-royalblue mx-6 my-8 p-4 text-xs rounded-lg transition-all duration-200 hover:bg-bkg-2 cursor-pointer"
-          onClick={() => phrase !== '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****' && handleCopySeed()}
+          onClick={() =>
+            phrase !==
+              '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****' &&
+            handleCopySeed()
+          }
         >
           <div className="flex justify-between items-center w-full">
             <p>Seed Phrase: (click to copy)</p>
 
-            <IconButton
-              onClick={handleCopySeed}
-            >
+            <IconButton onClick={handleCopySeed}>
               <Icon name="copy" className="text-brand-white" />
             </IconButton>
           </div>
@@ -79,14 +81,13 @@ const PhraseView = () => {
         </div>
 
         <p className="bg-bkg-2 border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
-          <b>WARNING:</b> Keep your seed phrase secret! Anyone with your seed phrase can access any account connected to this wallet and steal your assets
+          <b>WARNING:</b> Keep your seed phrase secret! Anyone with your seed
+          phrase can access any account connected to this wallet and steal your
+          assets
         </p>
 
         <div className="absolute bottom-12">
-          <SecondaryButton
-            type="button"
-            onClick={() => history.push('/home')}
-          >
+          <SecondaryButton type="button" onClick={() => history.push('/home')}>
             {copied ? 'Copied' : 'Close'}
           </SecondaryButton>
         </div>

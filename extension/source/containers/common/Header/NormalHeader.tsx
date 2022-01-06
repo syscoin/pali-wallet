@@ -1,6 +1,12 @@
 import React, { FC, useEffect, useState } from 'react';
 import { Icon, IconButton } from 'components/index';
-import { useStore, useAccount, useUtils, useController, useBrowser } from 'hooks/index';
+import {
+  useStore,
+  useAccount,
+  useUtils,
+  useController,
+  useBrowser,
+} from 'hooks/index';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 
 interface INormalHeader {
@@ -8,9 +14,7 @@ interface INormalHeader {
   isUnlocked?: boolean;
 }
 
-export const NormalHeader: FC<INormalHeader> = ({
-  importSeed,
-}) => {
+export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
   const controller = useController();
 
   const { activeNetwork, encriptedMnemonic, networks } = useStore();
@@ -58,36 +62,29 @@ export const NormalHeader: FC<INormalHeader> = ({
 
   const NetworkMenu = () => {
     return (
-      <Menu
-        as="div"
-        className="absolute left-2 inline-block text-left mr-8"
-      >
+      <Menu as="div" className="absolute left-2 inline-block text-left mr-8">
         {({ open }) => (
           <>
-            <Menu.Button
-              className="inline-flex justify-center w-full  text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75 menu-btn"
-            >
-              <div
-                className="cursor-pointer w-full ml-2 flex items-center justify-start gap-x-6"
-              >
+            <Menu.Button className="inline-flex justify-center w-full  text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75 menu-btn">
+              <div className="cursor-pointer w-full ml-2 flex items-center justify-start gap-x-6">
                 <div
                   className={
-                    isConnected ?
-                      "rounded-full text-xs w-28 h-5 flex justify-center items-center border border-warning-success bg-warning-success text-brand-white" :
-                      "rounded-full text-xs w-28 h-5 flex justify-center items-center border bg-warning-error border-warning-error text-brand-white"
+                    isConnected
+                      ? 'rounded-full text-xs w-28 h-5 flex justify-center items-center border border-warning-success bg-warning-success text-brand-white'
+                      : 'rounded-full text-xs w-28 h-5 flex justify-center items-center border bg-warning-error border-warning-error text-brand-white'
                   }
                 >
                   {isConnected ? 'connected' : 'not connected'}
                 </div>
 
-                <span>
-                  {network}
-                </span>
+                <span>{network}</span>
 
                 <IconButton className="mb-1">
-                  <Icon name="select-down"
-                    className={`${open ? 'transform rotate-180' : ''
-                      } text-brand-white`}
+                  <Icon
+                    name="select-down"
+                    className={`${
+                      open ? 'transform rotate-180' : ''
+                    } text-brand-white`}
                   />
                 </IconButton>
               </div>
@@ -102,17 +99,13 @@ export const NormalHeader: FC<INormalHeader> = ({
               leaveFrom="transform opacity-100 scale-100"
               leaveTo="transform opacity-0 scale-95"
             >
-              <div
-                className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50"
-              />
+              <div className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50" />
 
               <Menu.Items
                 as="div"
                 className="scrollbar-styled bg-menu-primary pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 left-0 h-bigmenu origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
               >
-                <h2
-                  className="pt-8 pb-6 text-brand-white border-b border-dashed bg-menu-primary border-dashed-light w-full text-center mb-6"
-                >
+                <h2 className="pt-8 pb-6 text-brand-white border-b border-dashed bg-menu-primary border-dashed-light w-full text-center mb-6">
                   NETWORK SETTINGS
                 </h2>
 
@@ -121,7 +114,10 @@ export const NormalHeader: FC<INormalHeader> = ({
                     onClick={() => history.push('/networks-sites')}
                     className="flex py-1 justify-start items-center text-base px-2 cursor-pointer transition-all duration-200 border border-solid border-transparent hover:border-warning-success hover:bg-opacity-70 rounded-full bg-warning-success mx-3 mb-2"
                   >
-                    <Icon name="globe" className="text-brand-white ml-1 mr-4 mb-1" />
+                    <Icon
+                      name="globe"
+                      className="text-brand-white ml-1 mr-4 mb-1"
+                    />
 
                     <span className="px-3">Connected sites</span>
                   </li>
@@ -132,7 +128,10 @@ export const NormalHeader: FC<INormalHeader> = ({
                     onClick={() => history.push('/networks-trusted')}
                     className="flex py-1 justify-start items-center text-base px-2 cursor-pointer transition-all duration-200 border border-solid border-brand-royalblue hover:bg-opacity-70 rounded-full bg-brand-royalblue mx-3 mb-4"
                   >
-                    <Icon name="warning" className="text-brand-white ml-1 mr-4 mb-1" />
+                    <Icon
+                      name="warning"
+                      className="text-brand-white ml-1 mr-4 mb-1"
+                    />
 
                     <span className="px-3">Trusted sites</span>
                   </li>
@@ -142,38 +141,35 @@ export const NormalHeader: FC<INormalHeader> = ({
                   <Disclosure>
                     {({ open }) => (
                       <>
-                        <Disclosure.Button
-                          className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3 sys-btn"
-                        >
+                        <Disclosure.Button className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3 sys-btn">
                           <Icon
                             name="dolar"
                             className="ml-1 mr-4 text-brand-white"
                           />
 
-                          <span
-                            className="text-base px-3"
-                          >
+                          <span className="text-base px-3">
                             Syscoin networks
                           </span>
 
                           <Icon
                             name="select-up"
-                            className={`${open ?
-                              'transform rotate-180' :
-                              ''
-                              } text-brand-white mb-1`}
+                            className={`${
+                              open ? 'transform rotate-180' : ''
+                            } text-brand-white mb-1`}
                           />
                         </Disclosure.Button>
 
-                        <Disclosure.Panel
-                          className="scrollbar-styled pt-0.5 pb-2 text-sm bg-menu-secondary h-28 overflow-auto"
-                        >
+                        <Disclosure.Panel className="scrollbar-styled pt-0.5 pb-2 text-sm bg-menu-secondary h-28 overflow-auto">
                           {Object.values(networks).map((network: any) => {
                             return (
                               <li
                                 className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-menu-secondary backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
                                 onClick={() => handleChangeNetwork(network.id)}
-                                id={network.label === 'Test Network' ? 'test-btn' : 'main-btn'}
+                                id={
+                                  network.label === 'Test Network'
+                                    ? 'test-btn'
+                                    : 'main-btn'
+                                }
                               >
                                 <span>{network.label}</span>
 
@@ -185,7 +181,7 @@ export const NormalHeader: FC<INormalHeader> = ({
                                   />
                                 )}
                               </li>
-                            )
+                            );
                           })}
                         </Disclosure.Panel>
                       </>
@@ -197,32 +193,25 @@ export const NormalHeader: FC<INormalHeader> = ({
                   <Disclosure>
                     {({ open }) => (
                       <>
-                        <Disclosure.Button
-                          className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
-                        >
+                        <Disclosure.Button className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3">
                           <Icon
                             name="dolar"
                             className="ml-1 mr-4 text-brand-white"
                           />
 
-                          <span
-                            className="text-base px-3"
-                          >
+                          <span className="text-base px-3">
                             Ethereum networks
                           </span>
 
                           <Icon
                             name="select-up"
-                            className={`${open ?
-                              'transform rotate-180' :
-                              ''
-                              } mb-1 text-brand-white`}
+                            className={`${
+                              open ? 'transform rotate-180' : ''
+                            } mb-1 text-brand-white`}
                           />
                         </Disclosure.Button>
 
-                        <Disclosure.Panel
-                          className="pt-0.5 pb-2 text-sm bg-menu-secondary"
-                        >
+                        <Disclosure.Panel className="pt-0.5 pb-2 text-sm bg-menu-secondary">
                           <li
                             className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-menu-secondary backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
                             onClick={() => handleChangeNetwork('main')}
@@ -267,7 +256,10 @@ export const NormalHeader: FC<INormalHeader> = ({
                     onClick={() => history.push('/networks-custom')}
                     className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                   >
-                    <Icon name="appstoreadd" className="text-brand-white ml-1 mr-4" />
+                    <Icon
+                      name="appstoreadd"
+                      className="text-brand-white ml-1 mr-4"
+                    />
 
                     <span className="px-3">Custom RPC</span>
                   </li>
@@ -288,30 +280,23 @@ export const NormalHeader: FC<INormalHeader> = ({
           </>
         )}
       </Menu>
-    )
-  }
+    );
+  };
 
   const GeneralMenu = () => {
     return (
-      <Menu
-        as="div"
-        className="absolute right-2 inline-block text-right z-10"
-      >
+      <Menu as="div" className="absolute right-2 inline-block text-right z-10">
         {() => (
           <>
-            <Menu.Button
-              className="mb-2 mr-0.8"
-            >
+            <Menu.Button className="mb-2 mr-0.8">
               {encriptedMnemonic && !importSeed ? (
-                <IconButton
-                  type="primary"
-                  shape="circle"
-                >
-                  <Icon name="settings" className="hover:text-brand-royalblue text-brand-white z-0" />
+                <IconButton type="primary" shape="circle">
+                  <Icon
+                    name="settings"
+                    className="hover:text-brand-royalblue text-brand-white z-0 settings-btn"
+                  />
                 </IconButton>
-              ) : (
-                null
-              )}
+              ) : null}
             </Menu.Button>
 
             <Transition
@@ -323,17 +308,13 @@ export const NormalHeader: FC<INormalHeader> = ({
               leaveFrom="transform opacity-100 scale-100"
               leaveTo="transform opacity-0 scale-95"
             >
-              <div
-                className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50"
-              />
+              <div className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50" />
 
               <Menu.Items
                 as="div"
                 className="scrollbar-styled bg-menu-primary pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 right-0 h-96 origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
               >
-                <h2
-                  className="bg-menu-primary pt-8 pb-6 text-brand-white border-b border-dashed border-dashed-light w-full text-center mb-6"
-                >
+                <h2 className="bg-menu-primary pt-8 pb-6 text-brand-white border-b border-dashed border-dashed-light w-full text-center mb-6">
                   GENERAL SETTINGS
                 </h2>
 
@@ -364,7 +345,10 @@ export const NormalHeader: FC<INormalHeader> = ({
                     onClick={() => history.push('/general-phrase')}
                     className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                   >
-                    <Icon name="wallet" className="text-brand-white ml-1 mr-4" />
+                    <Icon
+                      name="wallet"
+                      className="text-brand-white ml-1 mr-4 seed-phrase-menu-btn"
+                    />
 
                     <span className="px-3">Wallet Seed Phrase</span>
                   </li>
@@ -375,7 +359,10 @@ export const NormalHeader: FC<INormalHeader> = ({
                     onClick={() => history.push('/general-about')}
                     className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                   >
-                    <Icon name="warning" className="text-brand-white ml-1 mr-4" />
+                    <Icon
+                      name="warning"
+                      className="text-brand-white ml-1 mr-4"
+                    />
 
                     <span className="px-3">Info/Help</span>
                   </li>
@@ -386,7 +373,10 @@ export const NormalHeader: FC<INormalHeader> = ({
                     onClick={() => history.push('/general-delete')}
                     className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                   >
-                    <Icon name="delete" className="text-brand-white ml-1 mr-4" />
+                    <Icon
+                      name="delete"
+                      className="text-brand-white ml-1 mr-4"
+                    />
 
                     <span className="px-3">Delete wallet</span>
                   </li>
@@ -396,8 +386,8 @@ export const NormalHeader: FC<INormalHeader> = ({
           </>
         )}
       </Menu>
-    )
-  }
+    );
+  };
 
   return (
     <div className="relative flex items-center justify-between bg-bkg-1 text-gray-300 p-2 py-6 w-full">
@@ -407,10 +397,7 @@ export const NormalHeader: FC<INormalHeader> = ({
         onClick={handleRefresh}
         className="hover:text-brand-deepPink100 text-brand-white absolute right-10"
       >
-        <Icon
-          name="reload"
-          wrapperClassname="mb-2 mr-2"
-        />
+        <Icon name="reload" wrapperClassname="mb-2 mr-2" />
       </IconButton>
 
       <GeneralMenu />
