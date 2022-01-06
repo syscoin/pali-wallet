@@ -20,6 +20,10 @@ export const useFormat = () => {
     )}`;
   };
 
+  const capitalizeFirstLetter = (string: string) => {
+    return string.charAt(0).toUpperCase() + string.slice(1);
+  }
+  
   const formatDistanceDate = (timestamp: string) => {
     const formatStyle = 'M-d-yyyy';
     const today = new Date();
@@ -62,6 +66,7 @@ export const useFormat = () => {
     formatURL,
     formatCurrency,
     formatNumber,
-    formatDistanceDate
+    formatDistanceDate,
+    capitalizeFirstLetter
   }
 }

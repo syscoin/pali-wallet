@@ -57,7 +57,7 @@ export const ConnectedAccounts = () => {
 
           <PrimaryButton
             type="button"
-            action
+            width="40"
             disabled={accountId === -1}
             onClick={() => changeConnectedAccount(accountId)}
           >
