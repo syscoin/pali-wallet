@@ -137,7 +137,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
             <PrimaryButton
               action
               type="submit"
-              loading={true}
+              loading={loading}
             >
               Next
             </PrimaryButton>
