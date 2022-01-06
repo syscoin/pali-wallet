@@ -45,10 +45,10 @@ const CurrencyView = () => {
     setSelectedCoin(coin);
   }
 
-  const handleConvert = (value: number, type: string) => {
+  const handleConvert = (value: number, type: string, comparedCoin: string) => {
     if (type === 'sys') {
       setConversorValues({
-        fiat: Number(value * fiat.availableCoins[checkValueCoin]),
+        fiat: Number(value * fiat.availableCoins[comparedCoin ? comparedCoin : checkValueCoin]),
         sys: Number(value),
       });
 
@@ -57,7 +57,7 @@ const CurrencyView = () => {
 
     setConversorValues({
       fiat: Number(value),
-      sys: Number(value * fiat.availableCoins[checkValueCoin]),
+      sys: Number(value * fiat.availableCoins[comparedCoin ? comparedCoin : checkValueCoin]),
     });
   }
 
@@ -180,7 +180,7 @@ const CurrencyView = () => {
         <div className="relative text-sm font-medium text-brand-royalblue ">
           <Input
             type="number"
-            onChange={(event) => handleConvert(Number(event.target.value), 'sys')}
+            onChange={(event) => handleConvert(Number(event.target.value), 'sys', checkValueCoin)}
             maxLength={20}
             value={Number(conversorValues.sys)}
             className="bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus flex justify-between items-center w-80 py-2 px-4 rounded-full outline-none"
@@ -188,7 +188,7 @@ const CurrencyView = () => {
 
           <div className="absolute right-4 bottom-1.5 flex justify-center items-center gap-x-3">
             <p className="cursor-pointer" onClick={() =>
-              handleConvert(Number(activeAccount?.balance), checkValueCoin)}
+              handleConvert(Number(activeAccount?.balance), checkValueCoin, checkValueCoin)}
             >
               MAX
             </p>
@@ -205,7 +205,9 @@ const CurrencyView = () => {
           <Input
             type="number"
             maxLength={20}
-            onChange={(event) => handleConvert(Number(event.target.value), checkValueCoin)}
+            onChange={(event) => {
+              handleConvert(Number(event.target.value), checkValueCoin, checkValueCoin)
+            }}
             value={Number(conversorValues.fiat)}
             className="bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus flex justify-between items-center w-80 py-2 px-4 rounded-full outline-none"
           />
@@ -246,7 +248,10 @@ const CurrencyView = () => {
                       return (
                         <Menu.Item>
                           <button
-                            onClick={() => setCheckValueCoin(key)}
+                            onClick={() => {
+                              setCheckValueCoin(key);
+                              handleConvert(0, key, key);
+                            }}
                             className="hover:text-brand-royalbluemedium text-brand-white font-poppins transition-all duration-300 group border-b border-dashed border-brand-royalblue border-opacity-30 px-4 flex border-0 border-transparent items-center w-full py-2 gap-x-1 text-sm justify-start"
                           >
                             {getSymbolFromCurrency(key.toUpperCase())}
