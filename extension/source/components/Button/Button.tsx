@@ -7,6 +7,7 @@ type IPrimaryButton = {
   loading?: boolean;
   type: "button" | "submit" | "reset" | undefined;
   onClick?: any;
+  width?: string;
 }
 
 export const Button = ({
@@ -37,10 +38,11 @@ export const PrimaryButton: FC<IPrimaryButton> = ({
   loading = false,
   type,
   onClick,
+  width = '36'
 }) => {
   return (
     <button
-      className={`${disabled || loading ? disabledStyle : 'text-brand-white cursor-pointer border border-button-primary bg-button-primary hover:bg-button-primaryhover'} tracking-normal text-sm leading-4 w-36 transition-all duration-300 rounded-full py-2.5 flex justify-center items-center font-bold`}
+      className={`${disabled || loading ? disabledStyle : 'text-brand-white cursor-pointer border border-button-primary bg-button-primary hover:bg-button-primaryhover'} tracking-normal text-sm leading-4 w-${width} transition-all duration-300 rounded-full py-2.5 flex justify-center items-center font-bold`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
