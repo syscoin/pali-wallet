@@ -15,13 +15,12 @@ describe('Verify seed phrase', () => {
     await driver.fill('#basic_password', CONSTANTS.PASSWORD);
     await driver.fill('#basic_repassword', CONSTANTS.PASSWORD);
     await driver.clickElement('#next-btn');
-    await driver.clickElement('.settings-btn');
+    setTimeout(async () => {
+      await driver.clickElement('.settings-btn');
+    }, 2000)
     await driver.clickElement('.seed-phrase-menu-btn');
-    await driver.fill('.seed-phrase-password-input', CONSTANTS.PASSWORD);
-    const findSeedPhrase = await driver
-      .findElement
-        By.xpath('//*[text()=CONSTANTS.PASSWORD]')
-      ();
+    await driver.fill('#phraseview_password', CONSTANTS.PASSWORD);
+    const findSeedPhrase = await driver.findAllElementsWithId('user-phrase');
     if (findSeedPhrase) {
       console.log('the seed phrase shown is correct');
     } else {
