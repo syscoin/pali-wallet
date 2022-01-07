@@ -6,15 +6,24 @@
   @apply rounded-full;
 }
 
-input[type="number"]::-webkit-outer-spin-button,
-input[type="number"]::-webkit-inner-spin-button {
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
 
 /* Firefox */
-input[type=number] {
+input[type='number'] {
   -moz-appearance: textfield;
+}
+
+.remove-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.remove-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
 }
 
 .scrollbar-styled::-webkit-scrollbar {
@@ -38,7 +47,8 @@ input[type=number] {
   @apply relative;
 }
 
-#basic_password, #basic_repassword {
+#basic_password,
+#basic_repassword {
   @apply w-72 rounded-full p-2 pl-4 bg-bkg-1 border border-bkg-4 text-brand-graylight text-sm outline-none focus:border-bkg-4;
 }
 
@@ -59,7 +69,7 @@ input[type=number] {
 }
 
 .ant-input-suffix {
-  @apply absolute right-2 text-bkg-4; 
+  @apply absolute right-2 text-bkg-4;
 }
 
 .ant-form-item-control-input {
@@ -75,7 +85,7 @@ input[type=number] {
 }
 
 #rpc .ant-form-item-children-icon {
-  @apply absolute right-2 top-1.5
+  @apply absolute right-2 top-1.5;
 }
 
 #site .ant-form-item-children-icon {
@@ -90,7 +100,7 @@ input[type=number] {
   @apply relative;
 }
 
-div[role=alert] {
+div[role='alert'] {
   @apply text-brand-white text-base font-light text-center absolute left-1/4 right-1/4;
 }
 
