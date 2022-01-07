@@ -23,6 +23,7 @@ export const Home = () => {
   const {
     accounts,
     activeNetwork,
+    fiat
   } = useStore();
 
   useEffect(() => {
@@ -63,7 +64,7 @@ export const Home = () => {
                     <p className="font-poppins mt-4">SYS</p>
                   </div>
 
-                  <p>{getFiatAmount(activeAccount.balance || 0)}</p>
+                  <p>{getFiatAmount(activeAccount.balance || 0, 4, String(fiat.current))}</p>
                 </>
               )}
             </div>

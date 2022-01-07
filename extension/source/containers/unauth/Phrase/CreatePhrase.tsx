@@ -41,6 +41,7 @@ export const CreatePhrase: FC = () => {
         <div className="absolute bottom-12">
           <PrimaryButton
             type="button"
+            width="56"
             onClick={nextHandler}
           >
             I've written it down

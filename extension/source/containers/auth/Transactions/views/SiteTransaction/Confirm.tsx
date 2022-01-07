@@ -24,7 +24,7 @@ const ConfirmDefaultTransaction = ({
 }) => {
   const controller = useController();
 
-  const { ellipsis, formatURL } = useFormat();
+  const { ellipsis, formatURL, capitalizeFirstLetter } = useFormat();
   const { closePopup } = usePopup();
   const { history } = useUtils();
   const { activeAccount } = useAccount();
@@ -146,7 +146,7 @@ const ConfirmDefaultTransaction = ({
           type="error"
           onClose={closePopup}
           open={failed}
-          title={`${title.toLowerCase()} request failed`}
+          title={`${capitalizeFirstLetter(title.toLowerCase())} request failed`}
           description="Sorry, we could not submit your request. Try again later."
           log={logError ? logError : 'No description provided'}
           closeMessage="Ok"
@@ -159,7 +159,7 @@ const ConfirmDefaultTransaction = ({
               closePopup={closePopup}
               onClose={closePopup}
               open={submitted && !failed}
-              title={`${title.toLowerCase()} request successfully submitted`}
+              title={`${capitalizeFirstLetter(title.toLowerCase())} request successfully submitted`}
               description="You can check your request under activity on your home screen."
               closeMessage="Got it"
             />
@@ -185,9 +185,10 @@ const ConfirmDefaultTransaction = ({
             ))}
           </ul>
 
-          <div className="flex justify-between items-center absolute bottom-10 gap-3">
+          <div className="flex justify-between w-full max-w-xs md:max-w-md items-center absolute bottom-10 gap-3">
             <SecondaryButton
               type="button"
+              action
               onClick={() => handleRejectTransaction(browser, temporaryTransaction, history)}
             >
               Cancel
@@ -195,6 +196,7 @@ const ConfirmDefaultTransaction = ({
 
             <PrimaryButton
               type="submit"
+              action
               disabled={submitted}
               loading={loading && !failed && !submitted}
               onClick={handleConfirmSiteTransaction}
@@ -320,6 +322,7 @@ const ConfirmSignTransaction = ({
           <div className="flex justify-between items-center absolute bottom-10 gap-3">
             <SecondaryButton
               type="button"
+              action
               onClick={() => handleRejectTransaction(browser, psbt, history)}
             >
               Cancel
@@ -327,6 +330,7 @@ const ConfirmSignTransaction = ({
 
             <PrimaryButton
               type="submit"
+              action
               disabled={confirmed}
               loading={loading && !failed && !confirmed}
               onClick={handleConfirmSignature}

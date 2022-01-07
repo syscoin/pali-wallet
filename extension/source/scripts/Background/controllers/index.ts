@@ -1,6 +1,6 @@
 /* eslint-disable*/
 import WalletController from './WalletController';
-import ControllerUtils from './ControllerUtils';
+import ControllerUtils, { IControllerUtils } from './ControllerUtils';
 import ConnectionsController from './ConnectionsController';
 import { IWalletController } from 'types/controllers';
 
@@ -11,6 +11,7 @@ export interface IMasterController {
   dapp: any;
   stateUpdater: () => void;
   wallet: Readonly<IWalletController>;
+  utils: Readonly<IControllerUtils>;
 }
 
 const MasterController = (): IMasterController => {
@@ -31,6 +32,7 @@ const MasterController = (): IMasterController => {
     wallet,
     connections: Object.freeze(connectionsPrototype),
     appRoute: utils.appRoute,
+    utils,
     stateUpdater,
   };
 };

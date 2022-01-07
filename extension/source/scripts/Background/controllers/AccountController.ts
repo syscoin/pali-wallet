@@ -18,9 +18,10 @@ import {
   updateAllTokens,
   setTimer,
   updateNetwork,
+  setTemporaryTransactionState,
 } from 'state/wallet';
 
-import { 
+import {
   Assets,
   IAccountInfo,
   SendAsset,
@@ -113,7 +114,11 @@ const AccountController = (actions: {
   const updateTransactionData = (txinfo: any) => {
     const transactionItem = store.getState().wallet.temporaryTransactionState.type === 'sendAsset';
 
+    console.log('calling update tx data', transactionItem)
+
     const transactions = transactionItem ? account.transactions : getConnectedAccount().transactions;
+    
+    console.log('calling update tx data account', transactions)
 
     store.dispatch(
       updateTransactions({
@@ -250,7 +255,7 @@ const AccountController = (actions: {
 
   const getChangeAddress = async () => {
     const connectedAccount: IAccountState = getConnectedAccount();
-    
+
     if (!sysjs) {
       console.log('SYSJS not defined');
 
@@ -1341,7 +1346,10 @@ const AccountController = (actions: {
 
     const feeRateBN = new sys.utils.BN(fee * 1e8);
 
-    console.log('call confirm temptx', temporaryTransaction['sendAsset'])
+    store.dispatch(setTemporaryTransactionState({
+      executing: true,
+      type: 'sendAsset'
+    }))
 
     if (isToken && token) {
       let txInfo;
@@ -1385,7 +1393,10 @@ const AccountController = (actions: {
             watchMemPool(acc);
           })
 
+          updateTransactionData(txInfo);
+
           clearTemporaryTransaction('sendAsset')
+
           return
         }
         catch (e) {
@@ -1436,10 +1447,16 @@ const AccountController = (actions: {
 
         try {
           sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner).then(() => {
-            const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
+            debugger
+            const transactionItem = store.getState().wallet.temporaryTransactionState.type === 'sendAsset';
+
+            const acc = transactionItem ? account : getConnectedAccount();
 
             watchMemPool(acc);
           })
+
+          updateTransactionData(txInfo);
+
           clearTemporaryTransaction('sendAsset');
 
           return
@@ -1463,9 +1480,11 @@ const AccountController = (actions: {
       updateTransactionData(txInfo);
     }
 
-    clearTemporaryTransaction('sendAsset');
+    const transactionItem = store.getState().wallet.temporaryTransactionState.type === 'sendAsset';
 
-    const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
+    const acc = transactionItem ? account : getConnectedAccount() ;
+
+    clearTemporaryTransaction('sendAsset');
 
     watchMemPool(acc);
   }
@@ -1476,9 +1495,9 @@ const AccountController = (actions: {
   }) => {
     return new Promise(async (resolve, reject) => {
       try {
-       const response = await handleTransactions(getTemporaryTransaction(type), callback); 
+        const response = await handleTransactions(getTemporaryTransaction(type), callback);
 
-       resolve(response);
+        resolve(response);
       } catch (error: any) {
         reject(error);
       }

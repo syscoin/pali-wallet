@@ -19,8 +19,8 @@ const DefaultModal = ({
   onClose,
   open,
   goTo = '/home',
-  background = 'bg-bkg-3',
-  textColor = 'text-gray-300',
+  background = 'bg-bkg-4',
+  textColor = 'text-white',
   title = '',
   description = '',
   closeMessage = 'Ok',
@@ -80,10 +80,11 @@ const DefaultModal = ({
             >
               <Dialog.Title
                 as="h3"
-                className="text-lg font-medium leading-6 text-brand-white"
+                className="text-lg font-medium pt-2 pb-4 border-b border-dashed border-gray-600 leading-6 text-brand-white"
               >
                 {title}
               </Dialog.Title>
+              
               <div className="mt-2">
                 <p className={`text-sm ${textColor}`}>{description}</p>
               </div>

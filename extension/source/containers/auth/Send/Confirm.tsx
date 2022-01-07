@@ -34,7 +34,7 @@ export const SendConfirm = () => {
           type: 'sendAsset',
           callback,
         });
-        
+
         console.log(response)
 
         if (response) {
@@ -115,7 +115,7 @@ export const SendConfirm = () => {
 
   return (
     <AuthViewLayout title="SEND SYS">
-      {confirmed ? (
+      {confirmed && (
         <Modal
           type="default"
           title="Transaction successful"
@@ -124,56 +124,54 @@ export const SendConfirm = () => {
           onClose={() => history.push('/home')}
           doNothing
         />
-      ) : (
-        <>
-          {tempTx && (
-            <div className="mt-4 flex justify-center items-center flex-col w-full">
-              <p className="flex flex-col justify-center text-center items-center font-rubik">
-                <span className="text-brand-royalblue font-thin font-poppins">
-                  Send
-                </span>
+      )}
 
-                {tempTx.amount} {tempTx.token ? tempTx.token.symbol : 'SYS'}
-              </p >
+      {tempTx && (
+        <div className="mt-4 flex justify-center items-center flex-col w-full">
+          <p className="flex flex-col justify-center text-center items-center font-rubik">
+            <span className="text-brand-royalblue font-thin font-poppins">
+              Send
+            </span>
 
-              <div className="w-full flex justify-center divide-y divide-dashed divide-bkg-3 items-start flex-col gap-3 py-2 px-4 text-sm mt-4 text-left">
-                <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
-                  From
+            {tempTx.amount} {tempTx.token ? tempTx.token.symbol : 'SYS'}
+          </p >
 
-                  <span className="text-brand-white">{ellipsis(tempTx.fromAddress, 7, 15)}</span>
-                </p>
+          <div className="w-full flex justify-center divide-y divide-dashed divide-bkg-3 items-start flex-col gap-3 py-2 px-4 text-sm mt-4 text-left">
+            <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
+              From
 
-                <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
-                  To
+              <span className="text-brand-white">{ellipsis(tempTx.fromAddress, 7, 15)}</span>
+            </p>
 
-                  <span className="text-brand-white">{ellipsis(tempTx.toAddress, 7, 15)}</span>
-                </p>
+            <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
+              To
 
-                <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
-                  Fee
+              <span className="text-brand-white">{ellipsis(tempTx.toAddress, 7, 15)}</span>
+            </p>
 
-                  <span className="text-brand-white">{tempTx.fee}</span>
-                </p>
+            <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
+              Fee
 
-                <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
-                  Max total
+              <span className="text-brand-white">{tempTx.fee}</span>
+            </p>
 
-                  <span className="text-brand-white">{Number(tempTx.fee) + Number(tempTx.amount)} SYS</span>
-                </p>
-              </div>
+            <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
+              Max total
 
-              <div className="absolute bottom-12">
-                <SecondaryButton
-                  loading={loading}
-                  onClick={handleConfirm}
-                  type="button"
-                >
-                  Confirm
-                </SecondaryButton>
-              </div>
-            </div>
-          )}
-        </>
+              <span className="text-brand-white">{Number(tempTx.fee) + Number(tempTx.amount)} SYS</span>
+            </p>
+          </div>
+
+          <div className="absolute bottom-12">
+            <SecondaryButton
+              loading={loading}
+              onClick={handleConfirm}
+              type="button"
+            >
+              Confirm
+            </SecondaryButton>
+          </div>
+        </div>
       )}
     </AuthViewLayout >
   )

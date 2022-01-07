@@ -1,7 +1,7 @@
 import { useFormat } from 'hooks/index';
 import React, { useEffect, useState } from 'react';
 import placeholder from 'assets/images/placeholder.png';
-import { Button, Tooltip } from 'components/index';
+import { Button, Tooltip, Icon } from 'components/index';
 import axios from 'axios';
 
 export const AssetDetails = ({
@@ -11,6 +11,7 @@ export const AssetDetails = ({
   const { formatURL } = useFormat();
 
   const [imageLink, setImageLink] = useState('');
+  const [loadingImage, setLoadingImage] = useState(false);
 
   const {
     assetGuid,
@@ -26,9 +27,12 @@ export const AssetDetails = ({
   useEffect(() => {
     const getImageLink = async () => {
       if (description && description.startsWith("https://ipfs.io/ipfs/")) {
+        setLoadingImage(true);
+
         const response = await axios.get(description);
 
         setImageLink(response.data.image);
+        setLoadingImage(false);
       }
     }
 
@@ -76,7 +80,7 @@ export const AssetDetails = ({
 
   return (
     <>
-      {imageLink ? (
+      {imageLink && !loadingImage ? (
         <Tooltip content="Click to open on IPFS">
           <img
             src={`${imageLink}`}
@@ -86,11 +90,23 @@ export const AssetDetails = ({
           />
         </Tooltip>
       ) : (
-        <img
-          src={`${placeholder}`}
-          alt="syscoin"
-          className="mx-auto mt-4 mb-8 w-40 h-40 rounded-md transition-all duration-200 cursor-not-allowed"
-        />
+        <>
+          {loadingImage ? (
+            <div className="flex justify-center h-40 items-center">
+              <Icon
+                name="loading"
+                className="text-brand-royalblue"
+                size={50}
+              />
+            </div>
+          ) : (
+            <img
+              src={`${placeholder}`}
+              alt="syscoin"
+              className="mx-auto mt-4 mb-8 w-40 h-40 rounded-md transition-all duration-200 cursor-not-allowed"
+            />
+          )}
+        </>
       )}
 
       {assetTransaction.map(({ label, value }: any) => {

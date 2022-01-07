@@ -58,6 +58,15 @@ const AutolockView = () => {
               min: 1,
               max: 30,
             },
+            ({}) => ({
+              validator(_, value) {
+                if (value <= 30 && value >= 1) {
+                  return Promise.resolve();
+                }
+
+                return Promise.reject('');
+              },
+            }),
           ]}
         >
           <Input

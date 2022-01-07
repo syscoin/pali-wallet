@@ -46,16 +46,18 @@ export const ConnectedAccounts = () => {
           ))}
         </ul>
 
-        <div className="flex justify-between items-center absolute bottom-8 gap-3">
+        <div className="flex justify-between w-full max-w-xs md:max-w-md items-center absolute bottom-10 gap-3">
           <SecondaryButton
             type="button"
             onClick={closePopup}
+            action
           >
             Cancel
           </SecondaryButton>
 
           <PrimaryButton
             type="button"
+            width="40"
             disabled={accountId === -1}
             onClick={() => changeConnectedAccount(accountId)}
           >
