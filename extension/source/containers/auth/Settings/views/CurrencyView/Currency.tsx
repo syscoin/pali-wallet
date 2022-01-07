@@ -4,7 +4,7 @@ import { useController, usePrice, useStore, useFormat, useUtils, useAccount } fr
 import { SecondaryButton, Icon, Modal } from 'components/index';
 import { Menu, Transition } from '@headlessui/react';
 import { Input } from 'antd';
-import getSymbolFromCurrency from 'currency-symbol-map'
+import getSymbolFromCurrency from 'currency-symbol-map';
 
 const CurrencyView = () => {
   const controller = useController();

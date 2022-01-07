@@ -36,10 +36,7 @@ import {
   CaretUpOutlined,
   MessageOutlined,
   VerifiedOutlined,
-<<<<<<< HEAD
-=======
   CheckOutlined,
->>>>>>> 529702684b202ae13672cc98df06e4abbdddfb78
 } from '@ant-design/icons';
 
 const icons = {
@@ -102,7 +99,6 @@ export const Icon: FC<IIcon> = ({
   const Component = icons[name];
 
   return (
-<<<<<<< HEAD
     <div className={wrapperClassname ? wrapperClassname : 'w-8'} id={id}>
       {Component ? (
         <Component
@@ -111,10 +107,6 @@ export const Icon: FC<IIcon> = ({
           rotate={rotate}
         />
       ) : null}
-=======
-    <div className={wrapperClassname && wrapperClassname}>
-      {Component ? <Component className={className} style={{ fontSize: size }} rotate={rotate} /> : null}
->>>>>>> 529702684b202ae13672cc98df06e4abbdddfb78
     </div>
   );
 };

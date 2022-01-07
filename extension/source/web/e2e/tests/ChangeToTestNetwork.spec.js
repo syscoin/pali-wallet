@@ -15,9 +15,15 @@ describe('Change Network test', () => {
     await driver.fill('#basic_password', CONSTANTS.PASSWORD);
     await driver.fill('#basic_repassword', CONSTANTS.PASSWORD);
     await driver.clickElement('#next-btn');
-    await driver.clickElement('.menu-btn');
-    await driver.clickElement('.sys-btn');
-    await driver.clickElement('#test-btn');
+    setTimeout(async() => {
+      await driver.clickElement('.menu-btn');
+    }, 2000);
+    setTimeout(async() => {
+      await driver.clickElement('.sys-btn');
+    }, 2000);
+    setTimeout(async() => {
+      await driver.clickElement('#test-btn');
+    }, 2000);
 
     driver.quit();
   });
