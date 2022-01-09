@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Form, Input } from 'antd';
 import { useController, useUtils } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
-import { Icon, SecondaryButton, IconButton } from 'components/index';
+import { SecondaryButton, InfoCard, CopyCard } from 'components/index';
 
 const PhraseView = () => {
   const [phrase, setPhrase] = useState<string>(
@@ -25,7 +25,7 @@ const PhraseView = () => {
 
       <div className="flex justify-center items-center flex-col">
         <Form
-          className="flex justify-center items-center flex-col gap-8 text-center pt-4"
+          className="flex justify-center items-center flex-col gap-8 text-center my-6 w-full max-w-xs"
           name="phraseview"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
@@ -34,6 +34,7 @@ const PhraseView = () => {
           <Form.Item
             name="password"
             hasFeedback
+            className="w-full"
             rules={[
               {
                 required: true,
@@ -55,32 +56,22 @@ const PhraseView = () => {
             ]}
           >
             <Input.Password
-              className="phrase-input rounded-full py-2 px-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
               placeholder="Enter your password"
             />
           </Form.Item>
         </Form>
 
-        <div
-          className="flex flex-col justify-center items-center gap-3 bg-bkg-1 border border-dashed border-brand-royalblue mx-6 my-8 p-4 text-xs rounded-lg transition-all duration-200 hover:bg-bkg-2 cursor-pointer"
+        <CopyCard
+          className="my-4"
           onClick={() => phrase !== '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****' && handleCopySeed()}
+          label="Seed Phrase: (click to copy)"
         >
-          <div className="flex justify-between items-center w-full">
-            <p>Seed Phrase: (click to copy)</p>
-
-            <IconButton
-              onClick={handleCopySeed}
-            >
-              <Icon name="copy" className="text-brand-white" />
-            </IconButton>
-          </div>
-
           <p className="text-xs mt-3">{phrase}</p>
-        </div>
+        </CopyCard>
 
-        <p className="bg-bkg-2 border border-dashed border-brand-deepPink100 mx-6 p-4 text-xs rounded-lg">
-          <b>WARNING:</b> Keep your seed phrase secret! Anyone with your seed phrase can access any account connected to this wallet and steal your assets
-        </p>
+        <InfoCard>
+          <p><b className="text-warning-info">WARNING:</b> Keep your seed phrase secret! Anyone with your seed phrase can access any account connected to this wallet and steal your assets</p>
+        </InfoCard>
 
         <div className="absolute bottom-12">
           <SecondaryButton

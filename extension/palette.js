@@ -23,6 +23,7 @@ module.exports = {
     error: '#AF0404',
     info: '#FF9900',
     success: '#079C31',
+    successhover: '#0bbf3e',
   },
 
   fields: {

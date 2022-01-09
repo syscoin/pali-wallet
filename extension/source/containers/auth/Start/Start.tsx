@@ -21,17 +21,15 @@ export const Start = () => {
       <img src={LogoImage} className="w-52 my-8" alt="syscoin" />
 
       <Form
-        className="flex justify-center items-center flex-col gap-8 text-center"
+        className="flex justify-center items-center flex-col w-full max-w-xs gap-8 text-center"
         name="basic"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 16 }}
-        initialValues={{ remember: true }}
         onFinish={onSubmit}
         autoComplete="off"
       >
         <Form.Item
           name="password"
           hasFeedback
+          className="w-full"
           rules={[
             {
               required: true,

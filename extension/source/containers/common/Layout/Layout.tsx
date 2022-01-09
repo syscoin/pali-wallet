@@ -1,7 +1,7 @@
 import React, { ReactNode, FC } from 'react';
 import { Header } from 'containers/common/Header';
-import { Tooltip } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
+import { Tooltip } from 'components/Tooltip';
 
 interface ILayout {
   accountHeader?: boolean;
@@ -22,7 +22,7 @@ export const Layout: FC<ILayout> = ({
   tooltipText = '',
 }) => {
   return (
-    <div className="flex flex-col justify-center items-center">
+    <div className="flex flex-col justify-center gap-4 items-center">
       <Header
         onlySection={onlySection}
         accountHeader={accountHeader}
@@ -37,11 +37,11 @@ export const Layout: FC<ILayout> = ({
             </span>
 
             <Tooltip
-              placement="bottom"
-              title={tooltipText}
-              overlayClassName="box-border m-0 p-0 text-sm leading-normal list-none absolute z-50 block w-max visible max-w-xs p-2 text-brand-white text-center no-underline break-words bg-brand-black bg-opacity-90 rounded shadow-2xl"
+              content={tooltipText}
             >
-              <QuestionCircleOutlined className="inline-flex text-sm text-brand-graylight w-3" />
+              <QuestionCircleOutlined
+                className="inline-flex text-sm text-brand-graylight w-3"
+              />
             </Tooltip>
           </div>
         ) : (

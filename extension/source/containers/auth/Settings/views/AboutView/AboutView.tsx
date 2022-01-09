@@ -26,7 +26,7 @@ const AboutView: FC = () => {
       <div className="flex flex-col justify-center items-center w-full">
         <Card
           onClick={() => handleRedirect('https://discord.gg/8QKeyurHRd')}
-          cursor="cursor-pointer"
+          className="cursor-pointer"
         >
           <div className="flex justify-start text-base font-bold items-center font-poppins mb-4">
             <Icon name="message" className="text-brand-white mb-1" wrapperClassname="w-6" />
