@@ -13,9 +13,13 @@ module.exports = {
       inset: {
         '5percent': '5%',
       },
+      spacing: {
+        '5dot5': '5.5rem',
+      },
       top: {
         '3rem': '4rem',
       },
+
       right: {
         '5percent': '5%',
         '45r': '0.45rem',
@@ -23,6 +27,10 @@ module.exports = {
       margin: {
         0.8: '0.2rem',
         auto: '0 auto',
+      },
+      padding: {
+        18: '0 4.5rem',
+        '15px': '0 0.938rem',
       },
       maxWidth: {
         popup: '600px',
