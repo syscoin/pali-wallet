@@ -1,20 +1,13 @@
 import React from 'react';
-import {
-  AccountHeader,
-  NormalHeader,
-  Section
-} from './index';
-import {
-  useController,
-  useStore,
-} from 'hooks/index';
+import { AccountHeader, NormalHeader, Section } from './index';
+import { useController, useStore } from 'hooks/index';
 import { Icon } from 'components/Icon';
 
 export const Header = ({
   importSeed = false,
   onlySection = false,
   accountHeader = false,
-  normalHeader = true
+  normalHeader = true,
 }) => {
   const { changingNetwork } = useStore();
 
@@ -23,9 +16,12 @@ export const Header = ({
 
   return (
     <div
-      className={normalHeader && accountHeader ?
-        "pb-32" :
-        onlySection ? "" : "pb-12"
+      className={
+        normalHeader && accountHeader
+          ? 'small-device-size:pb-32'
+          : onlySection
+          ? ''
+          : 'small-device-size:pb-12'
       }
     >
       {changingNetwork && (
@@ -34,27 +30,19 @@ export const Header = ({
         </div>
       )}
 
-      {onlySection && (
-        <Section />
-      )}
+      {onlySection && <Section />}
 
-      <div className="fixed w-full z-10">
+      <div className="small-device-size:fixed w-full z-10">
         {normalHeader && (
           <>
-            <NormalHeader
-              importSeed={importSeed}
-              isUnlocked={isUnlocked}
-            />
+            <NormalHeader importSeed={importSeed} isUnlocked={isUnlocked} />
 
             {accountHeader && (
-              <AccountHeader
-                importSeed={importSeed}
-                isUnlocked={isUnlocked}
-              />
+              <AccountHeader importSeed={importSeed} isUnlocked={isUnlocked} />
             )}
           </>
         )}
       </div>
     </div>
-  )
-}
+  );
+};

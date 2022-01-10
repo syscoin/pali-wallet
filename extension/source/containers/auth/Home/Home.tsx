@@ -6,7 +6,7 @@ import {
   usePrice,
   useFormat,
   useUtils,
-  useAccount
+  useAccount,
 } from 'hooks/index';
 
 import { Header } from 'containers/common/Header';
@@ -20,31 +20,21 @@ export const Home = () => {
   const { formatNumber } = useFormat();
   const { activeAccount } = useAccount();
 
-  const {
-    accounts,
-    activeNetwork,
-    fiat
-  } = useStore();
+  const { accounts, activeNetwork, fiat } = useStore();
 
   useEffect(() => {
-    if (
-      !controller.wallet.isLocked() &&
-      accounts.length > 0 &&
-      activeAccount
-    ) {
+    if (!controller.wallet.isLocked() && accounts.length > 0 && activeAccount) {
       handleRefresh(controller, activeAccount);
     }
   }, [!controller.wallet.isLocked(), accounts.length > 0]);
 
   return (
-    <div className="scrollbar-styled bg-bkg-3 overflow-auto">
+    <div className="scrollbar-styled bg-bkg-3 overflow-auto lg:h-full">
       {activeAccount ? (
         <>
           <Header accountHeader />
 
-          <section
-            className="flex items-center flex-col gap-1 text-brand-white bg-bkg-1 py-14"
-          >
+          <section className="flex items-center flex-col gap-1 text-brand-white bg-bkg-1 py-14">
             <div className="text-center flex justify-center flex-col items-center">
               {activeNetwork == 'testnet' ? (
                 <div className="flex items-center justify-center gap-x-0.5">
@@ -60,11 +50,17 @@ export const Home = () => {
                     <p className="text-5xl font-medium font-rubik">
                       {formatNumber(activeAccount?.balance || 0)}{' '}
                     </p>
-                    
+
                     <p className="font-poppins mt-4">SYS</p>
                   </div>
 
-                  <p>{getFiatAmount(activeAccount.balance || 0, 4, String(fiat.current))}</p>
+                  <p>
+                    {getFiatAmount(
+                      activeAccount.balance || 0,
+                      4,
+                      String(fiat.current)
+                    )}
+                  </p>
                 </>
               )}
             </div>
@@ -81,7 +77,6 @@ export const Home = () => {
                   wrapperClassname="mb-2 mr-2"
                   rotate={40}
                 />
-
                 Send
               </Button>
 
@@ -95,7 +90,6 @@ export const Home = () => {
                   className="w-4"
                   wrapperClassname="mb-2 mr-2"
                 />
-
                 Receive
               </Button>
             </div>
