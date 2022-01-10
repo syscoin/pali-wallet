@@ -1,16 +1,19 @@
-import React, { useState } from 'react';
-import { PrimaryButton, SecondaryButton, Icon } from 'components/index';
+import React, { useEffect, useState } from 'react';
+import { PrimaryButton, SecondaryButton, Icon, Modal } from 'components/index';
 import { useStore, useUtils, useFormat, useDappConnection, useAccount } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout';
+import { Dialog } from '@headlessui/react';
 
 export const ConnectWallet = () => {
   const { getHost } = useUtils();
   const { ellipsis } = useFormat();
   const { confirmConnection, cancelConnection } = useDappConnection();
-  const { accounts, currentSenderURL } = useStore();
+  const { accounts, currentSenderURL, trustedApps } = useStore();
   const { connectedAccount } = useAccount();
 
   const [accountId, setAccountId] = useState<number>(-1);
+  const [isInTrustedList, setIsInTrustedList] = useState<boolean>(false);
+  const [openExtraConfirmation, setOpenExtraConfirmation] = useState<boolean>(false);
 
   const handleSelectAccount = (id: number) => {
     if (connectedAccount && id === connectedAccount.id) {
@@ -19,6 +22,12 @@ export const ConnectWallet = () => {
 
     setAccountId(id);
   };
+
+  useEffect(() => {
+    const trustedApp = trustedApps[getHost(currentSenderURL)] !== '';
+
+    setIsInTrustedList(trustedApp);
+  })
 
   return (
     <AuthViewLayout canGoBack={false} title="CONNECT WITH">
@@ -70,11 +79,57 @@ export const ConnectWallet = () => {
             type="button"
             action
             disabled={accountId === -1}
-            onClick={() => confirmConnection(accountId)}
+            onClick={!isInTrustedList ? () => setOpenExtraConfirmation(true) : () => confirmConnection(accountId)}
           >
             {accountId > -1 ? 'Confirm' : 'Next'}
           </PrimaryButton>
         </div>
+
+        {openExtraConfirmation && (
+          <Modal
+            type=""
+            open={openExtraConfirmation}
+            onClose={() => setOpenExtraConfirmation(false)}
+          >
+            <div className={`font-poppins inline-block w-full max-w-md p-6 my-8 overflow-hidden text-center align-middle transition-all border border-brand-royalblue transform bg-bkg-4 shadow-xl rounded-2xl`}>
+              <Dialog.Title
+                as="h3"
+                className="text-lg font-medium leading-6 text-brand-white flex justify-center gap-3 items-center"
+              >
+                <Icon name="warning" className="text-brand-white mb-2" />
+                <p>
+                  Not trusted site detected
+                </p>
+              </Dialog.Title>
+
+              <div className="mt-4">
+                <p className={`text-sm text-brand-white`}>
+                  This site is not on our trusted list. Are you sure you want to connect?
+                </p>
+              </div>
+
+              <div className="mt-8 flex justify-between items-center gap-5">
+                <SecondaryButton
+                  action
+                  width="32"
+                  type="button"
+                  onClick={() => cancelConnection(accountId)}
+                >
+                  Cancel
+                </SecondaryButton>
+
+                <PrimaryButton
+                  action
+                  width="32"
+                  type="button"
+                  onClick={() => confirmConnection(accountId)}
+                >
+                  Confirm
+                </PrimaryButton>
+              </div>
+            </div>
+          </Modal>
+        )}
       </div>
     </AuthViewLayout>
   );

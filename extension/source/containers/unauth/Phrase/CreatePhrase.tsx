@@ -20,7 +20,7 @@ export const CreatePhrase: FC = () => {
       tooltipText="A recovery phrase is a series of 12 words in a specific order. This word combination is unique to your wallet. Make sure to have pen and paper ready so you can write it down."
       onlySection
     >
-      <div className="flex justify-center items-center flex-col gap-4 mt-8">
+      <div className="flex justify-center items-center flex-col gap-4 max-w-xs">
         {phrases && (
           <ul className="list-none m-0 p-0 grid grid-cols-2 w-full gap-x-12">
             {phrases.split(' ').map((phrase: string, index: number) => (

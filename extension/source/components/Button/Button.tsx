@@ -49,7 +49,7 @@ export const PrimaryButton: FC<IPrimaryButton> = ({
       ${disabled || loading ?
           disabledStyle :
           action ?
-            'border-warning-success bg-warning-success hover:bg-warning-success text-brand-white' :
+            'border-warning-success bg-warning-success hover:bg-warning-successhover text-brand-white' :
             'border-button-primary bg-button-primary hover:bg-button-primaryhover text-brand-white'
         }`}
       disabled={disabled || loading}

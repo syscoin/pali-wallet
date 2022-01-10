@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useController, useFormat } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout';
 import { Form, Input } from 'antd';
-import { PrimaryButton, Modal } from 'components/index';
+import { SecondaryButton, Modal } from 'components/index';
 
 const NewAccountView = () => {
   const [address, setAddress] = useState<string | undefined>();
@@ -60,13 +60,13 @@ const NewAccountView = () => {
           </Form.Item>
 
           <div className="absolute bottom-12">
-            <PrimaryButton
+            <SecondaryButton
               type="submit"
               loading={loading}
               disabled={loading}
             >
               Create
-            </PrimaryButton>
+            </SecondaryButton>
           </div>
         </Form>
       )}

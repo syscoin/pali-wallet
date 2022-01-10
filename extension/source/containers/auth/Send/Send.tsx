@@ -353,7 +353,7 @@ export const Send: FC<ISend> = () => {
             <Tooltip content={`${disabledFee ? 'Use recommended fee. Disabled for SYS networks because the fee used in transactions is always the recommended for current SYS network conditions.' : 'Click to use the recommended fee'}`}>
               <div onClick={handleGetFee}>
                 <Icon
-                  wrapperClassname="w-6 mb-1"
+                  wrapperClassname="w-6 ml-3 mb-1"
                   name="verified"
                   className={`${disabledFee ? 'cursor-not-allowed text-button-disabled' : 'text-warning-success'}`}
                 />

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
 import { Form, Input } from 'antd';
-import { PrimaryButton } from 'components/index';
+import { SecondaryButton } from 'components/index';
 import axios from 'axios';
 import { useUtils, useController } from 'hooks/index';
 import { EditNetworkView } from '..';
@@ -139,12 +139,12 @@ const CustomRPCView = ({
             <p className="text-brand-white font-poppins py-4 text-center px-8 text-sm">You can edit this later if you need on network settings menu.</p>
 
             <div className="absolute bottom-12">
-              <PrimaryButton
+              <SecondaryButton
                 type="submit"
                 loading={loading}
               >
                 Save
-              </PrimaryButton>
+              </SecondaryButton>
             </div>
           </Form>
         </AuthViewLayout>

@@ -3,16 +3,17 @@ import { useUtils } from 'hooks/useUtils';
 import React, { FC, Fragment } from 'react';
 
 interface IModal {
-  title: string;
+  title?: string;
   onClose: any;
   closeMessage?: string;
   connectedAccount?: any;
   open: boolean;
   type: string;
-  description: string;
+  description?: string;
   doNothing?: boolean;
   log?: any;
   closePopup?: any;
+  children?: any;
 }
 
 const DefaultModal = ({
@@ -76,7 +77,7 @@ const DefaultModal = ({
               >
                 {title}
               </Dialog.Title>
-              
+
               <div className="mt-2">
                 <p className={`text-sm ${textColor}`}>
                   {description}
@@ -88,7 +89,7 @@ const DefaultModal = ({
                   type="button"
                   className="inline-flex justify-center px-10 transition-all duration-200 py-2 text-sm font-medium hover:text-brand-royalblue text-brand-white bg-transparent border border-brand-white rounded-full hover:bg-button-popuphover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
                   onClick={goTo ?
-                    closePopup ? closePopup : () => history.push(goTo) 
+                    closePopup ? closePopup : () => history.push(goTo)
                     : onClose}
                 >
                   {closeMessage}
@@ -199,12 +200,13 @@ const ErrorModal = ({
 export const Modal: FC<IModal> = ({
   onClose,
   open,
-  type,
+  type = '',
   description,
   title,
   doNothing,
   log,
-  closePopup
+  closePopup,
+  children
 }) => {
 
   return (
@@ -231,6 +233,54 @@ export const Modal: FC<IModal> = ({
           doNothing={doNothing}
           log={log}
         />
+      )}
+
+      {type === '' && (
+        <Transition appear show={open} as={Fragment}>
+          <Dialog
+            as="div"
+            className="fixed inset-0 z-10 overflow-y-auto"
+            onClose={onClose}
+          >
+            <div
+              onClick={onClose}
+              className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50"
+            />
+
+            <div className="min-h-screen px-4 text-center">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0"
+                enterTo="opacity-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100"
+                leaveTo="opacity-0"
+              >
+                <Dialog.Overlay className="fixed inset-0" />
+              </Transition.Child>
+
+              <span
+                className="inline-block h-screen align-middle"
+                aria-hidden="true"
+              >
+                &#8203;
+              </span>
+
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                {children}
+              </Transition.Child>
+            </div>
+          </Dialog>
+        </Transition>
       )}
     </>
   );

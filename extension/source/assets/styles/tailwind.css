@@ -6,10 +6,8 @@
   @apply rounded-full;
 }
 
-input[type='number']::-webkit-outer-spin-button,
-input[type='number']::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
+input {
+  @apply outline-none;
 }
 
 /* Firefox */
@@ -24,6 +22,12 @@ input[type='number'] {
 .remove-scrollbar {
   -ms-overflow-style: none; /* IE and Edge */
   scrollbar-width: none; /* Firefox */
+}
+
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .scrollbar-styled::-webkit-scrollbar {
@@ -47,25 +51,16 @@ input[type='number'] {
   @apply relative;
 }
 
-#basic_password,
-#basic_repassword {
-  @apply w-72 rounded-full p-2 pl-4 bg-bkg-1 border border-bkg-4 text-brand-graylight text-sm outline-none focus:border-bkg-4;
+.ant-form-item-control-input-content {
+  @apply w-full;
 }
 
-#phraseview_password {
-  @apply bg-bkg-3 w-60 outline-none;
+.ant-form-item-control-input-content > textarea {
+  @apply w-full rounded-lg p-2 pl-4 border text-brand-graylight text-sm focus:border-fields-input-borderfocus resize-none outline-none h-20;
 }
 
-#phraseview .ant-form-item-children-icon {
-  @apply absolute right-8 text-bkg-4 -top-1;
-}
-
-#delete_password {
-  @apply bg-bkg-3 w-60 outline-none;
-}
-
-#delete .ant-form-item-children-icon {
-  @apply absolute right-8 text-bkg-4 -top-1;
+.ant-input-affix-wrapper.ant-input-password > input {
+  @apply w-full rounded-full p-2 pl-4 bg-fields-input-primary border border-fields-input-border text-brand-graylight text-sm focus:border-fields-input-borderfocus;
 }
 
 .ant-input-suffix {
@@ -73,27 +68,15 @@ input[type='number'] {
 }
 
 .ant-form-item-control-input {
-  @apply relative max-w-input flex justify-center items-center mx-auto;
+  @apply relative flex justify-center items-center;
 }
 
 .ant-form-item-children-icon {
   @apply absolute right-10 text-bkg-4 top-0;
 }
 
-#send .ant-form-item-children-icon {
-  @apply absolute right-2 text-bkg-4 top-1;
-}
-
 #rpc .ant-form-item-children-icon {
-  @apply absolute right-2 top-1.5;
-}
-
-#site .ant-form-item-children-icon {
-  @apply absolute right-1 text-bkg-4 top-1;
-}
-
-#autolock .ant-form-item-children-icon {
-  @apply absolute right-2 text-bkg-4 top-0;
+  @apply absolute right-2 top-2;
 }
 
 .ant-form-item-explain.ant-form-item-explain-error {

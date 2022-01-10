@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
-import { Icon, IconButton } from 'components/index';
+import { Icon, IconButton, Tooltip } from 'components/index';
 import { Header } from '../Header';
-import { useUtils } from 'hooks/useUtils';
+import { useUtils, useBrowser } from 'hooks/index';
 
 interface IAuthViewLayout {
   title: string;
@@ -17,12 +17,25 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
   canGoBack = true,
 }) => {
   const { history } = useUtils();
+  const { browser } = useBrowser();
+
+  const url = browser.runtime.getURL('app.html');
 
   return (
     <div className={`bg-${background} w-full h-popup text-brand-white relative`}>
       <Header normalHeader />
 
       <div className="w-full relative flex justify-center items-center text-brand-white pt-6 bg-bkg-3">
+        {url && canGoBack && (
+          <Tooltip content="Go to fullscreen">
+            <IconButton
+              onClick={() => window.open(url)}
+            >
+              <Icon className="text-brand-white absolute left-5 bottom-1" name="desktop" />
+            </IconButton>
+          </Tooltip>
+        )}
+
         <p className="text-xl w-full text-center">{title}</p>
 
         {canGoBack && (

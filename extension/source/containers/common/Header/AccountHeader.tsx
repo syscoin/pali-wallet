@@ -48,11 +48,11 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
     return (
       <Menu
         as="div"
-        className="small-device-size:absolute right-2 inline-block text-right"
+        className="small-device-size:absolute right-3 inline-block text-right"
       >
-        <Menu.Button className="inline-flex justify-center w-full  text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+        <Menu.Button className="inline-flex justify-center w-full  text-sm font-medium text-white hover:text-button-primaryhover rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
           {encriptedMnemonic && !importSeed && (
-            <Icon name="dots" className="text-brand-white z-0" />
+            <Icon name="dots" className="z-0" />
           )}
         </Menu.Button>
 
@@ -80,9 +80,9 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                 onClick={() => history.push('/account-priv')}
                 className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
               >
-                <Icon name="edit" className="ml-1 mr-4 text-brand-white" />
+                <Icon name="lock" className="ml-1 mb-2 mr-4 text-brand-white" />
 
-                <span className="px-3">XPUB</span>
+                <span className="px-3">Your keys</span>
               </li>
             </Menu.Item>
 
@@ -93,7 +93,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                     <Disclosure.Button className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3">
                       <Icon
                         name="user"
-                        className="ml-1 mr-4 text-brand-white"
+                        className="ml-1 mb-2 mr-4 text-brand-white"
                       />
 
                       <span className="text-base px-3">Accounts</span>
@@ -106,14 +106,14 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                       />
                     </Disclosure.Button>
 
-                    <Disclosure.Panel className="scrollbar-styled pb-2 text-sm bg-menu-secondary h-40 overflow-auto">
+                    <Disclosure.Panel className="scrollbar-styled pb-2 text-sm bg-menu-secondary max-h-40 h-auto overflow-auto">
                       <li
                         onClick={() => history.push('/account-newaccount')}
                         className="flex items-center p-2.5 text-sm font-medium text-brand-white transition transform bg-menu-secondary mb-4 backface-visibility-hidden active:bg-opacity-40 focus:outline-none justify-center duration-300 mx-auto w-full border-b border-dashed border-menu-dasheddark cursor-pointer hover:bg-bkg-2"
                       >
                         <Icon
                           name="appstoreadd"
-                          className="text-brand-white mb-1"
+                          className="text-brand-white mb-1 mr-3"
                         />
 
                         <span>Create new account</span>
@@ -151,7 +151,10 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                 onClick={() => history.push('/account-hardware')}
                 className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
               >
-                <Icon name="partition" className="text-brand-white ml-1 mr-4" />
+                <Icon
+                  name="partition"
+                  className="text-brand-white ml-1 mr-4 mb-2"
+                />
 
                 <span className="px-3">Hardware wallet</span>
               </li>
@@ -162,7 +165,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                 onClick={handleLogout}
                 className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
               >
-                <Icon name="key" className="text-brand-white ml-1 mr-4" />
+                <Icon name="key" className="text-brand-white ml-1 mr-4 mb-2" />
 
                 <span className="px-3">Lock</span>
               </li>

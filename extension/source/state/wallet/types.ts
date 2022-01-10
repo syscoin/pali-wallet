@@ -86,7 +86,7 @@ export default interface IWalletState {
   };
   currentBlockbookURL: string;
   trustedApps: {
-    [id: number]: string,
+    [id: string]: string,
   },
   temporaryTransactionState: {
     executing: boolean,

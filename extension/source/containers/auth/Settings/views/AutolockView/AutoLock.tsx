@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PrimaryButton, Modal } from 'components/index';;
+import { SecondaryButton, Modal } from 'components/index';;
 import { useController, useStore } from 'hooks/index';
 
 import { Form, Input } from 'antd';
@@ -14,15 +14,12 @@ const AutolockView = () => {
   const { timer } = useStore();
 
   const onSubmit = (data: any) => {
-    console.log(confirmed)
     setLoading(true);
 
     controller.wallet.account.setAutolockTimer(data.minutes);
 
     setConfirmed(true);
     setLoading(false);
-
-    console.log(confirmed)
   };
 
   return (
@@ -77,12 +74,12 @@ const AutolockView = () => {
         </Form.Item>
 
         <div className="absolute bottom-12">
-          <PrimaryButton
+          <SecondaryButton
             type="submit"
             loading={loading}
           >
             Save
-          </PrimaryButton>
+          </SecondaryButton>
         </div>
       </Form>
     </AuthViewLayout>
