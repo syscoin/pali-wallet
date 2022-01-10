@@ -1,4 +1,4 @@
-import { useFormat } from 'hooks/index';
+import { useFormat, useController } from 'hooks/index';
 import React, { useEffect, useState } from 'react';
 import placeholder from 'assets/images/placeholder.png';
 import { Button, Tooltip, Icon } from 'components/index';
@@ -8,6 +8,7 @@ export const AssetDetails = ({
   assetType,
   assetData
 }) => {
+  const controller = useController()
   const { formatURL } = useFormat();
 
   const [imageLink, setImageLink] = useState('');
@@ -38,6 +39,8 @@ export const AssetDetails = ({
 
     getImageLink();
   }, [description]);
+
+  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   const assetTransaction = [
     {
@@ -128,7 +131,7 @@ export const AssetDetails = ({
 
         <Button
           type="button"
-          onClick={() => window.open('')}
+          onClick={() => window.open(`${sysExplorer}/asset/${assetGuid}`)}
           className="inline-flex justify-center px-6 py-1 text-sm font-medium hover:text-brand-royalblue text-brand-white bg-transparent border border-brand-white rounded-full hover:bg-button-popuphover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
         >
           Go

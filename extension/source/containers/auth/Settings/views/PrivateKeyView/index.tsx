@@ -1,86 +1,126 @@
-import React from 'react';
-import { useFormat, useUtils, useStore, useController } from 'hooks/index';
+import React, { useState } from 'react';
+import { useFormat, useAccount, useUtils, useController } from 'hooks/index';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { Icon, SecondaryButton } from 'components/index';
-import { IAccountState } from 'state/wallet/types';
+import { Icon, SecondaryButton, InfoCard, CopyCard } from 'components/index';
 import { Disclosure } from '@headlessui/react';
+import { Input, Form } from 'antd';
 
 const PrivateKeyView = () => {
   const controller = useController();
   const { history, useCopyClipboard } = useUtils();
-  const { accounts } = useStore();
+  const { activeAccount } = useAccount();
   const { ellipsis } = useFormat();
 
   const [copied, copyText] = useCopyClipboard();
+  const [valid, setValid] = useState<boolean>(false);
 
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   return (
-    <AuthViewLayout title="XPUB">
-      <ul className="scrollbar-styled text-sm overflow-auto px-4 h-96 w-full">
-        {accounts.map((account: IAccountState) => {
-          return (
-            <Disclosure
-              key={account.id}
-            >
-              {({ open }) => (
-                <>
-                  <Disclosure.Button
-                    className="my-3 py-2 px-4 flex justify-between items-center rounded-lg w-full border border-brand-royalblue cursor-pointer transition-all duration-300 bg-bkg-1"
-                  >
-                    {account.label}
+    <AuthViewLayout title="YOUR KEYS">
+      <div className="h-96 px-2 py-5 scrollbar-styled overflow-auto">
+        <InfoCard>
+          <p>
+            <b className="text-warning-info">WARNING:  </b>
+            This is your account root indexer to check your full balance for {activeAccount?.label}, it isn't a receiving address. DO NOT SEND FUNDS TO THESE ADDRESSES, YOU WILL LOOSE THEM!
+          </p>
+        </InfoCard>
 
-                    <Icon
-                      name="select-up"
-                      className={`${open ?
-                        'transform rotate-180' :
-                        ''
-                        } mb-1 text-brand-deepPink100`}
-                    />
-                  </Disclosure.Button>
+        <Disclosure
+        >
+          {({ open }) => (
+            <>
+              <Disclosure.Button
+                className={`${open ? 'rounded-t-lg' : 'rounded-lg'} w-full max-w-xs px-4 mt-6 py-2 flex justify-between items-center border border-bkg-1 text-xs cursor-pointer transition-all duration-300 bg-bkg-1`}
+              >
+                XPUB
 
-                  <Disclosure.Panel>
-                    <div
-                      className="my-3 py-4 px-4 rounded-lg w-full border border-dashed border-brand-royalblue flex flex-col transition-all duration-300 bg-bkg-1 text-sm text-brand-white border-t-0 rounded-t-none"
-                    >
-                      <span>XPUB</span>
+                <Icon
+                  name="select-up"
+                  className={`${open ?
+                    'transform rotate-180' :
+                    ''
+                    } mb-1 text-brand-white`}
+                />
+              </Disclosure.Button>
 
-                      <span className="flex justify-between gap-x-1 items-center w-full mt-4 cursor-pointer rounded-lg bg-bkg-2 border border-dashed border-brand-deepPink100 p-2 text-sm">
-                        WARNING: This is your account root indexer to check your full balance for this account, it isn’t a receiving address. DO NOT SEND FUNDS TO THIS ADDRESS, YOU WILL LOOSE THEM!
-                      </span>
+              <Disclosure.Panel
+                className="cursor-pointer py-4 px-4 flex flex-col justify-start items-start rounded-b-lg w-80 border border-bkg-3 transition-all duration-300 bg-bkg-3"
+              >
+                <div className="flex justify-between text-xs w-full items-center"
+                  onClick={() => copyText(String(activeAccount?.xpub))}
+                >
+                  <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>
 
-                      <div
-                        className="flex justify-between gap-x-1 items-center w-full mt-4 cursor-pointer rounded-lg bg-bkg-1 hover:bg-bkg-2 transition-all duration-200 border border-dashed border-brand-royalblue p-2"
-                        onClick={() => copyText(account.xpub)}
-                      >
-                        <p>{ellipsis(account.xpub, 4, 16)}</p>
+                  <Icon name="copy" className="text-brand-white mb-1" />
+                </div>
+              </Disclosure.Panel>
+            </>
+          )}
+        </Disclosure>
 
-                        <Icon name="copy" className="text-brand-deepPink100 mb-1" />
-                      </div>
+        <p className="text-xs mt-4">To see your private key, input your password</p>
 
-                      <div
-                        className="flex justify-between mt-4 items-center gap-x-1 cursor-pointer rounded-lg bg-bkg-1 hover:bg-bkg-2 transition-all duration-200 border border-dashed border-brand-royalblue p-2"
-                        onClick={() => window.open(`${sysExplorer}/xpub/${account.xpub}`)}
-                      >
-                        <p>View on explorer</p>
+        <Form
+          className="flex justify-center items-center flex-col gap-8 text-center my-3 w-full max-w-xs"
+          name="phraseview"
+          labelCol={{ span: 8 }}
+          wrapperCol={{ span: 16 }}
+          autoComplete="off"
+        >
+          <Form.Item
+            name="password"
+            hasFeedback
+            className="w-full"
+            rules={[
+              {
+                required: true,
+                message: '',
+              },
+              ({ }) => ({
+                validator(_, value) {
+                  if (controller.wallet.getPhrase(value)) {
+                    setValid(true);
 
-                        <Icon name="select" className="text-brand-deepPink100 mb-1" />
-                      </div>
-                    </div>
-                  </Disclosure.Panel>
-                </>
-              )}
-            </Disclosure>
-          )
-        })}
-      </ul>
+                    return Promise.resolve();
+                  }
 
-      <SecondaryButton
-        type="button"
-        onClick={() => history.push('/home')}
-      >
-        {copied ? 'Copied' : 'Close'}
-      </SecondaryButton>
+                  return Promise.reject('');
+                },
+              }),
+            ]}
+          >
+            <Input.Password
+              placeholder="Enter your password"
+            />
+          </Form.Item>
+        </Form>
+
+        <CopyCard
+          onClick={valid ? () => copyText(String(activeAccount?.xprv)) : undefined}
+          label="Your private key"
+        >
+          <p>{valid ? ellipsis(activeAccount?.xprv, 4, 16) : '********...************'}</p>
+        </CopyCard>
+
+        <div
+          className="flex mt-4 justify-center text-xs cursor-pointer hover:text-brand-royalblue items-center gap-2"
+          onClick={() => window.open(`${sysExplorer}/xpub/${activeAccount?.xpub}`)}
+        >
+          <p>View account on explorer</p>
+
+          <Icon name="select" className="mb-1" />
+        </div>
+      </div>
+
+      <div className="absolute bottom-8">
+        <SecondaryButton
+          type="button"
+          onClick={() => history.push('/home')}
+        >
+          {copied ? 'Copied' : 'Close'}
+        </SecondaryButton>
+      </div>
     </AuthViewLayout >
   );
 };

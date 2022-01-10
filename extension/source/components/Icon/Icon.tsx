@@ -37,6 +37,7 @@ import {
   MessageOutlined,
   VerifiedOutlined,
   CheckOutlined,
+  LaptopOutlined
 } from '@ant-design/icons';
 
 const icons = {
@@ -77,6 +78,7 @@ const icons = {
   'message': MessageOutlined,
   'verified': VerifiedOutlined,
   'check-outlined': CheckOutlined,
+  'desktop': LaptopOutlined
 }
 
 interface IIcon {

@@ -25,6 +25,8 @@ export const TransactionDetails = ({
   const recipients: any = {};
   const senders: any = {};
 
+  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
+
   useEffect(() => {
     if (transactionDetails) {
       const { vin, vout } = transactionDetails;
@@ -237,7 +239,7 @@ export const TransactionDetails = ({
 
         <Button
           type="button"
-          onClick={() => window.open('')}
+          onClick={() => window.open(`${sysExplorer}/tx/${transactionDetails.txid}`)}
           className="inline-flex justify-center px-6 py-1 text-sm font-medium hover:text-brand-royalblue text-brand-white bg-transparent border border-brand-white rounded-full hover:bg-button-popuphover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
         >
           Go

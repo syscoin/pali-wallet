@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { SecondaryButton, PrimaryButton, InfoCard } from 'components/index';
 import { AuthViewLayout } from 'containers/common/Layout';
 import { Form, Input } from 'antd';
