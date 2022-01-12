@@ -11,7 +11,7 @@ input {
 }
 
 /* Firefox */
-input[type="number"] {
+input[type='number'] {
   -moz-appearance: textfield;
 }
 
@@ -24,8 +24,8 @@ input[type="number"] {
   scrollbar-width: none; / Firefox */
 }
 
-input[type="number"]::-webkit-outer-spin-button,
-input[type="number"]::-webkit-inner-spin-button {
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
@@ -83,7 +83,7 @@ input[type="number"]::-webkit-inner-spin-button {
   @apply relative;
 }
 
-div[role="alert"] {
+div[role='alert'] {
   @apply text-brand-white text-base font-light text-center absolute left-1/4 right-1/4;
 }
 
