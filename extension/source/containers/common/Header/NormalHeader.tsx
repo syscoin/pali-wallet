@@ -80,7 +80,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                 <Icon
                   name="select-down"
                   className={`${menuprops.open ? 'transform rotate-180' : ''
-                } text-brand-white`}
+                  } text-brand-white`}
                 />
               </IconButton>
             </div>

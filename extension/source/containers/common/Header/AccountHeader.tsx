@@ -53,7 +53,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
       alert.removeAll();
       alert.success('Address successfully copied');
     }
-  }
+  };
 
   const AccountMenu = () => (
     <Menu as="div" className="absolute right-3 inline-block text-right">
