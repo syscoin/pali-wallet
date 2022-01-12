@@ -6,17 +6,23 @@
     "@abhijithvijayan/eslint-config/react",
     "airbnb-typescript"
   ],
-  "plugins": ["@typescript-eslint"],
+  "plugins": [
+    "@typescript-eslint"
+  ],
   "overrides": [
     {
-      "files": ["*.{ts,tsx}"],
+      "files": [
+        "*.{ts,tsx}"
+      ],
       "parser": "@typescript-eslint/parser",
       "parserOptions": {
         "project": "**/tsconfig.json",
         "tsconfigRootDir": ".",
         "sourceType": "module"
       },
-      "plugins": ["typescript-sort-keys"],
+      "plugins": [
+        "typescript-sort-keys"
+      ],
       "rules": {
         "typescript-sort-keys/interface": 2,
         "typescript-sort-keys/string-enum": 2,
@@ -27,7 +33,10 @@
   ],
   "rules": {
     "implicit-arrow-linebreak": "off",
-    "arrow-body-style": ["error", "as-needed"],
+    "arrow-body-style": [
+      "error",
+      "as-needed"
+    ],
     "comma-dangle": [
       "error",
       {
@@ -43,7 +52,10 @@
     "no-unused-vars": "off",
     "no-console": "off",
     "guard-for-in": "off",
-    "indent": [1, 2],
+    "indent": [
+      1,
+      2
+    ],
     "max-len": "off",
     "no-extend-native": "off",
     "no-alert": "off",
@@ -66,12 +78,15 @@
     "@typescript-eslint/indent": "off",
     "@typescript-eslint/no-var-requires": "off",
     "no-await-in-loop": "off",
-    "prettier/prettier": {
-      "trailingComma": "es5",
-      "tabWidth": 2,
-      "semi": true,
-      "singleQuote": true
-    },
+    "prettier/prettier": [
+      "error",
+      {
+        "trailingComma": "es5",
+        "tabWidth": 2,
+        "semi": true,
+        "singleQuote": true
+      }
+    ],
     "no-bitwise": "off",
     "no-plusplus": "off",
     "import/no-cycle": "off",
@@ -97,9 +112,15 @@
       {
         "groups": [
           "builtin",
-          ["external", "internal"],
+          [
+            "external",
+            "internal"
+          ],
           "parent",
-          ["sibling", "index"]
+          [
+            "sibling",
+            "index"
+          ]
         ],
         "newlines-between": "always"
       }
