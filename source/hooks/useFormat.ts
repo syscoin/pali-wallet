@@ -47,7 +47,11 @@ export const useFormat = () => {
       number = Number(number).toFixed(precision);
     }
 
-    return currency(number, { separator: ",", symbol: "", precision }).format();
+    return currency(number, {
+      separator: ",",
+      symbol: "",
+      precision,
+    }).format();
   };
 
   // truncate

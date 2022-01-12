@@ -66,7 +66,13 @@ const AccountController = (actions: {
   };
 
   const updateNetworkData = ({ id, label, beUrl }: any) => {
-    store.dispatch(updateNetwork({ id, label, beUrl }));
+    store.dispatch(
+      updateNetwork({
+        id,
+        label,
+        beUrl,
+      })
+    );
   };
 
   const temporaryTransaction: TemporaryTransaction = {
