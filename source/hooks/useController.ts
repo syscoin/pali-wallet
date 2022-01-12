@@ -1,4 +1,4 @@
-import { browser } from "webextension-polyfill-ts";
+import { browser } from 'webextension-polyfill-ts';
 
 export const useController = () => {
   const { controller } = browser.extension.getBackgroundPage();

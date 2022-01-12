@@ -1,1 +1,1 @@
-export { Receive } from "./Receive";
+export { Receive } from './Receive';

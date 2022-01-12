@@ -1,1 +1,1 @@
-export { default } from "./PhraseView";
+export { default } from './PhraseView';

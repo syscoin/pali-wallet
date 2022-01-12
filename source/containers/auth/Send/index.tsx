@@ -1,2 +1,2 @@
-export { SendConfirm } from "./Confirm";
-export { Send } from "./Send";
+export { SendConfirm } from './Confirm';
+export { Send } from './Send';

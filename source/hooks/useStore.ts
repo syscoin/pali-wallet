@@ -1,7 +1,7 @@
-import { useSelector } from "react-redux";
-import IPriceState from "state/price/types";
-import { RootState } from "state/store";
-import IWalletState from "state/wallet/types";
+import { useSelector } from 'react-redux';
+import IPriceState from 'state/price/types';
+import { RootState } from 'state/store';
+import IWalletState from 'state/wallet/types';
 
 export const useStore = () => {
   const {

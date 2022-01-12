@@ -1,8 +1,8 @@
-import React, { FC, useState } from "react";
-import { SecondaryButton, Icon } from "components/index";
-import { AuthViewLayout } from "containers/common/Layout";
-import { useController } from "hooks/index";
-import { Disclosure } from "@headlessui/react";
+import React, { FC, useState } from 'react';
+import { SecondaryButton, Icon } from 'components/index';
+import { AuthViewLayout } from 'containers/common/Layout';
+import { useController } from 'hooks/index';
+import { Disclosure } from '@headlessui/react';
 
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
@@ -24,8 +24,8 @@ const ConnectHardwareWalletView: FC = () => {
           <p
             className={`${
               selected
-                ? "bg-bkg-3 border-brand-deepPink"
-                : "bg-bkg-1 border-brand-royalblue"
+                ? 'bg-bkg-3 border-brand-deepPink'
+                : 'bg-bkg-1 border-brand-royalblue'
             } rounded-full py-2 w-72 mx-auto text-center  border  text-sm my-6 cursor-pointer`}
             onClick={() => setSelected(!selected)}
           >
@@ -42,7 +42,7 @@ const ConnectHardwareWalletView: FC = () => {
 
             <p
               className="cursor-pointer hover:text-brand-white mt-2 w-16 text-button-primary"
-              onClick={() => window.open("https://trezor.io/")}
+              onClick={() => window.open('https://trezor.io/')}
             >
               Buy now
             </p>
@@ -53,14 +53,14 @@ const ConnectHardwareWalletView: FC = () => {
               <>
                 <Disclosure.Button
                   className={`${
-                    open ? "rounded-t-lg" : "rounded-lg"
+                    open ? 'rounded-t-lg' : 'rounded-lg'
                   } mt-3 w-80 py-2 px-4 flex justify-between items-center ml-2 border border-bkg-1 cursor-pointer transition-all duration-300 bg-bkg-1`}
                 >
                   Learn more
                   <Icon
                     name="select-down"
                     className={`${
-                      open ? "transform rotate-180" : ""
+                      open ? 'transform rotate-180' : ''
                     } mb-1 text-brand-deepPink100`}
                   />
                 </Disclosure.Button>

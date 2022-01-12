@@ -1,5 +1,5 @@
-import format from "date-fns/format";
-import currency from "currency.js";
+import format from 'date-fns/format';
+import currency from 'currency.js';
 
 const getYesterday = () => {
   const d = new Date();
@@ -10,7 +10,7 @@ const getYesterday = () => {
 
 export const useFormat = () => {
   const ellipsis = (str: any, start = 7, end = 4) => {
-    if (typeof str !== "string") {
+    if (typeof str !== 'string') {
       return str;
     }
 
@@ -24,13 +24,13 @@ export const useFormat = () => {
     string.charAt(0).toUpperCase() + string.slice(1);
 
   const formatDistanceDate = (timestamp: string) => {
-    const formatStyle = "M-d-yyyy";
+    const formatStyle = 'M-d-yyyy';
     const today = new Date();
     const yesterday = getYesterday();
     const formatedDate = format(new Date(timestamp), formatStyle);
 
-    if (formatedDate === format(today, formatStyle)) return "Today";
-    if (formatedDate === format(yesterday, formatStyle)) return "Yesterday";
+    if (formatedDate === format(today, formatStyle)) return 'Today';
+    if (formatedDate === format(yesterday, formatStyle)) return 'Yesterday';
 
     return formatedDate;
   };
@@ -48,8 +48,8 @@ export const useFormat = () => {
     }
 
     return currency(number, {
-      separator: ",",
-      symbol: "",
+      separator: ',',
+      symbol: '',
       precision,
     }).format();
   };

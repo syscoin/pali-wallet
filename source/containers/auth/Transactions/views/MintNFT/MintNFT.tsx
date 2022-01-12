@@ -1,13 +1,13 @@
-import React from "react";
-import { useController } from "hooks/index";
+import React from 'react';
+import { useController } from 'hooks/index';
 
-import { SiteTransaction } from "../SiteTransaction";
-import { ConfirmTransaction } from "../index";
+import { SiteTransaction } from '../SiteTransaction';
+import { ConfirmTransaction } from '../index';
 
 export const MintNFTConfirm = () => {
   const controller = useController();
   const temporaryTransaction =
-    controller.wallet.account.getTemporaryTransaction("mintNFT");
+    controller.wallet.account.getTemporaryTransaction('mintNFT');
 
   return (
     <ConfirmTransaction

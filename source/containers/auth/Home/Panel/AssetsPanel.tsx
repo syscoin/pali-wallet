@@ -1,8 +1,8 @@
-import { Fullscreen } from "components/Fullscreen";
-import { useAccount } from "hooks/useAccount";
-import React, { FC } from "react";
+import { Fullscreen } from 'components/Fullscreen';
+import { useAccount } from 'hooks/useAccount';
+import React, { FC } from 'react';
 
-import { PanelList } from "./components/PanelList";
+import { PanelList } from './components/PanelList';
 
 export const AssetsPanel: FC = () => {
   const { activeAccount } = useAccount();

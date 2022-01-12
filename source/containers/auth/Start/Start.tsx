@@ -1,8 +1,8 @@
-import React from "react";
-import { PrimaryButton, Link } from "components/index";
-import { useController } from "hooks/index";
-import LogoImage from "assets/images/logo-s.svg";
-import { Form, Input } from "antd";
+import React from 'react';
+import { PrimaryButton, Link } from 'components/index';
+import { useController } from 'hooks/index';
+import LogoImage from 'assets/images/logo-s.svg';
+import { Form, Input } from 'antd';
 
 export const Start = () => {
   const controller = useController();
@@ -36,7 +36,7 @@ export const Start = () => {
           rules={[
             {
               required: true,
-              message: "",
+              message: '',
             },
             () => ({
               async validator(_, value) {

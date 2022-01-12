@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { SecondaryButton, PrimaryButton } from "components/index";
+import React, { useState } from 'react';
+import { SecondaryButton, PrimaryButton } from 'components/index';
 import {
   useFormat,
   useAccount,
@@ -7,8 +7,8 @@ import {
   useStore,
   useDappConnection,
   usePopup,
-} from "hooks/index";
-import { AuthViewLayout } from "containers/common/Layout";
+} from 'hooks/index';
+import { AuthViewLayout } from 'containers/common/Layout';
 
 export const ConnectedAccounts = () => {
   const { ellipsis } = useFormat();
@@ -44,8 +44,8 @@ export const ConnectedAccounts = () => {
             <li
               className={`${
                 connectedAccount && account.id === connectedAccount.id
-                  ? "cursor-not-allowed bg-opacity-50 border-brand-royalblue"
-                  : "cursor-pointer hover:bg-bkg-4 border-brand-royalblue"
+                  ? 'cursor-not-allowed bg-opacity-50 border-brand-royalblue'
+                  : 'cursor-pointer hover:bg-bkg-4 border-brand-royalblue'
               } border border-solid  rounded-lg px-2 py-4 text-xs bg-bkg-2 flex justify-between items-center transition-all duration-200`}
               key={account.id}
               onClick={() => handleChangeAccount(account.id)}
@@ -57,8 +57,8 @@ export const ConnectedAccounts = () => {
               <div
                 className={`${
                   account.id === accountId
-                    ? "bg-warning-success"
-                    : "bg-brand-graylight"
+                    ? 'bg-warning-success'
+                    : 'bg-brand-graylight'
                 } w-3 h-3 rounded-full border border-brand-royalblue`}
               />
             </li>

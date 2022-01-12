@@ -1,1 +1,1 @@
-export { default } from "./AutoLock";
+export { default } from './AutoLock';

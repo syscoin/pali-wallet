@@ -1,8 +1,8 @@
-import React, { useState } from "react";
-import { useController, useFormat } from "hooks/index";
-import { AuthViewLayout } from "containers/common/Layout";
-import { Form, Input } from "antd";
-import { SecondaryButton, Modal } from "components/index";
+import React, { useState } from 'react';
+import { useController, useFormat } from 'hooks/index';
+import { AuthViewLayout } from 'containers/common/Layout';
+import { Form, Input } from 'antd';
+import { SecondaryButton, Modal } from 'components/index';
 
 const NewAccountView = () => {
   const [address, setAddress] = useState<string | undefined>();
@@ -30,8 +30,8 @@ const NewAccountView = () => {
       {address ? (
         <Modal
           type="default"
-          open={address !== ""}
-          onClose={() => setAddress("")}
+          open={address !== ''}
+          onClose={() => setAddress('')}
           title="Your new account has been created"
           description={`${ellipsis(address)}`}
         />
@@ -49,7 +49,7 @@ const NewAccountView = () => {
             rules={[
               {
                 required: false,
-                message: "",
+                message: '',
               },
             ]}
           >

@@ -1,1 +1,1 @@
-export { ToastAlert } from "./ToastAlert";
+export { ToastAlert } from './ToastAlert';

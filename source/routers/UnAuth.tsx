@@ -1,13 +1,13 @@
-import React, { useEffect } from "react";
-import { Switch, Route, useLocation } from "react-router-dom";
-import { Import } from "containers/common/Import";
-import { useController, useUtils } from "hooks/index";
+import React, { useEffect } from 'react';
+import { Switch, Route, useLocation } from 'react-router-dom';
+import { Import } from 'containers/common/Import';
+import { useController, useUtils } from 'hooks/index';
 import {
   CreatePhrase,
   ConfirmPhrase,
   Start,
   CreatePass,
-} from "containers/unauth/index";
+} from 'containers/unauth/index';
 
 export const UnAuthRouter = () => {
   const location = useLocation();

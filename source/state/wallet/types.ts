@@ -1,4 +1,4 @@
-import { Transaction, Assets } from "types/transactions";
+import { Transaction, Assets } from 'types/transactions';
 
 export interface IAccountState {
   address: { [assetId: string]: string };

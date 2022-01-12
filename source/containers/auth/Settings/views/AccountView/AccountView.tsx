@@ -1,7 +1,7 @@
-import * as React from "react";
-import { FC } from "react";
-import { useController, useStore, useUtils } from "hooks/index";
-import { Icon } from "components/index";
+import * as React from 'react';
+import { FC } from 'react';
+import { useController, useStore, useUtils } from 'hooks/index';
+import { Icon } from 'components/index';
 
 interface IAccountView {
   id: number;
@@ -34,7 +34,7 @@ const AccountView: FC<IAccountView> = ({ id }) => {
             )}
           </section> */}
       <ul>
-        <li onClick={() => history.push("/account-priv")}>
+        <li onClick={() => history.push('/account-priv')}>
           <Icon name="export" className="w-4 bg-warning-success" />
           Export account keys
         </li>

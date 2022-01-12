@@ -1,10 +1,10 @@
-import { AuthViewLayout } from "containers/common/Layout";
-import { useController } from "hooks/index";
-import React, { useState, useEffect } from "react";
-import { Icon } from "components/Icon";
+import { AuthViewLayout } from 'containers/common/Layout';
+import { useController } from 'hooks/index';
+import React, { useState, useEffect } from 'react';
+import { Icon } from 'components/Icon';
 
-import { AssetDetails } from "./AssetDetails";
-import { TransactionDetails } from "./TransactionDetails";
+import { AssetDetails } from './AssetDetails';
+import { TransactionDetails } from './TransactionDetails';
 
 export const DetailsView = ({ location }: { location: any }) => {
   const controller = useController();
@@ -21,7 +21,7 @@ export const DetailsView = ({ location }: { location: any }) => {
         const description =
           assetData.pubData && assetData.pubData.desc
             ? atob(String(assetData.pubData.desc))
-            : "";
+            : '';
 
         setTransactionDetails(Object.assign(assetData, { description }));
 
@@ -41,7 +41,7 @@ export const DetailsView = ({ location }: { location: any }) => {
   return (
     <AuthViewLayout
       title={`${
-        location.state.assetGuid ? "ASSET DETAILS" : "TRANSACTION DETAILS"
+        location.state.assetGuid ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'
       }`}
     >
       {transactionDetails ? (

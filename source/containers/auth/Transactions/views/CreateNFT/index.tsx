@@ -1,1 +1,1 @@
-export { CreateAndIssueNFT, CreateAndIssueNFTConfirm } from "./CreateNFT";
+export { CreateAndIssueNFT, CreateAndIssueNFTConfirm } from './CreateNFT';

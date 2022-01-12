@@ -1,6 +1,6 @@
-import React from "react";
-import { useController, useStore, useUtils } from "hooks/index";
-import { PasswordForm } from "components/index";
+import React from 'react';
+import { useController, useStore, useUtils } from 'hooks/index';
+import { PasswordForm } from 'components/index';
 
 const CreatePass = () => {
   const controller = useController();
@@ -10,12 +10,12 @@ const CreatePass = () => {
 
   const next = () => {
     if (canConnect) {
-      history.push("/connect-wallet");
+      history.push('/connect-wallet');
 
       return;
     }
 
-    history.push("/home");
+    history.push('/home');
   };
 
   const onSubmit = (data: any) => {

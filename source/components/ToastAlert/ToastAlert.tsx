@@ -1,6 +1,6 @@
-import React, { FC } from "react";
+import React, { FC } from 'react';
 
-import { Icon } from "../Icon";
+import { Icon } from '../Icon';
 
 interface IAlertTemplate {
   close: () => void;
@@ -10,9 +10,9 @@ interface IAlertTemplate {
 
 export const ToastAlert: FC<IAlertTemplate> = ({ message, options, close }) => {
   const otherClasses =
-    options.type === "error"
-      ? "bg-warning-error border border-warning-error"
-      : "";
+    options.type === 'error'
+      ? 'bg-warning-error border border-warning-error'
+      : '';
 
   return (
     <>
@@ -22,14 +22,14 @@ export const ToastAlert: FC<IAlertTemplate> = ({ message, options, close }) => {
       >
         <div
           className={`${
-            options.type === "success"
-              ? "bg-warning-success border border-warning-success"
+            options.type === 'success'
+              ? 'bg-warning-success border border-warning-success'
               : otherClasses
           } rounded-l-lg h-full flex justify-center items-center w-1/4`}
         >
-          {options.type === "success" && (
+          {options.type === 'success' && (
             <Icon
-              name={options.type === "success" ? "check" : "close-circle"}
+              name={options.type === 'success' ? 'check' : 'close-circle'}
               className="mb-1 bg-brand-white text-brand-white rounded-full"
               size={24}
             />
@@ -38,7 +38,7 @@ export const ToastAlert: FC<IAlertTemplate> = ({ message, options, close }) => {
 
         <div className="text-left w-full">
           <p className="text-sm font-bold">
-            {options.type === "success" ? "Success" : "Error"}
+            {options.type === 'success' ? 'Success' : 'Error'}
           </p>
 
           <p className="text-xs my-2">{message}</p>

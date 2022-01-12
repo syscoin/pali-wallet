@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { AuthViewLayout } from "containers/common/Layout";
-import { SecondaryButton, Modal } from "components/index";
+import React, { useState } from 'react';
+import { AuthViewLayout } from 'containers/common/Layout';
+import { SecondaryButton, Modal } from 'components/index';
 import {
   useController,
   useStore,
@@ -9,7 +9,7 @@ import {
   useAccount,
   useBrowser,
   useTransaction,
-} from "hooks/index";
+} from 'hooks/index';
 
 export const SendConfirm = () => {
   const controller = useController();
@@ -24,7 +24,7 @@ export const SendConfirm = () => {
 
   const { ellipsis, formatURL } = useFormat();
 
-  const tempTx = controller.wallet.account.getTemporaryTransaction("sendAsset");
+  const tempTx = controller.wallet.account.getTemporaryTransaction('sendAsset');
 
   const handleConfirm = async () => {
     const recommendedFee = await controller.wallet.account.getRecommendFee();
@@ -35,11 +35,11 @@ export const SendConfirm = () => {
       try {
         const callback = controller.wallet.account.confirmSendAssetTransaction;
 
-        console.log("item asset send", tempTx);
+        console.log('item asset send', tempTx);
 
         const response =
           await controller.wallet.account.confirmTemporaryTransaction({
-            type: "sendAsset",
+            type: 'sendAsset',
             callback,
           });
 
@@ -51,15 +51,15 @@ export const SendConfirm = () => {
 
           if (confirmingTransaction) {
             browser.runtime.sendMessage({
-              type: "WALLET_ERROR",
-              target: "background",
+              type: 'WALLET_ERROR',
+              target: 'background',
               transactionError: true,
               invalidParams: false,
               message: `TransactionError: ${response}`,
             });
 
             setTimeout(() => {
-              handleCancelTransactionOnSite(browser, "tempTx");
+              handleCancelTransactionOnSite(browser, 'tempTx');
             }, 4000);
           }
 
@@ -67,17 +67,17 @@ export const SendConfirm = () => {
         }
 
         browser.runtime.sendMessage({
-          type: "WALLET_ERROR",
-          target: "background",
+          type: 'WALLET_ERROR',
+          target: 'background',
           transactionError: false,
           invalidParams: false,
-          message: "Everything is fine, transaction completed.",
+          message: 'Everything is fine, transaction completed.',
         });
 
         setConfirmed(true);
         setLoading(false);
       } catch (error: any) {
-        console.log("error", error);
+        console.log('error', error);
 
         if (activeAccount) {
           if (error && tempTx.fee > recommendedFee) {
@@ -108,8 +108,8 @@ export const SendConfirm = () => {
 
           if (confirmingTransaction) {
             browser.runtime.sendMessage({
-              type: "WALLET_ERROR",
-              target: "background",
+              type: 'WALLET_ERROR',
+              target: 'background',
               transactionError: true,
               invalidParams: false,
               message: `TransactionError: ${error}`,
@@ -134,7 +134,7 @@ export const SendConfirm = () => {
           title="Transaction successful"
           description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
           open={confirmed}
-          onClose={() => history.push("/home")}
+          onClose={() => history.push('/home')}
           doNothing
         />
       )}
@@ -146,7 +146,7 @@ export const SendConfirm = () => {
               Send
             </span>
             {tempTx.amount}
-            {tempTx.token ? tempTx.token.symbol : "SYS"}
+            {tempTx.token ? tempTx.token.symbol : 'SYS'}
           </p>
 
           <div className="w-full flex justify-center divide-y divide-dashed divide-bkg-3 items-start flex-col gap-3 py-2 px-4 text-sm mt-4 text-left">

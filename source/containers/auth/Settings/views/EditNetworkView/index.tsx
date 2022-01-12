@@ -1,1 +1,1 @@
-export { default } from "./EditNetworkView";
+export { default } from './EditNetworkView';

@@ -1,10 +1,10 @@
-import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 export interface IFiatState {
   [assetId: string]: number;
   availableCoins: any;
   // @ts-ignore
-  current: string | "usd";
+  current: string | 'usd';
   price: number;
 }
 
@@ -17,7 +17,7 @@ const initialState: {
     [assetId: string]: number;
     availableCoins: any;
     // @ts-ignore
-    current: string | "usd";
+    current: string | 'usd';
     price: number;
   };
 } = {
@@ -26,12 +26,12 @@ const initialState: {
     syscoin: 0,
     price: 0,
     availableCoins: {},
-    current: "usd",
+    current: 'usd',
   },
 };
 
 const PriceState = createSlice({
-  name: "price",
+  name: 'price',
   initialState,
   reducers: {
     updateFiatPrice(
@@ -39,7 +39,7 @@ const PriceState = createSlice({
       action: PayloadAction<{
         assetId: string;
         availableCoins: any;
-        current: string | "usd";
+        current: string | 'usd';
         price: number;
       }>
     ) {
@@ -47,7 +47,7 @@ const PriceState = createSlice({
         ...state.fiat,
         [action.payload.assetId]: action.payload.price,
         availableCoins: action.payload.availableCoins,
-        current: action.payload.current || "usd",
+        current: action.payload.current || 'usd',
       };
     },
   },

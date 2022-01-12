@@ -1,4 +1,4 @@
-import { sendMessage } from "scripts/Background/helpers";
+import { sendMessage } from 'scripts/Background/helpers';
 
 const ConnectionsController = () => {
   const checkParams = ({ data, throwError, message }: any) => {
@@ -15,30 +15,30 @@ const ConnectionsController = () => {
     new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       resolve(
         sendMessage(
           {
-            type: "CONNECTED_ACCOUNT_XPUB",
-            target: "connectionsController",
+            type: 'CONNECTED_ACCOUNT_XPUB',
+            target: 'connectionsController',
             freeze: true,
-            eventResult: "connectedAccountXpub",
+            eventResult: 'connectedAccountXpub',
           },
           {
-            type: "CONNECTED_ACCOUNT_XPUB",
-            target: "contentScript",
+            type: 'CONNECTED_ACCOUNT_XPUB',
+            target: 'contentScript',
           }
         )
       );
@@ -48,30 +48,30 @@ const ConnectionsController = () => {
     new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       resolve(
         sendMessage(
           {
-            type: "CONNECTED_ACCOUNT_CHANGE_ADDRESS",
-            target: "connectionsController",
+            type: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
+            target: 'connectionsController',
             freeze: true,
-            eventResult: "connectedAccountChangeAddress",
+            eventResult: 'connectedAccountChangeAddress',
           },
           {
-            type: "CONNECTED_ACCOUNT_CHANGE_ADDRESS",
-            target: "contentScript",
+            type: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
+            target: 'contentScript',
           }
         )
       );
@@ -82,44 +82,44 @@ const ConnectionsController = () => {
       data: psbt,
       throwError: true,
       message:
-        "PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.",
+        'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.',
     });
 
     return new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         if (
-          event.data.type === "TRANSACTION_RESPONSE" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'TRANSACTION_RESPONSE' &&
+          event.data.target === 'connectionsController'
         ) {
           resolve(event.data.response);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       sendMessage(
         {
-          type: "SIGN_AND_SEND",
-          target: "connectionsController",
+          type: 'SIGN_AND_SEND',
+          target: 'connectionsController',
           freeze: true,
-          eventResult: "complete",
+          eventResult: 'complete',
         },
         {
-          type: "SIGN_AND_SEND",
-          target: "contentScript",
+          type: 'SIGN_AND_SEND',
+          target: 'contentScript',
           psbt,
         }
       );
@@ -129,22 +129,22 @@ const ConnectionsController = () => {
   const isLocked = async () =>
     sendMessage(
       {
-        type: "CHECK_IS_LOCKED",
-        target: "connectionsController",
+        type: 'CHECK_IS_LOCKED',
+        target: 'connectionsController',
         freeze: true,
-        eventResult: "isLocked",
+        eventResult: 'isLocked',
       },
       {
-        type: "CHECK_IS_LOCKED",
-        target: "contentScript",
+        type: 'CHECK_IS_LOCKED',
+        target: 'contentScript',
       }
     );
 
   const onWalletUpdate = (onUpdated: any) => {
-    window.addEventListener("message", (event) => {
+    window.addEventListener('message', (event) => {
       if (
-        event.data.type === "WALLET_UPDATED" &&
-        event.data.target === "connectionsController"
+        event.data.type === 'WALLET_UPDATED' &&
+        event.data.target === 'connectionsController'
       ) {
         onUpdated();
       }
@@ -155,7 +155,7 @@ const ConnectionsController = () => {
     checkParams({
       data: guid,
       throwError: false,
-      message: "Invalid asset guid.",
+      message: 'Invalid asset guid.',
     });
 
     const assetGuid = BigInt.asUintN(64, BigInt(guid));
@@ -166,27 +166,27 @@ const ConnectionsController = () => {
   const connectWallet = () => {
     sendMessage(
       {
-        type: "CONNECT_WALLET",
-        target: "connectionsController",
+        type: 'CONNECT_WALLET',
+        target: 'connectionsController',
         freeze: true,
-        eventResult: "connected",
+        eventResult: 'connected',
       },
       {
-        type: "CONNECT_WALLET",
-        target: "contentScript",
+        type: 'CONNECT_WALLET',
+        target: 'contentScript',
       }
     );
 
     return sendMessage(
       {
-        type: "WALLET_CONNECTION_CONFIRMED",
-        target: "connectionsController",
+        type: 'WALLET_CONNECTION_CONFIRMED',
+        target: 'connectionsController',
         freeze: true,
-        eventResult: "connectionConfirmed",
+        eventResult: 'connectionConfirmed',
       },
       {
-        type: "WALLET_CONNECTION_CONFIRMED",
-        target: "contentScript",
+        type: 'WALLET_CONNECTION_CONFIRMED',
+        target: 'contentScript',
       }
     );
   };
@@ -195,30 +195,30 @@ const ConnectionsController = () => {
     new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       resolve(
         sendMessage(
           {
-            type: "SEND_STATE_TO_PAGE",
-            target: "connectionsController",
+            type: 'SEND_STATE_TO_PAGE',
+            target: 'connectionsController',
             freeze: true,
-            eventResult: "state",
+            eventResult: 'state',
           },
           {
-            type: "SEND_STATE_TO_PAGE",
-            target: "contentScript",
+            type: 'SEND_STATE_TO_PAGE',
+            target: 'contentScript',
           }
         )
       );
@@ -227,14 +227,14 @@ const ConnectionsController = () => {
   const getConnectedAccount = async () =>
     sendMessage(
       {
-        type: "SEND_CONNECTED_ACCOUNT",
-        target: "connectionsController",
+        type: 'SEND_CONNECTED_ACCOUNT',
+        target: 'connectionsController',
         freeze: true,
-        eventResult: "copyConnectedAccount",
+        eventResult: 'copyConnectedAccount',
       },
       {
-        type: "SEND_CONNECTED_ACCOUNT",
-        target: "contentScript",
+        type: 'SEND_CONNECTED_ACCOUNT',
+        target: 'contentScript',
       }
     );
 
@@ -242,41 +242,41 @@ const ConnectionsController = () => {
     checkParams({
       data: items,
       throwError: false,
-      message: "Invalid token data.",
+      message: 'Invalid token data.',
     });
 
-    if (items.isToken && typeof items.token !== "string") {
-      throw new Error("Invalid token data.");
+    if (items.isToken && typeof items.token !== 'string') {
+      throw new Error('Invalid token data.');
     }
 
     return new Promise((_, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       const { sender, receiver, amount, fee, token, isToken, rbf } = items;
 
       sendMessage(
         {
-          type: "SEND_TOKEN",
-          target: "connectionsController",
+          type: 'SEND_TOKEN',
+          target: 'connectionsController',
           freeze: true,
-          eventResult: "complete",
+          eventResult: 'complete',
         },
         {
-          type: "SEND_TOKEN",
-          target: "contentScript",
+          type: 'SEND_TOKEN',
+          target: 'contentScript',
           fromConnectedAccount: sender,
           toAddress: receiver,
           amount,
@@ -301,33 +301,33 @@ const ConnectionsController = () => {
     checkParams({
       data: items,
       throwError: false,
-      message: "Invalid token data.",
+      message: 'Invalid token data.',
     });
 
     return new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         if (
-          event.data.type === "TRANSACTION_RESPONSE" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'TRANSACTION_RESPONSE' &&
+          event.data.target === 'connectionsController'
         ) {
           resolve(event.data.response);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       const {
         precision,
@@ -345,21 +345,21 @@ const ConnectionsController = () => {
 
       sendMessage(
         {
-          type: "DATA_FROM_PAGE_TO_CREATE_TOKEN",
-          target: "connectionsController",
+          type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
+          target: 'connectionsController',
           freeze: true,
-          eventResult: "complete",
+          eventResult: 'complete',
         },
         {
-          type: "DATA_FROM_PAGE_TO_CREATE_TOKEN",
-          target: "contentScript",
+          type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
+          target: 'contentScript',
           precision: precision >= 0 ? precision : 8,
           symbol,
           maxsupply,
           description: description || null,
           receiver,
           initialSupply: initialSupply || 0,
-          capabilityflags: capabilityflags ? String(capabilityflags) : "127",
+          capabilityflags: capabilityflags ? String(capabilityflags) : '127',
           notarydetails: notarydetails || null,
           auxfeedetails: auxfeedetails || null,
           notaryAddress: notaryAddress || null,
@@ -373,46 +373,46 @@ const ConnectionsController = () => {
     checkParams({
       data: items,
       throwError: false,
-      message: "Invalid token data.",
+      message: 'Invalid token data.',
     });
 
     return new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         if (
-          event.data.type === "TRANSACTION_RESPONSE" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'TRANSACTION_RESPONSE' &&
+          event.data.target === 'connectionsController'
         ) {
           resolve(event.data.response);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       const { amount, assetGuid } = items;
 
       sendMessage(
         {
-          type: "ISSUE_SPT",
-          target: "connectionsController",
+          type: 'ISSUE_SPT',
+          target: 'connectionsController',
           freeze: true,
-          eventResult: "complete",
+          eventResult: 'complete',
         },
         {
-          type: "ISSUE_SPT",
-          target: "contentScript",
+          type: 'ISSUE_SPT',
+          target: 'contentScript',
           amount,
           assetGuid,
         }
@@ -424,24 +424,24 @@ const ConnectionsController = () => {
     checkParams({
       data: items,
       throwError: false,
-      message: "Invalid token data.",
+      message: 'Invalid token data.',
     });
 
     return new Promise((_, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       const {
         symbol,
@@ -456,14 +456,14 @@ const ConnectionsController = () => {
 
       sendMessage(
         {
-          type: "CREATE_AND_ISSUE_NFT",
-          target: "connectionsController",
+          type: 'CREATE_AND_ISSUE_NFT',
+          target: 'connectionsController',
           freeze: true,
-          eventResult: "complete",
+          eventResult: 'complete',
         },
         {
-          type: "CREATE_AND_ISSUE_NFT",
-          target: "contentScript",
+          type: 'CREATE_AND_ISSUE_NFT',
+          target: 'contentScript',
           symbol,
           issuer,
           precision: precision || 0,
@@ -481,46 +481,46 @@ const ConnectionsController = () => {
     checkParams({
       data: items,
       throwError: false,
-      message: "Invalid token data.",
+      message: 'Invalid token data.',
     });
 
     return new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         if (
-          event.data.type === "TRANSACTION_RESPONSE" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'TRANSACTION_RESPONSE' &&
+          event.data.target === 'connectionsController'
         ) {
           resolve(event.data.response);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       const { assetGuid, amount } = items;
 
       sendMessage(
         {
-          type: "ISSUE_NFT",
-          target: "connectionsController",
+          type: 'ISSUE_NFT',
+          target: 'connectionsController',
           freeze: true,
-          eventResult: "complete",
+          eventResult: 'complete',
         },
         {
-          type: "ISSUE_NFT",
-          target: "contentScript",
+          type: 'ISSUE_NFT',
+          target: 'contentScript',
           assetGuid,
           amount,
         }
@@ -532,30 +532,30 @@ const ConnectionsController = () => {
     new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       resolve(
         sendMessage(
           {
-            type: "GET_USER_MINTED_TOKENS",
-            target: "connectionsController",
+            type: 'GET_USER_MINTED_TOKENS',
+            target: 'connectionsController',
             freeze: true,
-            eventResult: "userTokens",
+            eventResult: 'userTokens',
           },
           {
-            type: "GET_USER_MINTED_TOKENS",
-            target: "contentScript",
+            type: 'GET_USER_MINTED_TOKENS',
+            target: 'contentScript',
           }
         )
       );
@@ -565,36 +565,36 @@ const ConnectionsController = () => {
     checkParams({
       data: assetGuid,
       throwError: false,
-      message: "Invalid token data.",
+      message: 'Invalid token data.',
     });
 
     return new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       resolve(
         sendMessage(
           {
-            type: "GET_ASSET_DATA",
-            target: "connectionsController",
+            type: 'GET_ASSET_DATA',
+            target: 'connectionsController',
             freeze: true,
-            eventResult: "assetData",
+            eventResult: 'assetData',
           },
           {
-            type: "GET_ASSET_DATA",
-            target: "contentScript",
+            type: 'GET_ASSET_DATA',
+            target: 'contentScript',
             assetGuid,
           }
         )
@@ -606,24 +606,24 @@ const ConnectionsController = () => {
     checkParams({
       data: items,
       throwError: false,
-      message: "Invalid token data.",
+      message: 'Invalid token data.',
     });
 
     return new Promise((_, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       const {
         assetGuid,
@@ -638,17 +638,17 @@ const ConnectionsController = () => {
 
       sendMessage(
         {
-          type: "UPDATE_ASSET",
-          target: "connectionsController",
+          type: 'UPDATE_ASSET',
+          target: 'connectionsController',
           freeze: true,
-          eventResult: "complete",
+          eventResult: 'complete',
         },
         {
-          type: "UPDATE_ASSET",
-          target: "contentScript",
+          type: 'UPDATE_ASSET',
+          target: 'contentScript',
           assetGuid,
           contract: contract || null,
-          capabilityflags: capabilityflags ? String(capabilityflags) : "127",
+          capabilityflags: capabilityflags ? String(capabilityflags) : '127',
           description: description || null,
           notarydetails: notarydetails || null,
           auxfeedetails: auxfeedetails || null,
@@ -663,37 +663,37 @@ const ConnectionsController = () => {
     checkParams({
       data: items,
       throwError: false,
-      message: "Invalid token data.",
+      message: 'Invalid token data.',
     });
 
     return new Promise((_, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       const { assetGuid, newOwner } = items;
 
       sendMessage(
         {
-          type: "TRANSFER_OWNERSHIP",
-          target: "connectionsController",
+          type: 'TRANSFER_OWNERSHIP',
+          target: 'connectionsController',
           freeze: true,
-          eventResult: "complete",
+          eventResult: 'complete',
         },
         {
-          type: "TRANSFER_OWNERSHIP",
-          target: "contentScript",
+          type: 'TRANSFER_OWNERSHIP',
+          target: 'contentScript',
           assetGuid,
           newOwner,
         }
@@ -705,36 +705,36 @@ const ConnectionsController = () => {
     checkParams({
       data: address,
       throwError: true,
-      message: "Invalid address.",
+      message: 'Invalid address.',
     });
 
     return new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       resolve(
         sendMessage(
           {
-            type: "CHECK_ADDRESS",
-            target: "connectionsController",
+            type: 'CHECK_ADDRESS',
+            target: 'connectionsController',
             freeze: true,
-            eventResult: "isValidSYSAddress",
+            eventResult: 'isValidSYSAddress',
           },
           {
-            type: "CHECK_ADDRESS",
-            target: "contentScript",
+            type: 'CHECK_ADDRESS',
+            target: 'contentScript',
             address,
           }
         )
@@ -746,30 +746,30 @@ const ConnectionsController = () => {
     new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       resolve(
         sendMessage(
           {
-            type: "GET_HOLDINGS_DATA",
-            target: "connectionsController",
+            type: 'GET_HOLDINGS_DATA',
+            target: 'connectionsController',
             freeze: true,
-            eventResult: "holdingsData",
+            eventResult: 'holdingsData',
           },
           {
-            type: "GET_HOLDINGS_DATA",
-            target: "contentScript",
+            type: 'GET_HOLDINGS_DATA',
+            target: 'contentScript',
           }
         )
       );
@@ -780,44 +780,44 @@ const ConnectionsController = () => {
       data: psbtToSign,
       throwError: true,
       message:
-        "PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.",
+        'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.',
     });
 
     return new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
-          event.data.type === "WALLET_ERROR" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'WALLET_ERROR' &&
+          event.data.target === 'connectionsController'
         ) {
           reject(event.data.error);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         if (
-          event.data.type === "TRANSACTION_RESPONSE" &&
-          event.data.target === "connectionsController"
+          event.data.type === 'TRANSACTION_RESPONSE' &&
+          event.data.target === 'connectionsController'
         ) {
           resolve(event.data.response);
 
-          window.removeEventListener("message", callback);
+          window.removeEventListener('message', callback);
         }
 
         return null;
       };
 
-      window.addEventListener("message", callback);
+      window.addEventListener('message', callback);
 
       sendMessage(
         {
-          type: "SIGN_PSBT",
-          target: "connectionsController",
+          type: 'SIGN_PSBT',
+          target: 'connectionsController',
           freeze: true,
-          eventResult: "complete",
+          eventResult: 'complete',
         },
         {
-          type: "SIGN_PSBT",
-          target: "contentScript",
+          type: 'SIGN_PSBT',
+          target: 'contentScript',
           psbtToSign,
         }
       );

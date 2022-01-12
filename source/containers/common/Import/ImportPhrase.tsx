@@ -1,10 +1,10 @@
-import React, { FC, useState } from "react";
-import { Layout } from "containers/common/Layout";
-import { useController } from "hooks/index";
-import { PrimaryButton } from "components/index";
-import { Form } from "antd";
-import TextArea from "antd/lib/input/TextArea";
-import { useForm } from "antd/lib/form/Form";
+import React, { FC, useState } from 'react';
+import { Layout } from 'containers/common/Layout';
+import { useController } from 'hooks/index';
+import { PrimaryButton } from 'components/index';
+import { Form } from 'antd';
+import TextArea from 'antd/lib/input/TextArea';
+import { useForm } from 'antd/lib/form/Form';
 
 interface IImportPhrase {
   onRegister: () => void;
@@ -38,7 +38,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           rules={[
             {
               required: true,
-              message: "",
+              message: '',
             },
             () => ({
               validator(_, value) {
@@ -55,9 +55,9 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
         >
           <TextArea
             className={`${
-              !seedIsValid && form.getFieldValue("phrase")
-                ? "border-warning-error"
-                : "border-fields-input-border"
+              !seedIsValid && form.getFieldValue('phrase')
+                ? 'border-warning-error'
+                : 'border-fields-input-border'
             } bg-fields-input-primary`}
             placeholder="Paste your wallet seed phrase"
           />
@@ -71,7 +71,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
         <div className="absolute bottom-12">
           <PrimaryButton
             type="submit"
-            disabled={!seedIsValid || !form.getFieldValue("phrase")}
+            disabled={!seedIsValid || !form.getFieldValue('phrase')}
           >
             Import
           </PrimaryButton>

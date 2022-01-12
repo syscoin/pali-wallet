@@ -1,8 +1,8 @@
-import React, { useState } from "react";
-import { SecondaryButton, Modal } from "components/index";
-import { useController, useStore } from "hooks/index";
-import { Form, Input } from "antd";
-import { AuthViewLayout } from "containers/common/Layout/AuthViewLayout";
+import React, { useState } from 'react';
+import { SecondaryButton, Modal } from 'components/index';
+import { useController, useStore } from 'hooks/index';
+import { Form, Input } from 'antd';
+import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
 
 const AutolockView = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
@@ -53,7 +53,7 @@ const AutolockView = () => {
           rules={[
             {
               required: true,
-              message: "",
+              message: '',
               min: 1,
               max: 30,
             },

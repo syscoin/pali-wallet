@@ -1,7 +1,7 @@
-import React from "react";
-import LogoImage from "assets/images/logo-s.svg";
-import { IconButton, Icon } from "components/index";
-import { useUtils } from "hooks/index";
+import React from 'react';
+import LogoImage from 'assets/images/logo-s.svg';
+import { IconButton, Icon } from 'components/index';
+import { useUtils } from 'hooks/index';
 
 export const Section = () => {
   const { history } = useUtils();

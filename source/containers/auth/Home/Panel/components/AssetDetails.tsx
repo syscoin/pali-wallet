@@ -1,14 +1,14 @@
-import { useFormat, useController } from "hooks/index";
-import React, { useEffect, useState } from "react";
-import placeholder from "assets/images/placeholder.png";
-import { Button, Tooltip, Icon } from "components/index";
-import axios from "axios";
+import { useFormat, useController } from 'hooks/index';
+import React, { useEffect, useState } from 'react';
+import placeholder from 'assets/images/placeholder.png';
+import { Button, Tooltip, Icon } from 'components/index';
+import axios from 'axios';
 
 export const AssetDetails = ({ assetType, assetData }) => {
   const controller = useController();
   const { formatURL } = useFormat();
 
-  const [imageLink, setImageLink] = useState("");
+  const [imageLink, setImageLink] = useState('');
   const [loadingImage, setLoadingImage] = useState(false);
 
   const {
@@ -24,7 +24,7 @@ export const AssetDetails = ({ assetType, assetData }) => {
 
   useEffect(() => {
     const getImageLink = async () => {
-      if (description && description.startsWith("https://ipfs.io/ipfs/")) {
+      if (description && description.startsWith('https://ipfs.io/ipfs/')) {
         setLoadingImage(true);
 
         const response = await axios.get(description);
@@ -41,39 +41,39 @@ export const AssetDetails = ({ assetType, assetData }) => {
 
   const assetTransaction = [
     {
-      label: "Asset Guid",
+      label: 'Asset Guid',
       value: assetGuid,
     },
     {
-      label: "Type",
+      label: 'Type',
       value: assetType,
     },
     {
-      label: "Contract",
+      label: 'Contract',
       value: formatURL(String(contract), 15),
     },
     {
-      label: "Symbol",
-      value: symbol ? atob(String(symbol)) : "",
+      label: 'Symbol',
+      value: symbol ? atob(String(symbol)) : '',
     },
     {
-      label: "Description",
+      label: 'Description',
       value: formatURL(description, 15),
     },
     {
-      label: "Total supply",
+      label: 'Total supply',
       value: totalSupply / 10 ** Number(decimals),
     },
     {
-      label: "Max supply",
+      label: 'Max supply',
       value: maxSupply / 10 ** Number(decimals),
     },
     {
-      label: "Decimals",
+      label: 'Decimals',
       value: decimals,
     },
     {
-      label: "Capability flags",
+      label: 'Capability flags',
       value: updateCapabilityFlags,
     },
   ];

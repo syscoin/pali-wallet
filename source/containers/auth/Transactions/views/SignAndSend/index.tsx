@@ -1,1 +1,1 @@
-export { SignAndSend } from "./SignAndSend";
+export { SignAndSend } from './SignAndSend';

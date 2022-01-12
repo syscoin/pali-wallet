@@ -1,6 +1,6 @@
-import React, { FC } from "react";
+import React, { FC } from 'react';
 
-import { Icon } from "..";
+import { Icon } from '..';
 
 type IPrimaryButton = {
   action?: boolean;
@@ -8,7 +8,7 @@ type IPrimaryButton = {
   disabled?: boolean;
   loading?: boolean;
   onClick?: any;
-  type: "button" | "submit" | "reset" | undefined;
+  type: 'button' | 'submit' | 'reset' | undefined;
   width?: string;
 };
 
@@ -18,7 +18,7 @@ type ICommonButton = {
   disabled?: boolean;
   loading?: boolean;
   onClick?: any;
-  type: "button" | "submit" | "reset" | undefined;
+  type: 'button' | 'submit' | 'reset' | undefined;
   width?: string;
 };
 
@@ -28,8 +28,8 @@ export const Button = ({
   loading = false,
   type,
   onClick,
-  className = "",
-  width = "36",
+  className = '',
+  width = '36',
 }: ICommonButton): any => (
   <button
     className={`${className} w-${width}`}
@@ -42,19 +42,19 @@ export const Button = ({
 );
 
 const disabledStyle =
-  "text-button-disabled cursor-not-allowed font-light border-2 border-button-disabled";
+  'text-button-disabled cursor-not-allowed font-light border-2 border-button-disabled';
 
 export const PrimaryButton: FC<IPrimaryButton> = ({
   children,
   disabled = false,
   loading = false,
-  type = "submit",
+  type = 'submit',
   onClick,
-  width = "36",
+  width = '36',
   action = false,
 }) => {
   const enabledStyle = action
-    ? "border-warning-success bg-warning-success hover:bg-warning-successhover text-brand-white w-40"
+    ? 'border-warning-success bg-warning-success hover:bg-warning-successhover text-brand-white w-40'
     : `border-button-primary bg-button-primary hover:bg-button-primaryhover text-brand-white w-${width}`;
 
   return (
@@ -75,7 +75,7 @@ export const PrimaryButton: FC<IPrimaryButton> = ({
                 name="check-outlined"
                 wrapperClassname="mb-0.5"
                 className={
-                  disabled ? "text-button-disabled" : "text-brand-white"
+                  disabled ? 'text-button-disabled' : 'text-brand-white'
                 }
               />
               {children}
@@ -104,8 +104,8 @@ export const SecondaryButton: FC<IPrimaryButton> = ({
   action = false,
 }) => {
   const actionStyle = action
-    ? "bg-transparent border-2 border-brand-white hover:bg-warning-error hover:border-warning-error hover:text-brand-white w-40"
-    : "border-button-secondary hover:bg-button-secondaryhover bg-button-secondary text-brand-white w-36 py-2.5";
+    ? 'bg-transparent border-2 border-brand-white hover:bg-warning-error hover:border-warning-error hover:text-brand-white w-40'
+    : 'border-button-secondary hover:bg-button-secondaryhover bg-button-secondary text-brand-white w-36 py-2.5';
 
   return (
     <button

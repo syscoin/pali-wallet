@@ -1,12 +1,12 @@
-import { useBrowser } from "hooks/useBrowser";
-import React from "react";
+import { useBrowser } from 'hooks/useBrowser';
+import React from 'react';
 
-import { Icon } from "..";
+import { Icon } from '..';
 
 export const Fullscreen = () => {
   const { browser } = useBrowser();
 
-  const url = browser.runtime.getURL("app.html");
+  const url = browser.runtime.getURL('app.html');
 
   return url ? (
     <div

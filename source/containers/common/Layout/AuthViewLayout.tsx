@@ -1,8 +1,8 @@
-import React, { FC } from "react";
-import { Icon, IconButton, Tooltip } from "components/index";
-import { useUtils, useBrowser } from "hooks/index";
+import React, { FC } from 'react';
+import { Icon, IconButton, Tooltip } from 'components/index';
+import { useUtils, useBrowser } from 'hooks/index';
 
-import { Header } from "../Header";
+import { Header } from '../Header';
 
 interface IAuthViewLayout {
   background?: string;
@@ -14,13 +14,13 @@ interface IAuthViewLayout {
 export const AuthViewLayout: FC<IAuthViewLayout> = ({
   title,
   children,
-  background = "bkg-2",
+  background = 'bkg-2',
   canGoBack = true,
 }) => {
   const { history } = useUtils();
   const { browser } = useBrowser();
 
-  const url = browser.runtime.getURL("app.html");
+  const url = browser.runtime.getURL('app.html');
 
   return (
     <div
@@ -43,7 +43,7 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
         <p className="text-xl w-full text-center">{title}</p>
 
         {canGoBack && (
-          <IconButton onClick={() => history.push("/home")}>
+          <IconButton onClick={() => history.push('/home')}>
             <Icon wrapperClassname="absolute bottom-1 right-4" name="close" />
           </IconButton>
         )}

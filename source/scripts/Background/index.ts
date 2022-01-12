@@ -1,11 +1,11 @@
 /* eslint-disable prettier/prettier */
-import "emoji-log";
-import { STORE_PORT } from "constants/index";
+import 'emoji-log';
+import { STORE_PORT } from 'constants/index';
 
-import { wrapStore } from "webext-redux";
-import Bowser from "bowser";
-import { browser } from "webextension-polyfill-ts";
-import store from "state/store";
+import { wrapStore } from 'webext-redux';
+import Bowser from 'bowser';
+import { browser } from 'webextension-polyfill-ts';
+import store from 'state/store';
 import {
   setSenderURL,
   updateCanConnect,
@@ -15,11 +15,11 @@ import {
   updateCanConfirmTransaction,
   clearAllTransactions,
   setTemporaryTransactionState,
-} from "state/wallet";
-import { IAccountState } from "state/wallet/types";
+} from 'state/wallet';
+import { IAccountState } from 'state/wallet/types';
 
-import MasterController, { IMasterController } from "./controllers";
-import { getHost } from "./helpers";
+import MasterController, { IMasterController } from './controllers';
+import { getHost } from './helpers';
 
 declare global {
   interface Window {
@@ -46,13 +46,13 @@ const closePopup = () => {
     .query({ active: true })
     .then(async (tabs) => {
       tabs.map(async (tab) => {
-        if (tab.title === "Pali Wallet") {
+        if (tab.title === 'Pali Wallet') {
           await browser.windows.remove(Number(tab.windowId));
         }
       });
     })
     .catch((error) => {
-      console.log("error removing window", error);
+      console.log('error removing window', error);
     });
 };
 
@@ -95,7 +95,7 @@ const checkToCallPrivateMethods = () => {
     return {
       error: true,
       message:
-        "Please, check if your wallet is unlocked and connected and try again.",
+        'Please, check if your wallet is unlocked and connected and try again.',
     };
   }
 
@@ -122,7 +122,7 @@ const observeStore = async (observedStore: any) => {
 
       const tabs: any = await getTabs({
         active: true,
-        windowType: "normal",
+        windowType: 'normal',
       });
 
       for (const tab of tabs) {
@@ -136,13 +136,13 @@ const observeStore = async (observedStore: any) => {
               await runtimeSendMessageToTabs({
                 tabId: Number(tab.id),
                 messageDetails: {
-                  type: "WALLET_UPDATED",
-                  target: "contentScript",
+                  type: 'WALLET_UPDATED',
+                  target: 'contentScript',
                   connected: false,
                 },
               });
             } catch (error) {
-              console.log("error", error);
+              console.log('error', error);
             }
           }
         }
@@ -162,14 +162,14 @@ observeStore(store);
 const createPopup = async (url: string) => {
   const [tab]: any = await getTabs({ active: true, lastFocusedWindow: true });
 
-  if (tab.title === "Pali Wallet") {
+  if (tab.title === 'Pali Wallet') {
     return;
   }
 
   store.dispatch(updateCurrentURL(String(tab.url)));
 
   const [sysWalletPopup]: any = await getTabs({
-    url: browser.runtime.getURL("app.html"),
+    url: browser.runtime.getURL('app.html'),
   });
 
   if (sysWalletPopup) {
@@ -186,7 +186,7 @@ const createPopup = async (url: string) => {
 
   const sysPopup = await browser.windows.create({
     url,
-    type: "popup",
+    type: 'popup',
     height: 600,
     width: 372,
     left: 900,
@@ -198,7 +198,7 @@ const createPopup = async (url: string) => {
 
 browser.windows.onRemoved.addListener((windowId: any) => {
   if (windowId > -1 && windowId === window.syspopup) {
-    console.log("clearing all transactions");
+    console.log('clearing all transactions');
 
     store.dispatch(clearAllTransactions());
   }
@@ -213,7 +213,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
   const [currentTab]: any = await getTabs({
     active: true,
-    windowType: "normal",
+    windowType: 'normal',
   });
 
   if (currentTab) {
@@ -226,19 +226,19 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     }
   }
 
-  if (typeof request === "object") {
-    if (type === "SET_MOUSE_MOVE" && target === "background") {
+  if (typeof request === 'object') {
+    if (type === 'SET_MOUSE_MOVE' && target === 'background') {
       restartLockTimeout();
     }
 
-    if (type === "WALLET_ERROR" && target === "background") {
+    if (type === 'WALLET_ERROR' && target === 'background') {
       const { transactionError, invalidParams, message } = request;
 
       runtimeSendMessageToTabs({
         tabId,
         messageDetails: {
-          type: "WALLET_ERROR",
-          target: "contentScript",
+          type: 'WALLET_ERROR',
+          target: 'contentScript',
           transactionError,
           invalidParams,
           message,
@@ -246,12 +246,12 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       });
     }
 
-    if (type === "TRANSACTION_RESPONSE" && target === "background") {
+    if (type === 'TRANSACTION_RESPONSE' && target === 'background') {
       runtimeSendMessageToTabs({
         tabId,
         messageDetails: {
-          type: "TRANSACTION_RESPONSE",
-          target: "contentScript",
+          type: 'TRANSACTION_RESPONSE',
+          target: 'contentScript',
           response: request.response,
         },
       });
@@ -264,7 +264,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
             );
 
           console.log(
-            "updating tokens state using txid: ",
+            'updating tokens state using txid: ',
             request.response.txid
           );
 
@@ -281,12 +281,12 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       }, 6000);
     }
 
-    if (type === "RESET_CONNECTION_INFO" && target === "background") {
+    if (type === 'RESET_CONNECTION_INFO' && target === 'background') {
       const { id, url } = request;
 
       store.dispatch(updateCanConnect(false));
       store.dispatch(removeConnection({ accountId: id, url }));
-      store.dispatch(setSenderURL(""));
+      store.dispatch(setSenderURL(''));
 
       browser.tabs
         .query({ url })
@@ -296,16 +296,16 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
               Promise.resolve(
                 browser.tabs
                   .sendMessage(Number(tab.id), {
-                    type: "WALLET_UPDATED",
-                    target: "contentScript",
+                    type: 'WALLET_UPDATED',
+                    target: 'contentScript',
                     connected: false,
                   })
                   .then(() => {
-                    console.log("wallet updated");
+                    console.log('wallet updated');
                   })
                   .catch(() => {
                     console.log(
-                      "extension context invalidated in other tabs with the same url, you need to refresh the tab"
+                      'extension context invalidated in other tabs with the same url, you need to refresh the tab'
                     );
                   })
               );
@@ -313,13 +313,13 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
           }
         })
         .catch((error) => {
-          console.log("error getting tabs", error);
+          console.log('error getting tabs', error);
         });
 
       return;
     }
 
-    if (type === "SELECT_ACCOUNT" && target === "background") {
+    if (type === 'SELECT_ACCOUNT' && target === 'background') {
       store.dispatch(
         updateConnectionsArray({
           accountId: request.id,
@@ -330,7 +330,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       return;
     }
 
-    if (type === "CHANGE_CONNECTED_ACCOUNT" && target === "background") {
+    if (type === 'CHANGE_CONNECTED_ACCOUNT' && target === 'background') {
       store.dispatch(
         updateConnectionsArray({
           accountId: request.id,
@@ -341,23 +341,23 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       return;
     }
 
-    if (type === "CONFIRM_CONNECTION" && target === "background") {
+    if (type === 'CONFIRM_CONNECTION' && target === 'background') {
       if (getHost(window.senderURL)) {
         store.dispatch(updateCanConnect(false));
 
         for (const tab of allTabs) {
           browser.tabs
             .sendMessage(Number(tab.id), {
-              type: "WALLET_CONNECTION_CONFIRMED",
-              target: "contentScript",
+              type: 'WALLET_CONNECTION_CONFIRMED',
+              target: 'contentScript',
               connectionConfirmed: true,
               state: store.getState().wallet,
             })
             .then(() => {
-              console.log("wallet connection confirmed");
+              console.log('wallet connection confirmed');
             })
             .catch((error) => {
-              console.log("error confirming connection", error);
+              console.log('error confirming connection', error);
             });
         }
       }
@@ -365,7 +365,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       return;
     }
 
-    if (type === "CANCEL_TRANSACTION" && target === "background") {
+    if (type === 'CANCEL_TRANSACTION' && target === 'background') {
       const { item } = request;
 
       store.dispatch(clearAllTransactions());
@@ -375,11 +375,11 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       return;
     }
 
-    if (type === "CLOSE_POPUP" && target === "background") {
+    if (type === 'CLOSE_POPUP' && target === 'background') {
       closePopup();
     }
 
-    if (type === "SEND_STATE_TO_PAGE" && target === "background") {
+    if (type === 'SEND_STATE_TO_PAGE' && target === 'background') {
       checkToCallPrivateMethods();
 
       const {
@@ -420,8 +420,8 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       }
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
-        type: "SEND_STATE_TO_PAGE",
-        target: "contentScript",
+        type: 'SEND_STATE_TO_PAGE',
+        target: 'contentScript',
         state:
           getConnectedAccountIndex({
             match: new URL(store.getState().wallet.tabs.currentURL).host,
@@ -442,17 +442,17 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       });
     }
 
-    if (type === "CHECK_IS_LOCKED" && target === "background") {
+    if (type === 'CHECK_IS_LOCKED' && target === 'background') {
       const isLocked = window.controller.wallet.isLocked();
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
-        type: "CHECK_IS_LOCKED",
-        target: "contentScript",
+        type: 'CHECK_IS_LOCKED',
+        target: 'contentScript',
         isLocked,
       });
     }
 
-    if (type === "SEND_CONNECTED_ACCOUNT" && target === "background") {
+    if (type === 'SEND_CONNECTED_ACCOUNT' && target === 'background') {
       const connectedAccount: any = store
         .getState()
         .wallet.accounts.find((account: IAccountState) =>
@@ -477,38 +477,38 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       }
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
-        type: "SEND_CONNECTED_ACCOUNT",
-        target: "contentScript",
+        type: 'SEND_CONNECTED_ACCOUNT',
+        target: 'contentScript',
         copyConnectedAccount,
       });
     }
 
-    if (type === "CONNECTED_ACCOUNT_XPUB" && target === "background") {
+    if (type === 'CONNECTED_ACCOUNT_XPUB' && target === 'background') {
       checkToCallPrivateMethods();
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
-        type: "CONNECTED_ACCOUNT_XPUB",
-        target: "contentScript",
+        type: 'CONNECTED_ACCOUNT_XPUB',
+        target: 'contentScript',
         connectedAccountXpub:
           window.controller.wallet.account.connectedAccountXpub,
       });
     }
 
     if (
-      type === "CONNECTED_ACCOUNT_CHANGE_ADDRESS" &&
-      target === "background"
+      type === 'CONNECTED_ACCOUNT_CHANGE_ADDRESS' &&
+      target === 'background'
     ) {
       checkToCallPrivateMethods();
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
-        type: "CONNECTED_ACCOUNT_CHANGE_ADDRESS",
-        target: "contentScript",
+        type: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
+        target: 'contentScript',
         connectedAccountChangeAddress:
           await window.controller.wallet.account.getChangeAddress(),
       });
     }
 
-    if (type === "CHECK_ADDRESS" && target === "background") {
+    if (type === 'CHECK_ADDRESS' && target === 'background') {
       checkToCallPrivateMethods();
 
       const isValidSYSAddress =
@@ -519,39 +519,39 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         );
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
-        type: "CHECK_ADDRESS",
-        target: "contentScript",
+        type: 'CHECK_ADDRESS',
+        target: 'contentScript',
         isValidSYSAddress,
       });
     }
 
-    if (type === "GET_HOLDINGS_DATA" && target === "background") {
+    if (type === 'GET_HOLDINGS_DATA' && target === 'background') {
       checkToCallPrivateMethods();
 
       const holdingsData =
         await window.controller.wallet.account.getHoldingsData();
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
-        type: "GET_HOLDINGS_DATA",
-        target: "contentScript",
+        type: 'GET_HOLDINGS_DATA',
+        target: 'contentScript',
         holdingsData,
       });
     }
 
-    if (type === "GET_USER_MINTED_TOKENS" && target === "background") {
+    if (type === 'GET_USER_MINTED_TOKENS' && target === 'background') {
       checkToCallPrivateMethods();
 
       const tokensMinted =
         await window.controller.wallet.account.getUserMintedTokens();
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
-        type: "GET_USER_MINTED_TOKENS",
-        target: "contentScript",
+        type: 'GET_USER_MINTED_TOKENS',
+        target: 'contentScript',
         userTokens: tokensMinted,
       });
     }
 
-    if (type === "GET_ASSET_DATA" && target === "background") {
+    if (type === 'GET_ASSET_DATA' && target === 'background') {
       checkToCallPrivateMethods();
 
       const assetData = await window.controller.wallet.account.getDataAsset(
@@ -559,15 +559,15 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       );
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
-        type: "GET_ASSET_DATA",
-        target: "contentScript",
+        type: 'GET_ASSET_DATA',
+        target: 'contentScript',
         assetData,
       });
     }
   }
 
-  if (type === "CONNECT_WALLET" && target === "background") {
-    const url = browser.runtime.getURL("app.html");
+  if (type === 'CONNECT_WALLET' && target === 'background') {
+    const url = browser.runtime.getURL('app.html');
 
     store.dispatch(setSenderURL(String(sender.url)));
     store.dispatch(updateCanConnect(true));
@@ -579,63 +579,63 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     return;
   }
 
-  if (type === "SIGN_AND_SEND" && target === "background") {
+  if (type === 'SIGN_AND_SEND' && target === 'background') {
     checkToCallPrivateMethods();
 
     const { messageData } = request;
 
     window.controller.wallet.account.updateTemporaryTransaction({
       tx: messageData,
-      type: "signAndSendPSBT",
+      type: 'signAndSendPSBT',
     });
 
     store.dispatch(
       setTemporaryTransactionState({
         executing: true,
-        type: "signAndSendPSBT",
+        type: 'signAndSendPSBT',
       })
     );
 
-    const appURL = browser.runtime.getURL("app.html");
+    const appURL = browser.runtime.getURL('app.html');
 
     await createPopup(appURL);
 
     browser.tabs.sendMessage(Number(sender.tab?.id), {
-      type: "SIGN_AND_SEND",
-      target: "contentScript",
+      type: 'SIGN_AND_SEND',
+      target: 'contentScript',
       complete: true,
     });
   }
 
-  if (type === "SIGN_PSBT" && target === "background") {
+  if (type === 'SIGN_PSBT' && target === 'background') {
     checkToCallPrivateMethods();
 
     const { messageData } = request;
 
     window.controller.wallet.account.updateTemporaryTransaction({
       tx: messageData,
-      type: "signPSBT",
+      type: 'signPSBT',
     });
 
     store.dispatch(
       setTemporaryTransactionState({
         executing: true,
-        type: "signPSBT",
+        type: 'signPSBT',
       })
     );
 
-    const appURL = browser.runtime.getURL("app.html");
+    const appURL = browser.runtime.getURL('app.html');
 
     await createPopup(appURL);
 
     browser.tabs.sendMessage(Number(sender.tab?.id), {
-      type: "SIGN_PSBT",
-      target: "contentScript",
+      type: 'SIGN_PSBT',
+      target: 'contentScript',
       complete: true,
     });
   }
 
-  if (type === "SEND_TOKEN" && target === "background") {
+  if (type === 'SEND_TOKEN' && target === 'background') {
     checkToCallPrivateMethods();
 
     const {
@@ -658,36 +658,36 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         isToken,
         rbf,
       },
-      type: "sendAsset",
+      type: 'sendAsset',
     });
 
     store.dispatch(updateCanConfirmTransaction(true));
 
-    const appURL = browser.runtime.getURL("app.html");
+    const appURL = browser.runtime.getURL('app.html');
 
     await createPopup(appURL);
 
     browser.tabs.sendMessage(Number(sender.tab?.id), {
-      type: "SEND_TOKEN",
-      target: "contentScript",
+      type: 'SEND_TOKEN',
+      target: 'contentScript',
       complete: true,
     });
   }
 
-  if (type === "DATA_FROM_PAGE_TO_CREATE_TOKEN" && target === "background") {
+  if (type === 'DATA_FROM_PAGE_TO_CREATE_TOKEN' && target === 'background') {
     const { precision, maxsupply, receiver, initialSupply } =
       request.messageData;
 
     if (precision < 0 || precision > 8) {
-      throw new Error("invalid precision value");
+      throw new Error('invalid precision value');
     }
 
     if (maxsupply < 0) {
-      throw new Error("invalid max supply value");
+      throw new Error('invalid max supply value');
     }
 
     if (initialSupply < 0) {
-      throw new Error("invalid initial supply value");
+      throw new Error('invalid initial supply value');
     }
 
     if (
@@ -697,7 +697,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         true
       )
     ) {
-      throw new Error("invalid receiver address");
+      throw new Error('invalid receiver address');
     }
 
     const fee = await window.controller.wallet.account.getRecommendFee();
@@ -707,22 +707,22 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         ...request.messageData,
         fee,
       },
-      type: "newAsset",
+      type: 'newAsset',
     });
 
     store.dispatch(
       setTemporaryTransactionState({
         executing: true,
-        type: "newAsset",
+        type: 'newAsset',
       })
     );
 
-    const appURL = browser.runtime.getURL("app.html");
+    const appURL = browser.runtime.getURL('app.html');
 
     await createPopup(appURL);
   }
 
-  if (type === "ISSUE_SPT" && target === "background") {
+  if (type === 'ISSUE_SPT' && target === 'background') {
     checkToCallPrivateMethods();
 
     const { amount, assetGuid } = request.messageData;
@@ -731,7 +731,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       window.controller.wallet.account.getDataAsset(assetGuid);
 
     if (amount < 0 || amount >= assetFromAssetGuid.balance) {
-      throw new Error("invalid amount value");
+      throw new Error('invalid amount value');
     }
 
     const fee = await window.controller.wallet.account.getRecommendFee();
@@ -741,34 +741,34 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         ...request.messageData,
         fee,
       },
-      type: "mintAsset",
+      type: 'mintAsset',
     });
 
     store.dispatch(
       setTemporaryTransactionState({
         executing: true,
-        type: "mintAsset",
+        type: 'mintAsset',
       })
     );
 
-    const appURL = browser.runtime.getURL("app.html");
+    const appURL = browser.runtime.getURL('app.html');
 
     await createPopup(appURL);
 
     browser.tabs.sendMessage(Number(sender.tab?.id), {
-      type: "ISSUE_SPT",
-      target: "contentScript",
+      type: 'ISSUE_SPT',
+      target: 'contentScript',
       complete: true,
     });
   }
 
-  if (type === "CREATE_AND_ISSUE_NFT" && target === "background") {
+  if (type === 'CREATE_AND_ISSUE_NFT' && target === 'background') {
     checkToCallPrivateMethods();
 
     const { issuer, precision } = request.messageData;
 
     if (precision < 0 || precision > 8) {
-      throw new Error("invalid total shares value");
+      throw new Error('invalid total shares value');
     }
 
     if (
@@ -778,7 +778,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         true
       )
     ) {
-      throw new Error("invalid receiver address");
+      throw new Error('invalid receiver address');
     }
 
     const fee = await window.controller.wallet.account.getRecommendFee();
@@ -788,28 +788,28 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         ...request.messageData,
         fee,
       },
-      type: "newNFT",
+      type: 'newNFT',
     });
 
     store.dispatch(
       setTemporaryTransactionState({
         executing: true,
-        type: "newNFT",
+        type: 'newNFT',
       })
     );
 
-    const appURL = browser.runtime.getURL("app.html");
+    const appURL = browser.runtime.getURL('app.html');
 
     await createPopup(appURL);
 
     browser.tabs.sendMessage(Number(sender.tab?.id), {
-      type: "CREATE_AND_ISSUE_NFT",
-      target: "contentScript",
+      type: 'CREATE_AND_ISSUE_NFT',
+      target: 'contentScript',
       complete: true,
     });
   }
 
-  if (type === "UPDATE_ASSET" && target === "background") {
+  if (type === 'UPDATE_ASSET' && target === 'background') {
     checkToCallPrivateMethods();
 
     const fee = await window.controller.wallet.account.getRecommendFee();
@@ -819,28 +819,28 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         ...request.messageData,
         fee,
       },
-      type: "updateAsset",
+      type: 'updateAsset',
     });
 
     store.dispatch(
       setTemporaryTransactionState({
         executing: true,
-        type: "updateAsset",
+        type: 'updateAsset',
       })
     );
 
-    const appURL = browser.runtime.getURL("app.html");
+    const appURL = browser.runtime.getURL('app.html');
 
     await createPopup(appURL);
 
     browser.tabs.sendMessage(Number(sender.tab?.id), {
-      type: "UPDATE_ASSET",
-      target: "contentScript",
+      type: 'UPDATE_ASSET',
+      target: 'contentScript',
       complete: true,
     });
   }
 
-  if (type === "TRANSFER_OWNERSHIP" && target === "background") {
+  if (type === 'TRANSFER_OWNERSHIP' && target === 'background') {
     checkToCallPrivateMethods();
 
     const { newOwner } = request.messageData;
@@ -852,7 +852,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         true
       )
     ) {
-      throw new Error("invalid new owner address");
+      throw new Error('invalid new owner address');
     }
 
     const fee = await window.controller.wallet.account.getRecommendFee();
@@ -862,28 +862,28 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         ...request.messageData,
         fee,
       },
-      type: "transferAsset",
+      type: 'transferAsset',
     });
 
     store.dispatch(
       setTemporaryTransactionState({
         executing: true,
-        type: "transferAsset",
+        type: 'transferAsset',
       })
     );
 
-    const appURL = browser.runtime.getURL("app.html");
+    const appURL = browser.runtime.getURL('app.html');
 
     await createPopup(appURL);
 
     browser.tabs.sendMessage(Number(sender.tab?.id), {
-      type: "TRANSFER_OWNERSHIP",
-      target: "contentScript",
+      type: 'TRANSFER_OWNERSHIP',
+      target: 'contentScript',
       complete: true,
     });
   }
 
-  if (type === "ISSUE_NFT" && target === "background") {
+  if (type === 'ISSUE_NFT' && target === 'background') {
     checkToCallPrivateMethods();
 
     const fee = await window.controller.wallet.account.getRecommendFee();
@@ -893,35 +893,35 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         ...request.messageData,
         fee,
       },
-      type: "mintNFT",
+      type: 'mintNFT',
     });
 
     store.dispatch(
       setTemporaryTransactionState({
         executing: true,
-        type: "mintNFT",
+        type: 'mintNFT',
       })
     );
 
-    const appURL = browser.runtime.getURL("app.html");
+    const appURL = browser.runtime.getURL('app.html');
 
     await createPopup(appURL);
 
     browser.tabs.sendMessage(Number(sender.tab?.id), {
-      type: "ISSUE_NFT",
-      target: "contentScript",
+      type: 'ISSUE_NFT',
+      target: 'contentScript',
       complete: true,
     });
   }
 });
 
 browser.runtime.onConnect.addListener((port) => {
-  if (port.name === "trezor-connect") {
+  if (port.name === 'trezor-connect') {
     return;
   }
 
   browser.tabs.query({ active: true, lastFocusedWindow: true }).then((tabs) => {
-    if (tabs[0].title === "Pali Wallet") {
+    if (tabs[0].title === 'Pali Wallet') {
       return;
     }
 
@@ -932,8 +932,8 @@ browser.runtime.onConnect.addListener((port) => {
 const bowser = Bowser.getParser(window.navigator.userAgent);
 
 browser.tabs.onUpdated.addListener((tabId, _, tab) => {
-  if (bowser.getBrowserName() === "Firefox") {
-    console.log("browser is firefox, do nothing", tab, tab.title, tabId);
+  if (bowser.getBrowserName() === 'Firefox') {
+    console.log('browser is firefox, do nothing', tab, tab.title, tabId);
 
     // fix issue between sysmint & bridge
 
@@ -941,9 +941,9 @@ browser.tabs.onUpdated.addListener((tabId, _, tab) => {
   }
 
   if (
-    tab.url !== browser.runtime.getURL("app.html") &&
+    tab.url !== browser.runtime.getURL('app.html') &&
     tab.url !== store.getState().wallet.tabs.currentURL &&
-    tab.title !== "Pali Wallet"
+    tab.title !== 'Pali Wallet'
   ) {
     store.dispatch(updateCurrentURL(String(tab.url)));
   }
@@ -955,7 +955,7 @@ browser.runtime.onInstalled.addListener(() => {
     setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
   }
 
-  console.emoji("🤩", "Pali extension ebabled");
+  console.emoji('🤩', 'Pali extension ebabled');
 
   window.controller.stateUpdater();
 });

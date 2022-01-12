@@ -1,5 +1,5 @@
-import React, { useEffect, Fragment, useState } from "react";
-import { AuthViewLayout } from "containers/common/Layout";
+import React, { useEffect, Fragment, useState } from 'react';
+import { AuthViewLayout } from 'containers/common/Layout';
 import {
   useController,
   usePrice,
@@ -7,11 +7,11 @@ import {
   useFormat,
   useUtils,
   useAccount,
-} from "hooks/index";
-import { SecondaryButton, Icon, Modal } from "components/index";
-import { Menu, Transition } from "@headlessui/react";
-import { Input } from "antd";
-import getSymbolFromCurrency from "currency-symbol-map";
+} from 'hooks/index';
+import { SecondaryButton, Icon, Modal } from 'components/index';
+import { Menu, Transition } from '@headlessui/react';
+import { Input } from 'antd';
+import getSymbolFromCurrency from 'currency-symbol-map';
 
 const CurrencyView = () => {
   const controller = useController();
@@ -21,7 +21,7 @@ const CurrencyView = () => {
   const { accounts, activeAccountId, fiat, activeNetwork } = useStore();
 
   const [selectedCoin, setSelectedCoin] = useState(String(fiat.current));
-  const [checkValueCoin, setCheckValueCoin] = useState("usd");
+  const [checkValueCoin, setCheckValueCoin] = useState('usd');
   const [confirmed, setConfirmed] = useState(false);
 
   const [conversorValues, setConversorValues] = useState({
@@ -53,7 +53,7 @@ const CurrencyView = () => {
   };
 
   const handleConvert = (value: number, type: string, comparedCoin: string) => {
-    if (type === "sys") {
+    if (type === 'sys') {
       setConversorValues({
         fiat: Number(
           value * fiat.availableCoins[comparedCoin || checkValueCoin]
@@ -71,25 +71,25 @@ const CurrencyView = () => {
   };
 
   const handleConfirmCurrencyChange = () => {
-    controller.utils.updateFiat(selectedCoin, "syscoin");
+    controller.utils.updateFiat(selectedCoin, 'syscoin');
 
     setConfirmed(true);
   };
 
   const useFiatCurrency = fiat.current
     ? String(fiat.current).toUpperCase()
-    : "USD";
+    : 'USD';
 
   return (
     <AuthViewLayout title="FIAT CURRENCY">
       {confirmed && (
         <Modal
           type="default"
-          onClose={() => history.push("/home")}
+          onClose={() => history.push('/home')}
           open={confirmed}
           title="Fiat currency set successfully"
           description={`Now you will see the values in your wallet in SYS and ${
-            selectedCoin.toUpperCase() || "USD"
+            selectedCoin.toUpperCase() || 'USD'
           }`}
         />
       )}
@@ -149,10 +149,10 @@ const CurrencyView = () => {
         </Menu>
 
         <div className="text-center flex justify-center flex-col items-center">
-          {activeNetwork === "testnet" ? (
+          {activeNetwork === 'testnet' ? (
             <div className="flex items-center justify-center mt-8 gap-x-0.5">
               <p className="text-5xl font-medium font-rubik">
-                {formatNumber(Number(activeAccount?.balance) || 0)}{" "}
+                {formatNumber(Number(activeAccount?.balance) || 0)}{' '}
               </p>
 
               <p className="font-poppins mt-4">TSYS</p>
@@ -161,7 +161,7 @@ const CurrencyView = () => {
             <>
               <div className="flex items-center justify-center mt-8 gap-x-0.5">
                 <p className="text-5xl font-medium font-rubik">
-                  {formatNumber(activeAccount?.balance || 0)}{" "}
+                  {formatNumber(activeAccount?.balance || 0)}{' '}
                 </p>
 
                 <p className="font-poppins mt-4">SYS</p>
@@ -171,7 +171,7 @@ const CurrencyView = () => {
                 {getFiatAmount(
                   activeAccount?.balance || 0,
                   4,
-                  String(selectedCoin || (fiat.current ? fiat.current : "USD"))
+                  String(selectedCoin || (fiat.current ? fiat.current : 'USD'))
                 )}
               </p>
             </>
@@ -194,7 +194,7 @@ const CurrencyView = () => {
           <Input
             type="number"
             onChange={(event) =>
-              handleConvert(Number(event.target.value), "sys", checkValueCoin)
+              handleConvert(Number(event.target.value), 'sys', checkValueCoin)
             }
             maxLength={20}
             value={Number(conversorValues.sys)}

@@ -1,6 +1,6 @@
 export interface IFiatState {
   [assetId: string]: number;
-  current: any | "usd";
+  current: any | 'usd';
 }
 
 export default interface IPriceState {

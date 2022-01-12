@@ -56,7 +56,7 @@ export type AuxFees = {
 export type NewAsset = {
   advanced?: {
     auxfeedetails?: AuxFees[];
-    capabilityflags?: string | "127";
+    capabilityflags?: string | '127';
     initialSupply?: number;
     notaryAddress?: string;
     notarydetails?: NotaryDetails;
@@ -103,7 +103,7 @@ export type UpdateAsset = {
   };
   assetGuid: number;
   assetWhiteList: string;
-  capabilityflags: string | "127";
+  capabilityflags: string | '127';
   contract: string;
   description: string;
   fee: number;

@@ -1,7 +1,7 @@
-import React, { FC, useCallback, Fragment } from "react";
-import { IconButton, Icon } from "components/index";
-import { useFormat, useUtils } from "hooks/index";
-import { Assets, Transaction } from "types/transactions";
+import React, { FC, useCallback, Fragment } from 'react';
+import { IconButton, Icon } from 'components/index';
+import { useFormat, useUtils } from 'hooks/index';
+import { Assets, Transaction } from 'types/transactions';
 
 interface IPanelList {
   activity: boolean;
@@ -27,19 +27,19 @@ export const PanelList: FC<IPanelList> = ({
   );
 
   const getTxType = (tx: Transaction) => {
-    if (tx.tokenType === "SPTAssetActivate") {
-      return "SPT creation";
+    if (tx.tokenType === 'SPTAssetActivate') {
+      return 'SPT creation';
     }
 
-    if (tx.tokenType === "SPTAssetSend") {
-      return "SPT mint";
+    if (tx.tokenType === 'SPTAssetSend') {
+      return 'SPT mint';
     }
 
-    if (tx.tokenType === "SPTAssetUpdate") {
-      return "SPT update";
+    if (tx.tokenType === 'SPTAssetUpdate') {
+      return 'SPT update';
     }
 
-    return "Transaction";
+    return 'Transaction';
   };
 
   return (
@@ -51,8 +51,8 @@ export const PanelList: FC<IPanelList> = ({
             const timestamp = new Date(tx.blockTime * 1000).toLocaleTimeString(
               navigator.language,
               {
-                hour: "2-digit",
-                minute: "2-digit",
+                hour: '2-digit',
+                minute: '2-digit',
               }
             );
 
@@ -74,11 +74,11 @@ export const PanelList: FC<IPanelList> = ({
                       <p
                         className={
                           isConfirmed
-                            ? "text-warning-success"
-                            : "text-yellow-300"
+                            ? 'text-warning-success'
+                            : 'text-yellow-300'
                         }
                       >
-                        {isConfirmed ? "Confirmed" : "Pending"}
+                        {isConfirmed ? 'Confirmed' : 'Pending'}
                       </p>
                     </div>
 
@@ -92,7 +92,7 @@ export const PanelList: FC<IPanelList> = ({
                       <IconButton
                         className="w-1"
                         onClick={() =>
-                          history.push("/home-tx-details", {
+                          history.push('/home-tx-details', {
                             tx,
                             type: getTxType(tx),
                             assetGuid: null,
@@ -133,7 +133,7 @@ export const PanelList: FC<IPanelList> = ({
 
                   <IconButton
                     onClick={() =>
-                      history.push("/home-tx-details", {
+                      history.push('/home-tx-details', {
                         tx: null,
                         type: null,
                         assetGuid: asset.assetGuid,

@@ -1,1 +1,1 @@
-export { MintToken, MintTokenConfirm } from "./MintToken";
+export { MintToken, MintTokenConfirm } from './MintToken';

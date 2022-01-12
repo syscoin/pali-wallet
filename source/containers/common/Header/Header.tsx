@@ -1,8 +1,8 @@
-import React from "react";
-import { useController, useStore } from "hooks/index";
-import { Icon } from "components/Icon";
+import React from 'react';
+import { useController, useStore } from 'hooks/index';
+import { Icon } from 'components/Icon';
 
-import { AccountHeader, NormalHeader, Section } from "./index";
+import { AccountHeader, NormalHeader, Section } from './index';
 
 type HeaderType = {
   accountHeader?: boolean;
@@ -22,10 +22,10 @@ export const Header = ({
   const controller = useController();
   const isUnlocked = !controller.wallet.isLocked();
 
-  const onlySectionStyle = onlySection ? "" : "pb-12";
+  const onlySectionStyle = onlySection ? '' : 'pb-12';
 
   const headerStyle =
-    normalHeader && accountHeader ? "pb-32" : onlySectionStyle;
+    normalHeader && accountHeader ? 'pb-32' : onlySectionStyle;
 
   return (
     <div className={headerStyle}>

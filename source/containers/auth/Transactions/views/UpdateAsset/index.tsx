@@ -1,1 +1,1 @@
-export { UpdateAsset, UpdateAssetConfirm } from "./UpdateAsset";
+export { UpdateAsset, UpdateAssetConfirm } from './UpdateAsset';

@@ -1,9 +1,9 @@
-import React, { useState } from "react";
-import { SecondaryButton, PrimaryButton, InfoCard } from "components/index";
-import { AuthViewLayout } from "containers/common/Layout";
-import { Form, Input } from "antd";
-import { useController, useAccount, useUtils } from "hooks/index";
-import TextArea from "antd/lib/input/TextArea";
+import React, { useState } from 'react';
+import { SecondaryButton, PrimaryButton, InfoCard } from 'components/index';
+import { AuthViewLayout } from 'containers/common/Layout';
+import { Form, Input } from 'antd';
+import { useController, useAccount, useUtils } from 'hooks/index';
+import TextArea from 'antd/lib/input/TextArea';
 
 const DeleteWalletView = () => {
   const { history } = useUtils();
@@ -17,7 +17,7 @@ const DeleteWalletView = () => {
     if (controller.wallet.checkPassword(data.password)) {
       controller.wallet.deleteWallet(data.password);
 
-      history.push("/app.html");
+      history.push('/app.html');
     }
   };
 
@@ -52,7 +52,7 @@ const DeleteWalletView = () => {
             rules={[
               {
                 required: true,
-                message: "",
+                message: '',
               },
               () => ({
                 validator(_, value) {
@@ -81,16 +81,16 @@ const DeleteWalletView = () => {
             <Form.Item
               name="seed"
               className="w-full"
-              dependencies={["password"]}
+              dependencies={['password']}
               rules={[
                 {
                   required: true,
-                  message: "",
+                  message: '',
                 },
                 ({ getFieldValue }) => ({
                   validator(_, value) {
                     const seed = controller.wallet.getPhrase(
-                      getFieldValue("password")
+                      getFieldValue('password')
                     );
 
                     setSeedIsValid(seed === value);
@@ -106,9 +106,9 @@ const DeleteWalletView = () => {
             >
               <TextArea
                 className={`${
-                  !seedIsValid && form.getFieldValue("seed")
-                    ? "border-warning-error"
-                    : "border-fields-input-border"
+                  !seedIsValid && form.getFieldValue('seed')
+                    ? 'border-warning-error'
+                    : 'border-fields-input-border'
                 } bg-bkg-4 border border-bkg-4 text-sm outline-none rounded-lg p-5`}
                 placeholder="Paste your wallet seed phrase"
               />
@@ -118,7 +118,7 @@ const DeleteWalletView = () => {
           <div className="absolute bottom-12 flex justify-between gap-x-4">
             <SecondaryButton
               type="button"
-              onClick={() => history.push("/home")}
+              onClick={() => history.push('/home')}
               action
             >
               Cancel
@@ -127,7 +127,7 @@ const DeleteWalletView = () => {
             <PrimaryButton
               action
               type="submit"
-              disabled={!form.getFieldValue("password") || !seedIsValid}
+              disabled={!form.getFieldValue('password') || !seedIsValid}
             >
               Delete
             </PrimaryButton>

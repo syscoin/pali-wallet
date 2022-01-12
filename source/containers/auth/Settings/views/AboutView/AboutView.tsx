@@ -1,7 +1,7 @@
-import React, { FC } from "react";
-import { useUtils } from "hooks/index";
-import { AuthViewLayout } from "containers/common/Layout/AuthViewLayout";
-import { Icon, SecondaryButton, Card } from "components/index";
+import React, { FC } from 'react';
+import { useUtils } from 'hooks/index';
+import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
+import { Icon, SecondaryButton, Card } from 'components/index';
 
 const AboutView: FC = () => {
   const handleRedirect = (url: string) => {
@@ -18,7 +18,7 @@ const AboutView: FC = () => {
 
         <p
           className="transition-all duration-200 hover:text-brand-royalblue"
-          onClick={() => handleRedirect("https://docs.paliwallet.com/")}
+          onClick={() => handleRedirect('https://docs.paliwallet.com/')}
         >
           Pali API
         </p>
@@ -26,7 +26,7 @@ const AboutView: FC = () => {
 
       <div className="flex flex-col justify-center items-center w-full">
         <Card
-          onClick={() => handleRedirect("https://discord.gg/8QKeyurHRd")}
+          onClick={() => handleRedirect('https://discord.gg/8QKeyurHRd')}
           className="cursor-pointer"
         >
           <div className="flex justify-start text-base font-bold items-center font-poppins mb-4">
@@ -46,7 +46,7 @@ const AboutView: FC = () => {
         </Card>
 
         <div className="absolute bottom-12">
-          <SecondaryButton type="button" onClick={() => history.push("/home")}>
+          <SecondaryButton type="button" onClick={() => history.push('/home')}>
             Close
           </SecondaryButton>
         </div>

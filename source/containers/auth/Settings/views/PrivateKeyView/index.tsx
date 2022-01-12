@@ -1,9 +1,9 @@
-import React, { useState } from "react";
-import { useFormat, useAccount, useUtils, useController } from "hooks/index";
-import { AuthViewLayout } from "containers/common/Layout";
-import { Icon, SecondaryButton, InfoCard, CopyCard } from "components/index";
-import { Disclosure } from "@headlessui/react";
-import { Input, Form } from "antd";
+import React, { useState } from 'react';
+import { useFormat, useAccount, useUtils, useController } from 'hooks/index';
+import { AuthViewLayout } from 'containers/common/Layout';
+import { Icon, SecondaryButton, InfoCard, CopyCard } from 'components/index';
+import { Disclosure } from '@headlessui/react';
+import { Input, Form } from 'antd';
 
 const PrivateKeyView = () => {
   const controller = useController();
@@ -22,7 +22,7 @@ const PrivateKeyView = () => {
         <InfoCard>
           <p>
             <b className="text-warning-info">WARNING: </b>
-            This is your account root indexer to check your full balance for{" "}
+            This is your account root indexer to check your full balance for{' '}
             {activeAccount?.label}, it isn't a receiving address. DO NOT SEND
             FUNDS TO THESE ADDRESSES, YOU WILL LOOSE THEM!
           </p>
@@ -33,14 +33,14 @@ const PrivateKeyView = () => {
             <>
               <Disclosure.Button
                 className={`${
-                  open ? "rounded-t-lg" : "rounded-lg"
+                  open ? 'rounded-t-lg' : 'rounded-lg'
                 } w-full max-w-xs px-4 mt-6 py-2 flex justify-between items-center border border-bkg-1 text-xs cursor-pointer transition-all duration-300 bg-bkg-1`}
               >
                 XPUB
                 <Icon
                   name="select-down"
                   className={`${
-                    open ? "transform rotate-180" : ""
+                    open ? 'transform rotate-180' : ''
                   } mb-1 text-brand-white`}
                 />
               </Disclosure.Button>
@@ -77,7 +77,7 @@ const PrivateKeyView = () => {
             rules={[
               {
                 required: true,
-                message: "",
+                message: '',
               },
               () => ({
                 validator(_, value) {
@@ -105,7 +105,7 @@ const PrivateKeyView = () => {
           <p>
             {valid
               ? ellipsis(activeAccount?.xprv, 4, 16)
-              : "********...************"}
+              : '********...************'}
           </p>
         </CopyCard>
 
@@ -122,8 +122,8 @@ const PrivateKeyView = () => {
       </div>
 
       <div className="absolute bottom-8">
-        <SecondaryButton type="button" onClick={() => history.push("/home")}>
-          {copied ? "Copied" : "Close"}
+        <SecondaryButton type="button" onClick={() => history.push('/home')}>
+          {copied ? 'Copied' : 'Close'}
         </SecondaryButton>
       </div>
     </AuthViewLayout>

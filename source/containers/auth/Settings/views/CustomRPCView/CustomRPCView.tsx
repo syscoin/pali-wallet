@@ -1,11 +1,11 @@
-import React, { useState } from "react";
-import { AuthViewLayout } from "containers/common/Layout/AuthViewLayout";
-import { Form, Input } from "antd";
-import { SecondaryButton } from "components/index";
-import axios from "axios";
-import { useUtils, useController } from "hooks/index";
+import React, { useState } from 'react';
+import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
+import { Form, Input } from 'antd';
+import { SecondaryButton } from 'components/index';
+import axios from 'axios';
+import { useUtils, useController } from 'hooks/index';
 
-import { EditNetworkView } from "..";
+import { EditNetworkView } from '..';
 
 const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   const [loading, setLoading] = useState(false);
@@ -22,7 +22,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
       const { coin } = response.data.blockbook;
 
       if (response && coin) {
-        if (coin === "Syscoin" || coin === "Syscoin Testnet") {
+        if (coin === 'Syscoin' || coin === 'Syscoin Testnet') {
           controller.wallet.account.updateNetworkData({
             id: selectedToEdit
               ? selectedToEdit.id
@@ -37,11 +37,11 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
           return;
         }
 
-        throw new Error("Invalid blockbook URL.");
+        throw new Error('Invalid blockbook URL.');
       }
     } catch (error) {
       alert.removeAll();
-      alert.error("Invalid blockbook URL.");
+      alert.error('Invalid blockbook URL.');
 
       setLoading(false);
     }
@@ -59,9 +59,9 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             labelCol={{ span: 8 }}
             wrapperCol={{ span: 8 }}
             initialValues={{
-              blockbookURL: selectedToEdit ? selectedToEdit.beUrl : "",
-              network: selectedToEdit ? selectedToEdit.label : "",
-              chainID: selectedToEdit ? selectedToEdit.chainID : "",
+              blockbookURL: selectedToEdit ? selectedToEdit.beUrl : '',
+              network: selectedToEdit ? selectedToEdit.label : '',
+              chainID: selectedToEdit ? selectedToEdit.chainID : '',
             }}
             onFinish={onSubmit}
             autoComplete="off"
@@ -73,7 +73,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               rules={[
                 {
                   required: true,
-                  message: "",
+                  message: '',
                 },
               ]}
             >
@@ -90,7 +90,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               rules={[
                 {
                   required: true,
-                  message: "",
+                  message: '',
                 },
                 () => ({
                   async validator(_, value) {
@@ -100,8 +100,8 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
 
                       if (response && coin) {
                         if (
-                          coin === "Syscoin" ||
-                          coin === "Syscoin Testnet" ||
+                          coin === 'Syscoin' ||
+                          coin === 'Syscoin Testnet' ||
                           !value
                         ) {
                           return await Promise.resolve();
@@ -127,7 +127,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               rules={[
                 {
                   required: false,
-                  message: "",
+                  message: '',
                 },
               ]}
             >
@@ -137,7 +137,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
                 placeholder="Chain ID"
                 className={`${
                   true &&
-                  "opacity-50 rounded-full py-2 pl-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
+                  'opacity-50 rounded-full py-2 pl-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus'
                 }`}
               />
             </Form.Item>

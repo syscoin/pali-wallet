@@ -1,7 +1,7 @@
-import React from "react";
-import { useHistory } from "react-router-dom";
-import { useController } from "hooks/index";
-import { PasswordForm } from "components/index";
+import React from 'react';
+import { useHistory } from 'react-router-dom';
+import { useController } from 'hooks/index';
+import { PasswordForm } from 'components/index';
 
 export const CreatePass = () => {
   const history = useHistory();
@@ -11,9 +11,9 @@ export const CreatePass = () => {
     try {
       controller.wallet.setWalletPassword(data.password);
 
-      history.push("/create/phrase/generated");
+      history.push('/create/phrase/generated');
     } catch (error) {
-      console.log("error", error);
+      console.log('error', error);
     }
   };
 

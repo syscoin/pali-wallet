@@ -1,13 +1,13 @@
 import React, {
   useState,
   // useMemo
-} from "react";
-import { useHistory } from "react-router-dom";
-import { useController } from "hooks/index";
-import shuffle from "lodash/shuffle";
-import { Button, Modal, PrimaryButton } from "components/index";
+} from 'react';
+import { useHistory } from 'react-router-dom';
+import { useController } from 'hooks/index';
+import shuffle from 'lodash/shuffle';
+import { Button, Modal, PrimaryButton } from 'components/index';
 
-import { Layout } from "../../common/Layout";
+import { Layout } from '../../common/Layout';
 // import isEqual from 'lodash/isEqual';
 
 export const ConfirmPhrase = () => {
@@ -16,7 +16,7 @@ export const ConfirmPhrase = () => {
   const phrases = controller.wallet.generatePhrase();
 
   const [orgList, setOrgList] = useState<Array<string>>(
-    shuffle((phrases || "").split(" "))
+    shuffle((phrases || '').split(' '))
   );
 
   const [newList, setNewList] = useState<Array<string>>([]);
@@ -44,7 +44,7 @@ export const ConfirmPhrase = () => {
   const handleConfirm = () => {
     controller.wallet.createWallet();
 
-    history.push("/app.html");
+    history.push('/app.html');
 
     setPassed(true);
   };

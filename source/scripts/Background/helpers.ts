@@ -1,5 +1,5 @@
 export const getHost = (url: string) => {
-  if (typeof url === "string" && url !== "") {
+  if (typeof url === 'string' && url !== '') {
     return new URL(url).host;
   }
 
@@ -22,7 +22,7 @@ export const sendMessage = (
             : event.data[eventReceivedDetails.eventResult]
         );
 
-        window.removeEventListener("message", callback);
+        window.removeEventListener('message', callback);
 
         return true;
       }
@@ -30,7 +30,7 @@ export const sendMessage = (
       return false;
     };
 
-    window.addEventListener("message", callback);
+    window.addEventListener('message', callback);
 
-    window.postMessage(postMessageDetails, "*");
+    window.postMessage(postMessageDetails, '*');
   });

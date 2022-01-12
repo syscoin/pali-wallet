@@ -1,8 +1,8 @@
-import store from "state/store";
-import IWalletState, { IAccountState } from "state/wallet/types";
-import { bech32 } from "bech32";
-import { fromZPub } from "bip84";
-import CryptoJS from "crypto-js";
+import store from 'state/store';
+import IWalletState, { IAccountState } from 'state/wallet/types';
+import { bech32 } from 'bech32';
+import { fromZPub } from 'bip84';
+import CryptoJS from 'crypto-js';
 import {
   createAccount,
   updateStatus,
@@ -16,22 +16,22 @@ import {
   setTimer,
   updateNetwork,
   setTemporaryTransactionState,
-} from "state/wallet";
+} from 'state/wallet';
 import {
   Assets,
   IAccountInfo,
   SendAsset,
   TemporaryTransaction,
   Transaction,
-} from "types/transactions";
-import { IAccountController } from "types/controllers";
+} from 'types/transactions';
+import { IAccountController } from 'types/controllers';
 
-import { sortList, isNFT, countDecimals } from "./utils";
+import { sortList, isNFT, countDecimals } from './utils';
 
-const syscointx = require("syscointx-js");
-const coinSelectSyscoin = require("coinselectsyscoin");
-const { each } = require("neo-async");
-const sys = require("syscoinjs-lib");
+const syscointx = require('syscointx-js');
+const coinSelectSyscoin = require('coinselectsyscoin');
+const { each } = require('neo-async');
+const sys = require('syscoinjs-lib');
 
 const AccountController = (actions: {
   checkPassword: (pwd: string) => boolean;
@@ -123,7 +123,7 @@ const AccountController = (actions: {
 
   const updateTransactionData = (txinfo: any) => {
     const transactionItem =
-      store.getState().wallet.temporaryTransactionState.type === "sendAsset";
+      store.getState().wallet.temporaryTransactionState.type === 'sendAsset';
 
     let transactions: Transaction[] = [];
 
@@ -179,7 +179,7 @@ const AccountController = (actions: {
       response = await sys.utils.fetchBackendAccount(
         sysjs.blockbookURL,
         xpub,
-        "tokens=nonzero&details=txs",
+        'tokens=nonzero&details=txs',
         true
       );
 
@@ -193,7 +193,7 @@ const AccountController = (actions: {
       if (response.tokens) {
         response.tokens.forEach((token: any) => {
           if (token.path) {
-            const splitPath = token.path.split("/");
+            const splitPath = token.path.split('/');
 
             if (splitPath.length >= 6) {
               const change = parseInt(splitPath[4], 10);
@@ -222,7 +222,7 @@ const AccountController = (actions: {
     response = await sys.utils.fetchBackendAccount(
       sysjs.blockbookURL,
       sysjs.Signer.getAccountXpub(),
-      "tokens=nonzero&details=txs",
+      'tokens=nonzero&details=txs',
       true
     );
 
@@ -273,7 +273,7 @@ const AccountController = (actions: {
           item[assetGuid] = <Assets>{
             type,
             assetGuid,
-            symbol: symbol ? atob(String(symbol)) : "",
+            symbol: symbol ? atob(String(symbol)) : '',
             balance:
               (item[assetGuid] ? item[assetGuid].balance : 0) + Number(balance),
             decimals,
@@ -457,13 +457,13 @@ const AccountController = (actions: {
         (account: IAccountState) => account.id === activeAccountId
       ) as IAccountState;
     }
-    let address = "";
+    let address = '';
 
     if (userAccount?.isTrezorWallet) {
       const response = await sys.utils.fetchBackendAccount(
         sysjs.blockbookURL,
         userAccount.xpub,
-        "tokens=nonzero&details=txs",
+        'tokens=nonzero&details=txs',
         true
       );
 
@@ -478,7 +478,7 @@ const AccountController = (actions: {
       if (response.tokens) {
         response.tokens.forEach((token: any) => {
           if (token.path) {
-            const splitPath = token.path.split("/");
+            const splitPath = token.path.split('/');
 
             if (splitPath.length >= 6) {
               const change = parseInt(splitPath[4], 10);
@@ -512,14 +512,14 @@ const AccountController = (actions: {
     const fetchTrezorBackendAccount = await sys.utils.fetchBackendAccount(
       sysjs.blockbookURL,
       globalAccount?.xpub,
-      "tokens=nonzero&details=txs",
+      'tokens=nonzero&details=txs',
       true
     );
 
     const fetchPaliAccount = await sys.utils.fetchBackendAccount(
       sysjs.blockbookURL,
       connectedAccount.xpub,
-      "details=txs&assetMask=non-token-transfers",
+      'details=txs&assetMask=non-token-transfers',
       true
     );
 
@@ -532,13 +532,13 @@ const AccountController = (actions: {
     const connectedAccount: IAccountState = getConnectedAccount();
 
     if (!sysjs) {
-      console.log("SYSJS not defined");
+      console.log('SYSJS not defined');
 
-      return "Error: wallet is locked, ask client to unlock it to get change address";
+      return 'Error: wallet is locked, ask client to unlock it to get change address';
     }
 
     if (connectedAccount.isTrezorWallet) {
-      let addr = "Error: Failed to fetch trezor change address";
+      let addr = 'Error: Failed to fetch trezor change address';
 
       const inter = await getNewChangeAddress(true);
 
@@ -566,7 +566,7 @@ const AccountController = (actions: {
         const { tokensAsset } = await sys.utils.fetchBackendAccount(
           sysjs.blockbookURL,
           account.xpub,
-          "tokens=derived&details=txs",
+          'tokens=derived&details=txs',
           true
         );
         const { transactions } = await fetchBackendConnectedAccount(account);
@@ -602,14 +602,14 @@ const AccountController = (actions: {
                   ) + Number(balance),
                 type,
                 decimals,
-                symbol: symbol ? atob(String(symbol)) : "",
+                symbol: symbol ? atob(String(symbol)) : '',
                 assetGuid,
               };
 
               done();
             },
             () => {
-              resolve("ok");
+              resolve('ok');
             }
           );
         });
@@ -620,7 +620,7 @@ const AccountController = (actions: {
               each(
                 transactions,
                 ({ tokenType, tokenTransfers }: any, done: any) => {
-                  if (tokenType === "SPTAssetActivate") {
+                  if (tokenType === 'SPTAssetActivate') {
                     for (const token of tokenTransfers) {
                       try {
                         getDataAsset(token.token).then((assetData: any) => {
@@ -628,7 +628,7 @@ const AccountController = (actions: {
                             assetGuid: token.token,
                             symbol: token.symbol
                               ? atob(String(token.symbol))
-                              : "",
+                              : '',
                             maxSupply: Number(assetData.maxSupply),
                             totalSupply: Number(assetData.totalSupply),
                           };
@@ -642,7 +642,7 @@ const AccountController = (actions: {
                   done();
                 },
                 () => {
-                  resolve("ok");
+                  resolve('ok');
                 }
               );
             });
@@ -680,14 +680,14 @@ const AccountController = (actions: {
                     : null,
                   NFTID,
                   description:
-                    pubData && pubData.desc ? atob(pubData.desc) : "",
+                    pubData && pubData.desc ? atob(pubData.desc) : '',
                 };
 
                 assetsData[assetData.assetGuid] = assetData;
 
                 return;
               } catch (error) {
-                console.log("error minted tokens", error);
+                console.log('error minted tokens', error);
               }
             })
           );
@@ -748,9 +748,9 @@ const AccountController = (actions: {
     const base64 =
       /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
 
-    if (!base64.test(jsonData.psbt) || typeof jsonData.assets !== "string") {
+    if (!base64.test(jsonData.psbt) || typeof jsonData.assets !== 'string') {
       throw new Error(
-        "PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats."
+        'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.'
       );
     }
 
@@ -837,7 +837,7 @@ const AccountController = (actions: {
           balance: trezorinfo.balance / 10 ** 8,
           transactions: trezorinfo.transactions,
           xpub: sjs.getAccountXpub(),
-          xprv: "",
+          xprv: '',
           address: { main: trezorinfo.address },
           assets: trezorinfo.assets,
           connectedTo: [],
@@ -863,17 +863,17 @@ const AccountController = (actions: {
 
     const res: IAccountInfo | null = await getAccountInfo();
 
-    let mainAddress = "";
+    let mainAddress = '';
 
     try {
       mainAddress = await sysjs.Signer.getNewReceivingAddress(true);
 
-      console.log("sysjs signer", sysjs.Signer.Signer.blockbookURL);
-      console.log("sysjs signer", sysjs.Signer);
+      console.log('sysjs signer', sysjs.Signer.Signer.blockbookURL);
+      console.log('sysjs signer', sysjs.Signer);
 
-      console.log("main address get new receiving address", mainAddress);
+      console.log('main address get new receiving address', mainAddress);
     } catch (error: any) {
-      console.log("error getting receiving address from sys", error);
+      console.log('error getting receiving address from sys', error);
 
       throw new Error(error);
     }
@@ -913,17 +913,17 @@ const AccountController = (actions: {
       return true;
     }
 
-    if (address && typeof address === "string") {
+    if (address && typeof address === 'string') {
       try {
         resAddress = bech32.decode(address);
 
-        if (network === "main" && resAddress.prefix === "sys") {
+        if (network === 'main' && resAddress.prefix === 'sys') {
           encode = bech32.encode(resAddress.prefix, resAddress.words);
 
           return encode === address.toLowerCase();
         }
 
-        if (network === "testnet" && resAddress.prefix === "tsys") {
+        if (network === 'testnet' && resAddress.prefix === 'tsys') {
           encode = bech32.encode(resAddress.prefix, resAddress.words);
 
           return encode === address.toLowerCase();
@@ -942,7 +942,7 @@ const AccountController = (actions: {
     condition?: boolean
   ) => {
     if (!sysjs) {
-      throw new Error("Error: No signed account exists");
+      throw new Error('Error: No signed account exists');
     }
 
     if (!globalAccount) {
@@ -987,10 +987,10 @@ const AccountController = (actions: {
       symbol,
       description,
       maxsupply: new sys.utils.BN(newMaxSupply),
-      updatecapabilityflags: capabilityflags ? String(capabilityflags) : "127",
+      updatecapabilityflags: capabilityflags ? String(capabilityflags) : '127',
       notarydetails,
       auxfeedetails,
-      notarykeyid: Buffer.from("", "hex"),
+      notarykeyid: Buffer.from('', 'hex'),
     };
 
     if (notaryAddress) {
@@ -1007,7 +1007,7 @@ const AccountController = (actions: {
             syscointx.utils.encodeToBase64(notarydetails.endpoint)
           ),
         },
-        notarykeyid: Buffer.from(vNotaryPayment.hash.toString("hex"), "hex"),
+        notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex'),
       };
     }
 
@@ -1024,7 +1024,7 @@ const AccountController = (actions: {
         network: sysjs.Signer.Signer.network,
       });
 
-      const auxFeeKeyID = Buffer.from(payment.hash.toString("hex"), "hex");
+      const auxFeeKeyID = Buffer.from(payment.hash.toString('hex'), 'hex');
 
       assetOpts = {
         ...assetOpts,
@@ -1073,7 +1073,7 @@ const AccountController = (actions: {
             const sptCreated = await getTransactionInfoByTxId(txInfoNew);
 
             if (sptCreated?.confirmations > 1) {
-              console.log("confirmations > 1", createdAsset);
+              console.log('confirmations > 1', createdAsset);
               const changeaddress = await sysjs.Signer.getNewChangeAddress(
                 true
               );
@@ -1105,7 +1105,7 @@ const AccountController = (actions: {
 
                 if (!pendingAssetSend) {
                   console.log(
-                    "Could not create transaction, not enough funds?"
+                    'Could not create transaction, not enough funds?'
                   );
 
                   return;
@@ -1190,7 +1190,7 @@ const AccountController = (actions: {
       );
 
       if (!txData) {
-        console.log("Could not create transaction, not enough funds?");
+        console.log('Could not create transaction, not enough funds?');
 
         return;
       }
@@ -1227,7 +1227,7 @@ const AccountController = (actions: {
       );
 
       if (!pendingTx) {
-        console.log("Could not create transaction, not enough funds?");
+        console.log('Could not create transaction, not enough funds?');
 
         return;
       }
@@ -1261,7 +1261,7 @@ const AccountController = (actions: {
     );
 
     if (!psbt) {
-      console.log("Could not create transaction, not enough funds?");
+      console.log('Could not create transaction, not enough funds?');
 
       return;
     }
@@ -1286,7 +1286,7 @@ const AccountController = (actions: {
     const { fee, symbol, description, issuer, precision } = item;
 
     if (getConnectedAccount().isTrezorWallet) {
-      throw new Error("trezor does not support nft creation");
+      throw new Error('trezor does not support nft creation');
     }
 
     if (!getConnectedAccount().isTrezorWallet) {
@@ -1302,7 +1302,7 @@ const AccountController = (actions: {
 
     const newParentAsset = await createParentAsset(assetOpts, fee);
 
-    console.log("current parent asset", newParentAsset);
+    console.log('current parent asset', newParentAsset);
 
     if (newParentAsset?.asset_guid) {
       let theNFTTx: any = null;
@@ -1321,7 +1321,7 @@ const AccountController = (actions: {
             if (newParentTx.confirmations >= 1 && !parentConfirmed) {
               parentConfirmed = true;
 
-              console.log("confirmations parent tx > 1", newParentAsset);
+              console.log('confirmations parent tx > 1', newParentAsset);
 
               const assetMap = new Map([
                 [
@@ -1348,7 +1348,7 @@ const AccountController = (actions: {
 
                 if (!pendingTx) {
                   console.log(
-                    "Could not create transaction, not enough funds?"
+                    'Could not create transaction, not enough funds?'
                   );
 
                   return;
@@ -1373,7 +1373,7 @@ const AccountController = (actions: {
                 theNFTTx = await getTransactionInfoByTxId(txInfo);
               } catch (error) {
                 console.log(
-                  "Transaction still not indexed by explorer:",
+                  'Transaction still not indexed by explorer:',
                   error
                 );
 
@@ -1384,7 +1384,7 @@ const AccountController = (actions: {
                 const newFeeRateForNFT = new sys.utils.BN(10);
                 const newTxOptsForNFT = { rbf: true };
                 const assetGuid = newParentAsset?.asset_guid;
-                const newAssetOptsForNFT = { updatecapabilityflags: "0" };
+                const newAssetOptsForNFT = { updatecapabilityflags: '0' };
 
                 const assetMap = new Map([
                   [
@@ -1410,11 +1410,11 @@ const AccountController = (actions: {
                   newFeeRateForNFT
                 );
 
-                console.log("after update psbt", psbt);
+                console.log('after update psbt', psbt);
 
                 if (!psbt) {
                   console.log(
-                    "Could not create transaction, not enough funds?"
+                    'Could not create transaction, not enough funds?'
                   );
                 }
 
@@ -1426,7 +1426,7 @@ const AccountController = (actions: {
           }, 16000);
         });
       } catch (error) {
-        console.log("error sending child nft to creator", error);
+        console.log('error sending child nft to creator', error);
       }
     }
   };
@@ -1466,7 +1466,7 @@ const AccountController = (actions: {
       );
 
       if (!pendingTx) {
-        console.log("Could not create transaction, not enough funds?");
+        console.log('Could not create transaction, not enough funds?');
       }
 
       const txInfo = pendingTx.extractTransaction().getId();
@@ -1519,7 +1519,7 @@ const AccountController = (actions: {
     store.dispatch(
       setTemporaryTransactionState({
         executing: true,
-        type: "sendAsset",
+        type: 'sendAsset',
       })
     );
 
@@ -1564,7 +1564,7 @@ const AccountController = (actions: {
         );
 
         if (!txData) {
-          console.log("Could not create transaction, not enough funds?");
+          console.log('Could not create transaction, not enough funds?');
         }
         if (TrezorSigner === null || TrezorSigner === undefined) {
           TrezorSigner = new sys.utils.TrezorSigner();
@@ -1584,7 +1584,7 @@ const AccountController = (actions: {
 
           updateTransactionData(txInfo);
 
-          clearTemporaryTransaction("sendAsset");
+          clearTemporaryTransaction('sendAsset');
 
           return;
         } catch (e) {
@@ -1647,7 +1647,7 @@ const AccountController = (actions: {
         );
 
         if (!txData) {
-          console.log("Could not create transaction, not enough funds?");
+          console.log('Could not create transaction, not enough funds?');
         }
 
         if (TrezorSigner === null || TrezorSigner === undefined) {
@@ -1661,7 +1661,7 @@ const AccountController = (actions: {
             .then(() => {
               const sendAssetDeclaration =
                 store.getState().wallet.temporaryTransactionState.type ===
-                "sendAsset";
+                'sendAsset';
 
               const currentAccount = sendAssetDeclaration
                 ? globalAccount
@@ -1672,7 +1672,7 @@ const AccountController = (actions: {
 
           updateTransactionData(txInfo);
 
-          clearTemporaryTransaction("sendAsset");
+          clearTemporaryTransaction('sendAsset');
 
           return;
         } catch (e) {
@@ -1698,11 +1698,11 @@ const AccountController = (actions: {
     }
 
     const transactionItem =
-      store.getState().wallet.temporaryTransactionState.type === "sendAsset";
+      store.getState().wallet.temporaryTransactionState.type === 'sendAsset';
 
     const acc = transactionItem ? globalAccount : getConnectedAccount();
 
-    clearTemporaryTransaction("sendAsset");
+    clearTemporaryTransaction('sendAsset');
 
     watchMemPool(acc);
   };
@@ -1744,7 +1744,7 @@ const AccountController = (actions: {
     let txOpts: any = { rbf: true };
 
     let assetOpts: any = {
-      updatecapabilityflags: capabilityflags ? String(capabilityflags) : "127",
+      updatecapabilityflags: capabilityflags ? String(capabilityflags) : '127',
       description,
     };
 
@@ -1767,7 +1767,7 @@ const AccountController = (actions: {
     if (contract) {
       assetOpts = {
         ...assetOpts,
-        contract: Buffer.from(contract, "hex"),
+        contract: Buffer.from(contract, 'hex'),
       };
     }
 
@@ -1777,7 +1777,7 @@ const AccountController = (actions: {
         address: payoutAddress,
         network: sysjs.Signer.Signer.network,
       });
-      const auxfeekeyid = Buffer.from(payment.hash.toString("hex"), "hex");
+      const auxfeekeyid = Buffer.from(payment.hash.toString('hex'), 'hex');
 
       assetOpts = {
         ...assetOpts,
@@ -1801,11 +1801,11 @@ const AccountController = (actions: {
 
       assetOpts = {
         ...assetOpts,
-        notarykeyid: Buffer.from(vNotaryPayment.hash.toString("hex"), "hex"),
+        notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex'),
       };
     }
 
-    console.log("asset opts update asset", assetOpts, assetGuid);
+    console.log('asset opts update asset', assetOpts, assetGuid);
 
     const thisAssetMap = new Map([
       [
@@ -1838,7 +1838,7 @@ const AccountController = (actions: {
     const txInfo = pendingTx.extractTransaction().getId();
 
     if (!pendingTx || !txInfo) {
-      console.log("Could not create transaction, not enough funds?");
+      console.log('Could not create transaction, not enough funds?');
 
       return;
     }
@@ -1891,7 +1891,7 @@ const AccountController = (actions: {
       );
 
       if (!txData) {
-        console.log("Could not create transaction, not enough funds?");
+        console.log('Could not create transaction, not enough funds?');
       }
       if (TrezorSigner === null || TrezorSigner === undefined) {
         TrezorSigner = new sys.utils.TrezorSigner();
@@ -1925,7 +1925,7 @@ const AccountController = (actions: {
     );
 
     if (!pendingTx) {
-      console.log("Could not create transaction, not enough funds?");
+      console.log('Could not create transaction, not enough funds?');
     }
 
     txInfo = pendingTx.extractTransaction().getId();

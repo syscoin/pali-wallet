@@ -1,5 +1,5 @@
-import React, { FC } from "react";
-import { Icon } from "components/index";
+import React, { FC } from 'react';
+import { Icon } from 'components/index';
 
 export type ICard = {
   children: any;
@@ -17,7 +17,7 @@ export type CopyCarType = {
 export const Card: FC<ICard> = ({
   onClick,
   children,
-  className = "cursor-default",
+  className = 'cursor-default',
 }) => (
   <div
     className={`${className} bg-bkg-4 border-dashed border-brand-royalblue border mx-6 my-8 p-4 text-xs rounded-lg`}
@@ -30,7 +30,7 @@ export const Card: FC<ICard> = ({
 export const SuccessCard: FC<ICard> = ({
   onClick,
   children,
-  className = "",
+  className = '',
 }) => (
   <div
     className={`${className} bg-bkg-3 border border-dashed border-warning-success p-4 text-xs rounded-lg gap-x-3 cursor-default flex items-center w-full max-w-xs`}
@@ -42,7 +42,7 @@ export const SuccessCard: FC<ICard> = ({
   </div>
 );
 
-export const ErrorCard: FC<ICard> = ({ onClick, children, className = "" }) => (
+export const ErrorCard: FC<ICard> = ({ onClick, children, className = '' }) => (
   <div
     className={`${className} bg-bkg-3 border border-dashed border-warning-error p-4 text-xs rounded-lg gap-x-3 cursor-default flex items-center w-full max-w-xs`}
     onClick={() => (onClick ? onClick() : undefined)}
@@ -53,7 +53,7 @@ export const ErrorCard: FC<ICard> = ({ onClick, children, className = "" }) => (
   </div>
 );
 
-export const InfoCard: FC<ICard> = ({ onClick, children, className = "" }) => (
+export const InfoCard: FC<ICard> = ({ onClick, children, className = '' }) => (
   <div
     className={`${className} bg-bkg-3 border border-dashed border-warning-info p-4 text-xs rounded-lg gap-x-3 cursor-default flex items-center w-full max-w-xs`}
     onClick={() => (onClick ? onClick() : undefined)}
@@ -68,7 +68,7 @@ export const CopyCard: FC<CopyCarType> = ({
   onClick,
   children,
   label,
-  className = "",
+  className = '',
 }) => (
   <div
     className={`${className} bg-bkg-4 border border-bkg-4 p-4 text-xs rounded-lg cursor-pointer w-full max-w-xs`}

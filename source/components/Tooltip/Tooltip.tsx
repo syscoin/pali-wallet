@@ -1,6 +1,6 @@
-import React, { ReactNode } from "react";
-import Tippy from "@tippyjs/react";
-import "tippy.js/animations/scale.css";
+import React, { ReactNode } from 'react';
+import Tippy from '@tippyjs/react';
+import 'tippy.js/animations/scale.css';
 
 type TooltipProps = {
   children?: ReactNode;
@@ -15,7 +15,7 @@ export const Tooltip = ({
   content,
   className,
   contentClassName,
-  placement = "top",
+  placement = 'top',
 }: TooltipProps) =>
   content ? (
     <Tippy

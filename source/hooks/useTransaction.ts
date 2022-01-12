@@ -1,4 +1,4 @@
-import { Assets } from "types/transactions";
+import { Assets } from 'types/transactions';
 
 export const useTransaction = () => {
   const getAssetBalance = (selectedAsset: Assets | null, activeAccount) => {
@@ -13,37 +13,37 @@ export const useTransaction = () => {
 
   const handleCancelTransactionOnSite = (browser: any, tempTx: any) => {
     browser.runtime.sendMessage({
-      type: "CANCEL_TRANSACTION",
-      target: "background",
+      type: 'CANCEL_TRANSACTION',
+      target: 'background',
       item: tempTx || null,
     });
 
     browser.runtime.sendMessage({
-      type: "CLOSE_POPUP",
-      target: "background",
+      type: 'CLOSE_POPUP',
+      target: 'background',
     });
   };
 
   const handleRejectTransaction = (browser, item, history) => {
-    history.push("/home");
+    history.push('/home');
 
     browser.runtime.sendMessage({
-      type: "WALLET_ERROR",
-      target: "background",
+      type: 'WALLET_ERROR',
+      target: 'background',
       transactionError: true,
       invalidParams: false,
-      message: "Transaction rejected.",
+      message: 'Transaction rejected.',
     });
 
     browser.runtime.sendMessage({
-      type: "CANCEL_TRANSACTION",
-      target: "background",
+      type: 'CANCEL_TRANSACTION',
+      target: 'background',
       item: item || null,
     });
 
     browser.runtime.sendMessage({
-      type: "CLOSE_POPUP",
-      target: "background",
+      type: 'CLOSE_POPUP',
+      target: 'background',
     });
   };
 

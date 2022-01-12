@@ -1,1 +1,1 @@
-export { default } from "./ConnectedSitesView";
+export { default } from './ConnectedSitesView';

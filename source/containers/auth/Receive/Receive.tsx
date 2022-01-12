@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
-import { useController, useUtils, useAccount, useFormat } from "hooks/index";
-import QRCode from "qrcode.react";
-import { SecondaryButton, Icon } from "components/index";
-import { AuthViewLayout } from "containers/common/Layout";
+import React, { useEffect, useState } from 'react';
+import { useController, useUtils, useAccount, useFormat } from 'hooks/index';
+import QRCode from 'qrcode.react';
+import { SecondaryButton, Icon } from 'components/index';
+import { AuthViewLayout } from 'containers/common/Layout';
 
 export const Receive = () => {
   const { useCopyClipboard } = useUtils();
@@ -31,7 +31,7 @@ export const Receive = () => {
             value={activeAccount.address.main}
             bgColor="#fff"
             fgColor="#000"
-            style={{ height: "240px", width: "225px" }}
+            style={{ height: '240px', width: '225px' }}
           />
 
           <p className="mt-4 text-base">
@@ -44,7 +44,7 @@ export const Receive = () => {
               onClick={() => copyText(activeAccount.address.main)}
             >
               <span className="text-xs">
-                {isCopied ? "Copied address" : "Copy"}
+                {isCopied ? 'Copied address' : 'Copy'}
               </span>
             </SecondaryButton>
           </div>

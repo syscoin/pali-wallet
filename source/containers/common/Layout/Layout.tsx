@@ -1,7 +1,7 @@
-import React, { ReactNode, FC } from "react";
-import { Header } from "containers/common/Header";
-import { QuestionCircleOutlined } from "@ant-design/icons";
-import { Tooltip } from "components/Tooltip";
+import React, { ReactNode, FC } from 'react';
+import { Header } from 'containers/common/Header';
+import { QuestionCircleOutlined } from '@ant-design/icons';
+import { Tooltip } from 'components/Tooltip';
 
 interface ILayout {
   accountHeader?: boolean;
@@ -19,7 +19,7 @@ export const Layout: FC<ILayout> = ({
   onlySection = false,
   accountHeader = false,
   normalHeader = false,
-  tooltipText = "",
+  tooltipText = '',
 }) => (
   <div className="flex flex-col justify-center gap-4 items-center">
     <Header

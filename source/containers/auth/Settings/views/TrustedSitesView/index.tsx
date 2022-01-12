@@ -1,1 +1,1 @@
-export { default } from "./TrustedSitesView";
+export { default } from './TrustedSitesView';

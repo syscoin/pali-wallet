@@ -1,1 +1,1 @@
-export { Create, CreateTokenConfirm } from "./Create";
+export { Create, CreateTokenConfirm } from './Create';

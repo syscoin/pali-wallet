@@ -1,6 +1,6 @@
-import { IConnectionsController } from "types/controllers";
+import { IConnectionsController } from 'types/controllers';
 
-import MasterController from "../Background/controllers/index";
+import MasterController from '../Background/controllers/index';
 
 declare global {
   interface Window {
@@ -13,7 +13,7 @@ if (!window.ConnectionsController) {
 }
 
 window.dispatchEvent(
-  new CustomEvent("SyscoinStatus", {
+  new CustomEvent('SyscoinStatus', {
     detail: {
       SyscoinInstalled: true,
       ConnectionsController: true,

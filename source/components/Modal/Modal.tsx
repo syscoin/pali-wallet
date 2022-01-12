@@ -1,6 +1,6 @@
-import { Dialog, Transition } from "@headlessui/react";
-import { useUtils } from "hooks/useUtils";
-import React, { FC, Fragment } from "react";
+import { Dialog, Transition } from '@headlessui/react';
+import { useUtils } from 'hooks/useUtils';
+import React, { FC, Fragment } from 'react';
 
 type IModal = {
   children?: any;
@@ -46,12 +46,12 @@ type ErrorModalType = {
 const DefaultModal = ({
   onClose,
   open,
-  goTo = "/home",
-  background = "bg-bkg-4",
-  textColor = "text-white",
-  title = "",
-  description = "",
-  closeMessage = "Ok",
+  goTo = '/home',
+  background = 'bg-bkg-4',
+  textColor = 'text-white',
+  title = '',
+  description = '',
+  closeMessage = 'Ok',
   doNothing = false,
   closePopup,
 }: DefaltModalType) => {
@@ -135,14 +135,14 @@ const DefaultModal = ({
 const ErrorModal = ({
   onClose,
   open,
-  goTo = "/home",
-  background = "bg-bkg-3",
-  textColor = "text-gray-300",
-  title = "",
-  description = "",
-  closeMessage = "Ok",
+  goTo = '/home',
+  background = 'bg-bkg-3',
+  textColor = 'text-gray-300',
+  title = '',
+  description = '',
+  closeMessage = 'Ok',
   doNothing = false,
-  log = "",
+  log = '',
 }: ErrorModalType) => {
   const { history } = useUtils();
 
@@ -238,7 +238,7 @@ const ErrorModal = ({
 export const Modal: FC<IModal> = ({
   onClose,
   open,
-  type = "",
+  type = '',
   description,
   title,
   doNothing,
@@ -247,7 +247,7 @@ export const Modal: FC<IModal> = ({
   children,
 }) => (
   <>
-    {type === "default" && (
+    {type === 'default' && (
       <DefaultModal
         closePopup={closePopup}
         onClose={onClose}
@@ -259,7 +259,7 @@ export const Modal: FC<IModal> = ({
       />
     )}
 
-    {type === "error" && (
+    {type === 'error' && (
       <ErrorModal
         onClose={onClose}
         open={open}
@@ -271,7 +271,7 @@ export const Modal: FC<IModal> = ({
       />
     )}
 
-    {type === "" && (
+    {type === '' && (
       <Transition appear show={open} as={Fragment}>
         <Dialog
           as="div"

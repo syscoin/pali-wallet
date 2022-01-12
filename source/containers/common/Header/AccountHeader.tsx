@@ -1,15 +1,15 @@
-import React, { FC, useEffect } from "react";
-import { IconButton, Icon } from "components/index";
+import React, { FC, useEffect } from 'react';
+import { IconButton, Icon } from 'components/index';
 import {
   useFormat,
   useAccount,
   useStore,
   useUtils,
   useController,
-} from "hooks/index";
-import { toSvg } from "jdenticon";
-import { Disclosure, Menu, Transition } from "@headlessui/react";
-import { IAccountState } from "state/wallet/types";
+} from 'hooks/index';
+import { toSvg } from 'jdenticon';
+import { Disclosure, Menu, Transition } from '@headlessui/react';
+import { IAccountState } from 'state/wallet/types';
 
 interface IAccountHeader {
   importSeed: boolean;
@@ -27,11 +27,11 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
   const [copied, copy] = useCopyClipboard();
 
   useEffect(() => {
-    const placeholder = document.querySelector(".add-identicon");
+    const placeholder = document.querySelector('.add-identicon');
 
     if (placeholder) {
       placeholder.innerHTML = toSvg(activeAccount?.xpub, 50, {
-        backColor: "#07152B",
+        backColor: '#07152B',
         padding: 1,
       });
     }
@@ -45,13 +45,13 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
   const handleLogout = () => {
     controller.wallet.logOut();
 
-    history.push("/app.html");
+    history.push('/app.html');
   };
 
   const showSuccessAlert = () => {
     if (copied) {
       alert.removeAll();
-      alert.success("Address successfully copied");
+      alert.success('Address successfully copied');
     }
   };
 
@@ -84,7 +84,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
 
           <Menu.Item>
             <li
-              onClick={() => history.push("/account-priv")}
+              onClick={() => history.push('/account-priv')}
               className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
             >
               <Icon name="key" className="ml-1 mb-2 mr-4 text-brand-white" />
@@ -108,14 +108,14 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                     <Icon
                       name="select-down"
                       className={`${
-                        open ? "transform rotate-180" : ""
+                        open ? 'transform rotate-180' : ''
                       } mb-1 text-brand-white`}
                     />
                   </Disclosure.Button>
 
                   <Disclosure.Panel className="scrollbar-styled pb-2 text-sm bg-menu-secondary max-h-40 h-auto overflow-auto">
                     <li
-                      onClick={() => history.push("/account-newaccount")}
+                      onClick={() => history.push('/account-newaccount')}
                       className="flex items-center p-2.5 text-sm font-medium text-brand-white transition transform bg-menu-secondary mb-4 backface-visibility-hidden active:bg-opacity-40 focus:outline-none justify-center duration-300 mx-auto w-full border-b border-dashed border-menu-dasheddark cursor-pointer hover:bg-bkg-2"
                     >
                       <Icon
@@ -154,7 +154,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
 
           <Menu.Item>
             <li
-              onClick={() => history.push("/account-hardware")}
+              onClick={() => history.push('/account-hardware')}
               className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
             >
               <Icon

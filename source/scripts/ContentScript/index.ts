@@ -1,9 +1,9 @@
-import { browser } from "webextension-polyfill-ts";
+import { browser } from 'webextension-polyfill-ts';
 
 import {
   getMessagesToListenTo,
   listenAndSendMessageFromPageToBackground,
-} from "./helpers";
+} from './helpers';
 
 declare global {
   interface Window {
@@ -16,7 +16,7 @@ const doctypeCheck = () => {
   const { doctype } = window.document;
 
   if (doctype) {
-    return doctype.name === "html";
+    return doctype.name === 'html';
   }
 
   return true;
@@ -39,24 +39,24 @@ const documentElementCheck = () => {
   const documentElement = document.documentElement.nodeName;
 
   if (documentElement) {
-    return documentElement.toLowerCase() === "html";
+    return documentElement.toLowerCase() === 'html';
   }
 
   return true;
 };
 
 const blockedDomainCheck = () => {
-  const blockedDomains = ["dropbox.com", "github.com"];
+  const blockedDomains = ['dropbox.com', 'github.com'];
 
   const currentUrl = window.location.href;
   let currentRegex;
 
   for (let i = 0; i < blockedDomains.length; i++) {
-    const blockedDomain = blockedDomains[i].replace(".", "\\.");
+    const blockedDomain = blockedDomains[i].replace('.', '\\.');
 
     currentRegex = new RegExp(
       `(?:https?:\\/\\/)(?:(?!${blockedDomain}).)*$`,
-      "u"
+      'u'
     );
 
     if (!currentRegex.test(currentUrl)) {
@@ -76,24 +76,24 @@ export const shouldInjectProvider = () =>
 const injectScript = (content: string) => {
   try {
     const container = document.head || document.documentElement;
-    const scriptTag = document.createElement("script");
+    const scriptTag = document.createElement('script');
     scriptTag.textContent = content;
 
     container.insertBefore(scriptTag, container.children[0]);
   } catch (error) {
-    console.error("Pali Wallet: Provider injection failed.", error);
+    console.error('Pali Wallet: Provider injection failed.', error);
   }
 };
 
 const injectScriptFile = (file: string) => {
   try {
     const container = document.head || document.documentElement;
-    const scriptTag = document.createElement("script");
+    const scriptTag = document.createElement('script');
     scriptTag.src = browser.runtime.getURL(file);
 
     container.insertBefore(scriptTag, container.children[0]);
   } catch (error) {
-    console.error("Pali Wallet: Provider injection failed.", error);
+    console.error('Pali Wallet: Provider injection failed.', error);
   }
 };
 
@@ -101,7 +101,7 @@ if (shouldInjectProvider()) {
   injectScript("window.SyscoinWallet = 'Pali Wallet is installed! :)'");
 
   window.dispatchEvent(
-    new CustomEvent("SyscoinStatus", {
+    new CustomEvent('SyscoinStatus', {
       detail: {
         SyscoinInstalled: true,
         ConnectionsController: false,
@@ -109,16 +109,16 @@ if (shouldInjectProvider()) {
     })
   );
 
-  injectScriptFile("js/inpage.bundle.js");
+  injectScriptFile('js/inpage.bundle.js');
 
   browser.runtime.sendMessage({
-    type: "RELOAD_DATA",
-    target: "background",
+    type: 'RELOAD_DATA',
+    target: 'background',
   });
 }
 
 window.addEventListener(
-  "message",
+  'message',
   (event) => {
     const { type, target } = event.data;
 
@@ -163,7 +163,7 @@ browser.runtime.onMessage.addListener((request) => {
             target: messageNewTarget,
             [responseItem]: messageResponse,
           },
-          "*"
+          '*'
         );
       }
     }

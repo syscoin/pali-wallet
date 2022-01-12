@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { Icon, Button } from "components/index";
+import React, { useEffect } from 'react';
+import { Icon, Button } from 'components/index';
 import {
   useController,
   useStore,
@@ -7,10 +7,10 @@ import {
   useFormat,
   useUtils,
   useAccount,
-} from "hooks/index";
-import { Header } from "containers/common/Header";
+} from 'hooks/index';
+import { Header } from 'containers/common/Header';
 
-import { TxsPanel } from "./TxsPanel";
+import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = useController();
@@ -36,10 +36,10 @@ export const Home = () => {
 
           <section className="flex items-center flex-col gap-1 text-brand-white bg-bkg-1 py-14">
             <div className="text-center flex justify-center flex-col items-center">
-              {activeNetwork === "testnet" ? (
+              {activeNetwork === 'testnet' ? (
                 <div className="flex items-center justify-center gap-x-0.5">
                   <p className="text-5xl font-medium font-rubik">
-                    {formatNumber(activeAccount?.balance || 0)}{" "}
+                    {formatNumber(activeAccount?.balance || 0)}{' '}
                   </p>
 
                   <p className="font-poppins mt-4">TSYS</p>
@@ -48,7 +48,7 @@ export const Home = () => {
                 <>
                   <div className="flex items-center justify-center gap-x-0.5">
                     <p className="text-5xl font-medium font-rubik">
-                      {formatNumber(activeAccount?.balance || 0)}{" "}
+                      {formatNumber(activeAccount?.balance || 0)}{' '}
                     </p>
 
                     <p className="font-poppins mt-4">SYS</p>
@@ -69,7 +69,7 @@ export const Home = () => {
               <Button
                 type="button"
                 className="flex items-center justify-center flex-1 text-base rounded-l-full border border-button-primary bg-button-primary text-brand-white transition-all duration-300 hover:bg-button-primaryhover"
-                onClick={() => history.push("/send")}
+                onClick={() => history.push('/send')}
               >
                 <Icon
                   name="arrow-up"
@@ -83,7 +83,7 @@ export const Home = () => {
               <Button
                 type="button"
                 className="flex items-center justify-center flex-1 text-base rounded-r-full border border-button-secondary bg-button-secondary text-brand-white hover:bg-button-secondaryhover transition-all duration-300"
-                onClick={() => history.push("/receive")}
+                onClick={() => history.push('/receive')}
               >
                 <Icon
                   name="arrow-down"

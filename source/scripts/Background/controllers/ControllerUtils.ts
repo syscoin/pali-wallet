@@ -1,9 +1,9 @@
-import { ASSET_PRICE_API, PRICE_SYS_ID } from "constants/index";
+import { ASSET_PRICE_API, PRICE_SYS_ID } from 'constants/index';
 
-import store from "state/store";
-import { updateFiatPrice } from "state/price";
+import store from 'state/store';
+import { updateFiatPrice } from 'state/price';
 
-const CoinGecko = require("coingecko-api");
+const CoinGecko = require('coingecko-api');
 
 export const CoinGeckoClient = new CoinGecko();
 
@@ -22,7 +22,7 @@ export interface IControllerUtils {
 }
 
 const ControllerUtils = (): IControllerUtils => {
-  let route = "/app.html";
+  let route = '/app.html';
 
   const ping = async () => {
     const data = await CoinGeckoClient.ping();
@@ -55,13 +55,13 @@ const ControllerUtils = (): IControllerUtils => {
   };
 
   const coinsFetch = async () => {
-    const data = await CoinGeckoClient.coins.fetch("bitcoin", {});
+    const data = await CoinGeckoClient.coins.fetch('bitcoin', {});
 
     return data;
   };
 
   const coinsFectchTickers = async () => {
-    const data = await CoinGeckoClient.coins.fetchTickers("bitcoin");
+    const data = await CoinGeckoClient.coins.fetchTickers('bitcoin');
 
     return data;
   };
@@ -74,9 +74,9 @@ const ControllerUtils = (): IControllerUtils => {
     return route;
   };
 
-  const updateFiatCurrencyForWallet = async (chosenCurrency = "usd") => {
+  const updateFiatCurrencyForWallet = async (chosenCurrency = 'usd') => {
     const data = await CoinGeckoClient.simple.price({
-      ids: ["syscoin"],
+      ids: ['syscoin'],
       vs_currencies: [chosenCurrency],
     });
 
@@ -93,7 +93,7 @@ const ControllerUtils = (): IControllerUtils => {
       ).json();
 
       const data = await (
-        await fetch(`${ASSET_PRICE_API}?currency=${currency || "usd"}`)
+        await fetch(`${ASSET_PRICE_API}?currency=${currency || 'usd'}`)
       ).json();
 
       if (data) {
@@ -109,7 +109,7 @@ const ControllerUtils = (): IControllerUtils => {
         );
       }
     } catch (error) {
-      console.log("<!> Fetching asset price error: ", error);
+      console.log('<!> Fetching asset price error: ', error);
     }
   };
 

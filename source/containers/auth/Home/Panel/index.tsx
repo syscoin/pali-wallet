@@ -1,2 +1,2 @@
-export * from "./AssetsPanel";
-export * from "./ActivityPanel";
+export * from './AssetsPanel';
+export * from './ActivityPanel';

@@ -1,4 +1,4 @@
-import React, { FC, useEffect, useState } from "react";
+import React, { FC, useEffect, useState } from 'react';
 import {
   useController,
   usePopup,
@@ -7,9 +7,9 @@ import {
   useTransaction,
   useAccount,
   useBrowser,
-} from "hooks/index";
-import { AuthViewLayout } from "containers/common/Layout";
-import { PrimaryButton, Modal, SecondaryButton } from "components/index";
+} from 'hooks/index';
+import { AuthViewLayout } from 'containers/common/Layout';
+import { PrimaryButton, Modal, SecondaryButton } from 'components/index';
 
 type ConfirmType = {
   callback: any;
@@ -37,16 +37,16 @@ const ConfirmDefaultTransaction = ({
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [logError, setLogError] = useState("");
+  const [logError, setLogError] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
   const advancedOptionsArray = [
-    "notarydetails",
-    "notaryAddress",
-    "auxfeedetails",
-    "payoutAddress",
-    "capabilityflags",
-    "contract",
+    'notarydetails',
+    'notaryAddress',
+    'auxfeedetails',
+    'payoutAddress',
+    'capabilityflags',
+    'contract',
   ];
 
   useEffect(() => {
@@ -78,7 +78,7 @@ const ConfirmDefaultTransaction = ({
       isPending = true;
 
       try {
-        if (temporaryTransactionStringToClear === "newNFT") {
+        if (temporaryTransactionStringToClear === 'newNFT') {
           setConfirmed(true);
           setLoading(false);
           setSubmitted(true);
@@ -98,8 +98,8 @@ const ConfirmDefaultTransaction = ({
 
         if (response) {
           browser.runtime.sendMessage({
-            type: "TRANSACTION_RESPONSE",
-            target: "background",
+            type: 'TRANSACTION_RESPONSE',
+            target: 'background',
             response,
           });
         }
@@ -121,11 +121,11 @@ const ConfirmDefaultTransaction = ({
         }
 
         browser.runtime.sendMessage({
-          type: "WALLET_ERROR",
-          target: "background",
+          type: 'WALLET_ERROR',
+          target: 'background',
           transactionError: true,
           invalidParams: false,
-          message: "Sorry, we could not submit your request. Try again later.",
+          message: 'Sorry, we could not submit your request. Try again later.',
         });
       }
 
@@ -133,7 +133,7 @@ const ConfirmDefaultTransaction = ({
         if (isPending && !confirmed) {
           setSubmitted(true);
           setFailed(false);
-          setLogError("");
+          setLogError('');
 
           setTimeout(() => {
             handleCancelTransactionOnSite(
@@ -155,7 +155,7 @@ const ConfirmDefaultTransaction = ({
           open={failed}
           title={`${capitalizeFirstLetter(title.toLowerCase())} request failed`}
           description="Sorry, we could not submit your request. Try again later."
-          log={logError || "No description provided"}
+          log={logError || 'No description provided'}
           closeMessage="Ok"
         />
       ) : (
@@ -189,7 +189,7 @@ const ConfirmDefaultTransaction = ({
                     >
                       <p>{item.label}</p>
                       <p>
-                        {typeof item.value === "string" &&
+                        {typeof item.value === 'string' &&
                         item.value.length > 10
                           ? ellipsis(item.value)
                           : item.value}
@@ -236,7 +236,7 @@ type ConfirmSignatureType = {
 const ConfirmSignTransaction = ({
   psbt,
   signAndSend = false,
-  title = "SIGNATURE REQUEST",
+  title = 'SIGNATURE REQUEST',
 }: ConfirmSignatureType) => {
   const controller = useController();
   const base64 =
@@ -251,15 +251,15 @@ const ConfirmSignTransaction = ({
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [logError, setLogError] = useState("");
+  const [logError, setLogError] = useState('');
 
   const handleConfirmSignature = () => {
     setLoading(true);
 
-    if (!base64.test(psbt.psbt) || typeof psbt.assets !== "string") {
+    if (!base64.test(psbt.psbt) || typeof psbt.assets !== 'string') {
       alert.removeAll();
       alert.error(
-        "PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats."
+        'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.'
       );
 
       setTimeout(() => {
@@ -281,8 +281,8 @@ const ConfirmSignTransaction = ({
           }, 4000);
 
           browser.runtime.sendMessage({
-            type: "TRANSACTION_RESPONSE",
-            target: "background",
+            type: 'TRANSACTION_RESPONSE',
+            target: 'background',
             response,
           });
         }
@@ -293,8 +293,8 @@ const ConfirmSignTransaction = ({
           setLogError(error.message);
 
           browser.runtime.sendMessage({
-            type: "WALLET_ERROR",
-            target: "background",
+            type: 'WALLET_ERROR',
+            target: 'background',
             transactionError: true,
             invalidParams: false,
             message: "Can't sign transaction. Try again later.",
@@ -328,7 +328,7 @@ const ConfirmSignTransaction = ({
           open={failed}
           title="Token creation request failed"
           description="Sorry, we could not submit your request. Try again later."
-          log={logError || "..."}
+          log={logError || '...'}
           closeMessage="Ok"
         />
       )}

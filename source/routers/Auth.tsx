@@ -1,12 +1,12 @@
-import React, { useEffect } from "react";
-import { Import } from "containers/common/Import";
+import React, { useEffect } from 'react';
+import { Import } from 'containers/common/Import';
 import {
   Switch,
   Route,
   // Redirect,
   useLocation,
-} from "react-router-dom";
-import { useController, useStore, useUtils, useBrowser } from "hooks/index";
+} from 'react-router-dom';
+import { useController, useStore, useUtils, useBrowser } from 'hooks/index';
 import {
   Home,
   Receive,
@@ -16,7 +16,7 @@ import {
   SendConfirm,
   Start,
   DetailsView,
-} from "containers/auth/index";
+} from 'containers/auth/index';
 import {
   AboutView,
   AccountView,
@@ -31,7 +31,7 @@ import {
   CustomRPCView,
   ConnectedSitesView,
   TrustedSitesView,
-} from "containers/auth/Settings/views";
+} from 'containers/auth/Settings/views';
 import {
   Create,
   CreateTokenConfirm,
@@ -47,9 +47,9 @@ import {
   MintTokenConfirm,
   CreateAndIssueNFT,
   CreateAndIssueNFTConfirm,
-} from "containers/auth/Transactions/views";
+} from 'containers/auth/Transactions/views';
 
-import { SendMatchProps } from "./types";
+import { SendMatchProps } from './types';
 
 export const AuthRouter = () => {
   const location = useLocation();
@@ -70,10 +70,10 @@ export const AuthRouter = () => {
 
   useEffect(() => {
     if (isUnlocked) {
-      window.addEventListener("mousemove", () => {
+      window.addEventListener('mousemove', () => {
         browser.runtime.sendMessage({
-          type: "SET_MOUSE_MOVE",
-          target: "background",
+          type: 'SET_MOUSE_MOVE',
+          target: 'background',
         });
       });
     }
@@ -83,168 +83,168 @@ export const AuthRouter = () => {
     const redirectRoute = controller.appRoute();
 
     if (
-      redirectRoute === "/send/confirm" &&
-      !controller.wallet.account.getTemporaryTransaction("sendAsset") &&
+      redirectRoute === '/send/confirm' &&
+      !controller.wallet.account.getTemporaryTransaction('sendAsset') &&
       !temporaryTransactionState.executing &&
-      temporaryTransactionState.type !== "sendAsset"
+      temporaryTransactionState.type !== 'sendAsset'
     ) {
-      history.push("/home");
+      history.push('/home');
 
       return;
     }
 
     if (
-      redirectRoute === "/updateAsset/confirm" &&
-      !controller.wallet.account.getTemporaryTransaction("updateAsset")
+      redirectRoute === '/updateAsset/confirm' &&
+      !controller.wallet.account.getTemporaryTransaction('updateAsset')
     ) {
-      history.push("/home");
+      history.push('/home');
 
       return;
     }
 
     if (!isUnlocked && accounts.length > 0) {
-      history.push("/app.html");
+      history.push('/app.html');
 
       return;
     }
 
     if (
       temporaryTransactionState.executing &&
-      temporaryTransactionState.type === "sendAsset" &&
-      controller.wallet.account.getTemporaryTransaction("sendAsset") &&
+      temporaryTransactionState.type === 'sendAsset' &&
+      controller.wallet.account.getTemporaryTransaction('sendAsset') &&
       isUnlocked
     ) {
-      history.push("/send/confirm");
+      history.push('/send/confirm');
 
       return;
     }
 
     if (
       temporaryTransactionState.executing &&
-      temporaryTransactionState.type === "signAndSendPSBT" &&
+      temporaryTransactionState.type === 'signAndSendPSBT' &&
       isUnlocked
     ) {
-      history.push("/sign");
+      history.push('/sign');
 
       return;
     }
 
     if (
       temporaryTransactionState.executing &&
-      temporaryTransactionState.type === "mintNFT" &&
+      temporaryTransactionState.type === 'mintNFT' &&
       isUnlocked
     ) {
-      history.push("/mintNFT");
+      history.push('/mintNFT');
 
       return;
     }
 
     if (
       temporaryTransactionState.executing &&
-      temporaryTransactionState.type === "signPSBT" &&
+      temporaryTransactionState.type === 'signPSBT' &&
       isUnlocked
     ) {
-      history.push("/signPsbt");
+      history.push('/signPsbt');
 
       return;
     }
 
     if (
       temporaryTransactionState.executing &&
-      temporaryTransactionState.type === "newAsset" &&
+      temporaryTransactionState.type === 'newAsset' &&
       isUnlocked
     ) {
-      history.push("/create");
+      history.push('/create');
 
       return;
     }
 
     if (
       temporaryTransactionState.executing &&
-      temporaryTransactionState.type === "mintAsset" &&
+      temporaryTransactionState.type === 'mintAsset' &&
       isUnlocked
     ) {
-      history.push("/issueAsset");
+      history.push('/issueAsset');
 
       return;
     }
 
     if (
       temporaryTransactionState.executing &&
-      temporaryTransactionState.type === "newNFT" &&
+      temporaryTransactionState.type === 'newNFT' &&
       isUnlocked
     ) {
-      history.push("/issueNFT");
+      history.push('/issueNFT');
 
       return;
     }
 
     if (
       temporaryTransactionState.executing &&
-      temporaryTransactionState.type === "updateAsset" &&
+      temporaryTransactionState.type === 'updateAsset' &&
       isUnlocked
     ) {
-      history.push("/updateAsset");
+      history.push('/updateAsset');
 
       return;
     }
 
     if (
       temporaryTransactionState.executing &&
-      temporaryTransactionState.type === "transferAsset" &&
+      temporaryTransactionState.type === 'transferAsset' &&
       isUnlocked
     ) {
-      history.push("/transferOwnership");
+      history.push('/transferOwnership');
 
       return;
     }
 
     if (
       !temporaryTransactionState.executing &&
-      temporaryTransactionState.type !== "sendAsset" &&
-      controller.wallet.account.getTemporaryTransaction("sendAsset")
+      temporaryTransactionState.type !== 'sendAsset' &&
+      controller.wallet.account.getTemporaryTransaction('sendAsset')
     ) {
-      history.push("/home");
+      history.push('/home');
 
       return;
     }
 
     if (canConnect && isUnlocked) {
       if (connectedAccounts.length <= 0) {
-        history.push("/connect-wallet");
+        history.push('/connect-wallet');
 
         return;
       }
 
-      history.push("/connected-accounts");
+      history.push('/connected-accounts');
 
       return;
     }
 
     if (!canConnect && isUnlocked) {
       if (connectedAccounts.length > 0) {
-        history.push("/home");
+        history.push('/home');
 
         return;
       }
 
-      history.push("/home");
+      history.push('/home');
 
       return;
     }
 
     if (
       temporaryTransactionState.executing &&
-      temporaryTransactionState.type === "sendAsset" &&
+      temporaryTransactionState.type === 'sendAsset' &&
       !canConnect &&
       isUnlocked
     ) {
-      history.push("/send/confirm");
+      history.push('/send/confirm');
 
       return;
     }
 
-    if (redirectRoute !== "/app.html") {
+    if (redirectRoute !== '/app.html') {
       history.push(redirectRoute);
     }
   }, [canConnect, isUnlocked]);

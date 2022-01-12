@@ -1,14 +1,14 @@
-import React, { useEffect, useState } from "react";
-import { PrimaryButton, SecondaryButton, Icon, Modal } from "components/index";
+import React, { useEffect, useState } from 'react';
+import { PrimaryButton, SecondaryButton, Icon, Modal } from 'components/index';
 import {
   useStore,
   useUtils,
   useFormat,
   useDappConnection,
   useAccount,
-} from "hooks/index";
-import { AuthViewLayout } from "containers/common/Layout";
-import { Dialog } from "@headlessui/react";
+} from 'hooks/index';
+import { AuthViewLayout } from 'containers/common/Layout';
+import { Dialog } from '@headlessui/react';
 
 export const ConnectWallet = () => {
   const { getHost } = useUtils();
@@ -31,7 +31,7 @@ export const ConnectWallet = () => {
   };
 
   useEffect(() => {
-    const trustedApp = trustedApps[getHost(currentSenderURL)] !== "";
+    const trustedApp = trustedApps[getHost(currentSenderURL)] !== '';
 
     setIsInTrustedList(trustedApp);
   });
@@ -51,8 +51,8 @@ export const ConnectWallet = () => {
               <li
                 className={`${
                   connectedAccount && acc.id === connectedAccount.id
-                    ? "cursor-not-allowed bg-opacity-50 border-brand-royalblue"
-                    : "cursor-pointer hover:bg-bkg-4 border-brand-royalblue"
+                    ? 'cursor-not-allowed bg-opacity-50 border-brand-royalblue'
+                    : 'cursor-pointer hover:bg-bkg-4 border-brand-royalblue'
                 } border border-solid  rounded-lg px-2 py-4 text-xs bg-bkg-2 flex justify-between items-center transition-all duration-200`}
                 key={acc.id}
                 onClick={() => handleSelectAccount(acc.id)}
@@ -65,8 +65,8 @@ export const ConnectWallet = () => {
                   <div
                     className={`${
                       acc.id === accountId
-                        ? "bg-warning-success"
-                        : "bg-brand-graylight"
+                        ? 'bg-warning-success'
+                        : 'bg-brand-graylight'
                     } w-3 h-3 rounded-full border border-brand-royalblue`}
                   />
                 </div>
@@ -80,7 +80,7 @@ export const ConnectWallet = () => {
         )}
 
         <small className="text-brand-royalblue text-sm text-center mb-8">
-          Only connect with sites you trust.{" "}
+          Only connect with sites you trust.{' '}
           <a href="https://docs.syscoin.org/">Learn more.</a>
         </small>
 
@@ -103,7 +103,7 @@ export const ConnectWallet = () => {
                 : () => confirmConnection(accountId)
             }
           >
-            {accountId > -1 ? "Confirm" : "Next"}
+            {accountId > -1 ? 'Confirm' : 'Next'}
           </PrimaryButton>
         </div>
 

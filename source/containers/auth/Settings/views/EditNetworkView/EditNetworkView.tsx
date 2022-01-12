@@ -1,18 +1,18 @@
-import React, { useState } from "react";
-import { AuthViewLayout } from "containers/common/Layout/AuthViewLayout";
-import { useStore, useFormat, useUtils } from "hooks/index";
-import { SecondaryButton } from "components/index";
+import React, { useState } from 'react';
+import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
+import { useStore, useFormat, useUtils } from 'hooks/index';
+import { SecondaryButton } from 'components/index';
 
-import { CustomRPCView } from "..";
+import { CustomRPCView } from '..';
 
 const EditNetworkView = () => {
   const { networks } = useStore();
   const { formatURL } = useFormat();
   const { history } = useUtils();
 
-  const defaultNetworks = ["main", "testnet"];
+  const defaultNetworks = ['main', 'testnet'];
 
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState('');
 
   return (
     <>
@@ -21,8 +21,8 @@ const EditNetworkView = () => {
           selectedToEdit={
             selected || {
               id: -1,
-              lael: "",
-              berl: "",
+              lael: '',
+              berl: '',
               chinID: -1,
             }
           }
@@ -39,8 +39,8 @@ const EditNetworkView = () => {
                 key={network.id}
                 className={
                   defaultNetworks.includes(network.id)
-                    ? "my-3 cursor-not-allowed border-b border-dashed bg-opacity-60 border-dashed-light flex flex-col w-full"
-                    : "my-3 w-full border border-dashed border-dashed-light cursor-pointer flex flex-col transition-all duration-300"
+                    ? 'my-3 cursor-not-allowed border-b border-dashed bg-opacity-60 border-dashed-light flex flex-col w-full'
+                    : 'my-3 w-full border border-dashed border-dashed-light cursor-pointer flex flex-col transition-all duration-300'
                 }
                 onClick={() =>
                   !defaultNetworks.includes(network.id)
@@ -61,7 +61,7 @@ const EditNetworkView = () => {
           <div className="absolute bottom-12">
             <SecondaryButton
               type="button"
-              onClick={() => history.push("/home")}
+              onClick={() => history.push('/home')}
             >
               Close
             </SecondaryButton>

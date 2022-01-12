@@ -1,13 +1,13 @@
-import React from "react";
-import { useController } from "hooks/index";
+import React from 'react';
+import { useController } from 'hooks/index';
 
-import { SiteTransaction } from "../SiteTransaction";
-import { ConfirmTransaction } from "../index";
+import { SiteTransaction } from '../SiteTransaction';
+import { ConfirmTransaction } from '../index';
 
 export const UpdateAssetConfirm = () => {
   const controller = useController();
   const temporaryTransaction =
-    controller.wallet.account.getTemporaryTransaction("updateAsset");
+    controller.wallet.account.getTemporaryTransaction('updateAsset');
 
   return (
     <ConfirmTransaction

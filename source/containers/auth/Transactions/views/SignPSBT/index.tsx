@@ -1,1 +1,1 @@
-export { SignPSBT } from "./SignPSBT";
+export { SignPSBT } from './SignPSBT';

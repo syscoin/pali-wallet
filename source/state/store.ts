@@ -3,13 +3,13 @@ import {
   configureStore,
   getDefaultMiddleware,
   Store,
-} from "@reduxjs/toolkit";
-import logger from "redux-logger";
-import { persistStore, persistReducer } from "redux-persist";
-import { localStorage } from "redux-persist-webextension-storage";
+} from '@reduxjs/toolkit';
+import logger from 'redux-logger';
+import { persistStore, persistReducer } from 'redux-persist';
+import { localStorage } from 'redux-persist-webextension-storage';
 
-import wallet from "./wallet";
-import price from "./price";
+import wallet from './wallet';
+import price from './price';
 
 const reducers = combineReducers({
   wallet,
@@ -17,7 +17,7 @@ const reducers = combineReducers({
 });
 
 const persistConfig = {
-  key: "root",
+  key: 'root',
   storage: localStorage,
 };
 
@@ -27,14 +27,14 @@ const middleware = [
   ...getDefaultMiddleware({ thunk: false, serializableCheck: false }),
 ];
 
-if (process.env.NODE_ENV !== "production") {
+if (process.env.NODE_ENV !== 'production') {
   middleware.push(logger);
 }
 
 const store: Store = configureStore({
   reducer: persistedReducer,
   middleware,
-  devTools: process.env.NODE_ENV !== "production",
+  devTools: process.env.NODE_ENV !== 'production',
 });
 
 persistStore(store);

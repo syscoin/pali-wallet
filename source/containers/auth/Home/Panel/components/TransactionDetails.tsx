@@ -1,7 +1,7 @@
-import { useFormat, useController, useStore, useUtils } from "hooks/index";
-import React, { useState, useEffect } from "react";
-import { Icon, IconButton, Button } from "components/index";
-import { Disclosure } from "@headlessui/react";
+import { useFormat, useController, useStore, useUtils } from 'hooks/index';
+import React, { useState, useEffect } from 'react';
+import { Icon, IconButton, Button } from 'components/index';
+import { Disclosure } from '@headlessui/react';
 
 export const TransactionDetails = ({ transactionType, transactionDetails }) => {
   const { formatDistanceDate, ellipsis, formatURL } = useFormat();
@@ -56,7 +56,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
         }
 
         if (vin.length > 1) {
-          console.log("vin > 1", vin, vout);
+          console.log('vin > 1', vin, vout);
           for (const item of vin) {
             if (item.addresses) {
               senders[item.addresses[0]] = {
@@ -82,14 +82,14 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
         key={address}
         className="flex justify-between mt-2 items-center gap-x-1 cursor-pointer rounded-lg transition-all duration-200 p-1 text-xs"
       >
-        <p>{ellipsis(address) || "..."}</p>
+        <p>{ellipsis(address) || '...'}</p>
 
         <div>
           <small>
             {formatURL(String(Number(addressValue) / 10 ** 8), 18)
               ? formatURL(String(Number(addressValue) / 10 ** 8), 18)
-              : 0}{" "}
-            {activeNetwork === "main" ? "SYS" : "tSYS"}
+              : 0}{' '}
+            {activeNetwork === 'main' ? 'SYS' : 'tSYS'}
           </small>
 
           <IconButton onClick={() => copyText(address)}>
@@ -106,40 +106,40 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
     transactionDetails;
 
   const checkNetwork = (checkValue: any) =>
-    activeNetwork === "main"
+    activeNetwork === 'main'
       ? `${checkValue / 10 ** 8} SYS`
       : `${checkValue / 10 ** 8} tSYS`;
 
   const txData = [
     {
-      label: "Block hash",
+      label: 'Block hash',
       value: ellipsis(blockHash),
     },
     {
-      label: "Type",
-      value: transactionType || "Transaction",
+      label: 'Type',
+      value: transactionType || 'Transaction',
     },
     {
-      label: "Confirmations",
+      label: 'Confirmations',
       value: confirmations,
     },
     {
-      label: "Mined",
+      label: 'Mined',
       value: blockTime
         ? formatDistanceDate(new Date(blockTime * 1000).toDateString())
-        : "",
+        : '',
     },
     {
-      label: "Total input",
-      value: valueIn ? checkNetwork(valueIn) : "",
+      label: 'Total input',
+      value: valueIn ? checkNetwork(valueIn) : '',
     },
     {
-      label: "Total output",
-      value: value ? checkNetwork(value) : "",
+      label: 'Total output',
+      value: value ? checkNetwork(value) : '',
     },
     {
-      label: "Fees",
-      value: fees ? checkNetwork(fees) : "",
+      label: 'Fees',
+      value: fees ? checkNetwork(fees) : '',
     },
   ];
 
@@ -163,14 +163,14 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
             <>
               <Disclosure.Button
                 className={`${
-                  open ? "rounded-t-md" : "rounded-md"
+                  open ? 'rounded-t-md' : 'rounded-md'
                 } mt-3 p-2 flex justify-between items-center  w-full border border-bkg-3 bg-bkg-1 cursor-pointer transition-all duration-300 text-xs`}
               >
                 From
                 <Icon
                   name="select-down"
                   className={`${
-                    open ? "transform rotate-180" : ""
+                    open ? 'transform rotate-180' : ''
                   } mb-1 text-brand-white`}
                 />
               </Disclosure.Button>
@@ -192,14 +192,14 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
             <>
               <Disclosure.Button
                 className={`${
-                  open ? "rounded-t-md" : "rounded-md"
+                  open ? 'rounded-t-md' : 'rounded-md'
                 } mt-3 p-2 flex justify-between items-center  w-full border border-bkg-3 bg-bkg-1 cursor-pointer transition-all duration-300 text-xs`}
               >
                 To
                 <Icon
                   name="select-down"
                   className={`${
-                    open ? "transform rotate-180" : ""
+                    open ? 'transform rotate-180' : ''
                   } mb-1 text-brand-white`}
                 />
               </Disclosure.Button>

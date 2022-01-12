@@ -1,19 +1,19 @@
-import React, { useState, FC, useEffect } from "react";
-import { AuthViewLayout } from "containers/common/Layout";
+import React, { useState, FC, useEffect } from 'react';
+import { AuthViewLayout } from 'containers/common/Layout';
 import {
   PrimaryButton,
   SecondaryButton,
   Tooltip,
   Icon,
-} from "components/index";
+} from 'components/index';
 import {
   useTransaction,
   useController,
   useUtils,
   useStore,
   useBrowser,
-} from "hooks/index";
-import { Form, Input } from "antd";
+} from 'hooks/index';
+import { Form, Input } from 'antd';
 
 interface ISiteTransaction {
   confirmRoute: string;
@@ -68,7 +68,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
     history.push(confirmRoute);
   };
 
-  const disabledFee = activeNetwork === "main" || activeNetwork === "testnet";
+  const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
 
   return (
     <AuthViewLayout canGoBack={false} title={layoutTitle.toUpperCase()}>
@@ -93,20 +93,20 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
             <Form.Item
               name="recommend"
               className={`${
-                disabledFee && "opacity-50 cursor-not-allowed"
+                disabledFee && 'opacity-50 cursor-not-allowed'
               } bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus w-16 py-1.5 rounded-l-full text-center`}
               rules={[
                 {
                   required: false,
-                  message: "",
+                  message: '',
                 },
               ]}
             >
               <Tooltip
                 content={`${
                   disabledFee
-                    ? "Use recommended fee. Disabled for SYS networks because the fee used in transactions is always the recommended for current SYS network conditions."
-                    : "Click to use the recommended fee"
+                    ? 'Use recommended fee. Disabled for SYS networks because the fee used in transactions is always the recommended for current SYS network conditions.'
+                    : 'Click to use the recommended fee'
                 }`}
               >
                 <div onClick={handleGetFee}>
@@ -115,8 +115,8 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
                     name="verified"
                     className={`${
                       disabledFee
-                        ? "cursor-not-allowed text-button-disabled"
-                        : "text-warning-success"
+                        ? 'cursor-not-allowed text-button-disabled'
+                        : 'text-warning-success'
                     }`}
                   />
                 </div>
@@ -129,16 +129,16 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
               rules={[
                 {
                   required: true,
-                  message: "",
+                  message: '',
                 },
               ]}
             >
-              <Tooltip content={disabledFee ? "Fee network" : ""}>
+              <Tooltip content={disabledFee ? 'Fee network' : ''}>
                 <Input
                   disabled={disabledFee}
                   className={`${
                     disabledFee &&
-                    "opacity-50 cursor-not-allowed text-button-disabled"
+                    'opacity-50 cursor-not-allowed text-button-disabled'
                   } border border-fields-input-border bg-fields-input-primary rounded-r-full w-full md:max-w-md outline-none py-3 pr-24 pl-4 text-sm`}
                   type="number"
                   placeholder="Fee network"
@@ -149,7 +149,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
           </div>
 
           <p className="bg-transparent border text-left border-dashed border-gray-600 max-w-xs md:max-w-md mx-6 p-4 mt-4 text-xs rounded-lg">
-            With current network conditions, we recommend a fee of {recommend}{" "}
+            With current network conditions, we recommend a fee of {recommend}{' '}
             SYS.
           </p>
 

@@ -1,4 +1,4 @@
-import { IAccountState } from "state/wallet/types";
+import { IAccountState } from 'state/wallet/types';
 
 import {
   MintAsset,
@@ -7,7 +7,7 @@ import {
   SendAsset,
   TransferAsset,
   UpdateAsset,
-} from "./transactions";
+} from './transactions';
 
 export interface IWalletController {
   account: Readonly<IAccountController>;

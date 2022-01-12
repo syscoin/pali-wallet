@@ -1,8 +1,8 @@
-import React, { FC } from "react";
-import { BrowserRouter as Router } from "react-router-dom";
-import Container from "containers/common/Container/index";
-import { AuthRouter, UnAuthRouter } from "routers/index";
-import { useStore } from "hooks/index";
+import React, { FC } from 'react';
+import { BrowserRouter as Router } from 'react-router-dom';
+import Container from 'containers/common/Container/index';
+import { AuthRouter, UnAuthRouter } from 'routers/index';
+import { useStore } from 'hooks/index';
 
 const App: FC = () => {
   const { encriptedMnemonic } = useStore();

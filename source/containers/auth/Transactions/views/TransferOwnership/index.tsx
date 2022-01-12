@@ -1,4 +1,4 @@
 export {
   TransferOwnership,
   TransferOwnershipConfirm,
-} from "./TransferOwnership";
+} from './TransferOwnership';

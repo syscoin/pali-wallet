@@ -1,11 +1,11 @@
-import { Icon, IconButton, SecondaryButton } from "components/index";
-import { AuthViewLayout } from "containers/common/Layout";
-import React, { Fragment, useState } from "react";
-import { Dialog, Transition } from "@headlessui/react";
-import { useUtils, useBrowser, useAccount, useFormat } from "hooks/index";
+import { Icon, IconButton, SecondaryButton } from 'components/index';
+import { AuthViewLayout } from 'containers/common/Layout';
+import React, { Fragment, useState } from 'react';
+import { Dialog, Transition } from '@headlessui/react';
+import { useUtils, useBrowser, useAccount, useFormat } from 'hooks/index';
 
 const ConnectedSites = (): any => {
-  const [selected, setSelected] = useState<string>("");
+  const [selected, setSelected] = useState<string>('');
 
   const { activeAccount } = useAccount();
   const { formatURL, ellipsis } = useFormat();
@@ -13,15 +13,15 @@ const ConnectedSites = (): any => {
   const { browser } = useBrowser();
 
   const disconnectSite = (id: any) => {
-    console.log("id selected", id, selected);
+    console.log('id selected', id, selected);
     browser.runtime.sendMessage({
-      type: "RESET_CONNECTION_INFO",
-      target: "background",
+      type: 'RESET_CONNECTION_INFO',
+      target: 'background',
       id,
       url: selected,
     });
 
-    setSelected("");
+    setSelected('');
   };
 
   return (
@@ -54,11 +54,11 @@ const ConnectedSites = (): any => {
           ))}
 
         {selected && (
-          <Transition appear show={selected !== ""} as={Fragment}>
+          <Transition appear show={selected !== ''} as={Fragment}>
             <Dialog
               as="div"
               className="fixed inset-0 z-10 overflow-y-auto"
-              onClose={() => setSelected("")}
+              onClose={() => setSelected('')}
             >
               <div className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50" />
 
@@ -139,7 +139,7 @@ const ConnectedSites = (): any => {
                       <button
                         type="button"
                         className="inline-flex justify-center px-12 py-2 text-sm font-medium text-brand-royalblue bg-blue-100 border border-transparent rounded-full hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
-                        onClick={() => setSelected("")}
+                        onClick={() => setSelected('')}
                       >
                         Close
                       </button>
@@ -152,7 +152,7 @@ const ConnectedSites = (): any => {
         )}
 
         <div className="absolute bottom-12">
-          <SecondaryButton type="button" onClick={() => history.push("/home")}>
+          <SecondaryButton type="button" onClick={() => history.push('/home')}>
             Close
           </SecondaryButton>
         </div>

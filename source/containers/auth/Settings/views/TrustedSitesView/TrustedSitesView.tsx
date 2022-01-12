@@ -1,8 +1,8 @@
-import { SecondaryButton } from "components/index";
-import { AuthViewLayout } from "containers/common/Layout";
-import React, { useState } from "react";
-import { useUtils, useFormat, useStore } from "hooks/index";
-import { Form, Input } from "antd";
+import { SecondaryButton } from 'components/index';
+import { AuthViewLayout } from 'containers/common/Layout';
+import React, { useState } from 'react';
+import { useUtils, useFormat, useStore } from 'hooks/index';
+import { Form, Input } from 'antd';
 
 const TrustedSitesView = () => {
   const { formatURL } = useFormat();
@@ -51,7 +51,7 @@ const TrustedSitesView = () => {
           rules={[
             {
               required: false,
-              message: "",
+              message: '',
             },
           ]}
         >
@@ -78,7 +78,7 @@ const TrustedSitesView = () => {
         </ul>
 
         <div className="absolute bottom-12">
-          <SecondaryButton type="button" onClick={() => history.push("/home")}>
+          <SecondaryButton type="button" onClick={() => history.push('/home')}>
             Close
           </SecondaryButton>
         </div>

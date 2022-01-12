@@ -1,6 +1,6 @@
-import store from "state/store";
-import { updateCurrentURL } from "state/wallet";
-import { browser } from "webextension-polyfill-ts";
+import store from 'state/store';
+import { updateCurrentURL } from 'state/wallet';
+import { browser } from 'webextension-polyfill-ts';
 
 export const useBrowser = () => ({ browser });
 
@@ -32,7 +32,7 @@ export const useWindowsAPI = () => {
         }
       });
     } catch (error: any) {
-      console.log("error removing window", error);
+      console.log('error removing window', error);
     }
   };
 
@@ -40,7 +40,7 @@ export const useWindowsAPI = () => {
     url,
     options = {
       url,
-      type: "popup",
+      type: 'popup',
       height: 600,
       width: 372,
       left: 900,
@@ -54,7 +54,7 @@ export const useWindowsAPI = () => {
       },
     });
 
-    if (tab.title === "Pali Wallet") {
+    if (tab.title === 'Pali Wallet') {
       return;
     }
 

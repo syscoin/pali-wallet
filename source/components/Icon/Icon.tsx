@@ -1,4 +1,4 @@
-import React, { FC } from "react";
+import React, { FC } from 'react';
 import {
   LoadingOutlined,
   ArrowDownOutlined,
@@ -38,21 +38,21 @@ import {
   VerifiedOutlined,
   CheckOutlined,
   LaptopOutlined,
-} from "@ant-design/icons";
+} from '@ant-design/icons';
 
 const icons = {
   loading: LoadingOutlined,
-  "arrow-down": ArrowDownOutlined,
-  "close-circle": CloseCircleOutlined,
+  'arrow-down': ArrowDownOutlined,
+  'close-circle': CloseCircleOutlined,
   reload: ReloadOutlined,
-  "arrow-up": ArrowUpOutlined,
-  "vertical-align": VerticalAlignTopOutlined,
+  'arrow-up': ArrowUpOutlined,
+  'vertical-align': VerticalAlignTopOutlined,
   copy: CopyOutlined,
-  "arrow-left": ArrowLeftOutlined,
+  'arrow-left': ArrowLeftOutlined,
   export: ExportOutlined,
   link: LinkOutlined,
   clock: ClockCircleOutlined,
-  "file-protect": FileProtectOutlined,
+  'file-protect': FileProtectOutlined,
   warning: WarningOutlined,
   key: KeyOutlined,
   user: UserOutlined,
@@ -69,15 +69,15 @@ const icons = {
   select: SelectOutlined,
   down: DownOutlined,
   up: UpOutlined,
-  "select-down": CaretDownOutlined,
+  'select-down': CaretDownOutlined,
   globe: GlobalOutlined,
   appstoreadd: AppstoreAddOutlined,
   edit: EditOutlined,
   check: CheckCircleOutlined,
-  "select-up": CaretUpOutlined,
+  'select-up': CaretUpOutlined,
   message: MessageOutlined,
   verified: VerifiedOutlined,
-  "check-outlined": CheckOutlined,
+  'check-outlined': CheckOutlined,
   desktop: LaptopOutlined,
 };
 

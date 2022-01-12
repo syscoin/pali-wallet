@@ -1,1 +1,1 @@
-export { default } from "./CustomRPCView";
+export { default } from './CustomRPCView';

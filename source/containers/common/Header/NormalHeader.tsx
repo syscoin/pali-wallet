@@ -1,13 +1,13 @@
-import React, { FC, useEffect, useState } from "react";
-import { Icon, IconButton } from "components/index";
+import React, { FC, useEffect, useState } from 'react';
+import { Icon, IconButton } from 'components/index';
 import {
   useStore,
   useAccount,
   useUtils,
   useController,
   useBrowser,
-} from "hooks/index";
-import { Disclosure, Menu, Transition } from "@headlessui/react";
+} from 'hooks/index';
+import { Disclosure, Menu, Transition } from '@headlessui/react';
 
 interface INormalHeader {
   importSeed: boolean;
@@ -69,18 +69,18 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <div
                 className={
                   isConnected
-                    ? "rounded-full text-xs w-28 h-5 flex justify-center items-center border border-warning-success bg-warning-success text-brand-white"
-                    : "rounded-full text-xs w-28 h-5 flex justify-center items-center border bg-warning-error border-warning-error text-brand-white"
+                    ? 'rounded-full text-xs w-28 h-5 flex justify-center items-center border border-warning-success bg-warning-success text-brand-white'
+                    : 'rounded-full text-xs w-28 h-5 flex justify-center items-center border bg-warning-error border-warning-error text-brand-white'
                 }
               >
-                {isConnected ? "connected" : "not connected"}
+                {isConnected ? 'connected' : 'not connected'}
               </div>
 
               <IconButton className="mb-1">
                 <Icon
                   name="select-down"
                   className={`${
-                    menuprops.open ? "transform rotate-180" : ""
+                    menuprops.open ? 'transform rotate-180' : ''
                   } text-brand-white`}
                 />
               </IconButton>
@@ -108,7 +108,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push("/networks-sites")}
+                  onClick={() => history.push('/networks-sites')}
                   className="flex py-1 justify-start items-center text-base px-2 cursor-pointer transition-all duration-200 border border-solid border-transparent hover:border-warning-success hover:bg-opacity-70 rounded-full bg-warning-success mx-3 mb-2"
                 >
                   <Icon
@@ -122,7 +122,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push("/networks-trusted")}
+                  onClick={() => history.push('/networks-trusted')}
                   className="flex py-1 justify-start items-center text-base px-2 cursor-pointer transition-all duration-200 border border-solid border-brand-royalblue hover:bg-opacity-70 rounded-full bg-brand-royalblue mx-3 mb-4"
                 >
                   <Icon
@@ -149,7 +149,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                         <Icon
                           name="select-down"
                           className={`${
-                            open ? "transform rotate-180" : ""
+                            open ? 'transform rotate-180' : ''
                           } text-brand-white mb-1`}
                         />
                       </Disclosure.Button>
@@ -197,7 +197,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                         <Icon
                           name="select-down"
                           className={`${
-                            open ? "transform rotate-180" : ""
+                            open ? 'transform rotate-180' : ''
                           } mb-1 text-brand-white`}
                         />
                       </Disclosure.Button>
@@ -205,11 +205,11 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                       <Disclosure.Panel className="pt-0.5 pb-2 text-sm bg-menu-secondary">
                         <li
                           className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-menu-secondary backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
-                          onClick={() => handleChangeNetwork("main")}
+                          onClick={() => handleChangeNetwork('main')}
                         >
                           <span>Main network</span>
 
-                          {activeNetwork === "main" && (
+                          {activeNetwork === 'main' && (
                             <Icon
                               name="check"
                               className="w-4 mb-1"
@@ -225,14 +225,14 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => handleChangeNetwork("localhost")}
+                  onClick={() => handleChangeNetwork('localhost')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                 >
                   <Icon name="home" className="ml-1 mr-4 text-brand-white" />
 
                   <span className="px-3">Localhost 8545</span>
 
-                  {activeNetwork === "localhost" && (
+                  {activeNetwork === 'localhost' && (
                     <Icon
                       name="check"
                       className="w-4 mb-1"
@@ -244,7 +244,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push("/networks-custom")}
+                  onClick={() => history.push('/networks-custom')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                 >
                   <Icon
@@ -258,7 +258,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push("/networks-edit")}
+                  onClick={() => history.push('/networks-edit')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                 >
                   <Icon name="edit" className="text-brand-white ml-1 mr-4" />
@@ -309,7 +309,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push("/general-autolock")}
+                  onClick={() => history.push('/general-autolock')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                 >
                   <Icon name="clock" className="text-brand-white ml-1 mr-4" />
@@ -320,7 +320,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push("/general-currency")}
+                  onClick={() => history.push('/general-currency')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                 >
                   <Icon name="dolar" className="text-brand-white ml-1 mr-4" />
@@ -331,7 +331,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push("/general-phrase")}
+                  onClick={() => history.push('/general-phrase')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                 >
                   <Icon name="wallet" className="text-brand-white ml-1 mr-4" />
@@ -342,7 +342,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push("/general-about")}
+                  onClick={() => history.push('/general-about')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                 >
                   <Icon name="warning" className="text-brand-white ml-1 mr-4" />
@@ -353,7 +353,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push("/general-delete")}
+                  onClick={() => history.push('/general-delete')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                 >
                   <Icon name="delete" className="text-brand-white ml-1 mr-4" />

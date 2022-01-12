@@ -1,5 +1,5 @@
-import React, { ReactNode, FC } from "react";
-import { Link as RouterLink } from "react-router-dom";
+import React, { ReactNode, FC } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 
 interface ILink {
   children: ReactNode;
@@ -10,7 +10,7 @@ interface ILink {
 
 export const Link: FC<ILink> = ({
   to,
-  className = "no-underline font-medium text-base font-poppins",
+  className = 'no-underline font-medium text-base font-poppins',
   children,
   onClick,
 }) => (

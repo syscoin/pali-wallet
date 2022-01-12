@@ -1,7 +1,7 @@
-import React from "react";
-import { Layout } from "containers/common/Layout";
-import { Form, Input } from "antd";
-import { PrimaryButton } from "components/index";
+import React from 'react';
+import { Layout } from 'containers/common/Layout';
+import { Form, Input } from 'antd';
+import { PrimaryButton } from 'components/index';
 
 export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
   <Layout title="Password" onlySection>
@@ -21,11 +21,11 @@ export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
         rules={[
           {
             required: true,
-            message: "",
+            message: '',
           },
           {
             pattern: /^(?=.*[a-z])(?=.*[0-9])(?=.{8,})/,
-            message: "",
+            message: '',
           },
         ]}
       >
@@ -35,16 +35,16 @@ export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
       <Form.Item
         className="w-full"
         name="repassword"
-        dependencies={["password"]}
+        dependencies={['password']}
         hasFeedback
         rules={[
           {
             required: true,
-            message: "",
+            message: '',
           },
           ({ getFieldValue }) => ({
             validator(_, value) {
-              if (!value || getFieldValue("password") === value) {
+              if (!value || getFieldValue('password') === value) {
                 return Promise.resolve();
               }
 
@@ -57,7 +57,7 @@ export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
       </Form.Item>
 
       <span className="text-brand-graylight text-xs">
-        At least 8 characters, 1 lower-case and 1 numeral. {"   "}
+        At least 8 characters, 1 lower-case and 1 numeral. {'   '}
       </span>
 
       <span className="text-left text-brand-royalblue text-xs">

@@ -1,7 +1,7 @@
-import { useAlert } from "react-alert";
-import { IAccountState } from "state/wallet/types";
-import { useHistory } from "react-router-dom";
-import { useCallback, useEffect, useState } from "react";
+import { useAlert } from 'react-alert';
+import { IAccountState } from 'state/wallet/types';
+import { useHistory } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
 
 export const useUtils = (): any => {
   const history = useHistory();
@@ -46,7 +46,7 @@ export const useUtils = (): any => {
   const alert = useAlert();
 
   const getHost = (url: string) => {
-    if (typeof url === "string" && url !== "") {
+    if (typeof url === 'string' && url !== '') {
       return new URL(url).host;
     }
 

@@ -1,5 +1,5 @@
-import { generateMnemonic, validateMnemonic } from "bip39";
-import { fromZPrv, fromZPub } from "bip84";
+import { generateMnemonic, validateMnemonic } from 'bip39';
+import { fromZPrv, fromZPub } from 'bip84';
 import {
   deleteWallet as deleteWalletState,
   changeAccountActiveId,
@@ -10,21 +10,21 @@ import {
   removeAccount,
   updateSwitchNetwork,
   removeConnection,
-} from "state/wallet";
-import IWalletState, { IAccountState } from "state/wallet/types";
-import CryptoJS from "crypto-js";
-import store from "state/store";
-import axios from "axios";
-import { IWalletController } from "types/controllers";
+} from 'state/wallet';
+import IWalletState, { IAccountState } from 'state/wallet/types';
+import CryptoJS from 'crypto-js';
+import store from 'state/store';
+import axios from 'axios';
+import { IWalletController } from 'types/controllers';
 
-import AccountController from "./AccountController";
+import AccountController from './AccountController';
 
-const sys = require("syscoinjs-lib");
+const sys = require('syscoinjs-lib');
 
 const WalletController = (): IWalletController => {
-  let password: any = "";
-  let encriptedPassword: any = "";
-  let mnemonic = "";
+  let password: any = '';
+  let encriptedPassword: any = '';
+  let mnemonic = '';
   let HDsigner: any = null;
   let sjs: any = null;
 
@@ -71,7 +71,7 @@ const WalletController = (): IWalletController => {
     // not encrypted for now but we got to retrieve
     const { encriptedMnemonic }: IWalletState = store.getState().wallet;
 
-    return encriptedMnemonic !== "" ? encriptedMnemonic : null;
+    return encriptedMnemonic !== '' ? encriptedMnemonic : null;
   };
 
   const generatePhrase = () => {
@@ -114,26 +114,26 @@ const WalletController = (): IWalletController => {
       .subscribeAccount(encriptedPassword, false, sjs, undefined, true)
       .then(() => {
         account.getPrimaryAccount(password, sjs);
-        password = "";
-        mnemonic = "";
+        password = '';
+        mnemonic = '';
 
         account.updateTokensState().then(() => {
-          console.log("update tokens state after create wallet");
+          console.log('update tokens state after create wallet');
         });
       });
   };
 
   const openNotificationsPopup = (title: string, message: string) => {
     chrome.notifications.create(new Date().getTime().toString(), {
-      type: "basic",
-      iconUrl: "assets/icons/favicon-48.png",
+      type: 'basic',
+      iconUrl: 'assets/icons/favicon-48.png',
       title,
       message,
     });
   };
 
   const createHardwareWallet = async () => {
-    const isTestnet = store.getState().wallet.activeNetwork === "testnet";
+    const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
 
     if (isTestnet) {
       openNotificationsPopup(
@@ -150,8 +150,8 @@ const WalletController = (): IWalletController => {
       TrezorSigner.createAccount()
         .then(async () => {
           openNotificationsPopup(
-            "Hardware Wallet connected",
-            "Trezor Wallet account created"
+            'Hardware Wallet connected',
+            'Trezor Wallet account created'
           );
 
           await account.subscribeAccount(
@@ -165,12 +165,12 @@ const WalletController = (): IWalletController => {
         })
         .catch((error: any) => {
           openNotificationsPopup(
-            "Hardware Wallet error",
+            'Hardware Wallet error',
             `Trezor Error: ${error}`
           );
         });
     } catch (error) {
-      openNotificationsPopup("Hardware Wallet error", `Trezor Error: ${error}`);
+      openNotificationsPopup('Hardware Wallet error', `Trezor Error: ${error}`);
     }
   };
 
@@ -186,7 +186,7 @@ const WalletController = (): IWalletController => {
       ).toString(CryptoJS.enc.Utf8);
 
       if (!decriptedMnemonic) {
-        throw new Error("password wrong");
+        throw new Error('password wrong');
       }
 
       const { activeAccountId, accounts } = store.getState().wallet;
@@ -202,14 +202,14 @@ const WalletController = (): IWalletController => {
           let isTestnet = false;
 
           if (
-            blockbook.coin === "Syscoin" ||
-            blockbook.coin === "Syscoin Testnet"
+            blockbook.coin === 'Syscoin' ||
+            blockbook.coin === 'Syscoin Testnet'
           ) {
-            if (backend.chain === "main") {
+            if (backend.chain === 'main') {
               isTestnet = false;
             }
 
-            if (backend.chain === "test") {
+            if (backend.chain === 'test') {
               isTestnet = true;
             }
 
@@ -235,7 +235,7 @@ const WalletController = (): IWalletController => {
         for (let i = 1; i < accounts.length; i++) {
           if (i > 0 && accounts[i].isTrezorWallet) {
             console.log(
-              "Should not derive from hdsigner if the account is from the hardware wallet"
+              'Should not derive from hdsigner if the account is from the hardware wallet'
             );
           } else {
             const child = sjs.Signer.deriveAccount(i);
@@ -265,9 +265,9 @@ const WalletController = (): IWalletController => {
 
   const deleteWallet = (pwd: string) => {
     if (checkPassword(pwd)) {
-      password = "";
-      encriptedPassword = "";
-      mnemonic = "";
+      password = '';
+      encriptedPassword = '';
+      mnemonic = '';
       HDsigner = null;
       sjs = null;
 
@@ -292,9 +292,9 @@ const WalletController = (): IWalletController => {
   };
 
   const logOut = () => {
-    password = "";
-    encriptedPassword = "";
-    mnemonic = "";
+    password = '';
+    encriptedPassword = '';
+    mnemonic = '';
     store.dispatch(updateStatus());
   };
 
@@ -375,8 +375,8 @@ const WalletController = (): IWalletController => {
         store.dispatch(updateStatus());
 
         openNotificationsPopup(
-          "Hardware Wallet removed due to network switch",
-          "Your device is being disconnected"
+          'Hardware Wallet removed due to network switch',
+          'Your device is being disconnected'
         );
       }
     }
@@ -384,7 +384,7 @@ const WalletController = (): IWalletController => {
     account.getPrimaryAccount(encriptedPassword, currentSysInstance);
 
     account.updateTokensState().then(() => {
-      console.log("tokens state updated after remove trezor");
+      console.log('tokens state updated after remove trezor');
     });
   };
 
@@ -406,14 +406,14 @@ const WalletController = (): IWalletController => {
         let isTestnet = false;
 
         if (
-          blockbook.coin === "Syscoin" ||
-          blockbook.coin === "Syscoin Testnet"
+          blockbook.coin === 'Syscoin' ||
+          blockbook.coin === 'Syscoin Testnet'
         ) {
-          if (backend.chain === "main") {
+          if (backend.chain === 'main') {
             isTestnet = false;
           }
 
-          if (backend.chain === "test") {
+          if (backend.chain === 'test') {
             isTestnet = true;
           }
 
@@ -435,7 +435,7 @@ const WalletController = (): IWalletController => {
         return;
       }
     } catch (error) {
-      throw new Error("Invalid network.");
+      throw new Error('Invalid network.');
     }
   };
 
@@ -445,13 +445,13 @@ const WalletController = (): IWalletController => {
     const userAccount: IAccountState = accounts.find(
       (el: IAccountState) => el.id === activeAccountId
     );
-    let address = "";
+    let address = '';
 
     if (userAccount?.isTrezorWallet) {
       const res = await sys.utils.fetchBackendAccount(
         sjs.blockbookURL,
         userAccount.xpub,
-        "tokens=nonzero&details=txs",
+        'tokens=nonzero&details=txs',
         true
       );
 
@@ -466,7 +466,7 @@ const WalletController = (): IWalletController => {
       if (res.tokens) {
         res.tokens.forEach((token: any) => {
           if (token.path) {
-            const splitPath = token.path.split("/");
+            const splitPath = token.path.split('/');
 
             if (splitPath.length >= 6) {
               const change = parseInt(splitPath[4], 10);
@@ -491,7 +491,7 @@ const WalletController = (): IWalletController => {
       try {
         address = await sjs.Signer.getNewReceivingAddress(true);
       } catch (error: any) {
-        console.log("error getting receiving address from sysjs", error);
+        console.log('error getting receiving address from sysjs', error);
 
         throw new Error(error);
       }

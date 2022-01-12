@@ -1,7 +1,7 @@
-import React from "react";
-import LogoImage from "assets/images/logo-s.svg";
-import { PrimaryButton, Link } from "components/index";
-import { useUtils } from "hooks/index";
+import React from 'react';
+import LogoImage from 'assets/images/logo-s.svg';
+import { PrimaryButton, Link } from 'components/index';
+import { useUtils } from 'hooks/index';
 
 export const Start = () => {
   const { history } = useUtils();
@@ -18,7 +18,7 @@ export const Start = () => {
 
       <img src={LogoImage} className="w-52 my-8" alt="syscoin" />
 
-      <PrimaryButton type="submit" onClick={() => history.push("/create/pass")}>
+      <PrimaryButton type="submit" onClick={() => history.push('/create/pass')}>
         Get started
       </PrimaryButton>
 

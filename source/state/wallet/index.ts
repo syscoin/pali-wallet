@@ -1,7 +1,7 @@
-import { SYS_NETWORK } from "constants/index";
+import { SYS_NETWORK } from 'constants/index';
 
-import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { Transaction } from "types/transactions";
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { Transaction } from 'types/transactions';
 
 import IWalletState, {
   IAccountUpdateState,
@@ -9,10 +9,10 @@ import IWalletState, {
   IAccountUpdateAddress,
   IAccountUpdateXpub,
   IWalletTokenState,
-} from "./types";
+} from './types';
 
 const getHost = (url: string) => {
-  if (typeof url === "string" && url !== "") {
+  if (typeof url === 'string' && url !== '') {
     return new URL(url).host;
   }
 
@@ -31,41 +31,41 @@ const initialState: IWalletState = {
   signingPSBT: false,
   walletTokens: [],
   tabs: {
-    currentSenderURL: "",
-    currentURL: "",
+    currentSenderURL: '',
+    currentURL: '',
     canConnect: false,
     connections: [],
   },
   timer: 5,
-  currentBlockbookURL: "https://blockbook.elint.services/",
+  currentBlockbookURL: 'https://blockbook.elint.services/',
   networks: {
     main: {
-      id: "main",
-      label: "Main Network",
-      beUrl: "https://blockbook.elint.services/",
+      id: 'main',
+      label: 'Main Network',
+      beUrl: 'https://blockbook.elint.services/',
     },
     testnet: {
-      id: "testnet",
-      label: "Test Network",
-      beUrl: "https://blockbook-dev.elint.services/",
+      id: 'testnet',
+      label: 'Test Network',
+      beUrl: 'https://blockbook-dev.elint.services/',
     },
   },
   trustedApps: {
-    "app.uniswap.org": "app.uniswap.org",
-    "trello.com": "https://trello.com/b/0grd7QPC/dev",
-    "twitter.com": "https://twitter.com/home",
-    "maps.google.com": "https://maps.google.com/",
-    "facebook.com": "https://accounts.google.com/b/0/AddMailService",
-    "sysmint.paliwallet.com": "sysmint.paliwallet.com",
+    'app.uniswap.org': 'app.uniswap.org',
+    'trello.com': 'https://trello.com/b/0grd7QPC/dev',
+    'twitter.com': 'https://twitter.com/home',
+    'maps.google.com': 'https://maps.google.com/',
+    'facebook.com': 'https://accounts.google.com/b/0/AddMailService',
+    'sysmint.paliwallet.com': 'sysmint.paliwallet.com',
   },
   temporaryTransactionState: {
     executing: false,
-    type: "",
+    type: '',
   },
 };
 
 const WalletState = createSlice({
-  name: "wallet",
+  name: 'wallet',
   initialState,
   reducers: {
     updateNetwork(
@@ -145,7 +145,7 @@ const WalletState = createSlice({
         ...state,
         temporaryTransactionState: {
           executing: false,
-          type: "",
+          type: '',
         },
       };
     },
@@ -384,8 +384,8 @@ const WalletState = createSlice({
       state.activeNetwork = SYS_NETWORK.main.id;
       state.status = 0;
       state.tabs = {
-        currentSenderURL: "",
-        currentURL: "",
+        currentSenderURL: '',
+        currentURL: '',
         canConnect: false,
         connections: [],
       };

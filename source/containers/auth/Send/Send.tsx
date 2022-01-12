@@ -1,5 +1,5 @@
-import * as React from "react";
-import { useState, useEffect, Fragment, FC, useCallback } from "react";
+import * as React from 'react';
+import { useState, useEffect, Fragment, FC, useCallback } from 'react';
 import {
   useController,
   usePrice,
@@ -8,13 +8,13 @@ import {
   useAccount,
   useTransaction,
   useFormat,
-} from "hooks/index";
-import { Form, Input } from "antd";
-import { Switch, Menu, Transition } from "@headlessui/react";
-import { AuthViewLayout } from "containers/common/Layout";
-import { SecondaryButton, Tooltip, Icon } from "components/index";
-import { ChevronDoubleDownIcon } from "@heroicons/react/solid";
-import { Assets } from "types/transactions";
+} from 'hooks/index';
+import { Form, Input } from 'antd';
+import { Switch, Menu, Transition } from '@headlessui/react';
+import { AuthViewLayout } from 'containers/common/Layout';
+import { SecondaryButton, Tooltip, Icon } from 'components/index';
+import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
+import { Assets } from 'types/transactions';
 
 interface ISend {
   initAddress?: string;
@@ -93,17 +93,17 @@ export const Send: FC<ISend> = () => {
           isToken: !!selectedAsset,
           rbf: !ZDAG,
         },
-        type: "sendAsset",
+        type: 'sendAsset',
       });
 
-      history.push("/send/confirm");
+      history.push('/send/confirm');
     } catch (error) {
       alert.removeAll();
-      alert.error("An internal error has occurred.");
+      alert.error('An internal error has occurred.');
     }
   };
 
-  const disabledFee = activeNetwork === "main" || activeNetwork === "testnet";
+  const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
 
   const SendForm = () => (
     <div className="mt-4">
@@ -135,7 +135,7 @@ export const Send: FC<ISend> = () => {
           rules={[
             {
               required: true,
-              message: "",
+              message: '',
             },
             () => ({
               validator(_, value) {
@@ -169,7 +169,7 @@ export const Send: FC<ISend> = () => {
             rules={[
               {
                 required: false,
-                message: "",
+                message: '',
               },
             ]}
           >
@@ -180,7 +180,7 @@ export const Send: FC<ISend> = () => {
               >
                 {selectedAsset?.symbol
                   ? formatURL(String(selectedAsset?.symbol), 2)
-                  : "SYS"}
+                  : 'SYS'}
                 <ChevronDoubleDownIcon
                   className="w-5 h-5 ml-2 -mr-1 text-violet-200 hover:text-violet-100"
                   aria-hidden="true"
@@ -216,7 +216,7 @@ export const Send: FC<ISend> = () => {
                           className="hover:text-brand-royalblue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between"
                         >
                           <p>{item.symbol}</p>
-                          <small>{isNFT(item.assetGuid) ? "NFT" : "SPT"}</small>
+                          <small>{isNFT(item.assetGuid) ? 'NFT' : 'SPT'}</small>
                         </button>
                       </Menu.Item>
                     ))}
@@ -233,7 +233,7 @@ export const Send: FC<ISend> = () => {
               rules={[
                 {
                   required: false,
-                  message: "",
+                  message: '',
                 },
               ]}
             >
@@ -253,8 +253,8 @@ export const Send: FC<ISend> = () => {
                 <span
                   className={`${
                     verifyAddress
-                      ? "translate-x-6 bg-warning-success"
-                      : "translate-x-1"
+                      ? 'translate-x-6 bg-warning-success'
+                      : 'translate-x-1'
                   } inline-block w-2 h-2 transform bg-warning-error rounded-full`}
                 />
               </Switch>
@@ -266,7 +266,7 @@ export const Send: FC<ISend> = () => {
               rules={[
                 {
                   required: false,
-                  message: "",
+                  message: '',
                 },
               ]}
             >
@@ -285,8 +285,8 @@ export const Send: FC<ISend> = () => {
                 <span
                   className={`${
                     ZDAG
-                      ? "bg-warning-success translate-x-6"
-                      : "bg-warning-error translate-x-1"
+                      ? 'bg-warning-success translate-x-6'
+                      : 'bg-warning-error translate-x-1'
                   } inline-block w-2 h-2 transform rounded-full`}
                 />
               </Switch>
@@ -300,7 +300,7 @@ export const Send: FC<ISend> = () => {
           rules={[
             {
               required: true,
-              message: "",
+              message: '',
             },
             () => ({
               validator(_, value) {
@@ -328,20 +328,20 @@ export const Send: FC<ISend> = () => {
           <Form.Item
             name="recommend"
             className={`${
-              disabledFee && "opacity-50 cursor-not-allowed"
+              disabledFee && 'opacity-50 cursor-not-allowed'
             } bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus w-12 py-1.5 rounded-l-full text-center`}
             rules={[
               {
                 required: false,
-                message: "",
+                message: '',
               },
             ]}
           >
             <Tooltip
               content={`${
                 disabledFee
-                  ? "Use recommended fee. Disabled for SYS networks because the fee used in transactions is always the recommended for current SYS network conditions."
-                  : "Click to use the recommended fee"
+                  ? 'Use recommended fee. Disabled for SYS networks because the fee used in transactions is always the recommended for current SYS network conditions.'
+                  : 'Click to use the recommended fee'
               }`}
             >
               <div onClick={handleGetFee}>
@@ -350,8 +350,8 @@ export const Send: FC<ISend> = () => {
                   name="verified"
                   className={`${
                     disabledFee
-                      ? "cursor-not-allowed text-button-disabled"
-                      : "text-warning-success"
+                      ? 'cursor-not-allowed text-button-disabled'
+                      : 'text-warning-success'
                   }`}
                 />
               </div>
@@ -364,16 +364,16 @@ export const Send: FC<ISend> = () => {
             rules={[
               {
                 required: true,
-                message: "",
+                message: '',
               },
             ]}
           >
-            <Tooltip content={disabledFee ? "Fee network" : ""}>
+            <Tooltip content={disabledFee ? 'Fee network' : ''}>
               <Input
                 disabled={disabledFee}
                 className={`${
                   disabledFee &&
-                  "opacity-50 cursor-not-allowed text-button-disabled"
+                  'opacity-50 cursor-not-allowed text-button-disabled'
                 } border border-fields-input-border bg-fields-input-primary rounded-r-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
                 type="number"
                 placeholder="Fee network"

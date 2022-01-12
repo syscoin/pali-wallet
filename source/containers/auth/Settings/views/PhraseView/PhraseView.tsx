@@ -1,12 +1,12 @@
-import React, { useState } from "react";
-import { Form, Input } from "antd";
-import { useController, useUtils } from "hooks/index";
-import { AuthViewLayout } from "containers/common/Layout/AuthViewLayout";
-import { SecondaryButton, InfoCard, CopyCard } from "components/index";
+import React, { useState } from 'react';
+import { Form, Input } from 'antd';
+import { useController, useUtils } from 'hooks/index';
+import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
+import { SecondaryButton, InfoCard, CopyCard } from 'components/index';
 
 const PhraseView = () => {
   const [phrase, setPhrase] = useState<string>(
-    "**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****"
+    '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****'
   );
 
   const { useCopyClipboard, history } = useUtils();
@@ -38,7 +38,7 @@ const PhraseView = () => {
             rules={[
               {
                 required: true,
-                message: "",
+                message: '',
               },
               () => ({
                 validator(_, value) {
@@ -63,7 +63,7 @@ const PhraseView = () => {
           className="my-4"
           onClick={() =>
             phrase !==
-              "**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****" &&
+              '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****' &&
             handleCopySeed()
           }
           label="Seed Phrase: (click to copy)"
@@ -80,8 +80,8 @@ const PhraseView = () => {
         </InfoCard>
 
         <div className="absolute bottom-12">
-          <SecondaryButton type="button" onClick={() => history.push("/home")}>
-            {copied ? "Copied" : "Close"}
+          <SecondaryButton type="button" onClick={() => history.push('/home')}>
+            {copied ? 'Copied' : 'Close'}
           </SecondaryButton>
         </div>
       </div>
