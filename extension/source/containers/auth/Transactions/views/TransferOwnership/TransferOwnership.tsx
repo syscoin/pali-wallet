@@ -1,11 +1,13 @@
 import React from 'react';
 import { useController } from 'hooks/index';
+
 import { SiteTransaction } from '../SiteTransaction';
 import { ConfirmTransaction } from '../index';
 
 export const TransferOwnershipConfirm = () => {
   const controller = useController();
-  const temporaryTransaction = controller.wallet.account.getTemporaryTransaction('transferAsset');
+  const temporaryTransaction =
+    controller.wallet.account.getTemporaryTransaction('transferAsset');
 
   return (
     <ConfirmTransaction
@@ -19,14 +21,12 @@ export const TransferOwnershipConfirm = () => {
   );
 };
 
-export const TransferOwnership = () => {
-  return (
-    <div>
-      <SiteTransaction
-        confirmRoute="/transferOwnership/confirm"
-        temporaryTransactionAsString="transferAsset"
-        layoutTitle="Transfer Asset"
-      />
-    </div>
-  );
-};
+export const TransferOwnership = () => (
+  <div>
+    <SiteTransaction
+      confirmRoute="/transferOwnership/confirm"
+      temporaryTransactionAsString="transferAsset"
+      layoutTitle="Transfer Asset"
+    />
+  </div>
+);

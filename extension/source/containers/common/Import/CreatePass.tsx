@@ -16,7 +16,7 @@ const CreatePass = () => {
     }
 
     history.push('/home');
-  }
+  };
 
   const onSubmit = (data: any) => {
     controller.wallet.setWalletPassword(data.password);
@@ -25,9 +25,7 @@ const CreatePass = () => {
     next();
   };
 
-  return (
-    <PasswordForm onSubmit={onSubmit} />
-  );
+  return <PasswordForm onSubmit={onSubmit} />;
 };
 
 export default CreatePass;

@@ -62,4 +62,4 @@
 //     return Promise.resolve({ id: message.id, result: origin && allowed });
 // }
 
-export {}
+export {};

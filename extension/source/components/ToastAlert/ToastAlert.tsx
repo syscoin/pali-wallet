@@ -1,5 +1,6 @@
 import React, { FC } from 'react';
-import { Icon } from "../Icon";
+
+import { Icon } from '../Icon';
 
 interface IAlertTemplate {
   close: () => void;
@@ -8,30 +9,31 @@ interface IAlertTemplate {
 }
 
 export const ToastAlert: FC<IAlertTemplate> = ({ message, options, close }) => {
+
+  const otherClasses = options.type === 'error' ? 'bg-warning-error border border-warning-error' : options.type === 'info' ? '' : ''
+
   return (
-    <div
-      className={`${options.type === 'error' ? 'bg-bkg-4 border-transparent pr-3 rounded-lg mb-16 w-72 text-center border flex justify-between items-center text-brand-white' : ''}`}
-      onClick={close}
-    >
-      <div className="bg-warning-error border border-warning-error rounded-l-lg py-8 px-3">
-        {options.type === 'error' && (
-          <Icon
-            name="close-circle"
-            className="mb-1 bg-brand-white text-brand-white rounded-full"
-            size={24}
-          />
-        )}
-      </div>
+    <>
+      <div
+        className="bg-bkg-4 border-transparent rounded-lg mb-16 w-72 text-center border h-20 flex justify-center gap-x-2 items-center text-brand-white"
+        onClick={close}
+      >
+        <div className={`${options.type === 'success' ? 'bg-warning-success border border-warning-success' : otherClasses} rounded-l-lg h-full flex justify-center items-center w-1/4`}>
+          {options.type === 'success' && (
+            <Icon
+              name={options.type === 'success' ? 'check' : 'close-circle'}
+              className="mb-1 bg-brand-white text-brand-white rounded-full"
+              size={24}
+            />
+          )}
+        </div>
 
-      <div className="my-2 ml-2 text-left">
-        <p className="text-sm font-bold">
-          Error
-        </p>
+        <div className="text-left w-full">
+          <p className="text-sm font-bold">{options.type === 'success' ? 'Success' : 'Error'}</p>
 
-        <p className="text-xs my-2">
-          {message}
-        </p>
+          <p className="text-xs my-2">{message}</p>
+        </div>
       </div>
-    </div>
-  );
+    </>
+  )
 };

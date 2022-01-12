@@ -4,9 +4,9 @@ import { useFormat, useUtils } from 'hooks/index';
 import { Assets, Transaction } from 'types/transactions';
 
 interface IPanelList {
-  data: any;
-  assets: boolean;
   activity: boolean;
+  assets: boolean;
+  data: any;
 }
 
 export const PanelList: FC<IPanelList> = ({
@@ -14,40 +14,33 @@ export const PanelList: FC<IPanelList> = ({
   assets = false,
   activity = false,
 }) => {
-  const {
-    formatDistanceDate,
-    ellipsis,
-    formatCurrency
-  } = useFormat();
+  const { formatDistanceDate, ellipsis, formatCurrency } = useFormat();
 
   const { history } = useUtils();
 
   const isShowedGroupBar = useCallback(
-    (tx: Transaction, idx: number) => {
-      return (
-        idx === 0 ||
-        new Date(tx.blockTime * 1e3).toDateString() !==
-        new Date(data[idx - 1].blockTime * 1e3).toDateString()
-      );
-    },
+    (tx: Transaction, idx: number) =>
+      idx === 0 ||
+      new Date(tx.blockTime * 1e3).toDateString() !==
+        new Date(data[idx - 1].blockTime * 1e3).toDateString(),
     [data]
   );
 
   const getTxType = (tx: Transaction) => {
-    if (tx.tokenType === "SPTAssetActivate") {
+    if (tx.tokenType === 'SPTAssetActivate') {
       return 'SPT creation';
     }
 
-    if (tx.tokenType === "SPTAssetSend") {
+    if (tx.tokenType === 'SPTAssetSend') {
       return 'SPT mint';
     }
 
-    if (tx.tokenType === "SPTAssetUpdate") {
+    if (tx.tokenType === 'SPTAssetUpdate') {
       return 'SPT update';
     }
 
     return 'Transaction';
-  }
+  };
 
   return (
     <>
@@ -55,30 +48,35 @@ export const PanelList: FC<IPanelList> = ({
         <ul className="pb-8">
           {data.map((tx: Transaction, idx: number) => {
             const isConfirmed = tx.confirmations > 0;
-            const timestamp = new Date(tx.blockTime * 1000).toLocaleTimeString(navigator.language, {
-              hour: '2-digit',
-              minute: '2-digit'
-            })
+            const timestamp = new Date(tx.blockTime * 1000).toLocaleTimeString(
+              navigator.language,
+              {
+                hour: '2-digit',
+                minute: '2-digit',
+              }
+            );
 
             return (
               <Fragment key={tx.txid}>
                 {isShowedGroupBar(tx, idx) && (
-                  <li
-                    className="bg-bkg-1 text-sm text-center my-3"
-                  >
-                    {formatDistanceDate(new Date(tx.blockTime * 1000).toDateString())}
+                  <li className="bg-bkg-1 text-sm text-center my-3">
+                    {formatDistanceDate(
+                      new Date(tx.blockTime * 1000).toDateString()
+                    )}
                   </li>
                 )}
 
-                <li
-                  className="border-dashed border-b border-dashed-dark py-2"
-                >
+                <li className="border-dashed border-b border-dashed-dark py-2">
                   <div className="flex justify-between pr-6 text-xs relative">
                     <div>
                       <p>{ellipsis(String(tx.txid), 4, 14)}</p>
 
                       <p
-                        className={isConfirmed ? "text-warning-success" : "text-yellow-300"}
+                        className={
+                          isConfirmed
+                            ? 'text-warning-success'
+                            : 'text-yellow-300'
+                        }
                       >
                         {isConfirmed ? 'Confirmed' : 'Pending'}
                       </p>
@@ -86,26 +84,23 @@ export const PanelList: FC<IPanelList> = ({
 
                     <div className="flex justify-self-end">
                       <div className="mr-6 text-right">
-                        <p className="text-blue-300">
-                          {timestamp}
-                        </p>
+                        <p className="text-blue-300">{timestamp}</p>
 
                         <p>{getTxType(tx)}</p>
                       </div>
 
                       <IconButton
                         className="w-1"
-                        onClick={() => history.push('/home-tx-details', {
-                          tx: tx,
-                          type: getTxType(tx),
-                          assetGuid: null,
-                          assetType: null,
-                        })}
+                        onClick={() =>
+                          history.push('/home-tx-details', {
+                            tx,
+                            type: getTxType(tx),
+                            assetGuid: null,
+                            assetType: null,
+                          })
+                        }
                       >
-                        <Icon
-                          name="select"
-                          className="text-base"
-                        />
+                        <Icon name="select" className="text-base" />
                       </IconButton>
                     </div>
                   </div>
@@ -126,7 +121,10 @@ export const PanelList: FC<IPanelList> = ({
                   className="border-dashed border-b border-dashed-dark py-3 flex justify-between items-center text-xs"
                 >
                   <p className="font-rubik">
-                    {formatCurrency(String(asset.balance / 10 ** asset.decimals), asset.decimals)}
+                    {formatCurrency(
+                      String(asset.balance / 10 ** asset.decimals),
+                      asset.decimals
+                    )}
 
                     <span className="font-poppins text-button-secondary">
                       {`  ${asset.symbol}`}
@@ -134,17 +132,16 @@ export const PanelList: FC<IPanelList> = ({
                   </p>
 
                   <IconButton
-                    onClick={() => history.push('/home-tx-details', {
-                      tx: null,
-                      type: null,
-                      assetGuid: asset.assetGuid,
-                      assetType: asset.type
-                    })}
+                    onClick={() =>
+                      history.push('/home-tx-details', {
+                        tx: null,
+                        type: null,
+                        assetGuid: asset.assetGuid,
+                        assetType: asset.type,
+                      })
+                    }
                   >
-                    <Icon
-                      name="select"
-                      className="w-4 text-brand-white"
-                    />
+                    <Icon name="select" className="w-4 text-brand-white" />
                   </IconButton>
                 </li>
               );

@@ -17,7 +17,5 @@ export const CreatePass = () => {
     }
   };
 
-  return (
-    <PasswordForm onSubmit={onSubmit} />
-  );
+  return <PasswordForm onSubmit={onSubmit} />;
 };

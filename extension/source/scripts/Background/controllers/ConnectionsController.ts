@@ -8,13 +8,11 @@ const ConnectionsController = () => {
       }
 
       console.log(message);
-
-      return;
     }
-  }
+  };
 
-  const getConnectedAccountXpub = async () => {
-    return new Promise(async (resolve, reject) => {
+  const getConnectedAccountXpub = async (): Promise<any> =>
+    new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -30,23 +28,24 @@ const ConnectionsController = () => {
 
       window.addEventListener('message', callback);
 
-      resolve(await sendMessage(
-        {
-          type: 'CONNECTED_ACCOUNT_XPUB',
-          target: 'connectionsController',
-          freeze: true,
-          eventResult: 'connectedAccountXpub',
-        },
-        {
-          type: 'CONNECTED_ACCOUNT_XPUB',
-          target: 'contentScript',
-        }
-      ));
+      resolve(
+        sendMessage(
+          {
+            type: 'CONNECTED_ACCOUNT_XPUB',
+            target: 'connectionsController',
+            freeze: true,
+            eventResult: 'connectedAccountXpub',
+          },
+          {
+            type: 'CONNECTED_ACCOUNT_XPUB',
+            target: 'contentScript',
+          }
+        )
+      );
     });
-  };
 
-  const getChangeAddress = async () => {
-    return new Promise(async (resolve, reject) => {
+  const getChangeAddress = async () =>
+    new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -62,25 +61,31 @@ const ConnectionsController = () => {
 
       window.addEventListener('message', callback);
 
-      resolve(await sendMessage(
-        {
-          type: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
-          target: 'connectionsController',
-          freeze: true,
-          eventResult: 'connectedAccountChangeAddress',
-        },
-        {
-          type: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
-          target: 'contentScript',
-        }
-      ));
+      resolve(
+        sendMessage(
+          {
+            type: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
+            target: 'connectionsController',
+            freeze: true,
+            eventResult: 'connectedAccountChangeAddress',
+          },
+          {
+            type: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
+            target: 'contentScript',
+          }
+        )
+      );
     });
-  };
 
   const signAndSend = async (psbt: any) => {
-    checkParams({ data: psbt, throwError: true, message: 'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.' });
+    checkParams({
+      data: psbt,
+      throwError: true,
+      message:
+        'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.',
+    });
 
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -105,7 +110,7 @@ const ConnectionsController = () => {
 
       window.addEventListener('message', callback);
 
-      await sendMessage(
+      sendMessage(
         {
           type: 'SIGN_AND_SEND',
           target: 'connectionsController',
@@ -121,8 +126,8 @@ const ConnectionsController = () => {
     });
   };
 
-  const isLocked = async () => {
-    return sendMessage(
+  const isLocked = async () =>
+    sendMessage(
       {
         type: 'CHECK_IS_LOCKED',
         target: 'connectionsController',
@@ -134,7 +139,6 @@ const ConnectionsController = () => {
         target: 'contentScript',
       }
     );
-  };
 
   const onWalletUpdate = (onUpdated: any) => {
     window.addEventListener('message', (event) => {
@@ -148,15 +152,18 @@ const ConnectionsController = () => {
   };
 
   const isNFT = (guid: number) => {
-    checkParams({ data: guid, throwError: false, message: 'Invalid asset guid.' });
+    checkParams({
+      data: guid,
+      throwError: false,
+      message: 'Invalid asset guid.',
+    });
 
     const assetGuid = BigInt.asUintN(64, BigInt(guid));
 
-    return assetGuid >> BigInt(32) > 0;
+    return assetGuid > BigInt(32) || assetGuid > 0;
   };
 
-  const connectWallet = async () => {
-    console.log('called connect wallet firefox')
+  const connectWallet = () => {
     sendMessage(
       {
         type: 'CONNECT_WALLET',
@@ -184,8 +191,8 @@ const ConnectionsController = () => {
     );
   };
 
-  const getWalletState = async () => {
-    return new Promise(async (resolve, reject) => {
+  const getWalletState = async () =>
+    new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -201,23 +208,24 @@ const ConnectionsController = () => {
 
       window.addEventListener('message', callback);
 
-      resolve(await sendMessage(
-        {
-          type: 'SEND_STATE_TO_PAGE',
-          target: 'connectionsController',
-          freeze: true,
-          eventResult: 'state',
-        },
-        {
-          type: 'SEND_STATE_TO_PAGE',
-          target: 'contentScript',
-        }
-      ));
+      resolve(
+        sendMessage(
+          {
+            type: 'SEND_STATE_TO_PAGE',
+            target: 'connectionsController',
+            freeze: true,
+            eventResult: 'state',
+          },
+          {
+            type: 'SEND_STATE_TO_PAGE',
+            target: 'contentScript',
+          }
+        )
+      );
     });
-  };
 
-  const getConnectedAccount = async () => {
-    return sendMessage(
+  const getConnectedAccount = async () =>
+    sendMessage(
       {
         type: 'SEND_CONNECTED_ACCOUNT',
         target: 'connectionsController',
@@ -229,16 +237,19 @@ const ConnectionsController = () => {
         target: 'contentScript',
       }
     );
-  };
 
   const handleSendToken = async (items: any) => {
-    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: items,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
     if (items.isToken && typeof items.token !== 'string') {
       throw new Error('Invalid token data.');
     }
 
-    return new Promise(async (_, reject) => {
+    return new Promise((_, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -256,7 +267,7 @@ const ConnectionsController = () => {
 
       const { sender, receiver, amount, fee, token, isToken, rbf } = items;
 
-      await sendMessage(
+      sendMessage(
         {
           type: 'SEND_TOKEN',
           target: 'connectionsController',
@@ -282,14 +293,18 @@ const ConnectionsController = () => {
     const connectedAccount: any = await getConnectedAccount();
 
     if (connectedAccount && connectedAccount.isTrezorWallet) {
-      console.log('Trezor don\'t support burning of coins.');
+      console.log("Trezor don't support burning of coins.");
 
-      throw new Error('Trezor don\'t support burning of coins.');
+      throw new Error("Trezor don't support burning of coins.");
     }
 
-    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: items,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -328,7 +343,7 @@ const ConnectionsController = () => {
         payoutAddress,
       } = items;
 
-      await sendMessage(
+      sendMessage(
         {
           type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
           target: 'connectionsController',
@@ -355,9 +370,13 @@ const ConnectionsController = () => {
   };
 
   const handleIssueSPT = async (items: any) => {
-    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: items,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -384,7 +403,7 @@ const ConnectionsController = () => {
 
       const { amount, assetGuid } = items;
 
-      await sendMessage(
+      sendMessage(
         {
           type: 'ISSUE_SPT',
           target: 'connectionsController',
@@ -402,9 +421,13 @@ const ConnectionsController = () => {
   };
 
   const handleCreateNFT = async (items: any) => {
-    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: items,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
-    return new Promise(async (_, reject) => {
+    return new Promise((_, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -431,7 +454,7 @@ const ConnectionsController = () => {
         payoutAddress,
       } = items;
 
-      await sendMessage(
+      sendMessage(
         {
           type: 'CREATE_AND_ISSUE_NFT',
           target: 'connectionsController',
@@ -455,9 +478,13 @@ const ConnectionsController = () => {
   };
 
   const handleIssueNFT = async (items: any) => {
-    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: items,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -484,7 +511,7 @@ const ConnectionsController = () => {
 
       const { assetGuid, amount } = items;
 
-      await sendMessage(
+      sendMessage(
         {
           type: 'ISSUE_NFT',
           target: 'connectionsController',
@@ -495,14 +522,14 @@ const ConnectionsController = () => {
           type: 'ISSUE_NFT',
           target: 'contentScript',
           assetGuid,
-          amount
+          amount,
         }
       );
     });
   };
 
-  const getUserMintedTokens = async () => {
-    return new Promise(async (resolve, reject) => {
+  const getUserMintedTokens = async () =>
+    new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -518,25 +545,30 @@ const ConnectionsController = () => {
 
       window.addEventListener('message', callback);
 
-      resolve(await sendMessage(
-        {
-          type: 'GET_USER_MINTED_TOKENS',
-          target: 'connectionsController',
-          freeze: true,
-          eventResult: 'userTokens',
-        },
-        {
-          type: 'GET_USER_MINTED_TOKENS',
-          target: 'contentScript',
-        }
-      ));
+      resolve(
+        sendMessage(
+          {
+            type: 'GET_USER_MINTED_TOKENS',
+            target: 'connectionsController',
+            freeze: true,
+            eventResult: 'userTokens',
+          },
+          {
+            type: 'GET_USER_MINTED_TOKENS',
+            target: 'contentScript',
+          }
+        )
+      );
     });
-  };
 
   const getDataAsset = async (assetGuid: any) => {
-    checkParams({ data: assetGuid, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: assetGuid,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -552,26 +584,32 @@ const ConnectionsController = () => {
 
       window.addEventListener('message', callback);
 
-      resolve(await sendMessage(
-        {
-          type: 'GET_ASSET_DATA',
-          target: 'connectionsController',
-          freeze: true,
-          eventResult: 'assetData',
-        },
-        {
-          type: 'GET_ASSET_DATA',
-          target: 'contentScript',
-          assetGuid,
-        }
-      ));
+      resolve(
+        sendMessage(
+          {
+            type: 'GET_ASSET_DATA',
+            target: 'connectionsController',
+            freeze: true,
+            eventResult: 'assetData',
+          },
+          {
+            type: 'GET_ASSET_DATA',
+            target: 'contentScript',
+            assetGuid,
+          }
+        )
+      );
     });
   };
 
   const handleUpdateAsset = async (items: any) => {
-    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: items,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
-    return new Promise(async (_, reject) => {
+    return new Promise((_, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -598,7 +636,7 @@ const ConnectionsController = () => {
         payoutAddress,
       } = items;
 
-      await sendMessage(
+      sendMessage(
         {
           type: 'UPDATE_ASSET',
           target: 'connectionsController',
@@ -622,9 +660,13 @@ const ConnectionsController = () => {
   };
 
   const handleTransferOwnership = async (items: any) => {
-    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: items,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
-    return new Promise(async (_, reject) => {
+    return new Promise((_, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -642,7 +684,7 @@ const ConnectionsController = () => {
 
       const { assetGuid, newOwner } = items;
 
-      await sendMessage(
+      sendMessage(
         {
           type: 'TRANSFER_OWNERSHIP',
           target: 'connectionsController',
@@ -660,9 +702,13 @@ const ConnectionsController = () => {
   };
 
   const isValidSYSAddress = async (address: string) => {
-    checkParams({ data: address, throwError: true, message: 'Invalid address.' });
+    checkParams({
+      data: address,
+      throwError: true,
+      message: 'Invalid address.',
+    });
 
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -678,24 +724,26 @@ const ConnectionsController = () => {
 
       window.addEventListener('message', callback);
 
-      resolve(await sendMessage(
-        {
-          type: 'CHECK_ADDRESS',
-          target: 'connectionsController',
-          freeze: true,
-          eventResult: 'isValidSYSAddress',
-        },
-        {
-          type: 'CHECK_ADDRESS',
-          target: 'contentScript',
-          address,
-        }
-      ));
+      resolve(
+        sendMessage(
+          {
+            type: 'CHECK_ADDRESS',
+            target: 'connectionsController',
+            freeze: true,
+            eventResult: 'isValidSYSAddress',
+          },
+          {
+            type: 'CHECK_ADDRESS',
+            target: 'contentScript',
+            address,
+          }
+        )
+      );
     });
   };
 
-  const getHoldingsData = async () => {
-    return new Promise(async (resolve, reject) => {
+  const getHoldingsData = async () =>
+    new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -711,25 +759,31 @@ const ConnectionsController = () => {
 
       window.addEventListener('message', callback);
 
-      resolve(await sendMessage(
-        {
-          type: 'GET_HOLDINGS_DATA',
-          target: 'connectionsController',
-          freeze: true,
-          eventResult: 'holdingsData',
-        },
-        {
-          type: 'GET_HOLDINGS_DATA',
-          target: 'contentScript',
-        }
-      ));
+      resolve(
+        sendMessage(
+          {
+            type: 'GET_HOLDINGS_DATA',
+            target: 'connectionsController',
+            freeze: true,
+            eventResult: 'holdingsData',
+          },
+          {
+            type: 'GET_HOLDINGS_DATA',
+            target: 'contentScript',
+          }
+        )
+      );
     });
-  };
 
   const signPSBT = (psbtToSign: any) => {
-    checkParams({ data: psbtToSign, throwError: true, message: 'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.' });
+    checkParams({
+      data: psbtToSign,
+      throwError: true,
+      message:
+        'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.',
+    });
 
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const callback = (event: any) => {
         if (
           event.data.type === 'WALLET_ERROR' &&
@@ -754,7 +808,7 @@ const ConnectionsController = () => {
 
       window.addEventListener('message', callback);
 
-      await sendMessage(
+      sendMessage(
         {
           type: 'SIGN_PSBT',
           target: 'connectionsController',
@@ -768,7 +822,7 @@ const ConnectionsController = () => {
         }
       );
     });
-  }
+  };
 
   return {
     isLocked,
@@ -791,9 +845,10 @@ const ConnectionsController = () => {
     signAndSend,
     getConnectedAccountXpub,
     getChangeAddress,
-    signPSBT
+    signPSBT,
   };
 };
 
 const connectionsController = ConnectionsController();
+
 export default Object.freeze(connectionsController);

@@ -4,11 +4,11 @@ import React, {
 } from 'react';
 import { useHistory } from 'react-router-dom';
 import { useController } from 'hooks/index';
-
 import shuffle from 'lodash/shuffle';
-// import isEqual from 'lodash/isEqual';
-import { Layout } from '../../common/Layout';
 import { Button, Modal, PrimaryButton } from 'components/index';
+
+import { Layout } from '../../common/Layout';
+// import isEqual from 'lodash/isEqual';
 
 export const ConfirmPhrase = () => {
   const history = useHistory();
@@ -45,7 +45,7 @@ export const ConfirmPhrase = () => {
     controller.wallet.createWallet();
 
     history.push('/app.html');
-    
+
     setPassed(true);
   };
 
@@ -57,7 +57,7 @@ export const ConfirmPhrase = () => {
             {newList.map((phrase, idx) => (
               <Button
                 className="min-w-xs h-7 font-bold text-xs leading-4 flex items-center justify-center tracking-normal bg-brand-royalblue p-1 border border-brand-royalblue gap-4 rounded-md text-brand-white"
-                key={idx}
+                key={phrase}
                 type="button"
                 onClick={() => handleNewPhrase(idx)}
               >
@@ -69,7 +69,7 @@ export const ConfirmPhrase = () => {
             {orgList.map((phrase, idx) => (
               <Button
                 className="min-w-xs h-7 font-bold text-xs leading-4 flex items-center justify-center tracking-normal bg-bkg-2 p-1 border border-bkg-4 gap-4 rounded-md text-brand-white"
-                key={idx}
+                key={phrase}
                 type="button"
                 onClick={() => handleOrgPhrase(idx)}
               >
@@ -79,10 +79,7 @@ export const ConfirmPhrase = () => {
           </section>
 
           <div className="absolute bottom-12">
-            <PrimaryButton
-              type="button"
-              onClick={handleConfirm}
-            >
+            <PrimaryButton type="button" onClick={handleConfirm}>
               Validate
             </PrimaryButton>
           </div>

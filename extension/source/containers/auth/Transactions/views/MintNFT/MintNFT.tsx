@@ -1,11 +1,13 @@
 import React from 'react';
 import { useController } from 'hooks/index';
+
 import { SiteTransaction } from '../SiteTransaction';
 import { ConfirmTransaction } from '../index';
 
 export const MintNFTConfirm = () => {
   const controller = useController();
-  const temporaryTransaction = controller.wallet.account.getTemporaryTransaction('mintNFT');
+  const temporaryTransaction =
+    controller.wallet.account.getTemporaryTransaction('mintNFT');
 
   return (
     <ConfirmTransaction
@@ -19,15 +21,12 @@ export const MintNFTConfirm = () => {
   );
 };
 
-export const MintNFT = () => {
-  return (
-    <div>
-      <SiteTransaction
-        confirmRoute="/mintNFT/confirm"
-        temporaryTransactionAsString="mintNFT"
-        layoutTitle="Mint NFT"
-      />
-    </div>
-  );
-};
-
+export const MintNFT = () => (
+  <div>
+    <SiteTransaction
+      confirmRoute="/mintNFT/confirm"
+      temporaryTransactionAsString="mintNFT"
+      layoutTitle="Mint NFT"
+    />
+  </div>
+);

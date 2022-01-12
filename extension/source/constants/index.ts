@@ -1,13 +1,11 @@
-export const sys = require('syscoinjs-lib');
-
 export const STORE_PORT = 'SYSCOIN';
 
 export const SYS_NETWORK: {
   [networkId: string]: {
-    beUrl: string,
-    id: string,
-    label: string,
-  },
+    beUrl: string;
+    id: string;
+    label: string;
+  };
 } = {
   main: {
     id: 'main',
@@ -23,10 +21,10 @@ export const SYS_NETWORK: {
 
 export const ETH_NETWORK: {
   [networkId: string]: {
-    beUrl: string,
-    id: string,
-    label: string,
-  },
+    beUrl: string;
+    id: string;
+    label: string;
+  };
 } = {
   main: {
     id: 'main',

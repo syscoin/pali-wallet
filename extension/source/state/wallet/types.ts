@@ -15,7 +15,7 @@ export interface IAccountState {
 }
 
 export interface IAccountUpdateState {
-  assets: Assets[],
+  assets: Assets[];
   balance: number;
   id: number;
   transactions: Transaction[];
@@ -33,13 +33,13 @@ export interface IAccountUpdateXpub {
 }
 
 export interface Holding {
+  NFTID: string;
   assetGuid: string;
   balance: number;
   baseAssetID: string;
+  childAssetID: string;
   decimals: number;
   description: string;
-  NFTID: string;
-  childAssetID: string;
   symbol: string;
   type: string;
 }
@@ -70,26 +70,26 @@ export default interface IWalletState {
   activeNetwork: string;
   changingNetwork: boolean;
   confirmingTransaction: boolean;
+  currentBlockbookURL: string;
   encriptedMnemonic: any;
-  signingTransaction: boolean;
-  signingPSBT: boolean;
-  status: number;
-  tabs: Tabs;
-  walletTokens: IWalletTokenState[];
-  timer: number;
   networks: {
     [networkId: string]: {
-      beUrl: string,
-      id: string,
-      label: string,
-    },
+      beUrl: string;
+      id: string;
+      label: string;
+    };
   };
-  currentBlockbookURL: string;
-  trustedApps: {
-    [id: string]: string,
-  },
+  signingPSBT: boolean;
+  signingTransaction: boolean;
+  status: number;
+  tabs: Tabs;
   temporaryTransactionState: {
-    executing: boolean,
-    type: string
-  },
+    executing: boolean;
+    type: string;
+  };
+  timer: number;
+  trustedApps: {
+    [id: string]: string;
+  };
+  walletTokens: IWalletTokenState[];
 }

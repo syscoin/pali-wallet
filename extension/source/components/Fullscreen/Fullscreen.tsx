@@ -1,5 +1,6 @@
 import { useBrowser } from 'hooks/useBrowser';
 import React from 'react';
+
 import { Icon } from '..';
 
 export const Fullscreen = () => {
@@ -14,9 +15,7 @@ export const Fullscreen = () => {
     >
       <Icon name="desktop" className="text-brand-white mb-1" />
 
-      <p>
-        Go to fullscreen
-      </p>
+      <p>Go to fullscreen</p>
     </div>
   ) : null;
 };

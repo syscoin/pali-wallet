@@ -20,38 +20,32 @@ export const Layout: FC<ILayout> = ({
   accountHeader = false,
   normalHeader = false,
   tooltipText = '',
-}) => {
-  return (
-    <div className="flex flex-col justify-center gap-4 items-center">
-      <Header
-        onlySection={onlySection}
-        accountHeader={accountHeader}
-        normalHeader={normalHeader}
-      />
+}) => (
+  <div className="flex flex-col justify-center gap-4 items-center">
+    <Header
+      onlySection={onlySection}
+      accountHeader={accountHeader}
+      normalHeader={normalHeader}
+    />
 
-      <section>
-        {tooltipText ? (
-          <div className="flex justify-center items-center gap-2">
-            <span className="text-brand-royalblue font-bold text-xl text-center tracking-normal">
-              {title}
-            </span>
-
-            <Tooltip
-              content={tooltipText}
-            >
-              <QuestionCircleOutlined
-                className="inline-flex text-sm text-brand-graylight w-3"
-              />
-            </Tooltip>
-          </div>
-        ) : (
+    <section>
+      {tooltipText ? (
+        <div className="flex justify-center items-center gap-2">
           <span className="text-brand-royalblue font-bold text-xl text-center tracking-normal">
             {title}
           </span>
-        )}
-      </section>
 
-      <section>{children}</section>
-    </div>
-  );
-};
+          <Tooltip content={tooltipText}>
+            <QuestionCircleOutlined className="inline-flex text-sm text-brand-graylight w-3" />
+          </Tooltip>
+        </div>
+      ) : (
+        <span className="text-brand-royalblue font-bold text-xl text-center tracking-normal">
+          {title}
+        </span>
+      )}
+    </section>
+
+    <section>{children}</section>
+  </div>
+);

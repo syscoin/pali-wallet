@@ -3,15 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { Icon, IconButton, Button } from 'components/index';
 import { Disclosure } from '@headlessui/react';
 
-export const TransactionDetails = ({
-  transactionType,
-  transactionDetails
-}) => {
-  const {
-    formatDistanceDate,
-    ellipsis,
-    formatURL
-  } = useFormat();
+export const TransactionDetails = ({ transactionType, transactionDetails }) => {
+  const { formatDistanceDate, ellipsis, formatURL } = useFormat();
 
   const { activeNetwork } = useStore();
   const { useCopyClipboard } = useUtils();
@@ -36,7 +29,7 @@ export const TransactionDetails = ({
           if (item.addresses) {
             recipients[item.addresses[0]] = {
               address: item.addresses[0],
-              value: item.value
+              value: item.value,
             };
           }
         }
@@ -50,11 +43,11 @@ export const TransactionDetails = ({
             controller.wallet.account
               .getTransactionInfoByTxId(item.txid)
               .then((response: any) => {
-                for (const vout of response.vout) {
-                  if (vout.n === item.vout) {
+                for (const responseVout of response.vout) {
+                  if (responseVout.n === item.vout) {
                     senders[item.addresses[0]] = {
                       address: item.addresses[0],
-                      value: item.value
+                      value: item.value,
                     };
                   }
                 }
@@ -63,12 +56,12 @@ export const TransactionDetails = ({
         }
 
         if (vin.length > 1) {
-          console.log('vin > 1', vin, vout)
+          console.log('vin > 1', vin, vout);
           for (const item of vin) {
             if (item.addresses) {
               senders[item.addresses[0]] = {
                 address: item.addresses[0],
-                value: item.value
+                value: item.value,
               };
             }
           }
@@ -77,47 +70,45 @@ export const TransactionDetails = ({
         setNewRecipients(recipients);
         setNewSenders(senders);
 
-        console.log(copy)
+        console.log(copy);
       }
     }
   }, [transactionDetails]);
 
-  const renderAddresses = (list: any) => {
-    return Object.values(list).map(({ address, value }: any) => {
-      return (
-        <li
-          onClick={() => copyText(address)}
-          key={address}
-          className="flex justify-between mt-2 items-center gap-x-1 cursor-pointer rounded-lg transition-all duration-200 p-1 text-xs"
-        >
-          <p>
-            {ellipsis(address) || '...'}
-          </p>
+  const renderAddresses = (list: any) =>
+    Object.values(list).map(({ address, value: addressValue }: any) => (
+      <li
+        onClick={() => copyText(address)}
+        key={address}
+        className="flex justify-between mt-2 items-center gap-x-1 cursor-pointer rounded-lg transition-all duration-200 p-1 text-xs"
+      >
+        <p>{ellipsis(address) || '...'}</p>
 
-          <div>
-            <small>
-              {formatURL(String(Number(value) / 10 ** 8), 18) ? formatURL(String(Number(value) / 10 ** 8), 18) : 0}   {activeNetwork === 'main' ? 'SYS' : 'tSYS'}
-            </small>
+        <div>
+          <small>
+            {formatURL(String(Number(addressValue) / 10 ** 8), 18)
+              ? formatURL(String(Number(addressValue) / 10 ** 8), 18)
+              : 0}{' '}
+            {activeNetwork === 'main' ? 'SYS' : 'tSYS'}
+          </small>
 
-            <IconButton
-              onClick={() => copyText(address)}
-            >
-              <Icon name="copy" className="text-brand-white hover:text-fields-input-borderfocus" />
-            </IconButton>
-          </div>
-        </li>
-      );
-    });
-  };
+          <IconButton onClick={() => copyText(address)}>
+            <Icon
+              name="copy"
+              className="text-brand-white hover:text-fields-input-borderfocus"
+            />
+          </IconButton>
+        </div>
+      </li>
+    ));
 
-  const {
-    blockHash,
-    confirmations,
-    blockTime,
-    valueIn,
-    value,
-    fees,
-  } = transactionDetails;
+  const { blockHash, confirmations, blockTime, valueIn, value, fees } =
+    transactionDetails;
+
+  const checkNetwork = (checkValue: any) =>
+    activeNetwork === 'main'
+      ? `${checkValue / 10 ** 8} SYS`
+      : `${checkValue / 10 ** 8} tSYS`;
 
   const txData = [
     {
@@ -140,111 +131,103 @@ export const TransactionDetails = ({
     },
     {
       label: 'Total input',
-      value: valueIn ? (activeNetwork === 'main' ? `${valueIn / 10 ** 8} SYS` : `${valueIn / 10 ** 8} tSYS`) : '',
+      value: valueIn ? checkNetwork(valueIn) : '',
     },
     {
       label: 'Total output',
-      value: value ? (activeNetwork === 'main' ? `${value / 10 ** 8} SYS` : `${value / 10 ** 8} tSYS`) : '',
+      value: value ? checkNetwork(value) : '',
     },
     {
       label: 'Fees',
-      value: fees ? (activeNetwork === 'main' ? `${fees / 10 ** 8} SYS` : `${fees / 10 ** 8} tSYS`) : '',
+      value: fees ? checkNetwork(fees) : '',
     },
   ];
 
-
   return (
     <>
-      {txData.map(({ label, value }: any) => {
-        return (
-          <>
-            <div key={label} className="my-1 py-2 px-2 w-full border-b border-dashed border-bkg-2 cursor-default flex justify-between items-center transition-all duration-300 text-xs">
-              <p>{label}</p>
-              <b>{value}</b>
-            </div>
-          </>
-        );
-      })}
+      {txData.map(({ label, value: currentValue }: any) => (
+        <>
+          <div
+            key={label}
+            className="my-1 py-2 px-2 w-full border-b border-dashed border-bkg-2 cursor-default flex justify-between items-center transition-all duration-300 text-xs"
+          >
+            <p>{label}</p>
+            <b>{currentValue}</b>
+          </div>
+        </>
+      ))}
 
       {Object.values(newSenders).length > 0 && (
-        <Disclosure
-        >
+        <Disclosure>
           {({ open }) => (
             <>
               <Disclosure.Button
-                className={`${open ? 'rounded-t-md' : 'rounded-md'} mt-3 p-2 flex justify-between items-center  w-full border border-bkg-3 bg-bkg-1 cursor-pointer transition-all duration-300 text-xs`}
+                className={`${
+                  open ? 'rounded-t-md' : 'rounded-md'
+                } mt-3 p-2 flex justify-between items-center  w-full border border-bkg-3 bg-bkg-1 cursor-pointer transition-all duration-300 text-xs`}
               >
                 From
-
                 <Icon
-                  name="select-up"
-                  className={`${open ?
-                    'transform rotate-180' :
-                    ''
-                    } mb-1 text-brand-white`}
+                  name="select-down"
+                  className={`${
+                    open ? 'transform rotate-180' : ''
+                  } mb-1 text-brand-white`}
                 />
               </Disclosure.Button>
 
-
               <Disclosure.Panel>
-                <div
-                  className="px-2 pb-2 rounded-lg w-full border border-bkg-4 bg-bkg-3 flex flex-col transition-all duration-300 text-sm text-brand-white border-t-0 rounded-t-none"
-                >
-                  {Object.values(newSenders).length && renderAddresses(newSenders)}
+                <div className="px-2 pb-2 rounded-lg w-full border border-bkg-4 bg-bkg-3 flex flex-col transition-all duration-300 text-sm text-brand-white border-t-0 rounded-t-none">
+                  {Object.values(newSenders).length &&
+                    renderAddresses(newSenders)}
                 </div>
               </Disclosure.Panel>
-
             </>
           )}
         </Disclosure>
       )}
 
       {Object.values(newRecipients).length > 0 && (
-        <Disclosure
-        >
+        <Disclosure>
           {({ open }) => (
             <>
               <Disclosure.Button
-                className={`${open ? 'rounded-t-md' : 'rounded-md'} mt-3 p-2 flex justify-between items-center  w-full border border-bkg-3 bg-bkg-1 cursor-pointer transition-all duration-300 text-xs`}
+                className={`${
+                  open ? 'rounded-t-md' : 'rounded-md'
+                } mt-3 p-2 flex justify-between items-center  w-full border border-bkg-3 bg-bkg-1 cursor-pointer transition-all duration-300 text-xs`}
               >
                 To
-
                 <Icon
-                  name="select-up"
-                  className={`${open ?
-                    'transform rotate-180' :
-                    ''
-                    } mb-1 text-brand-white`}
+                  name="select-down"
+                  className={`${
+                    open ? 'transform rotate-180' : ''
+                  } mb-1 text-brand-white`}
                 />
               </Disclosure.Button>
 
-
               <Disclosure.Panel>
-                <div
-                  className="px-2 pb-2 rounded-lg w-full border border-bkg-4 bg-bkg-3 flex flex-col transition-all duration-300 text-sm text-brand-white border-t-0 rounded-t-none"
-                >
-                  {Object.values(newRecipients).length && renderAddresses(newRecipients)}
+                <div className="px-2 pb-2 rounded-lg w-full border border-bkg-4 bg-bkg-3 flex flex-col transition-all duration-300 text-sm text-brand-white border-t-0 rounded-t-none">
+                  {Object.values(newRecipients).length &&
+                    renderAddresses(newRecipients)}
                 </div>
               </Disclosure.Panel>
-
             </>
           )}
         </Disclosure>
       )}
 
       <div className="bg-bkg-3 fixed gap-x-6 p-4 bottom-0 left-0 text-xs flex justify-between items-center">
-        <p>
-          Would you like to go to view transaction on SYS Block Explorer?
-        </p>
+        <p>Would you like to go to view transaction on SYS Block Explorer?</p>
 
         <Button
           type="button"
-          onClick={() => window.open(`${sysExplorer}/tx/${transactionDetails.txid}`)}
+          onClick={() =>
+            window.open(`${sysExplorer}/tx/${transactionDetails.txid}`)
+          }
           className="inline-flex justify-center px-6 py-1 text-sm font-medium hover:text-brand-royalblue text-brand-white bg-transparent border border-brand-white rounded-full hover:bg-button-popuphover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
         >
           Go
         </Button>
       </div>
     </>
-  )
-}
+  );
+};

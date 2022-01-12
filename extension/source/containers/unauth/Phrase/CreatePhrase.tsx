@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import { useHistory } from 'react-router-dom';
-import { PrimaryButton } from 'components/index';;
+import { PrimaryButton } from 'components/index';
 import { useController } from 'hooks/index';
 import { Layout } from 'containers/common/Layout';
 
@@ -26,7 +26,7 @@ export const CreatePhrase: FC = () => {
             {phrases.split(' ').map((phrase: string, index: number) => (
               <li
                 className="font-poppins font-light text-sm leading-8 tracking-normal text-brand-graylight border-dashed border-b border-brand-graylight text-left w-32"
-                key={index}
+                key={phrase}
               >
                 <span className="w-6 inline-block text-brand-royalblue">
                   {String(index + 1).padStart(2, '0')}
@@ -39,11 +39,7 @@ export const CreatePhrase: FC = () => {
         )}
 
         <div className="absolute bottom-12">
-          <PrimaryButton
-            type="button"
-            width="56"
-            onClick={nextHandler}
-          >
+          <PrimaryButton type="button" width="56" onClick={nextHandler}>
             I've written it down
           </PrimaryButton>
         </div>

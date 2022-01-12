@@ -1,12 +1,20 @@
 import React, { useState } from 'react';
 import { AuthViewLayout } from 'containers/common/Layout';
-import { SecondaryButton, Modal } from 'components/index';;
-import { useController, useStore, useUtils, useFormat, useAccount, useBrowser, useTransaction } from 'hooks/index';
+import { SecondaryButton, Modal } from 'components/index';
+import {
+  useController,
+  useStore,
+  useUtils,
+  useFormat,
+  useAccount,
+  useBrowser,
+  useTransaction,
+} from 'hooks/index';
 
 export const SendConfirm = () => {
   const controller = useController();
   const { activeAccount } = useAccount();
-  const { alert } = useUtils();
+  const { alert, history } = useUtils();
   const { confirmingTransaction } = useStore();
   const { browser } = useBrowser();
   const { handleCancelTransactionOnSite } = useTransaction();
@@ -14,7 +22,6 @@ export const SendConfirm = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
-  const { history } = useUtils();
   const { ellipsis, formatURL } = useFormat();
 
   const tempTx = controller.wallet.account.getTemporaryTransaction('sendAsset');
@@ -28,18 +35,19 @@ export const SendConfirm = () => {
       try {
         const callback = controller.wallet.account.confirmSendAssetTransaction;
 
-        console.log('item asset send', tempTx)
+        console.log('item asset send', tempTx);
 
-        const response = await controller.wallet.account.confirmTemporaryTransaction({
-          type: 'sendAsset',
-          callback,
-        });
+        const response =
+          await controller.wallet.account.confirmTemporaryTransaction({
+            type: 'sendAsset',
+            callback,
+          });
 
-        console.log(response)
+        console.log(response);
 
         if (response) {
           alert.removeAll();
-          alert.error('Can\'t complete transaction. Try again later.');
+          alert.error("Can't complete transaction. Try again later.");
 
           if (confirmingTransaction) {
             browser.runtime.sendMessage({
@@ -47,7 +55,7 @@ export const SendConfirm = () => {
               target: 'background',
               transactionError: true,
               invalidParams: false,
-              message: `TransactionError: ${response}`
+              message: `TransactionError: ${response}`,
             });
 
             setTimeout(() => {
@@ -63,24 +71,29 @@ export const SendConfirm = () => {
           target: 'background',
           transactionError: false,
           invalidParams: false,
-          message: 'Everything is fine, transaction completed.'
+          message: 'Everything is fine, transaction completed.',
         });
 
         setConfirmed(true);
         setLoading(false);
       } catch (error: any) {
-        console.log('error', error)
+        console.log('error', error);
 
         if (activeAccount) {
           if (error && tempTx.fee > recommendedFee) {
             alert.removeAll();
-            alert.error(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
+            alert.error(
+              `${formatURL(
+                String(error.message),
+                166
+              )} Please, reduce fees to send transaction.`
+            );
           }
 
           if (error && tempTx.fee <= recommendedFee) {
-            const max = 100 * tempTx.amount / activeAccount?.balance;
+            const max = (100 * tempTx.amount) / activeAccount?.balance;
 
-            if (tempTx.amount >= (max * tempTx.amount / 100)) {
+            if (tempTx.amount >= (max * tempTx.amount) / 100) {
               alert.removeAll();
               alert.error(error.message);
 
@@ -90,7 +103,7 @@ export const SendConfirm = () => {
             }
 
             alert.removeAll();
-            alert.error('Can\'t complete transaction. Try again later.');
+            alert.error("Can't complete transaction. Try again later.");
           }
 
           if (confirmingTransaction) {
@@ -99,7 +112,7 @@ export const SendConfirm = () => {
               target: 'background',
               transactionError: true,
               invalidParams: false,
-              message: `TransactionError: ${error}`
+              message: `TransactionError: ${error}`,
             });
 
             setTimeout(() => {
@@ -111,7 +124,7 @@ export const SendConfirm = () => {
         }
       }
     }
-  }
+  };
 
   return (
     <AuthViewLayout title="SEND SYS">
@@ -132,33 +145,36 @@ export const SendConfirm = () => {
             <span className="text-brand-royalblue font-thin font-poppins">
               Send
             </span>
-
-            {tempTx.amount} {tempTx.token ? tempTx.token.symbol : 'SYS'}
-          </p >
+            {tempTx.amount}
+            {tempTx.token ? tempTx.token.symbol : 'SYS'}
+          </p>
 
           <div className="w-full flex justify-center divide-y divide-dashed divide-bkg-3 items-start flex-col gap-3 py-2 px-4 text-sm mt-4 text-left">
             <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
               From
-
-              <span className="text-brand-white">{ellipsis(tempTx.fromAddress, 7, 15)}</span>
+              <span className="text-brand-white">
+                {ellipsis(tempTx.fromAddress, 7, 15)}
+              </span>
             </p>
 
             <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
               To
-
-              <span className="text-brand-white">{ellipsis(tempTx.toAddress, 7, 15)}</span>
+              <span className="text-brand-white">
+                {ellipsis(tempTx.toAddress, 7, 15)}
+              </span>
             </p>
 
             <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
               Fee
-
               <span className="text-brand-white">{tempTx.fee}</span>
             </p>
 
             <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
               Max total
-
-              <span className="text-brand-white">{Number(tempTx.fee) + Number(tempTx.amount)} SYS</span>
+              <span className="text-brand-white">
+                {Number(tempTx.fee) + Number(tempTx.amount)}
+                SYS
+              </span>
             </p>
           </div>
 
@@ -173,6 +189,6 @@ export const SendConfirm = () => {
           </div>
         </div>
       )}
-    </AuthViewLayout >
-  )
+    </AuthViewLayout>
+  );
 };

@@ -1,11 +1,13 @@
 import React from 'react';
 import { useController } from 'hooks/index';
+
 import { SiteTransaction } from '../SiteTransaction';
 import { ConfirmTransaction } from '../index';
 
 export const CreateTokenConfirm = () => {
   const controller = useController();
-  const temporaryTransaction = controller.wallet.account.getTemporaryTransaction('newAsset');
+  const temporaryTransaction =
+    controller.wallet.account.getTemporaryTransaction('newAsset');
 
   return (
     <ConfirmTransaction
@@ -19,14 +21,12 @@ export const CreateTokenConfirm = () => {
   );
 };
 
-export const Create = () => {
-  return (
-    <div>
-      <SiteTransaction
-        confirmRoute="/create/confirm"
-        temporaryTransactionAsString="newAsset"
-        layoutTitle="Create token"
-      />
-    </div>
-  );
-};
+export const Create = () => (
+  <div>
+    <SiteTransaction
+      confirmRoute="/create/confirm"
+      temporaryTransactionAsString="newAsset"
+      layoutTitle="Create token"
+    />
+  </div>
+);

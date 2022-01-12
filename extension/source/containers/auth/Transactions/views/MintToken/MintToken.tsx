@@ -1,11 +1,13 @@
 import React from 'react';
 import { useController } from 'hooks/index';
+
 import { SiteTransaction } from '../SiteTransaction';
 import { ConfirmTransaction } from '../index';
 
 export const MintTokenConfirm = () => {
   const controller = useController();
-  const temporaryTransaction = controller.wallet.account.getTemporaryTransaction('mintAsset');
+  const temporaryTransaction =
+    controller.wallet.account.getTemporaryTransaction('mintAsset');
 
   return (
     <ConfirmTransaction
@@ -19,12 +21,10 @@ export const MintTokenConfirm = () => {
   );
 };
 
-export const MintToken = () => {
-  return (
-    <SiteTransaction
-      confirmRoute="/issueAsset/confirm"
-      temporaryTransactionAsString="mintAsset"
-      layoutTitle="Mint token"
-    />
-  );
-};
+export const MintToken = () => (
+  <SiteTransaction
+    confirmRoute="/issueAsset/confirm"
+    temporaryTransactionAsString="mintAsset"
+    layoutTitle="Mint token"
+  />
+);

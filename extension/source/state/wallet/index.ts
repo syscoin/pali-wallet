@@ -1,5 +1,7 @@
 import { SYS_NETWORK } from 'constants/index';
+
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { Transaction } from 'types/transactions';
 
 import IWalletState, {
   IAccountUpdateState,
@@ -8,7 +10,6 @@ import IWalletState, {
   IAccountUpdateXpub,
   IWalletTokenState,
 } from './types';
-import { Transaction } from 'types/transactions';
 
 const getHost = (url: string) => {
   if (typeof url === 'string' && url !== '') {
@@ -59,7 +60,7 @@ const initialState: IWalletState = {
   },
   temporaryTransactionState: {
     executing: false,
-    type: ''
+    type: '',
   },
 };
 
@@ -67,18 +68,15 @@ const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
-    updateBlockbookURL(state: IWalletState, action: PayloadAction<string>) {
-      return {
-        ...state,
-        currentBlockbookURL: action.payload
-      };
-    },
-    updateNetwork(state: IWalletState, action: PayloadAction<any>) {
+    updateNetwork(
+      state: IWalletState,
+      action: PayloadAction<{ beUrl: string; id: any; label: string }>
+    ) {
       return {
         ...state,
         networks: {
           ...state.networks,
-          [action.payload.id]: action.payload
+          [action.payload.id]: action.payload,
         },
       };
     },
@@ -88,20 +86,16 @@ const WalletState = createSlice({
         timer: action.payload,
       };
     },
-    updateAllTokens(
-      state: IWalletState,
-      action: PayloadAction<IWalletTokenState>
-    ) {
+    updateAllTokens(state, action: PayloadAction<IWalletTokenState>) {
       const { accountId, accountXpub, tokens, holdings, mintedTokens } =
         action.payload;
 
       const sameAccountIndexAndDifferentXpub: number =
-        state.walletTokens.findIndex((accountTokens: any) => {
-          return (
+        state.walletTokens.findIndex(
+          (accountTokens: any) =>
             accountTokens.accountId === accountId &&
             accountTokens.accountXpub !== accountXpub
-          );
-        });
+        );
 
       if (sameAccountIndexAndDifferentXpub > -1) {
         state.walletTokens[sameAccountIndexAndDifferentXpub] = action.payload;
@@ -110,12 +104,9 @@ const WalletState = createSlice({
       }
 
       const index: number = state.walletTokens.findIndex(
-        (accountTokens: any) => {
-          return (
-            accountTokens.accountId === accountId &&
-            accountTokens.accountXpub === accountXpub
-          );
-        }
+        (accountTokens: any) =>
+          accountTokens.accountId === accountId &&
+          accountTokens.accountXpub === accountXpub
       );
 
       const walletTokens = state.walletTokens[index];
@@ -154,8 +145,8 @@ const WalletState = createSlice({
         ...state,
         temporaryTransactionState: {
           executing: false,
-          type: ''
-        }
+          type: '',
+        },
       };
     },
     updateSwitchNetwork(state: IWalletState, action: PayloadAction<boolean>) {
@@ -164,6 +155,8 @@ const WalletState = createSlice({
         changingNetwork: action.payload,
       };
     },
+    // TODO: create handle for 2 types of send asset (site and extension)
+    // and remove calls for confirmingtransaction
     updateCanConfirmTransaction(
       state: IWalletState,
       action: PayloadAction<boolean>
@@ -173,12 +166,15 @@ const WalletState = createSlice({
         confirmingTransaction: action.payload,
       };
     },
-    setTemporaryTransactionState(state: IWalletState, action: PayloadAction<{ executing: boolean, type: string }>) {
+    setTemporaryTransactionState(
+      state: IWalletState,
+      action: PayloadAction<{ executing: boolean; type: string }>
+    ) {
       return {
         ...state,
         temporaryTransactionState: {
           executing: action.payload.executing,
-          type: action.payload.type
+          type: action.payload.type,
         },
       };
     },
@@ -204,40 +200,46 @@ const WalletState = createSlice({
     },
     updateConnectionsArray(
       state: IWalletState,
-      action: PayloadAction<{ accountId: number, url: string }>
+      action: PayloadAction<{ accountId: number; url: string }>
     ) {
       const { accounts, tabs } = state;
       const { accountId, url } = action.payload;
 
-      const accountIndex = tabs.connections.findIndex((connection: any) => {
-        return connection.accountId === accountId; 
-      });
+      const accountIndex = tabs.connections.findIndex(
+        (connection: any) => connection.accountId === accountId
+      );
 
-      const currentAccountIndex = accounts.findIndex((account: IAccountState) => {
-        return account.id === accountId;
-      })
+      const currentAccountIndex = accounts.findIndex(
+        (account: IAccountState) => account.id === accountId
+      );
 
-      const urlIndex = tabs.connections.findIndex((connection: any) => {
-        return connection.url === getHost(url);
-      });
+      const urlIndex = tabs.connections.findIndex(
+        (connection: any) => connection.url === getHost(url)
+      );
 
       if (tabs.connections[urlIndex]) {
-        const accountIdConnected = accounts.findIndex((account: IAccountState) => {
-          return account.id === tabs.connections[urlIndex].accountId;
-        });
+        const accountIdConnected = accounts.findIndex(
+          (account: IAccountState) =>
+            account.id === tabs.connections[urlIndex].accountId
+        );
 
         if (accountIdConnected > -1) {
-          const connectedToIndex = accounts[accountIdConnected].connectedTo.findIndex((connectedURL: string) => {
-            return connectedURL === getHost(url);
-          });
-  
+          const connectedToIndex = accounts[
+            accountIdConnected
+          ].connectedTo.findIndex(
+            (connectedURL: string) => connectedURL === getHost(url)
+          );
+
           if (connectedToIndex > -1) {
-            accounts[accountIdConnected].connectedTo.splice(connectedToIndex, 1);
+            accounts[accountIdConnected].connectedTo.splice(
+              connectedToIndex,
+              1
+            );
 
             tabs.connections[urlIndex] = {
               ...tabs.connections[urlIndex],
               accountId,
-            }
+            };
 
             accounts[currentAccountIndex].connectedTo.push(getHost(url));
           }
@@ -253,7 +255,7 @@ const WalletState = createSlice({
 
         tabs.connections.push({
           accountId,
-          url: getHost(url)
+          url: getHost(url),
         });
 
         accounts[currentAccountIndex].connectedTo.push(getHost(url));
@@ -268,12 +270,13 @@ const WalletState = createSlice({
 
       accounts[currentAccountIndex].connectedTo.push(getHost(url));
     },
+    // TODO: refactor and use to use an easier way to know if the wallet can connect (provider)
     updateCanConnect(state: IWalletState, action: PayloadAction<boolean>) {
       return {
         ...state,
         tabs: {
           ...state.tabs,
-          canConnect: action.payload
+          canConnect: action.payload,
         },
       };
     },
@@ -282,8 +285,8 @@ const WalletState = createSlice({
         ...state,
         tabs: {
           ...state.tabs,
-          currentURL: action.payload
-        }
+          currentURL: action.payload,
+        },
       };
     },
     setSenderURL(state: IWalletState, action: PayloadAction<string>) {
@@ -291,7 +294,7 @@ const WalletState = createSlice({
         ...state,
         tabs: {
           ...state.tabs,
-          currentSenderURL: action.payload
+          currentSenderURL: action.payload,
         },
       };
     },
@@ -335,7 +338,6 @@ const WalletState = createSlice({
       state.tabs.connections.splice(connectionIndex, 1);
       state.accounts.splice(accountIndex, 1);
     },
-
     removeAccounts(state: IWalletState) {
       state.accounts = [];
       state.activeAccountId = 0;
@@ -352,6 +354,7 @@ const WalletState = createSlice({
         ...action.payload,
       };
     },
+
     updateAccountAddress(
       state: IWalletState,
       action: PayloadAction<IAccountUpdateAddress>
@@ -384,7 +387,7 @@ const WalletState = createSlice({
         currentSenderURL: '',
         currentURL: '',
         canConnect: false,
-        connections: []
+        connections: [],
       };
       state.confirmingTransaction = false;
       state.signingPSBT = false;
@@ -401,7 +404,7 @@ const WalletState = createSlice({
     },
     updateTransactions(
       state: IWalletState,
-      action: PayloadAction<{ id: number, txs: Transaction[] }>
+      action: PayloadAction<{ id: number; txs: Transaction[] }>
     ) {
       const indexOf = state.accounts.findIndex(
         (element: IAccountState) => element.id === action.payload.id
@@ -411,7 +414,7 @@ const WalletState = createSlice({
     },
     updateLabel(
       state: IWalletState,
-      action: PayloadAction<{ id: number, label: string }>
+      action: PayloadAction<{ id: number; label: string }>
     ) {
       const indexOf = state.accounts.findIndex(
         (element: IAccountState) => element.id === action.payload.id
@@ -447,7 +450,7 @@ export const {
   updateAllTokens,
   setTimer,
   updateNetwork,
-  setTemporaryTransactionState
+  setTemporaryTransactionState,
 } = WalletState.actions;
 
 export default WalletState.reducer;

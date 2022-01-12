@@ -18,8 +18,6 @@ const DeleteWalletView = () => {
       controller.wallet.deleteWallet(data.password);
 
       history.push('/app.html');
-
-      return;
     }
   };
 
@@ -29,7 +27,9 @@ const DeleteWalletView = () => {
     <AuthViewLayout title="DELETE WALLET">
       <InfoCard>
         <p>
-          <b className="text-warning-info">WARNING:</b> This will delete the wallet created with your current seed phrase. If in the future you want to use Pali again, you will need to create a new wallet.
+          <b className="text-warning-info">WARNING:</b> This will delete the
+          wallet created with your current seed phrase. If in the future you
+          want to use Pali again, you will need to create a new wallet.
         </p>
       </InfoCard>
 
@@ -54,7 +54,7 @@ const DeleteWalletView = () => {
                 required: true,
                 message: '',
               },
-              ({ }) => ({
+              () => ({
                 validator(_, value) {
                   const seed = controller.wallet.getPhrase(value);
 
@@ -62,19 +62,18 @@ const DeleteWalletView = () => {
                     return Promise.resolve();
                   }
 
-                  return Promise.reject('');
+                  return Promise.reject();
                 },
               }),
             ]}
           >
-            <Input.Password
-              placeholder="Enter your password"
-            />
+            <Input.Password placeholder="Enter your password" />
           </Form.Item>
 
           {activeAccount && activeAccount.balance > 0 && (
             <p className="leading-4 text-left max-w-xs text-xs">
-              You still have funds in your wallet. Paste your seed phrase below to delete wallet.
+              You still have funds in your wallet. Paste your seed phrase below
+              to delete wallet.
             </p>
           )}
 
@@ -90,21 +89,27 @@ const DeleteWalletView = () => {
                 },
                 ({ getFieldValue }) => ({
                   validator(_, value) {
-                    const seed = controller.wallet.getPhrase(getFieldValue('password'));
+                    const seed = controller.wallet.getPhrase(
+                      getFieldValue('password')
+                    );
 
-                    setSeedIsValid(seed === value)
+                    setSeedIsValid(seed === value);
 
                     if (seed === value) {
                       return Promise.resolve();
                     }
 
-                    return Promise.reject('');
+                    return Promise.reject();
                   },
                 }),
               ]}
             >
               <TextArea
-                className={`${!seedIsValid && form.getFieldValue('seed') ? 'border-warning-error' : 'border-fields-input-border'} bg-bkg-4 border border-bkg-4 text-sm outline-none rounded-lg p-5`}
+                className={`${
+                  !seedIsValid && form.getFieldValue('seed')
+                    ? 'border-warning-error'
+                    : 'border-fields-input-border'
+                } bg-bkg-4 border border-bkg-4 text-sm outline-none rounded-lg p-5`}
                 placeholder="Paste your wallet seed phrase"
               />
             </Form.Item>

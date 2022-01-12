@@ -3,7 +3,7 @@ import 'emoji-log';
 import { STORE_PORT } from 'constants/index';
 
 import { wrapStore } from 'webext-redux';
-import Bowser from "bowser";
+import Bowser from 'bowser';
 import { browser } from 'webextension-polyfill-ts';
 import store from 'state/store';
 import {
@@ -36,116 +36,14 @@ if (!window.controller) {
 
 let timeout: any;
 
-const restartLockTimeout = () => {
-  const {
-    temporaryTransactionState,
-    timer
-  } = store.getState().wallet;
-
-  if (timeout) {
-    clearTimeout(timeout);
-  }
-
-  timeout = setTimeout(() => {
-    if (
-      !checkIsLocked()
-      && temporaryTransactionState.executing
-    ) {
-      window.controller.wallet.logOut();
-
-      setTimeout(() => closePopup(), 2000);
-
-      return;
-    }
-
-    console.log('can\'t lock automatically - wallet is under transaction');
-  }, timer * 60 * 1000);
-};
-
-const getTabs = async (options: any) => {
-  return await browser.tabs.query(options);
-};
-
-const getConnectedAccountIndex = ({ match }: any) => {
-  return store.getState().wallet.accounts.findIndex((account: IAccountState) => {
-    return account.connectedTo.find((url: string) => {
-      return url === match;
-    })
-  });
-};
-
-const checkIsLocked = () => {
-  return window.controller.wallet.isLocked();
-};
-
-const checkToCallPrivateMethods = () => {
-  if (checkIsLocked() || getConnectedAccountIndex({ match: new URL(store.getState().wallet.tabs.currentURL).host }) === -1) {
-    return {
-      error: true,
-      message: 'Please, check if your wallet is unlocked and connected and try again.'
-    }
-  }
-
-  return {
-    error: false,
-    message: null
-  }
-};
-
-const runtimeSendMessageToTabs = async ({ tabId, messageDetails }: any) => {
-  return await browser.tabs.sendMessage(Number(tabId), messageDetails);
-}
-
-const updateActiveWindow = async ({ windowId, options }: any) => {
-  return await browser.windows.update(Number(windowId), options);
-}
-
-const observeStore = async (store: any) => {
-  let currentState: any;
-
-  const handleChange = async () => {
-    const nextState = store.getState();
-
-    if (nextState !== currentState) {
-      currentState = nextState;
-
-      const tabs: any = await getTabs({ active: true, windowType: 'normal' });
-
-      for (const tab of tabs) {
-        if (tab) {
-          if (getConnectedAccountIndex({ match: new URL(String(tab.url)).host }) >= 0) {
-            try {
-              await runtimeSendMessageToTabs({
-                tabId: Number(tab.id),
-                messageDetails: {
-                  type: 'WALLET_UPDATED',
-                  target: 'contentScript',
-                  connected: false
-                }
-              });
-            } catch (error) {
-              console.log('error', error);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  const unsubscribe = store.subscribe(handleChange);
-
-  await handleChange();
-
-  return unsubscribe;
-};
-
-observeStore(store);
+const checkIsLocked = () => window.controller.wallet.isLocked();
 
 const closePopup = () => {
   store.dispatch(updateCanConnect(false));
   store.dispatch(clearAllTransactions());
 
-  browser.tabs.query({ active: true })
+  browser.tabs
+    .query({ active: true })
     .then(async (tabs) => {
       tabs.map(async (tab) => {
         if (tab.title === 'Pali Wallet') {
@@ -156,9 +54,106 @@ const closePopup = () => {
     .catch((error) => {
       console.log('error removing window', error);
     });
+};
 
-  return;
-}
+const restartLockTimeout = () => {
+  const { temporaryTransactionState, timer } = store.getState().wallet;
+
+  if (timeout) {
+    clearTimeout(timeout);
+  }
+
+  timeout = setTimeout(() => {
+    if (!checkIsLocked() && temporaryTransactionState.executing) {
+      window.controller.wallet.logOut();
+
+      setTimeout(() => closePopup(), 2000);
+
+      return;
+    }
+
+    console.log("can't lock automatically - wallet is under transaction");
+  }, timer * 60 * 1000);
+};
+
+const getTabs = (options: any) => browser.tabs.query(options);
+
+const getConnectedAccountIndex = ({ match }: any) =>
+  store
+    .getState()
+    .wallet.accounts.findIndex((account: IAccountState) =>
+      account.connectedTo.find((url: string) => url === match)
+    );
+
+const checkToCallPrivateMethods = () => {
+  if (
+    checkIsLocked() ||
+    getConnectedAccountIndex({ match: new URL(store.getState().wallet.tabs.currentURL).host }) === -1
+  ) {
+    return {
+      error: true,
+      message:
+        'Please, check if your wallet is unlocked and connected and try again.',
+    };
+  }
+
+  return {
+    error: false,
+    message: null,
+  };
+};
+
+const runtimeSendMessageToTabs = ({ tabId, messageDetails }: any) =>
+  browser.tabs.sendMessage(Number(tabId), messageDetails);
+
+const updateActiveWindow = ({ windowId, options }: any) =>
+  browser.windows.update(Number(windowId), options);
+
+const observeStore = async (observedStore: any) => {
+  let currentState: any;
+
+  const handleChange = async () => {
+    const nextState = observedStore.getState();
+
+    if (nextState !== currentState) {
+      currentState = nextState;
+
+      const tabs: any = await getTabs({
+        active: true,
+        windowType: 'normal',
+      });
+
+      for (const tab of tabs) {
+        if (tab) {
+          if (
+            getConnectedAccountIndex({ match: new URL(String(tab.url)).host }) >= 0
+          ) {
+            try {
+              await runtimeSendMessageToTabs({
+                tabId: Number(tab.id),
+                messageDetails: {
+                  type: 'WALLET_UPDATED',
+                  target: 'contentScript',
+                  connected: false,
+                },
+              });
+            } catch (error) {
+              console.log('error', error);
+            }
+          }
+        }
+      }
+    }
+  };
+
+  const unsubscribe = observedStore.subscribe(handleChange);
+
+  await handleChange();
+
+  return unsubscribe;
+};
+
+observeStore(store);
 
 const createPopup = async (url: string) => {
   const [tab]: any = await getTabs({ active: true, lastFocusedWindow: true });
@@ -171,17 +166,13 @@ const createPopup = async (url: string) => {
 
   const [sysWalletPopup]: any = await getTabs({ url: browser.runtime.getURL('app.html') });
 
-  console.log('sysWalletpopup exists', sysWalletPopup)
-
   if (sysWalletPopup) {
-    console.log('sys wallet popup active update window', sysWalletPopup)
-
     await updateActiveWindow({
       windowId: Number(sysWalletPopup.windowId),
       options: {
         drawAttention: true,
-        focused: true
-      }
+        focused: true,
+      },
     });
 
     return;
@@ -189,7 +180,7 @@ const createPopup = async (url: string) => {
 
   const sysPopup = await browser.windows.create({
     url,
-    type: "popup",
+    type: 'popup',
     height: 600,
     width: 372,
     left: 900,
@@ -201,57 +192,79 @@ const createPopup = async (url: string) => {
 
 browser.windows.onRemoved.addListener((windowId: any) => {
   if (windowId > -1 && windowId === window.syspopup) {
-    console.log('clearing all transactions')
+    console.log('clearing all transactions');
 
     store.dispatch(clearAllTransactions());
   }
-})
+});
 
 browser.runtime.onMessage.addListener(async (request, sender) => {
-  const {
-    type,
-    target
-  } = request;
+  const { type, target } = request;
 
   let tabId: any;
 
-  const tabs = await getTabs({});
+  const allTabs = await getTabs({});
 
-  const [tab]: any = await getTabs({ active: true, windowType: 'normal' });
+  const [currentTab]: any = await getTabs({
+    active: true,
+    windowType: 'normal',
+  });
 
-  if (tab) {
-    if (getConnectedAccountIndex({ match: new URL(String(tab.url)).host }) >= 0) {
-      tabId = tab.id;
+  if (currentTab) {
+    if (
+      getConnectedAccountIndex({ match: new URL(String(currentTab.url)).host }) >= 0
+    ) {
+      tabId = currentTab.id;
     }
   }
 
   if (typeof request === 'object') {
-    if (type == 'SET_MOUSE_MOVE' && target == 'background') {
+    if (type === 'SET_MOUSE_MOVE' && target === 'background') {
       restartLockTimeout();
     }
 
-    if (type == 'WALLET_ERROR' && target == 'background') {
-      const {
-        transactionError,
-        invalidParams,
-        message
-      } = request;
+    if (type === 'WALLET_ERROR' && target === 'background') {
+      const { transactionError, invalidParams, message } = request;
 
-      runtimeSendMessageToTabs({ tabId, messageDetails: { type: 'WALLET_ERROR', target: 'contentScript', transactionError, invalidParams, message } });
+      runtimeSendMessageToTabs({
+        tabId,
+        messageDetails: {
+          type: 'WALLET_ERROR',
+          target: 'contentScript',
+          transactionError,
+          invalidParams,
+          message,
+        },
+      });
     }
 
-    if (type == 'TRANSACTION_RESPONSE' && target == 'background') {
-      runtimeSendMessageToTabs({ tabId, messageDetails: { type: 'TRANSACTION_RESPONSE', target: 'contentScript', response: request.response } });
+    if (type === 'TRANSACTION_RESPONSE' && target === 'background') {
+      runtimeSendMessageToTabs({
+        tabId,
+        messageDetails: {
+          type: 'TRANSACTION_RESPONSE',
+          target: 'contentScript',
+          response: request.response,
+        },
+      });
 
       const interval = setInterval(async () => {
         if (request.response.txid) {
-          const data = await window.controller.wallet.account.getTransactionInfoByTxId(request.response.txid);
+          const data =
+            await window.controller.wallet.account.getTransactionInfoByTxId(
+              request.response.txid
+            );
 
-          console.log('updating tokens state using txid: ', request.response.txid)
+          console.log(
+            'updating tokens state using txid: ',
+            request.response.txid
+          );
 
           if (data.confirmations > 0) {
             window.controller.wallet.account.updateTokensState().then(() => {
-              window.controller.wallet.account.setHDSigner(store.getState().wallet.activeAccountId);
+              window.controller.wallet.account.setHDSigner(
+                store.getState().wallet.activeAccountId
+              );
             });
 
             clearInterval(interval);
@@ -260,75 +273,91 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       }, 6000);
     }
 
-    if (type == 'RESET_CONNECTION_INFO' && target == 'background') {
+    if (type === 'RESET_CONNECTION_INFO' && target === 'background') {
       const { id, url } = request;
 
       store.dispatch(updateCanConnect(false));
       store.dispatch(removeConnection({ accountId: id, url }));
       store.dispatch(setSenderURL(''));
 
-      browser.tabs.query({ url })
+      browser.tabs
+        .query({ url })
         .then((tabs) => {
           if (tabs) {
             tabs.map((tab: any) => {
-              Promise.resolve(browser.tabs.sendMessage(Number(tab.id), {
-                type: 'WALLET_UPDATED',
-                target: 'contentScript',
-                connected: false
-              }).then(() => {
-                console.log('wallet updated')
-              }).catch(() => {
-                console.log('extension context invalidated in other tabs with the same url, you need to refresh the tab')
-              }))
-            })
+              Promise.resolve(
+                browser.tabs
+                  .sendMessage(Number(tab.id), {
+                    type: 'WALLET_UPDATED',
+                    target: 'contentScript',
+                    connected: false,
+                  })
+                  .then(() => {
+                    console.log('wallet updated');
+                  })
+                  .catch(() => {
+                    console.log(
+                      'extension context invalidated in other tabs with the same url, you need to refresh the tab'
+                    );
+                  })
+              );
+            });
           }
-        }).catch((error) => {
+        })
+        .catch((error) => {
           console.log('error getting tabs', error);
         });
 
       return;
     }
 
-    if (type == 'SELECT_ACCOUNT' && target == 'background') {
-      store.dispatch(updateConnectionsArray({
-        accountId: request.id,
-        url: window.senderURL
-      }));
+    if (type === 'SELECT_ACCOUNT' && target === 'background') {
+      store.dispatch(
+        updateConnectionsArray({
+          accountId: request.id,
+          url: window.senderURL,
+        })
+      );
 
       return;
     }
 
-    if (type == 'CHANGE_CONNECTED_ACCOUNT' && target == 'background') {
-      store.dispatch(updateConnectionsArray({
-        accountId: request.id,
-        url: window.senderURL
-      }));
+    if (type === 'CHANGE_CONNECTED_ACCOUNT' && target === 'background') {
+      store.dispatch(
+        updateConnectionsArray({
+          accountId: request.id,
+          url: window.senderURL,
+        })
+      );
 
       return;
     }
 
-    if (type == 'CONFIRM_CONNECTION' && target == 'background') {
+    if (type === 'CONFIRM_CONNECTION' && target === 'background') {
       if (getHost(window.senderURL)) {
         store.dispatch(updateCanConnect(false));
 
-        for (let tab of tabs) {
-          browser.tabs.sendMessage(Number(tab.id), {
-            type: 'WALLET_CONNECTION_CONFIRMED',
-            target: 'contentScript',
-            connectionConfirmed: true,
-            state: store.getState().wallet
-          }).then(() => {
-            console.log('wallet connection confirmed')
-          }).catch((error) => {
-            console.log('error confirming connection', error);
-          });
+        for (const tab of allTabs) {
+          browser.tabs
+            .sendMessage(Number(tab.id), {
+              type: 'WALLET_CONNECTION_CONFIRMED',
+              target: 'contentScript',
+              connectionConfirmed: true,
+              state: store.getState().wallet,
+            })
+            .then(() => {
+              console.log('wallet connection confirmed');
+            })
+            .catch((error) => {
+              console.log('error confirming connection', error);
+            });
         }
       }
 
       return;
     }
 
-    if (type == 'CANCEL_TRANSACTION' && target == 'background') {
+    if (type === 'CANCEL_TRANSACTION' && target === 'background') {
       const { item } = request;
 
       store.dispatch(clearAllTransactions());
@@ -338,11 +367,11 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       return;
     }
 
-    if (type == 'CLOSE_POPUP' && target == 'background') {
+    if (type === 'CLOSE_POPUP' && target === 'background') {
       closePopup();
     }
 
-    if (type == 'SEND_STATE_TO_PAGE' && target == 'background') {
+    if (type === 'SEND_STATE_TO_PAGE' && target === 'background') {
       checkToCallPrivateMethods();
 
       const {
@@ -360,53 +389,68 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
       const copyAccounts: any = {};
 
-      for (const { address, id, balance, assets, isTrezorWallet, label, transactions, xpub } of accounts) {
+      for (const {
+        address,
+        id,
+        balance,
+        assets,
+        isTrezorWallet,
+        label,
+        transactions,
+        xpub,
+      } of accounts) {
         copyAccounts[id] = {
           address,
           balance,
           assets,
           id,
-          isTrezorWallet: isTrezorWallet,
-          label: label,
-          transactions: transactions,
-          xpub: xpub
-        }
+          isTrezorWallet,
+          label,
+          transactions,
+          xpub,
+        };
       }
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'SEND_STATE_TO_PAGE',
         target: 'contentScript',
-        state: getConnectedAccountIndex({ match: new URL(store.getState().wallet.tabs.currentURL).host }) > -1 && !window.controller.wallet.isLocked() ? {
-          status,
-          accounts: Object.values(copyAccounts),
-          activeAccountId,
-          activeNetwork,
-          confirmingTransaction,
-          mintNFT,
-          changingNetwork,
-          signingTransaction,
-          signingPSBT,
-          walletTokens,
-        } : null
+        state:
+          getConnectedAccountIndex({ match: new URL(store.getState().wallet.tabs.currentURL).host }) > -1 &&
+            !window.controller.wallet.isLocked()
+            ? {
+              status,
+              accounts: Object.values(copyAccounts),
+              activeAccountId,
+              activeNetwork,
+              confirmingTransaction,
+              mintNFT,
+              changingNetwork,
+              signingTransaction,
+              signingPSBT,
+              walletTokens,
+            }
+            : null,
       });
     }
 
-    if (type == 'CHECK_IS_LOCKED' && target == 'background') {
+    if (type === 'CHECK_IS_LOCKED' && target === 'background') {
       const isLocked = window.controller.wallet.isLocked();
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'CHECK_IS_LOCKED',
         target: 'contentScript',
-        isLocked
+        isLocked,
       });
     }
 
-    if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'background') {
-      const connectedAccount: any = store.getState().wallet.accounts.find((account: IAccountState) => {
-        return account.connectedTo.find((url) => {
-          return url === getHost(store.getState().wallet.tabs.currentURL)
-        });
-      });
+    if (type === 'SEND_CONNECTED_ACCOUNT' && target === 'background') {
+      const connectedAccount: any = store
+        .getState()
+        .wallet.accounts.find((account: IAccountState) =>
+          account.connectedTo.find(
+            (url) => url === getHost(store.getState().wallet.tabs.currentURL)
+          )
+        );
 
       let copyConnectedAccount: any = null;
 
@@ -419,88 +463,101 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
           isTrezorWallet: connectedAccount.isTrezorWallet,
           label: connectedAccount.label,
           transactions: connectedAccount.transactions,
-          xpub: connectedAccount.xpub
-        }
+          xpub: connectedAccount.xpub,
+        };
       }
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'SEND_CONNECTED_ACCOUNT',
         target: 'contentScript',
-        copyConnectedAccount
+        copyConnectedAccount,
       });
     }
 
-    if (type == 'CONNECTED_ACCOUNT_XPUB' && target == 'background') {
+    if (type === 'CONNECTED_ACCOUNT_XPUB' && target === 'background') {
       checkToCallPrivateMethods();
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'CONNECTED_ACCOUNT_XPUB',
         target: 'contentScript',
-        connectedAccountXpub: window.controller.wallet.account.getConnectedAccountXpub()
+        connectedAccountXpub:
+          window.controller.wallet.account.connectedAccountXpub,
       });
     }
 
-    if (type == 'CONNECTED_ACCOUNT_CHANGE_ADDRESS' && target == 'background') {
+    if (
+      type === 'CONNECTED_ACCOUNT_CHANGE_ADDRESS' &&
+      target === 'background'
+    ) {
       checkToCallPrivateMethods();
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
         target: 'contentScript',
-        connectedAccountChangeAddress: await window.controller.wallet.account.getChangeAddress()
+        connectedAccountChangeAddress:
+          await window.controller.wallet.account.getChangeAddress(),
       });
     }
 
-    if (type == 'CHECK_ADDRESS' && target == 'background') {
+    if (type === 'CHECK_ADDRESS' && target === 'background') {
       checkToCallPrivateMethods();
 
-      const isValidSYSAddress = window.controller.wallet.account.isValidSYSAddress(request.messageData, store.getState().wallet.activeNetwork, true);
+      const isValidSYSAddress =
+        window.controller.wallet.account.isValidSYSAddress(
+          request.messageData,
+          store.getState().wallet.activeNetwork,
+          true
+        );
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'CHECK_ADDRESS',
         target: 'contentScript',
-        isValidSYSAddress
+        isValidSYSAddress,
       });
     }
 
-    if (type == 'GET_HOLDINGS_DATA' && target == 'background') {
+    if (type === 'GET_HOLDINGS_DATA' && target === 'background') {
       checkToCallPrivateMethods();
 
-      const holdingsData = await window.controller.wallet.account.getHoldingsData();
+      const holdingsData =
+        await window.controller.wallet.account.getHoldingsData();
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'GET_HOLDINGS_DATA',
         target: 'contentScript',
-        holdingsData
+        holdingsData,
       });
-
     }
 
-    if (type == 'GET_USER_MINTED_TOKENS' && target == 'background') {
+    if (type === 'GET_USER_MINTED_TOKENS' && target === 'background') {
       checkToCallPrivateMethods();
 
-      const tokensMinted = await window.controller.wallet.account.getUserMintedTokens();
+      const tokensMinted =
+        await window.controller.wallet.account.getUserMintedTokens();
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'GET_USER_MINTED_TOKENS',
         target: 'contentScript',
-        userTokens: tokensMinted
+        userTokens: tokensMinted,
       });
     }
 
-    if (type == 'GET_ASSET_DATA' && target == 'background') {
+    if (type === 'GET_ASSET_DATA' && target === 'background') {
       checkToCallPrivateMethods();
 
-      const assetData = await window.controller.wallet.account.getDataAsset(request.messageData);
+      const assetData = await window.controller.wallet.account.getDataAsset(
+        request.messageData
+      );
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'GET_ASSET_DATA',
         target: 'contentScript',
-        assetData
+        assetData,
       });
     }
   }
 
-  if (type == 'CONNECT_WALLET' && target == 'background') {
+  if (type === 'CONNECT_WALLET' && target === 'background') {
     const url = browser.runtime.getURL('app.html');
 
     store.dispatch(setSenderURL(String(sender.url)));
@@ -513,20 +570,22 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     return;
   }
 
-  if (type == 'SIGN_AND_SEND' && target == 'background') {
+  if (type === 'SIGN_AND_SEND' && target === 'background') {
     checkToCallPrivateMethods();
 
     const { messageData } = request;
 
     window.controller.wallet.account.updateTemporaryTransaction({
       tx: messageData,
-      type: 'signAndSendPSBT'
-    })
+      type: 'signAndSendPSBT',
+    });
 
-    store.dispatch(setTemporaryTransactionState({
-      executing: true,
-      type: 'signAndSendPSBT'
-    }))
+    store.dispatch(
+      setTemporaryTransactionState({
+        executing: true,
+        type: 'signAndSendPSBT',
+      })
+    );
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -535,24 +594,26 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'SIGN_AND_SEND',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 
-  if (type == 'SIGN_PSBT' && target == 'background') {
+  if (type === 'SIGN_PSBT' && target === 'background') {
     checkToCallPrivateMethods();
 
     const { messageData } = request;
 
     window.controller.wallet.account.updateTemporaryTransaction({
       tx: messageData,
-      type: 'signPSBT'
-    })
+      type: 'signPSBT',
+    });
 
-    store.dispatch(setTemporaryTransactionState({
-      executing: true,
-      type: 'signPSBT'
-    }))
+    store.dispatch(
+      setTemporaryTransactionState({
+        executing: true,
+        type: 'signPSBT',
+      })
+    );
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -561,11 +622,11 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'SIGN_PSBT',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 
-  if (type == 'SEND_TOKEN' && target == 'background') {
+  if (type === 'SEND_TOKEN' && target === 'background') {
     checkToCallPrivateMethods();
 
     const {
@@ -575,7 +636,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       fee,
       token,
       isToken,
-      rbf
+      rbf,
     } = request.messageData;
 
     window.controller.wallet.account.updateTemporaryTransaction({
@@ -586,9 +647,9 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         fee,
         token,
         isToken,
-        rbf
+        rbf,
       },
-      type: 'sendAsset'
+      type: 'sendAsset',
     });
 
     store.dispatch(updateCanConfirmTransaction(true));
@@ -600,17 +661,13 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'SEND_TOKEN',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 
-  if (type == 'DATA_FROM_PAGE_TO_CREATE_TOKEN' && target == 'background') {
-    const {
-      precision,
-      maxsupply,
-      receiver,
-      initialSupply,
-    } = request.messageData;
+  if (type === 'DATA_FROM_PAGE_TO_CREATE_TOKEN' && target === 'background') {
+    const { precision, maxsupply, receiver, initialSupply } =
+      request.messageData;
 
     if (precision < 0 || precision > 8) {
       throw new Error('invalid precision value');
@@ -624,7 +681,13 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       throw new Error('invalid initial supply value');
     }
 
-    if (!window.controller.wallet.account.isValidSYSAddress(receiver, store.getState().wallet.activeNetwork, true)) {
+    if (
+      !window.controller.wallet.account.isValidSYSAddress(
+        receiver,
+        store.getState().wallet.activeNetwork,
+        true
+      )
+    ) {
       throw new Error('invalid receiver address');
     }
 
@@ -633,30 +696,30 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     window.controller.wallet.account.updateTemporaryTransaction({
       tx: {
         ...request.messageData,
-        fee
+        fee,
       },
-      type: 'newAsset'
+      type: 'newAsset',
     });
 
-    store.dispatch(setTemporaryTransactionState({
-      executing: true,
-      type: 'newAsset'
-    }));
+    store.dispatch(
+      setTemporaryTransactionState({
+        executing: true,
+        type: 'newAsset',
+      })
+    );
 
     const appURL = browser.runtime.getURL('app.html');
 
     await createPopup(appURL);
   }
 
-  if (type == 'ISSUE_SPT' && target == 'background') {
+  if (type === 'ISSUE_SPT' && target === 'background') {
     checkToCallPrivateMethods();
 
-    const {
-      amount,
-      assetGuid
-    } = request.messageData;
+    const { amount, assetGuid } = request.messageData;
 
-    const assetFromAssetGuid = window.controller.wallet.account.getDataAsset(assetGuid);
+    const assetFromAssetGuid =
+      window.controller.wallet.account.getDataAsset(assetGuid);
 
     if (amount < 0 || amount >= assetFromAssetGuid.balance) {
       throw new Error('invalid amount value');
@@ -667,15 +730,17 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     window.controller.wallet.account.updateTemporaryTransaction({
       tx: {
         ...request.messageData,
-        fee
+        fee,
       },
-      type: 'mintAsset'
+      type: 'mintAsset',
     });
 
-    store.dispatch(setTemporaryTransactionState({
-      executing: true,
-      type: 'mintAsset'
-    }));
+    store.dispatch(
+      setTemporaryTransactionState({
+        executing: true,
+        type: 'mintAsset',
+      })
+    );
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -684,24 +749,26 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'ISSUE_SPT',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 
-
-  if (type == 'CREATE_AND_ISSUE_NFT' && target == 'background') {
+  if (type === 'CREATE_AND_ISSUE_NFT' && target === 'background') {
     checkToCallPrivateMethods();
 
-    const {
-      issuer,
-      precision,
-    } = request.messageData;
+    const { issuer, precision } = request.messageData;
 
     if (precision < 0 || precision > 8) {
       throw new Error('invalid total shares value');
     }
 
-    if (!window.controller.wallet.account.isValidSYSAddress(issuer, store.getState().wallet.activeNetwork, true)) {
+    if (
+      !window.controller.wallet.account.isValidSYSAddress(
+        issuer,
+        store.getState().wallet.activeNetwork,
+        true
+      )
+    ) {
       throw new Error('invalid receiver address');
     }
 
@@ -712,13 +779,15 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         ...request.messageData,
         fee,
       },
-      type: 'newNFT'
-    })
+      type: 'newNFT',
+    });
 
-    store.dispatch(setTemporaryTransactionState({
-      executing: true,
-      type: 'newNFT'
-    }))
+    store.dispatch(
+      setTemporaryTransactionState({
+        executing: true,
+        type: 'newNFT',
+      })
+    );
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -727,11 +796,11 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'CREATE_AND_ISSUE_NFT',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 
-  if (type == 'UPDATE_ASSET' && target == 'background') {
+  if (type === 'UPDATE_ASSET' && target === 'background') {
     checkToCallPrivateMethods();
 
     const fee = await window.controller.wallet.account.getRecommendFee();
@@ -741,13 +810,15 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         ...request.messageData,
         fee,
       },
-      type: 'updateAsset'
-    })
+      type: 'updateAsset',
+    });
 
-    store.dispatch(setTemporaryTransactionState({
-      executing: true,
-      type: 'updateAsset'
-    }))
+    store.dispatch(
+      setTemporaryTransactionState({
+        executing: true,
+        type: 'updateAsset',
+      })
+    );
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -756,18 +827,22 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'UPDATE_ASSET',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 
-  if (type == 'TRANSFER_OWNERSHIP' && target == 'background') {
+  if (type === 'TRANSFER_OWNERSHIP' && target === 'background') {
     checkToCallPrivateMethods();
 
-    const {
-      newOwner
-    } = request.messageData;
+    const { newOwner } = request.messageData;
 
-    if (!window.controller.wallet.account.isValidSYSAddress(newOwner, store.getState().wallet.activeNetwork, true)) {
+    if (
+      !window.controller.wallet.account.isValidSYSAddress(
+        newOwner,
+        store.getState().wallet.activeNetwork,
+        true
+      )
+    ) {
       throw new Error('invalid new owner address');
     }
 
@@ -778,13 +853,15 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         ...request.messageData,
         fee,
       },
-      type: 'transferAsset'
-    })
+      type: 'transferAsset',
+    });
 
-    store.dispatch(setTemporaryTransactionState({
-      executing: true,
-      type: 'transferAsset'
-    }))
+    store.dispatch(
+      setTemporaryTransactionState({
+        executing: true,
+        type: 'transferAsset',
+      })
+    );
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -793,11 +870,11 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'TRANSFER_OWNERSHIP',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 
-  if (type == 'ISSUE_NFT' && target == 'background') {
+  if (type === 'ISSUE_NFT' && target === 'background') {
     checkToCallPrivateMethods();
 
     const fee = await window.controller.wallet.account.getRecommendFee();
@@ -807,13 +884,15 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         ...request.messageData,
         fee,
       },
-      type: 'mintNFT'
-    })
+      type: 'mintNFT',
+    });
 
-    store.dispatch(setTemporaryTransactionState({
-      executing: true,
-      type: 'mintNFT'
-    }))
+    store.dispatch(
+      setTemporaryTransactionState({
+        executing: true,
+        type: 'mintNFT',
+      })
+    );
 
     const appURL = browser.runtime.getURL('app.html');
 
@@ -822,24 +901,23 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'ISSUE_NFT',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 });
 
 browser.runtime.onConnect.addListener((port) => {
-  if (port.name == 'trezor-connect') {
+  if (port.name === 'trezor-connect') {
     return;
   }
 
-  browser.tabs.query({ active: true, lastFocusedWindow: true })
-    .then((tabs) => {
-      if (tabs[0].title === 'Pali Wallet') {
-        return;
-      }
+  browser.tabs.query({ active: true, lastFocusedWindow: true }).then((tabs) => {
+    if (tabs[0].title === 'Pali Wallet') {
+      return;
+    }
 
-      store.dispatch(updateCurrentURL(String(tabs[0].url)));
-    });
+    store.dispatch(updateCurrentURL(String(tabs[0].url)));
+  });
 });
 
 const bowser = Bowser.getParser(window.navigator.userAgent);
@@ -859,8 +937,6 @@ browser.tabs.onUpdated.addListener((tabId, _, tab) => {
     tab.title !== 'Pali Wallet'
   ) {
     store.dispatch(updateCurrentURL(String(tab.url)));
-
-    return;
   }
 });
 

@@ -1,7 +1,7 @@
-import { SecondaryButton } from "components/index";
-import { AuthViewLayout } from "containers/common/Layout";
-import React, { useState } from "react";
-import { useUtils, useFormat, useStore } from "hooks/index";
+import { SecondaryButton } from 'components/index';
+import { AuthViewLayout } from 'containers/common/Layout';
+import React, { useState } from 'react';
+import { useUtils, useFormat, useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
 
 const TrustedSitesView = () => {
@@ -9,7 +9,9 @@ const TrustedSitesView = () => {
   const { history } = useUtils();
   const { trustedApps } = useStore();
 
-  const [filteredSearch, setFilteredSearch] = useState<any>(Object.values(trustedApps));
+  const [filteredSearch, setFilteredSearch] = useState<any>(
+    Object.values(trustedApps)
+  );
 
   const handleSearch = (event) => {
     let newList: string[] = [];
@@ -28,7 +30,7 @@ const TrustedSitesView = () => {
     }
 
     setFilteredSearch(Object.values(trustedApps));
-  }
+  };
 
   return (
     <AuthViewLayout title="TRUSTED WEBSITES">
@@ -49,7 +51,7 @@ const TrustedSitesView = () => {
           rules={[
             {
               required: false,
-              message: ''
+              message: '',
             },
           ]}
         >
@@ -64,20 +66,16 @@ const TrustedSitesView = () => {
 
       <div className="flex flex-col justify-center items-center w-full">
         <ul className="scrollbar-styled h-72 my-4 overflow-auto w-full p-2">
-          {filteredSearch && filteredSearch.map((url: string) => {
-            return (
-              <li className="my-2 p-2 border-b border-dashed border-bkg-3 w-full text-xs">
+          {filteredSearch &&
+            filteredSearch.map((url: string) => (
+              <li key={url} className="my-2 p-2 border-b border-dashed border-bkg-3 w-full text-xs">
                 <p>{formatURL(url, 40)}</p>
               </li>
-            )
-          })}
+            ))}
         </ul>
 
         <div className="absolute bottom-12">
-          <SecondaryButton
-            type="button"
-            onClick={() => history.push("/home")}
-          >
+          <SecondaryButton type="button" onClick={() => history.push('/home')}>
             Close
           </SecondaryButton>
         </div>

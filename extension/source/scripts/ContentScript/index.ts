@@ -2,7 +2,7 @@ import { browser } from 'webextension-polyfill-ts';
 
 import {
   getMessagesToListenTo,
-  listenAndSendMessageFromPageToBackground
+  listenAndSendMessageFromPageToBackground,
 } from './helpers';
 
 declare global {
@@ -20,7 +20,7 @@ const doctypeCheck = () => {
   }
 
   return true;
-}
+};
 
 const suffixCheck = () => {
   const prohibitedTypes = [/\.xml$/u, /\.pdf$/u];
@@ -33,7 +33,7 @@ const suffixCheck = () => {
   }
 
   return true;
-}
+};
 
 const documentElementCheck = () => {
   const documentElement = document.documentElement.nodeName;
@@ -43,13 +43,10 @@ const documentElementCheck = () => {
   }
 
   return true;
-}
+};
 
 const blockedDomainCheck = () => {
-  const blockedDomains = [
-    'dropbox.com',
-    'github.com',
-  ];
+  const blockedDomains = ['dropbox.com', 'github.com'];
 
   const currentUrl = window.location.href;
   let currentRegex;
@@ -59,7 +56,7 @@ const blockedDomainCheck = () => {
 
     currentRegex = new RegExp(
       `(?:https?:\\/\\/)(?:(?!${blockedDomain}).)*$`,
-      'u',
+      'u'
     );
 
     if (!currentRegex.test(currentUrl)) {
@@ -68,16 +65,13 @@ const blockedDomainCheck = () => {
   }
 
   return false;
-}
+};
 
-export const shouldInjectProvider = () => {
-  return (
-    doctypeCheck() &&
-    suffixCheck() &&
-    documentElementCheck() &&
-    !blockedDomainCheck()
-  );
-}
+export const shouldInjectProvider = () =>
+  doctypeCheck() &&
+  suffixCheck() &&
+  documentElementCheck() &&
+  !blockedDomainCheck();
 
 const injectScript = (content: string) => {
   try {
@@ -89,7 +83,7 @@ const injectScript = (content: string) => {
   } catch (error) {
     console.error('Pali Wallet: Provider injection failed.', error);
   }
-}
+};
 
 const injectScriptFile = (file: string) => {
   try {
@@ -101,73 +95,77 @@ const injectScriptFile = (file: string) => {
   } catch (error) {
     console.error('Pali Wallet: Provider injection failed.', error);
   }
-}
+};
 
 if (shouldInjectProvider()) {
   injectScript("window.SyscoinWallet = 'Pali Wallet is installed! :)'");
 
-  window.dispatchEvent(new CustomEvent('SyscoinStatus', { detail: { SyscoinInstalled: true, ConnectionsController: false } }));
-
-  console.log('injecting inpage')
+  window.dispatchEvent(
+    new CustomEvent('SyscoinStatus', {
+      detail: {
+        SyscoinInstalled: true,
+        ConnectionsController: false,
+      },
+    })
+  );
 
   injectScriptFile('js/inpage.bundle.js');
-  console.log('injecting inpage after')
 
   browser.runtime.sendMessage({
     type: 'RELOAD_DATA',
-    target: 'background'
+    target: 'background',
   });
 }
 
-window.addEventListener('message', (event) => {
-  const {
-    type,
-    target
-  } = event.data;
+window.addEventListener(
+  'message',
+  (event) => {
+    const { type, target } = event.data;
 
-  if (event.source !== window) {
-    return;
-  }
-
-  const browserMessages = listenAndSendMessageFromPageToBackground(event);
-
-  browserMessages.map(({
-    messageType,
-    messageTarget,
-    messageNewTarget,
-    messageData
-  }) => {
-    if (type === messageType && target === messageTarget) {
-      browser.runtime.sendMessage({
-        type: messageType,
-        target: messageNewTarget,
-        messageData
-      });
+    if (event.source !== window) {
+      return;
     }
-  });
-}, false);
+
+    const browserMessages = listenAndSendMessageFromPageToBackground(event);
+
+    browserMessages.map(
+      ({ messageType, messageTarget, messageNewTarget, messageData }) => {
+        if (type === messageType && target === messageTarget) {
+          return browser.runtime.sendMessage({
+            type: messageType,
+            target: messageNewTarget,
+            messageData,
+          });
+        }
+      }
+    );
+  },
+  false
+);
 
 browser.runtime.onMessage.addListener((request) => {
-  const {
-    type,
-    target
-  } = request;
+  const { type, target } = request;
 
   const messages = getMessagesToListenTo(request);
 
-  messages.map(({
-    messageType,
-    messageTarget,
-    messageNewTarget,
-    responseItem,
-    messageResponse
-  }) => {
-    if (type === messageType && target === messageTarget) {
-      window.postMessage({
-        type: messageType,
-        target: messageNewTarget,
-        [responseItem]: messageResponse
-      }, '*');
+  messages.map(
+    ({
+      messageType,
+      messageTarget,
+      messageNewTarget,
+      responseItem,
+      messageResponse,
+    }) => {
+      if (type === messageType && target === messageTarget) {
+        return window.postMessage(
+          {
+            type: messageType,
+            target: messageNewTarget,
+            [responseItem]: messageResponse,
+          },
+          '*'
+        );
+      }
     }
-  });
+  );
 });

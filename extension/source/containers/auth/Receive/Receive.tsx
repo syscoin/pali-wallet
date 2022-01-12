@@ -18,7 +18,7 @@ export const Receive = () => {
       if (await controller.wallet.getNewAddress()) {
         setLoaded(true);
       }
-    }
+    };
 
     getNewAddress();
   }, []);
@@ -34,14 +34,14 @@ export const Receive = () => {
             style={{ height: '240px', width: '225px' }}
           />
 
-          <p className="mt-4 text-base">{ellipsis(activeAccount.address.main, 4, 10)}</p>
+          <p className="mt-4 text-base">
+            {ellipsis(activeAccount.address.main, 4, 10)}
+          </p>
 
           <div className="absolute bottom-12">
             <SecondaryButton
               type="button"
-              onClick={() =>
-                copyText(activeAccount.address.main)
-              }
+              onClick={() => copyText(activeAccount.address.main)}
             >
               <span className="text-xs">
                 {isCopied ? 'Copied address' : 'Copy'}

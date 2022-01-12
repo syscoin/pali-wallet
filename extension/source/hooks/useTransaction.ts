@@ -1,29 +1,28 @@
 import { Assets } from 'types/transactions';
-import { useAccount } from '.';
 
 export const useTransaction = () => {
-  const getAssetBalance = (selectedAsset: Assets | null) => {
-    const { activeAccount } = useAccount();
-
+  const getAssetBalance = (selectedAsset: Assets | null, activeAccount) => {
     if (selectedAsset) {
-      return `${(selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals)} ${selectedAsset.symbol}`;
+      return `${(selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(
+        selectedAsset.decimals
+      )} ${selectedAsset.symbol}`;
     }
 
-    return `${activeAccount!.balance.toFixed(8)} SYS`;
-  }
+    return `${activeAccount?.balance.toFixed(8)} SYS`;
+  };
 
   const handleCancelTransactionOnSite = (browser: any, tempTx: any) => {
     browser.runtime.sendMessage({
-      type: "CANCEL_TRANSACTION",
-      target: "background",
-      item: tempTx ? tempTx : null
+      type: 'CANCEL_TRANSACTION',
+      target: 'background',
+      item: tempTx || null,
     });
 
     browser.runtime.sendMessage({
-      type: "CLOSE_POPUP",
-      target: "background"
+      type: 'CLOSE_POPUP',
+      target: 'background',
     });
-  }
+  };
 
   const handleRejectTransaction = (browser, item, history) => {
     history.push('/home');
@@ -33,7 +32,7 @@ export const useTransaction = () => {
       target: 'background',
       transactionError: true,
       invalidParams: false,
-      message: "Transaction rejected.",
+      message: 'Transaction rejected.',
     });
 
     browser.runtime.sendMessage({
@@ -46,11 +45,11 @@ export const useTransaction = () => {
       type: 'CLOSE_POPUP',
       target: 'background',
     });
-  }
+  };
 
   return {
     getAssetBalance,
     handleRejectTransaction,
-    handleCancelTransactionOnSite
-  }
-}
+    handleCancelTransactionOnSite,
+  };
+};

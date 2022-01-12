@@ -4,11 +4,10 @@ import { Form, Input } from 'antd';
 import { SecondaryButton } from 'components/index';
 import axios from 'axios';
 import { useUtils, useController } from 'hooks/index';
+
 import { EditNetworkView } from '..';
 
-const CustomRPCView = ({
-  selectedToEdit
-}) => {
+const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   const [loading, setLoading] = useState(false);
   const [edit, setEdit] = useState(false);
 
@@ -25,11 +24,11 @@ const CustomRPCView = ({
       if (response && coin) {
         if (coin === 'Syscoin' || coin === 'Syscoin Testnet') {
           controller.wallet.account.updateNetworkData({
-            id: selectedToEdit ?
-              selectedToEdit.id :
-              network.toString().toLowerCase(),
+            id: selectedToEdit
+              ? selectedToEdit.id
+              : network.toString().toLowerCase(),
             label: network,
-            beUrl: blockbookURL
+            beUrl: blockbookURL,
           });
 
           setLoading(false);
@@ -46,7 +45,7 @@ const CustomRPCView = ({
 
       setLoading(false);
     }
-  }
+  };
 
   return (
     <>
@@ -62,7 +61,7 @@ const CustomRPCView = ({
             initialValues={{
               blockbookURL: selectedToEdit ? selectedToEdit.beUrl : '',
               network: selectedToEdit ? selectedToEdit.label : '',
-              chainID: selectedToEdit ? selectedToEdit.chainID : ''
+              chainID: selectedToEdit ? selectedToEdit.chainID : '',
             }}
             onFinish={onSubmit}
             autoComplete="off"
@@ -74,7 +73,7 @@ const CustomRPCView = ({
               rules={[
                 {
                   required: true,
-                  message: ''
+                  message: '',
                 },
               ]}
             >
@@ -91,21 +90,25 @@ const CustomRPCView = ({
               rules={[
                 {
                   required: true,
-                  message: ''
+                  message: '',
                 },
                 () => ({
                   async validator(_, value) {
                     try {
                       const response = await axios.get(`${value}/api/v2`);
                       const { coin } = response.data.blockbook;
-                
+
                       if (response && coin) {
-                        if (coin === 'Syscoin' || coin === 'Syscoin Testnet' || !value) {
-                          return Promise.resolve();
+                        if (
+                          coin === 'Syscoin' ||
+                          coin === 'Syscoin Testnet' ||
+                          !value
+                        ) {
+                          return await Promise.resolve();
                         }
                       }
                     } catch (error) {
-                      return Promise.reject('');
+                      return Promise.reject();
                     }
                   },
                 }),
@@ -124,25 +127,27 @@ const CustomRPCView = ({
               rules={[
                 {
                   required: false,
-                  message: ''
+                  message: '',
                 },
               ]}
             >
               <Input
-                disabled={true}
+                disabled
                 type="text"
                 placeholder="Chain ID"
-                className={`${true && 'opacity-50 rounded-full py-2 pl-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus'}`}
+                className={`${
+                  true &&
+                  'opacity-50 rounded-full py-2 pl-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus'
+                }`}
               />
             </Form.Item>
 
-            <p className="text-brand-white font-poppins py-4 text-center px-8 text-sm">You can edit this later if you need on network settings menu.</p>
+            <p className="text-brand-white font-poppins py-4 text-center px-8 text-sm">
+              You can edit this later if you need on network settings menu.
+            </p>
 
             <div className="absolute bottom-12">
-              <SecondaryButton
-                type="submit"
-                loading={loading}
-              >
+              <SecondaryButton type="submit" loading={loading}>
                 Save
               </SecondaryButton>
             </div>

@@ -15,7 +15,7 @@ export const getMessagesToListenTo = (request: any) => {
     signedTransaction,
     connectedAccountXpub,
     connectedAccountChangeAddress,
-    signedPSBT
+    signedPSBT,
   } = request;
 
   const postMessagesArray = [
@@ -169,7 +169,7 @@ export const listenAndSendMessageFromPageToBackground = (event: any) => {
     address,
     newOwner,
     psbt,
-    psbtToSign
+    psbtToSign,
   } = event.data;
 
   const sendToken = {
@@ -214,8 +214,8 @@ export const listenAndSendMessageFromPageToBackground = (event: any) => {
 
   const dataFromPageToIssueNFT = {
     amount,
-    assetGuid
-  }
+    assetGuid,
+  };
 
   const dataFromPageToUpdateAsset = {
     assetGuid,

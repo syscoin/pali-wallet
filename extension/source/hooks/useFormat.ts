@@ -20,10 +20,9 @@ export const useFormat = () => {
     )}`;
   };
 
-  const capitalizeFirstLetter = (string: string) => {
-    return string.charAt(0).toUpperCase() + string.slice(1);
-  }
-  
+  const capitalizeFirstLetter = (string: string) =>
+    string.charAt(0).toUpperCase() + string.slice(1);
+
   const formatDistanceDate = (timestamp: string) => {
     const formatStyle = 'M-d-yyyy';
     const today = new Date();
@@ -32,17 +31,16 @@ export const useFormat = () => {
 
     if (formatedDate === format(today, formatStyle)) return 'Today';
     if (formatedDate === format(yesterday, formatStyle)) return 'Yesterday';
-    
+
     return formatedDate;
   };
 
-  const formatNumber = (num: number, min = 4, max = 4, maxSig = 8) => {
-    return num.toLocaleString(navigator.language, {
+  const formatNumber = (num: number, min = 4, max = 4, maxSig = 8) =>
+    num.toLocaleString(navigator.language, {
       minimumFractionDigits: min,
       maximumFractionDigits: max,
       maximumSignificantDigits: maxSig,
     });
-  };
 
   const formatCurrency = (number: string, precision: number) => {
     if (Number(number) < 1e-6) {
@@ -52,7 +50,7 @@ export const useFormat = () => {
     return currency(number, { separator: ',', symbol: '', precision }).format();
   };
 
-  //truncate
+  // truncate
   const formatURL = (url: string, size = 30) => {
     if (url.length >= size) {
       return `${url.slice(0, size)}...`;
@@ -67,6 +65,6 @@ export const useFormat = () => {
     formatCurrency,
     formatNumber,
     formatDistanceDate,
-    capitalizeFirstLetter
-  }
-}
+    capitalizeFirstLetter,
+  };
+};

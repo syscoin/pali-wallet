@@ -19,19 +19,12 @@ export const useStore = () => {
     timer,
     networks,
     trustedApps,
-    temporaryTransactionState
+    temporaryTransactionState,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
 
-  const {
-    fiat
-  }: IPriceState = useSelector((state: RootState) => state.price);
+  const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
 
-  const {
-    currentSenderURL,
-    currentURL,
-    canConnect,
-    connections,
-  } = tabs;
+  const { currentSenderURL, currentURL, canConnect, connections } = tabs;
 
   return {
     status,
@@ -53,6 +46,6 @@ export const useStore = () => {
     networks,
     trustedApps,
     temporaryTransactionState,
-    fiat
-  }
-}
+    fiat,
+  };
+};

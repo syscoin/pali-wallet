@@ -2,10 +2,11 @@ import { AuthViewLayout } from 'containers/common/Layout';
 import { useController } from 'hooks/index';
 import React, { useState, useEffect } from 'react';
 import { Icon } from 'components/Icon';
+
 import { AssetDetails } from './AssetDetails';
 import { TransactionDetails } from './TransactionDetails';
 
-export const DetailsView = ({ location }) => {
+export const DetailsView = ({ location }: { location: any }) => {
   const controller = useController();
 
   const [transactionDetails, setTransactionDetails] = useState<any>(null);
@@ -13,18 +14,23 @@ export const DetailsView = ({ location }) => {
   useEffect(() => {
     const getTransactionData = async () => {
       if (location.state.assetGuid) {
-        const assetData = await controller.wallet.account.getDataAsset(location.state.assetGuid);
+        const assetData = await controller.wallet.account.getDataAsset(
+          location.state.assetGuid
+        );
 
-        const description = assetData.pubData && assetData.pubData.desc
-        ? atob(String(assetData.pubData.desc))
-        : '';
+        const description =
+          assetData.pubData && assetData.pubData.desc
+            ? atob(String(assetData.pubData.desc))
+            : '';
 
         setTransactionDetails(Object.assign(assetData, { description }));
 
         return;
       }
 
-      const txData = await controller.wallet.account.getTransactionInfoByTxId(location.state.tx.txid);
+      const txData = await controller.wallet.account.getTransactionInfoByTxId(
+        location.state.tx.txid
+      );
 
       setTransactionDetails(txData);
     };
@@ -34,11 +40,9 @@ export const DetailsView = ({ location }) => {
 
   return (
     <AuthViewLayout
-      title={`${location.state.assetGuid ?
-        'ASSET DETAILS' :
-        'TRANSACTION DETAILS'
-        }`
-      }
+      title={`${
+        location.state.assetGuid ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'
+      }`}
     >
       {transactionDetails ? (
         <ul className="scrollbar-styled text-sm overflow-auto px-4 mt-4 h-96 w-full">
@@ -55,11 +59,8 @@ export const DetailsView = ({ location }) => {
           )}
         </ul>
       ) : (
-        <Icon
-          name="loading"
-          className="w-3 absolute top-1/2 left-1/2"
-        />
+        <Icon name="loading" className="w-3 absolute top-1/2 left-1/2" />
       )}
-    </AuthViewLayout >
-  )
-}
+    </AuthViewLayout>
+  );
+};

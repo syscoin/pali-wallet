@@ -10,13 +10,11 @@ interface ILink {
 
 export const Link: FC<ILink> = ({
   to,
-  className = "no-underline font-medium text-base font-poppins",
+  className = 'no-underline font-medium text-base font-poppins',
   children,
   onClick,
-}) => {
-  return (
-    <RouterLink className={className} to={to} onClick={onClick}>
-      {children}
-    </RouterLink>
-  );
-};
+}) => (
+  <RouterLink className={className} to={to} onClick={onClick}>
+    {children}
+  </RouterLink>
+);

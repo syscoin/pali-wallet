@@ -8,9 +8,7 @@ export const usePopup = () => {
       type: 'CLOSE_POPUP',
       target: 'background',
     });
-  }
+  };
 
-  return {
-    closePopup,
-  }
-}
+  return { closePopup };
+};

@@ -10,9 +10,7 @@ const App: FC = () => {
   return (
     <section className="min-w-popup bg-bkg-2">
       <Container>
-        <Router>
-          {encriptedMnemonic ? <AuthRouter /> : <UnAuthRouter />}
-        </Router>
+        <Router>{encriptedMnemonic ? <AuthRouter /> : <UnAuthRouter />}</Router>
       </Container>
     </section>
   );

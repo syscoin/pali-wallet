@@ -14,7 +14,7 @@ const PhraseView = () => {
   const [copied, copyText] = useCopyClipboard();
 
   const handleCopySeed = () => {
-    copyText(phrase)
+    copyText(phrase);
   };
 
   return (
@@ -40,7 +40,7 @@ const PhraseView = () => {
                 required: true,
                 message: '',
               },
-              ({ }) => ({
+              () => ({
                 validator(_, value) {
                   const seed = controller.wallet.getPhrase(value);
 
@@ -50,34 +50,37 @@ const PhraseView = () => {
                     return Promise.resolve();
                   }
 
-                  return Promise.reject('');
+                  return Promise.reject();
                 },
               }),
             ]}
           >
-            <Input.Password
-              placeholder="Enter your password"
-            />
+            <Input.Password placeholder="Enter your password" />
           </Form.Item>
         </Form>
 
         <CopyCard
           className="my-4"
-          onClick={() => phrase !== '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****' && handleCopySeed()}
+          onClick={() =>
+            phrase !==
+              '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****' &&
+            handleCopySeed()
+          }
           label="Seed Phrase: (click to copy)"
         >
           <p className="text-xs mt-3">{phrase}</p>
         </CopyCard>
 
         <InfoCard>
-          <p><b className="text-warning-info">WARNING:</b> Keep your seed phrase secret! Anyone with your seed phrase can access any account connected to this wallet and steal your assets</p>
+          <p>
+            <b className="text-warning-info">WARNING:</b> Keep your seed phrase
+            secret! Anyone with your seed phrase can access any account
+            connected to this wallet and steal your assets
+          </p>
         </InfoCard>
 
         <div className="absolute bottom-12">
-          <SecondaryButton
-            type="button"
-            onClick={() => history.push('/home')}
-          >
+          <SecondaryButton type="button" onClick={() => history.push('/home')}>
             {copied ? 'Copied' : 'Close'}
           </SecondaryButton>
         </div>

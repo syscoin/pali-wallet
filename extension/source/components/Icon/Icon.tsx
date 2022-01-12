@@ -37,56 +37,56 @@ import {
   MessageOutlined,
   VerifiedOutlined,
   CheckOutlined,
-  LaptopOutlined
+  LaptopOutlined,
 } from '@ant-design/icons';
 
 const icons = {
-  'loading': LoadingOutlined,
+  loading: LoadingOutlined,
   'arrow-down': ArrowDownOutlined,
   'close-circle': CloseCircleOutlined,
-  'reload': ReloadOutlined,
+  reload: ReloadOutlined,
   'arrow-up': ArrowUpOutlined,
   'vertical-align': VerticalAlignTopOutlined,
-  'copy': CopyOutlined,
+  copy: CopyOutlined,
   'arrow-left': ArrowLeftOutlined,
-  'export': ExportOutlined,
-  'link': LinkOutlined,
-  'clock': ClockCircleOutlined,
+  export: ExportOutlined,
+  link: LinkOutlined,
+  clock: ClockCircleOutlined,
   'file-protect': FileProtectOutlined,
-  'warning': WarningOutlined,
-  'key': KeyOutlined,
-  'user': UserOutlined,
-  'partition': PartitionOutlined,
-  'lock': LockOutlined,
-  'dots': MoreOutlined,
-  'question': QuestionCircleOutlined,
-  'settings': SettingOutlined,
-  'home': HomeOutlined,
-  'dolar': DollarOutlined,
-  'wallet': WalletOutlined,
-  'delete': DeleteOutlined, 
-  'close': CloseOutlined,
-  'select': SelectOutlined,
-  'down': DownOutlined,
-  'up': UpOutlined,
+  warning: WarningOutlined,
+  key: KeyOutlined,
+  user: UserOutlined,
+  partition: PartitionOutlined,
+  lock: LockOutlined,
+  dots: MoreOutlined,
+  question: QuestionCircleOutlined,
+  settings: SettingOutlined,
+  home: HomeOutlined,
+  dolar: DollarOutlined,
+  wallet: WalletOutlined,
+  delete: DeleteOutlined,
+  close: CloseOutlined,
+  select: SelectOutlined,
+  down: DownOutlined,
+  up: UpOutlined,
   'select-down': CaretDownOutlined,
-  'globe': GlobalOutlined,
-  'appstoreadd': AppstoreAddOutlined,
-  'edit': EditOutlined,
-  'check': CheckCircleOutlined,
+  globe: GlobalOutlined,
+  appstoreadd: AppstoreAddOutlined,
+  edit: EditOutlined,
+  check: CheckCircleOutlined,
   'select-up': CaretUpOutlined,
-  'message': MessageOutlined,
-  'verified': VerifiedOutlined,
+  message: MessageOutlined,
+  verified: VerifiedOutlined,
   'check-outlined': CheckOutlined,
-  'desktop': LaptopOutlined
-}
+  desktop: LaptopOutlined,
+};
 
 interface IIcon {
-  name: string;
   className?: string;
-  wrapperClassname?: string;
+  name: string;
   rotate?: number;
   size?: number;
+  wrapperClassname?: string;
 }
 
 export const Icon: FC<IIcon> = ({
@@ -94,13 +94,19 @@ export const Icon: FC<IIcon> = ({
   className,
   wrapperClassname,
   rotate,
-  size
+  size,
 }) => {
   const Component = icons[name];
 
   return (
     <div className={wrapperClassname && wrapperClassname}>
-      {Component ? <Component className={className} style={{ fontSize: size }} rotate={rotate} /> : null}
+      {Component ? (
+        <Component
+          className={className}
+          style={{ fontSize: size }}
+          rotate={rotate}
+        />
+      ) : null}
     </div>
   );
 };

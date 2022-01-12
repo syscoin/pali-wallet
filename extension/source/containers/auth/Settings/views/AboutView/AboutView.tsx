@@ -6,7 +6,7 @@ import { Icon, SecondaryButton, Card } from 'components/index';
 const AboutView: FC = () => {
   const handleRedirect = (url: string) => {
     window.open(url);
-  }
+  };
 
   const { history } = useUtils();
 
@@ -18,7 +18,8 @@ const AboutView: FC = () => {
 
         <p
           className="transition-all duration-200 hover:text-brand-royalblue"
-          onClick={() => handleRedirect('https://docs.paliwallet.com/')}>
+          onClick={() => handleRedirect('https://docs.paliwallet.com/')}
+        >
           Pali API
         </p>
       </div>
@@ -29,21 +30,23 @@ const AboutView: FC = () => {
           className="cursor-pointer"
         >
           <div className="flex justify-start text-base font-bold items-center font-poppins mb-4">
-            <Icon name="message" className="text-brand-white mb-1" wrapperClassname="w-6" />
+            <Icon
+              name="message"
+              className="text-brand-white mb-1"
+              wrapperClassname="w-6"
+            />
 
             <p className="text-sm">User support</p>
           </div>
 
           <p className="text-brand-white text-xs">
-            Click here to be redirected to Syscoin Discord, please contact support team at #pali_support.
+            Click here to be redirected to Syscoin Discord, please contact
+            support team at #pali_support.
           </p>
         </Card>
 
         <div className="absolute bottom-12">
-          <SecondaryButton
-            type="button"
-            onClick={() => history.push('/home')}
-          >
+          <SecondaryButton type="button" onClick={() => history.push('/home')}>
             Close
           </SecondaryButton>
         </div>

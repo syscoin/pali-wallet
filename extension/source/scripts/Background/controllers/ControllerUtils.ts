@@ -1,27 +1,24 @@
-import {
-  ASSET_PRICE_API,
-  PRICE_SYS_ID,
-} from 'constants/index';
+import { ASSET_PRICE_API, PRICE_SYS_ID } from 'constants/index';
 
 import store from 'state/store';
 import { updateFiatPrice } from 'state/price';
 
-const CoinGecko = require('coingecko-api')
+const CoinGecko = require('coingecko-api');
 
 export const CoinGeckoClient = new CoinGecko();
 
 export interface IControllerUtils {
   appRoute: (newRoute?: string) => string;
-  updateFiat: (currency?: string, assetId?: string) => Promise<void>;
-  updateFiatTest: (currency?: string, asset?: string) => string;
-  ping: () => any;
-  globalData: () => any;
   coinsAll: () => any;
-  coinsList: () => any;
-  coinsFetch: () => any;
-  coinsMarkets: () => any;
   coinsFectchTickers: () => any;
+  coinsFetch: () => any;
+  coinsList: () => any;
+  coinsMarkets: () => any;
+  globalData: () => any;
+  ping: () => any;
+  updateFiat: (currency?: string, assetId?: string) => Promise<void>;
   updateFiatCurrencyForWallet: (chosenCurrency: string) => any;
+  updateFiatTest: (currency?: string, asset?: string) => string;
 }
 
 const ControllerUtils = (): IControllerUtils => {
@@ -49,25 +46,25 @@ const ControllerUtils = (): IControllerUtils => {
     const data = await CoinGeckoClient.coins.list();
 
     return data;
-  }
+  };
 
   const coinsMarkets = async () => {
     const data = await CoinGeckoClient.coins.markets();
 
     return data;
-  }
+  };
 
   const coinsFetch = async () => {
     const data = await CoinGeckoClient.coins.fetch('bitcoin', {});
 
     return data;
-  }
+  };
 
   const coinsFectchTickers = async () => {
     const data = await CoinGeckoClient.coins.fetchTickers('bitcoin');
 
     return data;
-  }
+  };
 
   const appRoute = (newRoute?: string) => {
     if (newRoute) {
@@ -84,7 +81,7 @@ const ControllerUtils = (): IControllerUtils => {
     });
 
     return data;
-  }
+  };
 
   const updateFiat = async (
     currency = store.getState().price.fiat.current,
@@ -114,9 +111,7 @@ const ControllerUtils = (): IControllerUtils => {
     }
   };
 
-  const updateFiatTest = (currency, asset) => {
-    return `${currency} ${asset}`;
-  }
+  const updateFiatTest = (currency, asset) => `${currency} ${asset}`;
 
   return {
     appRoute,
@@ -129,9 +124,8 @@ const ControllerUtils = (): IControllerUtils => {
     coinsFetch,
     coinsMarkets,
     coinsFectchTickers,
-    updateFiatCurrencyForWallet
+    updateFiatCurrencyForWallet,
   };
 };
-
 
 export default ControllerUtils;

@@ -4,11 +4,8 @@ import placeholder from 'assets/images/placeholder.png';
 import { Button, Tooltip, Icon } from 'components/index';
 import axios from 'axios';
 
-export const AssetDetails = ({
-  assetType,
-  assetData
-}) => {
-  const controller = useController()
+export const AssetDetails = ({ assetType, assetData }) => {
+  const controller = useController();
   const { formatURL } = useFormat();
 
   const [imageLink, setImageLink] = useState('');
@@ -22,12 +19,12 @@ export const AssetDetails = ({
     maxSupply,
     decimals,
     updateCapabilityFlags,
-    description
+    description,
   } = assetData;
 
   useEffect(() => {
     const getImageLink = async () => {
-      if (description && description.startsWith("https://ipfs.io/ipfs/")) {
+      if (description && description.startsWith('https://ipfs.io/ipfs/')) {
         setLoadingImage(true);
 
         const response = await axios.get(description);
@@ -35,7 +32,7 @@ export const AssetDetails = ({
         setImageLink(response.data.image);
         setLoadingImage(false);
       }
-    }
+    };
 
     getImageLink();
   }, [description]);
@@ -61,7 +58,7 @@ export const AssetDetails = ({
     },
     {
       label: 'Description',
-      value: formatURL(description, 15)
+      value: formatURL(description, 15),
     },
     {
       label: 'Total supply',
@@ -96,11 +93,7 @@ export const AssetDetails = ({
         <>
           {loadingImage ? (
             <div className="flex justify-center h-40 items-center">
-              <Icon
-                name="loading"
-                className="text-brand-royalblue"
-                size={50}
-              />
+              <Icon name="loading" className="text-brand-royalblue" size={50} />
             </div>
           ) : (
             <img
@@ -112,22 +105,18 @@ export const AssetDetails = ({
         </>
       )}
 
-      {assetTransaction.map(({ label, value }: any) => {
-        return (
-          <div
-            key={label}
-            className="my-1 p-2 w-full border-b border-dashed border-bkg-2 cursor-default flex justify-between items-center transition-all duration-300 text-xs"
-          >
-            <p>{label}</p>
-            <b>{value}</b>
-          </div>
-        );
-      })}
+      {assetTransaction.map(({ label, value }: any) => (
+        <div
+          key={label}
+          className="my-1 p-2 w-full border-b border-dashed border-bkg-2 cursor-default flex justify-between items-center transition-all duration-300 text-xs"
+        >
+          <p>{label}</p>
+          <b>{value}</b>
+        </div>
+      ))}
 
       <div className="bg-bkg-3 fixed gap-x-6 p-4 bottom-0 left-0 text-xs flex justify-between items-center">
-        <p>
-          Would you like to go to view asset on SYS Block Explorer?
-        </p>
+        <p>Would you like to go to view asset on SYS Block Explorer?</p>
 
         <Button
           type="button"
@@ -138,5 +127,5 @@ export const AssetDetails = ({
         </Button>
       </div>
     </>
-  )
-}
+  );
+};

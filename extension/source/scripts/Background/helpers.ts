@@ -6,12 +6,11 @@ export const getHost = (url: string) => {
   return url;
 };
 
-
 export const sendMessage = (
   eventReceivedDetails: any,
   postMessageDetails: any
-) => {
-  return new Promise((resolve) => {
+) =>
+  new Promise((resolve) => {
     const callback = (event: any) => {
       if (
         event.data.type === eventReceivedDetails.type &&
@@ -35,4 +34,3 @@ export const sendMessage = (
 
     window.postMessage(postMessageDetails, '*');
   });
-};

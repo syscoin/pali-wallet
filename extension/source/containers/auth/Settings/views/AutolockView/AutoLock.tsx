@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { SecondaryButton, Modal } from 'components/index';;
+import { SecondaryButton, Modal } from 'components/index';
 import { useController, useStore } from 'hooks/index';
-
 import { Form, Input } from 'antd';
 import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
 
@@ -24,7 +23,10 @@ const AutolockView = () => {
 
   return (
     <AuthViewLayout title="AUTO LOCK TIMER">
-      <p className="text-white text-sm py-6 px-10">You can set auto lock timer. Default is 5 minutes after no activity. Maximum is 30 minutes.</p>
+      <p className="text-white text-sm py-6 px-10">
+        You can set auto lock timer. Default is 5 minutes after no activity.
+        Maximum is 30 minutes.
+      </p>
 
       {confirmed && (
         <Modal
@@ -32,7 +34,7 @@ const AutolockView = () => {
           open={confirmed}
           onClose={() => setConfirmed(false)}
           title="Time set successfully"
-          description={`Your auto lock was configured successfully. You can change it at any time.`}
+          description="Your auto lock was configured successfully. You can change it at any time."
         />
       )}
 
@@ -55,13 +57,13 @@ const AutolockView = () => {
               min: 1,
               max: 30,
             },
-            ({}) => ({
+            () => ({
               validator(_, value) {
                 if (value <= 30 && value >= 1) {
                   return Promise.resolve();
                 }
 
-                return Promise.reject('');
+                return Promise.reject();
               },
             }),
           ]}
@@ -74,10 +76,7 @@ const AutolockView = () => {
         </Form.Item>
 
         <div className="absolute bottom-12">
-          <SecondaryButton
-            type="submit"
-            loading={loading}
-          >
+          <SecondaryButton type="submit" loading={loading}>
             Save
           </SecondaryButton>
         </div>

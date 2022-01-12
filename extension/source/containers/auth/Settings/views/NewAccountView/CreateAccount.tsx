@@ -60,11 +60,7 @@ const NewAccountView = () => {
           </Form.Item>
 
           <div className="absolute bottom-12">
-            <SecondaryButton
-              type="submit"
-              loading={loading}
-              disabled={loading}
-            >
+            <SecondaryButton type="submit" loading={loading} disabled={loading}>
               Create
             </SecondaryButton>
           </div>

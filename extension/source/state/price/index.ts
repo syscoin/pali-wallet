@@ -2,10 +2,10 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 export interface IFiatState {
   [assetId: string]: number;
-  price: number;
-  availableCoins: any,
+  availableCoins: any;
   //@ts-ignore
   current: string | 'usd';
+  price: number;
 }
 
 export interface IPriceState {
@@ -14,12 +14,12 @@ export interface IPriceState {
 
 const initialState: {
   fiat: {
-    [assetId: string]: number,
-    price: number,
-    availableCoins: any,
+    [assetId: string]: number;
+    availableCoins: any;
     //@ts-ignore
-    current: string | 'usd',
-  }
+    current: string | 'usd';
+    price: number;
+  };
 } = {
   //@ts-ignore
   fiat: {
@@ -27,7 +27,7 @@ const initialState: {
     price: 0,
     availableCoins: {},
     current: 'usd',
-  }
+  },
 };
 
 const PriceState = createSlice({
@@ -37,17 +37,17 @@ const PriceState = createSlice({
     updateFiatPrice(
       state: IPriceState,
       action: PayloadAction<{
-        assetId: string,
-        price: number,
-        availableCoins: any,
-        current: string | 'usd',
+        assetId: string;
+        availableCoins: any;
+        current: string | 'usd';
+        price: number;
       }>
     ) {
       state.fiat = {
         ...state.fiat,
         [action.payload.assetId]: action.payload.price,
         availableCoins: action.payload.availableCoins,
-        current: action.payload.current || 'usd'
+        current: action.payload.current || 'usd',
       };
     },
   },

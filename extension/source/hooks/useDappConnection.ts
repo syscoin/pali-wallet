@@ -1,4 +1,10 @@
-import { useUtils, useStore, usePopup, useController, useBrowser } from 'hooks/index';
+import {
+  useUtils,
+  useStore,
+  usePopup,
+  useController,
+  useBrowser,
+} from 'hooks/index';
 
 export const useDappConnection = () => {
   const controller = useController();
@@ -32,7 +38,7 @@ export const useDappConnection = () => {
 
       return false;
     }
-  }
+  };
 
   const cancelConnection = async (accountId: number) => {
     history.push('/home');
@@ -51,7 +57,7 @@ export const useDappConnection = () => {
     }
 
     await closePopup();
-  }
+  };
 
   const changeConnectedAccount = async (accountId: number) => {
     try {
@@ -69,11 +75,11 @@ export const useDappConnection = () => {
       alert.removeAll();
       alert.error('Error changing account. Try again.');
     }
-  }
+  };
 
   return {
     confirmConnection,
     cancelConnection,
-    changeConnectedAccount
-  }
-}
+    changeConnectedAccount,
+  };
+};

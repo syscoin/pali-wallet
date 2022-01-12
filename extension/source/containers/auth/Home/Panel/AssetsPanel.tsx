@@ -1,6 +1,7 @@
 import { Fullscreen } from 'components/Fullscreen';
 import { useAccount } from 'hooks/useAccount';
 import React, { FC } from 'react';
+
 import { PanelList } from './components/PanelList';
 
 export const AssetsPanel: FC = () => {
@@ -10,11 +11,7 @@ export const AssetsPanel: FC = () => {
     <>
       <ul className="h-full w-full p-4 text-white text-base bg-bkg-3">
         {activeAccount?.assets && activeAccount?.assets.length > 0 ? (
-          <PanelList
-            data={activeAccount?.assets}
-            activity={false}
-            assets={true}
-          />
+          <PanelList data={activeAccount?.assets} activity={false} assets />
         ) : (
           <p className="flex justify-center items-center text-sm text-brand-white">
             You have no tokens or NFTs.
@@ -24,5 +21,5 @@ export const AssetsPanel: FC = () => {
 
       <Fullscreen />
     </>
-  )
-}
+  );
+};

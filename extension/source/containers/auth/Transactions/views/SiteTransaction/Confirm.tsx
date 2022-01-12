@@ -6,22 +6,23 @@ import {
   useFormat,
   useTransaction,
   useAccount,
-  useBrowser
+  useBrowser,
 } from 'hooks/index';
-
 import { AuthViewLayout } from 'containers/common/Layout';
-import {
-  PrimaryButton,
-  Modal,
-  SecondaryButton
-} from 'components/index';
+import { PrimaryButton, Modal, SecondaryButton } from 'components/index';
 
+type ConfirmType = {
+  callback: any;
+  temporaryTransaction: any;
+  temporaryTransactionStringToClear: string;
+  title: string;
+};
 const ConfirmDefaultTransaction = ({
   callback,
   temporaryTransaction,
   temporaryTransactionStringToClear,
-  title
-}) => {
+  title,
+}: ConfirmType) => {
   const controller = useController();
 
   const { ellipsis, formatURL, capitalizeFirstLetter } = useFormat();
@@ -29,10 +30,8 @@ const ConfirmDefaultTransaction = ({
   const { history } = useUtils();
   const { activeAccount } = useAccount();
   const { browser } = useBrowser();
-  const {
-    handleRejectTransaction,
-    handleCancelTransactionOnSite,
-  } = useTransaction();
+  const { handleRejectTransaction, handleCancelTransactionOnSite } =
+    useTransaction();
 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -85,10 +84,11 @@ const ConfirmDefaultTransaction = ({
           setSubmitted(true);
         }
 
-        const response = await controller.wallet.account.confirmTemporaryTransaction({
-          type: temporaryTransactionStringToClear,
-          callback,
-        });
+        const response =
+          await controller.wallet.account.confirmTemporaryTransaction({
+            type: temporaryTransactionStringToClear,
+            callback,
+          });
 
         isPending = false;
 
@@ -103,13 +103,17 @@ const ConfirmDefaultTransaction = ({
             response,
           });
         }
-
       } catch (error: any) {
         setFailed(true);
         setLogError(error.message);
 
         if (error && temporaryTransaction.fee > recommendedFee) {
-          setLogError(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
+          setLogError(
+            `${formatURL(
+              String(error.message),
+              166
+            )} Please, reduce fees to send transaction.`
+          );
         }
 
         if (error && temporaryTransaction.fee < recommendedFee) {
@@ -121,18 +125,21 @@ const ConfirmDefaultTransaction = ({
           target: 'background',
           transactionError: true,
           invalidParams: false,
-          message: "Sorry, we could not submit your request. Try again later."
+          message: 'Sorry, we could not submit your request. Try again later.',
         });
       }
 
       setTimeout(() => {
         if (isPending && !confirmed) {
           setSubmitted(true);
-          setFailed(false)
+          setFailed(false);
           setLogError('');
 
           setTimeout(() => {
-            handleCancelTransactionOnSite(browser, temporaryTransactionStringToClear);
+            handleCancelTransactionOnSite(
+              browser,
+              temporaryTransactionStringToClear
+            );
           }, 4000);
         }
       }, 8 * 60 * 1000);
@@ -148,7 +155,7 @@ const ConfirmDefaultTransaction = ({
           open={failed}
           title={`${capitalizeFirstLetter(title.toLowerCase())} request failed`}
           description="Sorry, we could not submit your request. Try again later."
-          log={logError ? logError : 'No description provided'}
+          log={logError || 'No description provided'}
           closeMessage="Ok"
         />
       ) : (
@@ -159,7 +166,9 @@ const ConfirmDefaultTransaction = ({
               closePopup={closePopup}
               onClose={closePopup}
               open={submitted && !failed}
-              title={`${capitalizeFirstLetter(title.toLowerCase())} request successfully submitted`}
+              title={`${capitalizeFirstLetter(
+                title.toLowerCase()
+              )} request successfully submitted`}
               description="You can check your request under activity on your home screen."
               closeMessage="Got it"
             />
@@ -170,26 +179,34 @@ const ConfirmDefaultTransaction = ({
       {temporaryTransaction && (
         <div className="flex justify-center flex-col items-center w-full">
           <ul className="scrollbar-styled text-xs overflow-auto w-full px-4 h-80 mt-4">
-            {data && data.map((item: any) => (
-              <>
-                {!item.advanced && (
-                  <li
-                    key={item.label}
-                    className="flex justify-between p-2 my-2 border-b border-dashed border-brand-royalblue items-center w-full text-xs"
-                  >
-                    <p>{item.label}</p>
-                    <p>{typeof item.value === 'string' && item.value.length > 10 ? ellipsis(item.value) : item.value}</p>
-                  </li>
-                )}
-              </>
-            ))}
+            {data &&
+              data.map((item: any) => (
+                <>
+                  {!item.advanced && (
+                    <li
+                      key={item.label}
+                      className="flex justify-between p-2 my-2 border-b border-dashed border-brand-royalblue items-center w-full text-xs"
+                    >
+                      <p>{item.label}</p>
+                      <p>
+                        {typeof item.value === 'string' &&
+                        item.value.length > 10
+                          ? ellipsis(item.value)
+                          : item.value}
+                      </p>
+                    </li>
+                  )}
+                </>
+              ))}
           </ul>
 
           <div className="flex justify-between w-full max-w-xs md:max-w-md items-center absolute bottom-10 gap-3">
             <SecondaryButton
               type="button"
               action
-              onClick={() => handleRejectTransaction(browser, temporaryTransaction, history)}
+              onClick={() =>
+                handleRejectTransaction(browser, temporaryTransaction, history)
+              }
             >
               Cancel
             </SecondaryButton>
@@ -207,24 +224,29 @@ const ConfirmDefaultTransaction = ({
         </div>
       )}
     </>
-  )
-}
+  );
+};
+
+type ConfirmSignatureType = {
+  psbt: any;
+  signAndSend?: boolean;
+  title?: string;
+};
 
 const ConfirmSignTransaction = ({
   psbt,
   signAndSend = false,
   title = 'SIGNATURE REQUEST',
-}) => {
+}: ConfirmSignatureType) => {
   const controller = useController();
-  const base64 = /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
+  const base64 =
+    /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
 
   const { closePopup } = usePopup();
   const { history, alert } = useUtils();
   const { browser } = useBrowser();
-  const {
-    handleRejectTransaction,
-    handleCancelTransactionOnSite,
-  } = useTransaction();
+  const { handleRejectTransaction, handleCancelTransactionOnSite } =
+    useTransaction();
 
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -236,7 +258,9 @@ const ConfirmSignTransaction = ({
 
     if (!base64.test(psbt.psbt) || typeof psbt.assets !== 'string') {
       alert.removeAll();
-      alert.error(`PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.`);
+      alert.error(
+        'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.'
+      );
 
       setTimeout(() => {
         handleCancelTransactionOnSite(browser, psbt);
@@ -304,7 +328,7 @@ const ConfirmSignTransaction = ({
           open={failed}
           title="Token creation request failed"
           description="Sorry, we could not submit your request. Try again later."
-          log={logError ? logError : '...'}
+          log={logError || '...'}
           closeMessage="Ok"
         />
       )}
@@ -312,11 +336,13 @@ const ConfirmSignTransaction = ({
       {psbt && !loading && (
         <div className="flex justify-center flex-col items-center w-full">
           <ul className="scrollbar-styled text-xs overflow-auto w-full px-4 h-80 mt-4">
-            <pre>{`${JSON.stringify(
-              controller.wallet.account.importPsbt(psbt),
-              null,
-              2
-            )}`}</pre>
+            <pre>
+              {`${JSON.stringify(
+                controller.wallet.account.importPsbt(psbt),
+                null,
+                2
+              )}`}
+            </pre>
           </ul>
 
           <div className="flex justify-between items-center absolute bottom-10 gap-3">
@@ -341,17 +367,17 @@ const ConfirmSignTransaction = ({
         </div>
       )}
     </>
-  )
-}
+  );
+};
 
 export type IConfirmTransaction = {
-  sign?: boolean;
-  title: string;
   callback?: any;
+  sign?: boolean;
+  signAndSend?: boolean;
   temporaryTransaction: string;
   temporaryTransactionStringToClear: string;
-  signAndSend?: boolean;
-}
+  title: string;
+};
 
 export const ConfirmTransaction: FC<IConfirmTransaction> = ({
   sign,
@@ -359,24 +385,22 @@ export const ConfirmTransaction: FC<IConfirmTransaction> = ({
   callback,
   temporaryTransaction,
   temporaryTransactionStringToClear,
-  signAndSend
-}) => {
-  return (
-    <AuthViewLayout canGoBack={false} title={title}>
-      {sign ? (
-        <ConfirmSignTransaction
-          psbt={temporaryTransaction}
-          signAndSend={signAndSend}
-          title="SIGNATURE REQUEST"
-        />
-      ) : (
-        <ConfirmDefaultTransaction
-          callback={callback}
-          temporaryTransaction={temporaryTransaction}
-          temporaryTransactionStringToClear={temporaryTransactionStringToClear}
-          title={title}
-        />
-      )}
-    </AuthViewLayout>
-  );
-}
+  signAndSend,
+}) => (
+  <AuthViewLayout canGoBack={false} title={title}>
+    {sign ? (
+      <ConfirmSignTransaction
+        psbt={temporaryTransaction}
+        signAndSend={signAndSend}
+        title="SIGNATURE REQUEST"
+      />
+    ) : (
+      <ConfirmDefaultTransaction
+        callback={callback}
+        temporaryTransaction={temporaryTransaction}
+        temporaryTransactionStringToClear={temporaryTransactionStringToClear}
+        title={title}
+      />
+    )}
+  </AuthViewLayout>
+);
