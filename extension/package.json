@@ -24,7 +24,7 @@
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "test": "jest",
     "prepare": "husky install",
-   "format": "prettier --write .",
+    "format": "prettier --write .",
     "type-check": "tsc --pretty --noEmit"
   },
   "lint-staged": {
