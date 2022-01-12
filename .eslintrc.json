@@ -78,6 +78,7 @@
     "array-callback-return": "off",
     "no-restricted-syntax": "off",
     "@typescript-eslint/no-shadow": "off",
+    "@typescript-eslint/ban-ts-comment": "off",
     "no-param-reassign": "off",
     "function-paren-newline": "off",
     "object-curly-newline": [

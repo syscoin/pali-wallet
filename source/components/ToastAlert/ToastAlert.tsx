@@ -12,8 +12,6 @@ export const ToastAlert: FC<IAlertTemplate> = ({ message, options, close }) => {
   const otherClasses =
     options.type === "error"
       ? "bg-warning-error border border-warning-error"
-      : options.type === "info"
-      ? ""
       : "";
 
   return (

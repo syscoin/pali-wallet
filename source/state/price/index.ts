@@ -3,7 +3,7 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 export interface IFiatState {
   [assetId: string]: number;
   availableCoins: any;
-  //@ts-ignore
+  // @ts-ignore
   current: string | "usd";
   price: number;
 }
@@ -16,12 +16,12 @@ const initialState: {
   fiat: {
     [assetId: string]: number;
     availableCoins: any;
-    //@ts-ignore
+    // @ts-ignore
     current: string | "usd";
     price: number;
   };
 } = {
-  //@ts-ignore
+  // @ts-ignore
   fiat: {
     syscoin: 0,
     price: 0,

@@ -14,6 +14,6 @@ export const sortList = (list: any) =>
     const previous: any = a.symbol.toLowerCase();
     const next: any = b.symbol.toLowerCase();
 
-    //@ts-ignore
+    // @ts-ignore
     return (previous > next) - (previous < next);
   });
