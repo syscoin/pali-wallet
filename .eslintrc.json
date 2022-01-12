@@ -4,10 +4,13 @@
     "plugin:@typescript-eslint/recommended",
     "@abhijithvijayan/eslint-config/typescript",
     "@abhijithvijayan/eslint-config/react",
-    "airbnb-typescript"
+    "airbnb-typescript",
+    "prettier",
+    "prettier/react"
   ],
   "plugins": [
-    "@typescript-eslint"
+    "@typescript-eslint",
+    "eslint-plugin-prettier"
   ],
   "overrides": [
     {
@@ -78,15 +81,7 @@
     "@typescript-eslint/indent": "off",
     "@typescript-eslint/no-var-requires": "off",
     "no-await-in-loop": "off",
-    "prettier/prettier": [
-      "error",
-      {
-        "trailingComma": "es5",
-        "tabWidth": 2,
-        "semi": true,
-        "singleQuote": true
-      }
-    ],
+    "prettier/prettier": "off",
     "no-bitwise": "off",
     "no-plusplus": "off",
     "import/no-cycle": "off",
