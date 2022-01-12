@@ -1,13 +1,10 @@
 on:
   pull_request:
-    branches:
-      - main
-      - v2-front
     types: [opened, synchronize]
 
 jobs:
   test:
-    name: yarn install and lint
+    name: test and lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
