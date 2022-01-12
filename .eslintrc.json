@@ -66,7 +66,12 @@
     "@typescript-eslint/indent": "off",
     "@typescript-eslint/no-var-requires": "off",
     "no-await-in-loop": "off",
-    "prettier/prettier": "off",
+    "prettier/prettier": {
+      "trailingComma": "es5",
+      "tabWidth": 2,
+      "semi": true,
+      "singleQuote": true
+    },
     "no-bitwise": "off",
     "no-plusplus": "off",
     "import/no-cycle": "off",
