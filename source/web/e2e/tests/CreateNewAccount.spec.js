@@ -1,4 +1,4 @@
-const initializator = require('../initializator')
+const initializator = require('../initializator');
 const { browser } = require('webextension-polyfill-ts');
 const { By } = require('selenium-webdriver');
 
@@ -24,4 +24,3 @@ describe('Create New Account', () => {
     driver.quit();
   });
 });
-

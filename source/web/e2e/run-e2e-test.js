@@ -34,7 +34,7 @@ async function main() {
             describe: 'The path for the E2E test to run.',
             type: 'string',
             normalize: true,
-          }),
+          })
     )
     .strict()
     .help('help');
@@ -43,7 +43,7 @@ async function main() {
 
   if (!browser) {
     exitWithError(
-      `"The browser must be set, via the '--browser' flag or the SELENIUM_BROWSER environment variable`,
+      `"The browser must be set, via the '--browser' flag or the SELENIUM_BROWSER environment variable`
     );
     return;
   } else if (browser !== process.env.SELENIUM_BROWSER) {
@@ -62,7 +62,7 @@ async function main() {
       return;
     } else if (error.code === 'EACCES') {
       exitWithError(
-        'Access to test path is forbidden by file access permissions',
+        'Access to test path is forbidden by file access permissions'
       );
       return;
     }

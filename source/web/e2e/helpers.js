@@ -32,7 +32,7 @@ async function withFixtures(options, testSuite) {
       if (errors.length) {
         const errorReports = errors.map((err) => err.message);
         const errorMessage = `Errors found in browser console:\n${errorReports.join(
-          '\n',
+          '\n'
         )}`;
         if (failOnConsoleError) {
           throw new Error(errorMessage);

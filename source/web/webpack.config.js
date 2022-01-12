@@ -37,7 +37,7 @@ const extensionReloaderPlugin =
           background: 'background',
           inpage: 'inpage',
           extensionPage: ['popup'],
-          trezorScript: 'trezorScript'
+          trezorScript: 'trezorScript',
         },
       })
     : () => {
@@ -65,22 +65,27 @@ module.exports = {
     errors: true,
     hash: true,
   },
-  
+
   node: {
-    fs: "empty"
+    fs: 'empty',
   },
 
   mode: nodeEnv,
 
   entry: {
     manifest: path.join(__dirname, 'manifest.json'),
-    webextension: path.join(__dirname, 'node_modules', 'webextension-polyfill-ts', 'lib/index.js'),
+    webextension: path.join(
+      __dirname,
+      'node_modules',
+      'webextension-polyfill-ts',
+      'lib/index.js'
+    ),
     background: path.join(sourcePath, 'scripts/Background', 'index.ts'),
     inpage: path.join(sourcePath, 'scripts/ContentScript', 'inpage.ts'),
     contentScript: path.join(sourcePath, 'scripts/ContentScript', 'index.ts'),
     trezorScript: path.join(sourcePath, 'vendor', 'trezor-content-script.js'),
     app: path.join(sourcePath, 'pages/App', 'index.tsx'),
-    trezorUSB: path.join(sourcePath, 'vendor', 'trezor-usb-permissions.js')
+    trezorUSB: path.join(sourcePath, 'vendor', 'trezor-usb-permissions.js'),
   },
 
   output: {
@@ -104,13 +109,11 @@ module.exports = {
       constants: path.resolve(__dirname, '../../source/constants'),
       services: path.resolve(__dirname, '../../source/services'),
       hooks: path.resolve(__dirname, '../../source/hooks'),
-      fs: require.resolve("fs-extra"),
+      fs: require.resolve('fs-extra'),
     },
   },
   resolveLoader: {
-    plugins: [
-      PnpWebpackPlugin.moduleLoader(module),
-    ],
+    plugins: [PnpWebpackPlugin.moduleLoader(module)],
   },
   module: {
     rules: [
@@ -123,7 +126,7 @@ module.exports = {
             usePackageJSONVersion: true, // set to false to not use package.json version for manifest
           },
         },
-        exclude: [/node_modules/,  /native/],
+        exclude: [/node_modules/, /native/],
       },
       {
         test: /\.(js|ts)x?$/,
@@ -131,7 +134,7 @@ module.exports = {
         exclude: [/node_modules/, /native/], // Exclude node_modules and react-native project folders.
         options: {
           ...JSON.parse(fs.readFileSync(path.resolve(__dirname, '.babelrc'))),
-        }
+        },
       },
       {
         test: /\.(jpg|png|svg)x?$/,
@@ -178,7 +181,7 @@ module.exports = {
     // Generate sourcemaps
     new webpack.SourceMapDevToolPlugin({ filename: false }),
     new ForkTsCheckerWebpackPlugin({
-      tsconfig: path.resolve(rootPath+'tsconfig.json'),
+      tsconfig: path.resolve(rootPath + 'tsconfig.json'),
     }),
     // environmental variables
     new webpack.EnvironmentPlugin(['NODE_ENV', 'TARGET_BROWSER']),
@@ -207,7 +210,7 @@ module.exports = {
     // write css file(s) to build folder
     new MiniCssExtractPlugin({ filename: 'css/[name].css' }),
     // copy static assets
-    new CopyWebpackPlugin([{ from: sharedPath+'assets', to: 'assets' }]),
+    new CopyWebpackPlugin([{ from: sharedPath + 'assets', to: 'assets' }]),
     // plugin to enable browser reloading in development mode
     extensionReloaderPlugin,
   ],

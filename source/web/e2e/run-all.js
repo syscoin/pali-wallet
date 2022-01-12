@@ -21,7 +21,7 @@ async function main() {
             description:
               'Set how many times the test should be retried upon failure.',
             type: 'number',
-          }),
+          })
     )
     .strict()
     .help('help');
@@ -42,7 +42,6 @@ async function main() {
   }
 
   await runInShell('node', [...args, allE2eTestPath]);
-
 }
 
 main().catch((error) => {

@@ -1,8 +1,11 @@
-
 const { isString } = require('lodash');
 const { renderHook, act } = require('@testing-library/react-hooks');
 
-const { getHost, useCopyClipboard, sendMessage } = require('../../hooks/useUtils');
+const {
+  getHost,
+  useCopyClipboard,
+  sendMessage,
+} = require('../../hooks/useUtils');
 
 describe('useUtils test', () => {
   it('should test getHost method', () => {
@@ -17,8 +20,6 @@ describe('useUtils test', () => {
     await act(() => copyText(text));
     [isCopied, copyText] = result.current;
 
-
     expect(isCopied).toBe(true);
-
-  }); 
+  });
 });

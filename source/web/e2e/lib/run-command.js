@@ -77,7 +77,6 @@ async function runInShell(command, args) {
       });
     });
   } catch (error) {
-
     if (error === internalError) {
       let errorMessage;
       if (errorCode !== null && errorSignal !== null) {

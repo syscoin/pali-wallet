@@ -16,4 +16,3 @@ describe('account test', () => {
     driver.quit();
   });
 });
-

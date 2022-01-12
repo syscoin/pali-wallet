@@ -3,7 +3,6 @@ const { strict: assert } = require('assert');
 const { until, error: webdriverError, By } = require('selenium-webdriver');
 const cssToXPath = require('css-to-xpath');
 
-
 function wrapElementWithAPI(element, driver) {
   element.press = (key) => element.sendKeys(key);
   element.fill = async (input) => {
@@ -24,7 +23,6 @@ function wrapElementWithAPI(element, driver) {
 }
 
 class Driver {
-
   constructor(driver, browser, extensionUrl, timeout = 10000) {
     this.driver = driver;
     this.browser = browser;
@@ -54,16 +52,15 @@ class Driver {
               .or(
                 cssToXPath.xPathBuilder
                   .string()
-                  .contains(locator.text.split(' ').join('')),
-              ),
+                  .contains(locator.text.split(' ').join(''))
+              )
           )
           .toXPath();
         return By.xpath(xpath);
       }
-
     }
     throw new Error(
-      `The locator '${locator}' is not supported by the E2E test driver`,
+      `The locator '${locator}' is not supported by the E2E test driver`
     );
   }
 
@@ -87,28 +84,28 @@ class Driver {
     await this.driver.wait(condition, timeout);
   }
 
-  async actions(){
+  async actions() {
     return this.driver.actions();
   }
 
-  async close(){
+  async close() {
     return await this.driver.close();
   }
 
-  async getTitle(){
+  async getTitle() {
     return await this.driver.getTitle();
   }
 
-  async executeScript(){
+  async executeScript() {
     return await this.driver.executeScript();
   }
-  async getWindowHandle(){
+  async getWindowHandle() {
     return await this.driver.getWindowHandle();
   }
 
   async waitForSelector(
     rawLocator,
-    { timeout = this.timeout, state = 'visible' } = {},
+    { timeout = this.timeout, state = 'visible' } = {}
   ) {
     const selector = this.buildLocator(rawLocator);
     let element;
@@ -120,7 +117,7 @@ class Driver {
     } else if (state === 'detached') {
       element = await this.driver.wait(
         until.stalenessOf(await this.findElement(selector)),
-        timeout,
+        timeout
       );
     }
     return wrapElementWithAPI(element, this);
@@ -134,7 +131,7 @@ class Driver {
     const locator = this.buildLocator(rawLocator);
     const element = await this.driver.wait(
       until.elementLocated(locator),
-      this.timeout,
+      this.timeout
     );
     return wrapElementWithAPI(element, this);
   }
@@ -160,12 +157,12 @@ class Driver {
     const locator = this.buildLocator(rawLocator);
     const elements = await this.driver.wait(
       until.elementsLocated(locator),
-      this.timeout,
+      this.timeout
     );
     return elements.map((element) => wrapElementWithAPI(element, this));
   }
 
-  async findAllElementsWithId(id){
+  async findAllElementsWithId(id) {
     let elements = await this.driver.findElements(By.id(id));
     return elements.map((element) => wrapElementWithAPI(element, this));
   }
@@ -177,10 +174,10 @@ class Driver {
       elements.reduce((acc, element) => {
         acc.push(
           this.driver.wait(until.elementIsVisible(element), this.timeout),
-          this.driver.wait(until.elementIsEnabled(element), this.timeout),
+          this.driver.wait(until.elementIsEnabled(element), this.timeout)
         );
         return acc;
-      }, []),
+      }, [])
     );
     return elements.map((element) => wrapElementWithAPI(element, this));
   }
@@ -204,7 +201,7 @@ class Driver {
   async scrollToElement(element) {
     await this.driver.executeScript(
       'arguments[0].scrollIntoView(true)',
-      element,
+      element
     );
   }
 
@@ -216,12 +213,11 @@ class Driver {
     } catch (err) {
       assert(
         err instanceof webdriverError.NoSuchElementError ||
-          err instanceof webdriverError.TimeoutError,
+          err instanceof webdriverError.TimeoutError
       );
     }
     assert.ok(!dataTab, 'Found element that should not be present');
   }
-
 
   async navigate(page = Driver.PAGES.HOME) {
     return await this.driver.get(`${this.extensionUrl}/${page}.html`);
@@ -259,7 +255,7 @@ class Driver {
     title,
     initialWindowHandles,
     delayStep = 1000,
-    timeout = 5000,
+    timeout = 5000
   ) {
     let windowHandles =
       initialWindowHandles || (await this.driver.getAllWindowHandles());
@@ -281,7 +277,6 @@ class Driver {
   }
 
   async closeAllWindowHandlesExcept(exceptions, windowHandles) {
-
     windowHandles = windowHandles || (await this.driver.getAllWindowHandles());
 
     for (const handle of windowHandles) {
@@ -305,11 +300,11 @@ class Driver {
     const htmlSource = await this.driver.getPageSource();
     await fs.writeFile(`${filepathBase}-dom.html`, htmlSource);
     const uiState = await this.driver.executeScript(
-      () => window.getCleanAppState && window.getCleanAppState(),
+      () => window.getCleanAppState && window.getCleanAppState()
     );
     await fs.writeFile(
       `${filepathBase}-state.json`,
-      JSON.stringify(uiState, null, 2),
+      JSON.stringify(uiState, null, 2)
     );
   }
 
@@ -320,14 +315,12 @@ class Driver {
     ];
     const browserLogs = await this.driver.manage().logs().get('browser');
     const errorEntries = browserLogs.filter(
-      (entry) => !ignoredLogTypes.includes(entry.level.toString()),
+      (entry) => !ignoredLogTypes.includes(entry.level.toString())
     );
     const errorObjects = errorEntries.map((entry) => entry.toJSON());
     return errorObjects.filter(
       (entry) =>
-        !ignoredErrorMessages.some((message) =>
-          entry.message.includes(message),
-        ),
+        !ignoredErrorMessages.some((message) => entry.message.includes(message))
     );
   }
 }

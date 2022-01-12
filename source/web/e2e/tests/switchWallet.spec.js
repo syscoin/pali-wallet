@@ -33,5 +33,5 @@ describe('Switch Account', () => {
       console.log('Switch Account is NOT working correctly');
     }
     driver.quit();
-  }); 
+  });
 });

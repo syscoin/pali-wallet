@@ -7,7 +7,7 @@ describe('Verify seed phrase', () => {
     await initializator();
     setTimeout(async () => {
       await driver.clickElement('.settings-btn');
-    }, 2000)
+    }, 2000);
     await driver.clickElement('.seed-phrase-menu-btn');
     await driver.fill('#phraseview_password', CONSTANTS.PASSWORD);
     const findSeedPhrase = await driver.findAllElementsWithId('user-phrase');
@@ -18,4 +18,4 @@ describe('Verify seed phrase', () => {
     }
     driver.quit();
   });
-}); 
+});

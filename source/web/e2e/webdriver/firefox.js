@@ -7,7 +7,6 @@ const { version } = require('../../package.json');
 
 const TEMP_PROFILE_PATH_PREFIX = path.join(os.tmpdir(), 'pali wallet');
 class FirefoxDriver {
-
   static async build({ responsive, port }) {
     const templateProfile = fs.mkdtempSync(TEMP_PROFILE_PATH_PREFIX);
     const options = new firefox.Options().setProfile(templateProfile);
@@ -22,7 +21,7 @@ class FirefoxDriver {
     const fxDriver = new FirefoxDriver(driver);
 
     const extensionId = await fxDriver.installExtension(
-      `builds/paliwallet-firefox-${version}.zip`,
+      `builds/paliwallet-firefox-${version}.zip`
     );
     const internalExtensionId = await fxDriver.getInternalId();
 
@@ -37,7 +36,6 @@ class FirefoxDriver {
     };
   }
 
-
   constructor(driver) {
     this._driver = driver;
   }
@@ -51,7 +49,7 @@ class FirefoxDriver {
     return await this._driver
       .wait(
         until.elementLocated(By.xpath("//dl/div[contains(., 'UUID')]/dd")),
-        1000,
+        1000
       )
       .getText();
   }

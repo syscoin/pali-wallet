@@ -19,4 +19,4 @@ describe('Set wallet password', () => {
     }
     driver.quit();
   });
-}); 
+});
