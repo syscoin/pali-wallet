@@ -69,3 +69,37 @@ export const useUtils = (): any => {
     isNFT,
   };
 };
+
+export const getHost = (url: string) => {
+  if (typeof url === 'string' && url !== '') {
+    return new URL(url).host;
+  }
+
+  return url;
+};
+
+export const useCopyClipboard = (
+  timeout = 1000
+): [boolean, (toCopy: string) => void] => {
+  const [isCopied, setIsCopied] = useState<boolean>(false);
+
+  const staticCopy = useCallback(async (text) => {
+    await navigator?.clipboard?.writeText(text);
+    setIsCopied(true);
+  }, []);
+
+  useEffect(() => {
+    if (isCopied) {
+      const hide = setTimeout(() => {
+        setIsCopied(false);
+      }, timeout);
+
+      return () => {
+        clearTimeout(hide);
+      };
+    }
+    return undefined;
+  }, [isCopied, setIsCopied, timeout]);
+
+  return [isCopied, staticCopy];
+};
