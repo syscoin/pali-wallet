@@ -52,7 +52,7 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
       <div className="bg-bkg-3 pt-2 pb-3 mb-3 flex justify-center items-center relative">
         <Icon
           size={36}
-          name="select-down"
+          name="select-up"
           wrapperClassname="w-8"
           className={`text-${background} fixed top-24`}
         />
