@@ -27,12 +27,11 @@ export const Header = ({
   const headerStyle =
     normalHeader && accountHeader
       ? 'small-device-size:pb-32'
-      : onlySectionStyle
-      ? ''
-      : 'small-device-size:pb-12';
+      : onlySectionStyle;
+  const anotherHeaderStyle = onlySectionStyle ? '' : 'small-device-size:pb-12';
 
   return (
-    <div className={headerStyle}>
+    <div className={headerStyle || anotherHeaderStyle}>
       {changingNetwork && (
         <div className="bg-brand-black bg-opacity-50 z-20 flex justify-center items-center fixed w-full h-full">
           <Icon name="loading" className="w-4 ml-2 text-brand-white" />
