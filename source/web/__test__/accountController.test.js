@@ -1,5 +1,7 @@
 const CryptoJS = require('crypto-js');
 const bech32 = require('bech32');
+const sys = require('syscoinjs-lib');
+const { initialMockState, SYS_NETWORK } = require('../state/store');
 
 const decryptAES = (encryptedString, key) => {
   return CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
@@ -34,6 +36,9 @@ const isValidSYSAddress = (address, network, verification = true) => {
   return false;
 };
 
+const getTransactionInfoByTxId = (txid) =>
+  sys.utils.fetchBackendRawTx(SYS_NETWORK.main.beUrl, txid);
+
 describe('Account Test', () => {
   it('should return a decrypt string', () => {
     const value = 'test';
@@ -45,5 +50,11 @@ describe('Account Test', () => {
     const invalidSysAddress = 'sys213ixks1mx';
     const value = isValidSYSAddress(invalidSysAddress, 'main');
     expect(value).toBeFalsy();
+  });
+  it('should return a transaction information', async () => {
+    const result = await getTransactionInfoByTxId(
+      initialMockState.accounts[0].transactions[0].txid
+    );
+    console.log(result);
   });
 });

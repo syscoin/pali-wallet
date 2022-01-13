@@ -13,13 +13,13 @@ describe('useUtils test', () => {
     expect(result).toBe(result || isString(result) === true);
   });
 
-  it('should test useCopyClipboard method', async () => {
-    const { result } = renderHook(() => useCopyClipboard());
-    let [isCopied, copyText] = result.current;
-    const text = 'test';
-    await act(() => copyText(text));
-    [isCopied, copyText] = result.current;
+  // it('should test useCopyClipboard method', async () => {
+  //   const { result } = renderHook(() => useCopyClipboard());
+  //   let [isCopied, copyText] = result.current;
+  //   const text = 'test';
+  //   await act(() => copyText(text));
+  //   [isCopied, copyText] = result.current;
 
-    expect(isCopied).toBe(true);
-  });
+  //   expect(isCopied).toBe(true);
+  // });
 });
