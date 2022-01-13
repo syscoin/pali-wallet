@@ -8,7 +8,7 @@ const App: FC = () => {
   const { encriptedMnemonic } = useStore();
 
   return (
-    <section className="min-w-popup bg-bkg-2">
+    <section className="min-w-popup bg-bkg-2 lg:h-full">
       <Container>
         <Router>{encriptedMnemonic ? <AuthRouter /> : <UnAuthRouter />}</Router>
       </Container>

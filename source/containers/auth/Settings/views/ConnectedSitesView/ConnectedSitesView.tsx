@@ -37,7 +37,7 @@ const ConnectedSites = (): any => {
           activeAccount.connectedTo.map((url: string) => (
             <ul
               key={url}
-              className="scrollbar-styled h-80 overflow-auto w-full p-2"
+              className="scrollbar-styled h-80 overflow-auto w-full p-4"
             >
               <li className="flex justify-between p-3 my-2 border-b border-dashed border-yellow-300 items-center w-full text-xs">
                 <p>{formatURL(url, 25)}</p>

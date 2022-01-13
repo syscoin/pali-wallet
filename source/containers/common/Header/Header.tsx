@@ -25,10 +25,13 @@ export const Header = ({
   const onlySectionStyle = onlySection ? '' : 'pb-12';
 
   const headerStyle =
-    normalHeader && accountHeader ? 'pb-32' : onlySectionStyle;
+    normalHeader && accountHeader
+      ? 'small-device-size:pb-32'
+      : onlySectionStyle;
+  const anotherHeaderStyle = onlySectionStyle ? '' : 'small-device-size:pb-12';
 
   return (
-    <div className={headerStyle}>
+    <div className={headerStyle || anotherHeaderStyle}>
       {changingNetwork && (
         <div className="bg-brand-black bg-opacity-50 z-20 flex justify-center items-center fixed w-full h-full">
           <Icon name="loading" className="w-4 ml-2 text-brand-white" />
@@ -37,7 +40,7 @@ export const Header = ({
 
       {onlySection && <Section />}
 
-      <div className="fixed w-full z-10">
+      <div className="small-device-size:fixed w-full z-10">
         {normalHeader && (
           <>
             <NormalHeader importSeed={importSeed} isUnlocked={isUnlocked} />
