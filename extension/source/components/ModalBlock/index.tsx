@@ -1,1 +1,0 @@
-export { ModalBlock } from './ModalBlock';
