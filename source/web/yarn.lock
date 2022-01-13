@@ -8501,6 +8501,11 @@ object-keys@^1.0.11, object-keys@^1.0.12, object-keys@^1.1.1:
   resolved "https://registry.yarnpkg.com/object-keys/-/object-keys-1.1.1.tgz#1c47f272df277f3b1daf061677d9c82e2322c60e"
   integrity sha512-NuAESUOUMrlIXOfHKzD6bpPu3tYt3xvjNdRIQ+FeT0lNb4K8WR70CaDxhuNguS2XG+GjkyMwOzsN5ZktImfhLA==
 
+object-path@^0.11.5:
+  version "0.11.8"
+  resolved "https://registry.yarnpkg.com/object-path/-/object-path-0.11.8.tgz#ed002c02bbdd0070b78a27455e8ae01fc14d4742"
+  integrity sha512-YJjNZrlXJFM42wTBn6zgOJVar9KFJvzx6sTWDte8sWZF//cnjl0BxHNpfZx+ZffXX63A9q0b1zsFiBX4g4X5KA==
+
 object-visit@^1.0.0:
   version "1.0.1"
   resolved "https://registry.yarnpkg.com/object-visit/-/object-visit-1.0.1.tgz#f79c4493af0c5377b59fe39d395e41042dd045bb"
@@ -9817,6 +9822,13 @@ redent@^4.0.0:
   dependencies:
     indent-string "^5.0.0"
     strip-indent "^4.0.0"
+
+redux-watch@^1.2.0:
+  version "1.2.0"
+  resolved "https://registry.yarnpkg.com/redux-watch/-/redux-watch-1.2.0.tgz#b3a745e15855ef72db0e06a60a4b2fe3676d79a7"
+  integrity sha512-Ws4Q+e5zFGMyy1H709c1Ws8apSd6MqoJRIzBDHbI4nikome/IZWVTYXdQNz+VJxPjyX/h2E+lYEo41fXgjCF8g==
+  dependencies:
+    object-path "^0.11.5"
 
 redux@^4.0.0:
   version "4.1.2"
