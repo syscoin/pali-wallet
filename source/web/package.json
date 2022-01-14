@@ -145,19 +145,16 @@
     "zip-webpack-plugin": "^3.0.0"
   },
   "jest": {
-    "verbose": true,
-    "testMatch": [
-      "**/__tests__/**/*.[jt]s?(x)",
-      "**/?(*.)+(test).[tj]s?(x)"
-    ],
-    "testPathIgnorePatterns": [
-      "/node_modules/",
-      "/native/"
+    "automock": true,
+    "collectCoverage": true,
+    "moduleFileExtensions": [
+      "js",
+      "mjs"
     ],
     "transform": {
-      "^.+\\.(ts|tsx)?$": "ts-jest",
-      "^.+\\.(js|jsx)$": "babel-jest"
+      "^.+\\.js$": "babel-jest",
+      "^.+\\.mjs$": "babel-jest"
     },
-    "testEnvironment": "jsdom"
+    "testRegex": "((\\.|/*.)(spec))\\.js?$"
   }
 }
