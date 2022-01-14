@@ -5,7 +5,7 @@ import {
   Store,
 } from '@reduxjs/toolkit';
 import logger from 'redux-logger';
-import { persistStore, persistReducer } from 'redux-persist';
+import { persistReducer } from 'redux-persist';
 import { localStorage } from 'redux-persist-webextension-storage';
 
 import wallet from './wallet';
@@ -35,8 +35,6 @@ const store: Store = configureStore({
   middleware,
   devTools: process.env.NODE_ENV !== 'production',
 });
-
-// persistStore(store);
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;

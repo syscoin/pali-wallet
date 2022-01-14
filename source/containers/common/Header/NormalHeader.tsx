@@ -207,7 +207,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                           className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-menu-secondary backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
                           onClick={() => handleChangeNetwork('main')}
                           id={
-                            network.label === 'Test Network'
+                            networks.label === 'Test Network'
                               ? 'test-btn'
                               : 'main-btn'
                           }
