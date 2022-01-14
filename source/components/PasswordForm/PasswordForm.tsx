@@ -66,7 +66,9 @@ export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
       </span>
 
       <div className="absolute bottom-12">
-        <PrimaryButton type="submit">Next</PrimaryButton>
+        <PrimaryButton type="submit" id="next-btn">
+          Next
+        </PrimaryButton>
       </div>
     </Form>
   </Layout>

@@ -60,6 +60,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
                 : 'border-fields-input-border'
             } bg-fields-input-primary`}
             placeholder="Paste your wallet seed phrase"
+            id="import-phrase"
           />
         </Form.Item>
 
@@ -72,6 +73,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           <PrimaryButton
             type="submit"
             disabled={!seedIsValid || !form.getFieldValue('phrase')}
+            id="import-btn"
           >
             Import
           </PrimaryButton>

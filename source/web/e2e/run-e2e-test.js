@@ -78,6 +78,8 @@ async function main() {
       'mocha',
       '--no-config',
       '--no-timeouts',
+      '--file',
+      'babel_loader.js',
       e2eTestPath,
     ]);
   });

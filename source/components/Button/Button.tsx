@@ -6,6 +6,7 @@ type IPrimaryButton = {
   action?: boolean;
   children: any | null;
   disabled?: boolean;
+  id?: string;
   loading?: boolean;
   onClick?: any;
   type: 'button' | 'submit' | 'reset' | undefined;
@@ -16,6 +17,7 @@ type ICommonButton = {
   children: any | null;
   className?: string;
   disabled?: boolean;
+  id?: string;
   loading?: boolean;
   onClick?: any;
   type: 'button' | 'submit' | 'reset' | undefined;
@@ -30,12 +32,14 @@ export const Button = ({
   onClick,
   className = '',
   width = '36',
+  id = '',
 }: ICommonButton): any => (
   <button
     className={`${className} w-${width}`}
     disabled={disabled || loading}
     onClick={onClick}
     type={type}
+    id={id}
   >
     {children}
   </button>
@@ -52,6 +56,7 @@ export const PrimaryButton: FC<IPrimaryButton> = ({
   onClick,
   width = '36',
   action = false,
+  id = '',
 }) => {
   const enabledStyle = action
     ? 'border-warning-success bg-warning-success hover:bg-warning-successhover text-brand-white w-40'
@@ -64,6 +69,7 @@ export const PrimaryButton: FC<IPrimaryButton> = ({
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
+      id={id}
     >
       {action ? (
         <>
@@ -102,6 +108,7 @@ export const SecondaryButton: FC<IPrimaryButton> = ({
   type,
   onClick,
   action = false,
+  id = '',
 }) => {
   const actionStyle = action
     ? 'bg-transparent border-2 border-brand-white hover:bg-warning-error hover:border-warning-error hover:text-brand-white w-40'
@@ -115,6 +122,7 @@ export const SecondaryButton: FC<IPrimaryButton> = ({
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
+      id={id}
     >
       {action ? (
         <>

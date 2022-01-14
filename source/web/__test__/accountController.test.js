@@ -1,7 +1,26 @@
 const CryptoJS = require('crypto-js');
 const bech32 = require('bech32');
-const sys = require('syscoinjs-lib');
-const { initialMockState, SYS_NETWORK } = require('../state/store');
+// const sys = require('syscoinjs-lib');
+const { initialMockState, SYS_NETWORK } = require('../staticState/store');
+const { default: store } = require('../dynamicState/store');
+const { default: axios } = require('axios');
+import {
+  createAccount,
+  updateStatus,
+  updateAccount,
+  updateLabel,
+  updateTransactions,
+  updateAccountAddress,
+  updateAccountXpub,
+  updateSwitchNetwork,
+  updateAllTokens,
+  setTimer,
+  updateNetwork,
+  setTemporaryTransactionState,
+} from '../dynamicState/wallet';
+
+const xpub =
+  'zpub6rowqhwXmUCV5Dem7TFFWQSisgK9NwbdkJDYMqBi7JoRHK8fd9Zobr4bdJPGhzGvniAhfrCAbNetRqSDsbTQBXPdN4qzyNv5B1SMsWVtin2';
 
 const decryptAES = (encryptedString, key) => {
   return CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
@@ -35,9 +54,161 @@ const isValidSYSAddress = (address, network, verification = true) => {
 
   return false;
 };
+const fetchAccountInfo = async (isHardwareWallet, xpub) => {
+  let response = null;
+  let sysjs;
 
-const getTransactionInfoByTxId = (txid) =>
-  sys.utils.fetchBackendRawTx(SYS_NETWORK.main.beUrl, txid);
+  if (isHardwareWallet) {
+    response = await axios.get(
+      `${SYS_NETWORK.testnet.beUrl}/api/v2/xpub/${xpub}?tokens=nonzero&details=txs/`
+    );
+
+    const account0 = new fromZPub(
+      xpub,
+      sysjs?.Signer.Signer.pubtypes,
+      sysjs?.Signer.Signer.networks
+    );
+    let receivingIndex = -1;
+
+    if (response.tokens) {
+      response.tokens.forEach((token) => {
+        if (token.path) {
+          const splitPath = token.path.split('/');
+
+          if (splitPath.length >= 6) {
+            const change = parseInt(splitPath[4], 10);
+            const index = parseInt(splitPath[5], 10);
+
+            if (change === 1) {
+              return;
+            }
+
+            if (index > receivingIndex) {
+              receivingIndex = index;
+            }
+          }
+        }
+      });
+    }
+
+    return {
+      response,
+    };
+  }
+
+  response = await axios.get(
+    `${SYS_NETWORK.testnet.beUrl}/api/v2/xpub/${xpub}?tokens=nonzero&details=txs/`
+  );
+
+  return {
+    response,
+  };
+};
+const getAccountInfo = async (isHardwareWallet, xpub) => {
+  const { address, response } = await fetchAccountInfo(isHardwareWallet, xpub);
+
+  const assets = [];
+  let transactions = [];
+
+  if (response.transactions) {
+    transactions = response.transactions
+      .map(({ txid, value, confirmations, fees, blockTime, tokenType }) => {
+        txid, value, confirmations, fees, blockTime, tokenType;
+      })
+      .slice(0, 20);
+  }
+
+  if (response.tokensAsset) {
+    const transform = response.tokensAsset.reduce(
+      (item, { type, assetGuid, symbol, balance, decimals }) => {
+        item[assetGuid];
+        {
+          type,
+            assetGuid,
+            (symbol = symbol ? atob(String(symbol)) : ''),
+            (balance =
+              (item[assetGuid] ? item[assetGuid].balance : 0) +
+              Number(balance)),
+            decimals;
+        }
+
+        return item;
+      },
+      {}
+    );
+
+    for (const key in transform) {
+      assets.push(transform[key]);
+    }
+  }
+
+  if (address) {
+    return {
+      balance: response.balance / 1e8,
+      assets,
+      transactions,
+      address,
+    };
+  }
+
+  return {
+    balance: response.balance / 1e8,
+    assets,
+    transactions,
+  };
+};
+
+const getLatestUpdate = async () => {
+  let globalAccount;
+  let sysjs;
+  const { activeAccountId, accounts } = store.getState().wallet;
+
+  if (!accounts.find((account) => account.id === activeAccountId)) {
+    return;
+  }
+
+  globalAccount = accounts.find((account) => account.id === activeAccountId);
+
+  if (!globalAccount?.isTrezorWallet) {
+    sysjs?.Signer?.setAccountIndex(activeAccountId);
+
+    const accLatestInfo = await getAccountInfo(false, xpub);
+
+    if (!accLatestInfo) return;
+
+    const { balance, transactions, assets } = accLatestInfo;
+
+    store.dispatch(
+      updateAccount({
+        id: activeAccountId,
+        balance,
+        transactions,
+        assets,
+      })
+    );
+
+    store.dispatch(updateSwitchNetwork(false));
+
+    return;
+  }
+
+  const trezorAccountLatestInfo = await getAccountInfo(true, xpub);
+
+  if (!trezorAccountLatestInfo) return;
+
+  const trezorData = trezorAccountLatestInfo;
+
+  store.dispatch(
+    updateAccount({
+      id: activeAccountId,
+      balance: trezorData.balance,
+      transactions: trezorData.transactions,
+      assets: trezorData.assets,
+    })
+  );
+
+  store.dispatch(updateSwitchNetwork(false));
+};
 
 describe('Account Test', () => {
   it('should return a decrypt string', () => {
@@ -46,15 +217,19 @@ describe('Account Test', () => {
     const decrypt = decryptAES(encrypt.toString(), 'test123');
     expect(decrypt).toBe(value);
   });
-  it('should return a sys address verification', () => {
-    const invalidSysAddress = 'sys213ixks1mx';
-    const value = isValidSYSAddress(invalidSysAddress, 'main');
-    expect(value).toBeFalsy();
-  });
-  it('should return a transaction information', async () => {
-    const result = await getTransactionInfoByTxId(
-      initialMockState.accounts[0].transactions[0].txid
-    );
+  // it('should return a sys address verification', () => {
+  //   const invalidSysAddress = 'sys213ixks1mx';
+  //   const value = isValidSYSAddress(invalidSysAddress, 'main');
+  //   expect(value).toBeFalsy();
+  // });
+  // it('should return a transaction information', async () => {
+  //   const result = await getTransactionInfoByTxId(
+  //     initialMockState.accounts[0].transactions[0].txid
+  //   );
+  //   console.log(result);
+  // });
+  it('should return lastest update of active account', async () => {
+    const result = await getLatestUpdate();
     console.log(result);
   });
 });
