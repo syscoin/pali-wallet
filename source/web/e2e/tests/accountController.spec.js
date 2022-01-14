@@ -2,6 +2,8 @@
 const { browser } = require('webextension-polyfill-ts');
 const { initialMockState, SYS_NETWORK } = require('../../staticState/store');
 const initializator = require('../initializator');
+const { buildWebDriver } = require('../webdriver');
+const CONSTANTS = require('../constants');
 const sys = require('syscoinjs-lib');
 const { fromZPub } = require('bip84');
 const { default: axios } = require('axios');
@@ -135,42 +137,38 @@ const watchMemPool = (currentAccount) => {
 };
 
 describe('Account Controller test', () => {
-  // it('should return connected accounts', async () => {
-  //   await initializator();
+  it('should return connected accounts', async () => {
+    await initializator();
 
-  //   const ConnectedAccounts = getConnectedAccount();
+    const ConnectedAccounts = getConnectedAccount();
 
-  //   if (ConnectedAccounts) {
-  //     console.log('Found connected account');
-  //   } else {
-  //     console.log('Not found connected account');
-  //   }
+    if (ConnectedAccounts) {
+      console.log('Found connected account');
+    } else {
+      console.log('Not found connected account');
+    }
+  });
 
-  //   driver.quit();
-  // });
+  it('should return true or false if account has a transaction', async () => {
+    await initializator();
 
-  // it('should return true or false if account has a transaction', async () => {
-  //   await initializator();
+    const transaction = transactionData();
+    if (transaction) {
+      console.log('Found transaction in account.');
+    } else {
+      console.log('Not found transaction in account.');
+    }
+  });
 
-  //   const transaction = transactionData();
-  //   if (transaction) {
-  //     console.log('Found transaction in account.');
-  //   } else {
-  //     console.log('Not found transaction in account.');
-  //   }
-  //   driver.quit();
-  // });
-
-  // it('should return xpub account', async () => {
-  //   await initializator();
-  //   const xpub = getConnectedAccountXpub();
-  //   if (xpub) {
-  //     console.log('xpub account found: ', xpub);
-  //   } else {
-  //     console.log('xpub account not found');
-  //   }
-  //   driver.quit();
-  // });
+  it('should return xpub account', async () => {
+    await initializator();
+    const xpub = getConnectedAccountXpub();
+    if (xpub) {
+      console.log('xpub account found: ', xpub);
+    } else {
+      console.log('xpub account not found');
+    }
+  });
   it('should return an account details', async () => {
     await initializator();
     const xpub =
@@ -185,20 +183,19 @@ describe('Account Controller test', () => {
       console.log('Not found account info');
     }
   });
-  // it('should return true or false if account has pools', async () => {
-  //   await initializator();
+  it('should return true or false if account has pools', async () => {
+    await initializator();
 
-  //   const pools = watchMemPool(initialMockState.accounts[0]);
-  //   if(pools){
-  //     console.log('Found account pool', pools)
-  //   } else{
-  //     console.log('Not found account pool');
-  //   }
-  //   driver.quit();
-  // });
-  // it('should return lastest update of active account', async () => {
-  //   await initializator();
-  //   const result =  await getLatestUpdate();
-  //   console.log(result)
-  // })
+    const pools = watchMemPool(initialMockState.accounts[0]);
+    if (pools) {
+      console.log('Found account pool', pools);
+    } else {
+      console.log('Not found account pool');
+    }
+  });
+  it('should return lastest update of active account', async () => {
+    await initializator();
+    const result = await getLatestUpdate();
+    console.log(result);
+  });
 });

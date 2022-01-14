@@ -375,7 +375,7 @@ const initialState: IWalletState = {
   },
   temporaryTransactionState: {
     executing: false,
-    type: 'sendAsset',
+    type: '',
   },
 };
 
