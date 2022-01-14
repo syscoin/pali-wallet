@@ -1,6 +1,9 @@
 const initializator = require('../initializator');
 const { browser } = require('webextension-polyfill-ts');
 const { By } = require('selenium-webdriver');
+const { initialMockState, SYS_NETWORK } = require('../../state/store');
+
+const { accounts } = initialMockState;
 
 describe('Delete wallet', () => {
   it('should delete wallet after import wallet', async () => {
@@ -10,7 +13,10 @@ describe('Delete wallet', () => {
     }, 2000);
     await driver.clickElement('.delete-wallet-btn');
     await driver.fill('#delete_password', CONSTANTS.PASSWORD);
-    await driver.fill('#delete_seed', CONSTANTS.IMPORT_WALLET);
+
+    if (accounts[0].balance > 0) {
+      await driver.fill('#delete_seed', CONSTANTS.IMPORT_WALLET);
+    }
     await driver.clickElement('#delete-btn');
 
     const findGetStarted = await driver.findElement(
