@@ -1,3 +1,4 @@
+// @ts-ignore
 import React, { FC, useEffect, useState } from 'react';
 import { Icon, IconButton } from 'components/index';
 import {
@@ -62,7 +63,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
     <Menu as="div" className="absolute left-2 inline-block text-left mr-8">
       {(menuprops) => (
         <>
-          <Menu.Button className="inline-flex justify-center w-full  text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+          <Menu.Button className="inline-flex justify-center w-full  text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75 menu-btn">
             <div className="cursor-pointer w-full ml-2 flex items-center justify-start gap-x-6">
               <span>{activeNetwork}</span>
 
@@ -138,7 +139,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                 <Disclosure>
                   {({ open }) => (
                     <>
-                      <Disclosure.Button className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3">
+                      <Disclosure.Button className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3 sys-btn">
                         <Icon
                           name="dolar"
                           className="ml-1 mr-4 text-brand-white"

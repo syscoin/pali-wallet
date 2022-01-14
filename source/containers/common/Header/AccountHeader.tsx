@@ -188,7 +188,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
 
         <div className="text-brand-white px-1 justify-center items-center">
           <p className="text-base mb-1">{activeAccount?.label}</p>
-          <p className="text-xs">
+          <p className="text-xs" id="active-account">
             {ellipsis(activeAccount?.address.main, 6, 14)}
           </p>
         </div>

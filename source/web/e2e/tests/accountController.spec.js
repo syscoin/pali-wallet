@@ -1,13 +1,32 @@
+// @ts-ignore
 const { browser } = require('webextension-polyfill-ts');
-const { initialMockState, SYS_NETWORK } = require('../../state/store');
+const { initialMockState, SYS_NETWORK } = require('../../staticState/store');
 const initializator = require('../initializator');
+const { buildWebDriver } = require('../webdriver');
+const CONSTANTS = require('../constants');
 const sys = require('syscoinjs-lib');
 const { fromZPub } = require('bip84');
 const { default: axios } = require('axios');
-
+const { default: store } = require('../../dynamicState/store');
 const { accounts, tabs } = initialMockState;
 const { currentURL } = tabs;
+const {
+  createAccount,
+  updateStatus,
+  updateAccount,
+  updateLabel,
+  updateTransactions,
+  updateAccountAddress,
+  updateAccountXpub,
+  updateSwitchNetwork,
+  updateAllTokens,
+  setTimer,
+  updateNetwork,
+  setTemporaryTransactionState,
+} = require('../../dynamicState/wallet');
 
+const xpub =
+  'zpub6rowqhwXmUCV5Dem7TFFWQSisgK9NwbdkJDYMqBi7JoRHK8fd9Zobr4bdJPGhzGvniAhfrCAbNetRqSDsbTQBXPdN4qzyNv5B1SMsWVtin2';
 const getConnectedAccount = () => {
   return accounts.find((account) => {
     return account.connectedTo.find((url) => {
@@ -90,6 +109,33 @@ const fetchAccountInfo = async (isHardwareWallet, xpub) => {
   };
 };
 
+const watchMemPool = (currentAccount) => {
+  let intervalId;
+  if (intervalId) {
+    return true;
+  }
+
+  intervalId = setInterval(() => {
+    const { accounts } = initialMockState;
+
+    const activeAccount = accounts.find(
+      (account) => account.id === currentAccount?.id
+    );
+
+    if (
+      !activeAccount ||
+      !activeAccount?.transactions ||
+      !activeAccount?.transactions.filter((tx) => tx.confirmations > 0).length
+    ) {
+      clearInterval(intervalId);
+
+      return false;
+    }
+  }, 30 * 1000);
+
+  return true;
+};
+
 describe('Account Controller test', () => {
   it('should return connected accounts', async () => {
     await initializator();
@@ -101,8 +147,6 @@ describe('Account Controller test', () => {
     } else {
       console.log('Not found connected account');
     }
-
-    driver.quit();
   });
 
   it('should return true or false if account has a transaction', async () => {
@@ -114,7 +158,6 @@ describe('Account Controller test', () => {
     } else {
       console.log('Not found transaction in account.');
     }
-    driver.quit();
   });
 
   it('should return xpub account', async () => {
@@ -125,7 +168,6 @@ describe('Account Controller test', () => {
     } else {
       console.log('xpub account not found');
     }
-    driver.quit();
   });
   it('should return an account details', async () => {
     await initializator();
@@ -136,9 +178,24 @@ describe('Account Controller test', () => {
       xpub
     );
     if (accountInfo.response.data && accountInfo.response.data.address) {
-      console.log('Found account info');
+      console.log('Found account info', accountInfo.response.data);
     } else {
       console.log('Not found account info');
     }
+  });
+  it('should return true or false if account has pools', async () => {
+    await initializator();
+
+    const pools = watchMemPool(initialMockState.accounts[0]);
+    if (pools) {
+      console.log('Found account pool', pools);
+    } else {
+      console.log('Not found account pool');
+    }
+  });
+  it('should return lastest update of active account', async () => {
+    await initializator();
+    const result = await getLatestUpdate();
+    console.log(result);
   });
 });
