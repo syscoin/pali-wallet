@@ -1,7 +1,8 @@
-const { isString } = require('lodash');
 import { renderHook, act } from '@testing-library/react-hooks';
-import { getHost } from '../../hooks/useUtils';
 import { useState, useEffect, useCallback } from 'react';
+import { isString } from 'lodash';
+
+import { getHost } from '../../hooks/useUtils';
 
 const useCopyClipboard = (
   timeout = 1000

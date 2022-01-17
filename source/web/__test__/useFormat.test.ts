@@ -1,4 +1,5 @@
 import { isInteger } from 'lodash';
+
 const {
   ellipsis,
   formatCurrency,
@@ -29,9 +30,8 @@ describe('useFormat methods test', () => {
     const verifierFn = () => {
       if (isInteger(formattedNumber) === false) {
         return true;
-      } else {
-        return false;
       }
+      return false;
     };
     expect(verifierFn()).toBe(isInteger(formattedNumber) === false);
   });

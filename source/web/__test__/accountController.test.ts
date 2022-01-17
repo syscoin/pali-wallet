@@ -1,5 +1,7 @@
+// @ts-nocheck
 import CryptoJS from 'crypto-js';
 import bech32 from 'bech32';
+
 import store from '../dynamicState/store';
 import {
   updateTransactions,
@@ -7,11 +9,18 @@ import {
   setTimer,
   updateNetwork,
 } from '../dynamicState/wallet';
+
 import { Transaction } from '../../types/transactions';
 
-//@ts-ignore
-const xpub =
-  'zpub6rowqhwXmUCV5Dem7TFFWQSisgK9NwbdkJDYMqBi7JoRHK8fd9Zobr4bdJPGhzGvniAhfrCAbNetRqSDsbTQBXPdN4qzyNv5B1SMsWVtin2';
+const getConnectedAccount = () => {
+  const { accounts, tabs } = store.getState().wallet;
+  const { currentURL } = tabs;
+  return accounts.find((account) => {
+    return account.connectedTo.find((url) => {
+      return url === new URL(currentURL).host;
+    });
+  });
+};
 
 const decryptAES = (encryptedString, key) => {
   return CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
@@ -87,16 +96,6 @@ const updateNetworkData = ({ id, label, beUrl }) => {
       beUrl,
     })
   );
-};
-
-const getConnectedAccount = () => {
-  const { accounts, tabs } = store.getState().wallet;
-  const { currentURL } = tabs;
-  return accounts.find((account) => {
-    return account.connectedTo.find((url) => {
-      return url === new URL(currentURL).host;
-    });
-  });
 };
 
 const coventPendingType = (txid) => ({
