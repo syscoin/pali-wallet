@@ -1,7 +1,5 @@
-// @ts-nocheck
 import CryptoJS from 'crypto-js';
 import bech32 from 'bech32';
-
 import store from '../dynamicState/store';
 import {
   updateTransactions,
@@ -9,7 +7,6 @@ import {
   setTimer,
   updateNetwork,
 } from '../dynamicState/wallet';
-
 import { Transaction } from '../../types/transactions';
 
 const getConnectedAccount = () => {
@@ -22,9 +19,8 @@ const getConnectedAccount = () => {
   });
 };
 
-const decryptAES = (encryptedString, key) => {
-  return CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
-};
+const decryptAES = (encryptedString, key) =>
+  CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
 const isValidSYSAddress = (address, network, verification = true) => {
   let resAddress;
   let encode;
