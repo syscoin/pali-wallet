@@ -226,7 +226,7 @@ describe('Account Test', () => {
       tx: mockJson,
       type: transactionType,
     });
-    expect(temporaryTransaction['newNFT']).toStrictEqual(mockJson);
+    expect(temporaryTransaction.newNFT).toStrictEqual(mockJson);
   });
   it('should create new xpub', () => {
     const newXpub = 'test';
