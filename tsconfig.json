@@ -28,10 +28,8 @@
       "services/*": ["source/services/*"],
       "hooks/*": ["source/hooks/*"],
       "types/*": ["source/types/*"],
-      "tests/*": [
-        "tests/*"
-      ]
+      "tests/*": ["tests/*"]
     }
   },
-  "include": ["source", "webpack.config.ts", "cypress"]
+  "include": ["source", "webpack.config.ts", "cypress", "tests"]
 }
