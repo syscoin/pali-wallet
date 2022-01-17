@@ -25,7 +25,10 @@
     "test": "jest",
     "prepare": "husky install",
     "format": "prettier --single-quote --write .",
-    "type-check": "tsc --pretty --noEmit"
+    "type-check": "tsc --pretty --noEmit",
+    "test:e2e:chrome": "SELENIUM_BROWSER=chrome node tests/e2e/run-all.js",
+    "test:e2e:chrome:silent": "SELENIUM_BROWSER=chrome ENABLE_CHROME_LOGGING=false node tests/e2e/run-all.js",
+    "postinstall": "npx patch-package"
   },
   "lint-staged": {
     "*.@(ts|tsx|js|jsx)": [
