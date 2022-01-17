@@ -1,5 +1,5 @@
 import CryptoJS from 'crypto-js';
-import bech32 from 'bech32';
+import { bech32 } from 'bech32';
 import store from '../dynamicState/store';
 import {
   updateTransactions,
