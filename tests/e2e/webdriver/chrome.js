@@ -4,7 +4,7 @@ const chrome = require('selenium-webdriver/chrome');
 class ChromeDriver {
   static async build({ responsive, port }) {
     const root = process.cwd();
-    const extDir = `load-extension=${root}/extension/chrome`;
+    const extDir = `load-extension=${root}/build/chrome`;
     const args = [extDir];
     if (responsive) {
       args.push('--auto-open-devtools-for-tabs');
