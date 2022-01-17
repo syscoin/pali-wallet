@@ -70,6 +70,12 @@ export const useUtils = (): any => {
   };
 };
 
+export const isNFT = (guid: number) => {
+  const assetGuid = BigInt.asUintN(64, BigInt(guid));
+
+  return assetGuid >> BigInt(32) > 0;
+};
+
 export const getHost = (url: string) => {
   if (typeof url === 'string' && url !== '') {
     return new URL(url).host;
