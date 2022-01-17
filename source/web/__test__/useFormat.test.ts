@@ -1,4 +1,4 @@
-import { isInteger } from 'lodash';
+/*import { isInteger } from 'lodash';
 
 const {
   ellipsis,
@@ -41,3 +41,4 @@ describe('useFormat methods test', () => {
     expect(URL.length).toBeGreaterThan(formattedURL.length);
   });
 });
+*/

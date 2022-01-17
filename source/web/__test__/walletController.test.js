@@ -10,14 +10,12 @@ import { generateMnemonic, validateMnemonic } from 'bip39';
 import {
   deleteWallet as deleteWalletState,
   changeAccountActiveId,
-  changeActiveNetwork,
-  updateStatus,
+  //changeActiveNetwork,
+  //updateStatus,
   setEncriptedMnemonic,
-  removeAccounts,
-  removeAccount,
-  updateSwitchNetwork,
-  removeConnection,
+  //updateSwitchNetwork,
 } from '../dynamicState/wallet';
+//import { is } from "core-js/core/object";
 
 let password = '';
 let encriptedPassword = '';
@@ -88,6 +86,11 @@ const generatePhrase = () => {
 
 const getPhrase = (pwd) => (checkPassword(pwd) ? mnemonic : null);
 
+const addNewAccount = (label) =>
+  account.subscribeAccount(encriptedPassword, false, null, label, false);
+
+const isLocked = () => !encriptedPassword || !HDsigner;
+
 describe('walletController tests', () => {
   it('should switch account and check if active account id has changed', () => {
     const newId = 1;
@@ -115,13 +118,13 @@ describe('walletController tests', () => {
   });
 
   //not ready yet
-  /*it("should delete wallet and check if wallet state back to initial state", () => {
+  it('should delete wallet and check if wallet state back to initial state', () => {
     let pwd = CONSTANTS.PASSWORD;
     setWalletPassword(pwd);
     deleteWallet(pwd);
     const currentState = store.getState().wallet;
-    expect(currentState).toBe(defaultStore.getState().wallet);
-  });*/
+    expect(currentState).toStrictEqual(defaultMockState);
+  });
 
   it('should logout', () => {
     let pwd = CONSTANTS.PASSWORD;
@@ -146,7 +149,7 @@ describe('walletController tests', () => {
     expect(result).toBe(mnemonic);
   });
 
-  it('should check if it is returning encrypted mnemonic correctly', () => {
+  /*it("should check if it is returning encrypted mnemonic correctly", () => {
     let pwd = CONSTANTS.PASSWORD;
     setWalletPassword(pwd);
     generatePhrase();
@@ -154,5 +157,25 @@ describe('walletController tests', () => {
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
     const { encriptedMnemonic } = store.getState().wallet;
     expect(encryptedMnemonic).toBe(encriptedMnemonic);
+  });*/
+
+  /*it("should check if it is adding a new account correctly using encrypted mnemonic", () => {
+    let pwd = CONSTANTS.PASSWORD;
+    setWalletPassword(pwd);
+    generatePhrase();
+    addNewAccount("test account");
+    const { accounts } = store.getState().wallet;
+    console.log(accounts);
+  });*/
+
+  it('should check if it is returning lock correctly', () => {
+    //need to check hdsigner
+    let pwd = CONSTANTS.PASSWORD;
+    setWalletPassword(pwd);
+    let seedphrase = CONSTANTS.IMPORT_WALLET;
+    importPhrase(seedphrase);
+    logOut();
+    const Locked = isLocked();
+    expect(Locked).toBe(true);
   });
 });
