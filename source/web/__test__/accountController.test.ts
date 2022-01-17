@@ -1,5 +1,6 @@
 import CryptoJS from 'crypto-js';
 import { bech32 } from 'bech32';
+
 import store from '../dynamicState/store';
 import {
   updateTransactions,
@@ -12,11 +13,9 @@ import { Transaction } from '../../types/transactions';
 const getConnectedAccount = () => {
   const { accounts, tabs } = store.getState().wallet;
   const { currentURL } = tabs;
-  return accounts.find((account) => {
-    return account.connectedTo.find((url) => {
-      return url === new URL(currentURL).host;
-    });
-  });
+  return accounts.find((account) =>
+    account.connectedTo.find((url) => url === new URL(currentURL).host)
+  );
 };
 
 const decryptAES = (encryptedString, key) =>
