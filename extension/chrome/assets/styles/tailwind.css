@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.add-identicon svg {
+  @apply rounded-full;
+}
+
+input {
+  @apply outline-none;
+}
+
+/* Firefox */
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+.remove-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.remove-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.scrollbar-styled::-webkit-scrollbar {
+  @apply w-1;
+}
+
+.scrollbar-styled::-webkit-scrollbar-track-piece {
+  @apply bg-transparent rounded-full;
+}
+
+.scrollbar-styled::-webkit-scrollbar-button {
+  @apply hidden;
+}
+
+.scrollbar-styled::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-brand-royalblue transition-all duration-300;
+}
+
+/* unauth/create/pass inputs */
+.ant-input-affix-wrapper.ant-input-password {
+  @apply relative;
+}
+
+.ant-form-item-control-input-content {
+  @apply w-full;
+}
+
+.ant-form-item-control-input-content > textarea {
+  @apply w-full rounded-lg p-2 pl-4 border text-brand-graylight text-sm focus:border-fields-input-borderfocus resize-none outline-none h-20;
+}
+
+.ant-input-affix-wrapper.ant-input-password > input {
+  @apply w-full rounded-full p-2 pl-4 bg-fields-input-primary border border-fields-input-border text-brand-graylight text-sm focus:border-fields-input-borderfocus;
+}
+
+.ant-input-suffix {
+  @apply absolute right-2 text-bkg-4;
+}
+
+.ant-form-item-control-input {
+  @apply relative flex justify-center items-center;
+}
+
+.ant-form-item-children-icon {
+  @apply absolute right-10 text-bkg-4 top-0;
+}
+
+#rpc .ant-form-item-children-icon {
+  @apply absolute right-2 top-2;
+}
+
+.ant-form-item-explain.ant-form-item-explain-error {
+  @apply relative;
+}
+
+div[role='alert'] {
+  @apply text-brand-white text-base font-light text-center absolute left-1/4 right-1/4;
+}
+
+.anticon.anticon-check-circle {
+  @apply text-warning-success;
+}
+
+.anticon.anticon-close-circle {
+  @apply text-warning-error;
+}
+
+.ant-tooltip-hidden {
+  @apply hidden;
+}
