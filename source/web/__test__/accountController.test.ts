@@ -1,24 +1,15 @@
-const CryptoJS = require('crypto-js');
-const bech32 = require('bech32');
-// const sys = require('syscoinjs-lib');
-const { initialMockState, SYS_NETWORK } = require('../staticState/store');
-const { default: store } = require('../dynamicState/store');
-const { default: axios } = require('axios');
+import CryptoJS from 'crypto-js';
+import bech32 from 'bech32';
+import store from '../dynamicState/store';
 import {
-  createAccount,
-  updateStatus,
-  updateAccount,
-  updateLabel,
   updateTransactions,
   updateAccountAddress,
-  updateAccountXpub,
-  updateSwitchNetwork,
-  updateAllTokens,
   setTimer,
   updateNetwork,
-  setTemporaryTransactionState,
 } from '../dynamicState/wallet';
+import { Transaction } from '../../types/transactions';
 
+//@ts-ignore
 const xpub =
   'zpub6rowqhwXmUCV5Dem7TFFWQSisgK9NwbdkJDYMqBi7JoRHK8fd9Zobr4bdJPGhzGvniAhfrCAbNetRqSDsbTQBXPdN4qzyNv5B1SMsWVtin2';
 
@@ -53,161 +44,6 @@ const isValidSYSAddress = (address, network, verification = true) => {
   }
 
   return false;
-};
-const fetchAccountInfo = async (isHardwareWallet, xpub) => {
-  let response = null;
-  let sysjs;
-
-  if (isHardwareWallet) {
-    response = await axios.get(
-      `${SYS_NETWORK.testnet.beUrl}/api/v2/xpub/${xpub}?tokens=nonzero&details=txs/`
-    );
-
-    const account0 = new fromZPub(
-      xpub,
-      sysjs?.Signer.Signer.pubtypes,
-      sysjs?.Signer.Signer.networks
-    );
-    let receivingIndex = -1;
-
-    if (response.tokens) {
-      response.tokens.forEach((token) => {
-        if (token.path) {
-          const splitPath = token.path.split('/');
-
-          if (splitPath.length >= 6) {
-            const change = parseInt(splitPath[4], 10);
-            const index = parseInt(splitPath[5], 10);
-
-            if (change === 1) {
-              return;
-            }
-
-            if (index > receivingIndex) {
-              receivingIndex = index;
-            }
-          }
-        }
-      });
-    }
-
-    return {
-      response,
-    };
-  }
-
-  response = await axios.get(
-    `${SYS_NETWORK.testnet.beUrl}/api/v2/xpub/${xpub}?tokens=nonzero&details=txs/`
-  );
-
-  return {
-    response,
-  };
-};
-const getAccountInfo = async (isHardwareWallet, xpub) => {
-  const { address, response } = await fetchAccountInfo(isHardwareWallet, xpub);
-
-  const assets = [];
-  let transactions = [];
-
-  if (response.transactions) {
-    transactions = response.transactions
-      .map(({ txid, value, confirmations, fees, blockTime, tokenType }) => {
-        txid, value, confirmations, fees, blockTime, tokenType;
-      })
-      .slice(0, 20);
-  }
-
-  if (response.tokensAsset) {
-    const transform = response.tokensAsset.reduce(
-      (item, { type, assetGuid, symbol, balance, decimals }) => {
-        item[assetGuid];
-        {
-          type,
-            assetGuid,
-            (symbol = symbol ? atob(String(symbol)) : ''),
-            (balance =
-              (item[assetGuid] ? item[assetGuid].balance : 0) +
-              Number(balance)),
-            decimals;
-        }
-
-        return item;
-      },
-      {}
-    );
-
-    for (const key in transform) {
-      assets.push(transform[key]);
-    }
-  }
-
-  if (address) {
-    return {
-      balance: response.balance / 1e8,
-      assets,
-      transactions,
-      address,
-    };
-  }
-
-  return {
-    balance: response.balance / 1e8,
-    assets,
-    transactions,
-  };
-};
-
-const getLatestUpdate = async () => {
-  let globalAccount;
-  let sysjs;
-  const { activeAccountId, accounts } = store.getState().wallet;
-
-  if (!accounts.find((account) => account.id === activeAccountId)) {
-    return;
-  }
-
-  globalAccount = accounts.find((account) => account.id === activeAccountId);
-
-  if (!globalAccount?.isTrezorWallet) {
-    sysjs?.Signer?.setAccountIndex(activeAccountId);
-
-    const accLatestInfo = await getAccountInfo(false, xpub);
-
-    if (!accLatestInfo) return;
-
-    const { balance, transactions, assets } = accLatestInfo;
-
-    store.dispatch(
-      updateAccount({
-        id: activeAccountId,
-        balance,
-        transactions,
-        assets,
-      })
-    );
-
-    store.dispatch(updateSwitchNetwork(false));
-
-    return;
-  }
-
-  const trezorAccountLatestInfo = await getAccountInfo(true, xpub);
-
-  if (!trezorAccountLatestInfo) return;
-
-  const trezorData = trezorAccountLatestInfo;
-
-  store.dispatch(
-    updateAccount({
-      id: activeAccountId,
-      balance: trezorData.balance,
-      transactions: trezorData.transactions,
-      assets: trezorData.assets,
-    })
-  );
-
-  store.dispatch(updateSwitchNetwork(false));
 };
 
 const setNewAddress = (addr) => {
@@ -271,12 +107,13 @@ const coventPendingType = (txid) => ({
   blockTime: Date.now() / 1e3,
 });
 
-const updateTransactionData = (txinfo) => {
-  let globalAccount;
+const updateTransactionData = (txinfo: any) => {
+  let globalAccount: any;
+  let tokenType: any;
   const transactionItem =
     store.getState().wallet.temporaryTransactionState.type === 'sendAsset';
 
-  let transactions = [];
+  let transactions: Transaction[] = [];
 
   if (transactionItem && globalAccount) {
     transactions = globalAccount?.transactions;
@@ -291,10 +128,24 @@ const updateTransactionData = (txinfo) => {
       id: transactionItem
         ? Number(globalAccount?.id)
         : Number(getConnectedAccount().id),
-      txs: [coventPendingType(txinfo), ...transactions],
+      txs: [coventPendingType(txinfo), tokenType, ...transactions],
     })
   );
 };
+
+const temporaryTransaction = {
+  newAsset: null,
+  mintAsset: null,
+  newNFT: null,
+  updateAsset: null,
+  transferAsset: null,
+  sendAsset: null,
+  signPSBT: null,
+  signAndSendPSBT: null,
+  mintNFT: null,
+};
+
+const getTemporaryTransaction = (type) => temporaryTransaction[type];
 
 describe('Account Test', () => {
   it('should return a decrypt string', () => {
@@ -335,5 +186,10 @@ describe('Account Test', () => {
     const txId =
       '89f20ae3ba21792b60dc32007b273dde4ffa7b9c389bbb688772974fbeb38962';
     updateTransactionData(txId);
+  });
+  it('should return temporary transaction info', () => {
+    const transactionType = 'sendAsset';
+    const result = getTemporaryTransaction(transactionType);
+    console.log(result);
   });
 });

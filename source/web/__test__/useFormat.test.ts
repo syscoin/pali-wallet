@@ -1,4 +1,4 @@
-const { isInteger } = require('lodash');
+import { isInteger } from 'lodash';
 const {
   ellipsis,
   formatCurrency,
