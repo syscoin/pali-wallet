@@ -158,7 +158,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
               type="button"
               action
               onClick={() =>
-                handleRejectTransaction(browser, temporaryTransaction, history)
+                handleRejectTransaction(browser, temporaryTransaction, navigate)
               }
             >
               Cancel

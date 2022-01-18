@@ -5,6 +5,7 @@ import {
   Route,
   // Redirect,
   useLocation,
+  useParams,
 } from 'react-router-dom';
 import { useController, useStore, useUtils, useBrowser } from 'hooks/index';
 import {
@@ -53,6 +54,7 @@ export const AuthRouter = () => {
   const location = useLocation();
   const controller = useController();
   const isUnlocked = !controller.wallet.isLocked();
+  const params = useParams();
 
   const { getHost, alert, navigate } = useUtils();
   const { browser } = useBrowser();
@@ -295,9 +297,7 @@ export const AuthRouter = () => {
               <Route path="/send" element={<Send />} />
               <Route
                 path="/send/:address"
-                children={(match: any) => (
-                  <Send initAddress={match.params.address} />
-                )}
+                element={<Send initAddress={params.address} />}
               />
               <Route path="/receive" element={<Receive />} />
 
