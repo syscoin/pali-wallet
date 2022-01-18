@@ -7,6 +7,7 @@ import {
   updateAccountAddress,
   setTimer,
   updateNetwork,
+  updateAccountXpub,
 } from '../dynamicState/wallet';
 import { Transaction } from '../../types/transactions';
 
@@ -20,6 +21,7 @@ const getConnectedAccount = () => {
 
 const decryptAES = (encryptedString, key) =>
   CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
+
 const isValidSYSAddress = (address, network, verification = true) => {
   let resAddress;
   let encode;
@@ -141,6 +143,24 @@ const temporaryTransaction = {
 
 const getTemporaryTransaction = (type) => temporaryTransaction[type];
 
+const clearTemporaryTransaction = (item: string) =>
+  (temporaryTransaction[item] = null);
+const updateTemporaryTransaction = ({ tx, type }) => {
+  temporaryTransaction[type] = { ...tx };
+};
+
+const setNewXpub = (id: number, xpub: string, xprv: string, key: string) => {
+  store.dispatch(
+    updateAccountXpub({
+      id,
+      xpub,
+      xprv: CryptoJS.AES.encrypt(xprv, String(key)).toString(),
+    })
+  );
+
+  return true;
+};
+
 describe('Account Test', () => {
   it('should return a decrypt string', () => {
     const value = 'test';
@@ -184,6 +204,36 @@ describe('Account Test', () => {
   it('should return temporary transaction info', () => {
     const transactionType = 'sendAsset';
     const result = getTemporaryTransaction(transactionType);
-    console.log(result);
+    expect(result).toBeNull();
+  });
+  it('should clear temporary transaction', () => {
+    const transactionType = 'sendAsset';
+    const result = clearTemporaryTransaction(transactionType);
+    expect(result).toBeNull();
+  });
+  it('should update temporary transaction data', () => {
+    const transactionType = 'newNFT';
+    const mockJson = {
+      fromConnectedAccount: 'test',
+      toAddress: 'addressTest',
+      amount: 123,
+      fee: 123,
+      token: 'ADA',
+      isToken: false,
+      rbf: '',
+    };
+    updateTemporaryTransaction({
+      tx: mockJson,
+      type: transactionType,
+    });
+    expect(temporaryTransaction.newNFT).toStrictEqual(mockJson);
+  });
+  it('should create new xpub', () => {
+    const newXpub = 'test';
+    const xprv = 'testXprv';
+    setNewXpub(0, newXpub, xprv, '123');
+    const { accounts } = store.getState().wallet;
+    const account0 = accounts[0].xpub;
+    expect(account0).toBe(newXpub);
   });
 });

@@ -2,7 +2,7 @@ import { renderHook, act } from '@testing-library/react-hooks';
 import { useState, useEffect, useCallback } from 'react';
 import { isString } from 'lodash';
 
-import { getHost } from '../../hooks/useUtils';
+import { getHost, isNFT } from '../../hooks/useUtils';
 
 const useCopyClipboard = (
   timeout = 1000
@@ -44,5 +44,10 @@ describe('useUtils test', () => {
     [isCopied, copyText] = result.current;
 
     expect(isCopied).toBe(true);
+  });
+  it('should verify if item is nft or not', () => {
+    const nftNumber = 1000 * 1500 * 15123;
+    const result = isNFT(nftNumber);
+    expect(result).toBeTruthy();
   });
 });
