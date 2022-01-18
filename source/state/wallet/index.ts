@@ -1,7 +1,7 @@
-import { SYS_NETWORK } from 'constants/index';
-
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { Transaction } from 'types/transactions';
+
+import { SYS_NETWORK } from '../../constants';
 
 import IWalletState, {
   IAccountUpdateState,
@@ -9,6 +9,8 @@ import IWalletState, {
   IAccountUpdateAddress,
   IAccountUpdateXpub,
   IWalletTokenState,
+  Connection,
+  INetwork,
 } from './types';
 
 const getHost = (url: string) => {
@@ -19,7 +21,7 @@ const getHost = (url: string) => {
   return url;
 };
 
-const initialState: IWalletState = {
+export const initialState: IWalletState = {
   status: 0,
   accounts: [],
   activeAccountId: 0,
@@ -68,10 +70,7 @@ const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
-    updateNetwork(
-      state: IWalletState,
-      action: PayloadAction<{ beUrl: string; id: any; label: string }>
-    ) {
+    updateNetwork(state: IWalletState, action: PayloadAction<INetwork>) {
       return {
         ...state,
         networks: {
@@ -80,6 +79,7 @@ const WalletState = createSlice({
         },
       };
     },
+    // In minutes
     setTimer(state: IWalletState, action: PayloadAction<number>) {
       return {
         ...state,
@@ -178,9 +178,11 @@ const WalletState = createSlice({
         },
       };
     },
-    removeConnection(state: IWalletState, action: PayloadAction<any>) {
+    // remove the connection from [state.tabs.connections]
+    // and its url from [state.accounts[id].connectedTo]
+    removeConnection(state: IWalletState, action: PayloadAction<Connection>) {
       const connectionIndex: number = state.tabs.connections.findIndex(
-        (connection: any) => connection.url === action.payload.url
+        (connection: Connection) => connection.url === action.payload.url
       );
 
       const account = state.accounts.find(
@@ -198,9 +200,10 @@ const WalletState = createSlice({
         1
       );
     },
+    // TODO comment
     updateConnectionsArray(
       state: IWalletState,
-      action: PayloadAction<{ accountId: number; url: string }>
+      action: PayloadAction<Connection>
     ) {
       const { accounts, tabs } = state;
       const { accountId, url } = action.payload;
@@ -304,6 +307,7 @@ const WalletState = createSlice({
     ) {
       state.encriptedMnemonic = action.payload.toString();
     },
+    // TODO rename [status] to something more meaningful
     updateStatus(state: IWalletState) {
       state.status = Date.now();
     },
@@ -349,6 +353,9 @@ const WalletState = createSlice({
       const indexOf = state.accounts.findIndex(
         (element: IAccountState) => element.id === action.payload.id
       );
+
+      if (indexOf === -1) return;
+
       state.accounts[indexOf] = {
         ...state.accounts[indexOf],
         ...action.payload,
@@ -372,7 +379,13 @@ const WalletState = createSlice({
       state: IWalletState,
       action: PayloadAction<IAccountUpdateXpub>
     ) {
-      state.accounts[action.payload.id] = {
+      const accountIndex = state.accounts.findIndex(
+        (element: IAccountState) => element.id === action.payload.id
+      );
+
+      if (accountIndex === -1) return;
+
+      state.accounts[accountIndex] = {
         ...state.accounts[action.payload.id],
         ...action.payload,
       };
@@ -398,7 +411,7 @@ const WalletState = createSlice({
     changeAccountActiveId(state: IWalletState, action: PayloadAction<number>) {
       state.activeAccountId = action.payload;
     },
-    changeActiveNetwork(state: IWalletState, action: PayloadAction<any>) {
+    changeActiveNetwork(state: IWalletState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload.id;
       state.currentBlockbookURL = action.payload.beUrl;
     },
@@ -409,6 +422,8 @@ const WalletState = createSlice({
       const indexOf = state.accounts.findIndex(
         (element: IAccountState) => element.id === action.payload.id
       );
+
+      if (indexOf === -1) return;
 
       state.accounts[indexOf].transactions = action.payload.txs;
     },
