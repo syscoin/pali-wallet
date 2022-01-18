@@ -23,7 +23,7 @@ export const Send: FC<ISend> = () => {
   const getFiatAmount = usePrice();
   const controller = useController();
 
-  const { alert, history, isNFT } = useUtils();
+  const { alert, navigate, isNFT } = useUtils();
   const { getAssetBalance } = useTransaction();
   const { activeAccount } = useAccount();
   const { activeNetwork, fiat } = useStore();
@@ -96,7 +96,7 @@ export const Send: FC<ISend> = () => {
         type: 'sendAsset',
       });
 
-      history.push('/send/confirm');
+      navigate('/send/confirm');
     } catch (error) {
       alert.removeAll();
       alert.error('An internal error has occurred.');

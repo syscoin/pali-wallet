@@ -9,7 +9,7 @@ import {
 export const useDappConnection = () => {
   const controller = useController();
 
-  const { alert, history } = useUtils();
+  const { alert, navigate } = useUtils();
   const { currentSenderURL } = useStore();
   const { closePopup } = usePopup();
   const { browser } = useBrowser();
@@ -27,7 +27,7 @@ export const useDappConnection = () => {
         target: 'background',
       });
 
-      history.push('/home');
+      navigate('/home');
 
       await closePopup();
 
@@ -41,7 +41,7 @@ export const useDappConnection = () => {
   };
 
   const cancelConnection = async (accountId: number) => {
-    history.push('/home');
+    navigate('/home');
 
     if (accountId > -1) {
       await browser.runtime.sendMessage({

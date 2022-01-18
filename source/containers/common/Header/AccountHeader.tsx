@@ -21,7 +21,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
 
   const { activeAccount } = useAccount();
   const { ellipsis } = useFormat();
-  const { history, useCopyClipboard, alert } = useUtils();
+  const { navigate, useCopyClipboard, alert } = useUtils();
   const { encriptedMnemonic, accounts, activeAccountId } = useStore();
 
   const [copied, copy] = useCopyClipboard();
@@ -45,7 +45,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
   const handleLogout = () => {
     controller.wallet.logOut();
 
-    history.push('/app.html');
+    navigate('/app.html');
   };
 
   const showSuccessAlert = () => {
@@ -84,7 +84,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
 
           <Menu.Item>
             <li
-              onClick={() => history.push('/account-priv')}
+              onClick={() => navigate('/account-priv')}
               className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
             >
               <Icon name="key" className="ml-1 mb-2 mr-4 text-brand-white" />
@@ -115,7 +115,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
 
                   <Disclosure.Panel className="scrollbar-styled pb-2 text-sm bg-menu-secondary max-h-40 h-auto overflow-auto">
                     <li
-                      onClick={() => history.push('/account-newaccount')}
+                      onClick={() => navigate('/account-newaccount')}
                       className="flex items-center p-2.5 text-sm font-medium text-brand-white transition transform bg-menu-secondary mb-4 backface-visibility-hidden active:bg-opacity-40 focus:outline-none justify-center duration-300 mx-auto w-full border-b border-dashed border-menu-dasheddark cursor-pointer hover:bg-bkg-2"
                     >
                       <Icon
@@ -154,7 +154,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
 
           <Menu.Item>
             <li
-              onClick={() => history.push('/account-hardware')}
+              onClick={() => navigate('/account-hardware')}
               className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
             >
               <Icon

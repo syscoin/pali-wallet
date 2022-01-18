@@ -1,14 +1,14 @@
 import { useAlert } from 'react-alert';
 import { IAccountState } from 'state/wallet/types';
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
 
 export const useUtils = (): any => {
-  const history = useHistory();
+  const navigate = useNavigate();
 
   const useSettingsView = () =>
     useCallback((view) => {
-      history.push(view);
+      navigate(view);
     }, []);
 
   const handleRefresh = (controller: any, activeAccount: IAccountState) => {
@@ -64,7 +64,7 @@ export const useUtils = (): any => {
     useCopyClipboard,
     alert,
     getHost,
-    history,
+    navigate,
     handleRefresh,
     isNFT,
   };

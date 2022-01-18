@@ -27,7 +27,7 @@ const ConfirmDefaultTransaction = ({
 
   const { ellipsis, formatURL, capitalizeFirstLetter } = useFormat();
   const { closePopup } = usePopup();
-  const { history } = useUtils();
+  const { navigate } = useUtils();
   const { activeAccount } = useAccount();
   const { browser } = useBrowser();
   const { handleRejectTransaction, handleCancelTransactionOnSite } =
@@ -205,7 +205,7 @@ const ConfirmDefaultTransaction = ({
               type="button"
               action
               onClick={() =>
-                handleRejectTransaction(browser, temporaryTransaction, history)
+                handleRejectTransaction(browser, temporaryTransaction, navigate)
               }
             >
               Cancel
@@ -243,7 +243,7 @@ const ConfirmSignTransaction = ({
     /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
 
   const { closePopup } = usePopup();
-  const { history, alert } = useUtils();
+  const { navigate, alert } = useUtils();
   const { browser } = useBrowser();
   const { handleRejectTransaction, handleCancelTransactionOnSite } =
     useTransaction();
@@ -349,7 +349,7 @@ const ConfirmSignTransaction = ({
             <SecondaryButton
               type="button"
               action
-              onClick={() => handleRejectTransaction(browser, psbt, history)}
+              onClick={() => handleRejectTransaction(browser, psbt, navigate)}
             >
               Cancel
             </SecondaryButton>

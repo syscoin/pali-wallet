@@ -55,9 +55,9 @@ const DefaultModal = ({
   doNothing = false,
   closePopup,
 }: DefaltModalType) => {
-  const { history } = useUtils();
+  const { navigate } = useUtils();
 
-  const chooseAction = goTo && !doNothing ? () => history.push(goTo) : onClose;
+  const chooseAction = goTo && !doNothing ? () => navigate(goTo) : onClose;
 
   return (
     <Transition appear show={open} as={Fragment}>
@@ -118,7 +118,7 @@ const DefaultModal = ({
                   type="button"
                   className="inline-flex justify-center px-10 transition-all duration-200 py-2 text-sm font-medium hover:text-brand-royalblue text-brand-white bg-transparent border border-brand-white rounded-full hover:bg-button-popuphover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
                   onClick={
-                    goTo ? closePopup || (() => history.push(goTo)) : onClose
+                    goTo ? closePopup || (() => navigate(goTo)) : onClose
                   }
                 >
                   {closeMessage}
@@ -144,9 +144,9 @@ const ErrorModal = ({
   doNothing = false,
   log = '',
 }: ErrorModalType) => {
-  const { history } = useUtils();
+  const { navigate } = useUtils();
 
-  const chooseAction = goTo && !doNothing ? () => history.push(goTo) : onClose;
+  const chooseAction = goTo && !doNothing ? () => navigate(goTo) : onClose;
 
   return (
     <Transition appear show={open} as={Fragment}>

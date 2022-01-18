@@ -16,7 +16,7 @@ export const Home = () => {
   const controller = useController();
   const getFiatAmount = usePrice();
 
-  const { history, handleRefresh } = useUtils();
+  const { navigate, handleRefresh } = useUtils();
   const { formatNumber } = useFormat();
   const { activeAccount } = useAccount();
 
@@ -69,7 +69,7 @@ export const Home = () => {
               <Button
                 type="button"
                 className="flex items-center justify-center flex-1 xl:flex-none xl:p-18 text-base rounded-l-full border border-button-primary bg-button-primary text-brand-white transition-all duration-300 hover:bg-button-primaryhover"
-                onClick={() => history.push('/send')}
+                onClick={() => navigate('/send')}
               >
                 <Icon
                   name="arrow-up"
@@ -83,7 +83,7 @@ export const Home = () => {
               <Button
                 type="button"
                 className="flex items-center justify-center flex-1 xl:flex-none xl:p-18 text-base rounded-r-full border border-button-secondary bg-button-secondary text-brand-white hover:bg-button-secondaryhover transition-all duration-300"
-                onClick={() => history.push('/receive')}
+                onClick={() => navigate('/receive')}
               >
                 <Icon
                   name="arrow-down"

@@ -1,17 +1,17 @@
 import React, { FC } from 'react';
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { PrimaryButton } from 'components/index';
 import { useController } from 'hooks/index';
 import { Layout } from 'containers/common/Layout';
 
 export const CreatePhrase: FC = () => {
-  const history = useHistory();
+  const navigate = useNavigate();
   const controller = useController();
 
   const phrases = controller.wallet.generatePhrase();
 
   const nextHandler = () => {
-    history.push('/create/phrase/check');
+    navigate('/create/phrase/check');
   };
 
   return (

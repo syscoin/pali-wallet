@@ -4,7 +4,7 @@ import { IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 
 export const Section = () => {
-  const { history } = useUtils();
+  const { navigate } = useUtils();
 
   return (
     <div className="relative">
@@ -16,7 +16,7 @@ export const Section = () => {
 
       <IconButton
         className="absolute top-0 -right-24"
-        onClick={() => history.goBack()}
+        onClick={() => navigate.goBack()}
       >
         <Icon name="home" className="text-brand-royalblue opacity-60" />
       </IconButton>

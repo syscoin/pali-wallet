@@ -17,7 +17,7 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
   background = 'bkg-2',
   canGoBack = true,
 }) => {
-  const { history } = useUtils();
+  const { navigate } = useUtils();
   const { browser } = useBrowser();
 
   const url = browser.runtime.getURL('app.html');
@@ -43,7 +43,7 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
         <p className="text-xl w-full text-center">{title}</p>
 
         {canGoBack && (
-          <IconButton onClick={() => history.push('/home')}>
+          <IconButton onClick={() => navigate('/home')}>
             <Icon wrapperClassname="absolute bottom-1 right-4" name="close" />
           </IconButton>
         )}

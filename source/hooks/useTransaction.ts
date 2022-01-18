@@ -24,8 +24,8 @@ export const useTransaction = () => {
     });
   };
 
-  const handleRejectTransaction = (browser, item, history) => {
-    history.push('/home');
+  const handleRejectTransaction = (browser, item, navigate) => {
+    navigate('/home');
 
     browser.runtime.sendMessage({
       type: 'WALLET_ERROR',
