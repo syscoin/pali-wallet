@@ -1,6 +1,6 @@
 import CryptoJS from 'crypto-js';
 
-import { Assets, Transaction } from 'types/transactions';
+import { Assets, Transaction } from '../../types/transactions';
 import reducer, {
   changeAccountActiveId,
   changeActiveNetwork,
