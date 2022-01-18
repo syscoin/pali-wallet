@@ -1,4 +1,4 @@
-/*import CryptoJS from 'crypto-js';
+import CryptoJS from 'crypto-js';
 import { bech32 } from 'bech32';
 
 import store from '../dynamicState/store';
@@ -186,4 +186,4 @@ describe('Account Test', () => {
     const result = getTemporaryTransaction(transactionType);
     console.log(result);
   });
-});*/
+});

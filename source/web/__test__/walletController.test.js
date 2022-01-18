@@ -117,7 +117,6 @@ describe('walletController tests', () => {
     expect(importedCorrectly).toBe(true);
   });
 
-  //not ready yet
   it('should delete wallet and check if wallet state back to initial state', () => {
     let pwd = CONSTANTS.PASSWORD;
     setWalletPassword(pwd);
@@ -137,9 +136,12 @@ describe('walletController tests', () => {
     expect(mnemonic).toBe('');
   });
 
-  //it("should generate a mnemonic correctly", () => {
-  // generatePhrase();
-  //});
+  it('should generate a mnemonic correctly', () => {
+    generatePhrase();
+
+    var wordCount = mnemonic.match(/(\w+)/g).length;
+    expect(wordCount).toBe(12);
+  });
 
   it('should check if it is getting mnemonic correctly according to password', () => {
     let pwd = CONSTANTS.PASSWORD;
@@ -154,7 +156,7 @@ describe('walletController tests', () => {
     setWalletPassword(pwd);
     generatePhrase();
     const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic, password);
-    store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
+    //store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
     const { encriptedMnemonic } = store.getState().wallet;
     expect(encryptedMnemonic).toBe(encriptedMnemonic);
   });*/

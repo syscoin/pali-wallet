@@ -1,4 +1,4 @@
-/*import { renderHook, act } from '@testing-library/react-hooks';
+import { renderHook, act } from '@testing-library/react-hooks';
 import { useState, useEffect, useCallback } from 'react';
 import { isString } from 'lodash';
 
@@ -46,4 +46,3 @@ describe('useUtils test', () => {
     expect(isCopied).toBe(true);
   });
 });
-*/
