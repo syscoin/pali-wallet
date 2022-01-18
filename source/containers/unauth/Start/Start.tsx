@@ -25,6 +25,7 @@ export const Start = () => {
       <Link
         className="font-light mt-20 text-base hover:text-brand-graylight text-brand-royalbluemedium transition-all duration-300 font-poppins"
         to="/import"
+        id="import-wallet-link"
       >
         Import using wallet seed phrase
       </Link>

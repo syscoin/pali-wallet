@@ -13,7 +13,7 @@ export const Link: FC<ILink> = ({
   to,
   className = 'no-underline font-medium text-base font-poppins',
   children,
-  id = 'link-btn',
+  id,
   onClick,
 }) => (
   <RouterLink className={className} to={to} onClick={onClick} id={id}>

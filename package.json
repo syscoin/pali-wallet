@@ -26,8 +26,8 @@
     "prepare": "husky install",
     "format": "prettier --single-quote --write .",
     "type-check": "tsc --pretty --noEmit",
-    "test:e2e:chrome": "SELENIUM_BROWSER=chrome node tests/e2e/run-all.js",
-    "test:e2e:chrome:silent": "SELENIUM_BROWSER=chrome ENABLE_CHROME_LOGGING=false node tests/e2e/run-all.js",
+    "test:e2e:chrome": "yarn build:chrome && SELENIUM_BROWSER=chrome node tests/e2e/run-all.js",
+    "test:e2e:chrome:silent": "yarn build:chrome && SELENIUM_BROWSER=chrome ENABLE_CHROME_LOGGING=false node tests/e2e/run-all.js",
     "postinstall": "npx patch-package"
   },
   "lint-staged": {
@@ -71,6 +71,7 @@
     "coingecko-api": "^1.0.10",
     "coinselectsyscoin": "^1.0.77",
     "crypto-js": "^4.0.0",
+    "css-to-xpath": "^0.1.0",
     "currency-symbol-map": "^5.0.1",
     "currency.js": "^2.0.4",
     "date-fns": "^2.16.1",
@@ -84,6 +85,7 @@
     "jest-watch-typeahead": "^1.0.0",
     "lint-staged": "^12.1.7",
     "lodash": "^4.17.20",
+    "mocha": "^7.2.0",
     "neo-async": "^2.6.2",
     "npm-check-updates": "^11.8.5",
     "postcss": "^7",
@@ -118,7 +120,8 @@
     "webext-base-css": "^1.3.1",
     "webext-redux": "^2.1.7",
     "webextension-polyfill": "^0.8.0",
-    "webextension-polyfill-ts": "^0.25.0"
+    "webextension-polyfill-ts": "^0.25.0",
+    "yargs": "^17.3.1"
   },
   "devDependencies": {
     "@abhijithvijayan/eslint-config": "2.6.3",

@@ -1,18 +1,14 @@
-const { buildWebDriver } = require('./webdriver');
-
 const CONSTANTS = require('./constants');
 
-const importWallet = async () => {
-  const { driver } = await buildWebDriver();
-
+const importWallet = async ({ driver }) => {
   await driver.navigate();
 
-  await driver.clickElement('#create-wallet');
-  await driver.fill('#import-wallet-input', CONSTANTS.IMPORT_WALLET);
-  await driver.clickElement('#import-action');
+  await driver.clickElement('#import-wallet-link');
+  await driver.fill('#import-wallet-input', CONSTANTS.SEED_PHRASE);
+  await driver.clickElement('#import-wallet-action');
   await driver.fill('#basic_password', CONSTANTS.PASSWORD);
   await driver.fill('#basic_repassword', CONSTANTS.PASSWORD);
-  await driver.clickElement('#next-btn');
+  await driver.clickElement('#create-password-action');
 };
 
 module.exports = {

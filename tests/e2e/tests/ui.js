@@ -1,14 +1,22 @@
-import { importWallet } from '../initialize';
+import { beforeEach } from 'mocha';
 import { buildWebDriver } from '../webdriver';
+// import { importWallet } from '../initialize';
+// import { assert } from 'assert';
 
-describe('ui tests', () => {
-  it('should change network to testnet after login', async () => {
+describe('ui tests', async () => {
+  let uiWebDriver = null;
+
+  beforeEach(async () => {
     const { driver } = await buildWebDriver();
 
-    await importWallet();
+    uiWebDriver = driver;
 
-    console.log('lasdmaskn');
+    await driver.navigate();
+  });
 
-    driver.quit();
+  it('should have link and action button on start page', async () => {
+    // const importWalletLink = await uiWebDriver.findElement({ id: 'import-wallet-link' });
+
+    uiWebDriver.quit();
   });
 });
