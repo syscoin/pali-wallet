@@ -67,7 +67,10 @@ const DeleteWalletView = () => {
               }),
             ]}
           >
-            <Input.Password placeholder="Enter your password" />
+            <Input.Password
+              placeholder="Enter your password"
+              id="delete_password"
+            />
           </Form.Item>
 
           {activeAccount && activeAccount.balance > 0 && (
@@ -111,6 +114,7 @@ const DeleteWalletView = () => {
                     : 'border-fields-input-border'
                 } bg-bkg-4 border border-bkg-4 text-sm outline-none rounded-lg p-5`}
                 placeholder="Paste your wallet seed phrase"
+                id="delete_seed"
               />
             </Form.Item>
           )}
@@ -128,6 +132,7 @@ const DeleteWalletView = () => {
               action
               type="submit"
               disabled={!form.getFieldValue('password') || !seedIsValid}
+              id="delete-btn"
             >
               Delete
             </PrimaryButton>

@@ -54,13 +54,18 @@ const NewAccountView = () => {
             ]}
           >
             <Input
-              className="phrase-input rounded-full py-2 px-4 w-72 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-sm"
+              className="phrase-input rounded-full py-2 px-4 w-72 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-sm new-account-name-input"
               placeholder="Name your new account (optional)"
             />
           </Form.Item>
 
           <div className="absolute bottom-12">
-            <SecondaryButton type="submit" loading={loading} disabled={loading}>
+            <SecondaryButton
+              type="submit"
+              loading={loading}
+              disabled={loading}
+              id="create-btn"
+            >
               Create
             </SecondaryButton>
           </div>

@@ -1,5 +1,5 @@
 // @ts-ignore
-const { browser } = require('webextension-polyfill-ts');
+/*const { browser } = require('webextension-polyfill-ts');
 const { initialMockState, SYS_NETWORK } = require('../../staticState/store');
 const initializator = require('../initializator');
 const { buildWebDriver } = require('../webdriver');
@@ -198,4 +198,4 @@ describe('Account Controller test', () => {
     const result = await getLatestUpdate();
     console.log(result);
   });
-});
+});*/

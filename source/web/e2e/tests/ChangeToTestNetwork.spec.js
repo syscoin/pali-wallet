@@ -1,4 +1,4 @@
-const initializator = require('../initializator');
+/*const initializator = require('../initializator');
 const { browser } = require('webextension-polyfill-ts');
 
 describe('Change Network test', () => {
@@ -16,4 +16,4 @@ describe('Change Network test', () => {
 
     driver.quit();
   });
-});
+});*/

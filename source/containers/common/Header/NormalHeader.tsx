@@ -60,7 +60,10 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
   }, [activeAccount, currentTabURL]);
 
   const NetworkMenu = () => (
-    <Menu as="div" className="absolute left-2 inline-block text-left mr-8">
+    <Menu
+      as="div"
+      className="absolute left-2 inline-block text-left mr-8 menu-btn"
+    >
       {(menuprops) => (
         <>
           <Menu.Button className="inline-flex justify-center w-full  text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75 menu-btn">
@@ -278,7 +281,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
     <Menu as="div" className="absolute right-2 inline-block text-right z-10">
       {() => (
         <>
-          <Menu.Button className="mb-2 mr-0.8">
+          <Menu.Button className="mb-2 mr-0.8 settings-btn">
             {encriptedMnemonic && !importSeed ? (
               <IconButton type="primary" shape="circle">
                 <Icon
@@ -333,7 +336,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <Menu.Item>
                 <li
                   onClick={() => history.push('/general-phrase')}
-                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3 seed-phrase-menu-btn"
                 >
                   <Icon name="wallet" className="text-brand-white ml-1 mr-4" />
 
@@ -355,7 +358,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <Menu.Item>
                 <li
                   onClick={() => history.push('/general-delete')}
-                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3 delete-wallet-btn"
                 >
                   <Icon name="delete" className="text-brand-white ml-1 mr-4" />
 

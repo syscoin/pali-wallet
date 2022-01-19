@@ -1,4 +1,4 @@
-const initializator = require('../initializator');
+/*const initializator = require('../initializator');
 const { browser } = require('webextension-polyfill-ts');
 
 describe('closeExtension test', () => {
@@ -11,4 +11,4 @@ describe('closeExtension test', () => {
       console.log('Not found window');
     }
   });
-});
+});*/

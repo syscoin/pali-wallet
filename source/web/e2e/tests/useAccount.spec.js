@@ -1,4 +1,4 @@
-const initializator = require('../initializator');
+/*const initializator = require('../initializator');
 const { browser } = require('webextension-polyfill-ts');
 const { renderHook, act } = require('@testing-library/react-hooks');
 const { By } = require('selenium-webdriver');
@@ -15,4 +15,4 @@ describe('account test', () => {
     }
     driver.quit();
   });
-});
+});*/

@@ -1,4 +1,4 @@
-const initializator = require('../initializator');
+/*const initializator = require('../initializator');
 const { browser } = require('webextension-polyfill-ts');
 const { By } = require('selenium-webdriver');
 
@@ -19,4 +19,4 @@ describe('Set wallet password', () => {
     }
     driver.quit();
   });
-});
+});*/
