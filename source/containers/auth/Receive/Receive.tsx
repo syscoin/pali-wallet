@@ -31,6 +31,7 @@ export const Receive = () => {
             value={activeAccount.address.main}
             bgColor="#fff"
             fgColor="#000"
+            className="qr-code"
             style={{ height: '240px', width: '225px' }}
           />
 
@@ -38,7 +39,7 @@ export const Receive = () => {
             {ellipsis(activeAccount.address.main, 4, 10)}
           </p>
 
-          <div className="absolute bottom-12">
+          <div className="absolute bottom-12 copy-address-receive-btn">
             <SecondaryButton
               type="button"
               onClick={() => copyText(activeAccount.address.main)}

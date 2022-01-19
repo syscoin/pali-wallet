@@ -5,7 +5,7 @@ const { By } = require('selenium-webdriver');
 describe('Set wallet password', () => {
   it('should create a new password and try to sign in', async () => {
     await initializator();
-    await driver.clickElement('#kebab-menu-btn');
+    await driver.clickElement('.kebab-menu-btn');
     await driver.clickElement('.lock-btn');
     await driver.fill('#basic_password', CONSTANTS.PASSWORD);
     await driver.clickElement('#unlock-btn');

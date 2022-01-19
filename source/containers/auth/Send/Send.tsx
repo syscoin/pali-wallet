@@ -107,7 +107,7 @@ export const Send: FC<ISend> = () => {
 
   const SendForm = () => (
     <div className="mt-4">
-      <p className="flex flex-col justify-center text-center items-center font-rubik">
+      <p className="flex flex-col justify-center text-center items-center font-rubik send-balance">
         <span className="text-brand-royalblue font-thin font-poppins">
           Balance
         </span>
@@ -158,7 +158,7 @@ export const Send: FC<ISend> = () => {
           <Input
             type="text"
             placeholder="Receiver"
-            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-sm"
+            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-sm receiver-input"
           />
         </Form.Item>
 
@@ -201,7 +201,7 @@ export const Send: FC<ISend> = () => {
                     <Menu.Item>
                       <button
                         onClick={() => handleSelectedAsset(-1)}
-                        className="hover:text-brand-royalblue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between"
+                        className="hover:text-brand-royalblue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between send-network-dropdown"
                       >
                         <p>SYS</p>
 
@@ -247,7 +247,7 @@ export const Send: FC<ISend> = () => {
               <Switch
                 checked={verifyAddress}
                 onChange={verifyOnChange}
-                className="relative inline-flex items-center h-4 rounded-full w-9 border border-brand-royalblue"
+                className="relative inline-flex items-center h-4 rounded-full w-9 border border-brand-royalblue "
               >
                 <span className="sr-only">Verify address</span>
                 <span
@@ -255,7 +255,7 @@ export const Send: FC<ISend> = () => {
                     verifyAddress
                       ? 'translate-x-6 bg-warning-success'
                       : 'translate-x-1'
-                  } inline-block w-2 h-2 transform bg-warning-error rounded-full`}
+                  } inline-block w-2 h-2 transform bg-warning-error rounded-full verify-address-switch`}
                 />
               </Switch>
             </Form.Item>
@@ -287,7 +287,7 @@ export const Send: FC<ISend> = () => {
                     ZDAG
                       ? 'bg-warning-success translate-x-6'
                       : 'bg-warning-error translate-x-1'
-                  } inline-block w-2 h-2 transform rounded-full`}
+                  } inline-block w-2 h-2 transform rounded-full z-dag-switch`}
                 />
               </Switch>
             </Form.Item>
@@ -318,7 +318,7 @@ export const Send: FC<ISend> = () => {
           ]}
         >
           <Input
-            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-sm"
+            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-sm amount-input"
             type="number"
             placeholder="Amount"
           />
@@ -374,7 +374,7 @@ export const Send: FC<ISend> = () => {
                 className={`${
                   disabledFee &&
                   'opacity-50 cursor-not-allowed text-button-disabled'
-                } border border-fields-input-border bg-fields-input-primary rounded-r-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
+                } border border-fields-input-border bg-fields-input-primary rounded-r-full w-60 outline-none py-3 pr-8 pl-4 text-sm fee-input`}
                 type="number"
                 placeholder="Fee network"
                 value={recommend}
@@ -401,7 +401,9 @@ export const Send: FC<ISend> = () => {
           </span>
         </p>
 
-        <SecondaryButton type="submit">Next</SecondaryButton>
+        <SecondaryButton type="submit" id="next-btn">
+          Next
+        </SecondaryButton>
       </Form>
     </div>
   );

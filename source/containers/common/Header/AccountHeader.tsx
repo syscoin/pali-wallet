@@ -59,7 +59,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
     <Menu as="div" className="absolute right-3 inline-block text-right">
       <Menu.Button className="inline-flex justify-center w-full  text-sm font-medium text-white hover:text-button-primaryhover rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75 kebab-menu-btn">
         {encriptedMnemonic && !importSeed && (
-          <Icon name="dots" className="z-0" id="kebab-menu-btn" />
+          <Icon name="dots" className="z-0" />
         )}
       </Menu.Button>
 
@@ -85,7 +85,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
           <Menu.Item>
             <li
               onClick={() => history.push('/account-priv')}
-              className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+              className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3 your-keys-btn"
             >
               <Icon name="key" className="ml-1 mb-2 mr-4 text-brand-white" />
 
@@ -201,7 +201,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
           onClick={() => copy(activeAccount?.address.main)}
           type="primary"
           shape="circle"
-          className="mt-3"
+          className="mt-3 copy-address-btn"
         >
           <Icon name="copy" className="text-xs" />
         </IconButton>

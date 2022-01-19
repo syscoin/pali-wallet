@@ -73,8 +73,8 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <div
                 className={
                   isConnected
-                    ? 'rounded-full text-xs w-28 h-5 flex justify-center items-center border border-warning-success bg-warning-success text-brand-white'
-                    : 'rounded-full text-xs w-28 h-5 flex justify-center items-center border bg-warning-error border-warning-error text-brand-white'
+                    ? 'rounded-full text-xs w-28 h-5 flex justify-center items-center border border-warning-success bg-warning-success text-brand-white badge-connected-status'
+                    : 'rounded-full text-xs w-28 h-5 flex justify-center items-center border bg-warning-error border-warning-error text-brand-white badge-connected-status'
                 }
               >
                 {isConnected ? 'connected' : 'not connected'}

@@ -1,12 +1,28 @@
-/*const initializator = require('../initializator');
+const initializator = require('../initializator');
 const { browser } = require('webextension-polyfill-ts');
 const { By } = require('selenium-webdriver');
-const { initialMockState, SYS_NETWORK } = require('../../state/store');
 
-const { accounts } = initialMockState;
+describe('Verify seed phrase', () => {
+  it('should check if the seed phrase shown is the same as the one applied to import the wallet', async () => {
+    await initializator();
+    setTimeout(async () => {
+      await driver.clickElement('.settings-btn');
+    }, 2000);
+    await driver.clickElement('.seed-phrase-menu-btn');
+    await driver.fill('#phraseview_password', CONSTANTS.PASSWORD);
+    const findSeedPhrase = await driver.findAllElementsWithId('user-phrase');
+    if (findSeedPhrase) {
+      console.log('the seed phrase shown is correct');
+    } else {
+      console.log('the seed phrase shown is NOT correct');
+    }
+    driver.quit();
+  });
 
-describe('Delete wallet', () => {
   it('should delete wallet after import wallet', async () => {
+    let driver;
+    const { driver: webDriver } = await buildWebDriver();
+    driver = webDriver;
     await initializator();
     setTimeout(async () => {
       await driver.clickElement('.settings-btn');
@@ -29,4 +45,4 @@ describe('Delete wallet', () => {
     }
     driver.quit();
   });
-});*/
+});
