@@ -34,7 +34,7 @@ const TrustedSitesView = () => {
 
   return (
     <AuthViewLayout title="TRUSTED WEBSITES">
-      <p className="text-white text-sm text-center mt-2 ml-2 mb-2">
+      <p className="text-white text-sm text-center mt-2 ml-2">
         Check all sites included on our trusted list.
       </p>
 

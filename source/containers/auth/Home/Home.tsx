@@ -29,7 +29,7 @@ export const Home = () => {
   }, [!controller.wallet.isLocked(), accounts.length > 0]);
 
   return (
-    <div className="scrollbar-styled bg-bkg-3 overflow-auto lg:h-full">
+    <div className="scrollbar-styled bg-bkg-3 overflow-auto">
       {activeAccount ? (
         <>
           <Header accountHeader />
