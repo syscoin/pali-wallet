@@ -83,6 +83,7 @@ const icons = {
 
 interface IIcon {
   className?: string;
+  id?: string;
   name: string;
   rotate?: number;
   size?: number;
@@ -95,6 +96,7 @@ export const Icon: FC<IIcon> = ({
   wrapperClassname,
   rotate,
   size,
+  id,
 }) => {
   const Component = icons[name];
 
