@@ -18,6 +18,7 @@ import reducer, {
   updateAccount,
   updateAccountAddress,
   updateAccountXpub,
+  updateAllTokens,
   updateCanConfirmTransaction,
   updateCanConnect,
   updateCurrentURL,
@@ -35,6 +36,7 @@ import IWalletState, {
   IAccountUpdateAddress,
   IAccountUpdateState,
   IAccountUpdateXpub,
+  IWalletTokenState,
 } from '../../state/wallet/types';
 
 //* ----- Mocks -----
@@ -187,8 +189,61 @@ describe('Wallet store actions', () => {
     expect(newState.timer).toEqual(payload);
   });
 
-  // TODO updateAllTokens test
-  // unclear what to expect
+  //* updateAllTokens
+  describe('updateAllTokens method. create/update [walletTokens]', () => {
+    // same payload for tests
+    const payload: IWalletTokenState = {
+      accountId: FAKE_ACCOUNT.id,
+      accountXpub: FAKE_XPUB,
+      // unidentified type
+      holdings: [
+        {
+          data: 'value',
+          info: 'content',
+        },
+      ],
+      mintedTokens: [
+        {
+          assetGuid: 'guid1',
+          symbol: 'symbol',
+          maxSupply: 2,
+          totalSupply: 5, // random numbers
+        },
+      ],
+      tokens: {
+        guid0: FAKE_ASSETS[0],
+        guid1: FAKE_ASSETS[1],
+      },
+    };
+
+    it('should add a token', () => {
+      const newState = reducer(initialState, updateAllTokens(payload));
+
+      expect(newState.walletTokens).toContain(payload);
+    });
+
+    it('should update an existent token', () => {
+      const fakeToken: IWalletTokenState = {
+        accountId: FAKE_ACCOUNT.id,
+        accountXpub: FAKE_XPUB,
+        holdings: [],
+        mintedTokens: [],
+        tokens: {
+          guid0: FAKE_ASSETS[0],
+        },
+      };
+
+      // state with token
+      const customState: IWalletState = {
+        ...initialState,
+        walletTokens: [fakeToken],
+      };
+
+      const newState = reducer(customState, updateAllTokens(payload));
+
+      expect(newState.walletTokens).toContainEqual(payload);
+    });
+  });
 
   //* clearAllTransactions
   it('should clear all transactions [temporaryTransactionState]', () => {
