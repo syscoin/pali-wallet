@@ -182,7 +182,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
   );
 
   return (
-    <div className="flex items-center justify-between bg-bkg-3 relative p-1">
+    <div className="flex items-center justify-between bg-bkg-3 p-1">
       <div className="flex items-center w-full text-brand-white">
         <div className="add-identicon mr-2 ml-1 my-2" />
 
