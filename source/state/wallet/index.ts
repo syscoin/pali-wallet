@@ -86,59 +86,17 @@ const WalletState = createSlice({
         timer: action.payload,
       };
     },
+    // update token by accountId (if existent) or add a new one
     updateAllTokens(state, action: PayloadAction<IWalletTokenState>) {
-      const { accountId, accountXpub, tokens, holdings, mintedTokens } =
-        action.payload;
-
-      const sameAccountIndexAndDifferentXpub: number =
-        state.walletTokens.findIndex(
-          (accountTokens: any) =>
-            accountTokens.accountId === accountId &&
-            accountTokens.accountXpub !== accountXpub
-        );
-
-      if (sameAccountIndexAndDifferentXpub > -1) {
-        state.walletTokens[sameAccountIndexAndDifferentXpub] = action.payload;
-
-        return;
-      }
-
-      const index: number = state.walletTokens.findIndex(
-        (accountTokens: any) =>
-          accountTokens.accountId === accountId &&
-          accountTokens.accountXpub === accountXpub
+      const tokenIndex: number = state.walletTokens.findIndex(
+        (token) => token.accountId === action.payload.accountId
       );
 
-      const walletTokens = state.walletTokens[index];
-
-      if (index > -1) {
-        if (walletTokens.tokens !== tokens) {
-          walletTokens.tokens = tokens;
-        }
-
-        if (walletTokens.holdings !== holdings) {
-          walletTokens.holdings = holdings;
-        }
-
-        if (walletTokens.mintedTokens !== mintedTokens) {
-          walletTokens.mintedTokens = mintedTokens;
-        }
-
-        return;
+      if (tokenIndex > -1) {
+        state.walletTokens[tokenIndex] = action.payload;
+      } else {
+        state.walletTokens.push(action.payload);
       }
-
-      if (
-        state.walletTokens.indexOf({
-          ...walletTokens,
-          holdings,
-          tokens,
-          mintedTokens,
-        }) > -1
-      ) {
-        return;
-      }
-
-      state.walletTokens.push(action.payload);
     },
     clearAllTransactions(state: IWalletState) {
       return {
