@@ -39,7 +39,7 @@ export const ConnectedAccounts = () => {
           {getHost(`${currentSenderURL}`)}
         </p>
 
-        <ul className="scrollbar-styled w-full md:w-1/2 flex flex-col gap-4 h-72 mt-4 overflow-auto p-15px">
+        <ul className="scrollbar-styled w-full flex flex-col gap-4 h-72 mt-4 overflow-auto px-8">
           {accounts.map((account: any) => (
             <li
               className={`${
@@ -65,23 +65,19 @@ export const ConnectedAccounts = () => {
           ))}
         </ul>
 
-        <div className="flex justify-between md:justify-center w-full small-device-size:max-w-full small-device-size:p-15px md:max-w-md items-center absolute bottom-10 xl:bottom-5dot5 gap-3">
-          <div className="md:mr-4">
-            <SecondaryButton type="button" onClick={closePopup} action>
-              Cancel
-            </SecondaryButton>
-          </div>
+        <div className="flex justify-between w-full max-w-xs md:max-w-md items-center absolute bottom-10 gap-3">
+          <SecondaryButton type="button" onClick={closePopup} action>
+            Cancel
+          </SecondaryButton>
 
-          <div>
-            <PrimaryButton
-              type="button"
-              width="40"
-              disabled={accountId === -1}
-              onClick={() => changeConnectedAccount(accountId)}
-            >
-              Change
-            </PrimaryButton>
-          </div>
+          <PrimaryButton
+            type="button"
+            width="40"
+            disabled={accountId === -1}
+            onClick={() => changeConnectedAccount(accountId)}
+          >
+            Change
+          </PrimaryButton>
         </div>
       </div>
     </AuthViewLayout>

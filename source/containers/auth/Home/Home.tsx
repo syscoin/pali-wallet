@@ -29,7 +29,7 @@ export const Home = () => {
   }, [!controller.wallet.isLocked(), accounts.length > 0]);
 
   return (
-    <div className="scrollbar-styled bg-bkg-3 overflow-auto lg:h-full">
+    <div className="scrollbar-styled bg-bkg-3 overflow-auto">
       {activeAccount ? (
         <>
           <Header accountHeader />
@@ -68,7 +68,7 @@ export const Home = () => {
             <div className="pt-8 w-3/4 flex justify-center items-center gap-x-0.5">
               <Button
                 type="button"
-                className="flex items-center justify-center flex-1 xl:flex-none xl:p-18 text-base rounded-l-full border border-button-primary bg-button-primary text-brand-white transition-all duration-300 hover:bg-button-primaryhover"
+                className="flex items-center justify-center flex-1 text-base rounded-l-full border border-button-primary bg-button-primary text-brand-white transition-all duration-300 hover:bg-button-primaryhover"
                 onClick={() => history.push('/send')}
               >
                 <Icon
@@ -82,7 +82,7 @@ export const Home = () => {
 
               <Button
                 type="button"
-                className="flex items-center justify-center flex-1 xl:flex-none xl:p-18 text-base rounded-r-full border border-button-secondary bg-button-secondary text-brand-white hover:bg-button-secondaryhover transition-all duration-300"
+                className="flex items-center justify-center flex-1 text-base rounded-r-full border border-button-secondary bg-button-secondary text-brand-white hover:bg-button-secondaryhover transition-all duration-300"
                 onClick={() => history.push('/receive')}
               >
                 <Icon

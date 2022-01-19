@@ -256,7 +256,7 @@ export const AuthRouter = () => {
 
   return (
     <>
-      <div className="small-device-size:absolute w-full h-full">
+      <div className="absolute w-full h-full">
         <Switch>
           <Route path="/app.html" component={Start} exact />
 
