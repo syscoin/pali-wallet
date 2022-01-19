@@ -101,7 +101,7 @@ export const Icon: FC<IIcon> = ({
   const Component = icons[name];
 
   return (
-    <div className={wrapperClassname && wrapperClassname}>
+    <div className={wrapperClassname && wrapperClassname} id={id}>
       {Component ? (
         <Component
           className={className}
