@@ -44,12 +44,19 @@ export interface Holding {
   type: string;
 }
 
+export interface IMintedToken {
+  assetGuid: string;
+  maxSupply: number;
+  symbol: string;
+  totalSupply: number;
+}
+
 export interface IWalletTokenState {
   accountId: number;
   accountXpub: string;
-  holdings: any[];
-  mintedTokens: any[];
-  tokens: any;
+  holdings: any[]; // ? Holding[]
+  mintedTokens: IMintedToken[];
+  tokens: { [assetGuid: string]: Assets };
 }
 
 export interface Connection {
