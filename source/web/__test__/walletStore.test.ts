@@ -21,6 +21,7 @@ import reducer, {
   updateAllTokens,
   updateCanConfirmTransaction,
   updateCanConnect,
+  updateConnectionsArray,
   updateCurrentURL,
   updateLabel,
   updateNetwork,
@@ -82,7 +83,7 @@ const FAKE_TRANSACTIONS: Transaction[] = [
   },
 ];
 
-const FAKE_ACCOUNT = {
+const FAKE_ACCOUNT: IAccountState = {
   address: {
     main: 'sys1qydmw8wrtl4mvk6he65qqrq8ml9f6eyyl9tasax',
   },
@@ -306,19 +307,93 @@ describe('Wallet store actions', () => {
     expect(newState.tabs.connections).not.toContain(payload);
   });
 
-  // TODO updateConnectionsArray test
-  // unclear what to expect
-  /* it('should update the connections array', () => {
-    const payload: Connection = {
-      accountId: 1,
-      url: '',
-    };
+  //* updateConnectionsArray
+  describe('updateConnectionsArray method', () => {
+    it('should create a connection', () => {
+      const fakeAccount: IAccountState = {
+        ...FAKE_ACCOUNT,
+        connectedTo: [],
+      };
 
-    const newState =
-      reducer(initialState, updateConnectionsArray(payload));
+      const payload: Connection = {
+        accountId: fakeAccount.id,
+        url: 'https://sysmint.paliwallet.com',
+      };
 
-    expect(newState.).toEqual(payload);
-  }); */
+      // state with an account
+      const customState: IWalletState = {
+        ...initialState,
+        accounts: [fakeAccount],
+      };
+
+      const newState = reducer(customState, updateConnectionsArray(payload));
+
+      // remove the 'https://'
+      payload.url = payload.url.replace(/(^\w+:|^)\/\//, '');
+
+      expect(newState.tabs.connections).toContainEqual(payload);
+      expect(newState.accounts[0].connectedTo).toContainEqual(payload.url);
+    });
+
+    it('should remove the existent connection and create a new one', () => {
+      // FAKE_ACCOUNT is connected to the url
+      // fakeAccount will replace the connection
+
+      const fakeAccount: IAccountState = {
+        ...FAKE_ACCOUNT,
+        connectedTo: [],
+        id: 2,
+      };
+
+      const payload: Connection = {
+        accountId: fakeAccount.id,
+        url: 'https://sysmint.paliwallet.com',
+      };
+
+      // state with an account and tab
+      const customState: IWalletState = {
+        ...initialState,
+        accounts: [FAKE_ACCOUNT, fakeAccount],
+        tabs: FAKE_TAB,
+      };
+
+      const newState = reducer(customState, updateConnectionsArray(payload));
+
+      // remove the 'https://'
+      payload.url = payload.url.replace(/(^\w+:|^)\/\//, '');
+
+      const previousConnection = customState.tabs.connections[0];
+
+      expect(newState.tabs.connections).not.toContainEqual(previousConnection);
+      expect(newState.tabs.connections).toContainEqual(payload);
+
+      expect(newState.accounts[0].connectedTo).not.toContainEqual(payload.url);
+      expect(newState.accounts[1].connectedTo).toContainEqual(payload.url);
+      // expect
+    });
+
+    it('should not duplicate a connection', () => {
+      // state with a connection
+      const customState: IWalletState = {
+        ...initialState,
+        accounts: [FAKE_ACCOUNT],
+        tabs: FAKE_TAB,
+      };
+
+      // duplicated connection. equals FAKE_CONNECTION
+      const payload: Connection = {
+        accountId: FAKE_ACCOUNT.id,
+        url: 'https://sysmint.paliwallet.com',
+      };
+
+      const newState = reducer(customState, updateConnectionsArray(payload));
+
+      // expect to have the same length as before
+      expect(newState.tabs.connections).toHaveLength(
+        customState.tabs.connections.length
+      );
+    });
+  });
 
   //* updateCanConnect
   it('should update [tabs.canConnect]', () => {
