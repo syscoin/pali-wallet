@@ -27,7 +27,7 @@ export const UpdateAsset = () => (
       confirmRoute="/updateAsset/confirm"
       temporaryTransactionAsString="updateAsset"
       layoutTitle="Update Asset"
-      //id={id}
+      // id={id}
     />
   </div>
 );
