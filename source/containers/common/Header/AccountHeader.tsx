@@ -205,7 +205,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
           type="primary"
           shape="circle"
           className="mt-3"
-          //id="copy-address-btn"
+          // id="copy-address-btn"
         >
           <Icon name="copy" className="text-xs" />
         </IconButton>

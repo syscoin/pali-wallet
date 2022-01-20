@@ -24,7 +24,7 @@ export const Receive = () => {
   }, []);
 
   return (
-    <AuthViewLayout title="RECEIVE SYS" /*id="receiveSYS-title"*/>
+    <AuthViewLayout title="RECEIVE SYS" /* id="receiveSYS-title" */>
       {loaded && activeAccount ? (
         <div className="flex flex-col justify-center items-center pt-8 w-full">
           <QRCode

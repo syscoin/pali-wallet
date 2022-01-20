@@ -8,13 +8,13 @@ interface IAuthViewLayout {
   background?: string;
   canGoBack?: boolean;
   children: any;
-  //id: string;
+  // id: string;
   title: string;
 }
 
 export const AuthViewLayout: FC<IAuthViewLayout> = ({
   title,
-  //id,
+  // id,
   children,
   background = 'bkg-2',
   canGoBack = true,
@@ -27,7 +27,7 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
   return (
     <div
       className={`bg-${background} w-full h-popup text-brand-white relative`}
-      //id={id}
+      // id={id}
     >
       <Header normalHeader />
 
