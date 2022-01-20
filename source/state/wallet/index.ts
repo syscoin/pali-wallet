@@ -23,7 +23,7 @@ const initialState: IWalletState = {
   status: 0,
   accounts: [],
   activeAccountId: 0,
-  activeNetwork: SYS_NETWORK.main.id,
+  activeNetwork: SYS_NETWORK.main.label,
   encriptedMnemonic: null,
   confirmingTransaction: false,
   changingNetwork: false,
@@ -399,7 +399,7 @@ const WalletState = createSlice({
       state.activeAccountId = action.payload;
     },
     changeActiveNetwork(state: IWalletState, action: PayloadAction<any>) {
-      state.activeNetwork = action.payload.id;
+      state.activeNetwork = action.payload.label;
       state.currentBlockbookURL = action.payload.beUrl;
     },
     updateTransactions(
