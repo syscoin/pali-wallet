@@ -1,3 +1,45 @@
+/*import assert from "assert";
+
+import { beforeEach, afterEach } from "mocha";
+import { buildWebDriver } from "../webdriver";
+import { importWallet } from "../initialize";
+import { By } from "selenium-webdriver";
+import { storeState } from "../../../../source/state/store";
+
+describe("Account UI tests", async () => {
+  let uiWebDriver = null;
+
+  beforeEach(async () => {
+    const { driver } = await buildWebDriver();
+
+    uiWebDriver = driver;
+
+    await driver.navigate();
+    await importWallet({ driver });
+  });
+
+  afterEach(() => {
+    uiWebDriver.quit();
+  });
+
+  it('should create new account after login', async () => {   
+         await uiWebDriver.clickElement('.kebab-menu-btn');
+         await uiWebDriver.clickElement('.accounts-btn');
+         await uiWebDriver.clickElement('.create-account-btn');
+         await uiWebDriver.fill('.new-account-name-input', 'Test Account');
+         await uiWebDriver.clickElement('#create-btn');
+         await uiWebDriver.clickElement('#got-it-btn');
+         await uiWebDriver.clickElement('.kebab-menu-btn');
+         await uiWebDriver.clickElement('.accounts-btn');
+         const findNewAccount = await uiWebDriver.findElement(
+           By.xpath("*[text()='Test Account']")
+         );
+         if (findNewAccount) {
+           console.log('New Account has been created');
+         } else {
+           console.log('New Account has not been created');
+         }
+});*/
 // const initializator = require('../initializator');
 // const { browser } = require('webextension-polyfill-ts');
 // const { By } = require('selenium-webdriver');
