@@ -38,7 +38,10 @@ export const Home = () => {
             <div className="text-center flex justify-center flex-col items-center">
               {activeNetwork === 'testnet' ? (
                 <div className="flex items-center justify-center gap-x-0.5 balance-account">
-                  <p className="text-5xl font-medium font-rubik">
+                  <p
+                    className="text-5xl font-medium font-rubik"
+                    id="home-balance"
+                  >
                     {formatNumber(activeAccount?.balance || 0)}{' '}
                   </p>
 
@@ -47,7 +50,10 @@ export const Home = () => {
               ) : (
                 <>
                   <div className="flex items-center justify-center gap-x-0.5 balance-account">
-                    <p className="text-5xl font-medium font-rubik">
+                    <p
+                      id="home-balance"
+                      className="text-5xl font-medium font-rubik"
+                    >
                       {formatNumber(activeAccount?.balance || 0)}{' '}
                     </p>
 

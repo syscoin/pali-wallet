@@ -66,7 +66,7 @@ export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
       </span>
 
       <div className="absolute bottom-12">
-        <PrimaryButton type="submit" id="next-btn">
+        <PrimaryButton type="submit" id="create-password-action">
           Next
         </PrimaryButton>
       </div>

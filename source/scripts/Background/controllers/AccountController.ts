@@ -1,8 +1,15 @@
-import store from 'state/store';
-import IWalletState, { IAccountState } from 'state/wallet/types';
 import { bech32 } from 'bech32';
 import { fromZPub } from 'bip84';
 import CryptoJS from 'crypto-js';
+import {
+  Assets,
+  IAccountInfo,
+  SendAsset,
+  TemporaryTransaction,
+  Transaction,
+} from 'types/transactions';
+import { IAccountController } from 'types/controllers';
+import store from 'state/store';
 import {
   createAccount,
   updateStatus,
@@ -17,14 +24,7 @@ import {
   updateNetwork,
   setTemporaryTransactionState,
 } from 'state/wallet';
-import {
-  Assets,
-  IAccountInfo,
-  SendAsset,
-  TemporaryTransaction,
-  Transaction,
-} from 'types/transactions';
-import { IAccountController } from 'types/controllers';
+import IWalletState, { IAccountState } from 'state/wallet/types';
 
 import { sortList, isNFT, countDecimals } from './utils';
 
