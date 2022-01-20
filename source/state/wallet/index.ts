@@ -1,5 +1,3 @@
-import { SYS_NETWORK } from 'constants/index';
-
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { Transaction } from 'types/transactions';
 
@@ -23,7 +21,7 @@ const initialState: IWalletState = {
   status: 0,
   accounts: [],
   activeAccountId: 0,
-  activeNetwork: SYS_NETWORK.main.id,
+  activeNetwork: 'https://blockbook.elint.services/',
   encriptedMnemonic: null,
   confirmingTransaction: false,
   changingNetwork: false,
@@ -381,7 +379,7 @@ const WalletState = createSlice({
       state.accounts = [];
       state.activeAccountId = 0;
       state.encriptedMnemonic = null;
-      state.activeNetwork = SYS_NETWORK.main.id;
+      state.activeNetwork = 'https://blockbook.elint.services/';
       state.status = 0;
       state.tabs = {
         currentSenderURL: '',
@@ -399,7 +397,7 @@ const WalletState = createSlice({
       state.activeAccountId = action.payload;
     },
     changeActiveNetwork(state: IWalletState, action: PayloadAction<any>) {
-      state.activeNetwork = action.payload.label;
+      state.activeNetwork = action.payload.id;
       state.currentBlockbookURL = action.payload.beUrl;
     },
     updateTransactions(
