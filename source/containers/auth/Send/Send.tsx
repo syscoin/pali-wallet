@@ -107,7 +107,10 @@ export const Send: FC<ISend> = () => {
 
   const SendForm = () => (
     <div className="mt-4">
-      <p className="flex flex-col justify-center text-center items-center font-rubik send-balance">
+      <p
+        className="flex flex-col justify-center text-center items-center font-rubik"
+        id="send-balance"
+      >
         <span className="text-brand-royalblue font-thin font-poppins">
           Balance
         </span>
@@ -158,7 +161,8 @@ export const Send: FC<ISend> = () => {
           <Input
             type="text"
             placeholder="Receiver"
-            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-sm receiver-input"
+            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-sm"
+            id="receiver-input"
           />
         </Form.Item>
 
@@ -201,7 +205,8 @@ export const Send: FC<ISend> = () => {
                     <Menu.Item>
                       <button
                         onClick={() => handleSelectedAsset(-1)}
-                        className="hover:text-brand-royalblue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between send-network-dropdown"
+                        className="hover:text-brand-royalblue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between"
+                        id="send-network-dropdown"
                       >
                         <p>SYS</p>
 
@@ -255,7 +260,8 @@ export const Send: FC<ISend> = () => {
                     verifyAddress
                       ? 'translate-x-6 bg-warning-success'
                       : 'translate-x-1'
-                  } inline-block w-2 h-2 transform bg-warning-error rounded-full verify-address-switch`}
+                  } inline-block w-2 h-2 transform bg-warning-error rounded-full`}
+                  id="verify-address-switch"
                 />
               </Switch>
             </Form.Item>
@@ -287,7 +293,8 @@ export const Send: FC<ISend> = () => {
                     ZDAG
                       ? 'bg-warning-success translate-x-6'
                       : 'bg-warning-error translate-x-1'
-                  } inline-block w-2 h-2 transform rounded-full z-dag-switch`}
+                  } inline-block w-2 h-2 transform rounded-full`}
+                  id="z-dag-switch"
                 />
               </Switch>
             </Form.Item>
@@ -374,7 +381,8 @@ export const Send: FC<ISend> = () => {
                 className={`${
                   disabledFee &&
                   'opacity-50 cursor-not-allowed text-button-disabled'
-                } border border-fields-input-border bg-fields-input-primary rounded-r-full w-60 outline-none py-3 pr-8 pl-4 text-sm fee-input`}
+                } border border-fields-input-border bg-fields-input-primary rounded-r-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
+                id="fee-input"
                 type="number"
                 placeholder="Fee network"
                 value={recommend}
@@ -408,7 +416,7 @@ export const Send: FC<ISend> = () => {
     </div>
   );
   return (
-    <AuthViewLayout title="SEND SYS">
+    <AuthViewLayout title="SEND SYS" /*id="sendSYS-title"*/>
       <SendForm />
     </AuthViewLayout>
   );

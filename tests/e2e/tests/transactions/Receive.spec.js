@@ -1,37 +1,53 @@
-// const initializator = require('../initializator');
-// const { browser } = require('webextension-polyfill-ts');
-// const { By } = require('selenium-webdriver');
+import assert from 'assert';
 
-// describe('Receive Screen Tests', () => {
-//   it('should check if receive qr code is being shown', async () => {
-//     await initializator();
-//     await driver.clickElement('.receive-btn');
-//     const findQRCode = await driver.findElement(By.className('.qr-code'));
-//     if (findQRCode) {
-//       console.log('qr code is being shown');
-//     } else {
-//       console.log('qr code is NOT being shown');
-//     }
-//     driver.quit();
-//   });
+import { beforeEach, afterEach } from 'mocha';
+import { buildWebDriver } from '../webdriver';
+import { importWallet } from '../initialize';
+import { By } from 'selenium-webdriver';
+import { storeState } from '../../../source/state/store';
 
-//   it("should check if copy address button it's being shown and working correctly", async () => {
-//     await initializator();
-//     const copyAddressBtn = await driver.findElement(
-//       By.className('.copy-address-receive-btn')
-//     );
-//     if (copyAddressBtn) {
-//       console.log('copy address button is being shown');
-//     } else {
-//       console.log('copy address button is NOT being shown');
-//     }
-//     const value = copyAddresBtn.getAttribute('value');
+describe('Receive screen tests', async () => {
+  let uiWebDriver = null;
 
-//     if (value === 'sys1qydmw8wrtl4mvk6he65qqrq8ml9f6eyyl9tasax') {
-//       console.log('copy-address button is working correctly');
-//     } else {
-//       console.log('copy-address button is NOT working correctly');
-//     }
-//     driver.quit();
-//   });
-// });
+  beforeEach(async () => {
+    const { driver } = await buildWebDriver();
+
+    uiWebDriver = driver;
+
+    await driver.navigate();
+    await importWallet({ driver });
+  });
+
+  afterEach(() => {
+    uiWebDriver.quit();
+  });
+
+  it('should check if receive qr code is being shown', async () => {
+    const qrCode = await uiWebDriver.findElement(By.id('qr-code'));
+
+    assert.ok(typeof qrCode === 'object', '<!> Cannot find QRcode <!>');
+  });
+
+  it("should check if receive copy address button it's being shown and working correctly", async () => {
+    const copyAddresBtn = await uiWebDriver.findElement(
+      By.id('copy-address-receive-btn')
+    );
+
+    assert.ok(
+      typeof copyAddresBtn === 'object',
+      '<!> Cannot find receive copy address button <!>'
+    );
+
+    const { accounts, activeAccountId } = storeState.wallet;
+    if (accounts[activeAccountId]) {
+      const copyAddresValue = await copyAddresBtn.getAttribute('value');
+      const expectedValue = accounts[activeAccountId].address;
+
+      assert.equal(
+        copyAddresValue,
+        expectedValue,
+        '<!> Address different than the expected <!>'
+      );
+    }
+  });
+});

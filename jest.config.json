@@ -7,7 +7,5 @@
     "^.+\\.mjs$": "babel-jest"
   },
   "testRegex": "((\\.|/*.)(spec))\\.ts?$",
-  "modulePaths": [
-    "<rootDir>"
-  ]
+  "modulePaths": ["<rootDir>"]
 }

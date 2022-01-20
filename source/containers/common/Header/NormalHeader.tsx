@@ -60,21 +60,22 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
   }, [activeAccount, currentTabURL]);
 
   const NetworkMenu = () => (
-    <Menu
-      as="div"
-      className="absolute left-2 inline-block text-left mr-8 menu-btn"
-    >
+    <Menu as="div" className="absolute left-2 inline-block text-left mr-8">
       {(menuprops) => (
         <>
-          <Menu.Button className="inline-flex justify-center w-full  text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75 menu-btn">
+          <Menu.Button
+            className="inline-flex justify-center w-full  text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+            id="network-settings-btn"
+          >
             <div className="cursor-pointer w-full ml-2 flex items-center justify-start gap-x-6">
               <span>{activeNetwork}</span>
 
               <div
+                id="badge-connected-status"
                 className={
                   isConnected
-                    ? 'rounded-full text-xs w-28 h-5 flex justify-center items-center border border-warning-success bg-warning-success text-brand-white badge-connected-status'
-                    : 'rounded-full text-xs w-28 h-5 flex justify-center items-center border bg-warning-error border-warning-error text-brand-white badge-connected-status'
+                    ? 'rounded-full text-xs w-28 h-5 flex justify-center items-center border border-warning-success bg-warning-success text-brand-white'
+                    : 'rounded-full text-xs w-28 h-5 flex justify-center items-center border bg-warning-error border-warning-error text-brand-white'
                 }
               >
                 {isConnected ? 'connected' : 'not connected'}
@@ -106,7 +107,10 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               as="div"
               className="scrollbar-styled bg-menu-primary pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 left-0 h-bigmenu origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
             >
-              <h2 className="pt-8 pb-6 text-brand-white border-b border-dashed bg-menu-primary border-dashed-light w-full text-center mb-6">
+              <h2
+                className="pt-8 pb-6 text-brand-white border-b border-dashed bg-menu-primary border-dashed-light w-full text-center mb-6"
+                id="network-settings-title"
+              >
                 NETWORK SETTINGS
               </h2>
 
@@ -281,7 +285,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
     <Menu as="div" className="absolute right-2 inline-block text-right z-10">
       {() => (
         <>
-          <Menu.Button className="mb-2 mr-0.8 settings-btn">
+          <Menu.Button className="mb-2 mr-0.8" id="settings-btn">
             {encriptedMnemonic && !importSeed ? (
               <IconButton type="primary" shape="circle">
                 <Icon
@@ -307,7 +311,10 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               as="div"
               className="scrollbar-styled bg-menu-primary pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 right-0 h-96 origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
             >
-              <h2 className="bg-menu-primary pt-8 pb-6 text-brand-white border-b border-dashed border-dashed-light w-full text-center mb-6">
+              <h2
+                className="bg-menu-primary pt-8 pb-6 text-brand-white border-b border-dashed border-dashed-light w-full text-center mb-6"
+                id="general-settings-title"
+              >
                 GENERAL SETTINGS
               </h2>
 
@@ -336,7 +343,8 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <Menu.Item>
                 <li
                   onClick={() => history.push('/general-phrase')}
-                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3 seed-phrase-menu-btn"
+                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                  id="seed-phrase-menu-btn"
                 >
                   <Icon name="wallet" className="text-brand-white ml-1 mr-4" />
 
@@ -358,7 +366,8 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <Menu.Item>
                 <li
                   onClick={() => history.push('/general-delete')}
-                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3 delete-wallet-btn"
+                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                  id="delete-wallet-btn"
                 >
                   <Icon name="delete" className="text-brand-white ml-1 mr-4" />
 

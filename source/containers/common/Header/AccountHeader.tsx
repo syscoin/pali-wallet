@@ -57,7 +57,10 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
 
   const AccountMenu = () => (
     <Menu as="div" className="absolute right-3 inline-block text-right">
-      <Menu.Button className="inline-flex justify-center w-full  text-sm font-medium text-white hover:text-button-primaryhover rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75 kebab-menu-btn">
+      <Menu.Button
+        className="inline-flex justify-center w-full  text-sm font-medium text-white hover:text-button-primaryhover rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+        id="account-settings-btn"
+      >
         {encriptedMnemonic && !importSeed && (
           <Icon name="dots" className="z-0" />
         )}
@@ -201,7 +204,8 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
           onClick={() => copy(activeAccount?.address.main)}
           type="primary"
           shape="circle"
-          className="mt-3 copy-address-btn"
+          className="mt-3"
+          id="copy-address-btn"
         >
           <Icon name="copy" className="text-xs" />
         </IconButton>

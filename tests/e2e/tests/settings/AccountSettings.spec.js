@@ -23,13 +23,13 @@ describe("Account UI tests", async () => {
   });
 
   it('should create new account after login', async () => {   
-         await uiWebDriver.clickElement('.kebab-menu-btn');
+         await uiWebDriver.clickElement('#account-settings-btn');
          await uiWebDriver.clickElement('.accounts-btn');
          await uiWebDriver.clickElement('.create-account-btn');
          await uiWebDriver.fill('.new-account-name-input', 'Test Account');
          await uiWebDriver.clickElement('#create-btn');
          await uiWebDriver.clickElement('#got-it-btn');
-         await uiWebDriver.clickElement('.kebab-menu-btn');
+         await uiWebDriver.clickElement('#account-settings-btn');
          await uiWebDriver.clickElement('.accounts-btn');
          const findNewAccount = await uiWebDriver.findElement(
            By.xpath("*[text()='Test Account']")
@@ -48,7 +48,7 @@ describe("Account UI tests", async () => {
 // describe('Account settings test', () => {
 //   it("should check if your keys button it's being shown and working correctly", async () => {
 //     await initializator();
-//     await driver.clickElement('.kebab-menu-btn');
+//     await driver.clickElement('#account-settings-btn');
 //     const findYourKeysBtn = await driver.findElement(
 //       By.className('.your-keys-btn')
 //     );
@@ -74,13 +74,13 @@ describe("Account UI tests", async () => {
 //     const { driver: webDriver } = await buildWebDriver();
 //     driver = webDriver;
 //     await initializator();
-//     await driver.clickElement('.kebab-menu-btn');
+//     await driver.clickElement('#account-settings-btn');
 //     await driver.clickElement('.accounts-btn');
 //     await driver.clickElement('.create-account-btn');
 //     await driver.fill('.new-account-name-input', 'Test Account');
 //     await driver.clickElement('#create-btn');
 //     await driver.clickElement('#got-it-btn');
-//     await driver.clickElement('.kebab-menu-btn');
+//     await driver.clickElement('#account-settings-btn');
 //     await driver.clickElement('.accounts-btn');
 //     const findNewAccount = await driver.findElement(
 //       By.xpath("//*[text()='Test Account']")
@@ -107,14 +107,14 @@ describe("Account UI tests", async () => {
 //       console.log('Account 1 is NOT the active account set by default');
 //     }
 //     setTimeout(async () => {
-//       await driver.clickElement('.kebab-menu-btn');
+//       await driver.clickElement('#account-settings-btn');
 //     }, 2000);
 //     await driver.clickElement('.accounts-btn');
 //     await driver.clickElement('.create-account-btn');
 //     await driver.fill('.new-account-name-input', 'Test Account');
 //     await driver.clickElement('#create-btn');
 //     await driver.clickElement('#got-it-btn');
-//     await driver.clickElement('.kebab-menu-btn');
+//     await driver.clickElement('#account-settings-btn');
 //     await driver.clickElement('.accounts-btn');
 //     await driver.clickElement('#account-1');
 //     const findNewActiveAccount = await driver.findElement(
@@ -130,7 +130,7 @@ describe("Account UI tests", async () => {
 
 //   it("should check if hardware wallet button it's being shown and working correctly", async () => {
 //     await initializator();
-//     await driver.clickElement('.kebab-menu-btn');
+//     await driver.clickElement('#account-settings-btn');
 //     const findHardwareWalletBtn = await driver.findElement(
 //       By.className('.hardware-wallet-btn')
 //     );
@@ -155,7 +155,7 @@ describe("Account UI tests", async () => {
 
 //   it('should check if lock button is working correctly after login', async () => {
 //     await initializator();
-//     await driver.clickElement('.kebab-menu-btn');
+//     await driver.clickElement('#account-settings-btn');
 //     await driver.clickElement('.lock-btn');
 //     const findNewAccount = await driver.findElement(
 //       By.xpath("//*[text()='WELCOME TO']")

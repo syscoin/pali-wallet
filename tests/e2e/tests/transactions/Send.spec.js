@@ -1,82 +1,83 @@
-// const initializator = require('../initializator');
-// const { browser } = require('webextension-polyfill-ts');
-// const { By } = require('selenium-webdriver');
+import assert from 'assert';
 
-// describe('Send Screen Tests', () => {
-//   it("should check if send form it's being shown", async () => {
-//     await initializator();
-//     await driver.clickElement('.send-btn');
-//     const findSendBalance = await driver.findElement(
-//       By.className('.send-balance')
-//     );
-//     if (findSendBalance) {
-//       console.log('send balance is being shown');
-//     } else {
-//       console.log('send balance is NOT being shown');
-//     }
+import { beforeEach, afterEach } from 'mocha';
+import { buildWebDriver } from '../webdriver';
+import { importWallet } from '../initialize';
+import { By } from 'selenium-webdriver';
+import { storeState } from '../../../source/state/store';
 
-//     const findReceiverInput = await driver.findElement(
-//       By.className('.receiver-input')
-//     );
-//     if (findReceiverInput) {
-//       console.log('receiver input is being shown');
-//     } else {
-//       console.log('receiver input is NOT being shown');
-//     }
+describe('Send screen tests', async () => {
+  let uiWebDriver = null;
 
-//     const findNetworkDropdown = await driver.findElement(
-//       By.className('.send-network-dropdown')
-//     );
-//     if (findNetworkDropdown) {
-//       console.log('network dropdown is being shown');
-//     } else {
-//       console.log('network dropdown is NOT being shown');
-//     }
+  beforeEach(async () => {
+    const { driver } = await buildWebDriver();
 
-//     const findVerifyAddress = await driver.findElement(
-//       By.className('.verify-address-switch')
-//     );
-//     if (findVerifyAddress) {
-//       console.log('verify address switch is being shown');
-//     } else {
-//       console.log('verify address switch is NOT being shown');
-//     }
+    uiWebDriver = driver;
 
-//     const findZDagSwitch = await driver.findElement(
-//       By.className('.z-dag-switch')
-//     );
-//     if (findZDagSwitch) {
-//       console.log('verify z-dag switch is being shown');
-//     } else {
-//       console.log('verify z-dag switch is NOT being shown');
-//     }
+    await driver.navigate();
+    await importWallet({ driver });
+  });
 
-//     const findAmountInput = await driver.findElement(
-//       By.className('.amount-input')
-//     );
-//     if (findAmountInput) {
-//       console.log('Amount input is being shown');
-//     } else {
-//       console.log('Amount input is NOT being shown');
-//     }
+  afterEach(() => {
+    uiWebDriver.quit();
+  });
 
-//     const findNextBtn = await driver.findElement(By.id('#next-btn'));
-//     if (findNextBtn) {
-//       console.log('Next button is being shown');
-//     } else {
-//       console.log('Next button is NOT being shown');
-//     }
-//     driver.quit();
-//   });
+  it("should check if send form it's being shown", async () => {
+    const sendBalance = await uiWebDriver.findElement(By.id('send-balance'));
 
-//   it("should check if fee input it's being shown", async () => {
-//     const findFeeInput = await driver.findElement(By.className('.fee-input'));
-//     if (findFeeInput) {
-//       console.log('Fee input is being shown');
-//     } else {
-//       console.log('Fee input is NOT being shown');
-//     }
-//     //It's not ready yet, still need to check if it's disabled if it's using a Syscoin Network
-//     driver.quit();
-//   });
-// });
+    assert.ok(
+      typeof sendBalance === 'object',
+      '<!> Cannot find badge connected <!>'
+    );
+
+    const receiverInput = await uiWebDriver.findElement(
+      By.id('receiver-input')
+    );
+
+    assert.ok(
+      typeof receiverInput === 'object',
+      '<!> Cannot find receiver input <!>'
+    );
+
+    const networkDropdown = await uiWebDriver.findElement(
+      By.id('send-network-dropdown')
+    );
+
+    assert.ok(
+      typeof networkDropdown === 'object',
+      '<!> Cannot find network dropdown <!>'
+    );
+
+    const verifyAddressSwitch = await uiWebDriver.findElement(
+      By.id('verify-address-switch')
+    );
+
+    assert.ok(
+      typeof verifyAddressSwitch === 'object',
+      '<!> Cannot find verify address switch <!>'
+    );
+
+    const ZDagSwitch = await uiWebDriver.findElement(By.id('z-dag-switch'));
+
+    assert.ok(typeof ZDagSwitch === 'object', '<!> Cannot find Zdag switch<!>');
+
+    const AmountInput = await uiWebDriver.findElement(By.id('amount-input'));
+
+    assert.ok(
+      typeof AmountInput === 'object',
+      '<!> Cannot find amount input<!>'
+    );
+
+    const nextBtn = await uiWebDriver.findElement(By.id('next-btn'));
+
+    assert.ok(typeof nextBtn === 'object', '<!> Cannot find next button<!>');
+  });
+
+  it("should check if fee input it's being shown", async () => {
+    const feeInput = await uiWebDriver.findElement(By.id('next-btn'));
+
+    assert.ok(typeof feeInput === 'object', '<!> Cannot find fee input<!>');
+
+    //It's not ready yet, still need to check if it's disabled when using a Syscoin Network
+  });
+});

@@ -74,7 +74,8 @@ export const Home = () => {
             <div className="pt-8 w-3/4 flex justify-center items-center gap-x-0.5">
               <Button
                 type="button"
-                className="flex items-center justify-center flex-1 text-base rounded-l-full border border-button-primary bg-button-primary text-brand-white transition-all duration-300 hover:bg-button-primaryhover send-btn"
+                className="flex items-center justify-center flex-1 text-base rounded-l-full border border-button-primary bg-button-primary text-brand-white transition-all duration-300 hover:bg-button-primaryhover"
+                id="send-btn"
                 onClick={() => history.push('/send')}
               >
                 <Icon
@@ -88,7 +89,8 @@ export const Home = () => {
 
               <Button
                 type="button"
-                className="flex items-center justify-center flex-1 text-base rounded-r-full border border-button-secondary bg-button-secondary text-brand-white hover:bg-button-secondaryhover transition-all duration-300 receive-btn"
+                className="flex items-center justify-center flex-1 text-base rounded-r-full border border-button-secondary bg-button-secondary text-brand-white hover:bg-button-secondaryhover transition-all duration-300"
+                id="receive-btn"
                 onClick={() => history.push('/receive')}
               >
                 <Icon
