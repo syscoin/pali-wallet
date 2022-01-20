@@ -158,78 +158,75 @@ const WalletState = createSlice({
         1
       );
     },
-    // TODO comment
+    // removes connection with the provided url (if existent)
+    // and create a connection
     updateConnectionsArray(
       state: IWalletState,
       action: PayloadAction<Connection>
     ) {
-      const { accounts, tabs } = state;
       const { accountId, url } = action.payload;
 
-      const accountIndex = tabs.connections.findIndex(
-        (connection: any) => connection.accountId === accountId
-      );
+      const { accounts, tabs } = state;
+      const { connections } = tabs;
 
-      const currentAccountIndex = accounts.findIndex(
+      // if the connection already exists
+      if (connections.includes(action.payload)) return;
+
+      const accountIndex = accounts.findIndex(
         (account: IAccountState) => account.id === accountId
       );
 
-      const urlIndex = tabs.connections.findIndex(
+      const connectionIndex = connections.findIndex(
         (connection: any) => connection.url === getHost(url)
       );
 
-      if (tabs.connections[urlIndex]) {
-        const accountIdConnected = accounts.findIndex(
+      // if there is a connection with the payload.url
+      if (connections[connectionIndex]) {
+        // find the connected account
+        const connectedAccountIndex = accounts.findIndex(
           (account: IAccountState) =>
-            account.id === tabs.connections[urlIndex].accountId
+            account.id === connections[connectionIndex].accountId
         );
 
-        if (accountIdConnected > -1) {
+        // if found the connected account
+        if (connectedAccountIndex > -1) {
+          // find the index of the connection (account side)
           const connectedToIndex = accounts[
-            accountIdConnected
+            connectedAccountIndex
           ].connectedTo.findIndex(
             (connectedURL: string) => connectedURL === getHost(url)
           );
 
+          // if found the connection
           if (connectedToIndex > -1) {
-            accounts[accountIdConnected].connectedTo.splice(
+            // remove the connection (account side)
+            accounts[connectedAccountIndex].connectedTo.splice(
               connectedToIndex,
               1
             );
 
-            tabs.connections[urlIndex] = {
-              ...tabs.connections[urlIndex],
+            // update the accountId (connection side)
+            connections[connectionIndex] = {
+              ...connections[connectionIndex],
               accountId,
             };
 
-            accounts[currentAccountIndex].connectedTo.push(getHost(url));
+            // add connection (account side)
+            accounts[accountIndex].connectedTo.push(getHost(url));
           }
         }
 
         return;
       }
 
-      if (tabs.connections[accountIndex]) {
-        if (tabs.connections[accountIndex].url === getHost(url)) {
-          return;
-        }
-
-        tabs.connections.push({
-          accountId,
-          url: getHost(url),
-        });
-
-        accounts[currentAccountIndex].connectedTo.push(getHost(url));
-
-        return;
-      }
-
-      tabs.connections.push({
+      // add the connection (connection side)
+      connections.push({
         accountId,
         url: getHost(url),
       });
 
-      accounts[currentAccountIndex].connectedTo.push(getHost(url));
+      // add the connection (account side)
+      accounts[accountIndex].connectedTo.push(getHost(url));
     },
     // TODO: refactor and use to use an easier way to know if the wallet can connect (provider)
     updateCanConnect(state: IWalletState, action: PayloadAction<boolean>) {
