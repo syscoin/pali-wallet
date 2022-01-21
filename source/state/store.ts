@@ -37,7 +37,18 @@ const store: Store = configureStore({
   devTools: process.env.NODE_ENV !== 'production',
 });
 
-persistStore(store);
+const persistStoreFn = () => {
+  try {
+    if (process.env.NODE_ENV === 'test') {
+      return null;
+    }
+    persistStore(store);
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+persistStoreFn();
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
