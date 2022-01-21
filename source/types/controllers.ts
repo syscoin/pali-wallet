@@ -1,4 +1,4 @@
-import { IAccountState } from 'state/wallet/types';
+import { IAccountState, INetwork } from 'state/wallet/types';
 
 import {
   MintAsset,
@@ -74,7 +74,7 @@ export interface IAccountController {
     walletCreation?: boolean
   ) => Promise<string | null>;
   updateAccountLabel: (id: number, label: string) => void;
-  updateNetworkData: ({ id, label, beUrl }: any) => any;
+  updateNetworkData: (network: INetwork) => void;
   updateTemporaryTransaction: ({ tx: any, type: string }) => any;
   updateTokensState: () => any;
   updateTxs: () => void;

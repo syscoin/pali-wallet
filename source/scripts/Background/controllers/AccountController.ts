@@ -1,5 +1,5 @@
 import store from 'state/store';
-import IWalletState, { IAccountState } from 'state/wallet/types';
+import IWalletState, { IAccountState, INetwork } from 'state/wallet/types';
 import { bech32 } from 'bech32';
 import { fromZPub } from 'bip84';
 import CryptoJS from 'crypto-js';
@@ -65,14 +65,8 @@ const AccountController = (actions: {
     store.dispatch(setTimer(minutes));
   };
 
-  const updateNetworkData = ({ id, label, beUrl }: any) => {
-    store.dispatch(
-      updateNetwork({
-        id,
-        label,
-        beUrl,
-      })
-    );
+  const updateNetworkData = (network: INetwork) => {
+    store.dispatch(updateNetwork(network));
   };
 
   const temporaryTransaction: TemporaryTransaction = {

@@ -9,7 +9,7 @@ import {
   removeAccounts,
   removeAccount,
   updateSwitchNetwork,
-  removeConnection,
+  // removeConnection,
 } from 'state/wallet';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import CryptoJS from 'crypto-js';
@@ -329,10 +329,10 @@ const WalletController = (): IWalletController => {
   };
 
   const checkAndSeparateTrezorAccounts = (
-    accounts: any,
+    accounts: Array<IAccountState>,
     index: number,
     activeAccountId: number,
-    accountsToBeRemoved: any
+    accountsToBeRemoved: number[]
   ) => {
     if (!accounts[index].isTrezorWallet) {
       checkAndSetNewXpub(Number(index), activeAccountId);
@@ -340,7 +340,8 @@ const WalletController = (): IWalletController => {
       return;
     }
 
-    accountsToBeRemoved[accounts[index].id] = accounts[index].id;
+    // accountsToBeRemoved[accounts[index].id] = accounts[index].id;
+    accountsToBeRemoved.push(accounts[index].id);
   };
 
   const addNewAccount = (label?: string) =>
@@ -353,7 +354,7 @@ const WalletController = (): IWalletController => {
       return false;
     }
 
-    const accountsToBeRemoved: any = {};
+    const accountsToBeRemoved: number[] = [];
 
     if (accounts) {
       for (const index in accounts) {
@@ -369,8 +370,8 @@ const WalletController = (): IWalletController => {
     }
 
     if (accountsToBeRemoved) {
-      for (const id of Object.values(accountsToBeRemoved)) {
-        store.dispatch(removeConnection({ accountId: id }));
+      for (const id of accountsToBeRemoved) {
+        // store.dispatch(removeConnection({ accountId: id }));
         store.dispatch(removeAccount(Number(id)));
         store.dispatch(updateStatus());
 
@@ -391,12 +392,7 @@ const WalletController = (): IWalletController => {
   const switchNetwork = async (networkId: string) => {
     const { networks } = store.getState().wallet;
 
-    store.dispatch(
-      changeActiveNetwork({
-        id: networks[networkId]?.id,
-        beUrl: networks[networkId]?.beUrl,
-      })
-    );
+    store.dispatch(changeActiveNetwork(networks[networkId]));
 
     try {
       const response = await axios.get(`${networks[networkId].beUrl}/api/v2`);
