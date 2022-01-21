@@ -18,7 +18,7 @@ const PhraseView = () => {
   };
 
   return (
-    <AuthViewLayout title="WALLET SEED PHRASE">
+    <AuthViewLayout title="WALLET SEED PHRASE" /* id="seed-phrase-title" */>
       <p className="text-white text-sm py-3 px-10">
         Please input your wallet password
       </p>

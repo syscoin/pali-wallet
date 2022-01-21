@@ -14,7 +14,7 @@ const ConnectHardwareWalletView: FC = () => {
   };
 
   return (
-    <AuthViewLayout title="HARDWARE WALLET">
+    <AuthViewLayout title="HARDWARE WALLET" id="hardware-wallet-title">
       <div className="flex items-center flex-col justify-center w-full">
         <div className="scrollbar-styled text-sm overflow-auto px-4 h-85">
           <p className="text-white text-sm mt-8 mb-1 mx-4">

@@ -63,10 +63,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
     <Menu as="div" className="absolute left-2 inline-block text-left mr-8">
       {(menuprops) => (
         <>
-          <Menu.Button
-            className="inline-flex justify-center w-full  text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
-            id="network-settings-btn"
-          >
+          <Menu.Button className="inline-flex justify-center w-full  text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
             <div className="cursor-pointer w-full ml-2 flex items-center justify-start gap-x-6">
               <span>{activeNetwork}</span>
 
@@ -87,6 +84,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                   className={`${
                     menuprops.open ? 'transform rotate-180' : ''
                   } text-brand-white`}
+                  id="network-settings-btn"
                 />
               </IconButton>
             </div>
@@ -285,10 +283,11 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
     <Menu as="div" className="absolute right-2 inline-block text-right z-10">
       {() => (
         <>
-          <Menu.Button className="mb-2 mr-0.8" id="settings-btn">
+          <Menu.Button className="mb-2 mr-0.8">
             {encriptedMnemonic && !importSeed ? (
               <IconButton type="primary" shape="circle">
                 <Icon
+                  id="settings-btn"
                   name="settings"
                   className="hover:text-brand-royalblue text-brand-white z-0"
                 />
@@ -322,6 +321,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                 <li
                   onClick={() => history.push('/general-autolock')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                  id="auto-lock-timer-btn"
                 >
                   <Icon name="clock" className="text-brand-white ml-1 mr-4" />
 
@@ -333,6 +333,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                 <li
                   onClick={() => history.push('/general-currency')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                  id="currency-btn"
                 >
                   <Icon name="dolar" className="text-brand-white ml-1 mr-4" />
 
@@ -356,6 +357,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                 <li
                   onClick={() => history.push('/general-about')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                  id="info-help-btn"
                 >
                   <Icon name="warning" className="text-brand-white ml-1 mr-4" />
 

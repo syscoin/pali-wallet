@@ -38,45 +38,45 @@ describe('<Home /> tests', async () => {
     }
   });
 
-  /*it("should check if send button its being shown and working correctly", async () => {
-    const sendButton = await uiWebDriver.findElement(By.id("send-btn"));
+  it('should check if send button its being shown and working correctly', async () => {
+    const sendButton = await uiWebDriver.findElement(By.id('send-btn'));
 
     assert.ok(
-      typeof sendButton === "object",
-      "<!> Cannot find Send button <!>"
+      typeof sendButton === 'object',
+      '<!> Cannot find Send button <!>'
     );
 
-    await uiWebDriver.clickElement("#send-btn");
-    const findSendSYS = await uiWebDriver.findElement(By.id("sendSYS-title"));
+    await uiWebDriver.clickElement('#send-btn');
+    const findSendSYS = await uiWebDriver.findElement(By.id('sendSYS-title'));
     const sendSYSText = await findSendSYS.getText();
     assert.equal(
       sendSYSText,
-      "SEND SYS",
+      'SEND SYS',
 
-      "<!> Send button is working different than the the expected <!>"
+      '<!> Send button is working different than the the expected <!>'
     );
   });
 
   it("should check if receive button it's being shown and working correctly", async () => {
-    const receiveButton = await uiWebDriver.findElement(By.id("receive-btn"));
+    const receiveButton = await uiWebDriver.findElement(By.id('receive-btn'));
 
     assert.ok(
-      typeof receiveButton === "object",
-      "<!> Cannot find receive button <!>"
+      typeof receiveButton === 'object',
+      '<!> Cannot find receive button <!>'
     );
 
-    await uiWebDriver.clickElement("#receive-btn");
+    await uiWebDriver.clickElement('#receive-btn');
     const findReceiveSYS = await uiWebDriver.findElement(
-      By.id("receiveSYS-title")
+      By.id('receiveSYS-title')
     );
     const receiveSYSText = await findReceiveSYS.getText();
     assert.equal(
       receiveSYSText,
-      "receive SYS",
+      'receive SYS',
 
-      "<!> Receive button is working different than the the expected <!>"
+      '<!> Receive button is working different than the the expected <!>'
     );
-  });*/
+  });
 
   it("should check if copy address button it's being shown and working correctly", async () => {
     const copyAddresBtn = await uiWebDriver.findElement(
@@ -113,7 +113,7 @@ describe('<Home /> tests', async () => {
     const findGeneralSettings = await uiWebDriver.findElement(
       By.id('general-settings-title')
     );
-    const generalSettingsText = await findReceiveSYS.getText();
+    const generalSettingsText = await findGeneralSettings.getText();
     assert.equal(
       generalSettingsText,
       'GENERAL SETTINGS',
@@ -177,5 +177,20 @@ describe('<Home /> tests', async () => {
       typeof badgeConnected === 'object',
       '<!> Cannot find badge connected <!>'
     );
+  });
+
+  it("should check if activity button it's being shown", async () => {
+    const activityButton = await uiWebDriver.findElement(By.id('activity-btn'));
+
+    assert.ok(
+      typeof activityButton === 'object',
+      '<!> Cannot activity button <!>'
+    );
+  });
+
+  it("should check if assets button it's being shown", async () => {
+    const assetsButton = await uiWebDriver.findElement(By.id('assets-btn'));
+
+    assert.ok(typeof assetsButton === 'object', '<!> Cannot assets buton <!>');
   });
 });

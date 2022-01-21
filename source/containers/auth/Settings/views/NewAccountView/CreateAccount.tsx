@@ -26,7 +26,7 @@ const NewAccountView = () => {
   };
 
   return (
-    <AuthViewLayout title="CREATE ACCOUNT">
+    <AuthViewLayout title="CREATE ACCOUNT" id="create-account-title">
       {address ? (
         <Modal
           type="default"

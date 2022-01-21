@@ -1,12 +1,12 @@
-/*import assert from "assert";
+import assert from 'assert';
 
-import { beforeEach, afterEach } from "mocha";
-import { buildWebDriver } from "../webdriver";
-import { importWallet } from "../initialize";
-import { By } from "selenium-webdriver";
-import { storeState } from "../../../../source/state/store";
+import { beforeEach, afterEach } from 'mocha';
+import { buildWebDriver } from '../webdriver';
+import { importWallet } from '../initialize';
+import { By } from 'selenium-webdriver';
+import { storeState } from '../../../../source/state/store';
 
-describe("Account UI tests", async () => {
+describe('Account settings UI tests', async () => {
   let uiWebDriver = null;
 
   beforeEach(async () => {
@@ -16,59 +16,143 @@ describe("Account UI tests", async () => {
 
     await driver.navigate();
     await importWallet({ driver });
+    await uiWebDriver.clickElement('#account-settings-btn');
   });
 
   afterEach(() => {
     uiWebDriver.quit();
   });
 
-  it('should create new account after login', async () => {   
-         await uiWebDriver.clickElement('#account-settings-btn');
-         await uiWebDriver.clickElement('.accounts-btn');
-         await uiWebDriver.clickElement('.create-account-btn');
-         await uiWebDriver.fill('.new-account-name-input', 'Test Account');
-         await uiWebDriver.clickElement('#create-btn');
-         await uiWebDriver.clickElement('#got-it-btn');
-         await uiWebDriver.clickElement('#account-settings-btn');
-         await uiWebDriver.clickElement('.accounts-btn');
-         const findNewAccount = await uiWebDriver.findElement(
-           By.xpath("*[text()='Test Account']")
-         );
-         if (findNewAccount) {
-           console.log('New Account has been created');
-         } else {
-           console.log('New Account has not been created');
-         }
-});*/
-// const initializator = require('../initializator');
-// const { browser } = require('webextension-polyfill-ts');
-// const { By } = require('selenium-webdriver');
-// const { buildWebDriver } = require('../../webdriver');
+  it("should check if your keys button it's being shown and working correctly", async () => {
+    const yourKeysButton = await uiWebDriver.findElement(
+      By.id('your-keys-btn')
+    );
 
-// describe('Account settings test', () => {
-//   it("should check if your keys button it's being shown and working correctly", async () => {
-//     await initializator();
-//     await driver.clickElement('#account-settings-btn');
-//     const findYourKeysBtn = await driver.findElement(
-//       By.className('.your-keys-btn')
-//     );
-//     if (findYourKeysBtn) {
-//       console.log('your keys button is being shown');
-//     } else {
-//       console.log('your keys button is NOT being shown');
-//     }
-//     await driver.clickElement('.your-keys-btn');
-//     const findYourKeys = await driver.findElement(
-//       By.xpath("//*[text()='To see your private key, input your password']")
-//     );
-//     if (findYourKeys) {
-//       console.log('your keys button is working correctly');
-//     } else {
-//       console.log('your keys button is NOT working correctly');
-//     }
-//     driver.quit();
-//   });
+    assert.ok(
+      typeof yourKeysButton === 'object',
+      '<!> Cannot find your keys button <!>'
+    );
 
+    await uiWebDriver.clickElement('#your-keys-btn');
+    const findYourKeysTitle = await uiWebDriver.findElement(
+      By.id('your-keys-title')
+    );
+    const yourKeysText = await findYourKeysTitle.getText();
+    assert.equal(
+      yourKeysText,
+      'YOUR KEYS',
+
+      '<!> your keys button is working different than the the expected <!>'
+    );
+  });
+
+  it("should check if accounts button it's being shown and working correctly", async () => {
+    const accountsButton = await uiWebDriver.findElement(By.id('accounts-btn'));
+
+    assert.ok(
+      typeof accountsButton === 'object',
+      '<!> Cannot find accounts button <!>'
+    );
+
+    await uiWebDriver.clickElement('#accounts-btn');
+    const createAccountButton = await uiWebDriver.findElement(
+      By.id('create-account-btn')
+    );
+
+    assert.ok(
+      typeof createAccountButton === 'object',
+      '<!> Account button is working different than the the expected <!>'
+    );
+  });
+
+  it("should check if create account button it's being shown and working correctly", async () => {
+    await uiWebDriver.clickElement('#accounts-btn');
+    const createAccountButton = await uiWebDriver.findElement(
+      By.id('create-account-btn')
+    );
+
+    assert.ok(
+      typeof createAccountButton === 'object',
+      '<!> Cannot find create account button <!>'
+    );
+
+    await uiWebDriver.clickElement('#create-account-btn');
+    const createAccountTitle = await uiWebDriver.findElement(
+      By.id('create-account-title')
+    );
+
+    assert.equal(
+      createAccountTitle,
+      'CREATE ACCOUNT',
+      '<!> Create account button is working different than the the expected <!>'
+    );
+  });
+
+  it("should check if hardware wallet button it's being shown and working correctly", async () => {
+    const yourKeysButton = await uiWebDriver.findElement(
+      By.id('hardware-wallet-btn')
+    );
+
+    assert.ok(
+      typeof yourKeysButton === 'object',
+      '<!> Cannot find hardware wallet button <!>'
+    );
+
+    await uiWebDriver.clickElement('#hardware-wallet-btn');
+    const findHardwareWalletTitle = await uiWebDriver.findElement(
+      By.id('hardware-wallet-title')
+    );
+    const hardwareWalletText = await findHardwareWalletTitle.getText();
+    assert.equal(
+      hardwareWalletText,
+      'HARDWARE WALLET',
+
+      '<!> hardware wallet button is working different than the the expected <!>'
+    );
+  });
+
+  it("should check if lock button it's being shown and working correctly", async () => {
+    const lockButton = await uiWebDriver.findElement(By.id('lock-btn'));
+
+    assert.ok(
+      typeof lockButton === 'object',
+      '<!> Cannot find lock button <!>'
+    );
+
+    await uiWebDriver.clickElement('#lock-btn');
+    const findWelcomeTitle = await uiWebDriver.findElement(
+      By.id('welcome-auth-title')
+    );
+    const welcomeText = await findWelcomeTitle.getText();
+    assert.equal(
+      welcomeText,
+      'WELCOME TO',
+
+      '<!> lock button is working different than the the expected <!>'
+    );
+  });
+});
+
+// describe('Account settings UX test', () => {
+
+/* it("should create new account after login", async () => {
+    await uiWebDriver.clickElement("#account-settings-btn");
+    await uiWebDriver.clickElement(".accounts-btn");
+    await uiWebDriver.clickElement(".create-account-btn");
+    await uiWebDriver.fill(".new-account-name-input", "Test Account");
+    await uiWebDriver.clickElement("#create-btn");
+    await uiWebDriver.clickElement("#got-it-btn");
+    await uiWebDriver.clickElement("#account-settings-btn");
+    await uiWebDriver.clickElement(".accounts-btn");
+    const findNewAccount = await uiWebDriver.findElement(
+      By.xpath("*[text()='Test Account']")
+    );
+    if (findNewAccount) {
+      console.log("New Account has been created");
+    } else {
+      console.log("New Account has not been created");
+    }
+  }); */
 //   it('should create new account after login', async () => {
 //     let driver;
 //     const { driver: webDriver } = await buildWebDriver();
