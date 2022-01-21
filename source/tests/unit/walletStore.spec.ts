@@ -439,8 +439,11 @@ describe('Wallet store actions', () => {
 
   //* deleteWallet
   it('should delete the wallet', () => {
-    // these fields should not change when deleting the wallet
-    const staticFields = {
+    // populate a state
+    const customState: IWalletState = {
+      ...STATE_W_ACCOUNT,
+      activeAccountId: 15,
+      tabs: FAKE_TAB,
       timer: 10,
       currentBlockbookURL: 'https://something.url',
       networks: {
@@ -457,14 +460,6 @@ describe('Wallet store actions', () => {
         executing: true,
         type: 'type',
       },
-    };
-
-    // populate a state
-    const customState: IWalletState = {
-      ...initialState,
-      accounts: [FAKE_ACCOUNT],
-      tabs: FAKE_TAB,
-      ...staticFields,
     };
 
     const newState = reducer(customState, deleteWallet());
