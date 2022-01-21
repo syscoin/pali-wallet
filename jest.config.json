@@ -1,15 +1,7 @@
 {
   "collectCoverage": true,
-  "moduleFileExtensions": [
-    "js",
-    "mjs",
-    "ts",
-    "json"
-  ],
-  "moduleDirectories": [
-    "source",
-    "node_modules"
-  ],
+  "moduleFileExtensions": ["js", "mjs", "ts", "json"],
+  "moduleDirectories": ["source", "node_modules"],
   "transform": {
     "^.+\\.ts$": "babel-jest",
     "^.+\\.js$": "babel-jest",
