@@ -11,7 +11,7 @@
     "node_modules"
   ],
   "transform": {
-    "^.+\\.ts$": "babel-jest",
+    "^.+\\.ts$": "ts-jest",
     "^.+\\.js$": "babel-jest",
     "^.+\\.mjs$": "babel-jest"
   },
