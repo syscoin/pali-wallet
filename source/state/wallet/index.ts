@@ -343,49 +343,8 @@ const WalletState = createSlice({
         ...action.payload,
       };
     },
-    deleteWallet(state: IWalletState) {
-      state.status = 0;
-      state.accounts = [];
-      state.activeAccountId = 0;
-      state.activeNetwork = 'https://blockbook.elint.services/';
-      state.encriptedMnemonic = null;
-      state.confirmingTransaction = false;
-      state.changingNetwork = false;
-      state.signingTransaction = false;
-      state.signingPSBT = false;
-      state.walletTokens = [];
-      state.tabs = {
-        currentSenderURL: '',
-        currentURL: '',
-        canConnect: false,
-        connections: [],
-      };
-      state.timer = 5;
-      state.currentBlockbookURL = 'https://blockbook.elint.services/';
-      state.networks = {
-        main: {
-          id: 'main',
-          label: 'Main Network',
-          beUrl: 'https://blockbook.elint.services/',
-        },
-        testnet: {
-          id: 'testnet',
-          label: 'Test Network',
-          beUrl: 'https://blockbook-dev.elint.services/',
-        },
-      };
-      state.trustedApps = {
-        'app.uniswap.org': 'app.uniswap.org',
-        'trello.com': 'https://trello.com/b/0grd7QPC/dev',
-        'twitter.com': 'https://twitter.com/home',
-        'maps.google.com': 'https://maps.google.com/',
-        'facebook.com': 'https://accounts.google.com/b/0/AddMailService',
-        'sysmint.paliwallet.com': 'sysmint.paliwallet.com',
-      };
-      state.temporaryTransactionState = {
-        executing: false,
-        type: '',
-      };
+    deleteWallet() {
+      return initialState;
     },
     changeAccountActiveId(state: IWalletState, action: PayloadAction<number>) {
       state.activeAccountId = action.payload;

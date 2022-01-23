@@ -1934,6 +1934,7 @@ const AccountController = (actions: {
   return {
     updateNetworkData,
     subscribeAccount,
+    temporaryTransaction,
     getPrimaryAccount,
     updateAccountLabel,
     getLatestUpdate,
