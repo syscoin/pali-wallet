@@ -263,7 +263,7 @@ export const AuthRouter = () => {
           {isUnlocked ? (
             <>
               <Route path="/home" element={<Home />} />
-              <Route path="/home-tx-details" element={DetailsView} />
+              <Route path="/home-tx-details" element={<DetailsView />} />
               <Route path="/send/confirm" element={<SendConfirm />} />
               <Route path="/sign" element={<SignAndSend />} />
               <Route path="/signPsbt" element={<SignPSBT />} />

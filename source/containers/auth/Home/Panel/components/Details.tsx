@@ -3,19 +3,23 @@ import { useController } from 'hooks/index';
 import React, { useState, useEffect } from 'react';
 import { Icon } from 'components/Icon';
 
+import { useLocation } from 'react-router-dom';
+
 import { AssetDetails } from './AssetDetails';
 import { TransactionDetails } from './TransactionDetails';
 
-export const DetailsView = ({ location }: { location: any }) => {
+export const DetailsView = () => {
   const controller = useController();
+
+  const { state }: any = useLocation();
 
   const [transactionDetails, setTransactionDetails] = useState<any>(null);
 
   useEffect(() => {
     const getTransactionData = async () => {
-      if (location.state.assetGuid) {
+      if (state.assetGuid) {
         const assetData = await controller.wallet.account.getDataAsset(
-          location.state.assetGuid
+          state.assetGuid
         );
 
         const description =
@@ -29,31 +33,29 @@ export const DetailsView = ({ location }: { location: any }) => {
       }
 
       const txData = await controller.wallet.account.getTransactionInfoByTxId(
-        location.state.tx.txid
+        state.tx.txid
       );
 
       setTransactionDetails(txData);
     };
 
     getTransactionData();
-  }, [location.state.tx || location.state.assetGuid]);
+  }, [state.tx || state.assetGuid]);
 
   return (
     <AuthViewLayout
-      title={`${
-        location.state.assetGuid ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'
-      }`}
+      title={`${state.assetGuid ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}
     >
       {transactionDetails ? (
         <ul className="scrollbar-styled text-sm overflow-auto px-4 mt-4 h-96 w-full">
-          {location.state.assetGuid ? (
+          {state.assetGuid ? (
             <AssetDetails
-              assetType={location.state.assetType}
+              assetType={state.assetType}
               assetData={transactionDetails}
             />
           ) : (
             <TransactionDetails
-              transactionType={location.state.type}
+              transactionType={state.type}
               transactionDetails={transactionDetails}
             />
           )}
