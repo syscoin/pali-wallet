@@ -2,7 +2,6 @@ import { AuthViewLayout } from 'containers/common/Layout';
 import { useController } from 'hooks/index';
 import React, { useState, useEffect } from 'react';
 import { Icon } from 'components/Icon';
-
 import { useLocation } from 'react-router-dom';
 
 import { AssetDetails } from './AssetDetails';
