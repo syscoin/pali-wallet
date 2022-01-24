@@ -9,7 +9,7 @@ const ConnectedSites = (): any => {
 
   const { activeAccount } = useAccount();
   const { formatURL, ellipsis } = useFormat();
-  const { history } = useUtils();
+  const { navigate } = useUtils();
   const { browser } = useBrowser();
 
   const disconnectSite = (id: any) => {
@@ -152,7 +152,7 @@ const ConnectedSites = (): any => {
         )}
 
         <div className="absolute bottom-12">
-          <SecondaryButton type="button" onClick={() => history.push('/home')}>
+          <SecondaryButton type="button" onClick={() => navigate('/home')}>
             Close
           </SecondaryButton>
         </div>

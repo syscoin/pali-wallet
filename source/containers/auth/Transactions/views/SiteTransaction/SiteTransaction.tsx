@@ -28,7 +28,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
 }) => {
   const controller = useController();
 
-  const { history, getHost } = useUtils();
+  const { navigate, getHost } = useUtils();
   const { currentSenderURL, activeNetwork } = useStore();
   const { handleRejectTransaction } = useTransaction();
   const { browser } = useBrowser();
@@ -65,7 +65,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
 
     setLoading(true);
 
-    history.push(confirmRoute);
+    navigate(confirmRoute);
   };
 
   const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
@@ -158,7 +158,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
               type="button"
               action
               onClick={() =>
-                handleRejectTransaction(browser, temporaryTransaction, history)
+                handleRejectTransaction(browser, temporaryTransaction, navigate)
               }
             >
               Cancel

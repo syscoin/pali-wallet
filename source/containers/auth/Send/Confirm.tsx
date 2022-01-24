@@ -14,7 +14,7 @@ import {
 export const SendConfirm = () => {
   const controller = useController();
   const { activeAccount } = useAccount();
-  const { alert, history } = useUtils();
+  const { alert, navigate } = useUtils();
   const { confirmingTransaction } = useStore();
   const { browser } = useBrowser();
   const { handleCancelTransactionOnSite } = useTransaction();
@@ -134,7 +134,7 @@ export const SendConfirm = () => {
           title="Transaction successful"
           description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
           open={confirmed}
-          onClose={() => history.push('/home')}
+          onClose={() => navigate('/home')}
           doNothing
         />
       )}

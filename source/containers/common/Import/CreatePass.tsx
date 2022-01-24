@@ -6,16 +6,16 @@ const CreatePass = () => {
   const controller = useController();
 
   const { canConnect } = useStore();
-  const { history } = useUtils();
+  const { navigate } = useUtils();
 
   const next = () => {
     if (canConnect) {
-      history.push('/connect-wallet');
+      navigate('/connect-wallet');
 
       return;
     }
 
-    history.push('/home');
+    navigate('/home');
   };
 
   const onSubmit = (data: any) => {

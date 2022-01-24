@@ -29,7 +29,7 @@ const CurrencyView = () => {
     fiat: 0,
   });
 
-  const { history } = useUtils();
+  const { navigate } = useUtils();
   const { formatNumber } = useFormat();
 
   const handleRefresh = () => {
@@ -85,7 +85,7 @@ const CurrencyView = () => {
       {confirmed && (
         <Modal
           type="default"
-          onClose={() => history.push('/home')}
+          onClose={() => navigate('/home')}
           open={confirmed}
           title="Fiat currency set successfully"
           description={`Now you will see the values in your wallet in SYS and ${

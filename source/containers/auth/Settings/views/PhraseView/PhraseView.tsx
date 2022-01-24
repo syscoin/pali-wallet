@@ -9,7 +9,7 @@ const PhraseView = () => {
     '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****'
   );
 
-  const { useCopyClipboard, history } = useUtils();
+  const { useCopyClipboard, navigate } = useUtils();
   const controller = useController();
   const [copied, copyText] = useCopyClipboard();
 
@@ -80,7 +80,7 @@ const PhraseView = () => {
         </InfoCard>
 
         <div className="absolute bottom-12">
-          <SecondaryButton type="button" onClick={() => history.push('/home')}>
+          <SecondaryButton type="button" onClick={() => navigate('/home')}>
             {copied ? 'Copied' : 'Close'}
           </SecondaryButton>
         </div>

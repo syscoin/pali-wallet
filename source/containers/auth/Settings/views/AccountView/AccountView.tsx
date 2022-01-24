@@ -10,7 +10,7 @@ interface IAccountView {
 const AccountView: FC<IAccountView> = ({ id }) => {
   const controller = useController();
   const { accounts } = useStore();
-  const { history } = useUtils();
+  const { navigate } = useUtils();
 
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
   const handleOpenExplorer = () => {
@@ -34,7 +34,7 @@ const AccountView: FC<IAccountView> = ({ id }) => {
             )}
           </section> */}
       <ul>
-        <li onClick={() => history.push('/account-priv')}>
+        <li onClick={() => navigate('/account-priv')}>
           <Icon name="export" className="w-4 bg-warning-success" />
           Export account keys
         </li>

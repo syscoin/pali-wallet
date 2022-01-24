@@ -6,7 +6,7 @@ import { Form, Input } from 'antd';
 
 const TrustedSitesView = () => {
   const { formatURL } = useFormat();
-  const { history } = useUtils();
+  const { navigate } = useUtils();
   const { trustedApps } = useStore();
 
   const [filteredSearch, setFilteredSearch] = useState<any>(
@@ -78,7 +78,7 @@ const TrustedSitesView = () => {
         </ul>
 
         <div className="absolute bottom-12">
-          <SecondaryButton type="button" onClick={() => history.push('/home')}>
+          <SecondaryButton type="button" onClick={() => navigate('/home')}>
             Close
           </SecondaryButton>
         </div>
