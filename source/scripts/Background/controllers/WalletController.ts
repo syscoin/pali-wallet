@@ -4,13 +4,13 @@ import {
   deleteWallet as deleteWalletState,
   changeAccountActiveId,
   changeActiveNetwork,
-  updateStatus,
   setEncriptedMnemonic,
   removeAccounts,
   removeAccount,
   updateSwitchNetwork,
   removeConnection,
 } from 'state/wallet';
+import { updateStatus } from 'state/vault';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import CryptoJS from 'crypto-js';
 import store from 'state/store';
@@ -177,7 +177,7 @@ const WalletController = (): IWalletController => {
   const getPhrase = (pwd: string) =>
     checkPassword(pwd) ? HDsigner.mnemonic : null;
 
-  const unLock = async (pwd: string) => {
+  const unLock = async (pwd: string, isSyscoin = true) => {
     try {
       const encriptedMnemonic = retrieveEncriptedMnemonic();
       const decriptedMnemonic = CryptoJS.AES.decrypt(
@@ -191,7 +191,7 @@ const WalletController = (): IWalletController => {
 
       const { activeAccountId, accounts } = store.getState().wallet;
 
-      if (!HDsigner || !sjs) {
+      if (isSyscoin && (HDsigner || !sjs)) {
         const response = await axios.get(
           `${store.getState().wallet.currentBlockbookURL}/api/v2`
         );
@@ -370,7 +370,8 @@ const WalletController = (): IWalletController => {
 
     if (accountsToBeRemoved) {
       for (const id of Object.values(accountsToBeRemoved)) {
-        store.dispatch(removeConnection({ accountId: id }));
+        store.dispatch(removeConnection({ accountId: Number(id), url: '' }));
+
         store.dispatch(removeAccount(Number(id)));
         store.dispatch(updateStatus());
 
@@ -391,10 +392,13 @@ const WalletController = (): IWalletController => {
   const switchNetwork = async (networkId: string) => {
     const { networks } = store.getState().wallet;
 
+    const { id, beUrl, label } = networks[networkId];
+
     store.dispatch(
       changeActiveNetwork({
-        id: networks[networkId]?.id,
-        beUrl: networks[networkId]?.beUrl,
+        id,
+        beUrl,
+        label,
       })
     );
 
@@ -500,6 +504,42 @@ const WalletController = (): IWalletController => {
     return account.setNewAddress(address);
   };
 
+  /**
+   *
+   * @param rpcURL RPC URL to validate
+   * @param chainID chain ID of the typed RPC, required if it is
+   * an EVM network
+   * @returns Promise<boolean>
+   */
+  const validateRPC = async (rpcURL: string, chainID?: number | undefined) => {
+    if (chainID && chainID > -1) {
+      const web3Response = await axios.get(
+        `${rpcURL}/api?module=account&action=txlist&address=0x5DD68C79CE18454Ab2b870a4f63eadDF19277110&startblock=0&endblock=99999999&page=1&offset=10&sort=asc&apikey=YourApiKeyToken`
+      );
+      console.log('web3 response ok', web3Response);
+
+      if (web3Response.data.message === 'OK') {
+        console.log('web3 response ok', web3Response);
+        return true;
+      }
+
+      return false;
+    }
+
+    const sysResponse = await axios.get(`${rpcURL}/api/v2`);
+
+    console.log('sys response ok', sysResponse);
+    const { coin } = sysResponse.data.blockbook;
+
+    if (sysResponse && coin) {
+      if (coin === 'Syscoin' || coin === 'Syscoin Testnet' || !rpcURL) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
   return {
     account,
     isLocked,
@@ -517,6 +557,7 @@ const WalletController = (): IWalletController => {
     getNewAddress,
     logOut,
     addNewAccount,
+    validateRPC,
   };
 };
 

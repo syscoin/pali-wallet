@@ -155,25 +155,27 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                       </Disclosure.Button>
 
                       <Disclosure.Panel className="scrollbar-styled pt-0.5 pb-2 text-sm bg-menu-secondary h-28 overflow-auto">
-                        {Object.values(networks).map((currentNetwork: any) => (
-                          <li
-                            key={currentNetwork.id}
-                            className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-menu-secondary backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
-                            onClick={() =>
-                              handleChangeNetwork(currentNetwork.id)
-                            }
-                          >
-                            <span>{currentNetwork.label}</span>
+                        {Object.values(networks.syscoin).map(
+                          (currentNetwork: any) => (
+                            <li
+                              key={currentNetwork.id}
+                              className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-menu-secondary backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
+                              onClick={() =>
+                                handleChangeNetwork(currentNetwork.id)
+                              }
+                            >
+                              <span>{currentNetwork.label}</span>
 
-                            {activeNetwork === currentNetwork.id && (
-                              <Icon
-                                name="check"
-                                className="w-4 mb-1"
-                                wrapperClassname="w-6 absolute right-1"
-                              />
-                            )}
-                          </li>
-                        ))}
+                              {activeNetwork === currentNetwork.id && (
+                                <Icon
+                                  name="check"
+                                  className="w-4 mb-1"
+                                  wrapperClassname="w-6 absolute right-1"
+                                />
+                              )}
+                            </li>
+                          )
+                        )}
                       </Disclosure.Panel>
                     </>
                   )}
@@ -203,20 +205,27 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                       </Disclosure.Button>
 
                       <Disclosure.Panel className="pt-0.5 pb-2 text-sm bg-menu-secondary">
-                        <li
-                          className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-menu-secondary backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
-                          onClick={() => handleChangeNetwork('main')}
-                        >
-                          <span>Main network</span>
+                        {Object.values(networks.ethereum).map(
+                          (currentNetwork: any) => (
+                            <li
+                              key={currentNetwork.id}
+                              className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-menu-secondary backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
+                              onClick={() =>
+                                handleChangeNetwork(currentNetwork.id)
+                              }
+                            >
+                              <span>{currentNetwork.label}</span>
 
-                          {activeNetwork === 'main' && (
-                            <Icon
-                              name="check"
-                              className="w-4 mb-1"
-                              wrapperClassname="w-6 absolute right-1"
-                            />
-                          )}
-                        </li>
+                              {activeNetwork === currentNetwork.id && (
+                                <Icon
+                                  name="check"
+                                  className="w-4 mb-1"
+                                  wrapperClassname="w-6 absolute right-1"
+                                />
+                              )}
+                            </li>
+                          )
+                        )}
                       </Disclosure.Panel>
                     </>
                   )}

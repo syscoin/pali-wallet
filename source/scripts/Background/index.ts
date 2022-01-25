@@ -14,16 +14,18 @@ import {
   removeConnection,
   updateCanConfirmTransaction,
   clearAllTransactions,
-  setTemporaryTransactionState,
 } from 'state/wallet';
+import { setTemporaryTransactionState } from 'state/vault';
 import { IAccountState } from 'state/wallet/types';
 
 import MasterController, { IMasterController } from './controllers';
+import { fetchState } from './gateway';
 import { getHost } from './helpers';
 
 declare global {
   interface Window {
     controller: Readonly<IMasterController>;
+    gatewayNetwork: string;
     senderURL: string;
     syspopup: any;
   }
@@ -31,6 +33,10 @@ declare global {
 
 if (!window.controller) {
   window.controller = Object.freeze(MasterController());
+  console.log(
+    'fetch gateway 1',
+    fetchState().then((response) => console.log(response))
+  );
   setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
 }
 
@@ -57,7 +63,7 @@ const closePopup = () => {
 };
 
 const restartLockTimeout = () => {
-  const { temporaryTransactionState, timer } = store.getState().wallet;
+  const { temporaryTransactionState, timer } = store.getState().vault;
 
   if (timeout) {
     clearTimeout(timeout);
@@ -955,7 +961,7 @@ browser.runtime.onInstalled.addListener(() => {
     setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
   }
 
-  console.emoji('🤩', 'Pali extension ebabled');
+  console.emoji('🤩', 'Pali extension enabled');
 
   window.controller.stateUpdater();
 });

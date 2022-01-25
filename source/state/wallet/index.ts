@@ -20,7 +20,6 @@ const getHost = (url: string) => {
 };
 
 export const initialState: IWalletState = {
-  status: 0,
   accounts: [],
   activeAccountId: 0,
   activeNetwork: 'https://blockbook.elint.services/',
@@ -36,7 +35,6 @@ export const initialState: IWalletState = {
     canConnect: false,
     connections: [],
   },
-  timer: 5,
   currentBlockbookURL: 'https://blockbook.elint.services/',
   networks: {
     main: {
@@ -49,6 +47,11 @@ export const initialState: IWalletState = {
       label: 'Test Network',
       beUrl: 'https://blockbook-dev.elint.services/',
     },
+    kovan: {
+      id: 'kovan',
+      label: 'Kovan Test',
+      beUrl: 'https://kovan.etherscan.io/',
+    },
   },
   trustedApps: {
     'app.uniswap.org': 'app.uniswap.org',
@@ -57,10 +60,6 @@ export const initialState: IWalletState = {
     'maps.google.com': 'https://maps.google.com/',
     'facebook.com': 'https://accounts.google.com/b/0/AddMailService',
     'sysmint.paliwallet.com': 'sysmint.paliwallet.com',
-  },
-  temporaryTransactionState: {
-    executing: false,
-    type: '',
   },
 };
 
@@ -75,13 +74,6 @@ const WalletState = createSlice({
           ...state.networks,
           [action.payload.id]: action.payload,
         },
-      };
-    },
-    // In minutes
-    setTimer(state: IWalletState, action: PayloadAction<number>) {
-      return {
-        ...state,
-        timer: action.payload,
       };
     },
     // update token by accountId (if existent) or add a new one
@@ -120,18 +112,6 @@ const WalletState = createSlice({
       return {
         ...state,
         confirmingTransaction: action.payload,
-      };
-    },
-    setTemporaryTransactionState(
-      state: IWalletState,
-      action: PayloadAction<{ executing: boolean; type: string }>
-    ) {
-      return {
-        ...state,
-        temporaryTransactionState: {
-          executing: action.payload.executing,
-          type: action.payload.type,
-        },
       };
     },
     // remove the connection from [state.tabs.connections]
@@ -260,10 +240,6 @@ const WalletState = createSlice({
     ) {
       state.encriptedMnemonic = action.payload.toString();
     },
-    // TODO rename [status] to something more meaningful
-    updateStatus(state: IWalletState) {
-      state.status = Date.now();
-    },
     createAccount(state: IWalletState, action: PayloadAction<IAccountState>) {
       return {
         ...state,
@@ -344,7 +320,6 @@ const WalletState = createSlice({
       };
     },
     deleteWallet(state: IWalletState) {
-      state.status = 0;
       state.accounts = [];
       state.activeAccountId = 0;
       state.activeNetwork = 'https://blockbook.elint.services/';
@@ -360,17 +335,21 @@ const WalletState = createSlice({
         canConnect: false,
         connections: [],
       };
-      state.timer = 5;
       state.currentBlockbookURL = 'https://blockbook.elint.services/';
       state.networks = {
         main: {
           id: 'main',
-          label: 'Main Network',
+          label: 'Syscoin Mainnet',
           beUrl: 'https://blockbook.elint.services/',
         },
         testnet: {
           id: 'testnet',
-          label: 'Test Network',
+          label: 'Syscoin Testnet',
+          beUrl: 'https://blockbook-dev.elint.services/',
+        },
+        kovan: {
+          id: 'testnet',
+          label: 'Syscoin Testnet',
           beUrl: 'https://blockbook-dev.elint.services/',
         },
       };
@@ -382,16 +361,12 @@ const WalletState = createSlice({
         'facebook.com': 'https://accounts.google.com/b/0/AddMailService',
         'sysmint.paliwallet.com': 'sysmint.paliwallet.com',
       };
-      state.temporaryTransactionState = {
-        executing: false,
-        type: '',
-      };
     },
     changeAccountActiveId(state: IWalletState, action: PayloadAction<number>) {
       state.activeAccountId = action.payload;
     },
     changeActiveNetwork(state: IWalletState, action: PayloadAction<INetwork>) {
-      state.activeNetwork = action.payload.id;
+      state.activeNetwork = action.payload.label;
       state.currentBlockbookURL = action.payload.beUrl;
     },
     updateTransactions(
@@ -420,7 +395,6 @@ const WalletState = createSlice({
 });
 
 export const {
-  updateStatus,
   createAccount,
   removeAccount,
   removeAccounts,
@@ -442,9 +416,7 @@ export const {
   updateSwitchNetwork,
   clearAllTransactions,
   updateAllTokens,
-  setTimer,
   updateNetwork,
-  setTemporaryTransactionState,
 } = WalletState.actions;
 
 export default WalletState.reducer;

@@ -5,7 +5,6 @@ import { fromZPub } from 'bip84';
 import CryptoJS from 'crypto-js';
 import {
   createAccount,
-  updateStatus,
   updateAccount,
   updateLabel,
   updateTransactions,
@@ -13,10 +12,13 @@ import {
   updateAccountXpub,
   updateSwitchNetwork,
   updateAllTokens,
-  setTimer,
   updateNetwork,
-  setTemporaryTransactionState,
 } from 'state/wallet';
+import {
+  setTimer,
+  updateStatus,
+  setTemporaryTransactionState,
+} from 'state/vault';
 import {
   Assets,
   IAccountInfo,
@@ -123,7 +125,7 @@ const AccountController = (actions: {
 
   const updateTransactionData = (txinfo: any) => {
     const transactionItem =
-      store.getState().wallet.temporaryTransactionState.type === 'sendAsset';
+      store.getState().vault.temporaryTransactionState.type === 'sendAsset';
 
     let transactions: Transaction[] = [];
 
@@ -413,7 +415,24 @@ const AccountController = (actions: {
         ) || accounts[activeAccountId];
 
       store.dispatch(updateStatus());
+
+      return;
     }
+
+    globalAccount = {
+      id: 55,
+      label: 'Account 1',
+      balance: 0,
+      transactions: [],
+      xpub: '',
+      xprv: '',
+      address: { main: 'mainAddress' },
+      assets: [],
+      connectedTo: [],
+      isTrezorWallet: false,
+    };
+
+    store.dispatch(updateStatus());
   };
 
   const watchMemPool = (currentAccount: IAccountState | undefined) => {
@@ -1660,7 +1679,7 @@ const AccountController = (actions: {
             .signAndSend(txData.psbt, txData.assets, TrezorSigner)
             .then(() => {
               const sendAssetDeclaration =
-                store.getState().wallet.temporaryTransactionState.type ===
+                store.getState().vault.temporaryTransactionState.type ===
                 'sendAsset';
 
               const currentAccount = sendAssetDeclaration
@@ -1698,7 +1717,7 @@ const AccountController = (actions: {
     }
 
     const transactionItem =
-      store.getState().wallet.temporaryTransactionState.type === 'sendAsset';
+      store.getState().vault.temporaryTransactionState.type === 'sendAsset';
 
     const acc = transactionItem ? globalAccount : getConnectedAccount();
 

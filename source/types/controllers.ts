@@ -26,6 +26,7 @@ export interface IWalletController {
   switchNetwork: (networkId: string) => void;
   switchWallet: (id: number) => void;
   unLock: (pwd: string) => Promise<boolean>;
+  validateRPC: (rpcURL: string, chainID?: number) => Promise<boolean>;
 }
 
 export interface IAccountController {

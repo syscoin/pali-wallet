@@ -8,17 +8,24 @@
     "prettier",
     "prettier/react"
   ],
-  "plugins": ["@typescript-eslint", "eslint-plugin-prettier"],
+  "plugins": [
+    "@typescript-eslint",
+    "eslint-plugin-prettier"
+  ],
   "overrides": [
     {
-      "files": ["*.{ts,tsx}"],
+      "files": [
+        "*.{ts,tsx}"
+      ],
       "parser": "@typescript-eslint/parser",
       "parserOptions": {
         "project": "**/tsconfig.json",
         "tsconfigRootDir": ".",
         "sourceType": "module"
       },
-      "plugins": ["typescript-sort-keys"],
+      "plugins": [
+        "typescript-sort-keys"
+      ],
       "rules": {
         "typescript-sort-keys/interface": 2,
         "typescript-sort-keys/string-enum": 2,
@@ -29,7 +36,10 @@
   ],
   "rules": {
     "implicit-arrow-linebreak": "off",
-    "arrow-body-style": ["error", "as-needed"],
+    "arrow-body-style": [
+      "error",
+      "as-needed"
+    ],
     "comma-dangle": [
       "error",
       {
@@ -67,7 +77,12 @@
     "jsx-a11y/no-static-element-interactions": "off",
     "@typescript-eslint/indent": "off",
     "@typescript-eslint/no-var-requires": "off",
+    "class-methods-use-this": ["off"],
     "no-await-in-loop": "off",
+    "dot-notation": "off",
+    "@typescript-eslint/dot-notation": [
+      "off"
+    ],
     "prettier/prettier": [
       "error",
       {
@@ -98,9 +113,15 @@
       {
         "groups": [
           "builtin",
-          ["external", "internal"],
+          [
+            "external",
+            "internal"
+          ],
           "parent",
-          ["sibling", "index"]
+          [
+            "sibling",
+            "index"
+          ]
         ],
         "newlines-between": "always"
       }

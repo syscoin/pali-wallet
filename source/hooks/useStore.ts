@@ -5,7 +5,6 @@ import IWalletState from 'state/wallet/types';
 
 export const useStore = () => {
   const {
-    status,
     accounts,
     activeAccountId,
     activeNetwork,
@@ -16,11 +15,12 @@ export const useStore = () => {
     signingPSBT,
     walletTokens,
     tabs,
-    timer,
-    networks,
     trustedApps,
-    temporaryTransactionState,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
+
+  const { temporaryTransactionState, status, timer, networks } = useSelector(
+    (state: RootState) => state.vault
+  );
 
   const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
 

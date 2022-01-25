@@ -16,7 +16,7 @@ import App from './App';
 const app = document.getElementById('app-root');
 const store = new Store({ portName: STORE_PORT });
 
-const w = watch(appStore.getState, 'wallet.status');
+const w = watch(appStore.getState, 'vault.lastLogin');
 store.subscribe(
   w(() => {
     console.log('watching webext store');

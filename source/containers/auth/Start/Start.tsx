@@ -8,7 +8,7 @@ export const Start = () => {
   const controller = useController();
 
   const onSubmit = async (data: any) => {
-    await controller.wallet.unLock(data.password);
+    await controller.wallet.unLock(data.password, false);
   };
 
   return (

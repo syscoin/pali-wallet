@@ -10,10 +10,14 @@ import { localStorage } from 'redux-persist-webextension-storage';
 
 import wallet from './wallet';
 import price from './price';
+import vault from './vault';
+import dapp from './dapp';
 
 const reducers = combineReducers({
   wallet,
   price,
+  vault,
+  dapp,
 });
 
 const persistConfig = {
