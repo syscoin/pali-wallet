@@ -25,6 +25,7 @@ import {
   updateNetwork,
   setTemporaryTransactionState,
 } from 'state/wallet';
+
 import { sortList, isNFT, countDecimals } from './utils';
 
 const syscointx = require('syscointx-js');
