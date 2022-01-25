@@ -212,43 +212,4 @@ describe('Account settings UI tests', async () => {
 //     driver.quit();
 //   });
 
-//   it("should check if hardware wallet button it's being shown and working correctly", async () => {
-//     await initializator();
-//     await driver.clickElement('#account-settings-btn');
-//     const findHardwareWalletBtn = await driver.findElement(
-//       By.className('.hardware-wallet-btn')
-//     );
-//     if (findHardwareWalletBtn) {
-//       console.log('hardware wallet button is being shown');
-//     } else {
-//       console.log('hardware wallet button is NOT being shown');
-//     }
-//     await driver.clickElement('.hardware-wallet-btn');
-//     const findHardwareWallet = await driver.findElement(
-//       By.xpath(
-//         "//*[text()='Select the hardware wallet you'd like to connect to Pali']"
-//       )
-//     );
-//     if (findHardwareWallet) {
-//       console.log('hardware wallet button is working correctly');
-//     } else {
-//       console.log('hardware wallet button is NOT working correctly');
-//     }
-//     driver.quit();
-//   });
-
-//   it('should check if lock button is working correctly after login', async () => {
-//     await initializator();
-//     await driver.clickElement('#account-settings-btn');
-//     await driver.clickElement('.lock-btn');
-//     const findNewAccount = await driver.findElement(
-//       By.xpath("//*[text()='WELCOME TO']")
-//     );
-//     if (findNewAccount) {
-//       console.log('Lock buttton is working correctly');
-//     } else {
-//       console.log('Lock buttton is NOT working correctly');
-//     }
-//     driver.quit();
-//   });
 // });

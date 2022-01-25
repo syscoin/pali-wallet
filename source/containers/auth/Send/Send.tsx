@@ -416,7 +416,7 @@ export const Send: FC<ISend> = () => {
     </div>
   );
   return (
-    <AuthViewLayout title="SEND SYS" /* id="sendSYS-title" */>
+    <AuthViewLayout title="SEND SYS" id="sendSYS-title">
       <SendForm />
     </AuthViewLayout>
   );
