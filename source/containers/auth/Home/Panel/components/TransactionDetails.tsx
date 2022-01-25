@@ -143,6 +143,33 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
     },
   ];
 
+  const transactionValidator = () => {
+    if (transactionType.includes('SPT') && sysExplorer.includes('dev')) {
+      return window.open(`${sysExplorer}/tx/${transactionDetails.txid}`);
+    }
+    if (
+      transactionType.includes('Transaction') &&
+      sysExplorer === 'https://blockbook.elint.services/'
+    ) {
+      return window.open(`${sysExplorer}/tx/${transactionDetails.txid}`);
+    }
+    if (
+      transactionType.includes('Transaction') &&
+      sysExplorer.includes('dev')
+    ) {
+      return window.alert('Something is wrong');
+    }
+    if (
+      transactionType.includes('SPT') &&
+      sysExplorer === 'https://blockbook.elint.services/'
+    ) {
+      return window.alert('Something is wrong');
+    }
+    if (activeNetwork === 'https://blockbook.elint.services/') {
+      return window.alert('Choose a network');
+    }
+  };
+
   return (
     <>
       {txData.map(({ label, value: currentValue }: any) => (
@@ -220,9 +247,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
 
         <Button
           type="button"
-          onClick={() =>
-            window.open(`${sysExplorer}/tx/${transactionDetails.txid}`)
-          }
+          onClick={() => transactionValidator()}
           className="inline-flex justify-center px-6 py-1 text-sm font-medium hover:text-brand-royalblue text-brand-white bg-transparent border border-brand-white rounded-full hover:bg-button-popuphover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
         >
           Go

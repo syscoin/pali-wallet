@@ -1,7 +1,7 @@
 import CryptoJS from 'crypto-js';
 import store from 'state/store';
 import { createAccount } from 'state/wallet';
-import { FAKE_ACCOUNT } from 'tests/unit/data/mocks';
+import { FAKE_ACCOUNT, FAKE_XPRV, FAKE_XPUB } from 'tests/unit/data/mocks';
 import { IAccountState } from 'state/wallet/types';
 
 import AccountController from './AccountController';
@@ -88,15 +88,15 @@ describe('AccountController tests', () => {
   });
 
   it('should update temporary transaction data', () => {
-    const transactionType = 'mintNFT';
+    const transactionType = 'sendAsset';
     const mockJson = {
-      fromConnectedAccount: 'test',
-      toAddress: 'addressTest',
+      fromConnectedAccount: 'sys1qydmw8wrtl4mvk6he65qqrq8ml9f6eyyl9tasax',
+      toAddress: 'sys1qhg7mfvds68kaz8xanssknd730x5lhceu2ner9k',
       amount: 123,
-      fee: 123,
-      token: 'ADA',
+      fee: 0.00001,
+      token: null,
       isToken: false,
-      rbf: '',
+      rbf: true,
     };
     updateTemporaryTransaction({
       tx: mockJson,
@@ -105,15 +105,17 @@ describe('AccountController tests', () => {
     expect(temporaryTransaction[transactionType]).toEqual(mockJson);
   });
   it('should create new xpub', () => {
-    const newXpub = 'test';
-    const xprv = 'testXprv';
+    const newXpub = FAKE_XPUB;
+    const xprv = FAKE_XPRV;
     const payload: IAccountState = FAKE_ACCOUNT;
 
     store.dispatch(createAccount(payload));
+    // FAKE ACCOUNT ID = 15
     setNewXpub(15, newXpub, xprv, '123');
 
     const { accounts } = store.getState().wallet;
 
+    // INDEX VALUE = 0
     const account0 = accounts[0].xpub;
     expect(account0).toBe(newXpub);
   });
