@@ -11,7 +11,6 @@ import {
   Transaction,
 } from 'types/transactions';
 import { IAccountController } from 'types/controllers';
-import store from 'state/store';
 import {
   createAccount,
   updateStatus,
@@ -26,8 +25,6 @@ import {
   updateNetwork,
   setTemporaryTransactionState,
 } from 'state/wallet';
-import IWalletState, { IAccountState } from 'state/wallet/types';
-
 import { sortList, isNFT, countDecimals } from './utils';
 
 const syscointx = require('syscointx-js');
