@@ -4,7 +4,7 @@ import {
   getDefaultMiddleware,
   Store,
 } from '@reduxjs/toolkit';
-import logger from 'redux-logger';
+// import logger from 'redux-logger';
 import { persistStore, persistReducer } from 'redux-persist';
 import { localStorage } from 'redux-persist-webextension-storage';
 
@@ -27,9 +27,9 @@ const middleware = [
   ...getDefaultMiddleware({ thunk: false, serializableCheck: false }),
 ];
 
-if (process.env.NODE_ENV !== 'production') {
-  middleware.push(logger);
-}
+// if (process.env.NODE_ENV !== 'production') {
+//   middleware.push(logger);
+// }
 
 const store: Store = configureStore({
   reducer: persistedReducer,
@@ -42,6 +42,7 @@ persistStore(store);
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
 
-export const storeState = store.getState();
+export const currentWalletState = store.getState().wallet;
+export const currentPriceState = store.getState().price;
 
 export default store;

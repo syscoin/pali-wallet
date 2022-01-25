@@ -1,11 +1,11 @@
 {
   "collectCoverage": true,
-  "moduleFileExtensions": ["js", "mjs", "ts"],
+  "moduleFileExtensions": ["js", "mjs", "ts", "json"],
+  "moduleDirectories": ["source", "node_modules"],
   "transform": {
-    "^.+\\.ts$": "babel-jest",
+    "^.+\\.ts$": "ts-jest",
     "^.+\\.js$": "babel-jest",
     "^.+\\.mjs$": "babel-jest"
   },
-  "testRegex": "((\\.|/*.)(spec))\\.ts?$",
-  "modulePaths": ["<rootDir>"]
+  "testRegex": "((\\.|/*.)(spec))\\.ts?$"
 }

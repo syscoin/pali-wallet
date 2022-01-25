@@ -7,6 +7,8 @@ import IWalletState, {
   IAccountUpdateAddress,
   IAccountUpdateXpub,
   IWalletTokenState,
+  Connection,
+  INetwork,
 } from './types';
 
 const getHost = (url: string) => {
@@ -17,7 +19,7 @@ const getHost = (url: string) => {
   return url;
 };
 
-const initialState: IWalletState = {
+export const initialState: IWalletState = {
   status: 0,
   accounts: [],
   activeAccountId: 0,
@@ -66,10 +68,7 @@ const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
-    updateNetwork(
-      state: IWalletState,
-      action: PayloadAction<{ beUrl: string; id: any; label: string }>
-    ) {
+    updateNetwork(state: IWalletState, action: PayloadAction<INetwork>) {
       return {
         ...state,
         networks: {
@@ -78,65 +77,24 @@ const WalletState = createSlice({
         },
       };
     },
+    // In minutes
     setTimer(state: IWalletState, action: PayloadAction<number>) {
       return {
         ...state,
         timer: action.payload,
       };
     },
+    // update token by accountId (if existent) or add a new one
     updateAllTokens(state, action: PayloadAction<IWalletTokenState>) {
-      const { accountId, accountXpub, tokens, holdings, mintedTokens } =
-        action.payload;
-
-      const sameAccountIndexAndDifferentXpub: number =
-        state.walletTokens.findIndex(
-          (accountTokens: any) =>
-            accountTokens.accountId === accountId &&
-            accountTokens.accountXpub !== accountXpub
-        );
-
-      if (sameAccountIndexAndDifferentXpub > -1) {
-        state.walletTokens[sameAccountIndexAndDifferentXpub] = action.payload;
-
-        return;
-      }
-
-      const index: number = state.walletTokens.findIndex(
-        (accountTokens: any) =>
-          accountTokens.accountId === accountId &&
-          accountTokens.accountXpub === accountXpub
+      const tokenIndex: number = state.walletTokens.findIndex(
+        (token) => token.accountId === action.payload.accountId
       );
 
-      const walletTokens = state.walletTokens[index];
-
-      if (index > -1) {
-        if (walletTokens.tokens !== tokens) {
-          walletTokens.tokens = tokens;
-        }
-
-        if (walletTokens.holdings !== holdings) {
-          walletTokens.holdings = holdings;
-        }
-
-        if (walletTokens.mintedTokens !== mintedTokens) {
-          walletTokens.mintedTokens = mintedTokens;
-        }
-
-        return;
+      if (tokenIndex > -1) {
+        state.walletTokens[tokenIndex] = action.payload;
+      } else {
+        state.walletTokens.push(action.payload);
       }
-
-      if (
-        state.walletTokens.indexOf({
-          ...walletTokens,
-          holdings,
-          tokens,
-          mintedTokens,
-        }) > -1
-      ) {
-        return;
-      }
-
-      state.walletTokens.push(action.payload);
     },
     clearAllTransactions(state: IWalletState) {
       return {
@@ -176,9 +134,11 @@ const WalletState = createSlice({
         },
       };
     },
-    removeConnection(state: IWalletState, action: PayloadAction<any>) {
+    // remove the connection from [state.tabs.connections]
+    // and its url from [state.accounts[id].connectedTo]
+    removeConnection(state: IWalletState, action: PayloadAction<Connection>) {
       const connectionIndex: number = state.tabs.connections.findIndex(
-        (connection: any) => connection.url === action.payload.url
+        (connection: Connection) => connection.url === action.payload.url
       );
 
       const account = state.accounts.find(
@@ -196,77 +156,75 @@ const WalletState = createSlice({
         1
       );
     },
+    // removes connection with the provided url (if existent)
+    // and create a connection
     updateConnectionsArray(
       state: IWalletState,
-      action: PayloadAction<{ accountId: number; url: string }>
+      action: PayloadAction<Connection>
     ) {
-      const { accounts, tabs } = state;
       const { accountId, url } = action.payload;
 
-      const accountIndex = tabs.connections.findIndex(
-        (connection: any) => connection.accountId === accountId
-      );
+      const { accounts, tabs } = state;
+      const { connections } = tabs;
 
-      const currentAccountIndex = accounts.findIndex(
+      // if the connection already exists
+      if (connections.includes(action.payload)) return;
+
+      const accountIndex = accounts.findIndex(
         (account: IAccountState) => account.id === accountId
       );
 
-      const urlIndex = tabs.connections.findIndex(
+      const connectionIndex = connections.findIndex(
         (connection: any) => connection.url === getHost(url)
       );
 
-      if (tabs.connections[urlIndex]) {
-        const accountIdConnected = accounts.findIndex(
+      // if there is a connection with the payload.url
+      if (connections[connectionIndex]) {
+        // find the connected account
+        const connectedAccountIndex = accounts.findIndex(
           (account: IAccountState) =>
-            account.id === tabs.connections[urlIndex].accountId
+            account.id === connections[connectionIndex].accountId
         );
 
-        if (accountIdConnected > -1) {
+        // if found the connected account
+        if (connectedAccountIndex > -1) {
+          // find the index of the connection (account side)
           const connectedToIndex = accounts[
-            accountIdConnected
+            connectedAccountIndex
           ].connectedTo.findIndex(
             (connectedURL: string) => connectedURL === getHost(url)
           );
 
+          // if found the connection
           if (connectedToIndex > -1) {
-            accounts[accountIdConnected].connectedTo.splice(
+            // remove the connection (account side)
+            accounts[connectedAccountIndex].connectedTo.splice(
               connectedToIndex,
               1
             );
 
-            tabs.connections[urlIndex] = {
-              ...tabs.connections[urlIndex],
+            // update the accountId (connection side)
+            connections[connectionIndex] = {
+              ...connections[connectionIndex],
               accountId,
             };
 
-            accounts[currentAccountIndex].connectedTo.push(getHost(url));
+            // add connection (account side)
+            accounts[accountIndex].connectedTo.push(getHost(url));
           }
         }
 
         return;
       }
 
-      if (tabs.connections[accountIndex]) {
-        if (tabs.connections[accountIndex].url === getHost(url)) {
-          return;
-        }
-
-        tabs.connections.push({
-          accountId,
-          url: getHost(url),
-        });
-
-        accounts[currentAccountIndex].connectedTo.push(getHost(url));
-
-        return;
-      }
-
-      tabs.connections.push({
+      // add the connection (connection side)
+      connections.push({
         accountId,
         url: getHost(url),
       });
 
-      accounts[currentAccountIndex].connectedTo.push(getHost(url));
+      // add the connection (account side)
+      accounts[accountIndex].connectedTo.push(getHost(url));
     },
     // TODO: refactor and use to use an easier way to know if the wallet can connect (provider)
     updateCanConnect(state: IWalletState, action: PayloadAction<boolean>) {
@@ -302,6 +260,7 @@ const WalletState = createSlice({
     ) {
       state.encriptedMnemonic = action.payload.toString();
     },
+    // TODO rename [status] to something more meaningful
     updateStatus(state: IWalletState) {
       state.status = Date.now();
     },
@@ -347,6 +306,9 @@ const WalletState = createSlice({
       const indexOf = state.accounts.findIndex(
         (element: IAccountState) => element.id === action.payload.id
       );
+
+      if (indexOf === -1) return;
+
       state.accounts[indexOf] = {
         ...state.accounts[indexOf],
         ...action.payload,
@@ -370,33 +332,24 @@ const WalletState = createSlice({
       state: IWalletState,
       action: PayloadAction<IAccountUpdateXpub>
     ) {
-      state.accounts[action.payload.id] = {
+      const accountIndex = state.accounts.findIndex(
+        (element: IAccountState) => element.id === action.payload.id
+      );
+
+      if (accountIndex === -1) return;
+
+      state.accounts[accountIndex] = {
         ...state.accounts[action.payload.id],
         ...action.payload,
       };
     },
-    deleteWallet(state: IWalletState) {
-      state.accounts = [];
-      state.activeAccountId = 0;
-      state.encriptedMnemonic = null;
-      state.activeNetwork = 'https://blockbook.elint.services/';
-      state.status = 0;
-      state.tabs = {
-        currentSenderURL: '',
-        currentURL: '',
-        canConnect: false,
-        connections: [],
-      };
-      state.confirmingTransaction = false;
-      state.signingPSBT = false;
-      state.changingNetwork = false;
-      state.signingTransaction = false;
-      state.walletTokens = [];
+    deleteWallet() {
+      return initialState;
     },
     changeAccountActiveId(state: IWalletState, action: PayloadAction<number>) {
       state.activeAccountId = action.payload;
     },
-    changeActiveNetwork(state: IWalletState, action: PayloadAction<any>) {
+    changeActiveNetwork(state: IWalletState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload.id;
       state.currentBlockbookURL = action.payload.beUrl;
     },
@@ -407,6 +360,8 @@ const WalletState = createSlice({
       const indexOf = state.accounts.findIndex(
         (element: IAccountState) => element.id === action.payload.id
       );
+
+      if (indexOf === -1) return;
 
       state.accounts[indexOf].transactions = action.payload.txs;
     },

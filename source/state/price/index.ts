@@ -12,7 +12,7 @@ export interface IPriceState {
   fiat: IFiatState;
 }
 
-const initialState: {
+export const initialState: {
   fiat: {
     [assetId: string]: number;
     availableCoins: any;
@@ -24,7 +24,7 @@ const initialState: {
   // @ts-ignore
   fiat: {
     syscoin: 0,
-    price: 0,
+    price: 0, // ? unused?
     availableCoins: {},
     current: 'usd',
   },
