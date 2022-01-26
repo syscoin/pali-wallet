@@ -1,4 +1,4 @@
-import { useFormat, useController } from 'hooks/index';
+import { useFormat, useController, useStore } from 'hooks/index';
 import React, { useEffect, useState } from 'react';
 import placeholder from 'assets/images/placeholder.png';
 import { Button, Tooltip, Icon } from 'components/index';
@@ -7,6 +7,7 @@ import axios from 'axios';
 export const AssetDetails = ({ assetType, assetData }) => {
   const controller = useController();
   const { formatURL } = useFormat();
+  const { activeNetwork } = useStore();
 
   const [imageLink, setImageLink] = useState('');
   const [loadingImage, setLoadingImage] = useState(false);
@@ -78,6 +79,30 @@ export const AssetDetails = ({ assetType, assetData }) => {
     },
   ];
 
+  const assetValidator = () => {
+    if (activeNetwork === 'testnet' && sysExplorer.includes('dev')) {
+      return window.open(`${sysExplorer}/asset/${assetGuid}`);
+    }
+    if (
+      activeNetwork === 'testnet' &&
+      sysExplorer === 'https://blockbook.elint.services/'
+    ) {
+      return window.alert('Something is wrong');
+    }
+    if (
+      activeNetwork === 'main' &&
+      sysExplorer === 'https://blockbook.elint.services/'
+    ) {
+      return window.open(`${sysExplorer}/asset/${assetGuid}`);
+    }
+    if (activeNetwork === 'main' && sysExplorer.includes('dev')) {
+      return window.alert('Something is wrong');
+    }
+    if (activeNetwork === 'https://blockbook.elint.services/') {
+      return window.alert('Choose a network');
+    }
+  };
+
   return (
     <>
       {imageLink && !loadingImage ? (
@@ -120,7 +145,7 @@ export const AssetDetails = ({ assetType, assetData }) => {
 
         <Button
           type="button"
-          onClick={() => window.open(`${sysExplorer}/asset/${assetGuid}`)}
+          onClick={() => assetValidator()}
           className="inline-flex justify-center px-6 py-1 text-sm font-medium hover:text-brand-royalblue text-brand-white bg-transparent border border-brand-white rounded-full hover:bg-button-popuphover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
         >
           Go
