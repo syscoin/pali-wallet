@@ -35,55 +35,63 @@ describe('AccountController tests', () => {
     expect(decrypt).toBe(value);
   });
 
-  it('should return a decrypt string', () => {
-    const value = 'test';
-    const encrypt = CryptoJS.AES.encrypt(value, 'test123');
-    const decrypt = decryptAES(encrypt.toString(), 'test123');
-    expect(decrypt).toBe(value);
-  });
-
   it('should return a sys address verification', () => {
     const invalidSysAddress = 'sys213ixks1mx';
     const value = isValidSYSAddress(invalidSysAddress, 'main');
+
     expect(value).toBeFalsy();
   });
 
   it('should set a new address account', () => {
     const newAddress = 'testAddress';
+
     setNewAddress(newAddress);
+
     const { accounts } = store.getState().wallet;
+
     expect(accounts[-1]?.address.main).toBe(newAddress);
   });
 
   it('should return holdings data', async () => {
     const result = await getHoldingsData();
+
     expect(result).toStrictEqual([]);
   });
 
   it('should set new autolock timer', () => {
     const newTime = 10;
+
     setAutolockTimer(newTime);
+
     const { timer } = store.getState().wallet;
+
     expect(timer).toBe(newTime);
   });
 
   it('should update networks info', () => {
     const newLabel = 'test';
     const newUrl = 'test.com';
+
     updateNetworkData({ id: 'main', label: newLabel, beUrl: newUrl });
+
     const { networks } = store.getState().wallet;
+
     expect(networks.main.label).toBe(newLabel);
   });
 
   it('should return temporary transaction info', () => {
     const transactionType = 'sendAsset';
+
     const result = getTemporaryTransaction(transactionType);
+
     expect(result).toBeNull();
   });
 
   it('should clear temporary transaction', () => {
     const transactionType = 'mintNFT';
+
     clearTemporaryTransaction(transactionType);
+
     expect(temporaryTransaction[transactionType]).toBeNull();
   });
 
@@ -98,12 +106,15 @@ describe('AccountController tests', () => {
       isToken: false,
       rbf: true,
     };
+
     updateTemporaryTransaction({
       tx: mockJson,
       type: transactionType,
     });
+
     expect(temporaryTransaction[transactionType]).toEqual(mockJson);
   });
+
   it('should create new xpub', () => {
     const newXpub = FAKE_XPUB;
     const xprv = FAKE_XPRV;

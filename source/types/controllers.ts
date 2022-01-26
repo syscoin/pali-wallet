@@ -17,12 +17,15 @@ export interface IWalletController {
   createHardwareWallet: () => void;
   createWallet: (isUpdated?: boolean) => void;
   deleteWallet: (pwd: string) => void;
+  encriptedPassword: string;
   generatePhrase: () => string | null;
   getNewAddress: () => Promise<boolean>;
   getPhrase: (pwd: string) => string | null;
   importPhrase: (phr: string) => boolean;
   isLocked: () => boolean;
   logOut: () => void;
+  mnemonic: string;
+  password: string;
   setWalletPassword: (pwd: string) => void;
   switchNetwork: (networkId: string) => void;
   switchWallet: (id: number) => void;
