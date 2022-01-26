@@ -513,6 +513,9 @@ const WalletController = (): IWalletController => {
     getNewAddress,
     logOut,
     addNewAccount,
+    password,
+    mnemonic,
+    encriptedPassword,
   };
 };
 

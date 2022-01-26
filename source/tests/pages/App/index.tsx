@@ -10,12 +10,13 @@ import { ToastAlert } from 'components/index';
 import appStore from 'state/store';
 import 'assets/styles/tailwind.css';
 
-import App from './App';
+// import App from './App';
 
 const app = document.getElementById('app-root');
 const store = new Store({ portName: STORE_PORT });
 
 const w = watch(appStore.getState, 'wallet.status');
+
 store.subscribe(
   w(() => {
     console.log('watching webext store');
@@ -33,7 +34,7 @@ store.ready().then(() => {
   ReactDOM.render(
     <Provider store={store}>
       <AlertProvider template={ToastAlert} {...options}>
-        <App />
+        ola
       </AlertProvider>
     </Provider>,
     app

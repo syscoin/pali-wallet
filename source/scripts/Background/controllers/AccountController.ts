@@ -4,6 +4,14 @@ import { bech32 } from 'bech32';
 import { fromZPub } from 'bip84';
 import CryptoJS from 'crypto-js';
 import {
+  Assets,
+  IAccountInfo,
+  SendAsset,
+  TemporaryTransaction,
+  Transaction,
+} from 'types/transactions';
+import { IAccountController } from 'types/controllers';
+import {
   createAccount,
   updateStatus,
   updateAccount,
@@ -17,14 +25,6 @@ import {
   updateNetwork,
   setTemporaryTransactionState,
 } from 'state/wallet';
-import {
-  Assets,
-  IAccountInfo,
-  SendAsset,
-  TemporaryTransaction,
-  Transaction,
-} from 'types/transactions';
-import { IAccountController } from 'types/controllers';
 
 import { sortList, isNFT, countDecimals } from './utils';
 

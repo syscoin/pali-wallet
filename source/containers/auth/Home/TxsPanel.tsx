@@ -12,6 +12,7 @@ export const TxsPanel: FC = () => {
       <div className="w-full text-base text-brand-white border-b border-bkg-1 flex justify-center items-center">
         <Button
           className={`flex-1 p-2 ${!isActivity ? 'bg-bkg-3' : 'bg-bkg-1'}`}
+          id="assets-btn"
           type="button"
           onClick={() => setActivity(false)}
         >
@@ -20,6 +21,7 @@ export const TxsPanel: FC = () => {
 
         <Button
           className={`flex-1 p-2 ${isActivity ? 'bg-bkg-3' : 'bg-bkg-1'}`}
+          id="activity-btn"
           type="button"
           onClick={() => setActivity(true)}
         >

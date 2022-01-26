@@ -13,7 +13,10 @@ export const Start = () => {
 
   return (
     <div className="mt-12 flex justify-center items-center flex-col min-w-full p-2">
-      <p className=" text-brand-deepPink100 text-center text-lg  font-normal mb-2 tracking-wider">
+      <p
+        className=" text-brand-deepPink100 text-center text-lg  font-normal mb-2 tracking-wider"
+        id="welcome-auth-title"
+      >
         WELCOME TO
       </p>
 
@@ -52,7 +55,9 @@ export const Start = () => {
           <Input.Password placeholder="Enter your password" />
         </Form.Item>
 
-        <PrimaryButton type="submit">Unlock</PrimaryButton>
+        <PrimaryButton type="submit" id="unlock-btn">
+          Unlock
+        </PrimaryButton>
       </Form>
 
       <Link

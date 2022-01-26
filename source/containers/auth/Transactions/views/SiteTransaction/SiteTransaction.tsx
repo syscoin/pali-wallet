@@ -17,6 +17,7 @@ import { Form, Input } from 'antd';
 
 interface ISiteTransaction {
   confirmRoute: string;
+  // id: string;
   layoutTitle: string;
   temporaryTransactionAsString: string;
 }
@@ -25,6 +26,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
   confirmRoute,
   temporaryTransactionAsString,
   layoutTitle,
+  // id,
 }) => {
   const controller = useController();
 
@@ -71,7 +73,10 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
   const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
 
   return (
-    <AuthViewLayout canGoBack={false} title={layoutTitle.toUpperCase()}>
+    <AuthViewLayout
+      canGoBack={false}
+      title={layoutTitle.toUpperCase()} /* id={id} */
+    >
       <div className="flex flex-col justify-center items-center">
         <h1 className="text-sm mt-4">FEE</h1>
 

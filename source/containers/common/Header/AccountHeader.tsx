@@ -59,7 +59,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
     <Menu as="div" className="absolute right-3 inline-block text-right">
       <Menu.Button className="inline-flex justify-center w-full  text-sm font-medium text-white hover:text-button-primaryhover rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
         {encriptedMnemonic && !importSeed && (
-          <Icon name="dots" className="z-0" />
+          <Icon name="dots" className="z-0" id="account-settings-btn" />
         )}
       </Menu.Button>
 
@@ -78,7 +78,10 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
           as="div"
           className="scrollbar-styled bg-menu-primary pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 right-0 origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
         >
-          <h2 className="bg-menu-primary pt-8 pb-6 text-brand-white border-b border-dashed border-dashed-light w-full text-center mb-3">
+          <h2
+            className="bg-menu-primary pt-8 pb-6 text-brand-white border-b border-dashed border-dashed-light w-full text-center mb-3"
+            id="account-settings-title"
+          >
             ACCOUNT SETTINGS
           </h2>
 
@@ -86,6 +89,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
             <li
               onClick={() => history.push('/account-priv')}
               className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+              id="your-keys-btn"
             >
               <Icon name="key" className="ml-1 mb-2 mr-4 text-brand-white" />
 
@@ -97,7 +101,10 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
             <Disclosure>
               {({ open }) => (
                 <>
-                  <Disclosure.Button className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3">
+                  <Disclosure.Button
+                    className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                    id="accounts-btn"
+                  >
                     <Icon
                       name="user"
                       className="ml-1 mb-2 mr-4 text-brand-white"
@@ -117,6 +124,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                     <li
                       onClick={() => history.push('/account-newaccount')}
                       className="flex items-center p-2.5 text-sm font-medium text-brand-white transition transform bg-menu-secondary mb-4 backface-visibility-hidden active:bg-opacity-40 focus:outline-none justify-center duration-300 mx-auto w-full border-b border-dashed border-menu-dasheddark cursor-pointer hover:bg-bkg-2"
+                      id="create-account-btn"
                     >
                       <Icon
                         name="appstoreadd"
@@ -126,11 +134,12 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                       <span>Create new account</span>
                     </li>
 
-                    {accounts.map((account: IAccountState) => (
+                    {accounts.map((account: IAccountState, index) => (
                       <li
                         key={account.id}
                         className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-menu-secondary backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
                         onClick={() => switchAccount(account.id)}
+                        id={`account-${index}`}
                       >
                         <span>
                           {account.label} (
@@ -156,6 +165,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
             <li
               onClick={() => history.push('/account-hardware')}
               className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+              id="hardware-wallet-btn"
             >
               <Icon
                 name="partition"
@@ -170,6 +180,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
             <li
               onClick={handleLogout}
               className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+              id="lock-btn"
             >
               <Icon name="lock" className="text-brand-white ml-1 mr-4 mb-2" />
 
@@ -199,7 +210,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
           shape="circle"
           className="mt-3"
         >
-          <Icon name="copy" className="text-xs" />
+          <Icon name="copy" className="text-xs" id="copy-address-btn" />
         </IconButton>
 
         {copied && showSuccessAlert()}

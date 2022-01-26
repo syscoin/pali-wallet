@@ -117,6 +117,7 @@ const DefaultModal = ({
                 <button
                   type="button"
                   className="inline-flex justify-center px-10 transition-all duration-200 py-2 text-sm font-medium hover:text-brand-royalblue text-brand-white bg-transparent border border-brand-white rounded-full hover:bg-button-popuphover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
+                  id="got-it-btn"
                   onClick={
                     goTo ? closePopup || (() => history.push(goTo)) : onClose
                   }

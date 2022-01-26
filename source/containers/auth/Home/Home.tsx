@@ -37,8 +37,11 @@ export const Home = () => {
           <section className="flex items-center flex-col gap-1 text-brand-white bg-bkg-1 py-14">
             <div className="text-center flex justify-center flex-col items-center">
               {activeNetwork === 'testnet' ? (
-                <div className="flex items-center justify-center gap-x-0.5">
-                  <p className="text-5xl font-medium font-rubik">
+                <div className="flex items-center justify-center gap-x-0.5 balance-account">
+                  <p
+                    className="text-5xl font-medium font-rubik"
+                    id="home-balance"
+                  >
                     {formatNumber(activeAccount?.balance || 0)}{' '}
                   </p>
 
@@ -46,15 +49,18 @@ export const Home = () => {
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center justify-center gap-x-0.5">
-                    <p className="text-5xl font-medium font-rubik">
+                  <div className="flex items-center justify-center gap-x-0.5 balance-account">
+                    <p
+                      id="home-balance"
+                      className="text-5xl font-medium font-rubik"
+                    >
                       {formatNumber(activeAccount?.balance || 0)}{' '}
                     </p>
 
                     <p className="font-poppins mt-4">SYS</p>
                   </div>
 
-                  <p>
+                  <p id="fiat-ammount">
                     {getFiatAmount(
                       activeAccount.balance || 0,
                       4,
@@ -69,6 +75,7 @@ export const Home = () => {
               <Button
                 type="button"
                 className="flex items-center justify-center flex-1 text-base rounded-l-full border border-button-primary bg-button-primary text-brand-white transition-all duration-300 hover:bg-button-primaryhover"
+                id="send-btn"
                 onClick={() => history.push('/send')}
               >
                 <Icon
@@ -83,6 +90,7 @@ export const Home = () => {
               <Button
                 type="button"
                 className="flex items-center justify-center flex-1 text-base rounded-r-full border border-button-secondary bg-button-secondary text-brand-white hover:bg-button-secondaryhover transition-all duration-300"
+                id="receive-btn"
                 onClick={() => history.push('/receive')}
               >
                 <Icon
