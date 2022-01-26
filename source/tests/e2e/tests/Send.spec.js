@@ -4,7 +4,6 @@ import { beforeEach, afterEach } from 'mocha';
 import { buildWebDriver } from '../webdriver';
 import { importWallet } from '../initialize';
 import { By } from 'selenium-webdriver';
-import { storeState } from '../../../source/state/store';
 
 describe('Send screen tests', async () => {
   let uiWebDriver = null;

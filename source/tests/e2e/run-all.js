@@ -28,8 +28,6 @@ async function main() {
 
   const { browser, retries } = argv;
 
-  const testDir = path.join(__dirname, 'tests');
-
   const allE2eTestPath = path.join(__dirname, '/tests');
   const runE2eTestPath = path.join(__dirname, 'run-e2e-test.js');
 

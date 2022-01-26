@@ -4,7 +4,7 @@ import { beforeEach, afterEach } from 'mocha';
 import { buildWebDriver } from '../webdriver';
 import { importWallet } from '../initialize';
 import { By } from 'selenium-webdriver';
-import { SYS_EXPLORER_SEARCH } from '../../../constants';
+import { SYS_EXPLORER_SEARCH } from '../../../constants/index';
 
 describe('<Home /> tests', async () => {
   let uiWebDriver = null;
