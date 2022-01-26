@@ -27,7 +27,6 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
   return (
     <div
       className={`bg-${background} w-full h-popup text-brand-white relative`}
-      id={id}
     >
       <Header normalHeader />
 
@@ -43,7 +42,9 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
           </Tooltip>
         )}
 
-        <p className="text-xl w-full text-center">{title}</p>
+        <p className="text-xl w-full text-center" id={id}>
+          {title}
+        </p>
 
         {canGoBack && (
           <IconButton onClick={() => history.push('/home')}>
