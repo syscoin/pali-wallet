@@ -21,7 +21,7 @@ const initialState: IWalletState = {
   status: 0,
   accounts: [],
   activeAccountId: 0,
-  activeNetwork: 'https://blockbook.elint.services/',
+  activeNetwork: 'main',
   encriptedMnemonic: null,
   confirmingTransaction: false,
   changingNetwork: false,

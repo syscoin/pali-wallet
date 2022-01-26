@@ -65,7 +65,7 @@ export const ConnectedAccounts = () => {
           ))}
         </ul>
 
-        <div className="flex justify-between w-full max-w-xs md:max-w-md items-center absolute bottom-10 gap-3">
+        <div className="flex justify-between w-full max-w-xs md:max-w-2xl items-center absolute bottom-10 gap-3">
           <SecondaryButton type="button" onClick={closePopup} action>
             Cancel
           </SecondaryButton>

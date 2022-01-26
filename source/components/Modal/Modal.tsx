@@ -55,9 +55,9 @@ const DefaultModal = ({
   doNothing = false,
   closePopup,
 }: DefaltModalType) => {
-  const { history } = useUtils();
+  const { navigate } = useUtils();
 
-  const chooseAction = goTo && !doNothing ? () => history.push(goTo) : onClose;
+  const chooseAction = goTo && !doNothing ? () => navigate(goTo) : onClose;
 
   return (
     <Transition appear show={open} as={Fragment}>
@@ -100,7 +100,7 @@ const DefaultModal = ({
             leaveTo="opacity-0 scale-95"
           >
             <div
-              className={`font-poppins inline-block w-full max-w-md p-6 my-8 overflow-hidden text-center align-middle transition-all transform ${background} shadow-xl rounded-2xl`}
+              className={`font-poppins inline-block w-full max-w-2xl p-6 my-8 overflow-hidden text-center align-middle transition-all transform ${background} shadow-xl rounded-2xl`}
             >
               <Dialog.Title
                 as="h3"
@@ -118,7 +118,7 @@ const DefaultModal = ({
                   type="button"
                   className="inline-flex justify-center px-10 transition-all duration-200 py-2 text-sm font-medium hover:text-brand-royalblue text-brand-white bg-transparent border border-brand-white rounded-full hover:bg-button-popuphover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
                   onClick={
-                    goTo ? closePopup || (() => history.push(goTo)) : onClose
+                    goTo ? closePopup || (() => navigate(goTo)) : onClose
                   }
                 >
                   {closeMessage}
@@ -144,15 +144,15 @@ const ErrorModal = ({
   doNothing = false,
   log = '',
 }: ErrorModalType) => {
-  const { history } = useUtils();
+  const { navigate } = useUtils();
 
-  const chooseAction = goTo && !doNothing ? () => history.push(goTo) : onClose;
+  const chooseAction = goTo && !doNothing ? () => navigate(goTo) : onClose;
 
   return (
     <Transition appear show={open} as={Fragment}>
       <Dialog
         as="div"
-        className="fixed inset-0 z-10 overflow-y-auto"
+        className="fixed inset-0 z-10 overflow-y-auto max-w-2xl"
         onClose={onClose}
       >
         <div
@@ -189,7 +189,7 @@ const ErrorModal = ({
             leaveTo="opacity-0 scale-95"
           >
             <div
-              className={`font-poppins inline-block w-full max-w-md p-6 my-8 overflow-hidden text-center align-middle transition-all border border-red-500 transform ${background} shadow-xl rounded-2xl`}
+              className={`font-poppins inline-block w-full max-w-2xl p-6 my-8 overflow-hidden text-center align-middle transition-all border border-red-500 transform ${background} shadow-xl rounded-2xl`}
             >
               <Dialog.Title
                 as="h3"

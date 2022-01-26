@@ -7,7 +7,7 @@ import { Input, Form } from 'antd';
 
 const PrivateKeyView = () => {
   const controller = useController();
-  const { history, useCopyClipboard } = useUtils();
+  const { navigate, useCopyClipboard } = useUtils();
   const { activeAccount } = useAccount();
   const { ellipsis } = useFormat();
 
@@ -122,7 +122,7 @@ const PrivateKeyView = () => {
       </div>
 
       <div className="absolute bottom-8">
-        <SecondaryButton type="button" onClick={() => history.push('/home')}>
+        <SecondaryButton type="button" onClick={() => navigate('/home')}>
           {copied ? 'Copied' : 'Close'}
         </SecondaryButton>
       </div>
