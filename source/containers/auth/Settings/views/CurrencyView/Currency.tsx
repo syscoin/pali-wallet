@@ -81,7 +81,7 @@ const CurrencyView = () => {
     : 'USD';
 
   return (
-    <AuthViewLayout title="FIAT CURRENCY">
+    <AuthViewLayout title="FIAT CURRENCY" id="fiat-currency-title">
       {confirmed && (
         <Modal
           type="default"

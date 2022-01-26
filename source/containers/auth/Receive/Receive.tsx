@@ -24,13 +24,14 @@ export const Receive = () => {
   }, []);
 
   return (
-    <AuthViewLayout title="RECEIVE SYS">
+    <AuthViewLayout title="RECEIVE SYS" id="receiveSYS-title">
       {loaded && activeAccount ? (
         <div className="flex flex-col justify-center items-center pt-8 w-full">
           <QRCode
             value={activeAccount.address.main}
             bgColor="#fff"
             fgColor="#000"
+            id="qr-code"
             style={{ height: '240px', width: '225px' }}
           />
 
@@ -38,7 +39,7 @@ export const Receive = () => {
             {ellipsis(activeAccount.address.main, 4, 10)}
           </p>
 
-          <div className="absolute bottom-12">
+          <div className="absolute bottom-12" id="copy-address-receive-btn">
             <SecondaryButton
               type="button"
               onClick={() => copyText(activeAccount.address.main)}

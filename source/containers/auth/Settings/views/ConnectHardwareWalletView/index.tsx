@@ -14,7 +14,7 @@ const ConnectHardwareWalletView: FC = () => {
   };
 
   return (
-    <AuthViewLayout title="HARDWARE WALLET">
+    <AuthViewLayout title="HARDWARE WALLET" id="hardware-wallet-title">
       <div className="flex items-center flex-col justify-center w-full">
         <div className="scrollbar-styled text-sm overflow-auto px-4 h-85">
           <p className="text-white text-sm mt-8 mb-1 mx-4">
@@ -41,7 +41,7 @@ const ConnectHardwareWalletView: FC = () => {
             </p>
 
             <p
-              className="cursor-pointer hover:text-brand-white mt-2 w-16 text-button-primary"
+              className="cursor-pointer hover:text-brand-white mt-2 w-16 text-button-primary buy-now-btn"
               onClick={() => window.open('https://trezor.io/')}
             >
               Buy now
@@ -54,7 +54,7 @@ const ConnectHardwareWalletView: FC = () => {
                 <Disclosure.Button
                   className={`${
                     open ? 'rounded-t-lg' : 'rounded-lg'
-                  } mt-3 w-80 py-2 px-4 flex justify-between items-center ml-2 border border-bkg-1 cursor-pointer transition-all duration-300 bg-bkg-1`}
+                  } mt-3 w-80 py-2 px-4 flex justify-between items-center ml-2 border border-bkg-1 cursor-pointer transition-all duration-300 bg-bkg-1 learn-more-btn`}
                 >
                   Learn more
                   <Icon

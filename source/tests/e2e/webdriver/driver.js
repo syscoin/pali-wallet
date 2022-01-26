@@ -131,10 +131,6 @@ class Driver {
     await this.driver.quit();
   }
 
-  async signer() {
-    await this.driver;
-  }
-
   async findElement(rawLocator) {
     const locator = this.buildLocator(rawLocator);
     const element = await this.driver.wait(

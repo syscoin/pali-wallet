@@ -11,7 +11,7 @@ const AboutView: FC = () => {
   const { history } = useUtils();
 
   return (
-    <AuthViewLayout title="INFO & HELP">
+    <AuthViewLayout title="INFO & HELP" id="info-help-title">
       <div className="text-brand-white text-sm mt-8 w-full pl-8 flex flex-col gap-y-4">
         <p>Pali Wallet Browser Extension v2.0</p>
         <p>Version: 1.0.23</p>

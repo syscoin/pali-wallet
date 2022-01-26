@@ -17,7 +17,7 @@ const PrivateKeyView = () => {
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   return (
-    <AuthViewLayout title="YOUR KEYS">
+    <AuthViewLayout title="YOUR KEYS" id="your-keys-title">
       <div className="h-96 px-2 py-5 scrollbar-styled overflow-auto">
         <InfoCard>
           <p>
