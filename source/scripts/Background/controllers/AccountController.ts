@@ -246,32 +246,13 @@ const AccountController = (actions: {
     const assets: Assets[] = [];
     let transactions: Transaction[] = [];
 
-    if (response.transactions) {
-      transactions = response.transactions
-        .map(
-          ({
-            txid,
-            value,
-            confirmations,
-            fees,
-            blockTime,
-            tokenType,
-          }: Transaction) =>
-            <Transaction>{
-              txid,
-              value,
-              confirmations,
-              fees,
-              blockTime,
-              tokenType,
-            }
-        )
-        .slice(0, 20);
-    }
+    if (response.transactions)
+      transactions = response.transactions.slice(0, 20);
 
     if (response.tokensAsset) {
+      // TODO: review this reduce
       const transform = response.tokensAsset.reduce(
-        (item: any, { type, assetGuid, symbol, balance, decimals }: any) => {
+        (item: any, { type, assetGuid, symbol, balance, decimals }: Assets) => {
           item[assetGuid] = <Assets>{
             type,
             assetGuid,
@@ -291,18 +272,12 @@ const AccountController = (actions: {
       }
     }
 
-    if (address) {
-      return {
-        balance: response.balance / 1e8,
-        assets,
-        transactions,
-        address,
-      };
-    }
+    const balance = response.balance / 1e8;
 
     return {
-      balance: response.balance / 1e8,
+      address,
       assets,
+      balance,
       transactions,
     };
   };
