@@ -740,12 +740,13 @@ const AccountController = (actions: {
     sjs?: any,
     label?: string,
     walletCreation?: boolean
-  ) => {
+  ): Promise<string | null> => {
     if (isHardwareWallet) {
       if (TrezorSigner === null || TrezorSigner === undefined) {
         TrezorSigner = sjs;
         new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
       }
+
       const { accounts }: IWalletState = store.getState().wallet;
       const trezorID: number = accounts.reduce(
         (currentTrezorID: number, account: IAccountState) => {
@@ -762,21 +763,22 @@ const AccountController = (actions: {
         0
       );
 
-      const trezorinfo: IAccountInfo | null = await getAccountInfo(
+      const trezorInfo = await getAccountInfo(
         isHardwareWallet,
         sjs.getAccountXpub()
       );
 
-      if (trezorinfo.address) {
+      // ? if this is false, nothing is done
+      if (trezorInfo.address) {
         globalAccount = {
           id: 9999 + trezorID,
           label: `Trezor ${trezorID + 1}`,
-          balance: trezorinfo.balance / 10 ** 8,
-          transactions: trezorinfo.transactions,
+          balance: trezorInfo.balance / 10 ** 8,
+          transactions: trezorInfo.transactions,
           xpub: sjs.getAccountXpub(),
           xprv: '',
-          address: { main: trezorinfo.address },
-          assets: trezorinfo.assets,
+          address: { main: trezorInfo.address },
+          assets: trezorInfo.assets,
           connectedTo: [],
           isTrezorWallet: true,
           trezorId: trezorID + 1,
@@ -784,21 +786,19 @@ const AccountController = (actions: {
 
         store.dispatch(createAccount(globalAccount));
 
-        return globalAccount?.xpub;
+        return globalAccount.xpub;
       }
 
       return null;
     }
 
-    if (sjs) {
-      sysjs = sjs;
-    }
+    if (sjs) sysjs = sjs;
 
     if (!walletCreation) {
       await sysjs.Signer.createAccount();
     }
 
-    const res: IAccountInfo | null = await getAccountInfo();
+    const account = await getAccountInfo();
 
     let mainAddress = '';
 
@@ -807,38 +807,33 @@ const AccountController = (actions: {
 
       console.log('sysjs signer', sysjs.Signer.Signer.blockbookURL);
       console.log('sysjs signer', sysjs.Signer);
-
       console.log('main address get new receiving address', mainAddress);
     } catch (error: any) {
       console.log('error getting receiving address from sys', error);
-
       throw new Error(error);
     }
 
+    const signer = sysjs.Signer.Signer;
+
     globalAccount = {
-      id:
-        sysjs.Signer.Signer.accountIndex === 0
-          ? 0
-          : sysjs.Signer.Signer.accountIndex,
-      label: label || `Account ${sysjs.Signer.Signer.accountIndex + 1}`,
-      balance: res.balance,
-      transactions: res.transactions,
+      id: signer.accountIndex,
+      label: label ?? `Account ${signer.accountIndex + 1}`,
+      balance: account.balance,
+      transactions: account.transactions,
       xpub: sysjs.Signer.getAccountXpub(),
       xprv: CryptoJS.AES.encrypt(
-        sysjs.Signer.Signer.accounts[
-          sysjs.Signer.Signer.accountIndex
-        ].getAccountPrivateKey(),
+        signer.accounts[signer.accountIndex].getAccountPrivateKey(),
         encriptedPassword
       ).toString(),
       address: { main: mainAddress },
-      assets: res.assets,
+      assets: account.assets,
       connectedTo: [],
       isTrezorWallet: false,
     };
 
     store.dispatch(createAccount(globalAccount));
 
-    return globalAccount?.xpub;
+    return globalAccount.xpub;
   };
 
   const isValidSYSAddress = (
