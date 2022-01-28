@@ -396,29 +396,23 @@ const AccountController = (actions: {
     return true;
   };
 
-  const getNewChangeAddress = async (fromConnectionsController: boolean) => {
-    let userAccount: IAccountState;
-    if (fromConnectionsController) {
-      userAccount = getConnectedAccount();
-    } else {
-      const { activeAccountId, accounts }: IWalletState =
-        store.getState().wallet;
-      userAccount = accounts.find(
-        (account: IAccountState) => account.id === activeAccountId
-      ) as IAccountState;
-    }
-    let address = '';
+  // ? 'fromConnectionsController' seems to be always true
+  // name could be better
+  const getNewChangeAddress = async (fromConnectionsController = true) => {
+    const account = fromConnectionsController
+      ? getConnectedAccount()
+      : getActiveAccount();
 
-    if (userAccount?.isTrezorWallet) {
+    if (account?.isTrezorWallet) {
       const response = await sys.utils.fetchBackendAccount(
         sysjs.blockbookURL,
-        userAccount.xpub,
+        account.xpub,
         'tokens=nonzero&details=txs',
         true
       );
 
-      const TrezorAccount = new fromZPub(
-        userAccount.xpub,
+      const trezorAccount = new fromZPub(
+        account.xpub,
         sysjs.Signer.Signer.pubtypes,
         sysjs.Signer.Signer.networks
       );
@@ -448,12 +442,8 @@ const AccountController = (actions: {
         });
       }
 
-      address = TrezorAccount.getAddress(changeIndex + 1, true);
-
-      return address;
+      return trezorAccount.getAddress(changeIndex + 1, true);
     }
-
-    return null;
   };
 
   const fetchBackendConnectedAccount = async (
