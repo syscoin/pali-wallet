@@ -256,7 +256,7 @@ export const AuthRouter = () => {
 
   return (
     <>
-      <div className="small-device-size:absolute w-full h-full">
+      <div className="w-full min-h-popup min-w-popup h-full">
         <Routes>
           <Route path="/app.html" element={<Start />} />
 

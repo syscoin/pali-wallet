@@ -29,7 +29,7 @@ export const Home = () => {
   }, [!controller.wallet.isLocked(), accounts.length > 0]);
 
   return (
-    <div className="scrollbar-styled bg-bkg-3 overflow-auto">
+    <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
       {activeAccount ? (
         <>
           <Header accountHeader />
@@ -65,7 +65,7 @@ export const Home = () => {
               )}
             </div>
 
-            <div className="pt-8 w-3/4 flex justify-center items-center gap-x-0.5">
+            <div className="pt-8 w-3/4 flex justify-center max-w-md items-center gap-x-0.5">
               <Button
                 type="button"
                 className="flex items-center justify-center flex-1 xl:flex-none xl:p-18 text-base rounded-l-full border border-button-primary bg-button-primary text-brand-white transition-all duration-300 hover:bg-button-primaryhover"
@@ -98,7 +98,7 @@ export const Home = () => {
           <TxsPanel />
         </>
       ) : (
-        <div className="bg-bkg-2 z-20 flex justify-center items-center fixed w-full h-full">
+        <div className="bg-bkg-2 z-20 flex justify-center items-center fixed w-full min-h-popup min-w-popup h-full">
           <Icon name="loading" className="w-4 ml-2 text-brand-white" />
         </div>
       )}

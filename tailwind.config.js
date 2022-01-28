@@ -33,6 +33,9 @@ module.exports = {
       minWidth: {
         popup: '372px',
       },
+      minHeight: {
+        popup: '600px',
+      },
       height: {
         popup: '600px',
         menu: '27rem',

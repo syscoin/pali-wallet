@@ -24,7 +24,7 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
 
   return (
     <div
-      className={`bg-${background} w-full h-popup text-brand-white relative`}
+      className={`bg-${background} w-full min-h-popup min-w-popup h-full text-brand-white relative`}
     >
       <Header normalHeader />
 
@@ -33,7 +33,7 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
           <Tooltip content="Go to fullscreen">
             <IconButton onClick={() => window.open(url)}>
               <Icon
-                className="text-brand-white absolute left-5 bottom-1"
+                className="sm:hidden text-brand-white absolute left-5 bottom-1"
                 name="desktop"
               />
             </IconButton>

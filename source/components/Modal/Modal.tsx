@@ -100,7 +100,7 @@ const DefaultModal = ({
             leaveTo="opacity-0 scale-95"
           >
             <div
-              className={`font-poppins inline-block w-full max-w-md p-6 my-8 overflow-hidden text-center align-middle transition-all transform ${background} shadow-xl rounded-2xl`}
+              className={`font-poppins inline-block w-full max-w-2xl p-6 my-8 overflow-hidden text-center align-middle transition-all transform ${background} shadow-xl rounded-2xl`}
             >
               <Dialog.Title
                 as="h3"
@@ -152,7 +152,7 @@ const ErrorModal = ({
     <Transition appear show={open} as={Fragment}>
       <Dialog
         as="div"
-        className="fixed inset-0 z-10 overflow-y-auto"
+        className="fixed inset-0 z-10 overflow-y-auto max-w-2xl"
         onClose={onClose}
       >
         <div
@@ -189,7 +189,7 @@ const ErrorModal = ({
             leaveTo="opacity-0 scale-95"
           >
             <div
-              className={`font-poppins inline-block w-full max-w-md p-6 my-8 overflow-hidden text-center align-middle transition-all border border-red-500 transform ${background} shadow-xl rounded-2xl`}
+              className={`font-poppins inline-block w-full max-w-2xl p-6 my-8 overflow-hidden text-center align-middle transition-all border border-red-500 transform ${background} shadow-xl rounded-2xl`}
             >
               <Dialog.Title
                 as="h3"

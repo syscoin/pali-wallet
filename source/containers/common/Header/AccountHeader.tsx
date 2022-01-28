@@ -56,7 +56,10 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
   };
 
   const AccountMenu = () => (
-    <Menu as="div" className="absolute right-3 inline-block text-right">
+    <Menu
+      as="div"
+      className="absolute right-3 inline-block text-right md:max-w-2xl"
+    >
       <Menu.Button className="inline-flex justify-center w-full  text-sm font-medium text-white hover:text-button-primaryhover rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
         {encriptedMnemonic && !importSeed && (
           <Icon name="dots" className="z-0" />

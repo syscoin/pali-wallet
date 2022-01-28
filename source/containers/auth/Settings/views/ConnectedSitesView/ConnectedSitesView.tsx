@@ -90,7 +90,7 @@ const ConnectedSites = (): any => {
                   leaveFrom="opacity-100 scale-100"
                   leaveTo="opacity-0 scale-95"
                 >
-                  <div className="font-poppins inline-block w-full max-w-md py-6 my-8 overflow-hidden align-middle transition-all transform bg-bkg-2 shadow-xl rounded-2xl">
+                  <div className="font-poppins inline-block w-full max-w-2xl py-6 my-8 overflow-hidden align-middle transition-all transform bg-bkg-2 shadow-xl rounded-2xl">
                     <Dialog.Title
                       as="h3"
                       className="text-lg font-medium leading-6 text-brand-white text-center border-b pb-3 border-dashed border-brand-white"
