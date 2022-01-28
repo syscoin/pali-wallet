@@ -282,57 +282,32 @@ const AccountController = (actions: {
     };
   };
 
-  const getLatestUpdate = async () => {
-    const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
+  const updateActiveAccount = async () => {
+    const activeAccount = getActiveAccount();
 
-    if (
-      !accounts.find((account: IAccountState) => account.id === activeAccountId)
-    ) {
-      return;
-    }
+    if (!activeAccount) return;
+    globalAccount = activeAccount;
 
-    globalAccount = accounts.find(
-      (account: IAccountState) => account.id === activeAccountId
-    );
+    let updateAccountInfo: IAccountInfo;
 
-    if (!globalAccount?.isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(activeAccountId);
+    if (activeAccount.isTrezorWallet) {
+      const trezorData = await getAccountInfo(true, globalAccount?.xpub);
+      if (!trezorData) return;
+
+      updateAccountInfo = trezorData;
+    } else {
+      sysjs.Signer.setAccountIndex(activeAccount.id);
 
       const accLatestInfo = await getAccountInfo();
-
       if (!accLatestInfo) return;
 
-      const { balance, transactions, assets } = accLatestInfo;
-
-      store.dispatch(
-        updateAccount({
-          id: activeAccountId,
-          balance,
-          transactions,
-          assets,
-        })
-      );
-
-      store.dispatch(updateSwitchNetwork(false));
-
-      return;
+      updateAccountInfo = accLatestInfo;
     }
-
-    const trezorAccountLatestInfo = await getAccountInfo(
-      true,
-      globalAccount?.xpub
-    );
-
-    if (!trezorAccountLatestInfo) return;
-
-    const trezorData = trezorAccountLatestInfo;
 
     store.dispatch(
       updateAccount({
-        id: activeAccountId,
-        balance: trezorData.balance,
-        transactions: trezorData.transactions,
-        assets: trezorData.assets,
+        id: activeAccount.id,
+        ...updateAccountInfo,
       })
     );
 
@@ -340,11 +315,7 @@ const AccountController = (actions: {
   };
 
   const updateTxs = () => {
-    if (!globalAccount) {
-      return;
-    }
-
-    getLatestUpdate();
+    if (globalAccount) updateActiveAccount();
   };
 
   const setNewAddress = (addr: string) => {
@@ -381,7 +352,7 @@ const AccountController = (actions: {
 
     if (!actions.checkPassword(pwd)) return;
 
-    getLatestUpdate();
+    updateActiveAccount();
 
     if (!globalAccount && accounts) {
       globalAccount =
@@ -399,7 +370,7 @@ const AccountController = (actions: {
     }
 
     intervalId = setInterval(() => {
-      getLatestUpdate();
+      updateActiveAccount();
 
       const { accounts }: IWalletState = store.getState().wallet;
 
@@ -1919,7 +1890,7 @@ const AccountController = (actions: {
     temporaryTransaction,
     getPrimaryAccount,
     updateAccountLabel,
-    getLatestUpdate,
+    getLatestUpdate: updateActiveAccount,
     watchMemPool,
     confirmTemporaryTransaction,
     isValidSYSAddress,
