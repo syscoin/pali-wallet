@@ -168,11 +168,9 @@ const AccountController = (actions: {
   const updateAccountLabel = (
     id: number,
     label: string,
-    isHardwareWallet?: boolean
+    isHardwareWallet = false
   ) => {
-    if (isHardwareWallet) {
-      return;
-    }
+    if (isHardwareWallet) return;
 
     store.dispatch(updateLabel({ id, label }));
   };
@@ -184,15 +182,17 @@ const AccountController = (actions: {
     let response: any = null;
     let address: any = null;
 
+    const options = 'tokens=nonzero&details=txs';
+
     if (isHardwareWallet) {
       response = await sys.utils.fetchBackendAccount(
         sysjs.blockbookURL,
         xpub,
-        'tokens=nonzero&details=txs',
+        options,
         true
       );
 
-      const account0: any = new fromZPub(
+      const account = new fromZPub(
         xpub,
         sysjs.Signer.Signer.pubtypes,
         sysjs.Signer.Signer.networks
@@ -208,9 +208,7 @@ const AccountController = (actions: {
               const change = parseInt(splitPath[4], 10);
               const index = parseInt(splitPath[5], 10);
 
-              if (change === 1) {
-                return;
-              }
+              if (change === 1) return;
 
               if (index > receivingIndex) {
                 receivingIndex = index;
@@ -220,20 +218,15 @@ const AccountController = (actions: {
         });
       }
 
-      address = account0.getAddress(receivingIndex + 1);
-
-      return {
-        address,
-        response,
-      };
+      address = account.getAddress(receivingIndex + 1);
+    } else {
+      response = await sys.utils.fetchBackendAccount(
+        sysjs.blockbookURL,
+        sysjs.Signer.getAccountXpub(),
+        options,
+        true
+      );
     }
-
-    response = await sys.utils.fetchBackendAccount(
-      sysjs.blockbookURL,
-      sysjs.Signer.getAccountXpub(),
-      'tokens=nonzero&details=txs',
-      true
-    );
 
     return {
       address,
