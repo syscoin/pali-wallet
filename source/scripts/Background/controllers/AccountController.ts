@@ -1968,7 +1968,7 @@ const AccountController = (actions: {
     getConnectedAccount,
     getChangeAddress,
     updateTokensState,
-    getRawTransaction,
+    getRawTransaction: getTransaction,
     setHDSigner,
     importPsbt,
     decryptAES,
