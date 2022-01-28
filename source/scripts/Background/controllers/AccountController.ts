@@ -90,6 +90,14 @@ const AccountController = (actions: {
     temporaryTransaction[type] = { ...tx };
   };
 
+  const getActiveAccount = (): IAccountState | undefined => {
+    const { accounts, activeAccountId }: IWalletState = store.getState().wallet;
+
+    return accounts.find(
+      (account: IAccountState) => account.id === activeAccountId
+    );
+  };
+
   const getConnectedAccount = (): IAccountState => {
     const { accounts, tabs }: IWalletState = store.getState().wallet;
     const { currentURL } = tabs;
