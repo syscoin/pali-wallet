@@ -147,16 +147,23 @@ const AccountController = (actions: {
     );
   };
 
-  const getTransactionInfoByTxId = (txid: any) =>
+  const getTransaction = (txid: any) =>
     sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
 
-  const getRawTransaction = (txid: any) =>
-    sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
+  const getAsset = async (
+    assetGuid: any
+  ): Promise<{
+    assetGuid: string;
+    contract: string;
+    decimals: number;
+    maxSupply: string;
+    pubData: any;
+    symbol: string;
+    totalSupply: string;
+    updateCapabilityFlags: number;
+  }> => sys.utils.fetchBackendAsset(sysjs.blockbookURL, assetGuid);
 
-  const getDataAsset = (assetGuid: any) =>
-    sys.utils.fetchBackendAsset(sysjs.blockbookURL, assetGuid);
-
-  const getSysExplorerSearch = () => sysjs.blockbookURL;
+  const getBlockbookURL = () => sysjs.blockbookURL;
 
   const updateAccountLabel = (
     id: number,
@@ -625,7 +632,7 @@ const AccountController = (actions: {
                   if (tokenType === 'SPTAssetActivate') {
                     for (const token of tokenTransfers) {
                       try {
-                        getDataAsset(token.token).then((assetData: any) => {
+                        getAsset(token.token).then((assetData) => {
                           mintedTokens[token.token] = {
                             assetGuid: token.token,
                             symbol: token.symbol
@@ -662,7 +669,7 @@ const AccountController = (actions: {
                   totalSupply,
                   maxSupply,
                   updateCapabilityFlags,
-                } = await getDataAsset(assetGuid);
+                } = await getAsset(assetGuid);
 
                 const { baseAssetID, NFTID } = sys.utils.getAssetIDs(assetGuid);
 
@@ -712,7 +719,8 @@ const AccountController = (actions: {
     );
   };
 
-  const getHoldingsData = async () => {
+  // ? is return type Holdings[]?
+  const getHoldings = async () => {
     const { walletTokens }: IWalletState = store.getState().wallet;
 
     if (walletTokens) {
@@ -1064,7 +1072,7 @@ const AccountController = (actions: {
 
     updateTransactionData(txInfoNew);
 
-    const transactionData = await getTransactionInfoByTxId(txInfoNew);
+    const transactionData = await getTransaction(txInfoNew);
     const assets = syscointx.getAssetsFromTx(pendingTx.extractTransaction());
     const createdAsset = assets.keys().next().value;
 
@@ -1072,7 +1080,7 @@ const AccountController = (actions: {
       try {
         return await new Promise((resolve: any, reject: any) => {
           const interval = setInterval(async () => {
-            const sptCreated = await getTransactionInfoByTxId(txInfoNew);
+            const sptCreated = await getTransaction(txInfoNew);
 
             if (sptCreated?.confirmations > 1) {
               console.log('confirmations > 1', createdAsset);
@@ -1162,7 +1170,7 @@ const AccountController = (actions: {
       sysjs.Signer.setAccountIndex(getConnectedAccount().id);
     }
 
-    const { decimals } = await getDataAsset(assetGuid);
+    const { decimals } = await getAsset(assetGuid);
     const receivingAddress = await sysjs.Signer.getNewReceivingAddress(true);
 
     const assetMap = new Map([
@@ -1314,9 +1322,7 @@ const AccountController = (actions: {
       try {
         return await new Promise((resolve) => {
           const interval = setInterval(async () => {
-            const newParentTx = await getTransactionInfoByTxId(
-              newParentAsset.txid
-            );
+            const newParentTx = await getTransaction(newParentAsset.txid);
             const feeRate = new sys.utils.BN(fee * 1e8);
             const txOpts = { rbf: true };
 
@@ -1372,7 +1378,7 @@ const AccountController = (actions: {
 
             if (theNFTTx && txInfo) {
               try {
-                theNFTTx = await getTransactionInfoByTxId(txInfo);
+                theNFTTx = await getTransaction(txInfo);
               } catch (error) {
                 console.log(
                   'Transaction still not indexed by explorer:',
@@ -1436,7 +1442,7 @@ const AccountController = (actions: {
   const confirmMintNFT = async (item: any) => {
     const { fee, amount, assetGuid }: any = item;
 
-    const { decimals } = await getDataAsset(assetGuid);
+    const { decimals } = await getAsset(assetGuid);
     const feeRate = new sys.utils.BN(fee * 1e8);
     const txOpts = { rbf: true };
 
@@ -1527,7 +1533,7 @@ const AccountController = (actions: {
 
     if (isToken && token) {
       let txInfo;
-      const { decimals } = await getDataAsset(token);
+      const { decimals } = await getAsset(token);
       const txOpts = { rbf };
       const value = new sys.utils.BN(amount * 10 ** decimals);
       const valueDecimals = countDecimals(amount);
@@ -1954,10 +1960,10 @@ const AccountController = (actions: {
     setNewAddress,
     setNewXpub,
     getUserMintedTokens,
-    getTransactionInfoByTxId,
-    getSysExplorerSearch,
-    getHoldingsData,
-    getDataAsset,
+    getTransactionInfoByTxId: getTransaction,
+    getSysExplorerSearch: getBlockbookURL,
+    getHoldingsData: getHoldings,
+    getDataAsset: getAsset,
     clearTemporaryTransaction,
     getConnectedAccount,
     getChangeAddress,
