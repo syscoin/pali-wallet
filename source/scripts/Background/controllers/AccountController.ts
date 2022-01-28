@@ -342,23 +342,23 @@ const AccountController = (actions: {
     );
   };
 
+  // ? is named 'get' but does not return anything
   const getPrimaryAccount = (pwd: string, sjs: any) => {
-    const { accounts, activeAccountId }: IWalletState = store.getState().wallet;
+    const { accounts }: IWalletState = store.getState().wallet;
 
-    if (sjs) {
-      sysjs = sjs;
-    }
+    // ? does this belong here
+    if (sjs) sysjs = sjs;
 
     if (!actions.checkPassword(pwd)) return;
 
     updateActiveAccount();
 
+    // ? the operation of 'globalAccount = getActiveAccount()'
+    // ? is already performed at updateActiveAccount function
     if (!globalAccount && accounts) {
-      globalAccount =
-        accounts.find(
-          (account: IAccountState) => account.id === activeAccountId
-        ) || accounts[activeAccountId];
+      globalAccount = getActiveAccount();
 
+      // ? is this supposed to be inside this if?
       store.dispatch(updateStatus());
     }
   };
