@@ -646,30 +646,28 @@ const AccountController = (actions: {
     const { walletTokens }: IWalletState = store.getState().wallet;
 
     if (walletTokens) {
-      const connectedAccountId = walletTokens.findIndex(
-        (accountTokens: any) =>
-          accountTokens.accountId === getConnectedAccount().id
+      const tokenIndex = walletTokens.findIndex(
+        (token) => token.accountId === getConnectedAccount().id
       );
 
-      if (connectedAccountId > -1) {
-        return walletTokens[connectedAccountId].holdings;
+      if (tokenIndex > -1) {
+        return walletTokens[tokenIndex].holdings;
       }
     }
 
     return [];
   };
 
-  const getUserMintedTokens = async () => {
+  const getMintedTokens = async () => {
     const { walletTokens }: IWalletState = store.getState().wallet;
 
     if (walletTokens) {
-      const connectedAccountId = walletTokens.findIndex(
-        (accountTokens: any) =>
-          accountTokens.accountId === getConnectedAccount().id
+      const tokenIndex = walletTokens.findIndex(
+        (token) => token.accountId === getConnectedAccount().id
       );
 
-      if (connectedAccountId > -1) {
-        return walletTokens[connectedAccountId].mintedTokens;
+      if (tokenIndex > -1) {
+        return walletTokens[tokenIndex].mintedTokens;
       }
     }
 
