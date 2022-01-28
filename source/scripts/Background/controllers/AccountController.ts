@@ -39,10 +39,21 @@ const AccountController = (actions: {
   let intervalId: any;
   let globalAccount: IAccountState | undefined;
   let sysjs: any;
-  let resAddress: any;
-  let encode: any;
   let TrezorSigner: any;
 
+  const temporaryTransaction: TemporaryTransaction = {
+    newAsset: null,
+    mintAsset: null,
+    newNFT: null,
+    updateAsset: null,
+    transferAsset: null,
+    sendAsset: null,
+    signPSBT: null,
+    signAndSendPSBT: null,
+    mintNFT: null,
+  };
+
+  // ???
   type AssetMap = [
     [
       token: any,
@@ -67,18 +78,6 @@ const AccountController = (actions: {
 
   const updateNetworkData = (network: INetwork) => {
     store.dispatch(updateNetwork(network));
-  };
-
-  const temporaryTransaction: TemporaryTransaction = {
-    newAsset: null,
-    mintAsset: null,
-    newNFT: null,
-    updateAsset: null,
-    transferAsset: null,
-    sendAsset: null,
-    signPSBT: null,
-    signAndSendPSBT: null,
-    mintNFT: null,
   };
 
   const getTemporaryTransaction = (type: string) => temporaryTransaction[type];
@@ -909,16 +908,16 @@ const AccountController = (actions: {
 
     if (address && typeof address === 'string') {
       try {
-        resAddress = bech32.decode(address);
+        const resAddress = bech32.decode(address);
 
         if (network === 'main' && resAddress.prefix === 'sys') {
-          encode = bech32.encode(resAddress.prefix, resAddress.words);
+          const encode = bech32.encode(resAddress.prefix, resAddress.words);
 
           return encode === address.toLowerCase();
         }
 
         if (network === 'testnet' && resAddress.prefix === 'tsys') {
-          encode = bech32.encode(resAddress.prefix, resAddress.words);
+          const encode = bech32.encode(resAddress.prefix, resAddress.words);
 
           return encode === address.toLowerCase();
         }
