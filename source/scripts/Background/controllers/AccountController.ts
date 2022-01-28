@@ -123,22 +123,23 @@ const AccountController = (actions: {
     } as Transaction);
 
   const updateTransactionData = (txinfo: any) => {
-    const transactionItem =
-      store.getState().wallet.temporaryTransactionState.type === 'sendAsset';
+    const { temporaryTransactionState } = store.getState().wallet;
+    const isSendAsset = temporaryTransactionState.type === 'sendAsset';
 
     let transactions: Transaction[] = [];
 
-    if (transactionItem && globalAccount) {
-      transactions = globalAccount?.transactions;
+    if (isSendAsset && globalAccount) {
+      transactions = globalAccount.transactions;
     }
 
-    if (!transactionItem && getConnectedAccount()) {
-      transactions = getConnectedAccount().transactions;
-    }
+    const connectedAccount = getConnectedAccount();
+
+    if (!isSendAsset && connectedAccount)
+      transactions = connectedAccount.transactions;
 
     store.dispatch(
       updateTransactions({
-        id: transactionItem
+        id: isSendAsset
           ? Number(globalAccount?.id)
           : Number(getConnectedAccount().id),
         txs: [coventPendingType(txinfo), ...transactions],
