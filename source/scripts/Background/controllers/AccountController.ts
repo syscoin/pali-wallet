@@ -318,7 +318,8 @@ const AccountController = (actions: {
     if (globalAccount) updateActiveAccount();
   };
 
-  const setNewAddress = (addr: string) => {
+  const setAddress = (addr: string) => {
+    // ? why get the accId from the store to pass it to the store?
     const { activeAccountId }: IWalletState = store.getState().wallet;
 
     store.dispatch(
@@ -331,7 +332,7 @@ const AccountController = (actions: {
     return true;
   };
 
-  const setNewXpub = (id: number, xpub: string, xprv: string, key: string) => {
+  const setXpub = (id: number, xpub: string, xprv: string, key: string) => {
     store.dispatch(
       updateAccountXpub({
         id,
@@ -339,8 +340,6 @@ const AccountController = (actions: {
         xprv: CryptoJS.AES.encrypt(xprv, String(key)).toString(),
       })
     );
-
-    return true;
   };
 
   const getPrimaryAccount = (pwd: string, sjs: any) => {
@@ -1896,8 +1895,8 @@ const AccountController = (actions: {
     isValidSYSAddress,
     updateTxs,
     getRecommendFee,
-    setNewAddress,
-    setNewXpub,
+    setNewAddress: setAddress,
+    setNewXpub: setXpub,
     getUserMintedTokens,
     getTransactionInfoByTxId: getTransaction,
     getSysExplorerSearch: getBlockbookURL,
