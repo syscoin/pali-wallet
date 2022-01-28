@@ -84,6 +84,7 @@ const AccountController = (actions: {
     store.dispatch(updateNetwork(network));
   };
 
+  //* ----- TemporaryTransaction -----
   const getTemporaryTransaction = (type: string) => temporaryTransaction[type];
 
   const clearTemporaryTransaction = (item: string) => {
@@ -92,6 +93,13 @@ const AccountController = (actions: {
 
   const updateTemporaryTransaction = ({ tx, type }) => {
     temporaryTransaction[type] = { ...tx };
+  };
+  //* end
+
+  const setHDSigner = (accountId: number) => {
+    if (!globalAccount?.isTrezorWallet) {
+      sysjs.Signer.setAccountIndex(accountId);
+    }
   };
 
   const getActiveAccount = (): IAccountState | undefined => {
@@ -841,23 +849,18 @@ const AccountController = (actions: {
     network: string,
     verification = true
   ) => {
-    if (!verification) {
-      return true;
-    }
+    if (!verification) return true;
 
+    // ? this if might be unnecessary
     if (address && typeof address === 'string') {
       try {
-        const resAddress = bech32.decode(address);
+        const decodedAddr = bech32.decode(address);
 
-        if (network === 'main' && resAddress.prefix === 'sys') {
-          const encode = bech32.encode(resAddress.prefix, resAddress.words);
-
-          return encode === address.toLowerCase();
-        }
-
-        if (network === 'testnet' && resAddress.prefix === 'tsys') {
-          const encode = bech32.encode(resAddress.prefix, resAddress.words);
-
+        if (
+          (network === 'main' && decodedAddr.prefix === 'sys') ||
+          (network === 'testnet' && decodedAddr.prefix === 'tsys')
+        ) {
+          const encode = bech32.encode(decodedAddr.prefix, decodedAddr.words);
           return encode === address.toLowerCase();
         }
       } catch (error) {
@@ -868,33 +871,26 @@ const AccountController = (actions: {
     return false;
   };
 
-  const handleTransactions = async (
-    item: any,
-    executeTransaction: any,
+  const handleTransactionExecution = async (
+    item,
+    executeTransaction,
     condition?: boolean
   ) => {
-    if (!sysjs) {
-      throw new Error('Error: No signed account exists');
-    }
+    if (!sysjs) throw new Error('Error: No signed account exists');
 
-    if (!globalAccount) {
+    if (!globalAccount)
       throw new Error("Error: Can't find active account info");
-    }
 
-    if (!item) {
-      throw new Error("Error: Can't find item info");
-    }
+    if (!item) throw new Error("Error: Can't find item info");
 
-    return new Promise((resolve: any, reject: any) => {
+    return new Promise((resolve, reject) => {
       executeTransaction(item, condition)
-        .then((response: any) => {
-          resolve(response);
-        })
-        .catch((error: any) => {
-          reject(error);
-        });
+        .then((response) => resolve(response))
+        .catch((error) => reject(error));
     });
   };
+
+  //* ----- Confirmations -----
 
   const confirmSPTCreation = async (item: any) => {
     const {
@@ -1640,7 +1636,7 @@ const AccountController = (actions: {
   const confirmTemporaryTransaction = ({ type, callback }) =>
     new Promise((resolve, reject) => {
       try {
-        const response = handleTransactions(
+        const response = handleTransactionExecution(
           getTemporaryTransaction(type),
           callback
         );
@@ -1650,12 +1646,6 @@ const AccountController = (actions: {
         reject(error);
       }
     });
-
-  const setHDSigner = (accountId: number) => {
-    if (!globalAccount?.isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(accountId);
-    }
-  };
 
   const confirmUpdateAsset = async (item: any) => {
     const {
