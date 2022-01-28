@@ -363,10 +363,12 @@ const AccountController = (actions: {
     }
   };
 
+  // ? unsuggestive name
   const watchMemPool = (currentAccount: IAccountState | undefined) => {
-    if (intervalId) {
-      return true;
-    }
+    if (intervalId) return true;
+
+    // 30 seconds
+    const intervalInMs = 30 * 1000;
 
     intervalId = setInterval(() => {
       updateActiveAccount();
@@ -377,6 +379,7 @@ const AccountController = (actions: {
         (account: IAccountState) => account.id === currentAccount?.id
       );
 
+      // TODO: rewrite this if
       if (
         !activeAccount ||
         !activeAccount?.transactions ||
@@ -388,7 +391,7 @@ const AccountController = (actions: {
 
         return false;
       }
-    }, 30 * 1000);
+    }, intervalInMs);
 
     return true;
   };
