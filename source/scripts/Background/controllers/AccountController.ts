@@ -1879,7 +1879,7 @@ const AccountController = (actions: {
     getRecommendFee,
     setNewAddress: setAddress,
     setNewXpub: setXpub,
-    getUserMintedTokens,
+    getUserMintedTokens: getMintedTokens,
     getTransactionInfoByTxId: getTransaction,
     getSysExplorerSearch: getBlockbookURL,
     getHoldingsData: getHoldings,
