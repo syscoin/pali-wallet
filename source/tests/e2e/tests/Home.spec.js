@@ -40,178 +40,192 @@ describe('<Home /> tests', async () => {
     );
   });
 
-  // it('should show balance correctly', async () => {
-  //   const balance = await uiWebDriver.findElement(By.id('home-balance'));
+  it('should check if it is opening assets details on explorer correctly', async () => {
+    const isTestnet =
+      SYS_EXPLORER_SEARCH === 'https://blockbook-dev.elint.services/';
 
-  //   const { accounts, activeAccountId } = storeState.wallet;
+    await uiWebDriver.openNewPage(`${SYS_EXPLORER_SEARCH}/asset/838302016`);
 
-  //   if (accounts[activeAccountId]) {
-  //     const balanceValue = await balance.getText();
-  //     const expectedBalance = String(accounts[activeAccountId].balance);
+    const windowTitle = await uiWebDriver.getTitle();
 
-  //     assert.equal(
-  //       balanceValue,
-  //       expectedBalance,
-  //       '<!> Balance different than the expected <!>'
-  //     );
-  //   }
-  // });
+    assert.equal(
+      windowTitle,
+      isTestnet ? 'Trezor Syscoin Testnet Explorer' : 'Trezor Syscoin Explorer'
+    );
+  });
 
-  // it('should check if send button its being shown and working correctly', async () => {
-  //   const sendButton = await uiWebDriver.findElement(By.id('send-btn'));
+  it('should show balance correctly', async () => {
+    const balance = await uiWebDriver.findElement(By.id('home-balance'));
 
-  //   assert.ok(
-  //     typeof sendButton === 'object',
-  //     '<!> Cannot find Send button <!>'
-  //   );
+    const { accounts, activeAccountId } = storeState.wallet;
 
-  //   await uiWebDriver.clickElement('#send-btn');
+    if (accounts[activeAccountId]) {
+      const balanceValue = await balance.getText();
+      const expectedBalance = String(accounts[activeAccountId].balance);
 
-  //   const findSendSYS = await uiWebDriver.findElement(By.id('sendSYS-title'));
-  //   const sendSYSText = await findSendSYS.getText();
+      assert.equal(
+        balanceValue,
+        expectedBalance,
+        '<!> Balance different than the expected <!>'
+      );
+    }
+  });
 
-  //   assert.equal(
-  //     sendSYSText,
-  //     'SEND SYS',
-  //     '<!> Send button is working different than the the expected <!>'
-  //   );
-  // });
+  it('should check if send button its being shown and working correctly', async () => {
+    const sendButton = await uiWebDriver.findElement(By.id('send-btn'));
 
-  // it("should check if receive button it's being shown and working correctly", async () => {
-  //   const receiveButton = await uiWebDriver.findElement(By.id('receive-btn'));
+    assert.ok(
+      typeof sendButton === 'object',
+      '<!> Cannot find Send button <!>'
+    );
 
-  //   assert.ok(
-  //     typeof receiveButton === 'object',
-  //     '<!> Cannot find receive button <!>'
-  //   );
+    await uiWebDriver.clickElement('#send-btn');
 
-  //   await uiWebDriver.clickElement('#receive-btn');
+    const findSendSYS = await uiWebDriver.findElement(By.id('sendSYS-title'));
+    const sendSYSText = await findSendSYS.getText();
 
-  //   const findReceiveSYS = await uiWebDriver.findElement(
-  //     By.id('receiveSYS-title')
-  //   );
-  //   const receiveSYSText = await findReceiveSYS.getText();
+    assert.equal(
+      sendSYSText,
+      'SEND SYS',
+      '<!> Send button is working different than the the expected <!>'
+    );
+  });
 
-  //   assert.equal(
-  //     receiveSYSText,
-  //     'receive SYS',
-  //     '<!> Receive button is working different than the the expected <!>'
-  //   );
-  // });
+  it("should check if receive button it's being shown and working correctly", async () => {
+    const receiveButton = await uiWebDriver.findElement(By.id('receive-btn'));
 
-  // it("should check if copy address button it's being shown and working correctly", async () => {
-  //   const copyAddresBtn = await uiWebDriver.findElement(
-  //     By.id('copy-address-btn')
-  //   );
+    assert.ok(
+      typeof receiveButton === 'object',
+      '<!> Cannot find receive button <!>'
+    );
 
-  //   assert.ok(
-  //     typeof copyAddresBtn === 'object',
-  //     '<!> Cannot find copy address button <!>'
-  //   );
+    await uiWebDriver.clickElement('#receive-btn');
 
-  //   const { accounts, activeAccountId } = storeState.wallet;
+    const findReceiveSYS = await uiWebDriver.findElement(
+      By.id('receiveSYS-title')
+    );
+    const receiveSYSText = await findReceiveSYS.getText();
 
-  //   if (accounts[activeAccountId]) {
-  //     const copyAddresValue = await copyAddresBtn.getAttribute('value');
-  //     const expectedValue = accounts[activeAccountId].address;
+    assert.equal(
+      receiveSYSText,
+      'receive SYS',
+      '<!> Receive button is working different than the the expected <!>'
+    );
+  });
 
-  //     assert.equal(
-  //       copyAddresValue,
-  //       expectedValue,
-  //       '<!> Address different than the expected <!>'
-  //     );
-  //   }
-  // });
+  it("should check if copy address button it's being shown and working correctly", async () => {
+    const copyAddresBtn = await uiWebDriver.findElement(
+      By.id('copy-address-btn')
+    );
 
-  // it("should check if general settings button it's being shown and working correctly", async () => {
-  //   const settingsButton = await uiWebDriver.findElement(By.id('settings-btn'));
+    assert.ok(
+      typeof copyAddresBtn === 'object',
+      '<!> Cannot find copy address button <!>'
+    );
 
-  //   assert.ok(
-  //     typeof settingsButton === 'object',
-  //     '<!> Cannot find settings button <!>'
-  //   );
+    const { accounts, activeAccountId } = storeState.wallet;
 
-  //   await uiWebDriver.clickElement('#settings-btn');
+    if (accounts[activeAccountId]) {
+      const copyAddresValue = await copyAddresBtn.getAttribute('value');
+      const expectedValue = accounts[activeAccountId].address;
 
-  //   const findGeneralSettings = await uiWebDriver.findElement(
-  //     By.id('general-settings-title')
-  //   );
-  //   const generalSettingsText = await findGeneralSettings.getText();
+      assert.equal(
+        copyAddresValue,
+        expectedValue,
+        '<!> Address different than the expected <!>'
+      );
+    }
+  });
 
-  //   assert.equal(
-  //     generalSettingsText,
-  //     'GENERAL SETTINGS',
-  //     '<!> General settings button is working different than the the expected <!>'
-  //   );
-  // });
+  it("should check if general settings button it's being shown and working correctly", async () => {
+    const settingsButton = await uiWebDriver.findElement(By.id('settings-btn'));
 
-  // it("should check if network settings button it's being shown and working correctly", async () => {
-  //   const networkSettingsButton = await uiWebDriver.findElement(
-  //     By.id('network-settings-btn')
-  //   );
+    assert.ok(
+      typeof settingsButton === 'object',
+      '<!> Cannot find settings button <!>'
+    );
 
-  //   assert.ok(
-  //     typeof networkSettingsButton === 'object',
-  //     '<!> Cannot find network settings button <!>'
-  //   );
+    await uiWebDriver.clickElement('#settings-btn');
 
-  //   await uiWebDriver.clickElement('#network-settings-btn');
+    const findGeneralSettings = await uiWebDriver.findElement(
+      By.id('general-settings-title')
+    );
+    const generalSettingsText = await findGeneralSettings.getText();
 
-  //   const findNetworkSettings = await uiWebDriver.findElement(
-  //     By.id('network-settings-title')
-  //   );
-  //   const networkSettingsText = await findNetworkSettings.getText();
+    assert.equal(
+      generalSettingsText,
+      'GENERAL SETTINGS',
+      '<!> General settings button is working different than the the expected <!>'
+    );
+  });
 
-  //   assert.equal(
-  //     networkSettingsText,
-  //     'NETWORK SETTINGS',
-  //     '<!> Network settings button is working different than the the expected <!>'
-  //   );
-  // });
+  it("should check if network settings button it's being shown and working correctly", async () => {
+    const networkSettingsButton = await uiWebDriver.findElement(
+      By.id('network-settings-btn')
+    );
 
-  // it("should check if account settings button it's being shown and working correctly", async () => {
-  //   const accountSettingsButton = await uiWebDriver.findElement(
-  //     By.id('account-settings-btn')
-  //   );
+    assert.ok(
+      typeof networkSettingsButton === 'object',
+      '<!> Cannot find network settings button <!>'
+    );
 
-  //   assert.ok(
-  //     typeof accountSettingsButton === 'object',
-  //     '<!> Cannot find account settings button <!>'
-  //   );
+    await uiWebDriver.clickElement('#network-settings-btn');
 
-  //   await uiWebDriver.clickElement('#account-settings-btn');
+    const findNetworkSettings = await uiWebDriver.findElement(
+      By.id('network-settings-title')
+    );
+    const networkSettingsText = await findNetworkSettings.getText();
 
-  //   const findAccountSettings = await uiWebDriver.findElement(
-  //     By.id('account-settings-title')
-  //   );
-  //   const accountSettingsText = await findAccountSettings.getText();
+    assert.equal(
+      networkSettingsText,
+      'NETWORK SETTINGS',
+      '<!> Network settings button is working different than the the expected <!>'
+    );
+  });
 
-  //   assert.equal(
-  //     accountSettingsText,
-  //     'ACCOUNT SETTINGS',
-  //     '<!> Account settings button is working different than the the expected <!>'
-  //   );
-  // });
+  it("should check if account settings button it's being shown and working correctly", async () => {
+    const accountSettingsButton = await uiWebDriver.findElement(
+      By.id('account-settings-btn')
+    );
 
-  // it("should check if connected badge it's being shown", async () => {
-  //   const badgeConnected = await uiWebDriver.findElement(
-  //     By.id('badge-connected-status')
-  //   );
+    assert.ok(
+      typeof accountSettingsButton === 'object',
+      '<!> Cannot find account settings button <!>'
+    );
 
-  //   assert.ok(
-  //     typeof badgeConnected === 'object',
-  //     '<!> Cannot find badge connected <!>'
-  //   );
-  // });
+    await uiWebDriver.clickElement('#account-settings-btn');
 
-  // it("should check if activity button it's being shown", async () => {
-  //   const activityButton = await uiWebDriver.findElement(By.id('activity-btn'));
+    const findAccountSettings = await uiWebDriver.findElement(
+      By.id('account-settings-title')
+    );
+    const accountSettingsText = await findAccountSettings.getText();
 
-  //   assert.ok(
-  //     typeof activityButton === 'object',
-  //     '<!> Cannot activity button <!>'
-  //   );
-  // });
+    assert.equal(
+      accountSettingsText,
+      'ACCOUNT SETTINGS',
+      '<!> Account settings button is working different than the the expected <!>'
+    );
+  });
+
+  it("should check if connected badge it's being shown", async () => {
+    const badgeConnected = await uiWebDriver.findElement(
+      By.id('badge-connected-status')
+    );
+
+    assert.ok(
+      typeof badgeConnected === 'object',
+      '<!> Cannot find badge connected <!>'
+    );
+  });
+
+  it("should check if activity button it's being shown", async () => {
+    const activityButton = await uiWebDriver.findElement(By.id('activity-btn'));
+
+    assert.ok(
+      typeof activityButton === 'object',
+      '<!> Cannot activity button <!>'
+    );
+  });
 
   it("should check if assets button it's being shown", async () => {
     const assetsButton = await uiWebDriver.findElement(By.id('assets-btn'));

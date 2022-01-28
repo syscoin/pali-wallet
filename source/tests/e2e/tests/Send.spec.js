@@ -22,7 +22,9 @@ describe('Send screen tests', async () => {
   });
 
   it("should check if send form it's being shown", async () => {
-    const sendBalance = await uiWebDriver.findElement(By.id('send-balance'));
+    const sendBalance = setTimeout(async () => {
+      await uiWebDriver.findElement(By.id('send-balance'));
+    }, 500);
 
     assert.ok(
       typeof sendBalance === 'object',
@@ -73,7 +75,9 @@ describe('Send screen tests', async () => {
   });
 
   it("should check if fee input it's being shown", async () => {
-    const feeInput = await uiWebDriver.findElement(By.id('next-btn'));
+    const feeInput = setTimeout(async () => {
+      await uiWebDriver.findElement(By.id('next-btn'));
+    }, 500);
 
     assert.ok(typeof feeInput === 'object', '<!> Cannot find fee input<!>');
 

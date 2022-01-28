@@ -23,9 +23,9 @@ describe('Account settings UI tests', async () => {
   });
 
   it("should check if your keys button it's being shown and working correctly", async () => {
-    const yourKeysButton = await uiWebDriver.findElement(
-      By.id('your-keys-btn')
-    );
+    const yourKeysButton = setTimeout(async () => {
+      await uiWebDriver.findElement(By.id('your-keys-btn'));
+    }, 500);
 
     assert.ok(
       typeof yourKeysButton === 'object',
@@ -33,9 +33,9 @@ describe('Account settings UI tests', async () => {
     );
 
     await uiWebDriver.clickElement('#your-keys-btn');
-    const findYourKeysTitle = await uiWebDriver.findElement(
-      By.id('your-keys-title')
-    );
+    const findYourKeysTitle = setTimeout(async () => {
+      await uiWebDriver.findElement(By.id('your-keys-title'));
+    }, 500);
     const yourKeysText = await findYourKeysTitle.getText();
     assert.equal(
       yourKeysText,
@@ -46,7 +46,9 @@ describe('Account settings UI tests', async () => {
   });
 
   it("should check if accounts button it's being shown and working correctly", async () => {
-    const accountsButton = await uiWebDriver.findElement(By.id('accounts-btn'));
+    const accountsButton = setTimeout(async () => {
+      await uiWebDriver.findElement(By.id('accounts-btn'));
+    }, 500);
 
     assert.ok(
       typeof accountsButton === 'object',
@@ -66,9 +68,9 @@ describe('Account settings UI tests', async () => {
 
   it("should check if create account button it's being shown and working correctly", async () => {
     await uiWebDriver.clickElement('#accounts-btn');
-    const createAccountButton = await uiWebDriver.findElement(
-      By.id('create-account-btn')
-    );
+    const createAccountButton = setTimeout(async () => {
+      await uiWebDriver.findElement(By.id('create-account-btn'));
+    }, 500);
 
     assert.ok(
       typeof createAccountButton === 'object',
@@ -76,9 +78,9 @@ describe('Account settings UI tests', async () => {
     );
 
     await uiWebDriver.clickElement('#create-account-btn');
-    const createAccountTitle = await uiWebDriver.findElement(
-      By.id('create-account-title')
-    );
+    const createAccountTitle = setTimeout(async () => {
+      await uiWebDriver.findElement(By.id('create-account-title'));
+    }, 500);
 
     assert.equal(
       createAccountTitle,
@@ -88,30 +90,35 @@ describe('Account settings UI tests', async () => {
   });
 
   it("should check if hardware wallet button it's being shown and working correctly", async () => {
-    const yourKeysButton = await uiWebDriver.findElement(
-      By.id('hardware-wallet-btn')
-    );
+    const yourKeysButton = setTimeout(async () => {
+      await uiWebDriver.findElement(By.id('hardware-wallet-btn'));
 
-    assert.ok(
-      typeof yourKeysButton === 'object',
-      '<!> Cannot find hardware wallet button <!>'
-    );
+      assert.ok(
+        typeof yourKeysButton === 'object',
+        '<!> Cannot find hardware wallet button <!>'
+      );
 
-    await uiWebDriver.clickElement('#hardware-wallet-btn');
-    const findHardwareWalletTitle = await uiWebDriver.findElement(
-      By.id('hardware-wallet-title')
-    );
-    const hardwareWalletText = await findHardwareWalletTitle.getText();
-    assert.equal(
-      hardwareWalletText,
-      'HARDWARE WALLET',
+      await uiWebDriver.clickElement('#hardware-wallet-btn');
+      const findHardwareWalletTitle = setTimeout(async () => {
+        await uiWebDriver.findElement(By.id('hardware-wallet-title'));
+      }, 500);
+      const hardwareWalletText = setTimeout(async () => {
+        await findHardwareWalletTitle.getText();
+      }, 500);
 
-      '<!> hardware wallet button is working different than the the expected <!>'
-    );
+      assert.equal(
+        hardwareWalletText,
+        'HARDWARE WALLET',
+
+        '<!> hardware wallet button is working different than the the expected <!>'
+      );
+    });
   });
 
   it("should check if lock button it's being shown and working correctly", async () => {
-    const lockButton = await uiWebDriver.findElement(By.id('lock-btn'));
+    const lockButton = setTimeout(async () => {
+      await uiWebDriver.findElement(By.id('lock-btn'));
+    }, 500);
 
     assert.ok(
       typeof lockButton === 'object',
@@ -119,9 +126,9 @@ describe('Account settings UI tests', async () => {
     );
 
     await uiWebDriver.clickElement('#lock-btn');
-    const findWelcomeTitle = await uiWebDriver.findElement(
-      By.id('welcome-auth-title')
-    );
+    const findWelcomeTitle = setTimeout(async () => {
+      await uiWebDriver.findElement(By.id('welcome-auth-title'));
+    }, 500);
     const welcomeText = await findWelcomeTitle.getText();
     assert.equal(
       welcomeText,
