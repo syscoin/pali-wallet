@@ -675,6 +675,7 @@ const AccountController = (actions: {
   };
 
   const signTransaction = async (jsonData: any, sendPSBT: boolean) => {
+    // needs comment
     const base64 =
       /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
 
@@ -693,27 +694,33 @@ const AccountController = (actions: {
         new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
       }
 
+      const { isTrezorWallet } = getConnectedAccount();
+
+      // ? sendPSBT could have a better name
+      // ? when its true, it doesnt send (??)
       if (sendPSBT) {
-        if (getConnectedAccount().isTrezorWallet) {
-          return sys.utils.exportPsbtToJson(
-            await TrezorSigner.sign(response.psbt)
-          );
+        let psbt;
+        if (isTrezorWallet) {
+          psbt = await TrezorSigner.sign(response.psbt);
+        } else {
+          psbt = await sysjs.Signer.sign(response.psbt);
         }
 
-        return sys.utils.exportPsbtToJson(
-          await sysjs.Signer.sign(response.psbt)
-        );
+        return sys.utils.exportPsbtToJson(psbt);
       }
 
-      if (getConnectedAccount().isTrezorWallet) {
-        return sys.utils.exportPsbtToJson(
-          await sysjs.signAndSend(response.psbt, response.assets, TrezorSigner)
+      let psbt;
+      if (isTrezorWallet) {
+        psbt = await sysjs.signAndSend(
+          response.psbt,
+          response.assets,
+          TrezorSigner
         );
+      } else {
+        psbt = await sysjs.signAndSend(response.psbt, response.assets);
       }
 
-      return sys.utils.exportPsbtToJson(
-        await sysjs.signAndSend(response.psbt, response.assets)
-      );
+      return sys.utils.exportPsbtToJson(psbt);
     } catch (error) {
       throw new Error(String(error));
     }
