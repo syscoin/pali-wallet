@@ -449,23 +449,21 @@ const AccountController = (actions: {
   const fetchBackendConnectedAccount = async (
     connectedAccount: IAccountState
   ) => {
-    const fetchTrezorBackendAccount = await sys.utils.fetchBackendAccount(
+    const backendAccount = await sys.utils.fetchBackendAccount(
       sysjs.blockbookURL,
       globalAccount?.xpub,
       'tokens=nonzero&details=txs',
       true
     );
 
-    const fetchPaliAccount = await sys.utils.fetchBackendAccount(
+    const paliAccount = await sys.utils.fetchBackendAccount(
       sysjs.blockbookURL,
       connectedAccount.xpub,
       'details=txs&assetMask=non-token-transfers',
       true
     );
 
-    return connectedAccount.isTrezorWallet
-      ? fetchTrezorBackendAccount
-      : fetchPaliAccount;
+    return connectedAccount.isTrezorWallet ? backendAccount : paliAccount;
   };
 
   const getChangeAddress = async () => {
@@ -478,15 +476,11 @@ const AccountController = (actions: {
     }
 
     if (connectedAccount.isTrezorWallet) {
-      let addr = 'Error: Failed to fetch trezor change address';
+      const addr = 'Error: Failed to fetch trezor change address';
 
-      const inter = await getNewChangeAddress(true);
+      const newAddr = await getNewChangeAddress(true);
 
-      if (inter !== null) {
-        addr = inter;
-      }
-
-      return addr;
+      return newAddr ?? addr;
     }
 
     return sysjs.Signer.getNewChangeAddress(true);
