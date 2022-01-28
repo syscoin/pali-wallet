@@ -146,7 +146,7 @@ const AccountController = (actions: {
         id: isSendAsset
           ? Number(globalAccount?.id)
           : Number(getConnectedAccount().id),
-        txs: [coventPendingType(txinfo), ...transactions],
+        txs: [createEmptyTransaction(txinfo), ...transactions],
       })
     );
   };
