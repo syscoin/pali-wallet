@@ -117,14 +117,14 @@ const AccountController = (actions: {
     ? getConnectedAccount().xpub
     : null;
 
-  const coventPendingType = (txid: string) =>
-    ({
-      txid,
-      value: 0,
-      confirmations: 0,
-      fees: 0,
-      blockTime: Date.now() / 1e3,
-    } as Transaction);
+  const createEmptyTransaction = (txid: string): Transaction => ({
+    txid,
+    value: 0,
+    confirmations: 0,
+    fees: 0,
+    blockTime: Date.now() / 1e3,
+    tokenType: '',
+  });
 
   const updateTransactionData = (txinfo: any) => {
     const { temporaryTransactionState } = store.getState().wallet;
