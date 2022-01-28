@@ -1889,7 +1889,7 @@ const AccountController = (actions: {
     clearTemporaryTransaction,
     getConnectedAccount,
     getChangeAddress,
-    updateTokensState,
+    updateTokensState: updateTokens,
     getRawTransaction: getTransaction,
     setHDSigner,
     importPsbt,
