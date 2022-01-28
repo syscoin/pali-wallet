@@ -1,5 +1,9 @@
 import store from 'state/store';
-import IWalletState, { IAccountState, INetwork } from 'state/wallet/types';
+import IWalletState, {
+  IAccountState,
+  IMintedToken,
+  INetwork,
+} from 'state/wallet/types';
 import { bech32 } from 'bech32';
 import { fromZPub } from 'bip84';
 import CryptoJS from 'crypto-js';
@@ -486,54 +490,45 @@ const AccountController = (actions: {
     return sysjs.Signer.getNewChangeAddress(true);
   };
 
-  const updateTokensState = async () => {
-    if (!sysjs) {
-      return;
-    }
+  const updateTokens = async () => {
+    if (!sysjs) return;
 
     const { accounts }: IWalletState = store.getState().wallet;
 
     return Promise.all(
       accounts.map(async (account: IAccountState) => {
-        const assetsData: any = {};
-
         const { tokensAsset } = await sys.utils.fetchBackendAccount(
           sysjs.blockbookURL,
           account.xpub,
           'tokens=derived&details=txs',
           true
         );
-        const { transactions } = await fetchBackendConnectedAccount(account);
-
-        const tokensMap: any = {};
-        const mintedTokens: any = {};
 
         if (!tokensAsset) {
           store.dispatch(
             updateAllTokens({
               accountId: account.id,
               accountXpub: account.xpub,
-              tokens: tokensMap,
-              holdings: sortList(Object.values(assetsData)),
-              mintedTokens: sortList(Object.values(mintedTokens)),
+              tokens: {},
+              holdings: [],
+              mintedTokens: [],
             })
           );
 
           return;
         }
 
+        const assets: { [assetGuid: string]: Assets } = {};
+
+        // populate assets iterating through tokensAsset
         await new Promise((resolve) => {
           each(
             tokensAsset,
-            (
-              { balance, symbol, assetGuid, decimals, type }: any,
-              done: any
-            ) => {
-              tokensMap[assetGuid] = {
+            ({ balance, symbol, assetGuid, decimals, type }: Assets, done) => {
+              assets[assetGuid] = {
                 balance:
-                  Number(
-                    tokensMap[assetGuid] ? tokensMap[assetGuid].balance : 0
-                  ) + Number(balance),
+                  Number(assets[assetGuid] ? assets[assetGuid].balance : 0) +
+                  Number(balance),
                 type,
                 decimals,
                 symbol: symbol ? atob(String(symbol)) : '',
@@ -542,12 +537,14 @@ const AccountController = (actions: {
 
               done();
             },
-            () => {
-              resolve('ok');
-            }
+            () => resolve('ok')
           );
         });
 
+        const { transactions } = await fetchBackendConnectedAccount(account);
+        const mintedTokens: { [token: string]: IMintedToken } = {};
+
+        // populate mintedTokens iterating through transactions
         try {
           if (transactions) {
             await new Promise((resolve) => {
@@ -558,7 +555,7 @@ const AccountController = (actions: {
                     for (const token of tokenTransfers) {
                       try {
                         getAsset(token.token).then((assetData) => {
-                          mintedTokens[token.token] = {
+                          mintedTokens[token.token] = <IMintedToken>{
                             assetGuid: token.token,
                             symbol: token.symbol
                               ? atob(String(token.symbol))
@@ -575,18 +572,18 @@ const AccountController = (actions: {
 
                   done();
                 },
-                () => {
-                  resolve('ok');
-                }
+                () => resolve('ok')
               );
             });
           }
 
+          const assetsData = {};
+
+          // populate assetsData iterating through tokensMap
           await Promise.all(
-            Object.values(tokensMap).map(async (value) => {
+            Object.values(assets).map(async (asset: Assets) => {
               try {
-                const { balance, type, decimals, symbol, assetGuid }: any =
-                  value;
+                const { balance, type, decimals, symbol, assetGuid } = asset;
 
                 const {
                   pubData,
@@ -630,7 +627,7 @@ const AccountController = (actions: {
             updateAllTokens({
               accountId: account.id,
               accountXpub: account.xpub,
-              tokens: tokensMap,
+              tokens: assets,
               holdings: sortList(Object.values(assetsData)),
               mintedTokens: sortList(Object.values(mintedTokens)),
             })
