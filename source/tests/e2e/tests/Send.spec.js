@@ -22,9 +22,7 @@ describe('Send screen tests', async () => {
   });
 
   it("should check if send form it's being shown", async () => {
-    const sendBalance = setTimeout(async () => {
-      await uiWebDriver.findElement(By.id('send-balance'));
-    }, 500);
+    const sendBalance = await uiWebDriver.findElement(By.id('send-balance'));
 
     assert.ok(
       typeof sendBalance === 'object',
