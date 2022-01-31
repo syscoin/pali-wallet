@@ -70,7 +70,7 @@ export const useUtils = (): any => {
   };
 };
 
-export const isNFT = (guid: number) => {
+/* export const isNFT = (guid: number) => {
   const assetGuid = BigInt.asUintN(64, BigInt(guid));
 
   return assetGuid >> BigInt(32) > 0;
@@ -108,4 +108,4 @@ export const useCopyClipboard = (
   }, [isCopied, setIsCopied, timeout]);
 
   return [isCopied, staticCopy];
-};
+}; */

@@ -73,7 +73,7 @@ export const useFormat = () => {
   };
 };
 
-export const ellipsis = (str: any, start = 7, end = 4) => {
+/* export const ellipsis = (str: any, start = 7, end = 4) => {
   if (typeof str !== 'string') {
     return str;
   }
@@ -121,4 +121,4 @@ export const formatDistanceDate = (timestamp: string) => {
   if (formatedDate === format(yesterday, formatStyle)) return 'Yesterday';
 
   return formatedDate;
-};
+}; */
