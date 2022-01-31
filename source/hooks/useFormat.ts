@@ -9,7 +9,7 @@ const getYesterday = () => {
 };
 
 export const useFormat = () => {
-  const ellipsis = (str: any, start = 7, end = 4) => {
+  /* const ellipsis = (str: any, start = 7, end = 4) => {
     if (typeof str !== 'string') {
       return str;
     }
@@ -18,12 +18,12 @@ export const useFormat = () => {
       str.length - end,
       str.length
     )}`;
-  };
+  }; */
 
   const capitalizeFirstLetter = (string: string) =>
     string.charAt(0).toUpperCase() + string.slice(1);
 
-  const formatDistanceDate = (timestamp: string) => {
+  /* const formatDistanceDate = (timestamp: string) => {
     const formatStyle = 'M-d-yyyy';
     const today = new Date();
     const yesterday = getYesterday();
@@ -61,14 +61,14 @@ export const useFormat = () => {
     }
 
     return url;
-  };
+  }; */
 
   return {
-    ellipsis,
+    /* ellipsis,
     formatURL,
     formatCurrency,
     formatNumber,
-    formatDistanceDate,
+    formatDistanceDate, */
     capitalizeFirstLetter,
   };
 };

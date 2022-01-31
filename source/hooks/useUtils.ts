@@ -17,7 +17,7 @@ export const useUtils = (): any => {
     controller.stateUpdater();
   };
 
-  const useCopyClipboard = (
+  /* const useCopyClipboard = (
     timeout = 1000
   ): [boolean, (toCopy: string) => void] => {
     const [isCopied, setIsCopied] = useState<boolean>(false);
@@ -41,40 +41,40 @@ export const useUtils = (): any => {
     }, [isCopied, setIsCopied, timeout]);
 
     return [isCopied, staticCopy];
-  };
+  }; */
 
   const alert = useAlert();
 
-  const getHost = (url: string) => {
+  /* const getHost = (url: string) => {
     if (typeof url === 'string' && url !== '') {
       return new URL(url).host;
     }
 
     return url;
-  };
+  }; */
 
-  const isNFT = (guid: number) => {
+  /* const isNFT = (guid: number) => {
     const assetGuid = BigInt.asUintN(64, BigInt(guid));
 
     return assetGuid >> BigInt(32) > 0;
-  };
+  }; */
 
   return {
     useSettingsView,
-    useCopyClipboard,
+    // useCopyClipboard,
     alert,
-    getHost,
+    // getHost,
     navigate,
     handleRefresh,
-    isNFT,
+    // isNFT,
   };
 };
 
-/* export const isNFT = (guid: number) => {
+export const isNFT = (guid: number) => {
   const assetGuid = BigInt.asUintN(64, BigInt(guid));
 
   return assetGuid >> BigInt(32) > 0;
-}; */
+};
 
 export const getHost = (url: string) => {
   if (typeof url === 'string' && url !== '') {
@@ -84,7 +84,7 @@ export const getHost = (url: string) => {
   return url;
 };
 
-/* export const useCopyClipboard = (
+export const useCopyClipboard = (
   timeout = 1000
 ): [boolean, (toCopy: string) => void] => {
   const [isCopied, setIsCopied] = useState<boolean>(false);
@@ -108,4 +108,4 @@ export const getHost = (url: string) => {
   }, [isCopied, setIsCopied, timeout]);
 
   return [isCopied, staticCopy];
-}; */
+};
