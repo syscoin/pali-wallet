@@ -16,7 +16,7 @@ export const useUtils = (): any => {
     controller.wallet.account.watchMemPool(activeAccount);
     controller.stateUpdater();
   };
-
+  // eslint-disable-next-line no-shadow
   const useCopyClipboard = (
     timeout = 1000
   ): [boolean, (toCopy: string) => void] => {
@@ -45,6 +45,7 @@ export const useUtils = (): any => {
 
   const alert = useAlert();
 
+  // eslint-disable-next-line no-shadow
   const getHost = (url: string) => {
     if (typeof url === 'string' && url !== '') {
       return new URL(url).host;
@@ -53,6 +54,7 @@ export const useUtils = (): any => {
     return url;
   };
 
+  // eslint-disable-next-line no-shadow
   const isNFT = (guid: number) => {
     const assetGuid = BigInt.asUintN(64, BigInt(guid));
 
