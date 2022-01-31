@@ -74,7 +74,7 @@ export const useUtils = (): any => {
   const assetGuid = BigInt.asUintN(64, BigInt(guid));
 
   return assetGuid >> BigInt(32) > 0;
-};
+}; */
 
 export const getHost = (url: string) => {
   if (typeof url === 'string' && url !== '') {
@@ -84,7 +84,7 @@ export const getHost = (url: string) => {
   return url;
 };
 
-export const useCopyClipboard = (
+/* export const useCopyClipboard = (
   timeout = 1000
 ): [boolean, (toCopy: string) => void] => {
   const [isCopied, setIsCopied] = useState<boolean>(false);
