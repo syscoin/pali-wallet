@@ -375,40 +375,6 @@ const AccountController = (actions: {
     }
   };
 
-  // ? unsuggestive name
-  // ? currentAccount could be currentAccountId
-  const watchMemPool = (currentAccount: IAccountState | undefined) => {
-    if (intervalId) return true;
-
-    // 30 seconds
-    const intervalInMs = 30 * 1000;
-
-    intervalId = setInterval(() => {
-      updateActiveAccount();
-
-      const { accounts }: IWalletState = store.getState().wallet;
-
-      const activeAccount = accounts.find(
-        (account: IAccountState) => account.id === currentAccount?.id
-      );
-
-      // TODO: rewrite this if
-      if (
-        !activeAccount ||
-        !activeAccount?.transactions ||
-        !activeAccount?.transactions.filter(
-          (tx: Transaction) => tx.confirmations > 0
-        ).length
-      ) {
-        clearInterval(intervalId);
-
-        return false;
-      }
-    }, intervalInMs);
-
-    return true;
-  };
-
   // ? 'fromConnectionsController' seems to be always true
   // name could be better
   const getNewChangeAddress = async (fromConnectionsController = true) => {
@@ -891,8 +857,44 @@ const AccountController = (actions: {
     });
   };
 
+  // ? unsuggestive name
+  // ? currentAccount could be currentAccountId
+  // ? passing a null 'currentAccount' could default to connected account
+  const watchMemPool = (currentAccount: IAccountState | undefined) => {
+    if (intervalId) return true;
+
+    // 30 seconds
+    const intervalInMs = 30 * 1000;
+
+    intervalId = setInterval(() => {
+      updateActiveAccount();
+
+      const { accounts }: IWalletState = store.getState().wallet;
+
+      const activeAccount = accounts.find(
+        (account: IAccountState) => account.id === currentAccount?.id
+      );
+
+      if (
+        !activeAccount ||
+        !activeAccount?.transactions ||
+        !activeAccount?.transactions.filter(
+          (tx: Transaction) => tx.confirmations > 0
+        ).length
+      ) {
+        clearInterval(intervalId);
+
+        return false;
+      }
+    }, intervalInMs);
+
+    return true;
+  };
+
   //* ----- Confirmations -----
 
+  // ? parameter 'item' has 'NewAsset' type at IAccountController
+  // ? but it has a lot of different fields
   const confirmSPTCreation = async (item: any) => {
     const {
       capabilityflags,
@@ -911,7 +913,7 @@ const AccountController = (actions: {
 
     const newMaxSupply = maxsupply * 10 ** precision;
 
-    let assetOpts = {
+    const assetOpts = {
       precision,
       symbol,
       description,
@@ -928,23 +930,14 @@ const AccountController = (actions: {
         network: sysjs.Signer.Signer.network,
       });
 
-      assetOpts = {
-        ...assetOpts,
-        notarydetails: {
-          ...notarydetails,
-          endpoint: Buffer.from(
-            syscointx.utils.encodeToBase64(notarydetails.endpoint)
-          ),
-        },
-        notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex'),
-      };
-    }
+      assetOpts.notarydetails.endpoint = Buffer.from(
+        syscointx.utils.encodeToBase64(notarydetails.endpoint)
+      );
 
-    if (notarydetails) {
-      assetOpts = {
-        ...assetOpts,
-        notarydetails,
-      };
+      assetOpts.notarykeyid = Buffer.from(
+        vNotaryPayment.hash.toString('hex'),
+        'hex'
+      );
     }
 
     if (payoutAddress) {
@@ -955,30 +948,25 @@ const AccountController = (actions: {
 
       const auxFeeKeyID = Buffer.from(payment.hash.toString('hex'), 'hex');
 
-      assetOpts = {
-        ...assetOpts,
-        auxfeedetails: {
-          ...assetOpts.auxfeedetails,
-          auxfeekeyid: auxFeeKeyID,
-        },
-      };
+      assetOpts.auxfeedetails.auxfeekeyid = auxFeeKeyID;
     }
 
+    // ? assetOpts already contains auxfeedetails
+    // this seems to override the previous auxFeeKeyID assign
     if (auxfeedetails) {
-      assetOpts = {
-        ...assetOpts,
-        auxfeedetails,
-      };
+      assetOpts.auxfeedetails = auxfeedetails;
     }
 
     const txOpts = { rbf: true };
 
-    if (getConnectedAccount().isTrezorWallet) {
+    const connectedAccount = getConnectedAccount();
+
+    if (connectedAccount.isTrezorWallet)
       throw new Error("Trezor don't support burning of coins");
-    }
 
-    sysjs.Signer.setAccountIndex(getConnectedAccount().id);
+    sysjs.Signer.setAccountIndex(connectedAccount.id);
 
+    // ? 'pendingTx' could be named newAsset
     const pendingTx = await sysjs.assetNew(
       assetOpts,
       txOpts,
@@ -987,32 +975,32 @@ const AccountController = (actions: {
       new sys.utils.BN(fee * 1e8)
     );
 
-    const txInfoNew = pendingTx.extractTransaction().getId();
+    const newTx = pendingTx.extractTransaction();
+    const newTxId = newTx.getId();
 
-    updateTransactionData(txInfoNew);
+    updateTransactionData(newTxId);
 
-    const transactionData = await getTransaction(txInfoNew);
-    const assets = syscointx.getAssetsFromTx(pendingTx.extractTransaction());
-    const createdAsset = assets.keys().next().value;
+    const transaction = await getTransaction(newTxId);
+    const assets = syscointx.getAssetsFromTx(newTx);
+    const createdAssetGuid = assets.keys().next().value;
 
     if (initialSupply && initialSupply < newMaxSupply) {
       try {
         return await new Promise((resolve: any, reject: any) => {
           const interval = setInterval(async () => {
-            const sptCreated = await getTransaction(txInfoNew);
+            if (transaction.confirmations > 1) {
+              console.log('confirmations > 1', createdAssetGuid);
 
-            if (sptCreated?.confirmations > 1) {
-              console.log('confirmations > 1', createdAsset);
-              const changeaddress = await sysjs.Signer.getNewChangeAddress(
+              const changeAddress = await sysjs.Signer.getNewChangeAddress(
                 true
               );
 
               try {
                 const assetMap = new Map([
                   [
-                    String(createdAsset),
+                    String(createdAssetGuid),
                     {
-                      changeAddress: changeaddress,
+                      changeAddress,
                       outputs: [
                         {
                           value: new sys.utils.BN(
@@ -1040,23 +1028,22 @@ const AccountController = (actions: {
                   return;
                 }
 
-                const txInfo = pendingAssetSend.extractTransaction().getId();
+                const txid = pendingAssetSend.extractTransaction().getId();
 
-                updateTransactionData(txInfo);
+                updateTransactionData(txid);
 
                 watchMemPool(getConnectedAccount());
 
                 clearInterval(interval);
 
                 resolve({
-                  sptCreated,
-                  txid: txInfo,
-                  txConfirmations: sptCreated.confirmations,
-                  txAssetGuid: createdAsset,
+                  transaction,
+                  txid,
+                  txConfirmations: transaction.confirmations,
+                  txAssetGuid: createdAssetGuid,
                 });
               } catch (error) {
                 clearInterval(interval);
-
                 reject(error);
               }
             }
@@ -1069,11 +1056,13 @@ const AccountController = (actions: {
       }
     }
 
+    // ? why return transaction, transaction.confirmations and its id?
+    // return could be { transaction, assetGuid }
     return {
-      transactionData,
-      txid: txInfoNew,
-      txConfirmations: transactionData.confirmations,
-      txAssetGuid: createdAsset,
+      transactionData: transaction,
+      txid: newTxId,
+      txConfirmations: transaction.confirmations,
+      txAssetGuid: createdAssetGuid,
     };
   };
 
