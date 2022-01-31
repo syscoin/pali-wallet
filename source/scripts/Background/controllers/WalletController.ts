@@ -396,6 +396,7 @@ const WalletController = (): IWalletController => {
       changeActiveNetwork({
         id: networkId,
         beUrl: networks[networkId]?.beUrl,
+        label: '',
       })
     );
 
