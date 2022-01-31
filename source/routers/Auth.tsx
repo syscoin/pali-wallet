@@ -1,10 +1,11 @@
 import React, { useEffect } from 'react';
 import { Import } from 'containers/common/Import';
 import {
-  Switch,
+  Routes,
   Route,
   // Redirect,
   useLocation,
+  useParams,
 } from 'react-router-dom';
 import { useController, useStore, useUtils, useBrowser } from 'hooks/index';
 import {
@@ -49,14 +50,13 @@ import {
   CreateAndIssueNFTConfirm,
 } from 'containers/auth/Transactions/views';
 
-import { SendMatchProps } from './types';
-
 export const AuthRouter = () => {
   const location = useLocation();
   const controller = useController();
   const isUnlocked = !controller.wallet.isLocked();
+  const params = useParams();
 
-  const { getHost, alert, history } = useUtils();
+  const { getHost, alert, navigate } = useUtils();
   const { browser } = useBrowser();
 
   const { accounts, currentURL, canConnect, temporaryTransactionState } =
@@ -88,7 +88,7 @@ export const AuthRouter = () => {
       !temporaryTransactionState.executing &&
       temporaryTransactionState.type !== 'sendAsset'
     ) {
-      history.push('/home');
+      navigate('/home');
 
       return;
     }
@@ -97,13 +97,13 @@ export const AuthRouter = () => {
       redirectRoute === '/updateAsset/confirm' &&
       !controller.wallet.account.getTemporaryTransaction('updateAsset')
     ) {
-      history.push('/home');
+      navigate('/home');
 
       return;
     }
 
     if (!isUnlocked && accounts.length > 0) {
-      history.push('/app.html');
+      navigate('/app.html');
 
       return;
     }
@@ -114,7 +114,7 @@ export const AuthRouter = () => {
       controller.wallet.account.getTemporaryTransaction('sendAsset') &&
       isUnlocked
     ) {
-      history.push('/send/confirm');
+      navigate('/send/confirm');
 
       return;
     }
@@ -124,7 +124,7 @@ export const AuthRouter = () => {
       temporaryTransactionState.type === 'signAndSendPSBT' &&
       isUnlocked
     ) {
-      history.push('/sign');
+      navigate('/sign');
 
       return;
     }
@@ -134,7 +134,7 @@ export const AuthRouter = () => {
       temporaryTransactionState.type === 'mintNFT' &&
       isUnlocked
     ) {
-      history.push('/mintNFT');
+      navigate('/mintNFT');
 
       return;
     }
@@ -144,7 +144,7 @@ export const AuthRouter = () => {
       temporaryTransactionState.type === 'signPSBT' &&
       isUnlocked
     ) {
-      history.push('/signPsbt');
+      navigate('/signPsbt');
 
       return;
     }
@@ -154,7 +154,7 @@ export const AuthRouter = () => {
       temporaryTransactionState.type === 'newAsset' &&
       isUnlocked
     ) {
-      history.push('/create');
+      navigate('/create');
 
       return;
     }
@@ -164,7 +164,7 @@ export const AuthRouter = () => {
       temporaryTransactionState.type === 'mintAsset' &&
       isUnlocked
     ) {
-      history.push('/issueAsset');
+      navigate('/issueAsset');
 
       return;
     }
@@ -174,7 +174,7 @@ export const AuthRouter = () => {
       temporaryTransactionState.type === 'newNFT' &&
       isUnlocked
     ) {
-      history.push('/issueNFT');
+      navigate('/issueNFT');
 
       return;
     }
@@ -184,7 +184,7 @@ export const AuthRouter = () => {
       temporaryTransactionState.type === 'updateAsset' &&
       isUnlocked
     ) {
-      history.push('/updateAsset');
+      navigate('/updateAsset');
 
       return;
     }
@@ -194,7 +194,7 @@ export const AuthRouter = () => {
       temporaryTransactionState.type === 'transferAsset' &&
       isUnlocked
     ) {
-      history.push('/transferOwnership');
+      navigate('/transferOwnership');
 
       return;
     }
@@ -204,31 +204,31 @@ export const AuthRouter = () => {
       temporaryTransactionState.type !== 'sendAsset' &&
       controller.wallet.account.getTemporaryTransaction('sendAsset')
     ) {
-      history.push('/home');
+      navigate('/home');
 
       return;
     }
 
     if (canConnect && isUnlocked) {
       if (connectedAccounts.length <= 0) {
-        history.push('/connect-wallet');
+        navigate('/connect-wallet');
 
         return;
       }
 
-      history.push('/connected-accounts');
+      navigate('/connected-accounts');
 
       return;
     }
 
     if (!canConnect && isUnlocked) {
       if (connectedAccounts.length > 0) {
-        history.push('/home');
+        navigate('/home');
 
         return;
       }
 
-      history.push('/home');
+      navigate('/home');
 
       return;
     }
@@ -239,13 +239,13 @@ export const AuthRouter = () => {
       !canConnect &&
       isUnlocked
     ) {
-      history.push('/send/confirm');
+      navigate('/send/confirm');
 
       return;
     }
 
     if (redirectRoute !== '/app.html') {
-      history.push(redirectRoute);
+      navigate(redirectRoute);
     }
   }, [canConnect, isUnlocked]);
 
@@ -256,113 +256,79 @@ export const AuthRouter = () => {
 
   return (
     <>
-      <div className="absolute w-full h-full">
-        <Switch>
-          <Route path="/app.html" component={Start} exact />
+      <div className="w-full min-h-popup min-w-popup h-full">
+        <Routes>
+          <Route path="/app.html" element={<Start />} />
 
           {isUnlocked ? (
             <>
-              <Route path="/home" component={Home} exact />
-              <Route path="/home-tx-details" component={DetailsView} exact />
-              <Route path="/send/confirm" component={SendConfirm} exact />
-              <Route path="/sign" component={SignAndSend} exact />
-              <Route path="/signPsbt" component={SignPSBT} exact />
-              <Route path="/create" component={Create} exact />
-              <Route
-                path="/create/confirm"
-                component={CreateTokenConfirm}
-                exact
-              />
-              <Route path="/issueAsset" component={MintToken} exact />
+              <Route path="/home" element={<Home />} />
+              <Route path="/home-tx-details" element={<DetailsView />} />
+              <Route path="/send/confirm" element={<SendConfirm />} />
+              <Route path="/sign" element={<SignAndSend />} />
+              <Route path="/signPsbt" element={<SignPSBT />} />
+              <Route path="/create" element={<Create />} />
+              <Route path="/create/confirm" element={<CreateTokenConfirm />} />
+              <Route path="/issueAsset" element={<MintToken />} />
               <Route
                 path="/issueAsset/confirm"
-                component={MintTokenConfirm}
-                exact
+                element={<MintTokenConfirm />}
               />
-              <Route path="/issueNFT" component={CreateAndIssueNFT} exact />
+              <Route path="/issueNFT" element={<CreateAndIssueNFT />} />
               <Route
                 path="/issueNFT/confirm"
-                component={CreateAndIssueNFTConfirm}
-                exact
+                element={<CreateAndIssueNFTConfirm />}
               />
-              <Route path="/mintNFT" component={MintNFT} exact />
-              <Route path="/mintNFT/confirm" component={MintNFTConfirm} exact />
-              <Route path="/updateAsset" component={UpdateAsset} exact />
+              <Route path="/mintNFT" element={<MintNFT />} />
+              <Route path="/mintNFT/confirm" element={<MintNFTConfirm />} />
+              <Route path="/updateAsset" element={<UpdateAsset />} />
               <Route
                 path="/updateAsset/confirm"
-                component={UpdateAssetConfirm}
-                exact
+                element={<UpdateAssetConfirm />}
               />
               <Route
                 path="/transferOwnership"
-                component={TransferOwnership}
-                exact
+                element={<TransferOwnership />}
               />
               <Route
                 path="/transferOwnership/confirm"
-                component={TransferOwnershipConfirm}
-                exact
+                element={<TransferOwnershipConfirm />}
               />
-              <Route path="/send" component={Send} exact />
+              <Route path="/send" element={<Send />} />
               <Route
                 path="/send/:address"
-                render={({ match }: SendMatchProps) => (
-                  <Send initAddress={match.params.address} />
-                )}
-                exact
+                element={<Send initAddress={params.address} />}
               />
-              <Route path="/receive" component={Receive} exact />
+              <Route path="/receive" element={<Receive />} />
 
-              <Route path="/general-autolock" component={AutolockView} exact />
-              <Route path="/general-about" component={AboutView} exact />
-              <Route path="/general-phrase" component={PhraseView} exact />
-              <Route
-                path="/general-delete"
-                component={DeleteWalletView}
-                exact
-              />
-              <Route path="/general-currency" component={CurrencyView} exact />
+              <Route path="/general-autolock" element={<AutolockView />} />
+              <Route path="/general-about" element={<AboutView />} />
+              <Route path="/general-phrase" element={<PhraseView />} />
+              <Route path="/general-delete" element={<DeleteWalletView />} />
+              <Route path="/general-currency" element={<CurrencyView />} />
 
-              <Route path="/account-priv" component={PrivateKeyView} exact />
+              <Route path="/account-priv" element={<PrivateKeyView />} />
               <Route
                 path="/account-hardware"
-                component={ConnectHardwareWalletView}
-                exact
+                element={<ConnectHardwareWalletView />}
               />
-              <Route
-                path="/account-newaccount"
-                component={NewAccountView}
-                exact
-              />
-              <Route path="/account-details" component={AccountView} exact />
+              <Route path="/account-newaccount" element={<NewAccountView />} />
+              <Route path="/account-details" element={AccountView} />
 
-              <Route path="/networks-edit" component={EditNetworkView} exact />
-              <Route path="/networks-custom" component={CustomRPCView} exact />
-              <Route
-                path="/networks-sites"
-                component={ConnectedSitesView}
-                exact
-              />
-              <Route
-                path="/networks-trusted"
-                component={TrustedSitesView}
-                exact
-              />
+              <Route path="/networks-edit" element={<EditNetworkView />} />
+              <Route path="/networks-custom" element={<CustomRPCView />} />
+              <Route path="/networks-sites" element={<ConnectedSitesView />} />
+              <Route path="/networks-trusted" element={<TrustedSitesView />} />
 
               {canConnect && (
                 <>
-                  <Route
-                    path="/connect-wallet"
-                    component={ConnectWallet}
-                    exact
-                  />
+                  <Route path="/connect-wallet" element={<ConnectWallet />} />
 
                   {connectedAccounts.length > 0 && (
                     <>
                       <Route
                         path="/connected-accounts"
-                        component={ConnectedAccounts}
-                        exact
+                        element={<ConnectedAccounts />}
                       />
                     </>
                   )}
@@ -371,10 +337,10 @@ export const AuthRouter = () => {
             </>
           ) : (
             <>
-              <Route path="/import" component={Import} exact />
+              <Route path="/import" element={<Import />} />
             </>
           )}
-        </Switch>
+        </Routes>
       </div>
     </>
   );

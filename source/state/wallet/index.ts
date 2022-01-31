@@ -23,7 +23,7 @@ export const initialState: IWalletState = {
   status: 0,
   accounts: [],
   activeAccountId: 0,
-  activeNetwork: 'https://blockbook.elint.services/',
+  activeNetwork: 'main',
   encriptedMnemonic: null,
   confirmingTransaction: false,
   changingNetwork: false,
@@ -343,8 +343,23 @@ const WalletState = createSlice({
         ...action.payload,
       };
     },
-    deleteWallet() {
-      return initialState;
+    deleteWallet(state: IWalletState) {
+      state.accounts = [];
+      state.activeAccountId = 0;
+      state.encriptedMnemonic = null;
+      state.activeNetwork = 'https://blockbook.elint.services/';
+      state.status = 0;
+      state.tabs = {
+        currentSenderURL: '',
+        currentURL: '',
+        canConnect: false,
+        connections: [],
+      };
+      state.confirmingTransaction = false;
+      state.signingPSBT = false;
+      state.changingNetwork = false;
+      state.signingTransaction = false;
+      state.walletTokens = [];
     },
     changeAccountActiveId(state: IWalletState, action: PayloadAction<number>) {
       state.activeAccountId = action.payload;

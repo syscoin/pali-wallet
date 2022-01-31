@@ -19,14 +19,14 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
   background = 'bkg-2',
   canGoBack = true,
 }) => {
-  const { history } = useUtils();
+  const { navigate } = useUtils();
   const { browser } = useBrowser();
 
   const url = browser.runtime.getURL('app.html');
 
   return (
     <div
-      className={`bg-${background} w-full h-popup text-brand-white relative`}
+      className={`bg-${background} w-full min-h-popup min-w-popup h-full text-brand-white relative`}
     >
       <Header normalHeader />
 
@@ -35,7 +35,7 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
           <Tooltip content="Go to fullscreen">
             <IconButton onClick={() => window.open(url)}>
               <Icon
-                className="text-brand-white absolute left-5 bottom-1"
+                className="sm:hidden text-brand-white absolute left-5 bottom-1"
                 name="desktop"
               />
             </IconButton>
@@ -47,7 +47,7 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
         </p>
 
         {canGoBack && (
-          <IconButton onClick={() => history.push('/home')}>
+          <IconButton onClick={() => navigate('/home')}>
             <Icon wrapperClassname="absolute bottom-1 right-4" name="close" />
           </IconButton>
         )}

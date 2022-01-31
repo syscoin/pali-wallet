@@ -8,7 +8,7 @@ const AboutView: FC = () => {
     window.open(url);
   };
 
-  const { history } = useUtils();
+  const { navigate } = useUtils();
 
   return (
     <AuthViewLayout title="INFO & HELP" id="info-help-title">
@@ -46,7 +46,7 @@ const AboutView: FC = () => {
         </Card>
 
         <div className="absolute bottom-12">
-          <SecondaryButton type="button" onClick={() => history.push('/home')}>
+          <SecondaryButton type="button" onClick={() => navigate('/home')}>
             Close
           </SecondaryButton>
         </div>

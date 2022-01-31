@@ -30,7 +30,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
 }) => {
   const controller = useController();
 
-  const { history, getHost } = useUtils();
+  const { navigate, getHost } = useUtils();
   const { currentSenderURL, activeNetwork } = useStore();
   const { handleRejectTransaction } = useTransaction();
   const { browser } = useBrowser();
@@ -67,7 +67,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
 
     setLoading(true);
 
-    history.push(confirmRoute);
+    navigate(confirmRoute);
   };
 
   const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
@@ -144,7 +144,7 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
                   className={`${
                     disabledFee &&
                     'opacity-50 cursor-not-allowed text-button-disabled'
-                  } border border-fields-input-border bg-fields-input-primary rounded-r-full w-full md:max-w-md outline-none py-3 pr-24 pl-4 text-sm`}
+                  } border border-fields-input-border bg-fields-input-primary rounded-r-full w-full md:max-w-2xl outline-none py-3 pr-24 pl-4 text-sm`}
                   type="number"
                   placeholder="Fee network"
                   value={recommend}
@@ -153,17 +153,17 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
             </Form.Item>
           </div>
 
-          <p className="bg-transparent border text-left border-dashed border-gray-600 max-w-xs md:max-w-md mx-6 p-4 mt-4 text-xs rounded-lg">
+          <p className="bg-transparent border text-left border-dashed border-gray-600 max-w-xs md:max-w-2xl mx-6 p-4 mt-4 text-xs rounded-lg">
             With current network conditions, we recommend a fee of {recommend}{' '}
             SYS.
           </p>
 
-          <div className="flex justify-between w-full max-w-xs md:max-w-md items-center absolute bottom-10 gap-3">
+          <div className="flex justify-between w-full max-w-xs md:max-w-2xl items-center absolute bottom-10 gap-3">
             <SecondaryButton
               type="button"
               action
               onClick={() =>
-                handleRejectTransaction(browser, temporaryTransaction, history)
+                handleRejectTransaction(browser, temporaryTransaction, navigate)
               }
             >
               Cancel

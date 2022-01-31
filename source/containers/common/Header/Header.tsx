@@ -30,14 +30,14 @@ export const Header = ({
   return (
     <div className={headerStyle}>
       {changingNetwork && (
-        <div className="bg-brand-black bg-opacity-50 z-20 flex justify-center items-center fixed w-full h-full">
+        <div className="bg-brand-black bg-opacity-50 z-20 flex justify-center items-center fixed w-full min-h-popup min-w-popup h-full">
           <Icon name="loading" className="w-4 ml-2 text-brand-white" />
         </div>
       )}
 
       {onlySection && <Section />}
 
-      <div className="fixed w-full z-10">
+      <div className="fixed w-full z-10 md:max-w-2xl">
         {normalHeader && (
           <>
             <NormalHeader importSeed={importSeed} isUnlocked={isUnlocked} />

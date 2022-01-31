@@ -1,7 +1,7 @@
 const palette = require('./palette.js');
 
 module.exports = {
-  purge: [],
+  purge: ['./source/**/*.tsx'],
   darkMode: false, // or 'media' or 'class'
   theme: {
     extend: {
@@ -32,6 +32,9 @@ module.exports = {
       },
       minWidth: {
         popup: '372px',
+      },
+      minHeight: {
+        popup: '600px',
       },
       height: {
         popup: '600px',

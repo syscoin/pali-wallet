@@ -84,7 +84,7 @@ export const ConnectWallet = () => {
           <a href="https://docs.syscoin.org/">Learn more.</a>
         </small>
 
-        <div className="flex justify-between w-full max-w-xs md:max-w-md items-center absolute bottom-10 gap-3">
+        <div className="flex justify-between w-full max-w-xs md:max-w-2xl items-center absolute bottom-10 gap-3">
           <SecondaryButton
             type="button"
             action
@@ -113,7 +113,7 @@ export const ConnectWallet = () => {
             open={openExtraConfirmation}
             onClose={() => setOpenExtraConfirmation(false)}
           >
-            <div className="font-poppins inline-block w-full max-w-md p-6 my-8 overflow-hidden text-center align-middle transition-all border border-brand-royalblue transform bg-bkg-4 shadow-xl rounded-2xl">
+            <div className="font-poppins inline-block w-full max-w-2xl p-6 my-8 overflow-hidden text-center align-middle transition-all border border-brand-royalblue transform bg-bkg-4 shadow-xl rounded-2xl">
               <Dialog.Title
                 as="h3"
                 className="text-lg font-medium leading-6 text-brand-white flex justify-center gap-3 items-center"

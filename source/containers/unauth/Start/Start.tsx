@@ -4,7 +4,7 @@ import { PrimaryButton, Link } from 'components/index';
 import { useUtils } from 'hooks/index';
 
 export const Start = () => {
-  const { history } = useUtils();
+  const { navigate } = useUtils();
 
   return (
     <div className="mt-20 flex justify-center items-center flex-col min-w-full p-2">
@@ -21,7 +21,7 @@ export const Start = () => {
 
       <img src={LogoImage} className="w-52 my-8" alt="syscoin" />
 
-      <PrimaryButton type="submit" onClick={() => history.push('/create/pass')}>
+      <PrimaryButton type="submit" onClick={() => navigate('/create/pass')}>
         Get started
       </PrimaryButton>
 

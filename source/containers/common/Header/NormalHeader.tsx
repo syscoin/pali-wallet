@@ -19,7 +19,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
   const controller = useController();
 
   const { activeNetwork, encriptedMnemonic, networks } = useStore();
-  const { handleRefresh, history, getHost } = useUtils();
+  const { handleRefresh, navigate, getHost } = useUtils();
   const { activeAccount } = useAccount();
   const { browser } = useBrowser();
 
@@ -114,7 +114,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push('/networks-sites')}
+                  onClick={() => navigate('/networks-sites')}
                   className="flex py-1 justify-start items-center text-base px-2 cursor-pointer transition-all duration-200 border border-solid border-transparent hover:border-warning-success hover:bg-opacity-70 rounded-full bg-warning-success mx-3 mb-2"
                 >
                   <Icon
@@ -128,7 +128,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push('/networks-trusted')}
+                  onClick={() => navigate('/networks-trusted')}
                   className="flex py-1 justify-start items-center text-base px-2 cursor-pointer transition-all duration-200 border border-solid border-brand-royalblue hover:bg-opacity-70 rounded-full bg-brand-royalblue mx-3 mb-4"
                 >
                   <Icon
@@ -250,7 +250,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push('/networks-custom')}
+                  onClick={() => navigate('/networks-custom')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                 >
                   <Icon
@@ -264,7 +264,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push('/networks-edit')}
+                  onClick={() => navigate('/networks-edit')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                 >
                   <Icon name="edit" className="text-brand-white ml-1 mr-4" />
@@ -319,7 +319,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push('/general-autolock')}
+                  onClick={() => navigate('/general-autolock')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                   id="auto-lock-timer-btn"
                 >
@@ -331,7 +331,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push('/general-currency')}
+                  onClick={() => navigate('/general-currency')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                   id="currency-btn"
                 >
@@ -343,7 +343,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push('/general-phrase')}
+                  onClick={() => navigate('/general-phrase')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                   id="seed-phrase-menu-btn"
                 >
@@ -355,7 +355,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push('/general-about')}
+                  onClick={() => navigate('/general-about')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                   id="info-help-btn"
                 >
@@ -367,7 +367,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => history.push('/general-delete')}
+                  onClick={() => navigate('/general-delete')}
                   className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                   id="delete-wallet-btn"
                 >

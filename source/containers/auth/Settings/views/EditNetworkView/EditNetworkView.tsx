@@ -8,7 +8,7 @@ import { CustomRPCView } from '..';
 const EditNetworkView = () => {
   const { networks } = useStore();
   const { formatURL } = useFormat();
-  const { history } = useUtils();
+  const { navigate } = useUtils();
 
   const defaultNetworks = ['main', 'testnet'];
 
@@ -59,10 +59,7 @@ const EditNetworkView = () => {
           </ul>
 
           <div className="absolute bottom-12">
-            <SecondaryButton
-              type="button"
-              onClick={() => history.push('/home')}
-            >
+            <SecondaryButton type="button" onClick={() => navigate('/home')}>
               Close
             </SecondaryButton>
           </div>

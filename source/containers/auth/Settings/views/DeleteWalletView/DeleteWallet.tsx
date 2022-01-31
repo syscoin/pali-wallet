@@ -6,7 +6,7 @@ import { useController, useAccount, useUtils } from 'hooks/index';
 import TextArea from 'antd/lib/input/TextArea';
 
 const DeleteWalletView = () => {
-  const { history } = useUtils();
+  const { navigate } = useUtils();
   const { activeAccount } = useAccount();
 
   const controller = useController();
@@ -17,7 +17,7 @@ const DeleteWalletView = () => {
     if (controller.wallet.checkPassword(data.password)) {
       controller.wallet.deleteWallet(data.password);
 
-      history.push('/app.html');
+      navigate('/app.html');
     }
   };
 
@@ -122,7 +122,7 @@ const DeleteWalletView = () => {
           <div className="absolute bottom-12 flex justify-between gap-x-4">
             <SecondaryButton
               type="button"
-              onClick={() => history.push('/home')}
+              onClick={() => navigate('/home')}
               action
             >
               Cancel

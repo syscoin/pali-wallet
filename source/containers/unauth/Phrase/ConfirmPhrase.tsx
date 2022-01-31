@@ -2,7 +2,7 @@ import React, {
   useState,
   // useMemo
 } from 'react';
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useController } from 'hooks/index';
 import shuffle from 'lodash/shuffle';
 import { Button, Modal, PrimaryButton } from 'components/index';
@@ -11,7 +11,7 @@ import { Layout } from '../../common/Layout';
 // import isEqual from 'lodash/isEqual';
 
 export const ConfirmPhrase = () => {
-  const history = useHistory();
+  const navigate = useNavigate();
   const controller = useController();
   const phrases = controller.wallet.generatePhrase();
 
@@ -44,7 +44,7 @@ export const ConfirmPhrase = () => {
   const handleConfirm = () => {
     controller.wallet.createWallet();
 
-    history.push('/app.html');
+    navigate('/app.html');
 
     setPassed(true);
   };

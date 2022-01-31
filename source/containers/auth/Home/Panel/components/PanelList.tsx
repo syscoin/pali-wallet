@@ -16,7 +16,7 @@ export const PanelList: FC<IPanelList> = ({
 }) => {
   const { formatDistanceDate, ellipsis, formatCurrency } = useFormat();
 
-  const { history } = useUtils();
+  const { navigate } = useUtils();
 
   const isShowedGroupBar = useCallback(
     (tx: Transaction, idx: number) =>
@@ -92,11 +92,13 @@ export const PanelList: FC<IPanelList> = ({
                       <IconButton
                         className="w-1"
                         onClick={() =>
-                          history.push('/home-tx-details', {
-                            tx,
-                            type: getTxType(tx),
-                            assetGuid: null,
-                            assetType: null,
+                          navigate('/home-tx-details/', {
+                            state: {
+                              tx,
+                              type: getTxType(tx),
+                              assetGuid: null,
+                              assetType: null,
+                            },
                           })
                         }
                       >
@@ -133,11 +135,13 @@ export const PanelList: FC<IPanelList> = ({
 
                   <IconButton
                     onClick={() =>
-                      history.push('/home-tx-details', {
-                        tx: null,
-                        type: null,
-                        assetGuid: asset.assetGuid,
-                        assetType: asset.type,
+                      navigate('/home-tx-details', {
+                        state: {
+                          tx: null,
+                          type: null,
+                          assetGuid: asset.assetGuid,
+                          assetType: asset.type,
+                        },
                       })
                     }
                   >
