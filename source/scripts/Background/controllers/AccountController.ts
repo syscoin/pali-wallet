@@ -159,7 +159,7 @@ const AccountController = (actions: {
     );
   };
 
-  const getTransaction = (txid: any) =>
+  const getTransaction = (txid): Promise<Transaction> =>
     sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
 
   const getAsset = async (
@@ -376,6 +376,7 @@ const AccountController = (actions: {
   };
 
   // ? unsuggestive name
+  // ? currentAccount could be currentAccountId
   const watchMemPool = (currentAccount: IAccountState | undefined) => {
     if (intervalId) return true;
 
