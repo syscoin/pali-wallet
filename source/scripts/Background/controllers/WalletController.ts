@@ -22,7 +22,6 @@ import AccountController from './AccountController';
 const sys = require('syscoinjs-lib');
 
 const WalletController = (): IWalletController => {
-  // eslint-disable-next-line no-shadow
   let password: any = '';
   let encriptedPassword: any = '';
   let mnemonic = '';

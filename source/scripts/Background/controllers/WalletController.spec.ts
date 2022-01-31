@@ -22,6 +22,7 @@ describe('WalletController.ts tests', () => {
   } = WalletController();
 
   it('should delete walconst and check if walconst state back to initial state', () => {
+    // eslint-disable-next-line no-shadow
     const password: any = FAKE_PASSWORD;
 
     setWalletPassword(password);
