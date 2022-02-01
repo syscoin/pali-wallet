@@ -1067,16 +1067,18 @@ const AccountController = (actions: {
     };
   };
 
-  const confirmMintSPT = async (item: any) => {
+  // ? return could be just the txid
+  const confirmMintSPT = async (
+    item: MintAsset
+  ): Promise<{ txid: string } | undefined> => {
     const { fee, assetGuid, amount } = item;
 
     const feeRate = new sys.utils.BN(fee * 1e8);
     const txOpts = { rbf: true };
 
-    let txInfo;
-
-    if (!getConnectedAccount().isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(getConnectedAccount().id);
+    const connectedAccount = getConnectedAccount();
+    if (!connectedAccount.isTrezorWallet) {
+      sysjs.Signer.setAccountIndex(connectedAccount.id);
     }
 
     const { decimals } = await getAsset(assetGuid);
@@ -1086,7 +1088,7 @@ const AccountController = (actions: {
       [
         assetGuid,
         {
-          changeAddress: getConnectedAccount().isTrezorWallet
+          changeAddress: connectedAccount.isTrezorWallet
             ? await getNewChangeAddress(true)
             : await sysjs.Signer.getNewChangeAddress(true),
           outputs: [
@@ -1099,7 +1101,8 @@ const AccountController = (actions: {
       ],
     ]);
 
-    if (getConnectedAccount().isTrezorWallet) {
+    let txid: string;
+    if (connectedAccount.isTrezorWallet) {
       const txData = await sysjs.assetSend(
         txOpts,
         assetMap,
@@ -1110,7 +1113,6 @@ const AccountController = (actions: {
 
       if (!txData) {
         console.log('Could not create transaction, not enough funds?');
-
         return;
       }
 
@@ -1119,18 +1121,15 @@ const AccountController = (actions: {
       try {
         sysjs
           .signAndSend(txData.psbt, txData.assets, TrezorSigner)
-          .then((signTxInfo: string) => {
-            updateTransactionData(signTxInfo);
-
-            watchMemPool(getConnectedAccount());
-
-            return { txid: signTxInfo };
+          .then((signedTxid: string) => {
+            updateTransactionData(signedTxid);
+            watchMemPool(connectedAccount);
+            return { txid: signedTxid };
           });
 
         return;
       } catch (error) {
         console.log(`error processing tx: ${error}`);
-
         return;
       }
     } else {
@@ -1143,18 +1142,15 @@ const AccountController = (actions: {
 
       if (!pendingTx) {
         console.log('Could not create transaction, not enough funds?');
-
         return;
       }
 
-      txInfo = pendingTx.extractTransaction().getId();
+      txid = pendingTx.extractTransaction().getId();
     }
 
-    updateTransactionData(txInfo);
-
-    watchMemPool(getConnectedAccount());
-
-    return { txid: txInfo };
+    updateTransactionData(txid);
+    watchMemPool(connectedAccount);
+    return { txid };
   };
 
   const createParentAsset = async (assetOpts: any, fee: number) => {
