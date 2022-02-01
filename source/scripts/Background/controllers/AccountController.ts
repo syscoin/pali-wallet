@@ -1154,12 +1154,17 @@ const AccountController = (actions: {
     return { txid };
   };
 
-  const createParentAsset = async (assetOpts: any, fee: number) => {
+  // private
+  const createParentAsset = async (
+    assetOpts: any,
+    fee: number
+  ): Promise<{ assetGuid: string; txid: string } | undefined> => {
     const txOpts: any = { rbf: true };
     const feeRate = new sys.utils.BN(fee * 1e8);
 
-    if (!getConnectedAccount().isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(getConnectedAccount().id);
+    const connectedAccount = getConnectedAccount();
+    if (!connectedAccount.isTrezorWallet) {
+      sysjs.Signer.setAccountIndex(connectedAccount.id);
     }
 
     const assetChangeAddress = await sysjs.Signer.getNewChangeAddress(true);
@@ -1174,16 +1179,15 @@ const AccountController = (actions: {
 
     if (!psbt) {
       console.log('Could not create transaction, not enough funds?');
-
       return;
     }
 
     const assets = syscointx.getAssetsFromTx(psbt.extractTransaction());
-    const txInfo = psbt.extractTransaction().getId();
+    const txid = psbt.extractTransaction().getId();
 
     return {
-      asset_guid: assets.keys().next().value,
-      txid: txInfo,
+      assetGuid: assets.keys().next().value,
+      txid,
     };
   };
 
@@ -1193,16 +1197,16 @@ const AccountController = (actions: {
    * WARNING: It might take a few minutes to execute it be carefull
    * when using it
    */
-
-  const confirmCreateNFT = async (item: any) => {
+  const confirmCreateNFT = async (
+    item: any
+  ): Promise<{ txid: string } | undefined> => {
     const { fee, symbol, description, issuer, precision } = item;
 
-    if (getConnectedAccount().isTrezorWallet) {
+    const connectedAccount = getConnectedAccount();
+    if (connectedAccount.isTrezorWallet) {
       throw new Error('trezor does not support nft creation');
-    }
-
-    if (!getConnectedAccount().isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(getConnectedAccount().id);
+    } else {
+      sysjs.Signer.setAccountIndex(connectedAccount.id);
     }
 
     const assetOpts = {
@@ -1212,132 +1216,121 @@ const AccountController = (actions: {
       description,
     };
 
-    const newParentAsset = await createParentAsset(assetOpts, fee);
+    const parentAsset = await createParentAsset(assetOpts, fee);
+    console.log('current parent asset', parentAsset);
 
-    console.log('current parent asset', newParentAsset);
+    if (!parentAsset?.assetGuid) return;
 
-    if (newParentAsset?.asset_guid) {
-      let theNFTTx: any = null;
-      let parentConfirmed = false;
-      let txInfo: any = null;
+    try {
+      return await new Promise((resolve) => {
+        const interval = setInterval(async () => {
+          let isParentConfirmed = false;
+          let txid: string | undefined;
 
-      try {
-        return await new Promise((resolve) => {
-          const interval = setInterval(async () => {
-            const newParentTx = await getTransaction(newParentAsset.txid);
-            const feeRate = new sys.utils.BN(fee * 1e8);
-            const txOpts = { rbf: true };
+          const newParentTx = await getTransaction(parentAsset.txid);
+          let feeRate = new sys.utils.BN(fee * 1e8);
+          let txOpts = { rbf: true };
 
-            if (newParentTx.confirmations >= 1 && !parentConfirmed) {
-              parentConfirmed = true;
+          if (newParentTx.confirmations >= 1 && !isParentConfirmed) {
+            isParentConfirmed = true;
 
-              console.log('confirmations parent tx > 1', newParentAsset);
+            console.log('confirmations parent tx > 1', parentAsset);
 
-              const assetMap = new Map([
-                [
-                  newParentAsset?.asset_guid,
-                  {
-                    changeAddress: null,
-                    outputs: [
-                      {
-                        value: new sys.utils.BN(1 * 10 ** precision),
-                        address: issuer,
-                      },
-                    ],
-                  },
-                ],
-              ]);
+            const assetMap = new Map([
+              [
+                parentAsset?.assetGuid,
+                {
+                  changeAddress: null,
+                  outputs: [
+                    {
+                      value: new sys.utils.BN(1 * 10 ** precision),
+                      address: issuer,
+                    },
+                  ],
+                },
+              ],
+            ]);
 
-              try {
-                const pendingTx = await sysjs.assetSend(
-                  txOpts,
-                  assetMap,
-                  null,
-                  feeRate
-                );
+            try {
+              const pendingTx = await sysjs.assetSend(
+                txOpts,
+                assetMap,
+                null,
+                feeRate
+              );
 
-                if (!pendingTx) {
-                  console.log(
-                    'Could not create transaction, not enough funds?'
-                  );
-
-                  return;
-                }
-
-                txInfo = pendingTx.extractTransaction().getId();
-
-                updateTransactionData(txInfo);
-
-                theNFTTx = txInfo;
-              } catch (error) {
-                parentConfirmed = false;
-
-                return error;
-              }
-
-              return;
-            }
-
-            if (theNFTTx && txInfo) {
-              try {
-                theNFTTx = await getTransaction(txInfo);
-              } catch (error) {
-                console.log(
-                  'Transaction still not indexed by explorer:',
-                  error
-                );
-
+              if (!pendingTx) {
+                console.log('Could not create transaction, not enough funds?');
                 return;
               }
 
-              if (theNFTTx.confirmations > 1) {
-                const newFeeRateForNFT = new sys.utils.BN(10);
-                const newTxOptsForNFT = { rbf: true };
-                const assetGuid = newParentAsset?.asset_guid;
-                const newAssetOptsForNFT = { updatecapabilityflags: '0' };
+              txid = pendingTx.extractTransaction().getId();
 
-                const assetMap = new Map([
-                  [
-                    assetGuid,
-                    {
-                      changeAddress: null,
-                      outputs: [
-                        {
-                          value: new sys.utils.BN(0),
-                          address: issuer,
-                        },
-                      ],
-                    },
-                  ],
-                ]);
-
-                const psbt = await sysjs.assetUpdate(
-                  assetGuid,
-                  newAssetOptsForNFT,
-                  newTxOptsForNFT,
-                  assetMap,
-                  issuer,
-                  newFeeRateForNFT
-                );
-
-                console.log('after update psbt', psbt);
-
-                if (!psbt) {
-                  console.log(
-                    'Could not create transaction, not enough funds?'
-                  );
-                }
-
-                clearInterval(interval);
-
-                resolve({ txid: psbt.extractTransaction().getId() });
-              }
+              updateTransactionData(txid);
+            } catch (error) {
+              isParentConfirmed = false;
+              return error;
             }
-          }, 16000);
-        });
-      } catch (error) {
-        console.log('error sending child nft to creator', error);
-      }
+
+            return;
+          }
+
+          // ? this if always returns since txid is never assigned
+          if (!txid) return;
+
+          let nftTx: Transaction;
+          try {
+            nftTx = await getTransaction(txid);
+          } catch (error) {
+            console.log('Transaction still not indexed by explorer:', error);
+            return;
+          }
+
+          if (!(nftTx.confirmations > 1)) return;
+
+          feeRate = new sys.utils.BN(10);
+          txOpts = { rbf: true };
+          const assetGuid = parentAsset?.assetGuid;
+          const assetOpt = { updatecapabilityflags: '0' };
+
+          const assetMap = new Map([
+            [
+              assetGuid,
+              {
+                changeAddress: null,
+                outputs: [
+                  {
+                    value: new sys.utils.BN(0),
+                    address: issuer,
+                  },
+                ],
+              },
+            ],
+          ]);
+
+          const psbt = await sysjs.assetUpdate(
+            assetGuid,
+            assetOpt,
+            txOpts,
+            assetMap,
+            issuer,
+            feeRate
+          );
+
+          console.log('after update psbt', psbt);
+
+          if (!psbt) {
+            console.log('Could not create transaction, not enough funds?');
+            // ? missing return
+          }
+
+          clearInterval(interval);
+
+          resolve({ txid: psbt.extractTransaction().getId() });
+        }, 16000);
+      });
+    } catch (error) {
+      console.log('error sending child nft to creator', error);
     }
   };
 
