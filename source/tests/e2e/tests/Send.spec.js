@@ -81,4 +81,19 @@ describe('Send screen tests', async () => {
 
     //It's not ready yet, still need to check if it's disabled when using a Syscoin Network
   });
+
+  it('should return an amount error', async () => {
+    await uiWebDriver.clickElement('#send-btn');
+    await uiWebDriver.fill('#receiver-input', 'gegeggegeege');
+    await uiWebDriver.clickElement('#verify-address-switch');
+    await uiWebDriver.fill('#amount-input', '0,0000001');
+    await uiWebDriver.clickElement('#next-btn');
+    await uiWebDriver.clickElement('#confirm-btn');
+    const checkModalError = await uiWebDriver.findElement(By.id('modal-alert'));
+
+    assert.ok(
+      typeof checkModalError === 'object',
+      '<!> Cannot find modal error <!>'
+    );
+  });
 });

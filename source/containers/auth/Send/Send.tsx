@@ -325,7 +325,8 @@ export const Send: FC<ISend> = () => {
           ]}
         >
           <Input
-            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-sm amount-input"
+            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-sm"
+            id="amount-input"
             type="number"
             placeholder="Amount"
           />

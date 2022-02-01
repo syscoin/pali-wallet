@@ -183,6 +183,7 @@ export const SendConfirm = () => {
               loading={loading}
               onClick={handleConfirm}
               type="button"
+              id="confirm-btn"
             >
               Confirm
             </SecondaryButton>

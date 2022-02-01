@@ -26,6 +26,7 @@ export const ToastAlert: FC<IAlertTemplate> = ({ message, options, close }) => {
               ? 'bg-warning-success border border-warning-success'
               : otherClasses
           } rounded-l-lg h-full flex justify-center items-center w-1/4`}
+          id="modal-alert"
         >
           {options.type === 'success' && (
             <Icon
