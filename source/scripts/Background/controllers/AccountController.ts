@@ -1334,8 +1334,8 @@ const AccountController = (actions: {
     }
   };
 
-  const confirmMintNFT = async (item: any) => {
-    const { fee, amount, assetGuid }: any = item;
+  const confirmMintNFT = async (item: MintAsset) => {
+    const { fee, amount, assetGuid } = item;
 
     const { decimals } = await getAsset(assetGuid);
     const feeRate = new sys.utils.BN(fee * 1e8);
@@ -1357,8 +1357,9 @@ const AccountController = (actions: {
     ]);
 
     try {
-      if (!getConnectedAccount().isTrezorWallet) {
-        sysjs.Signer.setAccountIndex(getConnectedAccount().id);
+      const connectedAccount = getConnectedAccount();
+      if (!connectedAccount.isTrezorWallet) {
+        sysjs.Signer.setAccountIndex(connectedAccount.id);
       }
 
       const pendingTx = await sysjs.assetSend(
@@ -1370,13 +1371,12 @@ const AccountController = (actions: {
 
       if (!pendingTx) {
         console.log('Could not create transaction, not enough funds?');
+        // ? missing return
       }
 
-      const txInfo = pendingTx.extractTransaction().getId();
-
-      updateTransactionData(txInfo);
-
-      return { txid: txInfo };
+      const txid = pendingTx.extractTransaction().getId();
+      updateTransactionData(txid);
+      return { txid };
     } catch (error) {
       return error;
     }
