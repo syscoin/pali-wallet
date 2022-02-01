@@ -28,6 +28,7 @@ export const Start = () => {
         name="basic"
         onFinish={onSubmit}
         autoComplete="off"
+        id="login"
       >
         <Form.Item
           name="password"
