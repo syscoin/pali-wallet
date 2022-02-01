@@ -1382,6 +1382,7 @@ const AccountController = (actions: {
     }
   };
 
+  // private
   const estimateSysTxFee = async (items: any) => {
     const { outputsArray, changeAddress, feeRateBN } = items;
 
@@ -1414,10 +1415,10 @@ const AccountController = (actions: {
     return txFee;
   };
 
-  const confirmSendAssetTransaction = async (items: SendAsset) => {
-    const { toAddress, amount, fee, token, isToken, rbf } = items;
-
-    const feeRateBN = new sys.utils.BN(fee * 1e8);
+  const confirmSendAssetTransaction = async (
+    item: SendAsset
+  ): Promise<void> => {
+    const { toAddress, amount, fee, token, isToken, rbf } = item;
 
     store.dispatch(
       setTemporaryTransactionState({
@@ -1426,10 +1427,12 @@ const AccountController = (actions: {
       })
     );
 
+    const feeRateBN = new sys.utils.BN(fee * 1e8);
+
     if (isToken && token) {
-      let txInfo;
       const { decimals } = await getAsset(token);
       const txOpts = { rbf };
+
       const value = new sys.utils.BN(amount * 10 ** decimals);
       const valueDecimals = countDecimals(amount);
       if (valueDecimals > decimals) {
@@ -1457,6 +1460,7 @@ const AccountController = (actions: {
 
       const assetMap = new Map(map);
 
+      let txid: string;
       if (globalAccount?.isTrezorWallet) {
         const txData = await sysjs.assetAllocationSend(
           txOpts,
@@ -1468,6 +1472,7 @@ const AccountController = (actions: {
 
         if (!txData) {
           console.log('Could not create transaction, not enough funds?');
+          // ? missing return
         }
 
         if (!TrezorSigner) setTrezorSigner();
@@ -1484,7 +1489,9 @@ const AccountController = (actions: {
               watchMemPool(confirmingAccount);
             });
 
-          updateTransactionData(txInfo);
+          // ? will always call this with txid === null
+          // updateTransactionData(txid);
+          updateTransactionData(null);
 
           clearTemporaryTransaction('sendAsset');
 
@@ -1500,10 +1507,10 @@ const AccountController = (actions: {
           feeRateBN
         );
 
-        txInfo = pendingTx.extractTransaction().getId();
+        txid = pendingTx.extractTransaction().getId();
       }
 
-      updateTransactionData(txInfo);
+      updateTransactionData(txid);
     } else {
       const backendAccount = await sys.utils.fetchBackendAccount(
         sysjs.blockbookURL,
@@ -1522,8 +1529,6 @@ const AccountController = (actions: {
 
       const txOpts = { rbf: false };
 
-      let txInfo;
-
       const txFee = await estimateSysTxFee({
         outputsArray,
         changeAddress: await sysjs.Signer.getNewChangeAddress(true),
@@ -1539,6 +1544,7 @@ const AccountController = (actions: {
         ];
       }
 
+      let txid: string;
       if (globalAccount?.isTrezorWallet) {
         const txData = await sysjs.createTransaction(
           txOpts,
@@ -1569,7 +1575,9 @@ const AccountController = (actions: {
               watchMemPool(currentAccount);
             });
 
-          updateTransactionData(txInfo);
+          // ? will always call this with txid === null
+          // updateTransactionData(txid);
+          updateTransactionData(null);
 
           clearTemporaryTransaction('sendAsset');
 
@@ -1587,22 +1595,21 @@ const AccountController = (actions: {
             feeRateBN
           );
 
-          txInfo = pendingTx.extractTransaction().getId();
+          txid = pendingTx.extractTransaction().getId();
         } catch (error) {
           throw new Error(String(error));
         }
       }
 
-      updateTransactionData(txInfo);
+      updateTransactionData(txid);
     }
 
-    const transactionItem =
+    const isSendAsset =
       store.getState().wallet.temporaryTransactionState.type === 'sendAsset';
-
-    const acc = transactionItem ? globalAccount : getConnectedAccount();
 
     clearTemporaryTransaction('sendAsset');
 
+    const acc = isSendAsset ? globalAccount : getConnectedAccount();
     watchMemPool(acc);
   };
 
