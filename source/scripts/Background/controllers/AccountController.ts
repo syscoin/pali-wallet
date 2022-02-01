@@ -384,6 +384,7 @@ const AccountController = (actions: {
 
   // ? 'fromConnectionsController' seems to be always true
   // name could be better
+  // Trezor only
   const getNewChangeAddress = async (fromConnectionsController = true) => {
     const account = fromConnectionsController
       ? getConnectedAccount()
@@ -452,6 +453,7 @@ const AccountController = (actions: {
     return connectedAccount.isTrezorWallet ? backendAccount : paliAccount;
   };
 
+  // this function is really useful but it not being used where it could
   const getChangeAddress = async () => {
     const connectedAccount: IAccountState = getConnectedAccount();
 
@@ -1034,13 +1036,11 @@ const AccountController = (actions: {
                 const txid = pendingAssetSend.extractTransaction().getId();
 
                 updateTransactionData(txid);
-
-                watchMemPool(getConnectedAccount());
-
+                watchMemPool(connectedAccount);
                 clearInterval(interval);
 
                 resolve({
-                  transaction,
+                  sptCreated: transaction,
                   txid,
                   txConfirmations: transaction.confirmations,
                   txAssetGuid: createdAssetGuid,
