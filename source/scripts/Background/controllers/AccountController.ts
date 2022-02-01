@@ -14,6 +14,7 @@ import {
   SendAsset,
   TemporaryTransaction,
   Transaction,
+  TransferAsset,
 } from 'types/transactions';
 import { IAccountController } from 'types/controllers';
 import {
@@ -1745,24 +1746,22 @@ const AccountController = (actions: {
     return { txid };
   };
 
-  const confirmAssetTransfer = async (item: any) => {
+  const confirmAssetTransfer = async (item: TransferAsset) => {
     const { fee, assetGuid, newOwner } = item;
+    const connectedAccount = getConnectedAccount();
 
-    if (!getConnectedAccount().isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(getConnectedAccount().id);
+    if (!connectedAccount.isTrezorWallet) {
+      sysjs.Signer.setAccountIndex(connectedAccount.id);
     }
 
     const feeRate = new sys.utils.BN(fee * 1e8);
     const txOpts = { rbf: true };
-    const assetOpts = {};
-
-    let txInfo = null;
 
     const assetMap = new Map([
       [
         assetGuid,
         {
-          changeAddress: getConnectedAccount().isTrezorWallet
+          changeAddress: connectedAccount.isTrezorWallet
             ? await getNewChangeAddress(true)
             : await sysjs.Signer.getNewChangeAddress(true),
           outputs: [
@@ -1775,10 +1774,11 @@ const AccountController = (actions: {
       ],
     ]);
 
-    if (getConnectedAccount().isTrezorWallet) {
+    let txid: string;
+    if (connectedAccount.isTrezorWallet) {
       const txData = await sysjs.assetUpdate(
         assetGuid,
-        assetOpts,
+        {},
         txOpts,
         assetMap,
         await getNewChangeAddress(true),
@@ -1787,21 +1787,23 @@ const AccountController = (actions: {
 
       if (!txData) {
         console.log('Could not create transaction, not enough funds?');
+        // ? missing return
       }
 
       if (!TrezorSigner) setTrezorSigner();
 
       try {
         // TODO: test might have same problem as them mintSPT
-        txInfo = await sysjs.signAndSend(
+        // ? it seems like 'extractTransaction().getId()' is missing
+        txid = await sysjs.signAndSend(
           txData.psbt,
           txData.assets,
           TrezorSigner
         );
 
-        updateTransactionData(txInfo);
-
-        watchMemPool(getConnectedAccount());
+        updateTransactionData(txid);
+        watchMemPool(connectedAccount);
+        // ? return txid?
       } catch (e) {
         console.log(`Error processing tx: ${e}`);
         return;
@@ -1811,7 +1813,7 @@ const AccountController = (actions: {
 
     const pendingTx = await sysjs.assetUpdate(
       assetGuid,
-      assetOpts,
+      {},
       txOpts,
       assetMap,
       null,
@@ -1820,15 +1822,14 @@ const AccountController = (actions: {
 
     if (!pendingTx) {
       console.log('Could not create transaction, not enough funds?');
+      // ? missing return?
     }
 
-    txInfo = pendingTx.extractTransaction().getId();
+    txid = pendingTx.extractTransaction().getId();
 
-    updateTransactionData(txInfo);
-
-    watchMemPool(getConnectedAccount());
-
-    return { txid: txInfo };
+    updateTransactionData(txid);
+    watchMemPool(connectedAccount);
+    return { txid };
   };
 
   return {
