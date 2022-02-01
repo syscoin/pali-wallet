@@ -96,6 +96,11 @@ const AccountController = (actions: {
   };
   //* end
 
+  const setTrezorSigner = () => {
+    TrezorSigner = new sys.utils.TrezorSigner();
+    new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
+  };
+
   const setHDSigner = (accountId: number) => {
     if (!globalAccount?.isTrezorWallet) {
       sysjs.Signer.setAccountIndex(accountId);
@@ -663,11 +668,7 @@ const AccountController = (actions: {
     try {
       const response = sys.utils.importPsbtFromJson(jsonData);
 
-      if (!TrezorSigner) {
-        TrezorSigner = new sys.utils.TrezorSigner();
-
-        new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
-      }
+      if (!TrezorSigner) setTrezorSigner();
 
       const { isTrezorWallet } = getConnectedAccount();
 
@@ -1113,11 +1114,7 @@ const AccountController = (actions: {
         return;
       }
 
-      if (TrezorSigner === null || TrezorSigner === undefined) {
-        TrezorSigner = new sys.utils.TrezorSigner();
-
-        new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
-      }
+      if (!TrezorSigner) setTrezorSigner();
 
       try {
         sysjs
@@ -1482,10 +1479,9 @@ const AccountController = (actions: {
         if (!txData) {
           console.log('Could not create transaction, not enough funds?');
         }
-        if (TrezorSigner === null || TrezorSigner === undefined) {
-          TrezorSigner = new sys.utils.TrezorSigner();
-          new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
-        }
+
+        if (!TrezorSigner) setTrezorSigner();
+
         try {
           sysjs
             .signAndSend(txData.psbt, txData.assets, TrezorSigner)
@@ -1566,10 +1562,7 @@ const AccountController = (actions: {
           console.log('Could not create transaction, not enough funds?');
         }
 
-        if (TrezorSigner === null || TrezorSigner === undefined) {
-          TrezorSigner = new sys.utils.TrezorSigner();
-          new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
-        }
+        if (!TrezorSigner) setTrezorSigner();
 
         try {
           sysjs
@@ -1803,10 +1796,9 @@ const AccountController = (actions: {
       if (!txData) {
         console.log('Could not create transaction, not enough funds?');
       }
-      if (TrezorSigner === null || TrezorSigner === undefined) {
-        TrezorSigner = new sys.utils.TrezorSigner();
-        new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
-      }
+
+      if (!TrezorSigner) setTrezorSigner();
+
       try {
         // TODO: test might have same problem as them mintSPT
         txInfo = await sysjs.signAndSend(
