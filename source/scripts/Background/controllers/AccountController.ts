@@ -1627,7 +1627,10 @@ const AccountController = (actions: {
       }
     });
 
-  const confirmUpdateAsset = async (item: any) => {
+  // 'item' is close to 'UpdateAsset' type
+  const confirmUpdateAsset = async (
+    item: any
+  ): Promise<{ txid: string } | undefined> => {
     const {
       fee,
       assetGuid,
@@ -1641,7 +1644,7 @@ const AccountController = (actions: {
       payoutAddress,
     } = item;
 
-    let txOpts: any = { rbf: true };
+    const txOpts: any = { rbf: true };
 
     let assetOpts: any = {
       updatecapabilityflags: capabilityflags ? String(capabilityflags) : '127',
@@ -1649,10 +1652,7 @@ const AccountController = (actions: {
     };
 
     if (assetWhiteList) {
-      txOpts = {
-        ...txOpts,
-        assetWhiteList,
-      };
+      txOpts.assetWhiteList = assetWhiteList;
     }
 
     if (notarydetails) {
@@ -1665,10 +1665,7 @@ const AccountController = (actions: {
     }
 
     if (contract) {
-      assetOpts = {
-        ...assetOpts,
-        contract: Buffer.from(contract, 'hex'),
-      };
+      assetOpts.contract = Buffer.from(contract, 'hex');
     }
 
     if (auxfeedetails) {
@@ -1682,13 +1679,13 @@ const AccountController = (actions: {
       assetOpts = {
         ...assetOpts,
         auxfeedetails: {
+          auxfeekeyid,
           auxfees: [
             {
               bound: new sys.utils.BN(0),
               percent: 1 * scalarPct,
             },
           ],
-          auxfeekeyid,
         },
       };
     }
@@ -1699,15 +1696,15 @@ const AccountController = (actions: {
         network: sysjs.Signer.Signer.network,
       });
 
-      assetOpts = {
-        ...assetOpts,
-        notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex'),
-      };
+      assetOpts.notarykeyid = Buffer.from(
+        vNotaryPayment.hash.toString('hex'),
+        'hex'
+      );
     }
 
     console.log('asset opts update asset', assetOpts, assetGuid);
 
-    const thisAssetMap = new Map([
+    const assetMap = new Map([
       [
         assetGuid,
         {
@@ -1722,32 +1719,30 @@ const AccountController = (actions: {
       ],
     ]);
 
-    if (!getConnectedAccount().isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(getConnectedAccount().id);
+    const connectedAccount = getConnectedAccount();
+    if (!connectedAccount.isTrezorWallet) {
+      sysjs.Signer.setAccountIndex(connectedAccount.id);
     }
 
     const pendingTx = await sysjs.assetUpdate(
       assetGuid,
       assetOpts,
       txOpts,
-      thisAssetMap,
+      assetMap,
       null,
       new sys.utils.BN(fee * 1e8)
     );
 
-    const txInfo = pendingTx.extractTransaction().getId();
+    const txid = pendingTx.extractTransaction().getId();
 
-    if (!pendingTx || !txInfo) {
+    if (!txid) {
       console.log('Could not create transaction, not enough funds?');
-
       return;
     }
 
-    updateTransactionData(txInfo);
-
-    watchMemPool(getConnectedAccount());
-
-    return { txid: txInfo };
+    updateTransactionData(txid);
+    watchMemPool(connectedAccount);
+    return { txid };
   };
 
   const confirmAssetTransfer = async (item: any) => {
