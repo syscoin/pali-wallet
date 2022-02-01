@@ -10,6 +10,7 @@ import CryptoJS from 'crypto-js';
 import {
   Assets,
   IAccountInfo,
+  MintAsset,
   SendAsset,
   TemporaryTransaction,
   Transaction,
