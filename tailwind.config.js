@@ -15,7 +15,6 @@ module.exports = {
       },
       top: {
         '3rem': '4rem',
-        '5px': '5px',
       },
       right: {
         '5percent': '5%',
