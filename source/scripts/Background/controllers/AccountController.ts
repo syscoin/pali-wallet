@@ -977,7 +977,6 @@ const AccountController = (actions: {
 
     updateTransactionData(newTxId);
 
-    const transaction = await getTransaction(newTxId);
     const assets = syscointx.getAssetsFromTx(newTx);
     const createdAssetGuid = assets.keys().next().value;
 
@@ -985,7 +984,9 @@ const AccountController = (actions: {
       try {
         return await new Promise((resolve: any, reject: any) => {
           const interval = setInterval(async () => {
-            if (transaction.confirmations > 1) {
+            const updatedTransaction = await getTransaction(newTxId);
+
+            if (updatedTransaction.confirmations > 1) {
               console.log('confirmations > 1', createdAssetGuid);
 
               const changeAddress = await sysjs.Signer.getNewChangeAddress(
@@ -1032,9 +1033,9 @@ const AccountController = (actions: {
                 clearInterval(interval);
 
                 resolve({
-                  sptCreated: transaction,
+                  sptCreated: updatedTransaction,
                   txid,
-                  txConfirmations: transaction.confirmations,
+                  txConfirmations: updatedTransaction.confirmations,
                   txAssetGuid: createdAssetGuid,
                 });
               } catch (error) {
@@ -1050,6 +1051,8 @@ const AccountController = (actions: {
         throw new Error(error);
       }
     }
+
+    const transaction = await getTransaction(newTxId);
 
     // ? why return transaction, transaction.confirmations and its id?
     // return could be { transaction, assetGuid }
