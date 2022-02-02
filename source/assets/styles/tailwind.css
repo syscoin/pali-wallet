@@ -79,11 +79,9 @@ input[type="number"]::-webkit-inner-spin-button {
   @apply absolute right-4 top-0;
 }
 
-#login .ant-form-item-children-icon {
-  @apply absolute right-9 text-bkg-4 top-0.5;
-}
-
-#delete .ant-form-item-children-icon {
+#login .ant-form-item-children-icon,
+#delete .ant-form-item-children-icon,
+#newaccount .ant-form-item-children-icon {
   @apply absolute right-9 text-bkg-4 top-0.5;
 }
 
