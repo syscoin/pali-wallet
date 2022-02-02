@@ -44,6 +44,7 @@ const DeleteWalletView = () => {
           className="flex justify-center items-center flex-col text-center w-full max-w-xs gap-6"
           name="delete"
           autoComplete="off"
+          id="delete"
         >
           <Form.Item
             name="password"

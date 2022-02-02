@@ -7,6 +7,7 @@ export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
   <Layout title="Password" onlySection>
     <Form
       name="basic"
+      id="newaccount"
       labelCol={{ span: 8 }}
       wrapperCol={{ span: 8 }}
       initialValues={{ remember: true }}
