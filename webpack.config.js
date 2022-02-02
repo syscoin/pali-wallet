@@ -230,12 +230,12 @@ module.exports = {
   ],
 
   optimization: {
-    minimize: false,
     minimizer: [
       new TerserPlugin({
+        cache: true,
         parallel: true,
         terserOptions: {
-          format: {
+          output: {
             comments: false,
           },
         },

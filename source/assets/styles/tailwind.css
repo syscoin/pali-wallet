@@ -20,7 +20,8 @@ input[type='number'] {
 }
 
 .remove-scrollbar {
-  -ms-overflow-style: none; /* IE and Edge /
+  -ms-overflow-style: none;
+  /* IE and Edge /
   scrollbar-width: none; / Firefox */
 }
 
@@ -29,6 +30,15 @@ input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
+
+.ant-form-item-control-input-content>textarea {
+  @apply w-full rounded-lg p-2 pl-4 border text-brand-graylight text-sm focus: border-fields-input-borderfocus resize-none outline-none h-20;
+}
+
+.ant-input-affix-wrapper.ant-input-password>input {
+  @apply w-full rounded-full p-2 pl-4 bg-fields-input-primary border border-fields-input-border text-brand-graylight text-sm focus: border-fields-input-borderfocus;
+}
+
 
 .scrollbar-styled::-webkit-scrollbar {
   @apply w-1;
@@ -55,12 +65,12 @@ input[type='number']::-webkit-inner-spin-button {
   @apply w-full;
 }
 
-.ant-form-item-control-input-content > textarea {
-  @apply w-full rounded-lg p-2 pl-4 border text-brand-graylight text-sm focus:border-fields-input-borderfocus resize-none outline-none h-20;
+.ant-form-item-control-input-content>textarea {
+  @apply w-full rounded-lg p-2 pl-4 border text-brand-graylight text-sm resize-none outline-none h-20;
 }
 
-.ant-input-affix-wrapper.ant-input-password > input {
-  @apply w-full rounded-full p-2 pl-4 bg-fields-input-primary border border-fields-input-border text-brand-graylight text-sm focus:border-fields-input-borderfocus;
+.ant-input-affix-wrapper.ant-input-password>input {
+  @apply w-full rounded-full p-2 pl-4 bg-fields-input-primary border border-fields-input-border text-brand-graylight text-sm;
 }
 
 .ant-input-suffix {
@@ -77,6 +87,10 @@ input[type='number']::-webkit-inner-spin-button {
 
 #rpc .ant-form-item-children-icon {
   @apply absolute right-2 top-2;
+}
+
+#autolock .ant-form-item-children-icon {
+  @apply absolute right-1 top-0.5;
 }
 
 .ant-form-item-explain.ant-form-item-explain-error {

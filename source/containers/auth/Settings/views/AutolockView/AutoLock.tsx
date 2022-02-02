@@ -41,6 +41,7 @@ const AutolockView = () => {
       <Form
         className="flex justify-center items-center flex-col gap-8 text-center"
         name="autolock"
+        id="autolock"
         onFinish={onSubmit}
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 16 }}

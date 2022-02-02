@@ -19,6 +19,7 @@ type ICommonButton = {
   loading?: boolean;
   onClick?: any;
   type: 'button' | 'submit' | 'reset' | undefined;
+  useDefaultWidth?: boolean;
   width?: string;
 };
 
@@ -30,9 +31,10 @@ export const Button = ({
   onClick,
   className = '',
   width = '36',
+  useDefaultWidth = true,
 }: ICommonButton): any => (
   <button
-    className={`${className} w-${width}`}
+    className={`${className} ${useDefaultWidth && `w-${width}`}`}
     disabled={disabled || loading}
     onClick={onClick}
     type={type}
@@ -110,7 +112,7 @@ export const SecondaryButton: FC<IPrimaryButton> = ({
   return (
     <button
       className={`
-      flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal text-sm leading-4 w-36
+      flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal text-sm leading-4 w-36 h-10
       ${disabled || loading ? disabledStyle : actionStyle}`}
       disabled={disabled || loading}
       onClick={onClick}
