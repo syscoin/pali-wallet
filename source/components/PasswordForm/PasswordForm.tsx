@@ -12,7 +12,7 @@ export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
       initialValues={{ remember: true }}
       onFinish={onSubmit}
       autoComplete="off"
-      className="flex justify-center items-center flex-col gap-4 text-center w-full max-w-xs"
+      className="password flex flex-col gap-4 items-center justify-center w-full max-w-xs text-center"
     >
       <Form.Item
         name="password"

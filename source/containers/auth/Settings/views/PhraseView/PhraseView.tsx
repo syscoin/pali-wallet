@@ -19,13 +19,13 @@ const PhraseView = () => {
 
   return (
     <AuthViewLayout title="WALLET SEED PHRASE">
-      <p className="text-white text-sm py-3 px-10">
+      <p className="px-10 py-3 text-white text-sm">
         Please input your wallet password
       </p>
 
-      <div className="flex justify-center items-center flex-col">
+      <div className="flex flex-col items-center justify-center">
         <Form
-          className="flex justify-center items-center flex-col gap-8 text-center my-6 w-full max-w-xs"
+          className="password flex flex-col gap-8 items-center justify-center my-6 w-full max-w-xs text-center"
           name="phraseview"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
@@ -68,7 +68,7 @@ const PhraseView = () => {
           }
           label="Seed Phrase: (click to copy)"
         >
-          <p className="text-xs mt-3">{phrase}</p>
+          <p className="mt-3 text-xs">{phrase}</p>
         </CopyCard>
 
         <InfoCard>
