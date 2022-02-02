@@ -275,12 +275,10 @@ const AccountController = (actions: {
       }
     }
 
-    const balance = response.balance / 1e8;
-
     return {
       address,
       assets,
-      balance,
+      balance: response.balance / 1e8,
       transactions,
     };
   };
@@ -662,8 +660,8 @@ const AccountController = (actions: {
 
       // ? sendPSBT could have a better name
       // ? when its true, it doesnt send (??)
+      let psbt;
       if (sendPSBT) {
-        let psbt;
         if (isTrezorWallet) {
           psbt = await TrezorSigner.sign(response.psbt);
         } else {
@@ -673,7 +671,6 @@ const AccountController = (actions: {
         return sys.utils.exportPsbtToJson(psbt);
       }
 
-      let psbt;
       if (isTrezorWallet) {
         psbt = await sysjs.signAndSend(
           response.psbt,
@@ -713,15 +710,11 @@ const AccountController = (actions: {
 
       const { accounts }: IWalletState = store.getState().wallet;
       const trezorID: number = accounts.reduce(
-        (currentTrezorID: number, account: IAccountState) => {
-          if (account.trezorId) {
-            if (currentTrezorID > account.trezorId) {
-              return currentTrezorID;
-            }
-
-            return account.trezorId;
+        (currentTrezorID: number, acc: IAccountState) => {
+          if (acc.trezorId) {
+            if (currentTrezorID > acc.trezorId) return currentTrezorID;
+            return acc.trezorId;
           }
-
           return currentTrezorID;
         },
         0
@@ -1226,6 +1219,7 @@ const AccountController = (actions: {
         const interval = setInterval(async () => {
           let isParentConfirmed = false;
           let txid: string | undefined;
+          let assetMap;
 
           const newParentTx = await getTransaction(parentAsset.txid);
           let feeRate = new sys.utils.BN(fee * 1e8);
@@ -1236,7 +1230,7 @@ const AccountController = (actions: {
 
             console.log('confirmations parent tx > 1', parentAsset);
 
-            const assetMap = new Map([
+            assetMap = new Map([
               [
                 parentAsset?.assetGuid,
                 {
@@ -1293,7 +1287,7 @@ const AccountController = (actions: {
           const assetGuid = parentAsset?.assetGuid;
           const assetOpt = { updatecapabilityflags: '0' };
 
-          const assetMap = new Map([
+          assetMap = new Map([
             [
               assetGuid,
               {
