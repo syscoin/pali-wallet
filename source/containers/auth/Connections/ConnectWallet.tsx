@@ -38,15 +38,15 @@ export const ConnectWallet = () => {
 
   return (
     <AuthViewLayout canGoBack={false} title="CONNECT WITH">
-      <div className="flex flex-col justify-center items-center w-full">
-        <h1 className="text-sm mt-4">PALI WALLET</h1>
+      <div className="flex flex-col items-center justify-center w-full">
+        <h1 className="mt-4 text-sm">PALI WALLET</h1>
 
         <p className="text-brand-royalblue text-sm">
           {getHost(`${currentSenderURL}`)}
         </p>
 
         {accounts.length > 0 ? (
-          <ul className="scrollbar-styled w-full flex flex-col gap-4 h-64 mt-4 overflow-auto px-8">
+          <ul className="scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-64 overflow-auto">
             {accounts.map((acc: any) => (
               <li
                 className={`${
@@ -59,7 +59,7 @@ export const ConnectWallet = () => {
               >
                 <p>{acc.label}</p>
 
-                <div className="flex justify-center items-center gap-3">
+                <div className="flex gap-3 items-center justify-center">
                   <small>{ellipsis(acc.address.main)}</small>
 
                   <div
@@ -79,12 +79,12 @@ export const ConnectWallet = () => {
           </div>
         )}
 
-        <small className="text-brand-royalblue text-sm text-center mb-8">
+        <small className="mb-8 text-center text-brand-royalblue text-sm">
           Only connect with sites you trust.{' '}
           <a href="https://docs.syscoin.org/">Learn more.</a>
         </small>
 
-        <div className="flex justify-between w-full max-w-xs md:max-w-2xl items-center absolute bottom-10 gap-3">
+        <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
           <SecondaryButton
             type="button"
             action
@@ -113,23 +113,23 @@ export const ConnectWallet = () => {
             open={openExtraConfirmation}
             onClose={() => setOpenExtraConfirmation(false)}
           >
-            <div className="font-poppins inline-block w-full max-w-2xl p-6 my-8 overflow-hidden text-center align-middle transition-all border border-brand-royalblue transform bg-bkg-4 shadow-xl rounded-2xl">
+            <div className="inline-block align-middle my-8 p-6 w-full max-w-2xl text-center font-poppins bg-bkg-4 border border-brand-royalblue rounded-2xl shadow-xl overflow-hidden transform transition-all">
               <Dialog.Title
                 as="h3"
-                className="text-lg font-medium leading-6 text-brand-white flex justify-center gap-3 items-center"
+                className="flex gap-3 items-center justify-center text-brand-white text-lg font-medium leading-6"
               >
-                <Icon name="warning" className="text-brand-white mb-2" />
+                <Icon name="warning" className="mb-2 text-brand-white" />
                 <p>Not trusted site detected</p>
               </Dialog.Title>
 
               <div className="mt-4">
-                <p className="text-sm text-brand-white">
+                <p className="text-brand-white text-sm">
                   This site is not on our trusted list. Are you sure you want to
                   connect?
                 </p>
               </div>
 
-              <div className="mt-8 flex justify-between items-center gap-5">
+              <div className="flex gap-5 items-center justify-between mt-8">
                 <SecondaryButton
                   action
                   width="32"

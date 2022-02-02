@@ -37,7 +37,7 @@ const NewAccountView = () => {
         />
       ) : (
         <Form
-          className="flex justify-center items-center flex-col gap-8 text-center pt-4"
+          className="flex flex-col gap-8 items-center justify-center pt-4 text-center"
           name="newaccount"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
@@ -54,7 +54,7 @@ const NewAccountView = () => {
             ]}
           >
             <Input
-              className="phrase-input rounded-full py-2 px-4 w-72 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-sm"
+              className="phrase-input px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
               placeholder="Name your new account (optional)"
             />
           </Form.Item>

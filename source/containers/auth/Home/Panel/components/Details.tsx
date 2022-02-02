@@ -46,7 +46,7 @@ export const DetailsView = () => {
       title={`${state.assetGuid ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}
     >
       {transactionDetails ? (
-        <ul className="scrollbar-styled text-sm overflow-auto px-4 mt-4 h-96 w-full">
+        <ul className="scrollbar-styled mt-4 px-4 w-full h-96 text-sm overflow-auto">
           {state.assetGuid ? (
             <AssetDetails
               assetType={state.assetType}
@@ -60,7 +60,7 @@ export const DetailsView = () => {
           )}
         </ul>
       ) : (
-        <Icon name="loading" className="w-3 absolute top-1/2 left-1/2" />
+        <Icon name="loading" className="absolute left-1/2 top-1/2 w-3" />
       )}
     </AuthViewLayout>
   );

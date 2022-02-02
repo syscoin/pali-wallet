@@ -59,11 +59,11 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
   }, [activeAccount, currentTabURL]);
 
   const NetworkMenu = () => (
-    <Menu as="div" className="absolute left-2 inline-block text-left mr-8">
+    <Menu as="div" className="absolute left-2 inline-block mr-8 text-left">
       {(menuprops) => (
         <>
-          <Menu.Button className="inline-flex justify-center w-full  text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-            <div className="cursor-pointer w-full ml-2 flex items-center justify-start gap-x-6">
+          <Menu.Button className="inline-flex justify-center w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+            <div className="flex gap-x-6 items-center justify-start ml-2 w-full cursor-pointer">
               <span>{activeNetwork}</span>
 
               <div
@@ -96,24 +96,24 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
             leaveFrom="transform opacity-100 scale-100"
             leaveTo="transform opacity-0 scale-95"
           >
-            <div className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50" />
+            <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
 
             <Menu.Items
               as="div"
-              className="scrollbar-styled bg-menu-primary pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 left-0 h-bigmenu origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
+              className="scrollbar-styled absolute z-10 left-0 pb-6 w-72 h-bigmenu text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
             >
-              <h2 className="pt-8 pb-6 text-brand-white border-b border-dashed bg-menu-primary border-dashed-light w-full text-center mb-6">
+              <h2 className="mb-6 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light">
                 NETWORK SETTINGS
               </h2>
 
               <Menu.Item>
                 <li
                   onClick={() => navigate('/networks-sites')}
-                  className="flex py-1 justify-start items-center text-base px-2 cursor-pointer transition-all duration-200 border border-solid border-transparent hover:border-warning-success hover:bg-opacity-70 rounded-full bg-warning-success mx-3 mb-2"
+                  className="flex items-center justify-start mb-2 mx-3 px-2 py-1 text-base bg-warning-success hover:bg-opacity-70 border border-solid border-transparent hover:border-warning-success rounded-full cursor-pointer transition-all duration-200"
                 >
                   <Icon
                     name="globe"
-                    className="text-brand-white ml-1 mr-4 mb-1"
+                    className="mb-1 ml-1 mr-4 text-brand-white"
                   />
 
                   <span className="px-3">Connected sites</span>
@@ -123,11 +123,11 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <Menu.Item>
                 <li
                   onClick={() => navigate('/networks-trusted')}
-                  className="flex py-1 justify-start items-center text-base px-2 cursor-pointer transition-all duration-200 border border-solid border-brand-royalblue hover:bg-opacity-70 rounded-full bg-brand-royalblue mx-3 mb-4"
+                  className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base bg-brand-royalblue hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
                 >
                   <Icon
                     name="warning"
-                    className="text-brand-white ml-1 mr-4 mb-1"
+                    className="mb-1 ml-1 mr-4 text-brand-white"
                   />
 
                   <span className="px-3">Trusted sites</span>
@@ -138,13 +138,13 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                 <Disclosure>
                   {({ open }) => (
                     <>
-                      <Disclosure.Button className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3">
+                      <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
                         <Icon
                           name="dolar"
                           className="ml-1 mr-4 text-brand-white"
                         />
 
-                        <span className="text-base px-3">Syscoin networks</span>
+                        <span className="px-3 text-base">Syscoin networks</span>
 
                         <Icon
                           name="select-down"
@@ -154,11 +154,11 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                         />
                       </Disclosure.Button>
 
-                      <Disclosure.Panel className="scrollbar-styled pt-0.5 pb-2 text-sm bg-menu-secondary h-28 overflow-auto">
+                      <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
                         {Object.values(networks).map((currentNetwork: any) => (
                           <li
                             key={currentNetwork.id}
-                            className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-menu-secondary backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
+                            className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                             onClick={() =>
                               handleChangeNetwork(currentNetwork.id)
                             }
@@ -168,7 +168,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                             {activeNetwork === currentNetwork.id && (
                               <Icon
                                 name="check"
-                                className="w-4 mb-1"
+                                className="mb-1 w-4"
                                 wrapperClassname="w-6 absolute right-1"
                               />
                             )}
@@ -184,13 +184,13 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                 <Disclosure>
                   {({ open }) => (
                     <>
-                      <Disclosure.Button className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3">
+                      <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
                         <Icon
                           name="dolar"
                           className="ml-1 mr-4 text-brand-white"
                         />
 
-                        <span className="text-base px-3">
+                        <span className="px-3 text-base">
                           Ethereum networks
                         </span>
 
@@ -202,9 +202,9 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                         />
                       </Disclosure.Button>
 
-                      <Disclosure.Panel className="pt-0.5 pb-2 text-sm bg-menu-secondary">
+                      <Disclosure.Panel className="pb-2 pt-0.5 text-sm bg-menu-secondary">
                         <li
-                          className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-menu-secondary backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
+                          className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                           onClick={() => handleChangeNetwork('main')}
                         >
                           <span>Main network</span>
@@ -212,7 +212,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                           {activeNetwork === 'main' && (
                             <Icon
                               name="check"
-                              className="w-4 mb-1"
+                              className="mb-1 w-4"
                               wrapperClassname="w-6 absolute right-1"
                             />
                           )}
@@ -226,7 +226,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <Menu.Item>
                 <li
                   onClick={() => handleChangeNetwork('localhost')}
-                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                  className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
                   <Icon name="home" className="ml-1 mr-4 text-brand-white" />
 
@@ -235,7 +235,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                   {activeNetwork === 'localhost' && (
                     <Icon
                       name="check"
-                      className="w-4 mb-1"
+                      className="mb-1 w-4"
                       wrapperClassname="w-6"
                     />
                   )}
@@ -245,11 +245,11 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <Menu.Item>
                 <li
                   onClick={() => navigate('/networks-custom')}
-                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                  className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
                   <Icon
                     name="appstoreadd"
-                    className="text-brand-white ml-1 mr-4"
+                    className="ml-1 mr-4 text-brand-white"
                   />
 
                   <span className="px-3">Custom RPC</span>
@@ -259,9 +259,9 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <Menu.Item>
                 <li
                   onClick={() => navigate('/networks-edit')}
-                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                  className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
-                  <Icon name="edit" className="text-brand-white ml-1 mr-4" />
+                  <Icon name="edit" className="ml-1 mr-4 text-brand-white" />
 
                   <span className="px-3">Edit networks</span>
                 </li>
@@ -274,7 +274,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
   );
 
   const GeneralMenu = () => (
-    <Menu as="div" className="absolute right-2 inline-block text-right z-10">
+    <Menu as="div" className="absolute z-10 right-2 inline-block text-right">
       {() => (
         <>
           <Menu.Button className="mb-2 mr-0.8">
@@ -282,7 +282,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <IconButton type="primary" shape="circle">
                 <Icon
                   name="settings"
-                  className="hover:text-brand-royalblue text-brand-white z-0"
+                  className="z-0 hover:text-brand-royalblue text-brand-white"
                 />
               </IconButton>
             ) : null}
@@ -297,22 +297,22 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
             leaveFrom="transform opacity-100 scale-100"
             leaveTo="transform opacity-0 scale-95"
           >
-            <div className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50" />
+            <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
 
             <Menu.Items
               as="div"
-              className="scrollbar-styled bg-menu-primary pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 right-0 h-96 origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
+              className="scrollbar-styled absolute z-10 right-0 pb-6 w-72 h-96 text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
             >
-              <h2 className="bg-menu-primary pt-8 pb-6 text-brand-white border-b border-dashed border-dashed-light w-full text-center mb-6">
+              <h2 className="mb-6 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light">
                 GENERAL SETTINGS
               </h2>
 
               <Menu.Item>
                 <li
                   onClick={() => navigate('/general-autolock')}
-                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                  className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
-                  <Icon name="clock" className="text-brand-white ml-1 mr-4" />
+                  <Icon name="clock" className="ml-1 mr-4 text-brand-white" />
 
                   <span className="px-3">Auto lock timer</span>
                 </li>
@@ -321,9 +321,9 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <Menu.Item>
                 <li
                   onClick={() => navigate('/general-currency')}
-                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                  className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
-                  <Icon name="dolar" className="text-brand-white ml-1 mr-4" />
+                  <Icon name="dolar" className="ml-1 mr-4 text-brand-white" />
 
                   <span className="px-3">Currency</span>
                 </li>
@@ -332,9 +332,9 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <Menu.Item>
                 <li
                   onClick={() => navigate('/general-phrase')}
-                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                  className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
-                  <Icon name="wallet" className="text-brand-white ml-1 mr-4" />
+                  <Icon name="wallet" className="ml-1 mr-4 text-brand-white" />
 
                   <span className="px-3">Wallet Seed Phrase</span>
                 </li>
@@ -343,9 +343,9 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <Menu.Item>
                 <li
                   onClick={() => navigate('/general-about')}
-                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                  className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
-                  <Icon name="warning" className="text-brand-white ml-1 mr-4" />
+                  <Icon name="warning" className="ml-1 mr-4 text-brand-white" />
 
                   <span className="px-3">Info/Help</span>
                 </li>
@@ -354,9 +354,9 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <Menu.Item>
                 <li
                   onClick={() => navigate('/general-delete')}
-                  className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+                  className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
-                  <Icon name="delete" className="text-brand-white ml-1 mr-4" />
+                  <Icon name="delete" className="ml-1 mr-4 text-brand-white" />
 
                   <span className="px-3">Delete wallet</span>
                 </li>
@@ -369,12 +369,12 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
   );
 
   return (
-    <div className="relative flex items-center justify-between bg-bkg-1 text-gray-300 p-2 py-6 w-full">
+    <div className="relative flex items-center justify-between p-2 py-6 w-full text-gray-300 bg-bkg-1">
       <NetworkMenu />
 
       <IconButton
         onClick={handleRefresh}
-        className="hover:text-brand-deepPink100 text-brand-white absolute right-10"
+        className="absolute right-10 hover:text-brand-deepPink100 text-brand-white"
       >
         <Icon name="reload" wrapperClassname="mb-2 mr-2" />
       </IconButton>

@@ -72,8 +72,8 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
 
   return (
     <AuthViewLayout canGoBack={false} title={layoutTitle.toUpperCase()}>
-      <div className="flex flex-col justify-center items-center">
-        <h1 className="text-sm mt-4">FEE</h1>
+      <div className="flex flex-col items-center justify-center">
+        <h1 className="mt-4 text-sm">FEE</h1>
 
         <p className="text-brand-royalblue text-sm">
           {getHost(`${currentSenderURL}`)}
@@ -87,9 +87,9 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
           wrapperCol={{ span: 8 }}
           onFinish={handleCreateTemporaryTransaction}
           autoComplete="off"
-          className="flex justify-center items-center flex-col gap-3 mt-4 text-center"
+          className="flex flex-col gap-3 items-center justify-center mt-4 text-center"
         >
-          <div className="mx-2 flex gap-x-0.5 justify-center items-center">
+          <div className="flex gap-x-0.5 items-center justify-center mx-2">
             <Form.Item
               name="recommend"
               className={`${
@@ -148,12 +148,12 @@ export const SiteTransaction: FC<ISiteTransaction> = ({
             </Form.Item>
           </div>
 
-          <p className="bg-transparent border text-left border-dashed border-gray-600 max-w-xs md:max-w-2xl mx-6 p-4 mt-4 text-xs rounded-lg">
+          <p className="mt-4 mx-6 p-4 max-w-xs text-left text-xs bg-transparent border border-dashed border-gray-600 rounded-lg md:max-w-2xl">
             With current network conditions, we recommend a fee of {recommend}{' '}
             SYS.
           </p>
 
-          <div className="flex justify-between w-full max-w-xs md:max-w-2xl items-center absolute bottom-10 gap-3">
+          <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
             <SecondaryButton
               type="button"
               action

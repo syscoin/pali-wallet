@@ -30,7 +30,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
         name="import"
         onFinish={onSubmit}
         autoComplete="off"
-        className="flex items-center flex-col w-full gap-4 max-w-xs"
+        className="flex flex-col gap-4 items-center w-full max-w-xs"
       >
         <Form.Item
           name="phrase"
@@ -63,7 +63,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           />
         </Form.Item>
 
-        <span className="font-light text-brand-royalblue text-xs text-left">
+        <span className="text-left text-brand-royalblue text-xs font-light">
           Importing your wallet seed automatically import a wallet associated
           with this seed phrase.
         </span>

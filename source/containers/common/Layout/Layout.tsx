@@ -21,7 +21,7 @@ export const Layout: FC<ILayout> = ({
   normalHeader = false,
   tooltipText = '',
 }) => (
-  <div className="flex flex-col justify-center gap-4 items-center">
+  <div className="flex flex-col gap-4 items-center justify-center">
     <Header
       onlySection={onlySection}
       accountHeader={accountHeader}
@@ -30,17 +30,17 @@ export const Layout: FC<ILayout> = ({
 
     <section>
       {tooltipText ? (
-        <div className="flex justify-center items-center gap-2">
-          <span className="text-brand-royalblue font-bold text-xl text-center tracking-normal">
+        <div className="flex gap-2 items-center justify-center">
+          <span className="text-center text-brand-royalblue text-xl font-bold tracking-normal">
             {title}
           </span>
 
           <Tooltip content={tooltipText}>
-            <QuestionCircleOutlined className="inline-flex text-sm text-brand-graylight w-3" />
+            <QuestionCircleOutlined className="inline-flex w-3 text-brand-graylight text-sm" />
           </Tooltip>
         </div>
       ) : (
-        <span className="text-brand-royalblue font-bold text-xl text-center tracking-normal">
+        <span className="text-center text-brand-royalblue text-xl font-bold tracking-normal">
           {title}
         </span>
       )}

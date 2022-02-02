@@ -51,13 +51,13 @@ export const ConfirmPhrase = () => {
 
   return (
     <Layout title="Confirm Recovery Phrase" onlySection>
-      <div className="text-brand-white transition-all duration-300 ease-in-out flex justify-center items-center flex-col gap-4 mt-2">
+      <div className="flex flex-col gap-4 items-center justify-center mt-2 text-brand-white transition-all duration-300 ease-in-out">
         <>
-          <section className="flex flex-wrap box-border transition-all duration-300 p-3 border-b border-brand-graylight items-center justify-center gap-3 w-11/12">
+          <section className="flex flex-wrap gap-3 items-center justify-center p-3 w-11/12 border-b border-brand-graylight box-border transition-all duration-300">
             {newList.map((phrase, idx) => (
               <Button
                 useDefaultWidth={false}
-                className="min-w-xs h-7 font-bold text-xs leading-4 flex items-center justify-center tracking-normal bg-brand-royalblue py-1 px-3 border border-brand-royalblue gap-4 rounded-md text-brand-white"
+                className="flex gap-4 items-center justify-center px-3 py-1 min-w-xs h-7 text-brand-white text-xs font-bold tracking-normal leading-4 bg-brand-royalblue border border-brand-royalblue rounded-md"
                 key={phrase}
                 type="button"
                 onClick={() => handleNewPhrase(idx)}
@@ -66,11 +66,11 @@ export const ConfirmPhrase = () => {
               </Button>
             ))}
           </section>
-          <section className="flex flex-wrap box-border transition-all duration-300 items-center justify-center gap-3 w-11/12">
+          <section className="flex flex-wrap gap-3 items-center justify-center w-11/12 box-border transition-all duration-300">
             {orgList.map((phrase, idx) => (
               <Button
                 useDefaultWidth={false}
-                className="min-w-xs h-7 font-bold text-xs leading-4 flex items-center justify-center tracking-normal bg-bkg-2 py-1 px-3 border border-bkg-4 gap-4 rounded-md text-brand-white"
+                className="flex gap-4 items-center justify-center px-3 py-1 min-w-xs h-7 text-brand-white text-xs font-bold tracking-normal leading-4 bg-bkg-2 border border-bkg-4 rounded-md"
                 key={phrase}
                 type="button"
                 onClick={() => handleOrgPhrase(idx)}

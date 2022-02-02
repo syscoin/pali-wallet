@@ -17,7 +17,7 @@ export const ToastAlert: FC<IAlertTemplate> = ({ message, options, close }) => {
   return (
     <>
       <div
-        className="bg-bkg-4 border-transparent rounded-lg mb-16 w-72 text-center border h-20 flex justify-center gap-x-2 items-center text-brand-white"
+        className="flex gap-x-2 items-center justify-center mb-16 w-72 h-20 text-center text-brand-white bg-bkg-4 border border-transparent rounded-lg"
         onClick={close}
       >
         <div
@@ -30,18 +30,18 @@ export const ToastAlert: FC<IAlertTemplate> = ({ message, options, close }) => {
           {options.type === 'success' && (
             <Icon
               name={options.type === 'success' ? 'check' : 'close-circle'}
-              className="mb-1 bg-brand-white text-brand-white rounded-full"
+              className="mb-1 text-brand-white bg-brand-white rounded-full"
               size={24}
             />
           )}
         </div>
 
-        <div className="text-left w-full">
+        <div className="w-full text-left">
           <p className="text-sm font-bold">
             {options.type === 'success' ? 'Success' : 'Error'}
           </p>
 
-          <p className="text-xs my-2">{message}</p>
+          <p className="my-2 text-xs">{message}</p>
         </div>
       </div>
     </>

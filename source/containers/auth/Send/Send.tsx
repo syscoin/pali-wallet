@@ -107,8 +107,8 @@ export const Send: FC<ISend> = () => {
 
   const SendForm = () => (
     <div className="mt-4">
-      <p className="flex flex-col justify-center text-center items-center font-rubik">
-        <span className="text-brand-royalblue font-thin font-poppins">
+      <p className="flex flex-col items-center justify-center text-center font-rubik">
+        <span className="text-brand-royalblue font-poppins font-thin">
           Balance
         </span>
 
@@ -127,7 +127,7 @@ export const Send: FC<ISend> = () => {
         }}
         onFinish={nextStep}
         autoComplete="off"
-        className="flex justify-center items-center flex-col gap-3 mt-4 text-center"
+        className="flex flex-col gap-3 items-center justify-center mt-4 text-center"
       >
         <Form.Item
           name="receiver"
@@ -158,11 +158,11 @@ export const Send: FC<ISend> = () => {
           <Input
             type="text"
             placeholder="Receiver"
-            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-sm"
+            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none"
           />
         </Form.Item>
 
-        <div className="flex justify-center items-center">
+        <div className="flex items-center justify-center">
           <Form.Item
             name="asset"
             className=""
@@ -176,13 +176,13 @@ export const Send: FC<ISend> = () => {
             <Menu as="div" className="relative inline-block text-left">
               <Menu.Button
                 disabled={activeAccount?.assets.length === 0}
-                className="bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus inline-flex justify-center w-full px-4 py-3 text-sm font-medium text-white rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+                className="inline-flex justify-center px-4 py-3 w-full text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
               >
                 {selectedAsset?.symbol
                   ? formatURL(String(selectedAsset?.symbol), 2)
                   : 'SYS'}
                 <ChevronDoubleDownIcon
-                  className="w-5 h-5 ml-2 -mr-1 text-violet-200 hover:text-violet-100"
+                  className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
                   aria-hidden="true"
                 />
               </Menu.Button>
@@ -197,11 +197,11 @@ export const Send: FC<ISend> = () => {
                 leaveTo="transform opacity-0 scale-95"
               >
                 {activeAccount?.assets && activeAccount?.assets.length > 0 && (
-                  <Menu.Items className="scrollbar-styled rounded-lg overflow-auto h-56 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-brand-white w-44 font-poppins shadow-2xl absolute z-10 left-0 mt-2 py-3 origin-top-right">
+                  <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
                     <Menu.Item>
                       <button
                         onClick={() => handleSelectedAsset(-1)}
-                        className="hover:text-brand-royalblue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between"
+                        className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                       >
                         <p>SYS</p>
 
@@ -213,7 +213,7 @@ export const Send: FC<ISend> = () => {
                       <Menu.Item key={item.assetGuid}>
                         <button
                           onClick={() => handleSelectedAsset(item.assetGuid)}
-                          className="hover:text-brand-royalblue text-brand-white font-poppins transition-all duration-300 group flex border-0 border-transparent items-center w-full px-2 py-2 text-sm justify-between"
+                          className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                         >
                           <p>{item.symbol}</p>
                           <small>{isNFT(item.assetGuid) ? 'NFT' : 'SPT'}</small>
@@ -226,10 +226,10 @@ export const Send: FC<ISend> = () => {
             </Menu>
           </Form.Item>
 
-          <div className="mx-2 flex w-48 gap-x-0.5 justify-center items-center">
+          <div className="flex gap-x-0.5 items-center justify-center mx-2 w-48">
             <Form.Item
               name="verify"
-              className="flex-1 w-32 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full text-center"
+              className="flex-1 w-32 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full"
               rules={[
                 {
                   required: false,
@@ -247,7 +247,7 @@ export const Send: FC<ISend> = () => {
               <Switch
                 checked={verifyAddress}
                 onChange={verifyOnChange}
-                className="relative inline-flex items-center h-4 rounded-full w-9 border border-brand-royalblue"
+                className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
               >
                 <span className="sr-only">Verify address</span>
                 <span
@@ -262,7 +262,7 @@ export const Send: FC<ISend> = () => {
 
             <Form.Item
               name="ZDAG"
-              className="flex-1 w-32 rounded-r-full text-center  bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus"
+              className="flex-1 w-32 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full"
               rules={[
                 {
                   required: false,
@@ -279,7 +279,7 @@ export const Send: FC<ISend> = () => {
               <Switch
                 checked={ZDAG}
                 onChange={ZDAGOnChange}
-                className="bg-transparent relative inline-flex items-center h-4 rounded-full w-9 border border-brand-royalblue"
+                className="relative inline-flex items-center w-9 h-4 bg-transparent border border-brand-royalblue rounded-full"
               >
                 <span className="sr-only">Z-DAG</span>
                 <span
@@ -318,13 +318,13 @@ export const Send: FC<ISend> = () => {
           ]}
         >
           <Input
-            className="outline-none rounded-full py-3 pr-8 w-72 pl-4 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus text-sm"
+            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none"
             type="number"
             placeholder="Amount"
           />
         </Form.Item>
 
-        <div className="mx-2 flex gap-x-0.5 justify-center items-center">
+        <div className="flex gap-x-0.5 items-center justify-center mx-2">
           <Form.Item
             name="recommend"
             className={`${
@@ -383,13 +383,13 @@ export const Send: FC<ISend> = () => {
           </Form.Item>
         </div>
 
-        <p className="flex justify-center items-center flex-col text-center p-0 text-brand-royalblue mx-14">
+        <p className="flex flex-col items-center justify-center mx-14 p-0 text-center text-brand-royalblue">
           <span className="text-xs">
             {`With current network conditions we recommend a fee of
             ${recommend} SYS`}
           </span>
 
-          <span className="font-rubik text-brand-white mt-0.5 text-xs">
+          <span className="mt-0.5 text-brand-white font-rubik text-xs">
             ≈ ' '
             {selectedAsset
               ? getFiatAmount(
