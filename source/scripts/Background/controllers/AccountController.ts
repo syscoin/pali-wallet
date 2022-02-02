@@ -59,22 +59,6 @@ const AccountController = (actions: {
     mintNFT: null,
   };
 
-  // ???
-  type AssetMap = [
-    [
-      token: any,
-      map: {
-        changeAddress: string | null;
-        outputs: [
-          {
-            address: string | null;
-            value: any;
-          }
-        ];
-      }
-    ]
-  ];
-
   const decryptAES = (encryptedString: any, key: string) =>
     CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
 
@@ -897,6 +881,21 @@ const AccountController = (actions: {
   };
 
   //* ----- Confirmations -----
+
+  type AssetMap = [
+    [
+      token: any,
+      map: {
+        changeAddress: string | null;
+        outputs: [
+          {
+            address: string | null;
+            value: any;
+          }
+        ];
+      }
+    ]
+  ];
 
   // ? parameter 'item' has 'NewAsset' type at IAccountController
   // ? but it has a lot of different fields
