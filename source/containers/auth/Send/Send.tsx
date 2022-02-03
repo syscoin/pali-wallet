@@ -233,6 +233,7 @@ export const Send: FC<ISend> = () => {
 
           <div className="mx-2 flex w-48 gap-x-0.5 justify-center items-center">
             <Form.Item
+              id="verify-address-switch"
               name="verify"
               className="flex-1 w-32 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full text-center"
               rules={[
@@ -261,7 +262,6 @@ export const Send: FC<ISend> = () => {
                       ? 'translate-x-6 bg-warning-success'
                       : 'translate-x-1'
                   } inline-block w-2 h-2 transform bg-warning-error rounded-full`}
-                  id="verify-address-switch"
                 />
               </Switch>
             </Form.Item>

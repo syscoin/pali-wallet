@@ -5,7 +5,7 @@ import { buildWebDriver } from '../webdriver';
 import { importWallet } from '../initialize';
 import { By } from 'selenium-webdriver';
 
-describe('Send screen tests', async () => {
+describe('<Send /> tests', async () => {
   let uiWebDriver = null;
 
   beforeEach(async () => {
@@ -15,85 +15,65 @@ describe('Send screen tests', async () => {
 
     await driver.navigate();
     await importWallet({ driver });
+
+    const sendButton = await uiWebDriver.findElement(By.id('send-btn'));
+
+    assert.ok(
+      typeof sendButton === 'object',
+      '<!> Cannot find Send button <!>'
+    );
+
+    await uiWebDriver.clickElement('#send-btn');
+
+    const findSendSYS = await uiWebDriver.findElement(By.id('sendSYS-title'));
+    const sendSYSText = await findSendSYS.getText();
+
+    assert.equal(
+      sendSYSText,
+      'SEND SYS',
+      '<!> Send button is working different than the the expected <!>'
+    );
   });
 
-  afterEach(() => {
+  afterEach((done) => {
+    done();
+
     uiWebDriver.quit();
   });
 
   it("should check if send form it's being shown", async () => {
-    const sendBalance = await uiWebDriver.findElement(By.id('send-balance'));
+    const sendBalance = await uiWebDriver.findElement(By.id('send'));
 
-    assert.ok(
-      typeof sendBalance === 'object',
-      '<!> Cannot find badge connected <!>'
-    );
-
-    const receiverInput = await uiWebDriver.findElement(
-      By.id('receiver-input')
-    );
-
-    assert.ok(
-      typeof receiverInput === 'object',
-      '<!> Cannot find receiver input <!>'
-    );
-
-    const networkDropdown = await uiWebDriver.findElement(
-      By.id('send-network-dropdown')
-    );
-
-    assert.ok(
-      typeof networkDropdown === 'object',
-      '<!> Cannot find network dropdown <!>'
-    );
-
-    const verifyAddressSwitch = await uiWebDriver.findElement(
-      By.id('verify-address-switch')
-    );
-
-    assert.ok(
-      typeof verifyAddressSwitch === 'object',
-      '<!> Cannot find verify address switch <!>'
-    );
-
-    const ZDagSwitch = await uiWebDriver.findElement(By.id('z-dag-switch'));
-
-    assert.ok(typeof ZDagSwitch === 'object', '<!> Cannot find Zdag switch<!>');
-
-    const AmountInput = await uiWebDriver.findElement(By.id('amount-input'));
-
-    assert.ok(
-      typeof AmountInput === 'object',
-      '<!> Cannot find amount input<!>'
-    );
-
-    const nextBtn = await uiWebDriver.findElement(By.id('next-btn'));
-
-    assert.ok(typeof nextBtn === 'object', '<!> Cannot find next button<!>');
+    assert.ok(typeof sendBalance === 'object', '<!> Cannot find send form <!>');
   });
 
-  it("should check if fee input it's being shown", async () => {
-    const feeInput = setTimeout(async () => {
-      await uiWebDriver.findElement(By.id('next-btn'));
-    }, 500);
+  /**
+   * we can move this test to test the error report when
+   * a transaction fails using sysmint/bridge
+   */
 
-    assert.ok(typeof feeInput === 'object', '<!> Cannot find fee input<!>');
+  // it("should return an amount error", async () => {
+  //   await uiWebDriver.fill(
+  //     "#receiver-input",
+  //     "sys1qydmw8wrtl4mvk6he65qqrq8ml9f6eyyl9tasax"
+  //   );
+  //   await uiWebDriver.fill("#amount-input", "1000000000000");
+  //   await uiWebDriver.clickElement("#next-btn");
 
-    //It's not ready yet, still need to check if it's disabled when using a Syscoin Network
-  });
+  //   const confirmRoute = await uiWebDriver.findElement(By.id("send-confirm"));
 
-  it('should return an amount error', async () => {
-    await uiWebDriver.clickElement('#send-btn');
-    await uiWebDriver.fill('#receiver-input', 'gegeggegeege');
-    await uiWebDriver.clickElement('#verify-address-switch');
-    await uiWebDriver.fill('#amount-input', '0,0000001');
-    await uiWebDriver.clickElement('#next-btn');
-    await uiWebDriver.clickElement('#confirm-btn');
-    const checkModalError = await uiWebDriver.findElement(By.id('modal-alert'));
+  //   assert.ok(
+  //     typeof confirmRoute === "object",
+  //     "<!> Cannot find send confirm route <!>"
+  //   );
 
-    assert.ok(
-      typeof checkModalError === 'object',
-      '<!> Cannot find modal error <!>'
-    );
-  });
+  //   await uiWebDriver.clickElement("#confirm-btn");
+
+  //   const checkModalError = await uiWebDriver.findElement(By.id("modal-alert"));
+
+  //   assert.ok(
+  //     typeof checkModalError === "object",
+  //     "<!> Cannot find modal error <!>"
+  //   );
+  // });
 });

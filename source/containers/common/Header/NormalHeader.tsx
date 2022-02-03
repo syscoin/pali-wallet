@@ -283,11 +283,14 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
     <Menu as="div" className="absolute right-2 inline-block text-right z-10">
       {() => (
         <>
-          <Menu.Button className="mb-2 mr-0.8">
+          <Menu.Button
+            as="button"
+            id="general-settings-button"
+            className="mb-2 mr-0.8"
+          >
             {encriptedMnemonic && !importSeed ? (
               <IconButton type="primary" shape="circle">
                 <Icon
-                  id="settings-btn"
                   name="settings"
                   className="hover:text-brand-royalblue text-brand-white z-0"
                 />

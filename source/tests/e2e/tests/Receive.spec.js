@@ -4,9 +4,9 @@ import { beforeEach, afterEach } from 'mocha';
 import { buildWebDriver } from '../webdriver';
 import { importWallet } from '../initialize';
 import { By } from 'selenium-webdriver';
-import { storeState } from '../../../../source/state/store';
+import { currentWalletState } from '../../../../source/state/store';
 
-describe('Receive screen tests', async () => {
+describe('<Receive /> tests', async () => {
   let uiWebDriver = null;
 
   beforeEach(async () => {
@@ -16,9 +16,31 @@ describe('Receive screen tests', async () => {
 
     await driver.navigate();
     await importWallet({ driver });
+
+    const receiveButton = await uiWebDriver.findElement(By.id('receive-btn'));
+
+    assert.ok(
+      typeof receiveButton === 'object',
+      '<!> Cannot find receive button <!>'
+    );
+
+    await uiWebDriver.clickElement('#receive-btn');
+
+    const findReceiveSYS = await uiWebDriver.findElement(
+      By.id('receiveSYS-title')
+    );
+    const receiveSYSText = await findReceiveSYS.getText();
+
+    assert.equal(
+      receiveSYSText,
+      'RECEIVE SYS',
+      '<!> Receive button is working different than the the expected <!>'
+    );
   });
 
-  afterEach(() => {
+  afterEach((done) => {
+    done();
+
     uiWebDriver.quit();
   });
 
@@ -38,7 +60,8 @@ describe('Receive screen tests', async () => {
       '<!> Cannot find receive copy address button <!>'
     );
 
-    const { accounts, activeAccountId } = storeState.wallet;
+    const { accounts, activeAccountId } = currentWalletState;
+
     if (accounts[activeAccountId]) {
       const copyAddresValue = await copyAddresBtn.getAttribute('value');
       const expectedValue = accounts[activeAccountId].address;

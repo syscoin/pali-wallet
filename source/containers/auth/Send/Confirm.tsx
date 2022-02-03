@@ -142,7 +142,10 @@ export const SendConfirm = () => {
       {tempTx && (
         <div className="mt-4 flex justify-center items-center flex-col w-full">
           <p className="flex flex-col justify-center text-center items-center font-rubik">
-            <span className="text-brand-royalblue font-thin font-poppins">
+            <span
+              id="send-confirm"
+              className="text-brand-royalblue font-thin font-poppins"
+            >
               Send
             </span>
             {tempTx.amount}

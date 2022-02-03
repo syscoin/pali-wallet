@@ -60,10 +60,15 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
       as="div"
       className="absolute right-3 inline-block text-right md:max-w-2xl"
     >
-      <Menu.Button className="inline-flex justify-center w-full  text-sm font-medium text-white hover:text-button-primaryhover rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-        {encriptedMnemonic && !importSeed && (
-          <Icon name="dots" className="z-0" id="account-settings-btn" />
-        )}
+      <Menu.Button
+        id="account-settings-btn"
+        className="inline-flex justify-center w-full  text-sm font-medium text-white hover:text-button-primaryhover rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+      >
+        <p id="account-settings-btn">
+          {encriptedMnemonic && !importSeed && (
+            <Icon name="dots" className="z-0" />
+          )}
+        </p>
       </Menu.Button>
 
       <Transition
@@ -105,6 +110,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
               {({ open }) => (
                 <>
                   <Disclosure.Button
+                    as="button"
                     className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
                     id="accounts-btn"
                   >
