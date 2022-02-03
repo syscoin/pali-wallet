@@ -2,7 +2,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 import { IDAppState, IDAppInfo } from './types';
 
-const initialState: IDAppState = {
+export const initialState: IDAppState = {
   listening: {},
   trustedApps: {},
 };
@@ -67,7 +67,7 @@ const DAppState = createSlice({
     ) {
       return {
         ...state,
-        whitelist: {
+        trustedApps: {
           ...state.trustedApps,
           [action.payload.id.replace(/(^\w+:|^)\/\//, '')]: {
             ...action.payload.dapp,
