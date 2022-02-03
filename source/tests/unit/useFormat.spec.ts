@@ -20,7 +20,7 @@ describe('useFormat methods test', () => {
     const input = 'lorem ipsum';
     const output = capitalizeFirstLetter(input);
 
-    expect(output.at(0)).toBe(input.at(0)!.toUpperCase());
+    expect(output.at(0)).toBe(input.at(0)?.toUpperCase());
   });
 
   //* formatCurrency
