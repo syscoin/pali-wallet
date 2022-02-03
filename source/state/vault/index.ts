@@ -4,9 +4,11 @@ import { Transaction } from 'types/transactions';
 
 import IVaultState, { AssetType } from './types';
 
-const hasEncryptedVault = !!localStorage.getItem('paliwallet-vault');
+// ! modified for testing only !
+// const hasEncryptedVault = !!localStorage.getItem('paliwallet-vault');
+const hasEncryptedVault = false;
 
-const initialState: IVaultState = {
+export const initialState: IVaultState = {
   lastLogin: 0,
   accounts: [],
   activeAccount: {
