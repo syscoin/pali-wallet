@@ -444,7 +444,7 @@ const WalletController = (): IWalletController => {
   const getNewAddress = async () => {
     const { activeAccountId, accounts } = store.getState().wallet;
 
-    const userAccount: IAccountState = accounts.find(
+    const userAccount = accounts.find(
       (el: IAccountState) => el.id === activeAccountId
     );
     let address = '';
