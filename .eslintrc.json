@@ -2,23 +2,30 @@
   "extends": [
     "plugin:react/recommended", // Uses the recommended rules from @eslint-plugin-react
     "plugin:@typescript-eslint/recommended",
-    "@abhijithvijayan/eslint-config/typescript",
-    "@abhijithvijayan/eslint-config/react",
     "airbnb-typescript",
     "prettier",
-    "prettier/react"
+    "prettier/react",
+    "airbnb"
   ],
-  "plugins": ["@typescript-eslint", "eslint-plugin-prettier"],
+  "plugins": [
+    "@typescript-eslint",
+    "eslint-plugin-prettier",
+    "react-hooks"
+  ],
   "overrides": [
     {
-      "files": ["*.{ts,tsx}"],
+      "files": [
+        "*.{ts,tsx}"
+      ],
       "parser": "@typescript-eslint/parser",
       "parserOptions": {
         "project": "**/tsconfig.json",
         "tsconfigRootDir": ".",
         "sourceType": "module"
       },
-      "plugins": ["typescript-sort-keys"],
+      "plugins": [
+        "typescript-sort-keys"
+      ],
       "rules": {
         "typescript-sort-keys/interface": 2,
         "typescript-sort-keys/string-enum": 2,
@@ -29,7 +36,10 @@
   ],
   "rules": {
     "implicit-arrow-linebreak": "off",
-    "arrow-body-style": ["error", "as-needed"],
+    "arrow-body-style": [
+      "error",
+      "as-needed"
+    ],
     "comma-dangle": [
       "error",
       {
@@ -40,6 +50,17 @@
         "functions": "never"
       }
     ],
+    "react/jsx-wrap-multilines": "off",
+    "no-undef": "off",
+    "semi": "off",
+    "react-hooks/rules-of-hooks": "error",
+    "no-use-before-define": "off",
+    "import/extensions": "off",
+    "react/jsx-filename-extension": "off",
+    "no-confusing-arrow": "off",
+    "react/jsx-one-expression-per-line": "off",
+    "react/jsx-curly-newline": "off",
+    "import/no-extraneous-dependencies": "error",
     "@typescript-eslint/explicit-module-boundary-types": "off",
     "consistent-return": "off",
     "no-unused-vars": "off",
@@ -98,15 +119,20 @@
       {
         "groups": [
           "builtin",
-          ["external", "internal"],
+          [
+            "external",
+            "internal"
+          ],
           "parent",
-          ["sibling", "index"]
+          [
+            "sibling",
+            "index"
+          ]
         ],
         "newlines-between": "always"
       }
     ],
-    "react/no-unescaped-entities": 0,
-    "react-hooks/rules-of-hooks": "error", // Checks rules of Hooks
+    "react/no-unescaped-entities": 0, // Checks rules of Hooks
     "react-hooks/exhaustive-deps": "off" // Checks effect dependencies
   },
   "env": {

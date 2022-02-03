@@ -23,7 +23,7 @@ const AutolockView = () => {
 
   return (
     <AuthViewLayout title="AUTO LOCK TIMER" id="auto-lock-timer-title">
-      <p className="text-white text-sm py-6 px-10">
+      <p className="px-10 py-6 text-white text-sm">
         You can set auto lock timer. Default is 5 minutes after no activity.
         Maximum is 30 minutes.
       </p>

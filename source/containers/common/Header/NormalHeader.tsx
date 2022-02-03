@@ -106,7 +106,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               className="scrollbar-styled absolute z-10 left-0 pb-6 w-72 h-bigmenu text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
             >
               <h2
-                className="pt-8 pb-6 text-brand-white border-b border-dashed bg-menu-primary border-dashed-light w-full text-center mb-6"
+                className="mb-6 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light"
                 id="network-settings-title"
               >
                 NETWORK SETTINGS
@@ -314,7 +314,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               className="scrollbar-styled absolute z-10 right-0 pb-6 w-72 h-96 text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
             >
               <h2
-                className="bg-menu-primary pt-8 pb-6 text-brand-white border-b border-dashed border-dashed-light w-full text-center mb-6"
+                className="mb-6 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light"
                 id="general-settings-title"
               >
                 GENERAL SETTINGS

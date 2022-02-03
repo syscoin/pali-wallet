@@ -19,7 +19,7 @@ const PhraseView = () => {
 
   return (
     <AuthViewLayout title="WALLET SEED PHRASE" id="seed-phrase-title">
-      <p className="text-white text-sm py-3 px-10">
+      <p className="px-10 py-3 text-white text-sm">
         Please input your wallet password
       </p>
 
@@ -72,7 +72,7 @@ const PhraseView = () => {
           }
           label="Seed Phrase: (click to copy)"
         >
-          <p className="text-xs mt-3" id="user-phrase">
+          <p className="mt-3 text-xs" id="user-phrase">
             {phrase}
           </p>
         </CopyCard>

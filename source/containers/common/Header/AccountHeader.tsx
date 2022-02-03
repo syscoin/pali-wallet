@@ -82,7 +82,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
           className="scrollbar-styled absolute z-10 right-0 pb-6 w-72 text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
         >
           <h2
-            className="bg-menu-primary pt-8 pb-6 text-brand-white border-b border-dashed border-dashed-light w-full text-center mb-3"
+            className="mb-3 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light"
             id="account-settings-title"
           >
             ACCOUNT SETTINGS
@@ -162,7 +162,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
           <Menu.Item>
             <li
               onClick={() => navigate('/account-hardware')}
-              className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+              className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
               id="hardware-wallet-btn"
             >
               <Icon

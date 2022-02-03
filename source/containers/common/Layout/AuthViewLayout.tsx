@@ -42,7 +42,7 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
           </Tooltip>
         )}
 
-        <p className="text-xl w-full text-center" id={id}>
+        <p className="w-full text-center text-xl" id={id}>
           {title}
         </p>
 

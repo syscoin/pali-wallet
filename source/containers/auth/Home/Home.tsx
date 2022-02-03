@@ -37,9 +37,9 @@ export const Home = () => {
           <section className="flex flex-col gap-1 items-center py-14 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
               {activeNetwork === 'testnet' ? (
-                <div className="flex items-center justify-center gap-x-0.5 balance-account">
+                <div className="balance-account flex gap-x-0.5 items-center justify-center">
                   <p
-                    className="text-5xl font-medium font-rubik"
+                    className="font-rubik text-5xl font-medium"
                     id="home-balance"
                   >
                     {formatNumber(activeAccount?.balance || 0)}{' '}
@@ -49,10 +49,10 @@ export const Home = () => {
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center justify-center gap-x-0.5 balance-account">
+                  <div className="balance-account flex gap-x-0.5 items-center justify-center">
                     <p
                       id="home-balance"
-                      className="text-5xl font-medium font-rubik"
+                      className="font-rubik text-5xl font-medium"
                     >
                       {formatNumber(activeAccount?.balance || 0)}{' '}
                     </p>
@@ -74,7 +74,7 @@ export const Home = () => {
             <div className="flex gap-x-0.5 items-center justify-center pt-8 w-3/4 max-w-md">
               <Button
                 type="button"
-                className="flex items-center justify-center flex-1 xl:flex-none xl:p-18 text-base rounded-l-full border border-button-primary bg-button-primary text-brand-white transition-all duration-300 hover:bg-button-primaryhover"
+                className="xl:p-18 flex flex-1 items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-l-full transition-all duration-300 xl:flex-none"
                 id="send-btn"
                 onClick={() => navigate('/send')}
               >
@@ -89,7 +89,7 @@ export const Home = () => {
 
               <Button
                 type="button"
-                className="flex items-center justify-center flex-1 xl:flex-none xl:p-18 text-base rounded-r-full border border-button-secondary bg-button-secondary text-brand-white hover:bg-button-secondaryhover transition-all duration-300"
+                className="xl:p-18 flex flex-1 items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-r-full transition-all duration-300 xl:flex-none"
                 id="receive-btn"
                 onClick={() => navigate('/receive')}
               >
