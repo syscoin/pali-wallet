@@ -6,7 +6,7 @@
       {
         "useBuiltIns": false,
         // Do not transform modules to CJS
-        "modules": false,
+        "modules": "auto",
         "targets": {
           "chrome": "49",
           "firefox": "52",
