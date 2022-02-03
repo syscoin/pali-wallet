@@ -94,15 +94,15 @@ const CurrencyView = () => {
         />
       )}
 
-      <p className="text-white text-xs text-left mx-6 my-3">
+      <p className="mx-6 my-3 text-left text-white text-xs">
         You can choose and set your preferred currency to see in your wallet.
       </p>
 
-      <div className="flex flex-col justify-center items-center">
+      <div className="flex flex-col items-center justify-center">
         <Menu as="div" className="relative inline-block text-left">
           <Menu.Button
             disabled={!fiat || !fiat.availableCoins}
-            className="bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus inline-flex justify-center w-80 py-2 text-sm font-medium text-white rounded-full"
+            className="inline-flex justify-center py-2 w-80 text-white text-sm font-medium bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
           >
             {getSymbolFromCurrency(
               selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency
@@ -129,13 +129,13 @@ const CurrencyView = () => {
             leaveTo="transform opacity-0 scale-95"
           >
             {fiat && fiat.availableCoins && (
-              <Menu.Items className="scrollbar-styled rounded-xl overflow-auto h-44 bg-bkg-4 border border-fields-input-border text-brand-white w-full font-poppins shadow-2xl absolute z-10 mt-2 py-3 origin-top-right">
+              <Menu.Items className="scrollbar-styled absolute z-10 mt-2 py-3 w-full h-44 text-brand-white font-poppins bg-bkg-4 border border-fields-input-border rounded-xl shadow-2xl overflow-auto origin-top-right">
                 {Object.entries(fiat.availableCoins).map(([key]) => (
                   <Menu.Item key={key}>
                     <button
                       key={key}
                       onClick={() => handleSelectCoin(key)}
-                      className="hover:text-brand-royalbluemedium text-brand-white font-poppins transition-all duration-300 group border-b border-dashed border-brand-royalblue border-opacity-30 px-4 flex border-0 border-transparent items-center w-full py-2 gap-x-1 text-sm justify-start"
+                      className="group flex gap-x-1 items-center justify-start px-4 py-2 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-brand-royalblue border-transparent border-opacity-30 transition-all duration-300"
                     >
                       {getSymbolFromCurrency(key.toUpperCase())}
 
@@ -148,23 +148,23 @@ const CurrencyView = () => {
           </Transition>
         </Menu>
 
-        <div className="text-center flex justify-center flex-col items-center">
+        <div className="flex flex-col items-center justify-center text-center">
           {activeNetwork === 'testnet' ? (
-            <div className="flex items-center justify-center mt-8 gap-x-0.5">
-              <p className="text-5xl font-medium font-rubik">
+            <div className="flex gap-x-0.5 items-center justify-center mt-8">
+              <p className="font-rubik text-5xl font-medium">
                 {formatNumber(Number(activeAccount?.balance) || 0)}{' '}
               </p>
 
-              <p className="font-poppins mt-4">TSYS</p>
+              <p className="mt-4 font-poppins">TSYS</p>
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-center mt-8 gap-x-0.5">
-                <p className="text-5xl font-medium font-rubik">
+              <div className="flex gap-x-0.5 items-center justify-center mt-8">
+                <p className="font-rubik text-5xl font-medium">
                   {formatNumber(activeAccount?.balance || 0)}{' '}
                 </p>
 
-                <p className="font-poppins mt-4">SYS</p>
+                <p className="mt-4 font-poppins">SYS</p>
               </div>
 
               <p>
@@ -185,12 +185,12 @@ const CurrencyView = () => {
         </div>
       </div>
 
-      <div className="bg-bkg-4 fixed flex gap-y-3 justify-center items-center flex-col h-44 bottom-0 left-0 w-full">
-        <p className="text-white text-sm mb-2 text-left">
+      <div className="fixed bottom-0 left-0 flex flex-col gap-y-3 items-center justify-center w-full h-44 bg-bkg-4">
+        <p className="mb-2 text-left text-white text-sm">
           Check your balance in different currencies
         </p>
 
-        <div className="relative text-sm font-medium text-brand-royalblue ">
+        <div className="relative text-brand-royalblue text-sm font-medium">
           <Input
             type="number"
             onChange={(event) =>
@@ -198,10 +198,10 @@ const CurrencyView = () => {
             }
             maxLength={20}
             value={Number(conversorValues.sys)}
-            className="bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus flex justify-between items-center w-80 py-2 px-4 rounded-full outline-none"
+            className="flex items-center justify-between px-4 py-2 w-80 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none"
           />
 
-          <div className="absolute right-4 bottom-1.5 flex justify-center items-center gap-x-3">
+          <div className="absolute bottom-1.5 right-4 flex gap-x-3 items-center justify-center">
             <p
               className="cursor-pointer"
               onClick={() =>
@@ -215,7 +215,7 @@ const CurrencyView = () => {
               MAX
             </p>
 
-            <div className="flex justify-center items-center gap-x-3 border-l border-dashed border-gray-700">
+            <div className="flex gap-x-3 items-center justify-center border-l border-dashed border-gray-700">
               <Icon
                 name="dolar"
                 wrapperClassname="w-2 ml-4 mb-1.5"
@@ -227,7 +227,7 @@ const CurrencyView = () => {
           </div>
         </div>
 
-        <div className="relative text-sm font-medium text-brand-royalblue">
+        <div className="relative text-brand-royalblue text-sm font-medium">
           <Input
             type="number"
             maxLength={20}
@@ -239,13 +239,13 @@ const CurrencyView = () => {
               );
             }}
             value={Number(conversorValues.fiat)}
-            className="bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus flex justify-between items-center w-80 py-2 px-4 rounded-full outline-none"
+            className="flex items-center justify-between px-4 py-2 w-80 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none"
           />
-          <div className="absolute right-2 bottom-2 flex justify-center items-center gap-x-3">
+          <div className="absolute bottom-2 right-2 flex gap-x-3 items-center justify-center">
             <Menu as="div" className="relative inline-block text-left">
               <Menu.Button
                 disabled={!fiat || !fiat.availableCoins}
-                className="bg-fields-input-primary gap-x-1 flex justify-center text-sm mr-5 font-medium text-brand-royalblue rounded-full"
+                className="flex gap-x-1 justify-center mr-5 text-brand-royalblue text-sm font-medium bg-fields-input-primary rounded-full"
               >
                 {getSymbolFromCurrency(checkValueCoin.toUpperCase())}
                 {checkValueCoin.toUpperCase()}
@@ -267,7 +267,7 @@ const CurrencyView = () => {
                 leaveTo="transform opacity-0 scale-95"
               >
                 {fiat && fiat.availableCoins && (
-                  <Menu.Items className="scrollbar-styled rounded-xl overflow-auto h-56 bg-bkg-4 border border-fields-input-border text-brand-white w-44 font-poppins shadow-2xl absolute z-10 right-0 bottom-10 mt-2 py-3 origin-bottom-right">
+                  <Menu.Items className="scrollbar-styled absolute z-10 bottom-10 right-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-bkg-4 border border-fields-input-border rounded-xl shadow-2xl overflow-auto origin-bottom-right">
                     {Object.entries(fiat.availableCoins).map(([key]) => (
                       <Menu.Item key={key}>
                         <button
@@ -276,7 +276,7 @@ const CurrencyView = () => {
                             setCheckValueCoin(key);
                             handleConvert(0, key, key);
                           }}
-                          className="hover:text-brand-royalbluemedium text-brand-white font-poppins transition-all duration-300 group border-b border-dashed border-brand-royalblue border-opacity-30 px-4 flex border-0 border-transparent items-center w-full py-2 gap-x-1 text-sm justify-start"
+                          className="group flex gap-x-1 items-center justify-start px-4 py-2 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-brand-royalblue border-transparent border-opacity-30 transition-all duration-300"
                         >
                           {getSymbolFromCurrency(key.toUpperCase())}
 

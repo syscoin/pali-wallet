@@ -10,10 +10,10 @@ export const Fullscreen = () => {
 
   return url ? (
     <div
-      className="bg-bkg-4 sm:hidden fixed w-full text-brand-white gap-2 p-4 bottom-0 left-0 text-sm flex justify-center items-center cursor-pointer"
+      className="fixed bottom-0 left-0 flex gap-2 items-center justify-center p-4 w-full text-brand-white text-sm bg-bkg-4 cursor-pointer sm:hidden"
       onClick={() => window.open(url)}
     >
-      <Icon name="desktop" className="text-brand-white mb-1" />
+      <Icon name="desktop" className="mb-1 text-brand-white" />
 
       <p>Go to fullscreen</p>
     </div>

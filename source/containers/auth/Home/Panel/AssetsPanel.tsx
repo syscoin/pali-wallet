@@ -9,11 +9,11 @@ export const AssetsPanel: FC = () => {
 
   return (
     <>
-      <ul className="h-full w-full p-4 text-white text-base bg-bkg-3">
+      <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
         {activeAccount?.assets && activeAccount?.assets.length > 0 ? (
           <PanelList data={activeAccount?.assets} activity={false} assets />
         ) : (
-          <p className="flex justify-center items-center text-sm text-brand-white">
+          <p className="flex items-center justify-center text-brand-white text-sm">
             You have no tokens or NFTs.
           </p>
         )}

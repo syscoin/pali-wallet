@@ -80,7 +80,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
       <li
         onClick={() => copyText(address)}
         key={address}
-        className="flex justify-between mt-2 items-center gap-x-1 cursor-pointer rounded-lg transition-all duration-200 p-1 text-xs"
+        className="flex gap-x-1 items-center justify-between mt-2 p-1 text-xs rounded-lg cursor-pointer transition-all duration-200"
       >
         <p>{ellipsis(address) || '...'}</p>
 
@@ -149,7 +149,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
         <>
           <div
             key={label}
-            className="my-1 py-2 px-2 w-full border-b border-dashed border-bkg-2 cursor-default flex justify-between items-center transition-all duration-300 text-xs"
+            className="flex items-center justify-between my-1 px-2 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
           >
             <p>{label}</p>
             <b>{currentValue}</b>
@@ -176,7 +176,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
               </Disclosure.Button>
 
               <Disclosure.Panel>
-                <div className="px-2 pb-2 rounded-lg w-full border border-bkg-4 bg-bkg-3 flex flex-col transition-all duration-300 text-sm text-brand-white border-t-0 rounded-t-none">
+                <div className="flex flex-col pb-2 px-2 w-full text-brand-white text-sm bg-bkg-3 border border-t-0 border-bkg-4 rounded-lg rounded-t-none transition-all duration-300">
                   {Object.values(newSenders).length &&
                     renderAddresses(newSenders)}
                 </div>
@@ -205,7 +205,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
               </Disclosure.Button>
 
               <Disclosure.Panel>
-                <div className="px-2 pb-2 rounded-lg w-full border border-bkg-4 bg-bkg-3 flex flex-col transition-all duration-300 text-sm text-brand-white border-t-0 rounded-t-none">
+                <div className="flex flex-col pb-2 px-2 w-full text-brand-white text-sm bg-bkg-3 border border-t-0 border-bkg-4 rounded-lg rounded-t-none transition-all duration-300">
                   {Object.values(newRecipients).length &&
                     renderAddresses(newRecipients)}
                 </div>
@@ -215,7 +215,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
         </Disclosure>
       )}
 
-      <div className="bg-bkg-3 fixed gap-x-6 p-4 bottom-0 left-0 text-xs flex justify-between items-center">
+      <div className="fixed bottom-0 left-0 flex gap-x-6 items-center justify-between p-4 text-xs bg-bkg-3">
         <p>Would you like to go to view transaction on SYS Block Explorer?</p>
 
         <Button
@@ -223,7 +223,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
           onClick={() =>
             window.open(`${sysExplorer}/tx/${transactionDetails.txid}`)
           }
-          className="inline-flex justify-center px-6 py-1 text-sm font-medium hover:text-brand-royalblue text-brand-white bg-transparent border border-brand-white rounded-full hover:bg-button-popuphover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
+          className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
         >
           Go
         </Button>

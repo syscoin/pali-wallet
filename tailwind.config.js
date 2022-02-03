@@ -32,6 +32,7 @@ module.exports = {
       },
       minWidth: {
         popup: '372px',
+        xs: '1rem',
       },
       minHeight: {
         popup: '600px',

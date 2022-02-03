@@ -23,9 +23,9 @@ const PhraseView = () => {
         Please input your wallet password
       </p>
 
-      <div className="flex justify-center items-center flex-col">
+      <div className="flex flex-col items-center justify-center">
         <Form
-          className="flex justify-center items-center flex-col gap-8 text-center my-6 w-full max-w-xs"
+          className="password flex flex-col gap-8 items-center justify-center my-6 w-full max-w-xs text-center"
           name="phraseview"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}

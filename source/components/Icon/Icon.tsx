@@ -83,6 +83,7 @@ const icons = {
 
 interface IIcon {
   className?: string;
+  color?: any;
   id?: string;
   name: string;
   rotate?: number;
@@ -97,6 +98,7 @@ export const Icon: FC<IIcon> = ({
   rotate,
   size,
   id,
+  color,
 }) => {
   const Component = icons[name];
 
@@ -105,7 +107,7 @@ export const Icon: FC<IIcon> = ({
       {Component ? (
         <Component
           className={className}
-          style={{ fontSize: size }}
+          style={{ fontSize: size, color }}
           rotate={rotate}
         />
       ) : null}

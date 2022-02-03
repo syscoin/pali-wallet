@@ -20,15 +20,15 @@ export const CreatePhrase: FC = () => {
       tooltipText="A recovery phrase is a series of 12 words in a specific order. This word combination is unique to your wallet. Make sure to have pen and paper ready so you can write it down."
       onlySection
     >
-      <div className="flex justify-center items-center flex-col gap-4 max-w-xs">
+      <div className="flex flex-col gap-4 items-center justify-center max-w-xs">
         {phrases && (
-          <ul className="list-none m-0 p-0 grid grid-cols-2 w-full gap-x-12">
+          <ul className="grid gap-x-12 grid-cols-2 m-0 p-0 w-full list-none">
             {phrases.split(' ').map((phrase: string, index: number) => (
               <li
-                className="font-poppins font-light text-sm leading-8 tracking-normal text-brand-graylight border-dashed border-b border-brand-graylight text-left w-32"
+                className="w-32 text-left text-brand-graylight font-poppins text-sm font-light tracking-normal leading-8 border-b border-dashed border-brand-graylight"
                 key={phrase}
               >
-                <span className="w-6 inline-block text-brand-royalblue">
+                <span className="inline-block w-6 text-brand-royalblue">
                   {String(index + 1).padStart(2, '0')}
                 </span>
 
@@ -39,7 +39,7 @@ export const CreatePhrase: FC = () => {
         )}
 
         <div className="absolute bottom-12">
-          <PrimaryButton type="button" width="56" onClick={nextHandler}>
+          <PrimaryButton type="button" width="56 px-6" onClick={nextHandler}>
             I've written it down
           </PrimaryButton>
         </div>

@@ -34,8 +34,8 @@ export const Home = () => {
         <>
           <Header accountHeader />
 
-          <section className="flex items-center flex-col gap-1 text-brand-white bg-bkg-1 py-14">
-            <div className="text-center flex justify-center flex-col items-center">
+          <section className="flex flex-col gap-1 items-center py-14 text-brand-white bg-bkg-1">
+            <div className="flex flex-col items-center justify-center text-center">
               {activeNetwork === 'testnet' ? (
                 <div className="flex items-center justify-center gap-x-0.5 balance-account">
                   <p
@@ -45,7 +45,7 @@ export const Home = () => {
                     {formatNumber(activeAccount?.balance || 0)}{' '}
                   </p>
 
-                  <p className="font-poppins mt-4">TSYS</p>
+                  <p className="mt-4 font-poppins">TSYS</p>
                 </div>
               ) : (
                 <>
@@ -57,7 +57,7 @@ export const Home = () => {
                       {formatNumber(activeAccount?.balance || 0)}{' '}
                     </p>
 
-                    <p className="font-poppins mt-4">SYS</p>
+                    <p className="mt-4 font-poppins">SYS</p>
                   </div>
 
                   <p id="fiat-ammount">
@@ -71,7 +71,7 @@ export const Home = () => {
               )}
             </div>
 
-            <div className="pt-8 w-3/4 flex justify-center max-w-md items-center gap-x-0.5">
+            <div className="flex gap-x-0.5 items-center justify-center pt-8 w-3/4 max-w-md">
               <Button
                 type="button"
                 className="flex items-center justify-center flex-1 xl:flex-none xl:p-18 text-base rounded-l-full border border-button-primary bg-button-primary text-brand-white transition-all duration-300 hover:bg-button-primaryhover"
@@ -106,8 +106,8 @@ export const Home = () => {
           <TxsPanel />
         </>
       ) : (
-        <div className="bg-bkg-2 z-20 flex justify-center items-center fixed w-full min-h-popup min-w-popup h-full">
-          <Icon name="loading" className="w-4 ml-2 text-brand-white" />
+        <div className="fixed z-20 flex items-center justify-center w-full min-w-popup h-full min-h-popup bg-bkg-2">
+          <Icon name="loading" className="ml-2 w-4 text-brand-white" />
         </div>
       )}
     </div>

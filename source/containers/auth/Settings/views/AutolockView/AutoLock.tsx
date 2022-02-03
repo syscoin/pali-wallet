@@ -39,8 +39,9 @@ const AutolockView = () => {
       )}
 
       <Form
-        className="flex justify-center items-center flex-col gap-8 text-center"
+        className="flex flex-col gap-8 items-center justify-center text-center"
         name="autolock"
+        id="autolock"
         onFinish={onSubmit}
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 16 }}
@@ -71,7 +72,7 @@ const AutolockView = () => {
           <Input
             type="number"
             placeholder="Minutes"
-            className="rounded-full py-2 px-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
+            className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
           />
         </Form.Item>
 

@@ -256,7 +256,7 @@ export const AuthRouter = () => {
 
   return (
     <>
-      <div className="w-full min-h-popup min-w-popup h-full">
+      <div className="w-full min-w-popup h-full min-h-popup">
         <Routes>
           <Route path="/app.html" element={<Start />} />
 

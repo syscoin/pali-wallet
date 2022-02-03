@@ -65,7 +65,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             }}
             onFinish={onSubmit}
             autoComplete="off"
-            className="flex justify-center items-center flex-col gap-4 mt-8 text-center"
+            className="flex flex-col gap-4 items-center justify-center mt-8 text-center"
           >
             <Form.Item
               name="network"
@@ -80,7 +80,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               <Input
                 type="text"
                 placeholder="Network name"
-                className="rounded-full py-2 px-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
+                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
               />
             </Form.Item>
 
@@ -117,7 +117,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               <Input
                 type="text"
                 placeholder="Blockbook URL"
-                className="rounded-full py-2 px-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
+                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
               />
             </Form.Item>
 
@@ -142,7 +142,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               />
             </Form.Item>
 
-            <p className="text-brand-white font-poppins py-4 text-center px-8 text-sm">
+            <p className="px-8 py-4 text-center text-brand-white font-poppins text-sm">
               You can edit this later if you need on network settings menu.
             </p>
 

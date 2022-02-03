@@ -30,12 +30,12 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
     >
       <Header normalHeader />
 
-      <div className="w-full relative flex justify-center items-center text-brand-white pt-6 bg-bkg-3">
+      <div className="relative flex items-center justify-center pt-6 w-full text-brand-white bg-bkg-3">
         {url && canGoBack && (
           <Tooltip content="Go to fullscreen">
             <IconButton onClick={() => window.open(url)}>
               <Icon
-                className="sm:hidden text-brand-white absolute left-5 bottom-1"
+                className="absolute bottom-1 left-5 text-brand-white sm:hidden"
                 name="desktop"
               />
             </IconButton>
@@ -53,12 +53,13 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
         )}
       </div>
 
-      <div className="bg-bkg-3 pt-2 pb-3 mb-3 flex justify-center items-center relative">
+      <div className="relative flex items-center justify-center mb-3 pb-3 pt-2 bg-bkg-3">
         <Icon
           size={36}
           name="select-up"
           wrapperClassname="w-8"
           className={`text-${background} fixed top-24`}
+          color="#111E33"
         />
       </div>
 

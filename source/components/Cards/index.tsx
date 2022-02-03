@@ -74,7 +74,7 @@ export const CopyCard: FC<CopyCarType> = ({
     className={`${className} bg-bkg-4 border border-bkg-4 p-4 text-xs rounded-lg cursor-pointer w-full max-w-xs`}
     onClick={() => (onClick ? onClick() : undefined)}
   >
-    <div className="flex justify-between items-center w-full">
+    <div className="flex items-center justify-between w-full">
       <p>{label}</p>
 
       <Icon name="copy" className="text-brand-white" />

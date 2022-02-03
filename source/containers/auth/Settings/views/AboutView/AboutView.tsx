@@ -17,22 +17,22 @@ const AboutView: FC = () => {
         <p>Version: 1.0.23</p>
 
         <p
-          className="transition-all duration-200 hover:text-brand-royalblue"
+          className="hover:text-brand-royalblue transition-all duration-200"
           onClick={() => handleRedirect('https://docs.paliwallet.com/')}
         >
           Pali API
         </p>
       </div>
 
-      <div className="flex flex-col justify-center items-center w-full">
+      <div className="flex flex-col items-center justify-center w-full">
         <Card
           onClick={() => handleRedirect('https://discord.gg/8QKeyurHRd')}
           className="cursor-pointer"
         >
-          <div className="flex justify-start text-base font-bold items-center font-poppins mb-4">
+          <div className="flex items-center justify-start mb-4 font-poppins text-base font-bold">
             <Icon
               name="message"
-              className="text-brand-white mb-1"
+              className="mb-1 text-brand-white"
               wrapperClassname="w-6"
             />
 

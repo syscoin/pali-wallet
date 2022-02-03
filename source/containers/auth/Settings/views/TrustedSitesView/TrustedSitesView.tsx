@@ -34,7 +34,7 @@ const TrustedSitesView = () => {
 
   return (
     <AuthViewLayout title="TRUSTED WEBSITES">
-      <p className="text-white text-sm text-center mt-2 ml-2">
+      <p className="ml-2 mt-2 text-center text-white text-sm">
         Check all sites included on our trusted list.
       </p>
 
@@ -44,7 +44,7 @@ const TrustedSitesView = () => {
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         autoComplete="off"
-        className="flex justify-center items-center flex-col gap-4 text-center"
+        className="flex flex-col gap-4 items-center justify-center text-center"
       >
         <Form.Item
           name="search"
@@ -59,18 +59,18 @@ const TrustedSitesView = () => {
             onChange={(event) => handleSearch(event)}
             type="text"
             placeholder="Search"
-            className="rounded-full py-2 px-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus"
+            className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
           />
         </Form.Item>
       </Form>
 
-      <div className="flex flex-col justify-center items-center w-full">
-        <ul className="scrollbar-styled h-72 my-4 overflow-auto w-full p-2">
+      <div className="flex flex-col items-center justify-center w-full">
+        <ul className="scrollbar-styled my-4 p-2 w-full h-72 overflow-auto">
           {filteredSearch &&
             filteredSearch.map((url: string) => (
               <li
                 key={url}
-                className="my-2 p-2 border-b border-dashed border-bkg-3 w-full text-xs"
+                className="my-2 p-2 w-full text-xs border-b border-dashed border-bkg-3"
               >
                 <p>{formatURL(url, 40)}</p>
               </li>
