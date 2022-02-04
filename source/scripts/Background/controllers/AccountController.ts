@@ -275,12 +275,20 @@ const AccountController = (actions: {
       }
     }
 
-    return {
-      address,
-      assets,
+    const accountData = {
       balance: response.balance / 1e8,
+      assets,
       transactions,
     };
+
+    if (address) {
+      return {
+        ...accountData,
+        address,
+      };
+    }
+
+    return accountData;
   };
 
   const updateActiveAccount = async () => {
