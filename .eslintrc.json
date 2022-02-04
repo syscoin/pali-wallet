@@ -7,25 +7,17 @@
     "prettier/react",
     "airbnb"
   ],
-  "plugins": [
-    "@typescript-eslint",
-    "eslint-plugin-prettier",
-    "react-hooks"
-  ],
+  "plugins": ["@typescript-eslint", "eslint-plugin-prettier", "react-hooks"],
   "overrides": [
     {
-      "files": [
-        "*.{ts,tsx}"
-      ],
+      "files": ["*.{ts,tsx}"],
       "parser": "@typescript-eslint/parser",
       "parserOptions": {
         "project": "**/tsconfig.json",
         "tsconfigRootDir": ".",
         "sourceType": "module"
       },
-      "plugins": [
-        "typescript-sort-keys"
-      ],
+      "plugins": ["typescript-sort-keys"],
       "rules": {
         "typescript-sort-keys/interface": 2,
         "typescript-sort-keys/string-enum": 2,
@@ -36,10 +28,7 @@
   ],
   "rules": {
     "implicit-arrow-linebreak": "off",
-    "arrow-body-style": [
-      "error",
-      "as-needed"
-    ],
+    "arrow-body-style": ["error", "as-needed"],
     "comma-dangle": [
       "error",
       {
@@ -121,15 +110,9 @@
       {
         "groups": [
           "builtin",
-          [
-            "external",
-            "internal"
-          ],
+          ["external", "internal"],
           "parent",
-          [
-            "sibling",
-            "index"
-          ]
+          ["sibling", "index"]
         ],
         "newlines-between": "always"
       }
