@@ -34,30 +34,30 @@ export const Home = () => {
         <>
           <Header accountHeader />
 
-          <section className="flex items-center flex-col gap-1 text-brand-white bg-bkg-1 py-14">
-            <div className="text-center flex justify-center flex-col items-center">
+          <section className="flex flex-col gap-1 items-center py-14 text-brand-white bg-bkg-1">
+            <div className="flex flex-col items-center justify-center text-center">
               {activeNetwork === 'testnet' ? (
-                <div className="flex items-center justify-center gap-x-0.5 balance-account">
+                <div className="balance-account flex gap-x-0.5 items-center justify-center">
                   <p
-                    className="text-5xl font-medium font-rubik"
+                    className="font-rubik text-5xl font-medium"
                     id="home-balance"
                   >
                     {formatNumber(activeAccount?.balance || 0)}{' '}
                   </p>
 
-                  <p className="font-poppins mt-4">TSYS</p>
+                  <p className="mt-4 font-poppins">TSYS</p>
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center justify-center gap-x-0.5 balance-account">
+                  <div className="balance-account flex gap-x-0.5 items-center justify-center">
                     <p
                       id="home-balance"
-                      className="text-5xl font-medium font-rubik"
+                      className="font-rubik text-5xl font-medium"
                     >
                       {formatNumber(activeAccount?.balance || 0)}{' '}
                     </p>
 
-                    <p className="font-poppins mt-4">SYS</p>
+                    <p className="mt-4 font-poppins">SYS</p>
                   </div>
 
                   <p id="fiat-ammount">
@@ -71,10 +71,10 @@ export const Home = () => {
               )}
             </div>
 
-            <div className="pt-8 w-3/4 flex justify-center max-w-md items-center gap-x-0.5">
+            <div className="flex gap-x-0.5 items-center justify-center pt-8 w-3/4 max-w-md">
               <Button
                 type="button"
-                className="flex items-center justify-center flex-1 xl:flex-none xl:p-18 text-base rounded-l-full border border-button-primary bg-button-primary text-brand-white transition-all duration-300 hover:bg-button-primaryhover"
+                className="xl:p-18 flex flex-1 items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-l-full transition-all duration-300 xl:flex-none"
                 id="send-btn"
                 onClick={() => navigate('/send')}
               >
@@ -89,7 +89,7 @@ export const Home = () => {
 
               <Button
                 type="button"
-                className="flex items-center justify-center flex-1 xl:flex-none xl:p-18 text-base rounded-r-full border border-button-secondary bg-button-secondary text-brand-white hover:bg-button-secondaryhover transition-all duration-300"
+                className="xl:p-18 flex flex-1 items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-r-full transition-all duration-300 xl:flex-none"
                 id="receive-btn"
                 onClick={() => navigate('/receive')}
               >
@@ -106,8 +106,8 @@ export const Home = () => {
           <TxsPanel />
         </>
       ) : (
-        <div className="bg-bkg-2 z-20 flex justify-center items-center fixed w-full min-h-popup min-w-popup h-full">
-          <Icon name="loading" className="w-4 ml-2 text-brand-white" />
+        <div className="fixed z-20 flex items-center justify-center w-full min-w-popup h-full min-h-popup bg-bkg-2">
+          <Icon name="loading" className="ml-2 w-4 text-brand-white" />
         </div>
       )}
     </div>

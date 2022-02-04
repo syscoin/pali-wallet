@@ -17,8 +17,8 @@ const PrivateKeyView = () => {
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   return (
-    <AuthViewLayout title="YOUR KEYS" id="your-keys-title">
-      <div className="h-96 px-2 py-5 scrollbar-styled overflow-auto">
+    <AuthViewLayout title="YOUR KEYS">
+      <div className="scrollbar-styled px-2 py-5 h-96 overflow-auto">
         <InfoCard>
           <p>
             <b className="text-warning-info">WARNING: </b>
@@ -45,26 +45,26 @@ const PrivateKeyView = () => {
                 />
               </Disclosure.Button>
 
-              <Disclosure.Panel className="cursor-pointer py-4 px-4 flex flex-col justify-start items-start rounded-b-lg w-80 border border-bkg-3 transition-all duration-300 bg-bkg-3">
+              <Disclosure.Panel className="flex flex-col items-start justify-start px-4 py-4 w-80 bg-bkg-3 border border-bkg-3 rounded-b-lg cursor-pointer transition-all duration-300">
                 <div
-                  className="flex justify-between text-xs w-full items-center"
+                  className="flex items-center justify-between w-full text-xs"
                   onClick={() => copyText(String(activeAccount?.xpub))}
                 >
                   <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>
 
-                  <Icon name="copy" className="text-brand-white mb-1" />
+                  <Icon name="copy" className="mb-1 text-brand-white" />
                 </div>
               </Disclosure.Panel>
             </>
           )}
         </Disclosure>
 
-        <p className="text-xs mt-4">
+        <p className="mt-4 text-xs">
           To see your private key, input your password
         </p>
 
         <Form
-          className="flex justify-center items-center flex-col gap-8 text-center my-3 w-full max-w-xs"
+          className="password flex flex-col gap-8 items-center justify-center my-3 w-full max-w-xs text-center"
           name="phraseview"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
@@ -110,7 +110,7 @@ const PrivateKeyView = () => {
         </CopyCard>
 
         <div
-          className="flex mt-4 justify-center text-xs cursor-pointer hover:text-brand-royalblue items-center gap-2"
+          className="flex gap-2 items-center justify-center mt-4 hover:text-brand-royalblue text-xs cursor-pointer"
           onClick={() =>
             window.open(`${sysExplorer}/xpub/${activeAccount?.xpub}`)
           }

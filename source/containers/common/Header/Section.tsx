@@ -10,12 +10,12 @@ export const Section = () => {
     <div className="relative">
       <img
         src={`/${LogoImage}`}
-        className="w-40 max-w-40 mx-auto mt-4"
+        className="max-w-40 mt-4 mx-auto w-40"
         alt="pali"
       />
 
       <IconButton
-        className="absolute top-0 -right-24"
+        className="absolute -right-24 top-0"
         onClick={() => navigate(-1)}
       >
         <Icon name="home" className="text-brand-royalblue opacity-60" />

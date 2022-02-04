@@ -26,20 +26,20 @@ const ConnectedSites = (): any => {
 
   return (
     <AuthViewLayout title="CONNECTED SITES">
-      <p className="text-white text-xs m-4">
+      <p className="m-4 text-white text-xs">
         {activeAccount?.connectedTo.length
           ? `${activeAccount.label} is connected to:`
           : `${activeAccount?.label} is not connected to any sites. To connect to a SYS platform site, find the connect button on their site.`}
       </p>
 
-      <div className="flex flex-col justify-center items-center w-full">
+      <div className="flex flex-col items-center justify-center w-full">
         {activeAccount?.connectedTo &&
           activeAccount.connectedTo.map((url: string) => (
             <ul
               key={url}
-              className="scrollbar-styled h-80 overflow-auto w-full p-2"
+              className="scrollbar-styled p-2 w-full h-80 overflow-auto"
             >
-              <li className="flex justify-between p-3 my-2 border-b border-dashed border-yellow-300 items-center w-full text-xs">
+              <li className="flex items-center justify-between my-2 p-3 w-full text-xs border-b border-dashed border-yellow-300">
                 <p>{formatURL(url, 25)}</p>
 
                 <IconButton onClick={() => setSelected(url)}>
@@ -57,12 +57,12 @@ const ConnectedSites = (): any => {
           <Transition appear show={selected !== ''} as={Fragment}>
             <Dialog
               as="div"
-              className="fixed inset-0 z-10 overflow-y-auto"
+              className="fixed z-10 inset-0 overflow-y-auto"
               onClose={() => setSelected('')}
             >
-              <div className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50" />
+              <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
 
-              <div className="min-h-screen px-4">
+              <div className="px-4 min-h-screen">
                 <Transition.Child
                   as={Fragment}
                   enter="ease-out duration-300"
@@ -76,7 +76,7 @@ const ConnectedSites = (): any => {
                 </Transition.Child>
 
                 <span
-                  className="inline-block h-screen align-middle"
+                  className="inline-block align-middle h-screen"
                   aria-hidden="true"
                 >
                   &#8203;
@@ -90,19 +90,19 @@ const ConnectedSites = (): any => {
                   leaveFrom="opacity-100 scale-100"
                   leaveTo="opacity-0 scale-95"
                 >
-                  <div className="font-poppins inline-block w-full max-w-2xl py-6 my-8 overflow-hidden align-middle transition-all transform bg-bkg-2 shadow-xl rounded-2xl">
+                  <div className="inline-block align-middle my-8 py-6 w-full max-w-2xl font-poppins bg-bkg-2 rounded-2xl shadow-xl overflow-hidden transform transition-all">
                     <Dialog.Title
                       as="h3"
-                      className="text-lg font-medium leading-6 text-brand-white text-center border-b pb-3 border-dashed border-brand-white"
+                      className="pb-3 text-center text-brand-white text-lg font-medium leading-6 border-b border-dashed border-brand-white"
                     >
                       Edit connection
                     </Dialog.Title>
                     <div className="my-4">
-                      <p className="text-sm text-brand-white m-3">
+                      <p className="m-3 text-brand-white text-sm">
                         Delete connected site:
                       </p>
 
-                      <div className="flex justify-between text-brand-white items-center m-3">
+                      <div className="flex items-center justify-between m-3 text-brand-white">
                         <p>{formatURL(selected, 20)}</p>
 
                         <IconButton
@@ -112,10 +112,10 @@ const ConnectedSites = (): any => {
                         </IconButton>
                       </div>
 
-                      <div className="bg-bkg-1 p-4">
-                        <p className="text-brand-white mb-3">Permissions</p>
+                      <div className="p-4 bg-bkg-1">
+                        <p className="mb-3 text-brand-white">Permissions</p>
 
-                        <div className="flex justify-between items-center">
+                        <div className="flex items-center justify-between">
                           <p className="text-brand-white text-xs">
                             {activeAccount?.label}
                           </p>
@@ -125,7 +125,7 @@ const ConnectedSites = (): any => {
                           </p>
                         </div>
 
-                        <p className="text-brand-white cursor-not-allowed opacity-60 pt-3 border-t border-dashed border-brand-white mt-4">
+                        <p className="mt-4 pt-3 text-brand-white border-t border-dashed border-brand-white opacity-60 cursor-not-allowed">
                           <input type="checkbox" />
 
                           <span className="mb-1 ml-3">
@@ -138,7 +138,7 @@ const ConnectedSites = (): any => {
                     <div className="mt-4 text-center">
                       <button
                         type="button"
-                        className="inline-flex justify-center px-12 py-2 text-sm font-medium text-brand-royalblue bg-blue-100 border border-transparent rounded-full hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
+                        className="inline-flex justify-center px-12 py-2 text-brand-royalblue text-sm font-medium bg-blue-100 hover:bg-blue-200 border border-transparent rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
                         onClick={() => setSelected('')}
                       >
                         Close

@@ -32,14 +32,14 @@ export const ConnectedAccounts = () => {
 
   return (
     <AuthViewLayout canGoBack={false} title="CONNECTED ACCOUNT">
-      <div className="flex flex-col justify-center items-center w-full">
-        <h1 className="text-sm mt-4">PALI WALLET</h1>
+      <div className="flex flex-col items-center justify-center w-full">
+        <h1 className="mt-4 text-sm">PALI WALLET</h1>
 
         <p className="text-brand-royalblue text-sm">
           {getHost(`${currentSenderURL}`)}
         </p>
 
-        <ul className="scrollbar-styled w-full flex flex-col gap-4 h-72 mt-4 overflow-auto px-8">
+        <ul className="scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-72 overflow-auto">
           {accounts.map((account: any) => (
             <li
               className={`${
@@ -65,7 +65,7 @@ export const ConnectedAccounts = () => {
           ))}
         </ul>
 
-        <div className="flex justify-between w-full max-w-xs md:max-w-2xl items-center absolute bottom-10 gap-3">
+        <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
           <SecondaryButton type="button" onClick={closePopup} action>
             Cancel
           </SecondaryButton>

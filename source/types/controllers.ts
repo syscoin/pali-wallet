@@ -68,7 +68,7 @@ export interface IAccountController {
   setAutolockTimer: (minutes: number) => any;
   setHDSigner: (accountId: number) => any;
   setNewAddress: (addr: string) => boolean;
-  setNewXpub: (id: number, xpub: string, xprv: string, key: string) => boolean;
+  setNewXpub: (id: number, xpub: string, xprv: string, key: string) => void;
   signTransaction: (psbt: any, type: boolean) => any;
   subscribeAccount: (
     encriptedPassword: any,

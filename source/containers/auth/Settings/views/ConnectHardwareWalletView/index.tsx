@@ -15,9 +15,9 @@ const ConnectHardwareWalletView: FC = () => {
 
   return (
     <AuthViewLayout title="HARDWARE WALLET" id="hardware-wallet-title">
-      <div className="flex items-center flex-col justify-center w-full">
-        <div className="scrollbar-styled text-sm overflow-auto px-4 h-85">
-          <p className="text-white text-sm mt-8 mb-1 mx-4">
+      <div className="flex flex-col items-center justify-center w-full">
+        <div className="scrollbar-styled px-4 h-85 text-sm overflow-auto">
+          <p className="mb-1 mt-8 mx-4 text-white text-sm">
             Select the hardware wallet you'd like to connect to Pali
           </p>
 
@@ -32,7 +32,7 @@ const ConnectHardwareWalletView: FC = () => {
             Trezor
           </p>
 
-          <div className="bg-bkg-4 border border-dashed border-brand-royalblue text-brand-white mx-2 p-4 text-xs rounded-lg mb-6">
+          <div className="mb-6 mx-2 p-4 text-brand-white text-xs bg-bkg-4 border border-dashed border-brand-royalblue rounded-lg">
             <p>
               <b>Don't have a hardware wallet?</b>
               <br />
@@ -41,7 +41,7 @@ const ConnectHardwareWalletView: FC = () => {
             </p>
 
             <p
-              className="cursor-pointer hover:text-brand-white mt-2 w-16 text-button-primary buy-now-btn"
+              className="mt-2 w-16 hover:text-brand-white text-button-primary cursor-pointer"
               onClick={() => window.open('https://trezor.io/')}
             >
               Buy now
@@ -66,20 +66,20 @@ const ConnectHardwareWalletView: FC = () => {
                 </Disclosure.Button>
 
                 <Disclosure.Panel>
-                  <div className="mx-2 py-2 px-4 flex flex-col justify-start items-start rounded-b-lg w-80 border border-bkg-3 cursor-pointer transition-all duration-300 bg-bkg-3">
-                    <p className="text-sm my-2">
+                  <div className="flex flex-col items-start justify-start mx-2 px-4 py-2 w-80 bg-bkg-3 border border-bkg-3 rounded-b-lg cursor-pointer transition-all duration-300">
+                    <p className="my-2 text-sm">
                       1 - Connect a hardware wallet
                     </p>
 
-                    <span className="text-xs mb-4">
+                    <span className="mb-4 text-xs">
                       Connect your hardware wallet directly to your computer.
                     </span>
 
-                    <p className="text-sm my-2">
+                    <p className="my-2 text-sm">
                       2 - Start using SYS powered sites and more
                     </p>
 
-                    <span className="text-xs mb-1">
+                    <span className="mb-1 text-xs">
                       Use your hardware account like you would with any SYS
                       account. Connect to SYS web3 sites, send SYS, buy and
                       store SPT tokens.

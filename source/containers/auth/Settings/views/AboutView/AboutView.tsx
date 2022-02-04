@@ -12,27 +12,27 @@ const AboutView: FC = () => {
 
   return (
     <AuthViewLayout title="INFO & HELP" id="info-help-title">
-      <div className="text-brand-white text-sm mt-8 w-full pl-8 flex flex-col gap-y-4">
+      <div className="flex flex-col gap-y-4 mt-8 pl-8 w-full text-brand-white text-sm">
         <p>Pali Wallet Browser Extension v2.0</p>
         <p>Version: 1.0.23</p>
 
         <p
-          className="transition-all duration-200 hover:text-brand-royalblue"
+          className="hover:text-brand-royalblue transition-all duration-200"
           onClick={() => handleRedirect('https://docs.paliwallet.com/')}
         >
           Pali API
         </p>
       </div>
 
-      <div className="flex flex-col justify-center items-center w-full">
+      <div className="flex flex-col items-center justify-center w-full">
         <Card
           onClick={() => handleRedirect('https://discord.gg/8QKeyurHRd')}
           className="cursor-pointer"
         >
-          <div className="flex justify-start text-base font-bold items-center font-poppins mb-4">
+          <div className="flex items-center justify-start mb-4 font-poppins text-base font-bold">
             <Icon
               name="message"
-              className="text-brand-white mb-1"
+              className="mb-1 text-brand-white"
               wrapperClassname="w-6"
             />
 

@@ -60,9 +60,9 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
       as="div"
       className="absolute right-3 inline-block text-right md:max-w-2xl"
     >
-      <Menu.Button className="inline-flex justify-center w-full  text-sm font-medium text-white hover:text-button-primaryhover rounded-full hover:bg-opacity-30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+      <Menu.Button className="inline-flex justify-center w-full hover:text-button-primaryhover text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
         {encriptedMnemonic && !importSeed && (
-          <Icon name="dots" className="z-0" id="account-settings-btn" />
+          <Icon name="dots" className="z-0" />
         )}
       </Menu.Button>
 
@@ -75,14 +75,14 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
         leaveFrom="transform opacity-100 scale-100"
         leaveTo="transform opacity-0 scale-95"
       >
-        <div className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50" />
+        <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
 
         <Menu.Items
           as="div"
-          className="scrollbar-styled bg-menu-primary pb-6 overflow-auto text-brand-white font-poppins shadow-2xl absolute z-10 right-0 origin-top-right rounded-2xl ring-1 ring-black ring-opacity-5 focus:outline-none text-center w-72"
+          className="scrollbar-styled absolute z-10 right-0 pb-6 w-72 text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
         >
           <h2
-            className="bg-menu-primary pt-8 pb-6 text-brand-white border-b border-dashed border-dashed-light w-full text-center mb-3"
+            className="mb-3 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light"
             id="account-settings-title"
           >
             ACCOUNT SETTINGS
@@ -91,10 +91,9 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
           <Menu.Item>
             <li
               onClick={() => navigate('/account-priv')}
-              className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
-              id="your-keys-btn"
+              className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
             >
-              <Icon name="key" className="ml-1 mb-2 mr-4 text-brand-white" />
+              <Icon name="key" className="mb-2 ml-1 mr-4 text-brand-white" />
 
               <span className="px-3">Your keys</span>
             </li>
@@ -104,16 +103,13 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
             <Disclosure>
               {({ open }) => (
                 <>
-                  <Disclosure.Button
-                    className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
-                    id="accounts-btn"
-                  >
+                  <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
                     <Icon
                       name="user"
-                      className="ml-1 mb-2 mr-4 text-brand-white"
+                      className="mb-2 ml-1 mr-4 text-brand-white"
                     />
 
-                    <span className="text-base px-3">Accounts</span>
+                    <span className="px-3 text-base">Accounts</span>
 
                     <Icon
                       name="select-down"
@@ -123,15 +119,14 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                     />
                   </Disclosure.Button>
 
-                  <Disclosure.Panel className="scrollbar-styled pb-2 text-sm bg-menu-secondary max-h-40 h-auto overflow-auto">
+                  <Disclosure.Panel className="scrollbar-styled pb-2 h-auto max-h-40 text-sm bg-menu-secondary overflow-auto">
                     <li
                       onClick={() => navigate('/account-newaccount')}
-                      className="flex items-center p-2.5 text-sm font-medium text-brand-white transition transform bg-menu-secondary mb-4 backface-visibility-hidden active:bg-opacity-40 focus:outline-none justify-center duration-300 mx-auto w-full border-b border-dashed border-menu-dasheddark cursor-pointer hover:bg-bkg-2"
-                      id="create-account-btn"
+                      className="backface-visibility-hidden border-menu-dasheddark flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed focus:outline-none cursor-pointer transform transition duration-300"
                     >
                       <Icon
                         name="appstoreadd"
-                        className="text-brand-white mb-1 mr-3"
+                        className="mb-1 mr-3 text-brand-white"
                       />
 
                       <span>Create new account</span>
@@ -140,7 +135,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                     {accounts.map((account: IAccountState, index) => (
                       <li
                         key={account.id}
-                        className="mt-2 flex items-center flex-col p-2.5 text-sm font-medium text-white transition transform bg-menu-secondary backface-visibility-hidden active:bg-opacity-40 hover:scale-105 focus:outline-none justify-around duration-300 mx-auto max-w-95 cursor-pointer"
+                        className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                         onClick={() => switchAccount(account.id)}
                         id={`account-${index}`}
                       >
@@ -152,7 +147,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                         {activeAccountId === account.id && (
                           <Icon
                             name="check"
-                            className="w-4 mb-1"
+                            className="mb-1 w-4"
                             wrapperClassname="w-6 absolute right-1"
                           />
                         )}
@@ -167,12 +162,12 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
           <Menu.Item>
             <li
               onClick={() => navigate('/account-hardware')}
-              className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
+              className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
               id="hardware-wallet-btn"
             >
               <Icon
                 name="partition"
-                className="text-brand-white ml-1 mr-4 mb-2"
+                className="mb-2 ml-1 mr-4 text-brand-white"
               />
 
               <span className="px-3">Hardware wallet</span>
@@ -182,10 +177,9 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
           <Menu.Item>
             <li
               onClick={handleLogout}
-              className="flex py-3 justify-start items-center w-full text-base px-5 cursor-pointer transition-all duration-200 hover:bg-bkg-3"
-              id="lock-btn"
+              className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
             >
-              <Icon name="lock" className="text-brand-white ml-1 mr-4 mb-2" />
+              <Icon name="lock" className="mb-2 ml-1 mr-4 text-brand-white" />
 
               <span className="px-3">Lock</span>
             </li>
@@ -196,13 +190,13 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
   );
 
   return (
-    <div className="flex items-center justify-between bg-bkg-3 p-1">
+    <div className="flex items-center justify-between p-1 bg-bkg-3">
       <div className="flex items-center w-full text-brand-white">
-        <div className="add-identicon mr-2 ml-1 my-2" />
+        <div className="add-identicon ml-1 mr-2 my-2" />
 
-        <div className="text-brand-white px-1 justify-center items-center">
-          <p className="text-base mb-1">{activeAccount?.label}</p>
-          <p className="text-xs" id="active-account">
+        <div className="items-center justify-center px-1 text-brand-white">
+          <p className="mb-1 text-base">{activeAccount?.label}</p>
+          <p className="text-xs">
             {ellipsis(activeAccount?.address.main, 6, 14)}
           </p>
         </div>

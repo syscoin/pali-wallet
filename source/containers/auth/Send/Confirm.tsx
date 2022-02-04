@@ -140,36 +140,36 @@ export const SendConfirm = () => {
       )}
 
       {tempTx && (
-        <div className="mt-4 flex justify-center items-center flex-col w-full">
-          <p className="flex flex-col justify-center text-center items-center font-rubik">
-            <span className="text-brand-royalblue font-thin font-poppins">
+        <div className="flex flex-col items-center justify-center mt-4 w-full">
+          <p className="flex flex-col items-center justify-center text-center font-rubik">
+            <span className="text-brand-royalblue font-poppins font-thin">
               Send
             </span>
             {tempTx.amount}
             {tempTx.token ? tempTx.token.symbol : 'SYS'}
           </p>
 
-          <div className="w-full flex justify-center divide-y divide-dashed divide-bkg-3 items-start flex-col gap-3 py-2 px-4 text-sm mt-4 text-left">
-            <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
+          <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
+            <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               From
               <span className="text-brand-white">
                 {ellipsis(tempTx.fromAddress, 7, 15)}
               </span>
             </p>
 
-            <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
+            <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               To
               <span className="text-brand-white">
                 {ellipsis(tempTx.toAddress, 7, 15)}
               </span>
             </p>
 
-            <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
+            <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               Fee
               <span className="text-brand-white">{tempTx.fee}</span>
             </p>
 
-            <p className="text-brand-royalblue font-thin font-poppins flex flex-col w-full pt-2">
+            <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               Max total
               <span className="text-brand-white">
                 {Number(tempTx.fee) + Number(tempTx.amount)}

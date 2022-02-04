@@ -13,15 +13,13 @@ describe('WalletController.ts tests', () => {
     checkPassword,
     importPhrase,
     logOut,
-    generatePhrase,
-    getPhrase,
     isLocked,
     password,
     encriptedPassword,
     mnemonic,
   } = WalletController();
 
-  it('should delete walconst and check if walconst state back to initial state', () => {
+  it('should delete wallet and check if wallet state is equal to initial state', () => {
     // eslint-disable-next-line no-shadow
     const password: any = FAKE_PASSWORD;
 
@@ -80,26 +78,6 @@ describe('WalletController.ts tests', () => {
     expect(password).toBe('');
     expect(encriptedPassword).toBe('');
     expect(mnemonic).toBe('');
-  });
-
-  it('should generate a mnemonic correctly', () => {
-    generatePhrase();
-
-    // @ts-ignore
-    const wordCount = mnemonic.match(/(\w+)/g).length;
-
-    expect(wordCount).toBe(12);
-  });
-
-  it('should check if it is getting mnemonic correctly according to password', () => {
-    const pwd = FAKE_PASSWORD;
-
-    setWalletPassword(pwd);
-    generatePhrase();
-
-    const result = getPhrase(pwd);
-
-    expect(result).toBe(mnemonic);
   });
 
   it('should check if it is returning lock correctly', () => {

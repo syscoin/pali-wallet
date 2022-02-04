@@ -85,21 +85,21 @@ export const AssetDetails = ({ assetType, assetData }) => {
           <img
             src={`${imageLink}`}
             alt="syscoin"
-            className="mx-auto mt-4 mb-8 w-40 h-40 rounded-md transition-all duration-200 cursor-pointer"
+            className="mb-8 mt-4 mx-auto w-40 h-40 rounded-md cursor-pointer transition-all duration-200"
             onClick={() => imageLink && window.open(imageLink)}
           />
         </Tooltip>
       ) : (
         <>
           {loadingImage ? (
-            <div className="flex justify-center h-40 items-center">
+            <div className="flex items-center justify-center h-40">
               <Icon name="loading" className="text-brand-royalblue" size={50} />
             </div>
           ) : (
             <img
               src={`${placeholder}`}
               alt="syscoin"
-              className="mx-auto mt-4 mb-8 w-40 h-40 rounded-md transition-all duration-200 cursor-not-allowed"
+              className="mb-8 mt-4 mx-auto w-40 h-40 rounded-md cursor-not-allowed transition-all duration-200"
             />
           )}
         </>
@@ -108,20 +108,20 @@ export const AssetDetails = ({ assetType, assetData }) => {
       {assetTransaction.map(({ label, value }: any) => (
         <div
           key={label}
-          className="my-1 p-2 w-full border-b border-dashed border-bkg-2 cursor-default flex justify-between items-center transition-all duration-300 text-xs"
+          className="flex items-center justify-between my-1 p-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
         >
           <p>{label}</p>
           <b>{value}</b>
         </div>
       ))}
 
-      <div className="bg-bkg-3 fixed gap-x-6 p-4 bottom-0 left-0 text-xs flex justify-between items-center">
+      <div className="fixed bottom-0 left-0 flex gap-x-6 items-center justify-between p-4 text-xs bg-bkg-3">
         <p>Would you like to go to view asset on SYS Block Explorer?</p>
 
         <Button
           type="button"
           onClick={() => window.open(`${sysExplorer}/asset/${assetGuid}`)}
-          className="inline-flex justify-center px-6 py-1 text-sm font-medium hover:text-brand-royalblue text-brand-white bg-transparent border border-brand-white rounded-full hover:bg-button-popuphover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
+          className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
         >
           Go
         </Button>

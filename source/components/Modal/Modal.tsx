@@ -63,15 +63,15 @@ const DefaultModal = ({
     <Transition appear show={open} as={Fragment}>
       <Dialog
         as="div"
-        className="fixed inset-0 z-10 overflow-y-auto"
+        className="fixed z-10 inset-0 overflow-y-auto"
         onClose={onClose}
       >
         <div
           onClick={goTo && doNothing ? () => null : chooseAction}
-          className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50"
+          className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out"
         />
 
-        <div className="min-h-screen px-4 text-center">
+        <div className="px-4 min-h-screen text-center">
           <Transition.Child
             as={Fragment}
             enter="ease-out duration-300"
@@ -85,7 +85,7 @@ const DefaultModal = ({
           </Transition.Child>
 
           <span
-            className="inline-block h-screen align-middle"
+            className="inline-block align-middle h-screen"
             aria-hidden="true"
           >
             &#8203;
@@ -104,7 +104,7 @@ const DefaultModal = ({
             >
               <Dialog.Title
                 as="h3"
-                className="text-lg font-medium pt-2 pb-4 border-b border-dashed border-gray-600 leading-6 text-brand-white"
+                className="pb-4 pt-2 text-brand-white text-lg font-medium leading-6 border-b border-dashed border-gray-600"
               >
                 {title}
               </Dialog.Title>
@@ -116,8 +116,7 @@ const DefaultModal = ({
               <div className="mt-4">
                 <button
                   type="button"
-                  className="inline-flex justify-center px-10 transition-all duration-200 py-2 text-sm font-medium hover:text-brand-royalblue text-brand-white bg-transparent border border-brand-white rounded-full hover:bg-button-popuphover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
-                  id="got-it-btn"
+                  className="inline-flex justify-center px-10 py-2 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
                   onClick={
                     goTo ? closePopup || (() => navigate(goTo)) : onClose
                   }
@@ -153,15 +152,15 @@ const ErrorModal = ({
     <Transition appear show={open} as={Fragment}>
       <Dialog
         as="div"
-        className="fixed inset-0 z-10 overflow-y-auto max-w-2xl"
+        className="fixed z-10 inset-0 max-w-2xl overflow-y-auto"
         onClose={onClose}
       >
         <div
           onClick={goTo && doNothing ? () => null : chooseAction}
-          className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50"
+          className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out"
         />
 
-        <div className="min-h-screen px-4 text-center">
+        <div className="px-4 min-h-screen text-center">
           <Transition.Child
             as={Fragment}
             enter="ease-out duration-300"
@@ -175,7 +174,7 @@ const ErrorModal = ({
           </Transition.Child>
 
           <span
-            className="inline-block h-screen align-middle"
+            className="inline-block align-middle h-screen"
             aria-hidden="true"
           >
             &#8203;
@@ -194,7 +193,7 @@ const ErrorModal = ({
             >
               <Dialog.Title
                 as="h3"
-                className="text-lg font-medium leading-6 text-brand-white"
+                className="text-brand-white text-lg font-medium leading-6"
               >
                 {title}
               </Dialog.Title>
@@ -202,15 +201,15 @@ const ErrorModal = ({
                 <p className={`text-sm ${textColor}`}>{description}</p>
               </div>
 
-              <p className="text-sm text-red-500 my-4">
+              <p className="my-4 text-red-500 text-sm">
                 Error description:
                 {log}
               </p>
 
-              <div className="mt-8 flex justify-between items-center">
+              <div className="flex items-center justify-between mt-8">
                 <button
                   type="button"
-                  className="inline-flex justify-center px-12 py-2 text-sm font-medium text-red-500 bg-blue-100 border border-red-500 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
+                  className="inline-flex justify-center px-12 py-2 text-red-500 text-sm font-medium bg-blue-100 border border-red-500 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
                   onClick={onClose}
                 >
                   {closeMessage}
@@ -218,7 +217,7 @@ const ErrorModal = ({
 
                 <button
                   type="button"
-                  className="inline-flex justify-center px-12 py-2 text-sm font-medium text-brand-white bg-red-500 border border-transparent rounded-full hover:bg-opacity-70 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-royalblue"
+                  className="inline-flex justify-center px-12 py-2 text-brand-white text-sm font-medium bg-red-500 hover:bg-opacity-70 border border-transparent rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
                   onClick={() =>
                     window.open(
                       `mailto:amanda.gonsalves@pollum.io?subject="Pali Error Report: Token creation"&body=${log}`
@@ -276,15 +275,15 @@ export const Modal: FC<IModal> = ({
       <Transition appear show={open} as={Fragment}>
         <Dialog
           as="div"
-          className="fixed inset-0 z-10 overflow-y-auto"
+          className="fixed z-10 inset-0 overflow-y-auto"
           onClose={onClose}
         >
           <div
             onClick={onClose}
-            className="transition-all duration-300 ease-in-out fixed -inset-0 w-full z-0 bg-brand-black bg-opacity-50"
+            className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out"
           />
 
-          <div className="min-h-screen px-4 text-center">
+          <div className="px-4 min-h-screen text-center">
             <Transition.Child
               as={Fragment}
               enter="ease-out duration-300"
@@ -298,7 +297,7 @@ export const Modal: FC<IModal> = ({
             </Transition.Child>
 
             <span
-              className="inline-block h-screen align-middle"
+              className="inline-block align-middle h-screen"
               aria-hidden="true"
             >
               &#8203;

@@ -177,15 +177,15 @@ const ConfirmDefaultTransaction = ({
       )}
 
       {temporaryTransaction && (
-        <div className="flex justify-center flex-col items-center w-full">
-          <ul className="scrollbar-styled text-xs overflow-auto w-full px-4 h-80 mt-4">
+        <div className="flex flex-col items-center justify-center w-full">
+          <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
             {data &&
               data.map((item: any) => (
                 <>
                   {!item.advanced && (
                     <li
                       key={item.label}
-                      className="flex justify-between p-2 my-2 border-b border-dashed border-brand-royalblue items-center w-full text-xs"
+                      className="flex items-center justify-between my-2 p-2 w-full text-xs border-b border-dashed border-brand-royalblue"
                     >
                       <p>{item.label}</p>
                       <p>
@@ -200,7 +200,7 @@ const ConfirmDefaultTransaction = ({
               ))}
           </ul>
 
-          <div className="flex justify-between w-full max-w-xs md:max-w-2xl items-center absolute bottom-10 gap-3">
+          <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
             <SecondaryButton
               type="button"
               action
@@ -334,8 +334,8 @@ const ConfirmSignTransaction = ({
       )}
 
       {psbt && !loading && (
-        <div className="flex justify-center flex-col items-center w-full">
-          <ul className="scrollbar-styled text-xs overflow-auto w-full px-4 h-80 mt-4">
+        <div className="flex flex-col items-center justify-center w-full">
+          <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
             <pre>
               {`${JSON.stringify(
                 controller.wallet.account.importPsbt(psbt),
@@ -345,7 +345,7 @@ const ConfirmSignTransaction = ({
             </pre>
           </ul>
 
-          <div className="flex justify-between items-center absolute bottom-10 gap-3">
+          <div className="absolute bottom-10 flex gap-3 items-center justify-between">
             <SecondaryButton
               type="button"
               action
