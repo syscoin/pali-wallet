@@ -17,17 +17,18 @@
     "noImplicitReturns": false,
     "baseUrl": ".",
     "paths": {
-      "assets/*": ["./source/assets/*"],
-      "components/*": ["./source/components/*"],
+      "assets/*": ["source/assets/*"],
+      "components/*": ["source/components/*"],
       "scripts/*": ["source/scripts/*"],
-      "containers/*": ["./source/containers/*"],
-      "pages/*": ["./source/pages/*"],
-      "routers/*": ["./source/routers/*"],
+      "containers/*": ["source/containers/*"],
+      "pages/*": ["source/pages/*"],
+      "routers/*": ["source/routers/*"],
       "state/*": ["source/state/*"],
       "constants/*": ["source/constants/*"],
       "services/*": ["source/services/*"],
       "hooks/*": ["source/hooks/*"],
-      "types/*": ["source/types/*"]
+      "types/*": ["source/types/*"],
+      "tests/*": ["source/tests/*"]
     }
   },
   "include": ["source", "webpack.config.ts", "cypress"]

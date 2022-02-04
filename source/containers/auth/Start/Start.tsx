@@ -53,12 +53,15 @@ export const Start = () => {
           <Input.Password placeholder="Enter your password" />
         </Form.Item>
 
-        <PrimaryButton type="submit">Unlock</PrimaryButton>
+        <PrimaryButton type="submit" id="unlock-btn">
+          Unlock
+        </PrimaryButton>
       </Form>
 
       <Link
         className="mt-12 hover:text-brand-graylight text-brand-royalblue text-base font-light transition-all duration-300"
         to="/import"
+        id="import-wallet-link"
       >
         Import using wallet seed phrase
       </Link>

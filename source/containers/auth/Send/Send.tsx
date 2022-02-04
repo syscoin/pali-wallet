@@ -228,6 +228,7 @@ export const Send: FC<ISend> = () => {
 
           <div className="flex gap-x-0.5 items-center justify-center mx-2 w-48">
             <Form.Item
+              id="verify-address-switch"
               name="verify"
               className="flex-1 w-32 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full"
               rules={[
@@ -288,6 +289,7 @@ export const Send: FC<ISend> = () => {
                       ? 'bg-warning-success translate-x-6'
                       : 'bg-warning-error translate-x-1'
                   } inline-block w-2 h-2 transform rounded-full`}
+                  id="z-dag-switch"
                 />
               </Switch>
             </Form.Item>
@@ -375,6 +377,7 @@ export const Send: FC<ISend> = () => {
                   disabledFee &&
                   'opacity-50 cursor-not-allowed text-button-disabled'
                 } border border-fields-input-border bg-fields-input-primary rounded-r-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
+                id="fee-input"
                 type="number"
                 placeholder="Fee network"
                 value={recommend}
@@ -401,12 +404,14 @@ export const Send: FC<ISend> = () => {
           </span>
         </p>
 
-        <SecondaryButton type="submit">Next</SecondaryButton>
+        <SecondaryButton type="submit" id="next-btn">
+          Next
+        </SecondaryButton>
       </Form>
     </div>
   );
   return (
-    <AuthViewLayout title="SEND SYS">
+    <AuthViewLayout title="SEND SYS" id="sendSYS-title">
       <SendForm />
     </AuthViewLayout>
   );

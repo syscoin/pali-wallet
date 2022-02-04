@@ -16,7 +16,7 @@ export type Assets = {
 };
 
 export interface IAccountInfo {
-  address?: string;
+  address?: string | null;
   assets: Assets[];
   balance: number;
   transactions: Transaction[];

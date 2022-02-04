@@ -1,4 +1,4 @@
-import { IAccountState } from 'state/wallet/types';
+import { IAccountState, INetwork } from 'state/wallet/types';
 
 import {
   MintAsset,
@@ -7,6 +7,7 @@ import {
   SendAsset,
   TransferAsset,
   UpdateAsset,
+  TemporaryTransaction,
 } from './transactions';
 
 export interface IWalletController {
@@ -16,12 +17,15 @@ export interface IWalletController {
   createHardwareWallet: () => void;
   createWallet: (isUpdated?: boolean) => void;
   deleteWallet: (pwd: string) => void;
+  encriptedPassword: string;
   generatePhrase: () => string | null;
   getNewAddress: () => Promise<boolean>;
   getPhrase: (pwd: string) => string | null;
   importPhrase: (phr: string) => boolean;
   isLocked: () => boolean;
   logOut: () => void;
+  mnemonic: string;
+  password: string;
   setWalletPassword: (pwd: string) => void;
   switchNetwork: (networkId: string) => void;
   switchWallet: (id: number) => void;
@@ -64,7 +68,7 @@ export interface IAccountController {
   setAutolockTimer: (minutes: number) => any;
   setHDSigner: (accountId: number) => any;
   setNewAddress: (addr: string) => boolean;
-  setNewXpub: (id: number, xpub: string, xprv: string, key: string) => boolean;
+  setNewXpub: (id: number, xpub: string, xprv: string, key: string) => void;
   signTransaction: (psbt: any, type: boolean) => any;
   subscribeAccount: (
     encriptedPassword: any,
@@ -73,8 +77,9 @@ export interface IAccountController {
     label?: string,
     walletCreation?: boolean
   ) => Promise<string | null>;
+  temporaryTransaction: TemporaryTransaction;
   updateAccountLabel: (id: number, label: string) => void;
-  updateNetworkData: ({ id, label, beUrl }: any) => any;
+  updateNetworkData: (network: INetwork) => void;
   updateTemporaryTransaction: ({ tx: any, type: string }) => any;
   updateTokensState: () => any;
   updateTxs: () => void;

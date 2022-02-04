@@ -44,24 +44,37 @@ export interface Holding {
   type: string;
 }
 
+export interface IMintedToken {
+  assetGuid: string;
+  maxSupply: number;
+  symbol: string;
+  totalSupply: number;
+}
+
 export interface IWalletTokenState {
   accountId: number;
   accountXpub: string;
-  holdings: any[];
-  mintedTokens: any[];
-  tokens: any;
+  holdings: any[]; // ? Holding[]
+  mintedTokens: IMintedToken[];
+  tokens: { [assetGuid: string]: Assets };
 }
 
 export interface Connection {
   accountId: number;
-  url: any;
+  url: string;
 }
 
-export interface Tabs {
+export interface ITab {
   canConnect: boolean;
   connections: Connection[];
   currentSenderURL: string;
   currentURL: string;
+}
+
+export interface INetwork {
+  beUrl: string;
+  id: string;
+  label: string;
 }
 
 export default interface IWalletState {
@@ -72,17 +85,12 @@ export default interface IWalletState {
   confirmingTransaction: boolean;
   currentBlockbookURL: string;
   encriptedMnemonic: any;
-  networks: {
-    [networkId: string]: {
-      beUrl: string;
-      id: string;
-      label: string;
-    };
-  };
+  networks: { [networkId: string]: INetwork };
   signingPSBT: boolean;
   signingTransaction: boolean;
   status: number;
-  tabs: Tabs;
+  // ? 'tabs' should be 'tab' since is not a list
+  tabs: ITab;
   temporaryTransactionState: {
     executing: boolean;
     type: string;

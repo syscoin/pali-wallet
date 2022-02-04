@@ -37,8 +37,11 @@ export const Home = () => {
           <section className="flex flex-col gap-1 items-center py-14 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
               {activeNetwork === 'testnet' ? (
-                <div className="flex gap-x-0.5 items-center justify-center">
-                  <p className="font-rubik text-5xl font-medium">
+                <div className="balance-account flex gap-x-0.5 items-center justify-center">
+                  <p
+                    className="font-rubik text-5xl font-medium"
+                    id="home-balance"
+                  >
                     {formatNumber(activeAccount?.balance || 0)}{' '}
                   </p>
 
@@ -46,15 +49,18 @@ export const Home = () => {
                 </div>
               ) : (
                 <>
-                  <div className="flex gap-x-0.5 items-center justify-center">
-                    <p className="font-rubik text-5xl font-medium">
+                  <div className="balance-account flex gap-x-0.5 items-center justify-center">
+                    <p
+                      id="home-balance"
+                      className="font-rubik text-5xl font-medium"
+                    >
                       {formatNumber(activeAccount?.balance || 0)}{' '}
                     </p>
 
                     <p className="mt-4 font-poppins">SYS</p>
                   </div>
 
-                  <p>
+                  <p id="fiat-ammount">
                     {getFiatAmount(
                       activeAccount.balance || 0,
                       4,
@@ -69,6 +75,7 @@ export const Home = () => {
               <Button
                 type="button"
                 className="xl:p-18 flex flex-1 items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-l-full transition-all duration-300 xl:flex-none"
+                id="send-btn"
                 onClick={() => navigate('/send')}
               >
                 <Icon
@@ -83,6 +90,7 @@ export const Home = () => {
               <Button
                 type="button"
                 className="xl:p-18 flex flex-1 items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-r-full transition-all duration-300 xl:flex-none"
+                id="receive-btn"
                 onClick={() => navigate('/receive')}
               >
                 <Icon

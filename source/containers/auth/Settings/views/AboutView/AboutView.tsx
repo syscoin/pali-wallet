@@ -11,7 +11,7 @@ const AboutView: FC = () => {
   const { navigate } = useUtils();
 
   return (
-    <AuthViewLayout title="INFO & HELP">
+    <AuthViewLayout title="INFO & HELP" id="info-help-title">
       <div className="flex flex-col gap-y-4 mt-8 pl-8 w-full text-brand-white text-sm">
         <p>Pali Wallet Browser Extension v2.0</p>
         <p>Version: 1.0.23</p>

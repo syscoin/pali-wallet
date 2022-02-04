@@ -9,6 +9,7 @@ const getYesterday = () => {
 };
 
 export const useFormat = () => {
+  // eslint-disable-next-line no-shadow
   const ellipsis = (str: any, start = 7, end = 4) => {
     if (typeof str !== 'string') {
       return str;
@@ -22,7 +23,7 @@ export const useFormat = () => {
 
   const capitalizeFirstLetter = (string: string) =>
     string.charAt(0).toUpperCase() + string.slice(1);
-
+  // eslint-disable-next-line no-shadow
   const formatDistanceDate = (timestamp: string) => {
     const formatStyle = 'M-d-yyyy';
     const today = new Date();
@@ -34,14 +35,14 @@ export const useFormat = () => {
 
     return formatedDate;
   };
-
+  // eslint-disable-next-line no-shadow
   const formatNumber = (num: number, min = 4, max = 4, maxSig = 8) =>
     num.toLocaleString(navigator.language, {
       minimumFractionDigits: min,
       maximumFractionDigits: max,
       maximumSignificantDigits: maxSig,
     });
-
+  // eslint-disable-next-line no-shadow
   const formatCurrency = (number: string, precision: number) => {
     if (Number(number) < 1e-6) {
       number = Number(number).toFixed(precision);
@@ -55,6 +56,7 @@ export const useFormat = () => {
   };
 
   // truncate
+  // eslint-disable-next-line no-shadow
   const formatURL = (url: string, size = 30) => {
     if (url.length >= size) {
       return `${url.slice(0, size)}...`;
@@ -71,4 +73,54 @@ export const useFormat = () => {
     formatDistanceDate,
     capitalizeFirstLetter,
   };
+};
+
+export const ellipsis = (str: any, start = 7, end = 4) => {
+  if (typeof str !== 'string') {
+    return str;
+  }
+
+  return `${str.substring(0, start)}...${str.substring(
+    str.length - end,
+    str.length
+  )}`;
+};
+
+export const formatURL = (url: string, size = 30) => {
+  if (url.length >= size) {
+    return `${url.slice(0, size)}...`;
+  }
+
+  return url;
+};
+
+export const formatCurrency = (number: string, precision: number) => {
+  if (Number(number) < 1e-6) {
+    number = Number(number).toFixed(precision);
+  }
+
+  return currency(number, {
+    separator: ',',
+    symbol: '',
+    precision,
+  }).format();
+};
+
+export const formatNumber = (num: number, min = 4, max = 4, maxSig = 8) =>
+  num.toLocaleString(navigator.language, {
+    minimumFractionDigits: min,
+    maximumFractionDigits: max,
+    maximumSignificantDigits: maxSig,
+  });
+
+export const formatDistanceDate = (timestamp: string) => {
+  const formatStyle = 'M-d-yyyy';
+  const today = new Date();
+  const yesterday = getYesterday();
+  const formatedDate = format(new Date(timestamp), formatStyle);
+
+  if (formatedDate === format(today, formatStyle)) return 'Today';
+  if (formatedDate === format(yesterday, formatStyle)) return 'Yesterday';
+
+  return formatedDate;
 };

@@ -9,7 +9,7 @@ import {
   removeAccounts,
   removeAccount,
   updateSwitchNetwork,
-  removeConnection,
+  // removeConnection,
 } from 'state/wallet';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 import CryptoJS from 'crypto-js';
@@ -329,10 +329,10 @@ const WalletController = (): IWalletController => {
   };
 
   const checkAndSeparateTrezorAccounts = (
-    accounts: any,
+    accounts: Array<IAccountState>,
     index: number,
     activeAccountId: number,
-    accountsToBeRemoved: any
+    accountsToBeRemoved: number[]
   ) => {
     if (!accounts[index].isTrezorWallet) {
       checkAndSetNewXpub(Number(index), activeAccountId);
@@ -340,7 +340,8 @@ const WalletController = (): IWalletController => {
       return;
     }
 
-    accountsToBeRemoved[accounts[index].id] = accounts[index].id;
+    // accountsToBeRemoved[accounts[index].id] = accounts[index].id;
+    accountsToBeRemoved.push(accounts[index].id);
   };
 
   const addNewAccount = (label?: string) =>
@@ -353,7 +354,7 @@ const WalletController = (): IWalletController => {
       return false;
     }
 
-    const accountsToBeRemoved: any = {};
+    const accountsToBeRemoved: number[] = [];
 
     if (accounts) {
       for (const index in accounts) {
@@ -369,8 +370,8 @@ const WalletController = (): IWalletController => {
     }
 
     if (accountsToBeRemoved) {
-      for (const id of Object.values(accountsToBeRemoved)) {
-        store.dispatch(removeConnection({ accountId: id }));
+      for (const id of accountsToBeRemoved) {
+        // store.dispatch(removeConnection({ accountId: id }));
         store.dispatch(removeAccount(Number(id)));
         store.dispatch(updateStatus());
 
@@ -395,6 +396,7 @@ const WalletController = (): IWalletController => {
       changeActiveNetwork({
         id: networkId,
         beUrl: networks[networkId]?.beUrl,
+        label: '',
       })
     );
 
@@ -442,7 +444,7 @@ const WalletController = (): IWalletController => {
   const getNewAddress = async () => {
     const { activeAccountId, accounts } = store.getState().wallet;
 
-    const userAccount: IAccountState = accounts.find(
+    const userAccount = accounts.find(
       (el: IAccountState) => el.id === activeAccountId
     );
     let address = '';
@@ -517,6 +519,9 @@ const WalletController = (): IWalletController => {
     getNewAddress,
     logOut,
     addNewAccount,
+    password,
+    mnemonic,
+    encriptedPassword,
   };
 };
 

@@ -16,7 +16,7 @@ export const useUtils = (): any => {
     controller.wallet.account.watchMemPool(activeAccount);
     controller.stateUpdater();
   };
-
+  // eslint-disable-next-line no-shadow
   const useCopyClipboard = (
     timeout = 1000
   ): [boolean, (toCopy: string) => void] => {
@@ -45,6 +45,7 @@ export const useUtils = (): any => {
 
   const alert = useAlert();
 
+  // eslint-disable-next-line no-shadow
   const getHost = (url: string) => {
     if (typeof url === 'string' && url !== '') {
       return new URL(url).host;
@@ -53,6 +54,7 @@ export const useUtils = (): any => {
     return url;
   };
 
+  // eslint-disable-next-line no-shadow
   const isNFT = (guid: number) => {
     const assetGuid = BigInt.asUintN(64, BigInt(guid));
 
@@ -68,4 +70,44 @@ export const useUtils = (): any => {
     handleRefresh,
     isNFT,
   };
+};
+
+export const isNFT = (guid: number) => {
+  const assetGuid = BigInt.asUintN(64, BigInt(guid));
+
+  return assetGuid >> BigInt(32) > 0;
+};
+
+export const getHost = (url: string) => {
+  if (typeof url === 'string' && url !== '') {
+    return new URL(url).host;
+  }
+
+  return url;
+};
+
+export const useCopyClipboard = (
+  timeout = 1000
+): [boolean, (toCopy: string) => void] => {
+  const [isCopied, setIsCopied] = useState<boolean>(false);
+
+  const staticCopy = useCallback(async (text) => {
+    await navigator?.clipboard?.writeText(text);
+    setIsCopied(true);
+  }, []);
+
+  useEffect(() => {
+    if (isCopied) {
+      const hide = setTimeout(() => {
+        setIsCopied(false);
+      }, timeout);
+
+      return () => {
+        clearTimeout(hide);
+      };
+    }
+    return undefined;
+  }, [isCopied, setIsCopied, timeout]);
+
+  return [isCopied, staticCopy];
 };

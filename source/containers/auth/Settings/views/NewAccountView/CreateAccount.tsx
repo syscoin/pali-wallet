@@ -26,7 +26,7 @@ const NewAccountView = () => {
   };
 
   return (
-    <AuthViewLayout title="CREATE ACCOUNT">
+    <AuthViewLayout title="CREATE ACCOUNT" id="create-account-title">
       {address ? (
         <Modal
           type="default"
@@ -60,7 +60,12 @@ const NewAccountView = () => {
           </Form.Item>
 
           <div className="absolute bottom-12">
-            <SecondaryButton type="submit" loading={loading} disabled={loading}>
+            <SecondaryButton
+              type="submit"
+              loading={loading}
+              disabled={loading}
+              id="create-btn"
+            >
               Create
             </SecondaryButton>
           </div>

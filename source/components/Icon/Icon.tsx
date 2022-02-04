@@ -84,6 +84,7 @@ const icons = {
 interface IIcon {
   className?: string;
   color?: any;
+  id?: string;
   name: string;
   rotate?: number;
   size?: number;
@@ -96,12 +97,13 @@ export const Icon: FC<IIcon> = ({
   wrapperClassname,
   rotate,
   size,
+  id,
   color,
 }) => {
   const Component = icons[name];
 
   return (
-    <div className={wrapperClassname && wrapperClassname}>
+    <div className={wrapperClassname && wrapperClassname} id={id}>
       {Component ? (
         <Component
           className={className}

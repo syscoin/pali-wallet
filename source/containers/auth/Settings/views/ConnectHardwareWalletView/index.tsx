@@ -14,7 +14,7 @@ const ConnectHardwareWalletView: FC = () => {
   };
 
   return (
-    <AuthViewLayout title="HARDWARE WALLET">
+    <AuthViewLayout title="HARDWARE WALLET" id="hardware-wallet-title">
       <div className="flex flex-col items-center justify-center w-full">
         <div className="scrollbar-styled px-4 h-85 text-sm overflow-auto">
           <p className="mb-1 mt-8 mx-4 text-white text-sm">
@@ -54,7 +54,7 @@ const ConnectHardwareWalletView: FC = () => {
                 <Disclosure.Button
                   className={`${
                     open ? 'rounded-t-lg' : 'rounded-lg'
-                  } mt-3 w-80 py-2 px-4 flex justify-between items-center ml-2 border border-bkg-1 cursor-pointer transition-all duration-300 bg-bkg-1`}
+                  } mt-3 w-80 py-2 px-4 flex justify-between items-center ml-2 border border-bkg-1 cursor-pointer transition-all duration-300 bg-bkg-1 learn-more-btn`}
                 >
                   Learn more
                   <Icon

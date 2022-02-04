@@ -81,7 +81,10 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
           as="div"
           className="scrollbar-styled absolute z-10 right-0 pb-6 w-72 text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
         >
-          <h2 className="mb-3 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light">
+          <h2
+            className="mb-3 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light"
+            id="account-settings-title"
+          >
             ACCOUNT SETTINGS
           </h2>
 
@@ -129,11 +132,12 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                       <span>Create new account</span>
                     </li>
 
-                    {accounts.map((account: IAccountState) => (
+                    {accounts.map((account: IAccountState, index) => (
                       <li
                         key={account.id}
                         className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                         onClick={() => switchAccount(account.id)}
+                        id={`account-${index}`}
                       >
                         <span>
                           {account.label} (
@@ -159,6 +163,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
             <li
               onClick={() => navigate('/account-hardware')}
               className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+              id="hardware-wallet-btn"
             >
               <Icon
                 name="partition"
@@ -202,7 +207,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
           shape="circle"
           className="mt-3"
         >
-          <Icon name="copy" className="text-xs" />
+          <Icon name="copy" className="text-xs" id="copy-address-btn" />
         </IconButton>
 
         {copied && showSuccessAlert()}

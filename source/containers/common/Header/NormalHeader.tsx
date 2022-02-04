@@ -1,3 +1,4 @@
+// @ts-ignore
 import React, { FC, useEffect, useState } from 'react';
 import { Icon, IconButton } from 'components/index';
 import {
@@ -67,6 +68,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               <span>{activeNetwork}</span>
 
               <div
+                id="badge-connected-status"
                 className={
                   isConnected
                     ? 'rounded-full text-xs w-28 h-5 flex justify-center items-center border border-warning-success bg-warning-success text-brand-white'
@@ -82,6 +84,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                   className={`${
                     menuprops.open ? 'transform rotate-180' : ''
                   } text-brand-white`}
+                  id="network-settings-btn"
                 />
               </IconButton>
             </div>
@@ -102,7 +105,10 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               as="div"
               className="scrollbar-styled absolute z-10 left-0 pb-6 w-72 h-bigmenu text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
             >
-              <h2 className="mb-6 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light">
+              <h2
+                className="mb-6 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light"
+                id="network-settings-title"
+              >
                 NETWORK SETTINGS
               </h2>
 
@@ -277,7 +283,11 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
     <Menu as="div" className="absolute z-10 right-2 inline-block text-right">
       {() => (
         <>
-          <Menu.Button className="mb-2 mr-0.8">
+          <Menu.Button
+            as="button"
+            id="general-settings-button"
+            className="mb-2 mr-0.8"
+          >
             {encriptedMnemonic && !importSeed ? (
               <IconButton type="primary" shape="circle">
                 <Icon
@@ -303,7 +313,10 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
               as="div"
               className="scrollbar-styled absolute z-10 right-0 pb-6 w-72 h-96 text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
             >
-              <h2 className="mb-6 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light">
+              <h2
+                className="mb-6 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light"
+                id="general-settings-title"
+              >
                 GENERAL SETTINGS
               </h2>
 

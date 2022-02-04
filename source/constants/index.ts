@@ -1,3 +1,5 @@
+export * from './tests';
+
 export const STORE_PORT = 'SYSCOIN';
 
 export const SYS_NETWORK: {

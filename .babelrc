@@ -6,7 +6,7 @@
       {
         "useBuiltIns": false,
         // Do not transform modules to CJS
-        "modules": false,
+        "modules": "auto",
         "targets": {
           "chrome": "49",
           "firefox": "52",
@@ -18,6 +18,11 @@
     "@babel/typescript",
     "@babel/react"
   ],
+  "env": {
+    "test": {
+      "plugins": ["transform-es2015-modules-commonjs"]
+    }
+  },
   "plugins": [
     ["@babel/plugin-proposal-class-properties"],
     [

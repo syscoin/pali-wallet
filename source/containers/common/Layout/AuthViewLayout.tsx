@@ -8,11 +8,13 @@ interface IAuthViewLayout {
   background?: string;
   canGoBack?: boolean;
   children: any;
+  id?: string;
   title: string;
 }
 
 export const AuthViewLayout: FC<IAuthViewLayout> = ({
   title,
+  id = '',
   children,
   background = 'bkg-2',
   canGoBack = true,
@@ -40,7 +42,9 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
           </Tooltip>
         )}
 
-        <p className="w-full text-center text-xl">{title}</p>
+        <p className="w-full text-center text-xl" id={id}>
+          {title}
+        </p>
 
         {canGoBack && (
           <IconButton onClick={() => navigate('/home')}>
