@@ -137,8 +137,9 @@ const AccountController = (actions: {
 
     const connectedAccount = getConnectedAccount();
 
-    if (!isSendAsset && connectedAccount)
+    if (!isSendAsset && connectedAccount) {
       transactions = connectedAccount.transactions;
+    }
 
     store.dispatch(
       updateTransactions({
@@ -249,8 +250,9 @@ const AccountController = (actions: {
     const assets: Assets[] = [];
     let transactions: Transaction[] = [];
 
-    if (response.transactions)
+    if (response.transactions) {
       transactions = response.transactions.slice(0, 20);
+    }
 
     if (response.tokensAsset) {
       // TODO: review this reduce
@@ -827,8 +829,9 @@ const AccountController = (actions: {
   ) => {
     if (!sysjs) throw new Error('Error: No signed account exists');
 
-    if (!globalAccount)
+    if (!globalAccount) {
       throw new Error("Error: Can't find active account info");
+    }
 
     if (!item) throw new Error("Error: Can't find item info");
 
@@ -958,8 +961,9 @@ const AccountController = (actions: {
 
     const connectedAccount = getConnectedAccount();
 
-    if (connectedAccount.isTrezorWallet)
+    if (connectedAccount.isTrezorWallet) {
       throw new Error("Trezor don't support burning of coins");
+    }
 
     sysjs.Signer.setAccountIndex(connectedAccount.id);
 
