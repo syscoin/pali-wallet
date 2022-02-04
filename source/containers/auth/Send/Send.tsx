@@ -103,6 +103,10 @@ export const Send: FC<ISend> = () => {
     }
   };
 
+  useEffect(() => {
+    console.log(activeAccount?.assets);
+  }, []);
+
   const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
 
   const SendForm = () => (
