@@ -183,7 +183,7 @@ const AccountController = (actions: {
 
   const fetchAccountInfo = async (isHardwareWallet?: boolean, xpub?: any) => {
     let response: any = null;
-    let address: any = null;
+    let address: string | null = null;
 
     const options = 'tokens=nonzero&details=txs';
 
@@ -259,7 +259,7 @@ const AccountController = (actions: {
           item[assetGuid] = <Assets>{
             type,
             assetGuid,
-            symbol: symbol ? atob(String(symbol)) : '',
+            symbol: symbol ? Buffer.from(symbol, 'base64') : '',
             balance:
               (item[assetGuid] ? item[assetGuid].balance : 0) + Number(balance),
             decimals,
@@ -300,6 +300,7 @@ const AccountController = (actions: {
       sysjs.Signer.setAccountIndex(activeAccount.id);
 
       const accLatestInfo = await getAccountInfo();
+
       if (!accLatestInfo) return;
 
       updateAccountInfo = accLatestInfo;
@@ -1739,6 +1740,7 @@ const AccountController = (actions: {
 
     updateTransactionData(txid);
     watchMemPool(connectedAccount);
+
     return { txid };
   };
 

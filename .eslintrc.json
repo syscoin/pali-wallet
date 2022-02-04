@@ -52,6 +52,8 @@
     ],
     "react/jsx-wrap-multilines": "off",
     "no-undef": "off",
+    "curly": "off",
+    "nonblock-statement-body-position": "off",
     "semi": "off",
     "react-hooks/rules-of-hooks": "error",
     "no-use-before-define": "off",
