@@ -1,11 +1,13 @@
-import { isString } from 'lodash';
+import { getHost, isNFT } from '../../hooks/useUtils';
 
-import { getHost } from '../../hooks/useUtils';
+describe('useUtils test', () => {
+  it('should get the host from an url', () => {
+    const host = getHost('https://test-url.com');
+    expect(host).toBe('test-url.com');
+  });
 
-describe('useUtils.ts test', () => {
-  it('should test getHost method', () => {
-    const result = getHost('https://testurl');
-
-    expect(result).toBe(result || isString(result) === true);
+  it('should check if a given guid is NFT', () => {
+    expect(isNFT(5271816415)).toBe(true);
+    expect(isNFT(70131121)).toBe(false);
   });
 });
