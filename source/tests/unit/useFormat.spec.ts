@@ -1,4 +1,5 @@
 import {
+  capitalizeFirstLetter,
   ellipsis,
   formatCurrency,
   formatDistanceDate,
@@ -6,32 +7,48 @@ import {
 } from 'hooks/useFormat';
 
 describe('useFormat methods test', () => {
-  it('should return a minified string', () => {
-    const stringTest = 'alaksdjalsdkjlaskdj';
-    const minifiedString = ellipsis(stringTest);
+  //* ellipsis
+  it('should minify a string', () => {
+    const input = 'alaksdjalsdkjlaskdj';
+    const output = ellipsis(input);
 
-    expect(minifiedString.length).toBeLessThan(stringTest.length);
+    expect(output.length).toBeLessThan(input.length);
   });
 
-  it('should return a formatted currency value', () => {
+  //* capitalizeFirstLetter
+  it('should capitalize the first letter of a string', () => {
+    const input = 'lorem ipsum';
+    const output = capitalizeFirstLetter(input);
+
+    expect(output.at(0)).toBe(input.at(0)?.toUpperCase());
+  });
+
+  //* formatCurrency
+  it('should format a currency value', () => {
+    const input = '12.3456789';
     const precision = 5;
-    const formattedCurrency = formatCurrency(String(12 / 10 ** 2), precision);
 
-    expect(formattedCurrency.length).toBeGreaterThan(precision);
+    const output = formatCurrency(input, precision);
+
+    const afterDot = output.split('.')[1];
+    expect(afterDot.length).toBe(precision);
   });
 
-  it('should return a formatted distance date', () => {
-    const formattedDate = formatDistanceDate(
-      new Date(12 * 1000).toDateString()
-    );
+  //* formatDistanceDate
+  it('should format a date to mm-dd-yyyy', () => {
+    const input = new Date(12 * 1000).toDateString();
+    const output = formatDistanceDate(input);
 
-    expect(formattedDate).toContain('-');
+    // regex to match 'xx-xx-xxxx' with numbers only
+    expect(output).toMatch(RegExp('(\\d{2}-){2}\\d{4}'));
   });
 
-  it('should return a formatted URL', () => {
-    const URL = 'www.testusingjest.com/users/values';
-    const formattedURL = formatURL(URL);
+  //* formatURL
+  it('should format an URL', () => {
+    const input = 'www.testusingjest.com/users/values';
+    const output = formatURL(input);
 
-    expect(URL.length).toBeGreaterThan(formattedURL.length);
+    expect(input.length).toBeGreaterThanOrEqual(output.length);
+    expect(output.endsWith('...')).toBe(true);
   });
 });

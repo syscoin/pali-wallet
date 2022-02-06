@@ -202,7 +202,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
         </div>
 
         <IconButton
-          onClick={() => copy(activeAccount?.address.main)}
+          onClick={() => copy(activeAccount?.address.main ?? '')}
           type="primary"
           shape="circle"
           className="mt-3"
