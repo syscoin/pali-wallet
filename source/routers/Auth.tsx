@@ -11,7 +11,7 @@ import {
   SendConfirm,
   Start,
   DetailsView,
-} from 'containers/auth/index';
+} from 'containers/auth';
 import {
   AboutView,
   AutolockView,
@@ -42,6 +42,8 @@ import {
   CreateAndIssueNFT,
   CreateAndIssueNFTConfirm,
 } from 'containers/auth/Transactions/views';
+
+import { ProtectedRoute } from './ProtectedRoute';
 
 export const AuthRouter = () => {
   const params = useParams();
@@ -146,28 +148,17 @@ export const AuthRouter = () => {
 
     if (isUnlocked) {
       if (canConnect) {
-        if (!connectedAccount) {
-          navigate('/connect-wallet');
+        if (connectedAccount) {
+          navigate('/connected-accounts');
           return;
         }
 
-        navigate('/connected-accounts');
-        return;
-      }
-
-      if (connectedAccount) {
-        navigate('/home');
+        navigate('/connect-wallet');
         return;
       }
 
       navigate('/home');
       return;
-
-      // ! this part was unreacheable
-      /* if (executing && type === 'sendAsset' && !canConnect) {
-        navigate('/send/confirm');
-        return;
-      } */
     }
 
     if (route !== '/app.html') navigate(route);
@@ -183,78 +174,150 @@ export const AuthRouter = () => {
       <Routes>
         <Route path="/app.html" element={<Start />} />
 
-        {isUnlocked ? (
+        <Route path="/home" element={<ProtectedRoute element={<Home />} />} />
+        <Route
+          path="/home-tx-details"
+          element={<ProtectedRoute element={<DetailsView />} />}
+        />
+        <Route
+          path="/send/confirm"
+          element={<ProtectedRoute element={<SendConfirm />} />}
+        />
+        <Route
+          path="/sign"
+          element={<ProtectedRoute element={<SignAndSend />} />}
+        />
+        <Route
+          path="/signPsbt"
+          element={<ProtectedRoute element={<SignPSBT />} />}
+        />
+        <Route
+          path="/create"
+          element={<ProtectedRoute element={<Create />} />}
+        />
+        <Route
+          path="/create/confirm"
+          element={<ProtectedRoute element={<CreateTokenConfirm />} />}
+        />
+        <Route
+          path="/issueAsset"
+          element={<ProtectedRoute element={<MintToken />} />}
+        />
+        <Route
+          path="/issueAsset/confirm"
+          element={<ProtectedRoute element={<MintTokenConfirm />} />}
+        />
+        <Route
+          path="/issueNFT"
+          element={<ProtectedRoute element={<CreateAndIssueNFT />} />}
+        />
+        <Route
+          path="/issueNFT/confirm"
+          element={<ProtectedRoute element={<CreateAndIssueNFTConfirm />} />}
+        />
+        <Route
+          path="/mintNFT"
+          element={<ProtectedRoute element={<MintNFT />} />}
+        />
+        <Route
+          path="/mintNFT/confirm"
+          element={<ProtectedRoute element={<MintNFTConfirm />} />}
+        />
+        <Route
+          path="/updateAsset"
+          element={<ProtectedRoute element={<UpdateAsset />} />}
+        />
+        <Route
+          path="/updateAsset/confirm"
+          element={<ProtectedRoute element={<UpdateAssetConfirm />} />}
+        />
+        <Route
+          path="/transferOwnership"
+          element={<ProtectedRoute element={<TransferOwnership />} />}
+        />
+        <Route
+          path="/transferOwnership/confirm"
+          element={<ProtectedRoute element={<TransferOwnershipConfirm />} />}
+        />
+        <Route path="/send" element={<ProtectedRoute element={<Send />} />} />
+        <Route
+          path="/send/:address"
+          element={
+            <ProtectedRoute element={<Send initAddress={params.address} />} />
+          }
+        />
+        <Route
+          path="/receive"
+          element={<ProtectedRoute element={<Receive />} />}
+        />
+
+        <Route
+          path="/general-autolock"
+          element={<ProtectedRoute element={<AutolockView />} />}
+        />
+        <Route
+          path="/general-about"
+          element={<ProtectedRoute element={<AboutView />} />}
+        />
+        <Route
+          path="/general-phrase"
+          element={<ProtectedRoute element={<PhraseView />} />}
+        />
+        <Route
+          path="/general-delete"
+          element={<ProtectedRoute element={<DeleteWalletView />} />}
+        />
+        <Route
+          path="/general-currency"
+          element={<ProtectedRoute element={<CurrencyView />} />}
+        />
+
+        <Route
+          path="/account-priv"
+          element={<ProtectedRoute element={<PrivateKeyView />} />}
+        />
+        <Route
+          path="/account-hardware"
+          element={<ProtectedRoute element={<ConnectHardwareWalletView />} />}
+        />
+        <Route
+          path="/account-newaccount"
+          element={<ProtectedRoute element={<NewAccountView />} />}
+        />
+
+        <Route
+          path="/networks-edit"
+          element={<ProtectedRoute element={<EditNetworkView />} />}
+        />
+        <Route
+          path="/networks-custom"
+          element={<ProtectedRoute element={<CustomRPCView />} />}
+        />
+        <Route
+          path="/networks-sites"
+          element={<ProtectedRoute element={<ConnectedSitesView />} />}
+        />
+        <Route
+          path="/networks-trusted"
+          element={<ProtectedRoute element={<TrustedSitesView />} />}
+        />
+
+        {canConnect && (
           <>
-            <Route path="/home" element={<Home />} />
-            <Route path="/home-tx-details" element={<DetailsView />} />
-            <Route path="/send/confirm" element={<SendConfirm />} />
-            <Route path="/sign" element={<SignAndSend />} />
-            <Route path="/signPsbt" element={<SignPSBT />} />
-            <Route path="/create" element={<Create />} />
-            <Route path="/create/confirm" element={<CreateTokenConfirm />} />
-            <Route path="/issueAsset" element={<MintToken />} />
-            <Route path="/issueAsset/confirm" element={<MintTokenConfirm />} />
-            <Route path="/issueNFT" element={<CreateAndIssueNFT />} />
             <Route
-              path="/issueNFT/confirm"
-              element={<CreateAndIssueNFTConfirm />}
+              path="/connect-wallet"
+              element={<ProtectedRoute element={<ConnectWallet />} />}
             />
-            <Route path="/mintNFT" element={<MintNFT />} />
-            <Route path="/mintNFT/confirm" element={<MintNFTConfirm />} />
-            <Route path="/updateAsset" element={<UpdateAsset />} />
-            <Route
-              path="/updateAsset/confirm"
-              element={<UpdateAssetConfirm />}
-            />
-            <Route path="/transferOwnership" element={<TransferOwnership />} />
-            <Route
-              path="/transferOwnership/confirm"
-              element={<TransferOwnershipConfirm />}
-            />
-            <Route path="/send" element={<Send />} />
-            <Route
-              path="/send/:address"
-              element={<Send initAddress={params.address} />}
-            />
-            <Route path="/receive" element={<Receive />} />
 
-            <Route path="/general-autolock" element={<AutolockView />} />
-            <Route path="/general-about" element={<AboutView />} />
-            <Route path="/general-phrase" element={<PhraseView />} />
-            <Route path="/general-delete" element={<DeleteWalletView />} />
-            <Route path="/general-currency" element={<CurrencyView />} />
-
-            <Route path="/account-priv" element={<PrivateKeyView />} />
-            <Route
-              path="/account-hardware"
-              element={<ConnectHardwareWalletView />}
-            />
-            <Route path="/account-newaccount" element={<NewAccountView />} />
-
-            <Route path="/networks-edit" element={<EditNetworkView />} />
-            <Route path="/networks-custom" element={<CustomRPCView />} />
-            <Route path="/networks-sites" element={<ConnectedSitesView />} />
-            <Route path="/networks-trusted" element={<TrustedSitesView />} />
-
-            {
-              // ? this seems to be a boolean
-            }
-            {canConnect && (
-              <>
-                <Route path="/connect-wallet" element={<ConnectWallet />} />
-
-                {connectedAccount && (
-                  <Route
-                    path="/connected-accounts"
-                    element={<ConnectedAccounts />}
-                  />
-                )}
-              </>
+            {connectedAccount && (
+              <Route
+                path="/connected-accounts"
+                element={<ProtectedRoute element={<ConnectedAccounts />} />}
+              />
             )}
           </>
-        ) : (
-          <Route path="/import" element={<Import />} />
         )}
+        <Route path="/import" element={<Import />} />
       </Routes>
     </div>
   );
