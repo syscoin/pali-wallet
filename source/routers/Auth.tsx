@@ -14,7 +14,6 @@ import {
 } from 'containers/auth/index';
 import {
   AboutView,
-  AccountView,
   AutolockView,
   ConnectHardwareWalletView,
   CurrencyView,
@@ -231,7 +230,6 @@ export const AuthRouter = () => {
               element={<ConnectHardwareWalletView />}
             />
             <Route path="/account-newaccount" element={<NewAccountView />} />
-            <Route path="/account-details" element={AccountView} />
 
             <Route path="/networks-edit" element={<EditNetworkView />} />
             <Route path="/networks-custom" element={<CustomRPCView />} />
