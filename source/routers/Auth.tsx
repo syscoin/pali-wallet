@@ -42,6 +42,7 @@ import {
   CreateAndIssueNFT,
   CreateAndIssueNFTConfirm,
 } from 'containers/auth/Transactions/views';
+import { ConfirmPhrase, CreatePass, CreatePhrase } from 'containers/unauth';
 
 import { ProtectedRoute } from './ProtectedRoute';
 
@@ -317,7 +318,11 @@ export const AuthRouter = () => {
             )}
           </>
         )}
+
         <Route path="/import" element={<Import />} />
+        <Route path="/create/pass" element={<CreatePass />} />
+        <Route path="/create/phrase/generated" element={<CreatePhrase />} />
+        <Route path="/create/phrase/check" element={<ConfirmPhrase />} />
       </Routes>
     </div>
   );
