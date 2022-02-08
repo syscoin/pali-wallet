@@ -24,7 +24,10 @@ const AboutView: FC = () => {
         </p>
       </div>
 
-      <div className="flex flex-col items-center justify-center w-full">
+      <div
+        className="flex flex-col items-center justify-center w-full"
+        id="user-support-btn"
+      >
         <Card
           onClick={() => handleRedirect('https://discord.gg/8QKeyurHRd')}
           className="cursor-pointer"

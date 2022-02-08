@@ -60,7 +60,10 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
       as="div"
       className="absolute right-3 inline-block text-right md:max-w-2xl"
     >
-      <Menu.Button className="inline-flex justify-center w-full hover:text-button-primaryhover text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+      <Menu.Button
+        className="inline-flex justify-center w-full hover:text-button-primaryhover text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+        id="account-settings-btn"
+      >
         {encriptedMnemonic && !importSeed && (
           <Icon name="dots" className="z-0" />
         )}
@@ -103,7 +106,10 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
             <Disclosure>
               {({ open }) => (
                 <>
-                  <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
+                  <Disclosure.Button
+                    className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+                    id="accounts-btn"
+                  >
                     <Icon
                       name="user"
                       className="mb-2 ml-1 mr-4 text-brand-white"
@@ -123,6 +129,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                     <li
                       onClick={() => navigate('/account-newaccount')}
                       className="backface-visibility-hidden border-menu-dasheddark flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed focus:outline-none cursor-pointer transform transition duration-300"
+                      id="create-new-account-btn"
                     >
                       <Icon
                         name="appstoreadd"

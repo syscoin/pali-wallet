@@ -26,7 +26,7 @@
     "prepare": "husky install",
     "format": "prettier --single-quote --write .",
     "type-check": "tsc --pretty --noEmit",
-    "test:e2e:chrome": "yarn build:chrome && SELENIUM_BROWSER=chrome node source/tests/e2e/run-all.js",
+    "test:e2e:chrome": "yarn build:chrome && SELENIUM_BROWSER=chrome ts-node source/tests/e2e/run-all.js",
     "test:e2e:chrome:silent": "yarn build:chrome && SELENIUM_BROWSER=chrome ENABLE_CHROME_LOGGING=false node source/tests/e2e/run-all.js",
     "postinstall": "npx patch-package"
   },

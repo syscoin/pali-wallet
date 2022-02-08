@@ -346,6 +346,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                 <li
                   onClick={() => navigate('/general-phrase')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+                  id="wallet-seed-phrase-btn"
                 >
                   <Icon name="wallet" className="ml-1 mr-4 text-brand-white" />
 
@@ -357,6 +358,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                 <li
                   onClick={() => navigate('/general-about')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+                  id="info-help-btn"
                 >
                   <Icon name="warning" className="ml-1 mr-4 text-brand-white" />
 

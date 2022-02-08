@@ -39,7 +39,7 @@ async function main() {
     args.push('--retries', retries);
   }
 
-  await runInShell('node', [...args, allE2eTestPath]);
+  await runInShell('ts-node', [...args, allE2eTestPath]);
 }
 
 main().catch((error) => {

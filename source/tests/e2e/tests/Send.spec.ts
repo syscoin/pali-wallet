@@ -1,12 +1,13 @@
 import assert from 'assert';
 
 import { beforeEach, afterEach } from 'mocha';
-import { buildWebDriver } from '../webdriver';
-import { importWallet } from '../initialize';
 import { By } from 'selenium-webdriver';
 
+import { buildWebDriver, Driver } from '../webdriver';
+import { importWallet } from '../initialize';
+
 describe('<Send /> tests', async () => {
-  let uiWebDriver = null;
+  let uiWebDriver: Driver;
 
   beforeEach(async () => {
     const { driver } = await buildWebDriver();
@@ -15,7 +16,15 @@ describe('<Send /> tests', async () => {
 
     await driver.navigate();
     await importWallet({ driver });
+  });
 
+  afterEach((done) => {
+    done();
+
+    uiWebDriver.quit();
+  });
+
+  it('should check if send button is being show and working correctly', async () => {
     const sendButton = await uiWebDriver.findElement(By.id('send-btn'));
 
     assert.ok(
@@ -33,12 +42,6 @@ describe('<Send /> tests', async () => {
       'SEND SYS',
       '<!> Send button is working different than the the expected <!>'
     );
-  });
-
-  afterEach((done) => {
-    done();
-
-    uiWebDriver.quit();
   });
 
   it("should check if send form it's being shown", async () => {
