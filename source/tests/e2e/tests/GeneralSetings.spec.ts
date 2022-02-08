@@ -1,9 +1,9 @@
 import assert from 'assert';
-import { FAKE_PASSWORD } from 'constants/tests';
 
 import { beforeEach, afterEach } from 'mocha';
 import { By } from 'selenium-webdriver';
 
+import { FAKE_PASSWORD } from '../../../constants/tests';
 import { buildWebDriver, Driver } from '../webdriver';
 import { importWallet } from '../initialize';
 

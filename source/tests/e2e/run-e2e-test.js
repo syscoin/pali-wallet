@@ -50,7 +50,7 @@ async function main() {
     process.env.SELENIUM_BROWSER = browser;
   }
 
-  try {
+  /* try {
     const stat = await fs.stat(e2eTestPath);
     if (!stat.isDirectory()) {
       exitWithError('Test path must be a directory');
@@ -67,7 +67,7 @@ async function main() {
       return;
     }
     throw error;
-  }
+  } */
 
   if (leaveRunning) {
     process.env.E2E_LEAVE_RUNNING = 'true';
