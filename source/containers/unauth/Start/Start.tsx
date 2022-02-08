@@ -18,7 +18,7 @@ export const Start = () => {
 
       <img src={LogoImage} className="my-8 w-52" alt="syscoin" />
 
-      <PrimaryButton type="submit" onClick={() => navigate('/create/pass')}>
+      <PrimaryButton type="submit" onClick={() => navigate('/create-password')}>
         Get started
       </PrimaryButton>
 

@@ -45,7 +45,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
   const handleLogout = () => {
     controller.wallet.logOut();
 
-    navigate('/app.html');
+    navigate('/');
   };
 
   const showSuccessAlert = () => {
@@ -90,7 +90,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
 
           <Menu.Item>
             <li
-              onClick={() => navigate('/account-priv')}
+              onClick={() => navigate('/settings/account/private-key')}
               className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
             >
               <Icon name="key" className="mb-2 ml-1 mr-4 text-brand-white" />
@@ -121,7 +121,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
 
                   <Disclosure.Panel className="scrollbar-styled pb-2 h-auto max-h-40 text-sm bg-menu-secondary overflow-auto">
                     <li
-                      onClick={() => navigate('/account-newaccount')}
+                      onClick={() => navigate('/settings/account/new')}
                       className="backface-visibility-hidden border-menu-dasheddark flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed focus:outline-none cursor-pointer transform transition duration-300"
                     >
                       <Icon
@@ -161,7 +161,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
 
           <Menu.Item>
             <li
-              onClick={() => navigate('/account-hardware')}
+              onClick={() => navigate('/settings/account/hardware')}
               className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
               id="hardware-wallet-btn"
             >

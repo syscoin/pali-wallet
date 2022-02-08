@@ -92,7 +92,7 @@ export const PanelList: FC<IPanelList> = ({
                       <IconButton
                         className="w-1"
                         onClick={() =>
-                          navigate('/home-tx-details/', {
+                          navigate('/home/tx-details/', {
                             state: {
                               tx,
                               type: getTxType(tx),
@@ -135,7 +135,7 @@ export const PanelList: FC<IPanelList> = ({
 
                   <IconButton
                     onClick={() =>
-                      navigate('/home-tx-details', {
+                      navigate('/home/tx-details', {
                         state: {
                           tx: null,
                           type: null,

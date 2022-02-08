@@ -24,7 +24,7 @@ export const CreateTokenConfirm = () => {
 export const Create = () => (
   <div>
     <SiteTransaction
-      confirmRoute="/create/confirm"
+      confirmRoute="/transaction/create/confirm"
       temporaryTransactionAsString="newAsset"
       layoutTitle="Create token"
     />

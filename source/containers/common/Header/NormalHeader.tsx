@@ -114,7 +114,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => navigate('/networks-sites')}
+                  onClick={() => navigate('/settings/networks/connected-sites')}
                   className="flex items-center justify-start mb-2 mx-3 px-2 py-1 text-base bg-warning-success hover:bg-opacity-70 border border-solid border-transparent hover:border-warning-success rounded-full cursor-pointer transition-all duration-200"
                 >
                   <Icon
@@ -128,7 +128,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => navigate('/networks-trusted')}
+                  onClick={() => navigate('/settings/networks/trusted-sites')}
                   className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base bg-brand-royalblue hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
                 >
                   <Icon
@@ -250,7 +250,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => navigate('/networks-custom')}
+                  onClick={() => navigate('/settings/networks/custom-rpc')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
                   <Icon
@@ -264,7 +264,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => navigate('/networks-edit')}
+                  onClick={() => navigate('/settings/networks/edit')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
                   <Icon name="edit" className="ml-1 mr-4 text-brand-white" />
@@ -322,7 +322,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => navigate('/general-autolock')}
+                  onClick={() => navigate('/settings/autolock')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
                   <Icon name="clock" className="ml-1 mr-4 text-brand-white" />
@@ -333,7 +333,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => navigate('/general-currency')}
+                  onClick={() => navigate('/settings/currency')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
                   <Icon name="dolar" className="ml-1 mr-4 text-brand-white" />
@@ -344,7 +344,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => navigate('/general-phrase')}
+                  onClick={() => navigate('/settings/phrase')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
                   <Icon name="wallet" className="ml-1 mr-4 text-brand-white" />
@@ -355,7 +355,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => navigate('/general-about')}
+                  onClick={() => navigate('/settings/about')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
                   <Icon name="warning" className="ml-1 mr-4 text-brand-white" />
@@ -366,7 +366,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => navigate('/general-delete')}
+                  onClick={() => navigate('/settings/delete-wallet')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
                   <Icon name="delete" className="ml-1 mr-4 text-brand-white" />

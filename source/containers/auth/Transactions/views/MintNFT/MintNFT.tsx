@@ -24,7 +24,7 @@ export const MintNFTConfirm = () => {
 export const MintNFT = () => (
   <div>
     <SiteTransaction
-      confirmRoute="/mintNFT/confirm"
+      confirmRoute="/transaction/mint-nft/confirm"
       temporaryTransactionAsString="mintNFT"
       layoutTitle="Mint NFT"
     />

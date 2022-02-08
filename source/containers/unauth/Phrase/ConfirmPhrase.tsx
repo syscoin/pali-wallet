@@ -44,7 +44,7 @@ export const ConfirmPhrase = () => {
   const handleConfirm = () => {
     controller.wallet.createWallet();
 
-    navigate('/app.html');
+    navigate('/');
 
     setPassed(true);
   };

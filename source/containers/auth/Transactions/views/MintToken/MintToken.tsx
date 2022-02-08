@@ -23,7 +23,7 @@ export const MintTokenConfirm = () => {
 
 export const MintToken = () => (
   <SiteTransaction
-    confirmRoute="/issueAsset/confirm"
+    confirmRoute="/transaction/issue-asset/confirm"
     temporaryTransactionAsString="mintAsset"
     layoutTitle="Mint token"
   />

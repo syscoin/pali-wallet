@@ -11,7 +11,7 @@ export const CreatePass = () => {
     try {
       controller.wallet.setWalletPassword(data.password);
 
-      navigate('/create/phrase/generated');
+      navigate('/phrase/create');
     } catch (error) {
       console.log('error', error);
     }

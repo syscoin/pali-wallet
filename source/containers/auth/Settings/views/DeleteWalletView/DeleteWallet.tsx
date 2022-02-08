@@ -17,7 +17,7 @@ const DeleteWalletView = () => {
     if (controller.wallet.checkPassword(data.password)) {
       controller.wallet.deleteWallet(data.password);
 
-      navigate('/app.html');
+      navigate('/');
     }
   };
 

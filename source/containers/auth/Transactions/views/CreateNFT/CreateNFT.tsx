@@ -23,7 +23,7 @@ export const CreateAndIssueNFTConfirm = () => {
 
 export const CreateAndIssueNFT = () => (
   <SiteTransaction
-    confirmRoute="/issueNFT/confirm"
+    confirmRoute="/transaction/issue-nft/confirm"
     temporaryTransactionAsString="newNFT"
     layoutTitle="Create NFT"
   />

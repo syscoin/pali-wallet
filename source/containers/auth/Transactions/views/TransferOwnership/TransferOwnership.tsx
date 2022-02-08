@@ -24,7 +24,7 @@ export const TransferOwnershipConfirm = () => {
 export const TransferOwnership = () => (
   <div>
     <SiteTransaction
-      confirmRoute="/transferOwnership/confirm"
+      confirmRoute="/transaction/transfer-ownership/confirm"
       temporaryTransactionAsString="transferAsset"
       layoutTitle="Transfer Asset"
     />
