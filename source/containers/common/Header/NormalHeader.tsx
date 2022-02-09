@@ -283,13 +283,13 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
     <Menu as="div" className="absolute z-10 right-2 inline-block text-right">
       {() => (
         <>
-          <Menu.Button
-            as="button"
-            id="general-settings-button"
-            className="mb-2 mr-0.8"
-          >
+          <Menu.Button as="button" className="mb-2 mr-0.8">
             {encriptedMnemonic && !importSeed ? (
-              <IconButton type="primary" shape="circle">
+              <IconButton
+                type="primary"
+                shape="circle"
+                id="general-settings-button"
+              >
                 <Icon
                   name="settings"
                   className="z-0 hover:text-brand-royalblue text-brand-white"
@@ -346,9 +346,12 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                 <li
                   onClick={() => navigate('/general-phrase')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
-                  id="wallet-seed-phrase-btn"
                 >
-                  <Icon name="wallet" className="ml-1 mr-4 text-brand-white" />
+                  <Icon
+                    name="wallet"
+                    className="ml-1 mr-4 text-brand-white"
+                    id="wallet-seed-phrase-btn"
+                  />
 
                   <span className="px-3">Wallet Seed Phrase</span>
                 </li>
@@ -358,9 +361,12 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                 <li
                   onClick={() => navigate('/general-about')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
-                  id="info-help-btn"
                 >
-                  <Icon name="warning" className="ml-1 mr-4 text-brand-white" />
+                  <Icon
+                    name="warning"
+                    className="ml-1 mr-4 text-brand-white"
+                    id="info-help-btn"
+                  />
 
                   <span className="px-3">Info/Help</span>
                 </li>

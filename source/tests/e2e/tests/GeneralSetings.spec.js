@@ -1,14 +1,14 @@
 import assert from 'assert';
-import { FAKE_PASSWORD } from 'constants/tests';
+import { FAKE_PASSWORD } from '../../../constants/index';
 
 import { beforeEach, afterEach } from 'mocha';
 import { By } from 'selenium-webdriver';
 
-import { buildWebDriver, Driver } from '../webdriver';
+import { buildWebDriver } from '../webdriver';
 import { importWallet } from '../initialize';
 
 describe('General settings tests', async () => {
-  let uiWebDriver: Driver;
+  let uiWebDriver;
 
   beforeEach(async () => {
     const { driver } = await buildWebDriver();

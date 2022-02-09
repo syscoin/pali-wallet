@@ -117,7 +117,7 @@ export const Send: FC<ISend> = () => {
 
       <Form
         form={form}
-        id="send"
+        id="send-form"
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         initialValues={{

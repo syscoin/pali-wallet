@@ -3,11 +3,11 @@ import assert from 'assert';
 import { beforeEach, afterEach } from 'mocha';
 import { By } from 'selenium-webdriver';
 
-import { buildWebDriver, Driver } from '../webdriver';
+import { buildWebDriver } from '../webdriver';
 import { importWallet } from '../initialize';
 
 describe('<Send /> tests', async () => {
-  let uiWebDriver: Driver;
+  let uiWebDriver;
 
   beforeEach(async () => {
     const { driver } = await buildWebDriver();
@@ -45,9 +45,9 @@ describe('<Send /> tests', async () => {
   });
 
   it("should check if send form it's being shown", async () => {
-    const sendBalance = await uiWebDriver.findElement(By.id('send'));
-
-    assert.ok(typeof sendBalance === 'object', '<!> Cannot find send form <!>');
+    await uiWebDriver.clickElement('#send-btn');
+    const sendForm = await uiWebDriver.findElement(By.id('send-form'));
+    assert.ok(typeof sendForm === 'object', '<!> Cannot find send form <!>');
   });
 
   /**

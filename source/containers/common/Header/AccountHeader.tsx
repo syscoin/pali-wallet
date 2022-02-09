@@ -60,12 +60,9 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
       as="div"
       className="absolute right-3 inline-block text-right md:max-w-2xl"
     >
-      <Menu.Button
-        className="inline-flex justify-center w-full hover:text-button-primaryhover text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
-        id="account-settings-btn"
-      >
+      <Menu.Button className="inline-flex justify-center w-full hover:text-button-primaryhover text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
         {encriptedMnemonic && !importSeed && (
-          <Icon name="dots" className="z-0" />
+          <Icon name="dots" className="z-0" id="account-settings-btn" />
         )}
       </Menu.Button>
 
@@ -106,13 +103,11 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
             <Disclosure>
               {({ open }) => (
                 <>
-                  <Disclosure.Button
-                    className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
-                    id="accounts-btn"
-                  >
+                  <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
                     <Icon
                       name="user"
                       className="mb-2 ml-1 mr-4 text-brand-white"
+                      id="accounts-btn"
                     />
 
                     <span className="px-3 text-base">Accounts</span>
@@ -170,11 +165,11 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
             <li
               onClick={() => navigate('/account-hardware')}
               className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
-              id="hardware-wallet-btn"
             >
               <Icon
                 name="partition"
                 className="mb-2 ml-1 mr-4 text-brand-white"
+                id="hardware-wallet-btn"
               />
 
               <span className="px-3">Hardware wallet</span>

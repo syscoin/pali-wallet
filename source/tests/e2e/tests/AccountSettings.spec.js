@@ -3,12 +3,12 @@ import assert from 'assert';
 import { beforeEach, afterEach } from 'mocha';
 import { By } from 'selenium-webdriver';
 
-import { buildWebDriver, Driver } from '../webdriver';
+import { buildWebDriver, until } from '../webdriver';
 import { importWallet } from '../initialize';
 import { currentWalletState } from '../../../state/store';
 
 describe('Account settings tests', async () => {
-  let uiWebDriver: Driver;
+  let uiWebDriver;
 
   beforeEach(async () => {
     const { driver } = await buildWebDriver();
@@ -47,11 +47,10 @@ describe('Account settings tests', async () => {
     await uiWebDriver.clickElement('#accounts-btn');
     await uiWebDriver.clickElement('#account-1');
     const { accounts, activeAccountId } = currentWalletState;
-    assert.equal(
-      accounts[activeAccountId],
-      1,
-      '<!> switch account is not working <!>'
-    );
+    if (accounts[activeAccountId]) {
+      const activeId = accounts[activeAccountId].id;
+      assert.equal(activeId, 1, '<!> switch account is not working <!>');
+    }
   });
 
   it('should check if pali is opening the trezor popup correctly in a new tab', async () => {
@@ -59,9 +58,10 @@ describe('Account settings tests', async () => {
     await uiWebDriver.clickElement('#hardware-wallet-btn');
     await uiWebDriver.clickElement('#trezor-btn');
     await uiWebDriver.clickElement('#connect-btn');
-    /* const url = uiWebDriver.getCurrentUrl();
+    const url = uiWebDriver.getCurrentUrl();
+    console.log(url);
     const expectedUrl = 'https://connect.trezor.io/8/popup.html#';
-    assert.equal(url, expectedUrl, '<!> pali is not opening trezor popup <!>'); */
+    assert.equal(url, expectedUrl, '<!> pali is not opening trezor popup <!>');
   });
   // it("should check if switch account is working correctly", async () => {
   //   /**
