@@ -1,5 +1,9 @@
-import { Icon, IconButton, SecondaryButton } from 'components/index';
-import { AuthViewLayout } from 'pages/Layout';
+import {
+  AuthViewLayout,
+  Icon,
+  IconButton,
+  SecondaryButton,
+} from 'components/index';
 import React, { Fragment, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { useUtils, useBrowser, useAccount, useFormat } from 'hooks/index';

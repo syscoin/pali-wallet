@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { AuthViewLayout } from 'pages/Layout/AuthViewLayout';
 import { useStore, useFormat, useUtils } from 'hooks/index';
-import { SecondaryButton } from 'components/index';
+import { AuthViewLayout, SecondaryButton } from 'components/index';
 
 import { CustomRPCView } from '..';
 

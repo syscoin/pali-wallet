@@ -11,8 +11,12 @@ import {
 } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
-import { AuthViewLayout } from 'pages/Layout';
-import { SecondaryButton, Tooltip, Icon } from 'components/index';
+import {
+  AuthViewLayout,
+  SecondaryButton,
+  Tooltip,
+  Icon,
+} from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Assets } from 'types/transactions';
 

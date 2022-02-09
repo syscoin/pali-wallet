@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
 import { useFormat, useAccount, useUtils, useController } from 'hooks/index';
-import { AuthViewLayout } from 'pages/Layout';
-import { Icon, SecondaryButton, InfoCard, CopyCard } from 'components/index';
+import {
+  AuthViewLayout,
+  Icon,
+  SecondaryButton,
+  InfoCard,
+  CopyCard,
+} from 'components/index';
 import { Disclosure } from '@headlessui/react';
 import { Input, Form } from 'antd';
 

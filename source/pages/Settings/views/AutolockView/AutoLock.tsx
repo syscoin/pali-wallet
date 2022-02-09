@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { SecondaryButton, Modal } from 'components/index';
+import { AuthViewLayout, SecondaryButton, Modal } from 'components/index';
 import { useController, useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
-import { AuthViewLayout } from 'pages/Layout/AuthViewLayout';
 
 const AutolockView = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);

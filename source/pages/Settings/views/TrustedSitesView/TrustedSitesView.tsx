@@ -1,5 +1,4 @@
-import { SecondaryButton } from 'components/index';
-import { AuthViewLayout } from 'pages/Layout';
+import { AuthViewLayout, SecondaryButton } from 'components/index';
 import React, { useState } from 'react';
 import { useUtils, useFormat, useStore } from 'hooks/index';
 import { Form, Input } from 'antd';

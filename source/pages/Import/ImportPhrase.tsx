@@ -1,7 +1,6 @@
 import React, { FC, useState } from 'react';
-import { Layout } from 'pages/Layout';
 import { useController } from 'hooks/index';
-import { PrimaryButton } from 'components/index';
+import { Layout, PrimaryButton } from 'components/index';
 import { Form } from 'antd';
 import TextArea from 'antd/lib/input/TextArea';
 import { useForm } from 'antd/lib/form/Form';

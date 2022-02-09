@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { AuthViewLayout } from 'pages/Layout/AuthViewLayout';
 import { Form, Input } from 'antd';
-import { SecondaryButton } from 'components/index';
+import { AuthViewLayout, SecondaryButton } from 'components/index';
 import axios from 'axios';
 import { useUtils, useController } from 'hooks/index';
 

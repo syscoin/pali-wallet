@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 import { Form, Input } from 'antd';
 import { useController, useUtils } from 'hooks/index';
-import { AuthViewLayout } from 'pages/Layout/AuthViewLayout';
-import { SecondaryButton, InfoCard, CopyCard } from 'components/index';
+import {
+  AuthViewLayout,
+  SecondaryButton,
+  InfoCard,
+  CopyCard,
+} from 'components/index';
 
 const PhraseView = () => {
   const [phrase, setPhrase] = useState<string>(

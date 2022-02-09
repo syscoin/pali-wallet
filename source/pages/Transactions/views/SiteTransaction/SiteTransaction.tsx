@@ -1,6 +1,6 @@
 import React, { useState, FC, useEffect } from 'react';
-import { AuthViewLayout } from 'pages/Layout';
 import {
+  AuthViewLayout,
   PrimaryButton,
   SecondaryButton,
   Tooltip,

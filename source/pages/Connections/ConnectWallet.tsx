@@ -1,5 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { PrimaryButton, SecondaryButton, Icon, Modal } from 'components/index';
+import {
+  AuthViewLayout,
+  PrimaryButton,
+  SecondaryButton,
+  Icon,
+  Modal,
+} from 'components/index';
 import {
   useStore,
   useUtils,
@@ -7,7 +13,6 @@ import {
   useDappConnection,
   useAccount,
 } from 'hooks/index';
-import { AuthViewLayout } from 'pages/Layout';
 import { Dialog } from '@headlessui/react';
 
 export const ConnectWallet = () => {

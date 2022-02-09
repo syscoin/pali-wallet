@@ -1,6 +1,5 @@
 import React, { FC, useState } from 'react';
-import { SecondaryButton, Icon } from 'components/index';
-import { AuthViewLayout } from 'pages/Layout';
+import { AuthViewLayout, SecondaryButton, Icon } from 'components/index';
 import { useController } from 'hooks/index';
 import { Disclosure } from '@headlessui/react';
 

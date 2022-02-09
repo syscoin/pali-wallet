@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
-import { SecondaryButton, PrimaryButton } from 'components/index';
+import {
+  AuthViewLayout,
+  SecondaryButton,
+  PrimaryButton,
+} from 'components/index';
 import {
   useFormat,
   useAccount,
@@ -8,7 +12,6 @@ import {
   useDappConnection,
   usePopup,
 } from 'hooks/index';
-import { AuthViewLayout } from 'pages/Layout';
 
 export const ConnectedAccounts = () => {
   const { ellipsis } = useFormat();

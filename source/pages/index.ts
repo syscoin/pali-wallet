@@ -1,10 +1,8 @@
 export * from './Connections';
-// export * from './Container';
 export * from './CreatePass';
 export * from './Header';
 export * from './Home';
 export * from './Import';
-export * from './Layout';
 export * from './Phrase';
 export * from './Receive';
 export * from './Send';

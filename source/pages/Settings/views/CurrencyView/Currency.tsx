@@ -1,5 +1,4 @@
 import React, { useEffect, Fragment, useState } from 'react';
-import { AuthViewLayout } from 'pages/Layout';
 import {
   useController,
   usePrice,
@@ -8,7 +7,7 @@ import {
   useUtils,
   useAccount,
 } from 'hooks/index';
-import { SecondaryButton, Icon, Modal } from 'components/index';
+import { AuthViewLayout, SecondaryButton, Icon, Modal } from 'components/index';
 import { Menu, Transition } from '@headlessui/react';
 import { Input } from 'antd';
 import getSymbolFromCurrency from 'currency-symbol-map';

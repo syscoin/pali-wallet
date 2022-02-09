@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useController, useUtils, useAccount, useFormat } from 'hooks/index';
 import QRCode from 'qrcode.react';
-import { SecondaryButton, Icon } from 'components/index';
-import { AuthViewLayout } from 'pages/Layout';
+import { AuthViewLayout, SecondaryButton, Icon } from 'components/index';
 
 export const Receive = () => {
   const { useCopyClipboard } = useUtils();

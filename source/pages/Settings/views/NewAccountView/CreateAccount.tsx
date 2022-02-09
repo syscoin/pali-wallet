@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { useController, useFormat } from 'hooks/index';
-import { AuthViewLayout } from 'pages/Layout';
 import { Form, Input } from 'antd';
-import { SecondaryButton, Modal } from 'components/index';
+import { AuthViewLayout, SecondaryButton, Modal } from 'components/index';
 
 const NewAccountView = () => {
   const [address, setAddress] = useState<string | undefined>();

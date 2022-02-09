@@ -5,8 +5,7 @@ import React, {
 import { useNavigate } from 'react-router-dom';
 import { useController } from 'hooks/index';
 import shuffle from 'lodash/shuffle';
-import { Button, Modal, PrimaryButton } from 'components/index';
-import { Layout } from 'pages/Layout';
+import { Button, Modal, PrimaryButton, Layout } from 'components/index';
 // import isEqual from 'lodash/isEqual';
 
 export const ConfirmPhrase = () => {

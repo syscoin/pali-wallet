@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
-import { SecondaryButton, PrimaryButton, InfoCard } from 'components/index';
-import { AuthViewLayout } from 'pages/Layout';
+import {
+  AuthViewLayout,
+  SecondaryButton,
+  PrimaryButton,
+  InfoCard,
+} from 'components/index';
 import { Form, Input } from 'antd';
 import { useController, useAccount, useUtils } from 'hooks/index';
 import TextArea from 'antd/lib/input/TextArea';

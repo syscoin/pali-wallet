@@ -8,8 +8,12 @@ import {
   useAccount,
   useBrowser,
 } from 'hooks/index';
-import { AuthViewLayout } from 'pages/Layout';
-import { PrimaryButton, Modal, SecondaryButton } from 'components/index';
+import {
+  AuthViewLayout,
+  PrimaryButton,
+  Modal,
+  SecondaryButton,
+} from 'components/index';
 
 type ConfirmType = {
   callback: any;

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { AuthViewLayout } from 'pages/Layout';
-import { SecondaryButton, Modal } from 'components/index';
+import { AuthViewLayout, SecondaryButton, Modal } from 'components/index';
 import {
   useController,
   useStore,
