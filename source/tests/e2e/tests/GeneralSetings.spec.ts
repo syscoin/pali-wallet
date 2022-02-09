@@ -1,15 +1,15 @@
 import assert from 'assert';
-import { FAKE_PASSWORD } from '../../../constants/index';
 
 import { beforeEach, afterEach } from 'mocha';
 import { By } from 'selenium-webdriver';
+import clipboard from 'clipboardy';
 
-import { FAKE_PASSWORD } from '../../../constants/tests';
+import { FAKE_PASSWORD, FAKE_SEED_PHRASE } from '../../../constants/tests';
 import { buildWebDriver, Driver } from '../webdriver';
 import { importWallet } from '../initialize';
 
 describe('General settings tests', async () => {
-  let uiWebDriver;
+  let uiWebDriver: Driver;
 
   beforeEach(async () => {
     const { driver } = await buildWebDriver();
@@ -42,17 +42,31 @@ describe('General settings tests', async () => {
     await uiWebDriver.clickElement('#wallet-seed-phrase-btn');
     await uiWebDriver.fill('#phraseview_password', FAKE_PASSWORD);
     await uiWebDriver.clickElement('#copy-btn');
-    // Descobrir como verificar o q está no clipboard
-    // Checar se o q está no clipboard é igual a FAKE_SEED_PHRASE
+    const currentClipboard = clipboard.read();
+    const expectedClipboard = FAKE_SEED_PHRASE;
+    assert.equal(
+      currentClipboard,
+      expectedClipboard,
+      '<!> copy wallet seed phrase is working correctly <!>'
+    );
   });
 
   it('should check if pali is opening a new tab to redirect the user to syscoin discord for support', async () => {
     await uiWebDriver.clickElement('#general-settings-button');
     await uiWebDriver.clickElement('#info-help-btn');
     await uiWebDriver.clickElement('#user-support-btn');
-    /* const url = uiWebDriver.getCurrentUrl();
+    try {
+      await uiWebDriver.switchToWindowWithTitle('Syscoin', null);
+    } catch (error) {
+      assert.ifError(error);
+    }
+    const url = uiWebDriver.getCurrentUrl();
     const expectedUrl = 'https://discord.gg/8QKeyurHRd';
-    assert.equal(url, expectedUrl, '<!> pali is not opening trezor popup <!>'); */
+    assert.equal(
+      url,
+      expectedUrl,
+      '<!> pali is not opening syscoin discord invite <!>'
+    );
   });
 });
 // it("should check if pali is showing the correct seed phrase after input the password", async () => {

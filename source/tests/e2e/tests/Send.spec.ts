@@ -3,11 +3,11 @@ import assert from 'assert';
 import { beforeEach, afterEach } from 'mocha';
 import { By } from 'selenium-webdriver';
 
-import { buildWebDriver } from '../webdriver';
+import { buildWebDriver, Driver } from '../webdriver';
 import { importWallet } from '../initialize';
 
 describe('<Send /> tests', async () => {
-  let uiWebDriver;
+  let uiWebDriver: Driver;
 
   beforeEach(async () => {
     const { driver } = await buildWebDriver();
