@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Icon, Button } from 'components/index';
+import { Header, Icon, Button } from 'components/index';
 import {
   useController,
   useStore,
@@ -8,7 +8,6 @@ import {
   useUtils,
   useAccount,
 } from 'hooks/index';
-import { Header } from 'pages/Header';
 
 import { TxsPanel } from './TxsPanel';
 

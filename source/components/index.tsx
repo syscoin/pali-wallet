@@ -2,6 +2,7 @@ export * from './Button';
 export * from './Container';
 export * from './Cards';
 export * from './Fullscreen';
+export * from './Header';
 export * from './Icon';
 export * from './IconButton';
 export * from './Layout';

@@ -1,6 +1,5 @@
 export * from './Connections';
 export * from './CreatePass';
-export * from './Header';
 export * from './Home';
 export * from './Import';
 export * from './Phrase';

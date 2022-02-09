@@ -1,8 +1,6 @@
 import React, { FC } from 'react';
-import { Icon, IconButton, Tooltip } from 'components/index';
+import { Header, Icon, IconButton, Tooltip } from 'components/index';
 import { useUtils, useBrowser } from 'hooks/index';
-
-import { Header } from '../../pages/Header';
 
 interface IAuthViewLayout {
   background?: string;

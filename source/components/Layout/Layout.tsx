@@ -1,7 +1,6 @@
 import React, { ReactNode, FC } from 'react';
-import { Header } from 'pages/Header';
 import { QuestionCircleOutlined } from '@ant-design/icons';
-import { Tooltip } from 'components/Tooltip';
+import { Header, Tooltip } from 'components/index';
 
 interface ILayout {
   accountHeader?: boolean;
