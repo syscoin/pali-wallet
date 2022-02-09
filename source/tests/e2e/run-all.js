@@ -28,7 +28,7 @@ async function main() {
 
   const { browser, retries } = argv;
 
-  const allE2eTestPath = path.join(__dirname, '/tests');
+  const allE2eTestPath = path.join(__dirname, '/tests/*');
   const runE2eTestPath = path.join(__dirname, 'run-e2e-test.js');
 
   const args = [runE2eTestPath];
@@ -39,7 +39,7 @@ async function main() {
     args.push('--retries', retries);
   }
 
-  await runInShell('ts-node', [...args, allE2eTestPath]);
+  await runInShell('node', [...args, allE2eTestPath]);
 }
 
 main().catch((error) => {

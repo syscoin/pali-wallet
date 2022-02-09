@@ -124,6 +124,10 @@ export class Driver {
     return this.driver.executeScript(script);
   }
 
+  async getCurrentUrl() {
+    return this.driver.getCurrentUrl();
+  }
+
   async getWindowHandle() {
     return this.driver.getWindowHandle();
   }

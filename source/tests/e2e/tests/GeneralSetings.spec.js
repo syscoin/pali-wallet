@@ -4,7 +4,8 @@ import { FAKE_PASSWORD } from '../../../constants/index';
 import { beforeEach, afterEach } from 'mocha';
 import { By } from 'selenium-webdriver';
 
-import { buildWebDriver } from '../webdriver';
+import { FAKE_PASSWORD } from '../../../constants/tests';
+import { buildWebDriver, Driver } from '../webdriver';
 import { importWallet } from '../initialize';
 
 describe('General settings tests', async () => {
