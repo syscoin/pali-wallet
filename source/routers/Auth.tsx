@@ -1,48 +1,53 @@
 import React, { useEffect } from 'react';
-import { Import } from 'containers/common/Import';
-import { Routes, Route, useLocation, useParams } from 'react-router-dom';
-import { useController, useStore, useUtils, useBrowser } from 'hooks/index';
 import {
-  Home,
-  Receive,
-  ConnectWallet,
-  ConnectedAccounts,
-  Send,
-  SendConfirm,
-  Start,
-  DetailsView,
-} from 'containers/auth';
+  Routes,
+  Route,
+  useLocation,
+  useParams,
+  Navigate,
+} from 'react-router-dom';
+import { useController, useStore, useUtils, useBrowser } from 'hooks/index';
+
 import {
   AboutView,
   AutolockView,
+  ConfirmPhrase,
+  ConnectedAccounts,
+  ConnectedSitesView,
   ConnectHardwareWalletView,
+  ConnectWallet,
+  Create,
+  CreateAndIssueNFT,
+  CreateAndIssueNFTConfirm,
+  CreatePass,
+  CreatePhrase,
+  CreateTokenConfirm,
   CurrencyView,
+  CustomRPCView,
   DeleteWalletView,
+  DetailsView,
+  EditNetworkView,
+  Home,
+  Import,
+  MintNFT,
+  MintNFTConfirm,
+  MintToken,
+  MintTokenConfirm,
   NewAccountView,
   PhraseView,
   PrivateKeyView,
-  EditNetworkView,
-  CustomRPCView,
-  ConnectedSitesView,
-  TrustedSitesView,
-} from 'containers/auth/Settings/views';
-import {
-  Create,
-  CreateTokenConfirm,
-  UpdateAsset,
-  UpdateAssetConfirm,
-  TransferOwnership,
-  TransferOwnershipConfirm,
-  MintNFT,
-  MintNFTConfirm,
+  Receive,
+  Send,
+  SendConfirm,
   SignAndSend,
   SignPSBT,
-  MintToken,
-  MintTokenConfirm,
-  CreateAndIssueNFT,
-  CreateAndIssueNFTConfirm,
-} from 'containers/auth/Transactions/views';
-import { ConfirmPhrase, CreatePass, CreatePhrase } from 'containers/unauth';
+  Start,
+  TransferOwnership,
+  TransferOwnershipConfirm,
+  TrustedSitesView,
+  UpdateAsset,
+  UpdateAssetConfirm,
+} from '../pages';
 
 import { ProtectedRoute } from './ProtectedRoute';
 
@@ -170,10 +175,16 @@ export const AuthRouter = () => {
     controller.appRoute(location.pathname);
   }, [location]);
 
+  // TODO merge unlock and start
+
   return (
     <div className="w-full min-w-popup h-full min-h-popup">
       <Routes>
+        {/* EVERY MODE HAS ITS OWN "START" !!! */}
+        <Route path="/app.html" element={<Navigate to={{ pathname: '/' }} />} />
+
         <Route path="/" element={<Start />} />
+
         <Route path="/create-password" element={<CreatePass />} />
 
         {/* Connections */}

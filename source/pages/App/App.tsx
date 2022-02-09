@@ -1,5 +1,5 @@
 import React, { FC } from 'react';
-import Container from 'containers/common/Container';
+import Container from 'pages/Container';
 import { AuthRouter } from 'routers/index';
 import { BrowserRouter } from 'react-router-dom';
 

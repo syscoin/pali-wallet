@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layout } from 'containers/common/Layout';
+import { Layout } from 'pages/Layout';
 import { Form, Input } from 'antd';
 import { PrimaryButton } from 'components/index';
 
