@@ -9,7 +9,7 @@ import { SYS_EXPLORER_SEARCH } from '../../../constants/index';
 import { currentWalletState } from '../../../state/store';
 
 describe('<Home /> tests', async () => {
-  let uiWebDriver;
+  let uiWebDriver: Driver;
 
   beforeEach(async () => {
     const { driver } = await buildWebDriver();

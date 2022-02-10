@@ -132,10 +132,6 @@ export class Driver {
     return this.driver.getWindowHandle();
   }
 
-  async getCurrentUrl() {
-    return this.driver.getCurrentUrl();
-  }
-
   async waitForSelector(
     rawLocator,
     { timeout = this.timeout, state = 'visible' } = {}
