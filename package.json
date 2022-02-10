@@ -64,7 +64,6 @@
     "bip39": "^3.0.4",
     "bip84": "^0.2.7",
     "bowser": "^2.11.0",
-    "clipboardy": "^3.0.0",
     "clsx": "^1.1.1",
     "coingecko-api": "^1.0.10",
     "coinselectsyscoin": "^1.0.77",

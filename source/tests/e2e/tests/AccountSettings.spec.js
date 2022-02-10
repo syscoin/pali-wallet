@@ -3,12 +3,12 @@ import assert from 'assert';
 import { beforeEach, afterEach } from 'mocha';
 import { By } from 'selenium-webdriver';
 
-import { buildWebDriver, Driver } from '../webdriver';
+import { buildWebDriver, until } from '../webdriver';
 import { importWallet } from '../initialize';
 import { currentWalletState } from '../../../state/store';
 
 describe('Account settings tests', async () => {
-  let uiWebDriver: Driver;
+  let uiWebDriver;
 
   beforeEach(async () => {
     const { driver } = await buildWebDriver();
@@ -58,13 +58,31 @@ describe('Account settings tests', async () => {
     await uiWebDriver.clickElement('#hardware-wallet-btn');
     await uiWebDriver.clickElement('#trezor-btn');
     await uiWebDriver.clickElement('#connect-btn');
-    try {
-      await uiWebDriver.switchToWindowWithTitle('TrezorConnect | Trezor', null);
-    } catch (error) {
-      assert.ifError(error);
-    }
-    const url = await uiWebDriver.getCurrentUrl();
-    const expectedUrl = 'https://connect.trezor.io/8/popup.html';
+    const url = uiWebDriver.getCurrentUrl();
+    console.log(url);
+    const expectedUrl = 'https://connect.trezor.io/8/popup.html#';
     assert.equal(url, expectedUrl, '<!> pali is not opening trezor popup <!>');
   });
+  // it("should check if switch account is working correctly", async () => {
+  //   /**
+  //    * go to create account
+  //    * create new account
+  //    * go home and open menu again
+  //    * switch accounts
+  //    *
+  //    * you can check the address to compare if they are different
+  //    * when changing the active account
+  //    */
+  // });
+
+  // it("should check if pali is opening the trezor popup correctly in a new tab", async () => {
+  //   /**
+  //    * go to hardware wallet
+  //    * select trezor
+  //    * click on connect
+  //    *
+  //    * it is expected that pali opens a new tab
+  //    * https://connect.trezor.io/8/popup.html#
+  //    */
+  // });
 });
