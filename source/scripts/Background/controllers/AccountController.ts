@@ -787,7 +787,7 @@ const AccountController = (actions: {
 
     const encryptedMnemonic = CryptoJS.AES.encrypt(
       sysjs.Signer.mnemonic,
-      '12345678l'
+      encriptedPassword
     );
     globalAccount = {
       id: signer.accountIndex,
@@ -803,10 +803,10 @@ const AccountController = (actions: {
       assets: account.assets,
       connectedTo: [],
       isTrezorWallet: false,
-      web3Address: importAccount(encryptedMnemonic, '12345678l').address,
+      web3Address: importAccount(encryptedMnemonic, encriptedPassword).address,
       web3PrivateKey: CryptoJS.AES.encrypt(
-        importAccount(encryptedMnemonic, '12345678l').privateKey,
-        '12345678l'
+        importAccount(encryptedMnemonic, encriptedPassword).privateKey,
+        encriptedPassword
       ).toString(),
     };
     store.dispatch(createAccount(globalAccount));
