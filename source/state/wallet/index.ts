@@ -1,3 +1,4 @@
+// @ts-ignore
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { Transaction } from 'types/transactions';
 
@@ -260,6 +261,16 @@ const WalletState = createSlice({
     ) {
       state.encriptedMnemonic = action.payload.toString();
     },
+    setWeb3Address(state: IWalletState, action: PayloadAction<string>) {
+      if (state.activeAccountId) {
+        state.accounts[state.activeAccountId].web3Address = action.payload;
+      }
+    },
+    setWeb3PrivateKey(state: IWalletState, action: PayloadAction<string>) {
+      if (state.activeAccountId) {
+        state.accounts[state.activeAccountId].web3PrivateKey = action.payload;
+      }
+    },
     // TODO rename [status] to something more meaningful
     updateStatus(state: IWalletState) {
       state.status = Date.now();
@@ -402,6 +413,8 @@ export const {
   clearAllTransactions,
   updateAllTokens,
   setTimer,
+  setWeb3Address,
+  setWeb3PrivateKey,
   updateNetwork,
   setTemporaryTransactionState,
 } = WalletState.actions;

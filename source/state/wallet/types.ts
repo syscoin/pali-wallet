@@ -10,6 +10,8 @@ export interface IAccountState {
   label: string;
   transactions: Transaction[];
   trezorId?: number;
+  web3Address?: string;
+  web3PrivateKey?: string;
   xprv: string;
   xpub: string;
 }

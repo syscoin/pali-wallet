@@ -31,6 +31,7 @@ import {
   updateNetwork,
   setTemporaryTransactionState,
 } from 'state/wallet';
+import { importAccount } from '@pollum-io-test/syscoin-web3-sdk/packages/web3-import';
 
 import { sortList, isNFT, countDecimals } from './utils';
 
@@ -46,7 +47,6 @@ const AccountController = (actions: {
   let globalAccount: IAccountState | undefined;
   let sysjs: any;
   let TrezorSigner: any;
-
   const temporaryTransaction: TemporaryTransaction = {
     newAsset: null,
     mintAsset: null,
@@ -785,6 +785,10 @@ const AccountController = (actions: {
 
     const signer = sysjs.Signer.Signer;
 
+    const encryptedMnemonic = CryptoJS.AES.encrypt(
+      sysjs.Signer.mnemonic,
+      '12345678l'
+    );
     globalAccount = {
       id: signer.accountIndex,
       label: label ?? `Account ${signer.accountIndex + 1}`,
@@ -799,10 +803,13 @@ const AccountController = (actions: {
       assets: account.assets,
       connectedTo: [],
       isTrezorWallet: false,
+      web3Address: importAccount(encryptedMnemonic, '12345678l').address,
+      web3PrivateKey: CryptoJS.AES.encrypt(
+        importAccount(encryptedMnemonic, '12345678l').privateKey,
+        '12345678l'
+      ).toString(),
     };
-
     store.dispatch(createAccount(globalAccount));
-
     return globalAccount.xpub;
   };
 
