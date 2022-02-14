@@ -3,7 +3,7 @@ import { useController, useFormat } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { AuthViewLayout, SecondaryButton, Modal } from 'components/index';
 
-const NewAccountView = () => {
+const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -74,4 +74,4 @@ const NewAccountView = () => {
   );
 };
 
-export default NewAccountView;
+export default CreateAccount;

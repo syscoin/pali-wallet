@@ -4,7 +4,7 @@ import { AuthViewLayout, SecondaryButton } from 'components/index';
 import axios from 'axios';
 import { useUtils, useController } from 'hooks/index';
 
-import { EditNetworkView } from '..';
+import { EditNetwork } from '.';
 
 const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   const [loading, setLoading] = useState(false);
@@ -49,7 +49,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   return (
     <>
       {edit ? (
-        <EditNetworkView />
+        <EditNetwork />
       ) : (
         <AuthViewLayout title="CUSTOM RPC">
           <Form

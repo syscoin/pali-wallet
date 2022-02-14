@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useStore, useFormat, useUtils } from 'hooks/index';
 import { AuthViewLayout, SecondaryButton } from 'components/index';
 
-import { CustomRPCView } from '..';
+import { CustomRPC } from '..';
 
 const EditNetworkView = () => {
   const { networks } = useStore();
@@ -16,7 +16,7 @@ const EditNetworkView = () => {
   return (
     <>
       {selected ? (
-        <CustomRPCView
+        <CustomRPC
           selectedToEdit={
             selected || {
               id: -1,

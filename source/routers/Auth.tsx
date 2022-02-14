@@ -9,33 +9,33 @@ import {
 import { useController, useStore, useUtils, useBrowser } from 'hooks/index';
 
 import {
-  AboutView,
-  AutolockView,
+  About,
+  AutoLock,
   ConfirmPhrase,
   ConnectedAccounts,
-  ConnectedSitesView,
-  ConnectHardwareWalletView,
+  ConnectedSites,
+  ConnectHardwareWallet,
   ConnectWallet,
   Create,
+  CreateAccount,
   CreateAndIssueNFT,
   CreateAndIssueNFTConfirm,
   CreatePass,
   CreatePhrase,
   CreateTokenConfirm,
-  CurrencyView,
-  CustomRPCView,
-  DeleteWalletView,
+  Currency,
+  CustomRPC,
+  DeleteWallet,
   DetailsView,
-  EditNetworkView,
+  EditNetwork,
   Home,
   Import,
   MintNFT,
   MintNFTConfirm,
   MintToken,
   MintTokenConfirm,
-  NewAccountView,
-  PhraseView,
-  PrivateKeyView,
+  Phrase,
+  PrivateKey,
   Receive,
   Send,
   SendConfirm,
@@ -44,7 +44,7 @@ import {
   Start,
   TransferOwnership,
   TransferOwnershipConfirm,
-  TrustedSitesView,
+  TrustedSites,
   UpdateAsset,
   UpdateAssetConfirm,
 } from '../pages';
@@ -286,51 +286,51 @@ export const AuthRouter = () => {
         {/* Settings */}
         <Route
           path="/settings/about"
-          element={<ProtectedRoute element={<AboutView />} />}
+          element={<ProtectedRoute element={<About />} />}
         />
         <Route
           path="/settings/autolock"
-          element={<ProtectedRoute element={<AutolockView />} />}
+          element={<ProtectedRoute element={<AutoLock />} />}
         />
         <Route
           path="/settings/currency"
-          element={<ProtectedRoute element={<CurrencyView />} />}
+          element={<ProtectedRoute element={<Currency />} />}
         />
         <Route
           path="/settings/delete-wallet"
-          element={<ProtectedRoute element={<DeleteWalletView />} />}
+          element={<ProtectedRoute element={<DeleteWallet />} />}
         />
         <Route
           path="/settings/phrase"
-          element={<ProtectedRoute element={<PhraseView />} />}
+          element={<ProtectedRoute element={<Phrase />} />}
         />
         <Route
           path="/settings/account/hardware"
-          element={<ProtectedRoute element={<ConnectHardwareWalletView />} />}
+          element={<ProtectedRoute element={<ConnectHardwareWallet />} />}
         />
         <Route
           path="/settings/account/new"
-          element={<ProtectedRoute element={<NewAccountView />} />}
+          element={<ProtectedRoute element={<CreateAccount />} />}
         />
         <Route
           path="/settings/account/private-key"
-          element={<ProtectedRoute element={<PrivateKeyView />} />}
+          element={<ProtectedRoute element={<PrivateKey />} />}
         />
         <Route
           path="/settings/networks/edit"
-          element={<ProtectedRoute element={<EditNetworkView />} />}
+          element={<ProtectedRoute element={<EditNetwork />} />}
         />
         <Route
           path="/settings/networks/custom-rpc"
-          element={<ProtectedRoute element={<CustomRPCView />} />}
+          element={<ProtectedRoute element={<CustomRPC />} />}
         />
         <Route
           path="/settings/networks/connected-sites"
-          element={<ProtectedRoute element={<ConnectedSitesView />} />}
+          element={<ProtectedRoute element={<ConnectedSites />} />}
         />
         <Route
           path="/settings/networks/trusted-sites"
-          element={<ProtectedRoute element={<TrustedSitesView />} />}
+          element={<ProtectedRoute element={<TrustedSites />} />}
         />
       </Routes>
     </div>
