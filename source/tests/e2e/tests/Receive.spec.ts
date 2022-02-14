@@ -26,14 +26,17 @@ describe('<Receive /> tests', async () => {
   });
 
   it('should check if receive button is being shown and working correctly', async () => {
+    //   * find receive btn
     const receiveButton = await uiWebDriver.findElement(By.id('receive-btn'));
 
     assert.ok(
-      typeof receiveButton === 'object',
+      // eslint-disable-next-line valid-typeof
+      typeof receiveButton !== null,
       '<!> Cannot find receive button <!>'
     );
 
     await uiWebDriver.clickElement('#receive-btn');
+    //  * find receive page title
     const findReceiveSYS = await uiWebDriver.findElement(
       By.id('receiveSYS-title')
     );
@@ -47,20 +50,25 @@ describe('<Receive /> tests', async () => {
   });
 
   it('should check if receive qr code is being shown', async () => {
+    //  * go to receive page
     await uiWebDriver.clickElement('#receive-btn');
+    //  * fin qr Code
     const qrCode = await uiWebDriver.findElement(By.id('qr-code'));
 
     assert.ok(typeof qrCode === 'object', '<!> Cannot find QRcode <!>');
   });
 
   it("should check if receive copy address button it's being shown and working correctly", async () => {
+    //  * go to receive page
     await uiWebDriver.clickElement('#receive-btn');
+    //  * find copy address btn
     const copyAddresBtn = await uiWebDriver.findElement(
       By.id('copy-address-receive-btn')
     );
 
     assert.ok(
-      typeof copyAddresBtn === 'object',
+      // eslint-disable-next-line valid-typeof
+      typeof copyAddresBtn !== null,
       '<!> Cannot find receive copy address button <!>'
     );
 

@@ -5,7 +5,7 @@ import { By } from 'selenium-webdriver';
 
 import { buildWebDriver, Driver } from '../webdriver';
 import { importWallet } from '../initialize';
-import { currentWalletState } from '../../../state/store';
+// import { currentWalletState } from '../../../state/store';
 
 describe('Account settings tests', async () => {
   let uiWebDriver: Driver;
@@ -39,50 +39,44 @@ describe('Account settings tests', async () => {
   it('should check if switch account is working correctly', async () => {
     await uiWebDriver.clickElement('#account-settings-btn');
     await uiWebDriver.clickElement('#accounts-btn');
+    //  * go to create new account
     await uiWebDriver.clickElement('#create-new-account-btn');
     await uiWebDriver.fill('#account-name-input', 'Account 2');
+    //  * create new account
     await uiWebDriver.clickElement('#create-btn');
     await uiWebDriver.clickElement('#got-it-btn');
+    //  * go home and open the menu again
     await uiWebDriver.clickElement('#account-settings-btn');
     await uiWebDriver.clickElement('#accounts-btn');
+    //  * switch account
     await uiWebDriver.clickElement('#account-1');
-    const { accounts, activeAccountId } = currentWalletState;
-    if (accounts[activeAccountId]) {
-      const activeId = accounts[activeAccountId].id;
-      assert.equal(activeId, 1, '<!> switch account is not working <!>');
-    }
+    await uiWebDriver.clickElement('#accounts-btn');
+    const account2Btn = await uiWebDriver.findElement('#account-1');
+    const account2BtnText = await account2Btn.getText();
+    //  * check if Account 2 is the active one
+    assert.equal(
+      account2BtnText,
+      'Account 2 (active)',
+      '<!> switch account is not working <!>'
+    );
   });
 
   it('should check if pali is opening the trezor popup correctly in a new tab', async () => {
     await uiWebDriver.clickElement('#account-settings-btn');
+    //  * go to hardware wallet
     await uiWebDriver.clickElement('#hardware-wallet-btn');
+    //  * select Trezor
     await uiWebDriver.clickElement('#trezor-btn');
+    //  * connect
     await uiWebDriver.clickElement('#connect-btn');
-    const url = uiWebDriver.getCurrentUrl();
-    console.log(url);
-    const expectedUrl = 'https://connect.trezor.io/8/popup.html#';
+    try {
+      await uiWebDriver.switchToWindowWithTitle('TrezorConnect | Trezor', null);
+    } catch (error) {
+      assert.ifError(error);
+    }
+    const url = await uiWebDriver.getCurrentUrl();
+    const expectedUrl = 'https://connect.trezor.io/8/popup.html';
+    //    * check if this is being redirected to https://connect.trezor.io/8/popup.html
     assert.equal(url, expectedUrl, '<!> pali is not opening trezor popup <!>');
   });
-  // it("should check if switch account is working correctly", async () => {
-  //   /**
-  //    * go to create account
-  //    * create new account
-  //    * go home and open menu again
-  //    * switch accounts
-  //    *
-  //    * you can check the address to compare if they are different
-  //    * when changing the active account
-  //    */
-  // });
-
-  // it("should check if pali is opening the trezor popup correctly in a new tab", async () => {
-  //   /**
-  //    * go to hardware wallet
-  //    * select trezor
-  //    * click on connect
-  //    *
-  //    * it is expected that pali opens a new tab
-  //    * https://connect.trezor.io/8/popup.html#
-  //    */
-  // });
 });

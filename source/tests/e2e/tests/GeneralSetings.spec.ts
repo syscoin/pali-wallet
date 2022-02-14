@@ -2,6 +2,7 @@ import assert from 'assert';
 
 import { beforeEach, afterEach } from 'mocha';
 import { By } from 'selenium-webdriver';
+// import clipboard from 'clipboardy';
 
 import { FAKE_PASSWORD } from '../../../constants/tests';
 import { buildWebDriver, Driver } from '../webdriver';
@@ -38,35 +39,39 @@ describe('General settings tests', async () => {
 
   it('should check if pali is showing the correct seed phrase after input the password', async () => {
     await uiWebDriver.clickElement('#general-settings-button');
+    //    * go to wallet seed phrase
     await uiWebDriver.clickElement('#wallet-seed-phrase-btn');
+    //    * input password
     await uiWebDriver.fill('#phraseview_password', FAKE_PASSWORD);
     await uiWebDriver.clickElement('#copy-btn');
-    // Descobrir como verificar o q está no clipboard
-    // Checar se o q está no clipboard é igual a FAKE_SEED_PHRASE
+    /* const currentClipboard = clipboard.read();
+    const expectedClipboard = FAKE_SEED_PHRASE;
+     //    * check if it is copying correctly after click on copy button
+    assert.equal(
+      currentClipboard,
+      expectedClipboard,
+      '<!> copy wallet seed phrase is working correctly <!>'
+    ); */
   });
 
   it('should check if pali is opening a new tab to redirect the user to syscoin discord for support', async () => {
     await uiWebDriver.clickElement('#general-settings-button');
+    //  * go to info/help
     await uiWebDriver.clickElement('#info-help-btn');
+    //    * click on element to open the discord invite in a new tab
     await uiWebDriver.clickElement('#user-support-btn');
-    /* const url = uiWebDriver.getCurrentUrl();
+    try {
+      await uiWebDriver.switchToWindowWithTitle('Syscoin', null);
+    } catch (error) {
+      assert.ifError(error);
+    }
+    const url = uiWebDriver.getCurrentUrl();
     const expectedUrl = 'https://discord.gg/8QKeyurHRd';
-    assert.equal(url, expectedUrl, '<!> pali is not opening trezor popup <!>'); */
+    //    * check if this is being redirected to https://discord.com/invite/8QKeyurHRd
+    assert.equal(
+      url,
+      expectedUrl,
+      '<!> pali is not opening syscoin discord invite <!>'
+    );
   });
 });
-// it("should check if pali is showing the correct seed phrase after input the password", async () => {
-//   /**
-//    * go to wallet seed phrase
-//    * input password
-//    * call getPhrase(pwd)
-//    * check if it is copying correctly after click on element
-//    */
-// });
-
-// it("should check if pali is opening a new tab to redirect the user to syscoin discord for support", async () => {
-//   /**
-//    * go to info/help
-//    * click on element to open the discord invite in a new tab
-//    * https://discord.com/invite/8QKeyurHRd
-//    */
-// });

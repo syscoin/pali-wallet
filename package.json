@@ -26,8 +26,8 @@
     "prepare": "husky install",
     "format": "prettier --single-quote --write .",
     "type-check": "tsc --pretty --noEmit",
-    "test:e2e:chrome": "yarn build:chrome && SELENIUM_BROWSER=chrome yarn mocha --file babel_loader.js source/tests/e2e/tests/*",
-    "test:e2e:chrome:silent": "yarn build:chrome && SELENIUM_BROWSER=chrome ENABLE_CHROME_LOGGING=false yarn mocha --file babel_loader.js source/tests/e2e/tests/*",
+    "test:e2e:chrome": "yarn build:chrome && SELENIUM_BROWSER=chrome yarn mocha --no-timeouts --file babel_loader.js source/tests/e2e/tests/*",
+    "test:e2e:chrome:silent": "yarn build:chrome && SELENIUM_BROWSER=chrome ENABLE_CHROME_LOGGING=false yarn mocha --no-timeouts --file babel_loader.js source/tests/e2e/tests/*",
     "postinstall": "npx patch-package"
   },
   "lint-staged": {
@@ -132,6 +132,7 @@
     "@typescript-eslint/parser": "^5.10.2",
     "babel-loader": "^8.2.2",
     "clean-webpack-plugin": "^4.0.0",
+    "clipboardy": "^3.0.0",
     "copy-webpack-plugin": "^6.4.1",
     "core-js": "^3.15.2",
     "cross-env": "^7.0.3",
