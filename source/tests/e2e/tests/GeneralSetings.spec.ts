@@ -26,18 +26,18 @@ describe('General settings tests', async () => {
     uiWebDriver.quit();
   });
 
-  it('should check if general settings button is being shown', async () => {
+  it('should check general settings button ', async () => {
     const generalSettingsButton = await uiWebDriver.findElement(
       By.id('general-settings-button')
     );
 
     assert.ok(
-      typeof generalSettingsButton === 'object',
+      generalSettingsButton,
       '<!> Cannot find general settings button <!>'
     );
   });
 
-  it('should check if pali is showing the correct seed phrase after input the password', async () => {
+  it('should display the correct seed', async () => {
     await uiWebDriver.clickElement('#general-settings-button');
     //    * go to wallet seed phrase
     await uiWebDriver.clickElement('#wallet-seed-phrase-btn');
@@ -54,7 +54,7 @@ describe('General settings tests', async () => {
     ); */
   });
 
-  it('should check if pali is opening a new tab to redirect the user to syscoin discord for support', async () => {
+  it('should open a new tab to redirect the user to syscoin discord for support', async () => {
     await uiWebDriver.clickElement('#general-settings-button');
     //  * go to info/help
     await uiWebDriver.clickElement('#info-help-btn');

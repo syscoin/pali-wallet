@@ -5,7 +5,6 @@ import { By } from 'selenium-webdriver';
 
 import { buildWebDriver, Driver } from '../webdriver';
 import { importWallet } from '../initialize';
-// import { currentWalletState } from '../../../state/store';
 
 describe('Account settings tests', async () => {
   let uiWebDriver: Driver;
@@ -25,18 +24,15 @@ describe('Account settings tests', async () => {
     uiWebDriver.quit();
   });
 
-  it('should check if account settings button is being shown', async () => {
+  it('should check account settings button', async () => {
     const settingsButton = await uiWebDriver.findElement(
       By.id('account-settings-btn')
     );
 
-    assert.ok(
-      typeof settingsButton === 'object',
-      '<!> Cannot find settings button <!>'
-    );
+    assert.ok(settingsButton, '<!> Cannot find settings button <!>');
   });
 
-  it('should check if switch account is working correctly', async () => {
+  it('should switch account', async () => {
     await uiWebDriver.clickElement('#account-settings-btn');
     await uiWebDriver.clickElement('#accounts-btn');
     //  * go to create new account
@@ -61,7 +57,7 @@ describe('Account settings tests', async () => {
     );
   });
 
-  it('should check if pali is opening the trezor popup correctly in a new tab', async () => {
+  it('should open the trezor popup in a new tab', async () => {
     await uiWebDriver.clickElement('#account-settings-btn');
     //  * go to hardware wallet
     await uiWebDriver.clickElement('#hardware-wallet-btn');

@@ -24,12 +24,11 @@ describe('<Send /> tests', async () => {
     uiWebDriver.quit();
   });
 
-  it('should check if send button is being show and working correctly', async () => {
+  it('should check send button', async () => {
     //  * find send btn
     const sendButton = await uiWebDriver.findElement(By.id('send-btn'));
 
-    // eslint-disable-next-line valid-typeof
-    assert.ok(typeof sendButton !== null, '<!> Cannot find Send button <!>');
+    assert.ok(sendButton, '<!> Cannot find Send button <!>');
     //  * go to send page
     await uiWebDriver.clickElement('#send-btn');
 
@@ -43,12 +42,11 @@ describe('<Send /> tests', async () => {
     );
   });
 
-  it("should check if send form it's being shown", async () => {
+  it('should check send form', async () => {
     //  * go to send page
     await uiWebDriver.clickElement('#send-btn');
     const sendForm = await uiWebDriver.findElement(By.id('send-form'));
-    // eslint-disable-next-line valid-typeof
-    assert.ok(typeof sendForm !== null, '<!> Cannot find send form <!>');
+    assert.ok(sendForm, '<!> Cannot find send form <!>');
   });
 
   /**

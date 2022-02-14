@@ -6,7 +6,6 @@ import { By } from 'selenium-webdriver';
 import { buildWebDriver, Driver } from '../webdriver';
 import { importWallet } from '../initialize';
 import { SYS_EXPLORER_SEARCH } from '../../../constants/index';
-import { currentWalletState } from '../../../state/store';
 
 describe('<Home /> tests', async () => {
   let uiWebDriver: Driver;
@@ -26,7 +25,7 @@ describe('<Home /> tests', async () => {
     uiWebDriver.quit();
   });
 
-  it('should check if it is opening tx details on explorer correctly', async () => {
+  it('should open tx details on explorer', async () => {
     const isTestnet =
       SYS_EXPLORER_SEARCH === 'https://blockbook-dev.elint.services/';
     //  * open sys explorer
@@ -42,21 +41,15 @@ describe('<Home /> tests', async () => {
     );
   });
 
-  it('should show balance correctly', async () => {
+  it('should show balance', async () => {
     //  * find balance
     const balance = await uiWebDriver.findElement(By.id('home-balance'));
+    const balanceValue = await balance.getText();
 
-    const { accounts, activeAccountId } = currentWalletState;
-
-    if (accounts[activeAccountId]) {
-      const balanceValue = await balance.getText();
-      const expectedBalance = String(accounts[activeAccountId].balance);
-      //  * check if balance received is equal to balance expected
-      assert.equal(
-        balanceValue,
-        expectedBalance,
-        '<!> Balance different than the expected <!>'
-      );
-    }
+    //  * check if balance received is a number
+    assert.ok(
+      typeof balanceValue === 'number',
+      '<!> Balance different than the expected <!>'
+    );
   });
 });
