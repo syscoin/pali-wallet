@@ -175,12 +175,9 @@ export const AuthRouter = () => {
     controller.appRoute(location.pathname);
   }, [location]);
 
-  // TODO merge unlock and start
-
   return (
     <div className="w-full min-w-popup h-full min-h-popup">
       <Routes>
-        {/* EVERY MODE HAS ITS OWN "START" !!! */}
         <Route path="/app.html" element={<Navigate to={{ pathname: '/' }} />} />
 
         <Route path="/" element={<Start />} />
