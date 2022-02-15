@@ -2,7 +2,7 @@ import assert from 'assert';
 
 import { By } from 'selenium-webdriver';
 
-import { SYS_EXPLORER_SEARCH } from '../../constants/index';
+import { SYS_EXPLORER_SEARCH } from '../../source/constants/index';
 
 import { buildWebDriver, Driver } from './driver';
 import { importWallet } from './initialize';

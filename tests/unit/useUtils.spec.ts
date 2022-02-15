@@ -1,4 +1,4 @@
-import { getHost, isNFT } from '../../hooks/useUtils';
+import { getHost, isNFT } from '../../source/hooks/useUtils';
 
 describe('useUtils test', () => {
   it('should get the host from an url', () => {
