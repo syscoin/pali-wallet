@@ -63,9 +63,8 @@ describe('<Receive /> tests', async () => {
 
     assert.ok(copyAddresBtn, '<!> Cannot find receive copy address button <!>');
     const copyAddresValue = await copyAddresBtn.getAttribute('value');
-    const stringNotEmpty = await copyAddresBtn.not.isEmpty();
-    if (typeof copyAddresValue === 'string') {
-      assert.ok(stringNotEmpty, '<!> Address different than the expected <!>');
+    if (typeof copyAddresValue === 'string' || copyAddresValue.length != 0) {
+      assert.ok(copyAddresValue, '<!> Address different than the expected <!>');
     }
   });
 });
