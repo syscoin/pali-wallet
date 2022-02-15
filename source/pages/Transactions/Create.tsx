@@ -1,8 +1,6 @@
 import React from 'react';
 import { useController } from 'hooks/index';
-
-import { SiteTransaction } from '../SiteTransaction';
-import { ConfirmTransaction } from '../index';
+import { TxConfirmLayout, TxLayout } from 'components/Layout';
 
 export const CreateTokenConfirm = () => {
   const controller = useController();
@@ -10,7 +8,7 @@ export const CreateTokenConfirm = () => {
     controller.wallet.account.getTemporaryTransaction('newAsset');
 
   return (
-    <ConfirmTransaction
+    <TxConfirmLayout
       sign={false}
       signAndSend={false}
       title="TOKEN CREATION"
@@ -23,7 +21,7 @@ export const CreateTokenConfirm = () => {
 
 export const Create = () => (
   <div>
-    <SiteTransaction
+    <TxLayout
       confirmRoute="/transaction/create/confirm"
       temporaryTransactionAsString="newAsset"
       layoutTitle="Create token"

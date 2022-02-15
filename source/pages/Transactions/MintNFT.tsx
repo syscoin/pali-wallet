@@ -1,8 +1,6 @@
 import React from 'react';
 import { useController } from 'hooks/index';
-
-import { SiteTransaction } from '../SiteTransaction';
-import { ConfirmTransaction } from '../index';
+import { TxConfirmLayout, TxLayout } from 'components/Layout';
 
 export const MintNFTConfirm = () => {
   const controller = useController();
@@ -10,7 +8,7 @@ export const MintNFTConfirm = () => {
     controller.wallet.account.getTemporaryTransaction('mintNFT');
 
   return (
-    <ConfirmTransaction
+    <TxConfirmLayout
       sign={false}
       signAndSend={false}
       title="MINT NFT"
@@ -23,7 +21,7 @@ export const MintNFTConfirm = () => {
 
 export const MintNFT = () => (
   <div>
-    <SiteTransaction
+    <TxLayout
       confirmRoute="/transaction/asset/nft/mint/confirm"
       temporaryTransactionAsString="mintNFT"
       layoutTitle="Mint NFT"

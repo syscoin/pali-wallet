@@ -1,7 +1,6 @@
 import React from 'react';
 import { useController } from 'hooks/index';
-
-import { ConfirmTransaction } from '../index';
+import { TxConfirmLayout } from 'components/Layout';
 
 export const SignAndSend = () => {
   const controller = useController();
@@ -10,7 +9,7 @@ export const SignAndSend = () => {
     controller.wallet.account.getTemporaryTransaction('signAndSendPSBT');
 
   return (
-    <ConfirmTransaction
+    <TxConfirmLayout
       sign
       title="SIGNATURE REQUEST"
       signAndSend

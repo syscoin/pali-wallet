@@ -1,8 +1,6 @@
 import React from 'react';
 import { useController } from 'hooks/index';
-
-import { SiteTransaction } from '../SiteTransaction';
-import { ConfirmTransaction } from '../index';
+import { TxConfirmLayout, TxLayout } from 'components/Layout';
 
 export const TransferOwnershipConfirm = () => {
   const controller = useController();
@@ -10,7 +8,7 @@ export const TransferOwnershipConfirm = () => {
     controller.wallet.account.getTemporaryTransaction('transferAsset');
 
   return (
-    <ConfirmTransaction
+    <TxConfirmLayout
       sign={false}
       signAndSend={false}
       title="TRANSFER ASSET"
@@ -23,7 +21,7 @@ export const TransferOwnershipConfirm = () => {
 
 export const TransferOwnership = () => (
   <div>
-    <SiteTransaction
+    <TxLayout
       confirmRoute="/transaction/asset/transfer/confirm"
       temporaryTransactionAsString="transferAsset"
       layoutTitle="Transfer Asset"

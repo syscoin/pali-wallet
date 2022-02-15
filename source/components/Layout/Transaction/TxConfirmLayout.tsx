@@ -15,18 +15,18 @@ import {
   SecondaryButton,
 } from 'components/index';
 
-type ConfirmType = {
+type ITxConfirm = {
   callback: any;
   temporaryTransaction: any;
   temporaryTransactionStringToClear: string;
   title: string;
 };
-const ConfirmDefaultTransaction = ({
+const TxConfirm = ({
   callback,
   temporaryTransaction,
   temporaryTransactionStringToClear,
   title,
-}: ConfirmType) => {
+}: ITxConfirm) => {
   const controller = useController();
 
   const { ellipsis, formatURL, capitalizeFirstLetter } = useFormat();
@@ -231,17 +231,17 @@ const ConfirmDefaultTransaction = ({
   );
 };
 
-type ConfirmSignatureType = {
+type ITxConfirmSign = {
   psbt: any;
   signAndSend?: boolean;
   title?: string;
 };
 
-const ConfirmSignTransaction = ({
+const TxConfirmSign = ({
   psbt,
   signAndSend = false,
   title = 'SIGNATURE REQUEST',
-}: ConfirmSignatureType) => {
+}: ITxConfirmSign) => {
   const controller = useController();
   const base64 =
     /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
@@ -374,7 +374,7 @@ const ConfirmSignTransaction = ({
   );
 };
 
-export type IConfirmTransaction = {
+export type ITxConfirmLayout = {
   callback?: any;
   sign?: boolean;
   signAndSend?: boolean;
@@ -383,7 +383,7 @@ export type IConfirmTransaction = {
   title: string;
 };
 
-export const ConfirmTransaction: FC<IConfirmTransaction> = ({
+export const TxConfirmLayout: FC<ITxConfirmLayout> = ({
   sign,
   title,
   callback,
@@ -393,13 +393,13 @@ export const ConfirmTransaction: FC<IConfirmTransaction> = ({
 }) => (
   <AuthViewLayout canGoBack={false} title={title}>
     {sign ? (
-      <ConfirmSignTransaction
+      <TxConfirmSign
         psbt={temporaryTransaction}
         signAndSend={signAndSend}
         title="SIGNATURE REQUEST"
       />
     ) : (
-      <ConfirmDefaultTransaction
+      <TxConfirm
         callback={callback}
         temporaryTransaction={temporaryTransaction}
         temporaryTransactionStringToClear={temporaryTransactionStringToClear}

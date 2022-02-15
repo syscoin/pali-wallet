@@ -1,8 +1,6 @@
 import React from 'react';
 import { useController } from 'hooks/index';
-
-import { SiteTransaction } from '../SiteTransaction';
-import { ConfirmTransaction } from '../index';
+import { TxConfirmLayout, TxLayout } from 'components/Layout';
 
 export const CreateAndIssueNFTConfirm = () => {
   const controller = useController();
@@ -10,7 +8,7 @@ export const CreateAndIssueNFTConfirm = () => {
     controller.wallet.account.getTemporaryTransaction('newNFT');
 
   return (
-    <ConfirmTransaction
+    <TxConfirmLayout
       sign={false}
       signAndSend={false}
       title="NFT CREATION"
@@ -22,7 +20,7 @@ export const CreateAndIssueNFTConfirm = () => {
 };
 
 export const CreateAndIssueNFT = () => (
-  <SiteTransaction
+  <TxLayout
     confirmRoute="/transaction/asset/nft/issue/confirm"
     temporaryTransactionAsString="newNFT"
     layoutTitle="Create NFT"

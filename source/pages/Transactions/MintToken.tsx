@@ -1,8 +1,6 @@
 import React from 'react';
 import { useController } from 'hooks/index';
-
-import { SiteTransaction } from '../SiteTransaction';
-import { ConfirmTransaction } from '../index';
+import { TxConfirmLayout, TxLayout } from 'components/Layout';
 
 export const MintTokenConfirm = () => {
   const controller = useController();
@@ -10,7 +8,7 @@ export const MintTokenConfirm = () => {
     controller.wallet.account.getTemporaryTransaction('mintAsset');
 
   return (
-    <ConfirmTransaction
+    <TxConfirmLayout
       sign={false}
       signAndSend={false}
       title="TOKEN MINT"
@@ -22,7 +20,7 @@ export const MintTokenConfirm = () => {
 };
 
 export const MintToken = () => (
-  <SiteTransaction
+  <TxLayout
     confirmRoute="/transaction/asset/issue/confirm"
     temporaryTransactionAsString="mintAsset"
     layoutTitle="Mint token"

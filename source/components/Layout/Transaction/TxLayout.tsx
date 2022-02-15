@@ -15,14 +15,14 @@ import {
 } from 'hooks/index';
 import { Form, Input } from 'antd';
 
-interface ISiteTransaction {
+interface ITxLayout {
   confirmRoute: string;
   // id: string;
   layoutTitle: string;
   temporaryTransactionAsString: string;
 }
 
-export const SiteTransaction: FC<ISiteTransaction> = ({
+export const TxLayout: FC<ITxLayout> = ({
   confirmRoute,
   temporaryTransactionAsString,
   layoutTitle,
