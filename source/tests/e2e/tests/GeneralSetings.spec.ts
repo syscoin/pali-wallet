@@ -1,14 +1,13 @@
 import assert from 'assert';
 
-import { beforeEach, afterEach } from 'mocha';
 import { By } from 'selenium-webdriver';
-// import clipboard from 'clipboardy';
+import clipboard from 'copy-paste';
 
-import { FAKE_PASSWORD } from '../../../constants/tests';
+import { FAKE_PASSWORD, FAKE_SEED_PHRASE } from '../../../constants/tests';
 import { buildWebDriver, Driver } from '../webdriver';
 import { importWallet } from '../initialize';
 
-describe('General settings tests', async () => {
+describe('General settings tests', () => {
   let uiWebDriver: Driver;
 
   beforeEach(async () => {
@@ -39,19 +38,21 @@ describe('General settings tests', async () => {
 
   it('should display the correct seed', async () => {
     await uiWebDriver.clickElement('#general-settings-button');
-    //    * go to wallet seed phrase
+    //* go to wallet seed phrase
     await uiWebDriver.clickElement('#wallet-seed-phrase-btn');
-    //    * input password
+    //* input password
     await uiWebDriver.fill('#phraseview_password', FAKE_PASSWORD);
     await uiWebDriver.clickElement('#copy-btn');
-    /* const currentClipboard = clipboard.read();
+
+    const currentClipboard = clipboard.paste();
     const expectedClipboard = FAKE_SEED_PHRASE;
-     //    * check if it is copying correctly after click on copy button
+
+    //* check if it is copying correctly after click on copy button
     assert.equal(
       currentClipboard,
       expectedClipboard,
       '<!> copy wallet seed phrase is working correctly <!>'
-    ); */
+    );
   });
 
   it('should open a new tab to redirect the user to syscoin discord for support', async () => {
