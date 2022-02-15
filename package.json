@@ -26,6 +26,7 @@
     "format": "prettier --single-quote --write .",
     "type-check": "tsc --pretty --noEmit",
     "test": "jest",
+    "test:silent": "ENABLE_CHROME_LOGGING=false yarn test",
     "test:unit": "jest source/ tests/unit",
     "test:e2e": "jest tests/e2e",
     "test:e2e:silent": "ENABLE_CHROME_LOGGING=false yarn test:e2e",
