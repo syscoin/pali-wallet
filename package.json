@@ -26,8 +26,8 @@
     "prepare": "husky install",
     "format": "prettier --single-quote --write .",
     "type-check": "tsc --pretty --noEmit",
-    "test:e2e:chrome": "yarn build:chrome && SELENIUM_BROWSER=chrome yarn mocha --no-timeouts --file babel_loader.js source/tests/e2e/tests/*",
-    "test:e2e:chrome:silent": "SELENIUM_BROWSER=chrome ENABLE_CHROME_LOGGING=false yarn mocha --no-timeouts --file babel_loader.js source/tests/e2e/tests/*",
+    "test:e2e": "SELENIUM_BROWSER=chrome jest -c source/tests/e2e/jest.config.json",
+    "test:e2e:silent": "ENABLE_CHROME_LOGGING=false yarn test:e2e",
     "postinstall": "npx patch-package"
   },
   "lint-staged": {
@@ -51,7 +51,6 @@
     "@types/crypto-js": "^4.0.2",
     "@types/jest": "^27.0.3",
     "@types/lodash": "^4.14.162",
-    "@types/mocha": "^9.0.0",
     "@types/qrcode.react": "^1.0.1",
     "@types/react-redux": "^7.1.9",
     "@types/react-router-dom": "^5.1.5",
@@ -87,7 +86,6 @@
     "jest": "^27.4.0",
     "lint-staged": "^12.1.7",
     "lodash": "^4.17.20",
-    "mocha": "^7.2.0",
     "neo-async": "^2.6.2",
     "npm-check-updates": "^12.1.0",
     "postcss": "^8.4.5",

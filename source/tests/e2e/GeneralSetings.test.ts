@@ -3,9 +3,10 @@ import assert from 'assert';
 import { By } from 'selenium-webdriver';
 import clipboard from 'copy-paste';
 
-import { FAKE_PASSWORD, FAKE_SEED_PHRASE } from '../../../constants/tests';
-import { buildWebDriver, Driver } from '../webdriver';
-import { importWallet } from '../initialize';
+import { FAKE_PASSWORD, FAKE_SEED_PHRASE } from '../../constants/tests';
+
+import { buildWebDriver, Driver } from './driver';
+import { importWallet } from './initialize';
 
 describe('General settings tests', () => {
   let uiWebDriver: Driver;

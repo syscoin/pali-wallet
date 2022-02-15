@@ -1,13 +1,13 @@
 import assert from 'assert';
 
-import { beforeEach, afterEach } from 'mocha';
 import { By } from 'selenium-webdriver';
 
-import { buildWebDriver, Driver } from '../webdriver';
-import { importWallet } from '../initialize';
-import { SYS_EXPLORER_SEARCH } from '../../../constants/index';
+import { SYS_EXPLORER_SEARCH } from '../../constants/index';
 
-describe('<Home /> tests', async () => {
+import { buildWebDriver, Driver } from './driver';
+import { importWallet } from './initialize';
+
+describe('<Home /> tests', () => {
   let uiWebDriver: Driver;
 
   beforeEach(async () => {

@@ -1,0 +1,11 @@
+{
+  "moduleFileExtensions": ["js", "mjs", "ts", "json"],
+  "moduleDirectories": ["source", "node_modules"],
+  "transform": {
+    "^.+\\.ts$": "ts-jest",
+    "^.+\\.js$": "babel-jest",
+    "^.+\\.mjs$": "babel-jest"
+  },
+  "testTimeout": 15000,
+  "testRegex": "((\\.|/*.)(test))\\.ts?$"
+}

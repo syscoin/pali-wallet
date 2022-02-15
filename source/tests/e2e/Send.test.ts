@@ -1,12 +1,11 @@
 import assert from 'assert';
 
-import { beforeEach, afterEach } from 'mocha';
 import { By } from 'selenium-webdriver';
 
-import { buildWebDriver, Driver } from '../webdriver';
-import { importWallet } from '../initialize';
+import { buildWebDriver, Driver } from './driver';
+import { importWallet } from './initialize';
 
-describe('<Send /> tests', async () => {
+describe('<Send /> tests', () => {
   let uiWebDriver: Driver;
 
   beforeEach(async () => {
