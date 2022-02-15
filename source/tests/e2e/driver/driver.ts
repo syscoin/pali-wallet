@@ -7,10 +7,17 @@ import {
   error as webdriverError,
   By,
   WebDriver,
+  WebElement,
 } from 'selenium-webdriver';
 import cssToXPath from 'css-to-xpath';
 
-function wrapElementWithAPI(element, driver) {
+interface CustomWebElement extends WebElement {
+  fill(input);
+  press(key): Promise<void>;
+  waitForElementState(state, timeout);
+}
+
+function wrapElementWithAPI(element, driver): CustomWebElement {
   element.press = (key) => element.sendKeys(key);
   element.fill = async (input) => {
     await element.clear();
@@ -200,7 +207,7 @@ export class Driver {
     const locator = this.buildLocator(rawLocator);
     const elements = await this.findElements(locator);
     await Promise.all(
-      elements.reduce((acc, element) => {
+      elements.reduce((acc: WebElement[], element) => {
         acc.push(
           this.driver.wait(until.elementIsVisible(element), this.timeout),
           this.driver.wait(until.elementIsEnabled(element), this.timeout)

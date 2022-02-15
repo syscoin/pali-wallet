@@ -7,5 +7,6 @@
     "^.+\\.js$": "babel-jest",
     "^.+\\.mjs$": "babel-jest"
   },
-  "testRegex": "((\\.|/*.)(spec))\\.ts?$"
+  "testTimeout": 15000,
+  "testRegex": "((\\.|/*.)(spec)|(test))\\.ts?$"
 }

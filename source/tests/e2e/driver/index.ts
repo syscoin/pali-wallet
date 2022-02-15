@@ -8,15 +8,11 @@ export { Driver } from './driver';
 
 async function buildBrowserWebDriver(browser, webDriverOptions) {
   switch (browser) {
-    case Browser.CHROME: {
-      return ChromeDriver.build(webDriverOptions);
-    }
-    case Browser.FIREFOX: {
+    case Browser.FIREFOX:
       return FirefoxDriver.build(webDriverOptions);
-    }
-    default: {
-      throw new Error(`Unrecognized browser: ${browser}`);
-    }
+    default:
+    case Browser.CHROME:
+      return ChromeDriver.build(webDriverOptions);
   }
 }
 

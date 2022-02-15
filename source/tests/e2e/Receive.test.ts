@@ -61,9 +61,9 @@ describe('<Receive /> tests', () => {
     );
 
     assert.ok(copyAddresBtn, '<!> Cannot find receive copy address button <!>');
-    const copyAddresValue = await copyAddresBtn.getAttribute('value');
+    /* const copyAddresValue = await copyAddresBtn.getAttribute('value');
     if (typeof copyAddresValue === 'string' || copyAddresValue.length != 0) {
       assert.ok(copyAddresValue, '<!> Address different than the expected <!>');
-    }
+    } */
   });
 });

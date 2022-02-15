@@ -26,7 +26,7 @@
     "prepare": "husky install",
     "format": "prettier --single-quote --write .",
     "type-check": "tsc --pretty --noEmit",
-    "test:e2e": "SELENIUM_BROWSER=chrome jest -c source/tests/e2e/jest.config.json",
+    "test:e2e": "jest source/tests/e2e",
     "test:e2e:silent": "ENABLE_CHROME_LOGGING=false yarn test:e2e",
     "postinstall": "npx patch-package"
   },
