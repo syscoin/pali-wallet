@@ -51,7 +51,7 @@ import {
 
 import { ProtectedRoute } from './ProtectedRoute';
 
-export const AuthRouter = () => {
+export const Router = () => {
   const params = useParams();
   const location = useLocation();
   const controller = useController();
@@ -93,7 +93,7 @@ export const AuthRouter = () => {
       return;
     }
 
-    if (route === '/transaction/update-asset/confirm' && !hasUpdateAssetTx) {
+    if (route === '/transaction/asset/update/confirm' && !hasUpdateAssetTx) {
       navigate('/home');
       return;
     }
@@ -115,7 +115,7 @@ export const AuthRouter = () => {
           return;
 
         case 'mintNFT':
-          navigate('/transaction/mint-nft');
+          navigate('/transaction/asset/nft/mint');
           return;
 
         case 'signPSBT':
@@ -127,19 +127,19 @@ export const AuthRouter = () => {
           return;
 
         case 'mintAsset':
-          navigate('/transaction/issue-asset');
+          navigate('/transaction/asset/issue');
           return;
 
         case 'newNFT':
-          navigate('/transaction/issue-nft');
+          navigate('/transaction/asset/nft/issue');
           return;
 
         case 'updateAsset':
-          navigate('/transaction/update-asset');
+          navigate('/transaction/asset/update');
           return;
 
         case 'transferAsset':
-          navigate('/transaction/transfer-ownership');
+          navigate('/transaction/asset/transfer');
           return;
 
         default:
@@ -176,163 +176,165 @@ export const AuthRouter = () => {
   }, [location]);
 
   return (
-    <div className="w-full min-w-popup h-full min-h-popup">
-      <Routes>
-        <Route path="/app.html" element={<Navigate to={{ pathname: '/' }} />} />
+    <Routes>
+      <Route path="/app.html" element={<Navigate to={{ pathname: '/' }} />} />
 
-        <Route path="/" element={<Start />} />
+      <Route path="/" element={<Start />} />
 
-        <Route path="/create-password" element={<CreatePass />} />
+      <Route path="/create-password" element={<CreatePass />} />
 
-        {/* Connections */}
-        <Route
-          path="/connect-wallet"
-          element={<ProtectedRoute element={<ConnectWallet />} />}
-        />
-        <Route
-          path="/connected-accounts"
-          element={<ProtectedRoute element={<ConnectedAccounts />} />}
-        />
+      {/* Connections */}
+      <Route
+        path="/connect-wallet"
+        element={<ProtectedRoute element={<ConnectWallet />} />}
+      />
+      <Route
+        path="/connected-accounts"
+        element={<ProtectedRoute element={<ConnectedAccounts />} />}
+      />
 
-        {/* Home */}
-        <Route path="/home" element={<ProtectedRoute element={<Home />} />} />
-        <Route
-          // ? maybe this route should belong to transaction scope
-          path="/home/tx-details"
-          element={<ProtectedRoute element={<DetailsView />} />}
-        />
+      {/* Home */}
+      <Route path="/home" element={<ProtectedRoute element={<Home />} />} />
+      <Route
+        // ? maybe this route should belong to transaction scope
+        path="/home/tx-details"
+        element={<ProtectedRoute element={<DetailsView />} />}
+      />
 
-        <Route path="/import" element={<Import />} />
-        <Route path="/phrase/create" element={<CreatePhrase />} />
-        <Route path="/phrase/confirm" element={<ConfirmPhrase />} />
+      <Route path="/import" element={<Import />} />
+      <Route path="/phrase/create" element={<CreatePhrase />} />
+      <Route path="/phrase/confirm" element={<ConfirmPhrase />} />
 
-        {/* Transactions */}
+      {/* Transactions */}
+      <Route path="/transaction">
         <Route
-          path="/transaction/sign"
-          element={<ProtectedRoute element={<SignAndSend />} />}
-        />
-        <Route
-          path="/transaction/sign-psbt"
-          element={<ProtectedRoute element={<SignPSBT />} />}
-        />
-        <Route
-          path="/transaction/create"
+          path="/create"
           element={<ProtectedRoute element={<Create />} />}
         />
         <Route
-          path="/transaction/create/confirm"
+          path="/create/confirm"
           element={<ProtectedRoute element={<CreateTokenConfirm />} />}
         />
         <Route
-          path="/transaction/issue-asset"
-          element={<ProtectedRoute element={<MintToken />} />}
+          path="/sign"
+          element={<ProtectedRoute element={<SignAndSend />} />}
         />
         <Route
-          path="/transaction/issue-asset/confirm"
-          element={<ProtectedRoute element={<MintTokenConfirm />} />}
-        />
-        <Route
-          path="/transaction/issue-nft"
-          element={<ProtectedRoute element={<CreateAndIssueNFT />} />}
-        />
-        <Route
-          path="/transaction/issue-nft/confirm"
-          element={<ProtectedRoute element={<CreateAndIssueNFTConfirm />} />}
-        />
-        <Route
-          path="/transaction/mint-nft"
-          element={<ProtectedRoute element={<MintNFT />} />}
-        />
-        <Route
-          path="/transaction/mint-nft/confirm"
-          element={<ProtectedRoute element={<MintNFTConfirm />} />}
-        />
-        <Route
-          path="/transaction/update-asset"
-          element={<ProtectedRoute element={<UpdateAsset />} />}
-        />
-        <Route
-          path="/transaction/update-asset/confirm"
-          element={<ProtectedRoute element={<UpdateAssetConfirm />} />}
-        />
-        <Route
-          path="/transaction/transfer-ownership"
-          element={<ProtectedRoute element={<TransferOwnership />} />}
-        />
-        <Route
-          path="/transaction/transfer-ownership/confirm"
-          element={<ProtectedRoute element={<TransferOwnershipConfirm />} />}
+          path="/sign-psbt"
+          element={<ProtectedRoute element={<SignPSBT />} />}
         />
 
-        {/* Send */}
-        <Route path="/send" element={<ProtectedRoute element={<Send />} />} />
-        <Route
-          path="/send/:address"
-          element={
-            <ProtectedRoute element={<Send initAddress={params.address} />} />
-          }
-        />
-        <Route
-          path="/send/confirm"
-          element={<ProtectedRoute element={<SendConfirm />} />}
-        />
+        <Route path="/asset">
+          <Route
+            path="/issue"
+            element={<ProtectedRoute element={<MintToken />} />}
+          />
+          <Route
+            path="/issue/confirm"
+            element={<ProtectedRoute element={<MintTokenConfirm />} />}
+          />
+          <Route
+            path="/nft/issue"
+            element={<ProtectedRoute element={<CreateAndIssueNFT />} />}
+          />
+          <Route
+            path="/nft/issue/confirm"
+            element={<ProtectedRoute element={<CreateAndIssueNFTConfirm />} />}
+          />
+          <Route
+            path="/nft/mint"
+            element={<ProtectedRoute element={<MintNFT />} />}
+          />
+          <Route
+            path="/nft/mint/confirm"
+            element={<ProtectedRoute element={<MintNFTConfirm />} />}
+          />
+          <Route
+            path="/update"
+            element={<ProtectedRoute element={<UpdateAsset />} />}
+          />
+          <Route
+            path="/update/confirm"
+            element={<ProtectedRoute element={<UpdateAssetConfirm />} />}
+          />
+          <Route
+            path="/transfer"
+            element={<ProtectedRoute element={<TransferOwnership />} />}
+          />
+          <Route
+            path="/transfer/confirm"
+            element={<ProtectedRoute element={<TransferOwnershipConfirm />} />}
+          />
+        </Route>
+      </Route>
 
-        {/* Receive */}
-        <Route
-          path="/receive"
-          element={<ProtectedRoute element={<Receive />} />}
-        />
+      {/* Send */}
+      <Route path="/send" element={<ProtectedRoute element={<Send />} />} />
+      <Route
+        path="/send/:address"
+        element={
+          <ProtectedRoute element={<Send initAddress={params.address} />} />
+        }
+      />
+      <Route
+        path="/send/confirm"
+        element={<ProtectedRoute element={<SendConfirm />} />}
+      />
 
-        {/* Settings */}
+      {/* Receive */}
+      <Route
+        path="/receive"
+        element={<ProtectedRoute element={<Receive />} />}
+      />
+
+      {/* Settings */}
+      <Route path="/settings">
+        <Route path="/about" element={<ProtectedRoute element={<About />} />} />
         <Route
-          path="/settings/about"
-          element={<ProtectedRoute element={<About />} />}
-        />
-        <Route
-          path="/settings/autolock"
+          path="/autolock"
           element={<ProtectedRoute element={<AutoLock />} />}
         />
         <Route
-          path="/settings/currency"
+          path="/currency"
           element={<ProtectedRoute element={<Currency />} />}
         />
         <Route
-          path="/settings/delete-wallet"
+          path="/delete-wallet"
           element={<ProtectedRoute element={<DeleteWallet />} />}
         />
         <Route
-          path="/settings/phrase"
+          path="/phrase"
           element={<ProtectedRoute element={<Phrase />} />}
         />
         <Route
-          path="/settings/account/hardware"
+          path="/account/hardware"
           element={<ProtectedRoute element={<ConnectHardwareWallet />} />}
         />
         <Route
-          path="/settings/account/new"
+          path="/account/new"
           element={<ProtectedRoute element={<CreateAccount />} />}
         />
         <Route
-          path="/settings/account/private-key"
+          path="/account/private-key"
           element={<ProtectedRoute element={<PrivateKey />} />}
         />
         <Route
-          path="/settings/networks/edit"
+          path="/networks/edit"
           element={<ProtectedRoute element={<EditNetwork />} />}
         />
         <Route
-          path="/settings/networks/custom-rpc"
+          path="/networks/custom-rpc"
           element={<ProtectedRoute element={<CustomRPC />} />}
         />
         <Route
-          path="/settings/networks/connected-sites"
+          path="/networks/connected-sites"
           element={<ProtectedRoute element={<ConnectedSites />} />}
         />
         <Route
-          path="/settings/networks/trusted-sites"
+          path="/networks/trusted-sites"
           element={<ProtectedRoute element={<TrustedSites />} />}
         />
-      </Routes>
-    </div>
+      </Route>
+    </Routes>
   );
 };

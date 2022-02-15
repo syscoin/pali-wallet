@@ -24,7 +24,7 @@ export const UpdateAssetConfirm = () => {
 export const UpdateAsset = () => (
   <div>
     <SiteTransaction
-      confirmRoute="/transaction/update-asset/confirm"
+      confirmRoute="/transaction/asset/update/confirm"
       temporaryTransactionAsString="updateAsset"
       layoutTitle="Update Asset"
       // id={id}
