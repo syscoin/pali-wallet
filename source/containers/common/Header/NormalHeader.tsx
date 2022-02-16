@@ -66,16 +66,32 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
   }, [activeAccount, currentTabURL]);
 
   const NetworkMenu = () => (
-    <Menu as="div" className="absolute left-2 inline-block mr-8 text-left">
+    <Menu
+      as="div"
+      className="align-center absolute left-2 flex inline-block mr-8 text-left"
+    >
       {(menuprops) => (
         <>
           <Menu.Button className="inline-flex justify-center w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-            <div className="flex gap-x-6 items-center justify-start ml-2 w-full cursor-pointer">
-              <span>{activeNetwork}</span>
+            <div className="flex gap-x-5 items-center justify-start ml-2 w-full cursor-pointer">
+              <>
+                <div className="flex items-center">
+                  <Icon
+                    name="network"
+                    className={'flex text-brand-white mr-1'}
+                    id="network-connected"
+                    size={8}
+                  />
 
-              <span>
-                {activeNetworkType === 'syscoin' ? 'syscoin' : 'web3'}
-              </span>
+                  <span style={{ fontSize: '0.65rem' }}>
+                    {activeNetworkType === 'syscoin' ? 'syscoin' : 'web3'}
+                  </span>
+                </div>
+
+                <span style={{ textTransform: 'capitalize' }}>
+                  {activeNetwork}
+                </span>
+              </>
 
               <div
                 id="badge-connected-status"

@@ -1,6 +1,7 @@
 import React, { FC } from 'react';
 import {
   LoadingOutlined,
+  ApartmentOutlined,
   ArrowDownOutlined,
   CloseCircleOutlined,
   ReloadOutlined,
@@ -79,6 +80,7 @@ const icons = {
   verified: VerifiedOutlined,
   'check-outlined': CheckOutlined,
   desktop: LaptopOutlined,
+  network: ApartmentOutlined,
 };
 
 interface IIcon {
