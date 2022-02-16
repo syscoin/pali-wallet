@@ -19,6 +19,8 @@ import { IWalletController } from 'types/controllers';
 
 import AccountController from './AccountController';
 
+import { changeNetwork as changeWeb3Network } from '@pollum-io-test/syscoin-web3-sdk/provider/web3Provider';
+
 const sys = require('syscoinjs-lib');
 
 const WalletController = (): IWalletController => {
@@ -96,7 +98,10 @@ const WalletController = (): IWalletController => {
       walletPassword: null,
       isTestnet: false,
     });
-    setSjs({ SignerIn: HDsigner, blockbookURL: networks.main.beUrl });
+    setSjs({
+      SignerIn: HDsigner,
+      blockbookURL: networks.syscoin.main.beUrl,
+    });
 
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
@@ -389,52 +394,91 @@ const WalletController = (): IWalletController => {
     });
   };
 
-  const switchNetwork = async (networkId: string) => {
+  const switchNetwork = async (chainId: number) => {
     const { networks } = store.getState().wallet;
 
-    store.dispatch(
-      changeActiveNetwork({
-        id: networkId,
-        beUrl: networks[networkId]?.beUrl,
-        label: '',
-      })
-    );
+    const getTheNewNetwork = async (networkList: any, searchParam: number) => {
+      const getNetworksArray = Object.values(networkList).map((network: any) =>
+        Object.values(network).filter(
+          (search: any) => search.chainId === searchParam
+        )
+      );
+
+      const getSpecificNetwork = getNetworksArray.filter(
+        (network) => network.length !== 0
+      );
+
+      return Object.assign(getSpecificNetwork[0]);
+    };
+
+    const newNetwork = await getTheNewNetwork(networks, chainId);
+
+    if (chainId === 57 || chainId === 5700) {
+      store.dispatch(
+        changeActiveNetwork({
+          id: newNetwork[0]?.id,
+          chainId: newNetwork[0]?.chainId,
+          beUrl: newNetwork[0]?.beUrl,
+          label: newNetwork[0]?.label,
+          type: newNetwork[0]?.type,
+        })
+      );
+    } else {
+      const newWeb3Provider = await changeWeb3Network(chainId);
+
+      store.dispatch(
+        changeActiveNetwork({
+          id: newNetwork[0]?.id,
+          chainId: newNetwork[0]?.chainId,
+          beUrl: newWeb3Provider,
+          label: newNetwork[0]?.label,
+          type: newNetwork[0]?.type,
+        })
+      );
+
+      store.dispatch(updateSwitchNetwork(true));
+
+      return;
+    }
 
     try {
-      const response = await axios.get(`${networks[networkId].beUrl}/api/v2`);
-      const { blockbook, backend } = response.data;
+      if (chainId === 57 || chainId === 5700) {
+        const response = await axios.get(`${newNetwork[0]?.beUrl}/api/v2`);
 
-      if (response && blockbook && backend) {
-        let isTestnet = false;
+        const { blockbook, backend } = response.data;
 
-        if (
-          blockbook.coin === 'Syscoin' ||
-          blockbook.coin === 'Syscoin Testnet'
-        ) {
-          if (backend.chain === 'main') {
-            isTestnet = false;
+        if (response && blockbook && backend) {
+          let isTestnet = false;
+
+          if (
+            blockbook.coin === 'Syscoin' ||
+            blockbook.coin === 'Syscoin Testnet'
+          ) {
+            if (backend.chain === 'main') {
+              isTestnet = false;
+            }
+
+            if (backend.chain === 'test') {
+              isTestnet = true;
+            }
+
+            setHDSigner({
+              walletMnemonic: HDsigner.mnemonic,
+              walletPassword: null,
+              isTestnet,
+            });
+            setSjs({
+              SignerIn: HDsigner,
+              blockbookURL: newNetwork[0]?.beUrl,
+            });
+
+            store.dispatch(updateSwitchNetwork(true));
+
+            getAccountDataByNetwork(sjs);
           }
 
-          if (backend.chain === 'test') {
-            isTestnet = true;
-          }
-
-          setHDSigner({
-            walletMnemonic: HDsigner.mnemonic,
-            walletPassword: null,
-            isTestnet,
-          });
-          setSjs({
-            SignerIn: HDsigner,
-            blockbookURL: networks[networkId].beUrl,
-          });
-
-          store.dispatch(updateSwitchNetwork(true));
-
-          getAccountDataByNetwork(sjs);
+          return;
         }
-
-        return;
       }
     } catch (error) {
       throw new Error('Invalid network.');

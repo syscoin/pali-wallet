@@ -72,7 +72,12 @@ describe('AccountController tests', () => {
     const newLabel = 'test';
     const newUrl = 'test.com';
 
-    updateNetworkData({ id: 'main', label: newLabel, beUrl: newUrl });
+    updateNetworkData({
+      id: 'main',
+      label: newLabel,
+      chainId: 57,
+      beUrl: newUrl,
+    });
 
     const { networks } = store.getState().wallet;
 

@@ -25,6 +25,8 @@ export const initialState: IWalletState = {
   accounts: [],
   activeAccountId: 0,
   activeNetwork: 'main',
+  activeChainId: 57,
+  activeNetworkType: 'syscoin',
   encriptedMnemonic: null,
   confirmingTransaction: false,
   changingNetwork: false,
@@ -40,15 +42,38 @@ export const initialState: IWalletState = {
   timer: 5,
   currentBlockbookURL: 'https://blockbook.elint.services/',
   networks: {
-    main: {
-      id: 'main',
-      label: 'Main Network',
-      beUrl: 'https://blockbook.elint.services/',
+    syscoin: {
+      main: {
+        id: 'main',
+        chainId: 57,
+        label: 'Main Network',
+        beUrl: 'https://blockbook.elint.services/',
+        type: 'syscoin',
+      },
+      testnet: {
+        id: 'testnet',
+        chainId: 5700,
+        label: 'Test Network',
+        beUrl: 'https://blockbook-dev.elint.services/',
+        type: 'syscoin',
+      },
     },
-    testnet: {
-      id: 'testnet',
-      label: 'Test Network',
-      beUrl: 'https://blockbook-dev.elint.services/',
+
+    web3: {
+      mainnet: {
+        id: 'mainnet',
+        chainId: 1,
+        label: 'Mainnet',
+        beUrl: '',
+        type: 'web3',
+      },
+      rinkeby: {
+        id: 'rinkeby',
+        chainId: 4,
+        label: 'Rinkeby',
+        beUrl: '',
+        type: 'web3',
+      },
     },
   },
   trustedApps: {
@@ -362,6 +387,8 @@ const WalletState = createSlice({
     },
     changeActiveNetwork(state: IWalletState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload.id;
+      state.activeChainId = action.payload.chainId;
+      state.activeNetworkType = action.payload.type;
       state.currentBlockbookURL = action.payload.beUrl;
     },
     updateTransactions(

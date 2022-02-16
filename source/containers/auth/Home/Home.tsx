@@ -20,7 +20,7 @@ export const Home = () => {
   const { formatNumber } = useFormat();
   const { activeAccount } = useAccount();
 
-  const { accounts, activeNetwork, fiat } = useStore();
+  const { accounts, activeNetwork, fiat, activeNetworkType } = useStore();
 
   useEffect(() => {
     if (!controller.wallet.isLocked() && accounts.length > 0 && activeAccount) {
@@ -36,33 +36,43 @@ export const Home = () => {
 
           <section className="flex flex-col gap-1 items-center py-14 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
-              {activeNetwork === 'testnet' ? (
-                <div className="balance-account flex gap-x-0.5 items-center justify-center">
-                  <p
-                    className="font-rubik text-5xl font-medium"
-                    id="home-balance"
-                  >
-                    {formatNumber(activeAccount?.balance || 0)}{' '}
-                  </p>
-
-                  <p className="mt-4 font-poppins">TSYS</p>
-                </div>
-              ) : (
+              {activeNetworkType === 'syscoin' ? (
                 <>
                   <div className="balance-account flex gap-x-0.5 items-center justify-center">
                     <p
-                      id="home-balance"
                       className="font-rubik text-5xl font-medium"
+                      id="home-balance"
                     >
                       {formatNumber(activeAccount?.balance || 0)}{' '}
                     </p>
 
-                    <p className="mt-4 font-poppins">SYS</p>
+                    <p className="mt-4 font-poppins">
+                      {activeNetwork === 'testnet' ? 'TSYS' : 'SYS'}
+                    </p>
                   </div>
-
                   <p id="fiat-ammount">
                     {getFiatAmount(
                       activeAccount.balance || 0,
+                      4,
+                      String(fiat.current)
+                    )}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="balance-account flex gap-x-0.5 items-center justify-center">
+                    <p
+                      className="font-rubik text-5xl font-medium"
+                      id="home-balance"
+                    >
+                      {formatNumber(Number(activeAccount?.web3Balance) || 0)}{' '}
+                    </p>
+
+                    <p className="mt-4 font-poppins">ETH</p>
+                  </div>
+                  <p id="fiat-ammount">
+                    {getFiatAmount(
+                      Number(activeAccount.web3Balance) || 0,
                       4,
                       String(fiat.current)
                     )}

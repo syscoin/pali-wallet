@@ -852,7 +852,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         true
       )
     ) {
-      throw new Error('invalid new owner address');
+      throw new Error('invalid new 1owner address');
     }
 
     const fee = await window.controller.wallet.account.getRecommendFee();

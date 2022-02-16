@@ -22,7 +22,8 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
   const { activeAccount } = useAccount();
   const { ellipsis } = useFormat();
   const { navigate, useCopyClipboard, alert } = useUtils();
-  const { encriptedMnemonic, accounts, activeAccountId } = useStore();
+  const { encriptedMnemonic, accounts, activeAccountId, activeNetworkType } =
+    useStore();
 
   const [copied, copy] = useCopyClipboard();
 
@@ -141,7 +142,10 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                       >
                         <span>
                           {account.label} (
-                          {ellipsis(account.address.main, 4, 8)})
+                          {activeNetworkType === 'syscoin'
+                            ? ellipsis(account.address.main, 4, 8)
+                            : ellipsis(account.web3Address, 4, 8)}
+                          )
                         </span>
 
                         {activeAccountId === account.id && (
@@ -197,12 +201,20 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
         <div className="items-center justify-center px-1 text-brand-white">
           <p className="mb-1 text-base">{activeAccount?.label}</p>
           <p className="text-xs">
-            {ellipsis(activeAccount?.address.main, 6, 14)}
+            {activeNetworkType === 'syscoin'
+              ? ellipsis(activeAccount?.address.main, 6, 14)
+              : ellipsis(activeAccount?.web3Address, 6, 14)}
           </p>
         </div>
 
         <IconButton
-          onClick={() => copy(activeAccount?.address.main)}
+          onClick={() =>
+            copy(
+              activeNetworkType === 'syscoin'
+                ? activeAccount?.address.main
+                : activeAccount?.web3Address
+            )
+          }
           type="primary"
           shape="circle"
           className="mt-3"

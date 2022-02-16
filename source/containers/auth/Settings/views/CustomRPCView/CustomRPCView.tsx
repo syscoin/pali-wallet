@@ -27,6 +27,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             id: selectedToEdit
               ? selectedToEdit.id
               : network.toString().toLowerCase(),
+            chainId: 57,
             label: network,
             beUrl: blockbookURL,
           });

@@ -27,7 +27,7 @@ export interface IWalletController {
   mnemonic: string;
   password: string;
   setWalletPassword: (pwd: string) => void;
-  switchNetwork: (networkId: string) => void;
+  switchNetwork: (chainId: number) => void;
   switchWallet: (id: number) => void;
   unLock: (pwd: string) => Promise<boolean>;
 }

@@ -59,6 +59,7 @@ describe('Wallet store actions', () => {
     it('should update an existing network', () => {
       const payload: INetwork = {
         beUrl: 'https://this-is-an.url',
+        chainId: 57,
         id: 'main',
         label: 'CoinLabel',
       };
@@ -71,6 +72,7 @@ describe('Wallet store actions', () => {
     it('should create a network', () => {
       const payload: INetwork = {
         beUrl: 'https://this-is-an.url',
+        chainId: 57,
         id: 'somenet',
         label: 'CoinLabel',
       };
@@ -484,6 +486,7 @@ describe('Wallet store actions', () => {
   it('should update [activeNetwork] (and [currentBlockbookURL])', () => {
     const payload: INetwork = {
       id: 'testnet',
+      chainId: 57,
       beUrl: 'https://blockbook-dev.elint.services/',
       label: 'Testnet',
     };

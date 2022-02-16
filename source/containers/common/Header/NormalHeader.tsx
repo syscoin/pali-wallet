@@ -18,7 +18,13 @@ interface INormalHeader {
 export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
   const controller = useController();
 
-  const { activeNetwork, encriptedMnemonic, networks } = useStore();
+  const {
+    activeNetwork,
+    encriptedMnemonic,
+    networks,
+    activeNetworkType,
+    activeChainId,
+  } = useStore();
   const { handleRefresh, navigate, getHost } = useUtils();
   const { activeAccount } = useAccount();
   const { browser } = useBrowser();
@@ -26,8 +32,8 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
   const [isConnected, setIsConnected] = useState<any>(null);
   const [currentTabURL, setCurrentTabURL] = useState<any>(null);
 
-  const handleChangeNetwork = (value: string) => {
-    controller.wallet.switchNetwork(value as string);
+  const handleChangeNetwork = (value: number) => {
+    controller.wallet.switchNetwork(value as number);
     controller.wallet.getNewAddress();
   };
 
@@ -66,6 +72,10 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
           <Menu.Button className="inline-flex justify-center w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
             <div className="flex gap-x-6 items-center justify-start ml-2 w-full cursor-pointer">
               <span>{activeNetwork}</span>
+
+              <span>
+                {activeNetworkType === 'syscoin' ? 'syscoin' : 'web3'}
+              </span>
 
               <div
                 id="badge-connected-status"
@@ -161,25 +171,27 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                       </Disclosure.Button>
 
                       <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
-                        {Object.values(networks).map((currentNetwork: any) => (
-                          <li
-                            key={currentNetwork.id}
-                            className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                            onClick={() =>
-                              handleChangeNetwork(currentNetwork.id)
-                            }
-                          >
-                            <span>{currentNetwork.label}</span>
+                        {Object.values(networks.syscoin).map(
+                          (currentNetwork: any) => (
+                            <li
+                              key={currentNetwork.chainId}
+                              className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                              onClick={() =>
+                                handleChangeNetwork(currentNetwork.chainId)
+                              }
+                            >
+                              <span>{currentNetwork.label}</span>
 
-                            {activeNetwork === currentNetwork.id && (
-                              <Icon
-                                name="check"
-                                className="mb-1 w-4"
-                                wrapperClassname="w-6 absolute right-1"
-                              />
-                            )}
-                          </li>
-                        ))}
+                              {activeChainId === currentNetwork.chainId && (
+                                <Icon
+                                  name="check"
+                                  className="mb-1 w-4"
+                                  wrapperClassname="w-6 absolute right-1"
+                                />
+                              )}
+                            </li>
+                          )
+                        )}
                       </Disclosure.Panel>
                     </>
                   )}
@@ -209,20 +221,27 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                       </Disclosure.Button>
 
                       <Disclosure.Panel className="pb-2 pt-0.5 text-sm bg-menu-secondary">
-                        <li
-                          className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                          onClick={() => handleChangeNetwork('main')}
-                        >
-                          <span>Main network</span>
+                        {Object.values(networks.web3).map(
+                          (currentNetwork: any) => (
+                            <li
+                              key={currentNetwork.chainId}
+                              className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                              onClick={() =>
+                                handleChangeNetwork(currentNetwork.chainId)
+                              }
+                            >
+                              <span>{currentNetwork.label}</span>
 
-                          {activeNetwork === 'main' && (
-                            <Icon
-                              name="check"
-                              className="mb-1 w-4"
-                              wrapperClassname="w-6 absolute right-1"
-                            />
-                          )}
-                        </li>
+                              {activeChainId === currentNetwork.chainId && (
+                                <Icon
+                                  name="check"
+                                  className="mb-1 w-4"
+                                  wrapperClassname="w-6 absolute right-1"
+                                />
+                              )}
+                            </li>
+                          )
+                        )}
                       </Disclosure.Panel>
                     </>
                   )}
@@ -231,7 +250,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
               <Menu.Item>
                 <li
-                  onClick={() => handleChangeNetwork('localhost')}
+                  onClick={() => handleChangeNetwork(0)}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
                   <Icon name="home" className="ml-1 mr-4 text-brand-white" />

@@ -32,6 +32,7 @@ import {
   setTemporaryTransactionState,
 } from 'state/wallet';
 import { importAccount } from '@pollum-io-test/syscoin-web3-sdk/packages/web3-import';
+import { getBalance } from '@pollum-io-test/syscoin-web3-sdk/packages/web3-balance';
 
 import { sortList, isNFT, countDecimals } from './utils';
 
@@ -789,6 +790,11 @@ const AccountController = (actions: {
       sysjs.Signer.mnemonic,
       encriptedPassword
     );
+
+    const web3Balance = await getBalance(
+      importAccount(encryptedMnemonic, encriptedPassword).address
+    );
+
     globalAccount = {
       id: signer.accountIndex,
       label: label ?? `Account ${signer.accountIndex + 1}`,
@@ -804,6 +810,7 @@ const AccountController = (actions: {
       connectedTo: [],
       isTrezorWallet: false,
       web3Address: importAccount(encryptedMnemonic, encriptedPassword).address,
+      web3Balance: web3Balance,
       web3PrivateKey: CryptoJS.AES.encrypt(
         importAccount(encryptedMnemonic, encriptedPassword).privateKey,
         encriptedPassword
@@ -1849,6 +1856,12 @@ const AccountController = (actions: {
     updateTransactionData(txid);
     watchMemPool(connectedAccount);
     return { txid };
+  };
+
+  const getWeb3Balance = async (walletAddress: string) => {
+    const balance = await getBalance(walletAddress);
+
+    return balance;
   };
 
   return {
