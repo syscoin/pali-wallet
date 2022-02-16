@@ -29,7 +29,9 @@ const AboutView: FC = () => {
         id="user-support-btn"
       >
         <Card
-          onClick={() => handleRedirect('https://discord.gg/8QKeyurHRd')}
+          onClick={() =>
+            handleRedirect('https://discord.com/invite/8QKeyurHRd')
+          }
           className="cursor-pointer"
         >
           <div className="flex items-center justify-start mb-4 font-poppins text-base font-bold">

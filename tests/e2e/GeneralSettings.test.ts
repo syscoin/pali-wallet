@@ -20,10 +20,8 @@ describe('General settings tests', () => {
     await importWallet({ driver });
   });
 
-  afterEach((done) => {
-    done();
-
-    uiWebDriver.quit();
+  afterEach(async () => {
+    await uiWebDriver.quit();
   });
 
   it('should check general settings button ', async () => {
@@ -49,11 +47,7 @@ describe('General settings tests', () => {
     const expectedClipboard = FAKE_SEED_PHRASE;
 
     //* check if it is copying correctly after click on copy button
-    assert.equal(
-      currentClipboard,
-      expectedClipboard,
-      '<!> copy wallet seed phrase is working correctly <!>'
-    );
+    expect(currentClipboard).toBe(expectedClipboard);
   });
 
   it('should open a new tab to redirect the user to syscoin discord for support', async () => {
@@ -67,13 +61,9 @@ describe('General settings tests', () => {
     } catch (error) {
       assert.ifError(error);
     }
-    const url = uiWebDriver.getCurrentUrl();
-    const expectedUrl = 'https://discord.gg/8QKeyurHRd';
+    const url = await uiWebDriver.getCurrentUrl();
+    const expectedUrl = 'https://discord.com/invite/8QKeyurHRd';
     //    * check if this is being redirected to https://discord.com/invite/8QKeyurHRd
-    assert.equal(
-      url,
-      expectedUrl,
-      '<!> pali is not opening syscoin discord invite <!>'
-    );
+    expect(url).toBe(expectedUrl);
   });
 });

@@ -7,7 +7,7 @@ import { SYS_EXPLORER_SEARCH } from '../../source/constants/index';
 import { buildWebDriver, Driver } from './driver';
 import { importWallet } from './initialize';
 
-describe('<Home /> tests', () => {
+describe('Home sceen tests', () => {
   let uiWebDriver: Driver;
 
   beforeEach(async () => {
@@ -19,10 +19,8 @@ describe('<Home /> tests', () => {
     await importWallet({ driver });
   });
 
-  afterEach((done) => {
-    done();
-
-    uiWebDriver.quit();
+  afterEach(async () => {
+    await uiWebDriver.quit();
   });
 
   it('should open tx details on explorer', async () => {
@@ -44,12 +42,9 @@ describe('<Home /> tests', () => {
   it('should show balance', async () => {
     //  * find balance
     const balance = await uiWebDriver.findElement(By.id('home-balance'));
-    const balanceValue = await balance.getText();
-
+    const balanceText = await balance.getText();
+    const balanceValue = Number.parseFloat(balanceText);
     //  * check if balance received is a number
-    assert.ok(
-      typeof balanceValue === 'number',
-      '<!> Balance different than the expected <!>'
-    );
+    expect(typeof balanceValue).toBe('number');
   });
 });

@@ -5,7 +5,7 @@ import { By } from 'selenium-webdriver';
 import { buildWebDriver, Driver } from './driver';
 import { importWallet } from './initialize';
 
-describe('<Send /> tests', () => {
+describe('Send screen tests', () => {
   let uiWebDriver: Driver;
 
   beforeEach(async () => {
@@ -17,10 +17,8 @@ describe('<Send /> tests', () => {
     await importWallet({ driver });
   });
 
-  afterEach((done) => {
-    done();
-
-    uiWebDriver.quit();
+  afterEach(async () => {
+    await uiWebDriver.quit();
   });
 
   it('should check send button', async () => {

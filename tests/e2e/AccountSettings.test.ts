@@ -17,10 +17,8 @@ describe('Account settings tests', () => {
     await importWallet({ driver });
   });
 
-  afterEach((done) => {
-    done();
-
-    uiWebDriver.quit();
+  afterEach(async () => {
+    await uiWebDriver.quit();
   });
 
   it('should check account settings button', async () => {
@@ -45,15 +43,12 @@ describe('Account settings tests', () => {
     await uiWebDriver.clickElement('#accounts-btn');
     //  * switch account
     await uiWebDriver.clickElement('#account-1');
-    await uiWebDriver.clickElement('#accounts-btn');
-    const account2Btn = await uiWebDriver.findElement('#account-1');
-    const account2BtnText = await account2Btn.getText();
-    //  * check if Account 2 is the active one
-    assert.equal(
-      account2BtnText,
-      'Account 2 (active)',
-      '<!> switch account is not working <!>'
+    const activeAccountLabel = await uiWebDriver.findElement(
+      '#active-account-label'
     );
+    const activeAccountLabelText = await activeAccountLabel.getText();
+    //  * check if Account 2 is the active one
+    expect(activeAccountLabelText).toBe('Account 2');
   });
 
   it('should open the trezor popup in a new tab', async () => {
@@ -72,6 +67,6 @@ describe('Account settings tests', () => {
     const url = await uiWebDriver.getCurrentUrl();
     const expectedUrl = 'https://connect.trezor.io/8/popup.html';
     //    * check if this is being redirected to https://connect.trezor.io/8/popup.html
-    assert.equal(url, expectedUrl, '<!> pali is not opening trezor popup <!>');
+    expect(url).toContain(expectedUrl);
   });
 });
