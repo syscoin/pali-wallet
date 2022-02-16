@@ -78,7 +78,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                 <div className="flex items-center">
                   <Icon
                     name="network"
-                    className={'flex text-brand-white mr-1'}
+                    className="flex mr-1 text-brand-white"
                     id="network-connected"
                     size={8}
                   />

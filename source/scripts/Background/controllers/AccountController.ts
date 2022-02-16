@@ -297,16 +297,15 @@ const AccountController = (actions: {
       }
 
       return accountData;
-    } else {
-      const balance: any = await getBalance(accounts[0]?.web3Address);
-      const accountData: any = {
-        balance,
-        assets: [],
-        transactions: [],
-      };
-
-      return accountData;
     }
+    const balance: any = await getBalance(accounts[0]?.web3Address);
+    const accountData: any = {
+      balance,
+      assets: [],
+      transactions: [],
+    };
+
+    return accountData;
   };
 
   const updateActiveAccount = async () => {
