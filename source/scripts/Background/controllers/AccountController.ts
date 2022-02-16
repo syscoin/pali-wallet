@@ -1858,11 +1858,11 @@ const AccountController = (actions: {
     return { txid };
   };
 
-  const getWeb3Balance = async (walletAddress: string) => {
-    const balance = await getBalance(walletAddress);
+  // const getWeb3Balance = async (walletAddress: string) => {
+  //   const balance = await getBalance(walletAddress);
 
-    return balance;
-  };
+  //   return balance;
+  // };
 
   return {
     updateNetworkData,
