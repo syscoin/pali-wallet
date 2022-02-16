@@ -752,6 +752,7 @@ const AccountController = (actions: {
           assets: trezorInfo.assets,
           connectedTo: [],
           isTrezorWallet: true,
+          web3Address: '',
           trezorId: trezorID + 1,
         };
 
@@ -810,7 +811,7 @@ const AccountController = (actions: {
       connectedTo: [],
       isTrezorWallet: false,
       web3Address: importAccount(encryptedMnemonic, encriptedPassword).address,
-      web3Balance: web3Balance,
+      web3Balance,
       web3PrivateKey: CryptoJS.AES.encrypt(
         importAccount(encryptedMnemonic, encriptedPassword).privateKey,
         encriptedPassword
