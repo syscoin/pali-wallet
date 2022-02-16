@@ -280,20 +280,33 @@ const AccountController = (actions: {
       }
     }
 
-    const accountData = {
-      balance: response.balance / 1e8,
-      assets,
-      transactions,
-    };
+    const { activeNetworkType, accounts } = store.getState().wallet;
 
-    if (address) {
-      return {
-        ...accountData,
-        address,
+    if (activeNetworkType === 'syscoin') {
+      const accountData = {
+        balance: response.balance / 1e8,
+        assets,
+        transactions,
       };
-    }
 
-    return accountData;
+      if (address) {
+        return {
+          ...accountData,
+          address,
+        };
+      }
+
+      return accountData;
+    } else {
+      const balance: any = await getBalance(accounts[0]?.web3Address);
+      const accountData: any = {
+        balance,
+        assets: [],
+        transactions: [],
+      };
+
+      return accountData;
+    }
   };
 
   const updateActiveAccount = async () => {
@@ -791,10 +804,6 @@ const AccountController = (actions: {
       encriptedPassword
     );
 
-    const web3Balance = await getBalance(
-      importAccount(encryptedMnemonic, encriptedPassword).address
-    );
-
     globalAccount = {
       id: signer.accountIndex,
       label: label ?? `Account ${signer.accountIndex + 1}`,
@@ -810,7 +819,6 @@ const AccountController = (actions: {
       connectedTo: [],
       isTrezorWallet: false,
       web3Address: importAccount(encryptedMnemonic, encriptedPassword).address,
-      web3Balance: web3Balance,
       web3PrivateKey: CryptoJS.AES.encrypt(
         importAccount(encryptedMnemonic, encriptedPassword).privateKey,
         encriptedPassword
@@ -1857,12 +1865,6 @@ const AccountController = (actions: {
     watchMemPool(connectedAccount);
     return { txid };
   };
-
-  // const getWeb3Balance = async (walletAddress: string) => {
-  //   const balance = await getBalance(walletAddress);
-
-  //   return balance;
-  // };
 
   return {
     updateNetworkData,

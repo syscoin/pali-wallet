@@ -1804,10 +1804,11 @@
 
 "@pollum-io-test/syscoin-web3-sdk@https://github.com/Pollum-io/syscoin-web3.js":
   version "1.0.0"
-  resolved "https://github.com/Pollum-io/syscoin-web3.js#1fbabcd86598323824194ad149e11381a3a6f0dc"
+  resolved "https://github.com/Pollum-io/syscoin-web3.js#5debeb90a0e7e20ec8e3cc464981d4cd94c7ad78"
   dependencies:
     crypto-js "4.0.0"
     ethers "^5.5.4"
+    lodash "^4.17.21"
     ts-node "^10.4.0"
     web3 "^1.7.0"
 

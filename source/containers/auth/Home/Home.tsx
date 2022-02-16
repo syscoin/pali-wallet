@@ -65,14 +65,14 @@ export const Home = () => {
                       className="font-rubik text-5xl font-medium"
                       id="home-balance"
                     >
-                      {formatNumber(Number(activeAccount?.web3Balance) || 0)}{' '}
+                      {formatNumber(activeAccount?.balance) || 0}
                     </p>
 
                     <p className="mt-4 font-poppins">ETH</p>
                   </div>
                   <p id="fiat-ammount">
                     {getFiatAmount(
-                      Number(activeAccount.web3Balance) || 0,
+                      Number(activeAccount.balance) || 0,
                       4,
                       String(fiat.current)
                     )}
