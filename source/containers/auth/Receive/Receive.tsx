@@ -1,5 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { useController, useUtils, useAccount, useFormat } from 'hooks/index';
+import {
+  useController,
+  useUtils,
+  useAccount,
+  useFormat,
+  useStore,
+} from 'hooks/index';
 import QRCode from 'qrcode.react';
 import { SecondaryButton, Icon } from 'components/index';
 import { AuthViewLayout } from 'containers/common/Layout';
@@ -10,6 +16,7 @@ export const Receive = () => {
   const [isCopied, copyText] = useCopyClipboard();
   const { activeAccount } = useAccount();
   const controller = useController();
+  const { activeNetworkType } = useStore();
 
   const [loaded, setLoaded] = useState<boolean>(false);
 
@@ -25,10 +32,14 @@ export const Receive = () => {
 
   return (
     <AuthViewLayout title="RECEIVE SYS" id="receiveSYS-title">
-      {loaded && activeAccount ? (
+      {loaded && activeAccount && activeNetworkType ? (
         <div className="flex flex-col items-center justify-center pt-8 w-full">
           <QRCode
-            value={activeAccount.address.main}
+            value={
+              activeNetworkType === 'syscoin'
+                ? activeAccount.address.main
+                : activeAccount.web3Address
+            }
             bgColor="#fff"
             fgColor="#000"
             id="qr-code"
@@ -36,7 +47,9 @@ export const Receive = () => {
           />
 
           <p className="mt-4 text-base">
-            {ellipsis(activeAccount.address.main, 4, 10)}
+            {activeNetworkType === 'syscoin'
+              ? ellipsis(activeAccount.address.main, 4, 10)
+              : ellipsis(activeAccount?.web3Address, 4, 10)}
           </p>
 
           <div className="absolute bottom-12" id="copy-address-receive-btn">

@@ -423,7 +423,7 @@ const WalletController = (): IWalletController => {
         })
       );
     } else {
-      const newWeb3Provider = await changeWeb3Network(chainId);
+      const newWeb3Provider: any = await changeWeb3Network(chainId);
 
       store.dispatch(
         changeActiveNetwork({

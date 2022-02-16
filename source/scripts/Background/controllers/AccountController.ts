@@ -764,6 +764,7 @@ const AccountController = (actions: {
           assets: trezorInfo.assets,
           connectedTo: [],
           isTrezorWallet: true,
+          web3Address: '',
           trezorId: trezorID + 1,
         };
 
