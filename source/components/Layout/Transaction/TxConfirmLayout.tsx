@@ -374,37 +374,68 @@ const TxConfirmSign = ({
   );
 };
 
+const callbackNameResolver = (transactionName: string) => {
+  switch (transactionName) {
+    case 'newAsset':
+      return 'confirmSPTCreation';
+
+    case 'newNFT':
+      return 'confirmCreateNFT';
+
+    case 'mintAsset':
+      return 'confirmMintSPT';
+
+    case 'mintNFT':
+      return 'confirmMintNFT';
+
+    case 'transferAsset':
+      return 'confirmAssetTransfer';
+
+    case 'updateAsset':
+      return 'confirmUpdateAsset';
+
+    default:
+      throw new Error('Unknown transaction type');
+  }
+};
+
 export type ITxConfirmLayout = {
-  callback?: any;
   sign?: boolean;
   signAndSend?: boolean;
-  temporaryTransaction: string;
-  temporaryTransactionStringToClear: string;
   title: string;
+  txName: string;
 };
 
 export const TxConfirmLayout: FC<ITxConfirmLayout> = ({
-  sign,
+  sign = false,
+  signAndSend = false,
   title,
-  callback,
-  temporaryTransaction,
-  temporaryTransactionStringToClear,
-  signAndSend,
-}) => (
-  <AuthViewLayout canGoBack={false} title={title}>
-    {sign ? (
-      <TxConfirmSign
-        psbt={temporaryTransaction}
-        signAndSend={signAndSend}
-        title="SIGNATURE REQUEST"
-      />
-    ) : (
-      <TxConfirm
-        callback={callback}
-        temporaryTransaction={temporaryTransaction}
-        temporaryTransactionStringToClear={temporaryTransactionStringToClear}
-        title={title}
-      />
-    )}
-  </AuthViewLayout>
-);
+  txName,
+}) => {
+  const walletCtlr = useController().wallet;
+  const { getTemporaryTransaction } = walletCtlr.account;
+
+  const temporaryTransaction = getTemporaryTransaction(txName);
+
+  const callbackName = callbackNameResolver(txName);
+  const callback = walletCtlr.account[callbackName];
+
+  return (
+    <AuthViewLayout canGoBack={false} title={title}>
+      {sign ? (
+        <TxConfirmSign
+          psbt={temporaryTransaction}
+          signAndSend={signAndSend}
+          title="SIGNATURE REQUEST"
+        />
+      ) : (
+        <TxConfirm
+          callback={callback}
+          temporaryTransaction={temporaryTransaction}
+          temporaryTransactionStringToClear={txName}
+          title={title}
+        />
+      )}
+    </AuthViewLayout>
+  );
+};

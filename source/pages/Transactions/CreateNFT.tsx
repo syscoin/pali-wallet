@@ -1,23 +1,10 @@
 import React from 'react';
-import { useController } from 'hooks/index';
 import { TxConfirmLayout, TxLayout } from 'components/Layout';
 
-export const CreateAndIssueNFTConfirm = () => {
-  const controller = useController();
-  const temporaryTransaction =
-    controller.wallet.account.getTemporaryTransaction('newNFT');
-
-  return (
-    <TxConfirmLayout
-      sign={false}
-      signAndSend={false}
-      title="NFT CREATION"
-      callback={controller.wallet.account.confirmCreateNFT}
-      temporaryTransaction={temporaryTransaction}
-      temporaryTransactionStringToClear="newNFT"
-    />
-  );
-};
+// confirmCreateNFT
+export const CreateAndIssueNFTConfirm = () => (
+  <TxConfirmLayout title="NFT CREATION" txName="newNFT" />
+);
 
 export const CreateAndIssueNFT = () => (
   <TxLayout
