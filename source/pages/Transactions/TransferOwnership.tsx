@@ -8,7 +8,7 @@ export const TransferOwnershipConfirm = () => (
 
 export const TransferOwnership = () => (
   <TxLayout
-    confirmRoute="/transaction/asset/transfer/confirm"
+    confirmRoute="/tx/asset/transfer/confirm"
     temporaryTransactionAsString="transferAsset"
     layoutTitle="Transfer Asset"
   />
