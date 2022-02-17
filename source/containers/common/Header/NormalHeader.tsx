@@ -68,7 +68,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
   const NetworkMenu = () => (
     <Menu
       as="div"
-      className="align-center absolute left-2 flex inline-block mr-8 text-left"
+      className="align-center absolute left-2 inline-block mr-8 text-left"
     >
       {(menuprops) => (
         <>
