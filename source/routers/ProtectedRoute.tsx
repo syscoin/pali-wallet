@@ -6,7 +6,7 @@ export function ProtectedRoute({ element }: { element: JSX.Element }) {
   const { isLocked } = useController().wallet;
 
   if (isLocked()) {
-    return <Navigate to={{ pathname: '/import' }} />;
+    return <Navigate to={{ pathname: '/' }} />;
   }
 
   return element;
