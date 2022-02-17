@@ -26,7 +26,7 @@ export const Send: FC<ISend> = () => {
   const { alert, navigate, isNFT } = useUtils();
   const { getAssetBalance } = useTransaction();
   const { activeAccount } = useAccount();
-  const { activeNetwork, fiat } = useStore();
+  const { activeNetwork, fiat, activeNetworkType } = useStore();
   const { formatURL } = useFormat();
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
@@ -415,7 +415,10 @@ export const Send: FC<ISend> = () => {
     </div>
   );
   return (
-    <AuthViewLayout title="SEND SYS" id="sendSYS-title">
+    <AuthViewLayout
+      title={activeNetworkType === 'syscoin' ? 'SEND SYS' : 'SEND ETH'}
+      id="sendSYS-title"
+    >
       <SendForm />
     </AuthViewLayout>
   );
