@@ -1,7 +1,7 @@
 import CryptoJS from 'crypto-js';
 import store from 'state/store';
 import { createAccount } from 'state/wallet';
-import { FAKE_ACCOUNT, FAKE_XPRV, FAKE_XPUB } from 'tests/unit/data/mocks';
+import { FAKE_ACCOUNT, FAKE_XPRV, FAKE_XPUB } from 'tests/mocks';
 import { IAccountState } from 'state/wallet/types';
 
 import AccountController from './AccountController';

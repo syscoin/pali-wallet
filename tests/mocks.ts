@@ -6,6 +6,13 @@ import IWalletState, {
 } from 'state/wallet/types';
 import { Assets, Transaction } from 'types/transactions';
 
+export const FAKE_PASSWORD = 'Asdqwe123!';
+export const FAKE_INVALID_PASSWORD = '12345';
+export const FAKE_SEED_PHRASE =
+  'peace uncle grit essence stuff angle cruise annual fury letter snack globe';
+export const INVALID_SEED_PHRASE =
+  'Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor';
+
 export const FAKE_XPUB =
   'zpub6rowqhwXmUCV5Dem7TFFWQSisgK9NwbdkJDYMqBi7JoRHK8fd9Zobr4bdJPGhzGvniAhfrCAbNetRqSDsbTQBXPdN4qzyNv5B1SMsWVtin2';
 export const FAKE_XPRV =

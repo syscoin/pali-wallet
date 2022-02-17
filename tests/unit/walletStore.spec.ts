@@ -45,7 +45,7 @@ import {
   FAKE_TRANSACTIONS,
   FAKE_XPUB,
   STATE_W_ACCOUNT,
-} from './data/mocks';
+} from '../mocks';
 
 //* ----- Tests -----
 

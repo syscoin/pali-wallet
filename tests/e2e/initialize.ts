@@ -1,4 +1,4 @@
-import { FAKE_SEED_PHRASE, FAKE_PASSWORD } from '../../source/constants/index';
+import { FAKE_SEED_PHRASE, FAKE_PASSWORD } from 'tests/mocks';
 
 export const importWallet = async ({ driver }) => {
   await driver.navigate();

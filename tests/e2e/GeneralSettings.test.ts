@@ -2,8 +2,7 @@ import assert from 'assert';
 
 import { By } from 'selenium-webdriver';
 import clipboard from 'copy-paste';
-
-import { FAKE_PASSWORD, FAKE_SEED_PHRASE } from '../../source/constants/tests';
+import { FAKE_PASSWORD, FAKE_SEED_PHRASE } from 'tests/mocks';
 
 import { buildWebDriver, Driver } from './driver';
 import { importWallet } from './initialize';
