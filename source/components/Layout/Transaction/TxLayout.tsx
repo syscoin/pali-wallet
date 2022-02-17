@@ -17,17 +17,11 @@ import { Form, Input } from 'antd';
 
 interface ITxLayout {
   confirmRoute: string;
-  // id: string;
-  layoutTitle: string;
-  temporaryTransactionAsString: string;
+  title: string;
+  txName: string;
 }
 
-export const TxLayout: FC<ITxLayout> = ({
-  confirmRoute,
-  temporaryTransactionAsString,
-  layoutTitle,
-  // id,
-}) => {
+export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txName, title }) => {
   const controller = useController();
 
   const { navigate, getHost } = useUtils();
@@ -40,9 +34,7 @@ export const TxLayout: FC<ITxLayout> = ({
   const [form] = Form.useForm();
 
   const temporaryTransaction =
-    controller.wallet.account.getTemporaryTransaction(
-      temporaryTransactionAsString
-    );
+    controller.wallet.account.getTemporaryTransaction(txName);
 
   const handleGetFee = async () => {
     const recommendFee = await controller.wallet.account.getRecommendFee();
@@ -62,7 +54,7 @@ export const TxLayout: FC<ITxLayout> = ({
         ...temporaryTransaction,
         fee,
       },
-      type: temporaryTransactionAsString,
+      type: txName,
     });
 
     setLoading(true);
@@ -73,7 +65,7 @@ export const TxLayout: FC<ITxLayout> = ({
   const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
 
   return (
-    <AuthViewLayout canGoBack={false} title={layoutTitle.toUpperCase()}>
+    <AuthViewLayout canGoBack={false} title={title.toUpperCase()}>
       <div className="flex flex-col items-center justify-center">
         <h1 className="mt-4 text-sm">FEE</h1>
 

@@ -9,7 +9,7 @@ export const UpdateAssetConfirm = () => (
 export const UpdateAsset = () => (
   <TxLayout
     confirmRoute="/tx/asset/update/confirm"
-    temporaryTransactionAsString="updateAsset"
-    layoutTitle="Update Asset"
+    txName="updateAsset"
+    title="Update Asset"
   />
 );

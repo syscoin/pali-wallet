@@ -9,7 +9,7 @@ export const CreateTokenConfirm = () => (
 export const Create = () => (
   <TxLayout
     confirmRoute="/tx/create/confirm"
-    temporaryTransactionAsString="newAsset"
-    layoutTitle="Create token"
+    txName="newAsset"
+    title="Create token"
   />
 );
