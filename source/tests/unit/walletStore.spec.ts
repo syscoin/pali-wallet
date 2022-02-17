@@ -62,6 +62,7 @@ describe('Wallet store actions', () => {
         chainId: 57,
         id: 'main',
         label: 'CoinLabel',
+        type: 'syscoin',
       };
 
       const newState = reducer(initialState, updateNetwork(payload));
@@ -75,6 +76,7 @@ describe('Wallet store actions', () => {
         chainId: 57,
         id: 'somenet',
         label: 'CoinLabel',
+        type: 'syscoin',
       };
 
       const newState = reducer(initialState, updateNetwork(payload));
@@ -489,6 +491,7 @@ describe('Wallet store actions', () => {
       chainId: 57,
       beUrl: 'https://blockbook-dev.elint.services/',
       label: 'Testnet',
+      type: 'syscoin',
     };
 
     const newState = reducer(initialState, changeActiveNetwork(payload));

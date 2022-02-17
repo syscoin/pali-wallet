@@ -10,7 +10,7 @@ export interface IAccountState {
   label: string;
   transactions: Transaction[];
   trezorId?: number;
-  web3Address?: string;
+  web3Address: string;
   web3PrivateKey?: string;
   xprv: string;
   xpub: string;
@@ -78,7 +78,7 @@ export interface INetwork {
   chainId: number;
   id: string;
   label: string;
-  type?: string;
+  type: string;
 }
 
 export default interface IWalletState {
@@ -86,7 +86,7 @@ export default interface IWalletState {
   activeAccountId: number;
   activeChainId: number;
   activeNetwork: string;
-  activeNetworkType?: string;
+  activeNetworkType: string;
   changingNetwork: boolean;
   confirmingTransaction: boolean;
   currentBlockbookURL: string;

@@ -804,6 +804,11 @@ const AccountController = (actions: {
       encriptedPassword
     );
 
+    const web3Account = await importAccount(
+      encryptedMnemonic,
+      encriptedPassword
+    );
+
     globalAccount = {
       id: signer.accountIndex,
       label: label ?? `Account ${signer.accountIndex + 1}`,
@@ -818,9 +823,9 @@ const AccountController = (actions: {
       assets: account.assets,
       connectedTo: [],
       isTrezorWallet: false,
-      web3Address: importAccount(encryptedMnemonic, encriptedPassword).address,
+      web3Address: web3Account.address,
       web3PrivateKey: CryptoJS.AES.encrypt(
-        importAccount(encryptedMnemonic, encriptedPassword).privateKey,
+        web3Account.privateKey,
         encriptedPassword
       ).toString(),
     };

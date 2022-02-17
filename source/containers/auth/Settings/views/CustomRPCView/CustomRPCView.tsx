@@ -30,6 +30,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             chainId: 57,
             label: network,
             beUrl: blockbookURL,
+            type: 'syscoin',
           });
 
           setLoading(false);

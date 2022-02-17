@@ -74,24 +74,21 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
         <>
           <Menu.Button className="inline-flex justify-center w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
             <div className="flex gap-x-5 items-center justify-start ml-2 w-full cursor-pointer">
-              <>
-                <div className="flex items-center">
-                  <Icon
-                    name="network"
-                    className="flex mr-1 text-brand-white"
-                    id="network-connected"
-                    size={8}
-                  />
-
+              <div className="flex items-center">
+                <div
+                  className="mr-3 px-2 text-brand-white border rounded-full"
+                  style={{ borderColor: 'rgb(46 98 183)' }}
+                >
                   <span style={{ fontSize: '0.65rem' }}>
                     {activeNetworkType === 'syscoin' ? 'syscoin' : 'web3'}
                   </span>
                 </div>
-
-                <span style={{ textTransform: 'capitalize' }}>
-                  {activeNetwork}
-                </span>
-              </>
+                <div>
+                  <span style={{ textTransform: 'capitalize' }}>
+                    {activeNetwork}
+                  </span>
+                </div>
+              </div>
 
               <div
                 id="badge-connected-status"

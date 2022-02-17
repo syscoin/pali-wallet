@@ -37,8 +37,8 @@ export const Receive = () => {
           <QRCode
             value={
               activeNetworkType === 'syscoin'
-                ? activeAccount.address.main
-                : activeAccount.web3Address
+                ? activeAccount?.address?.main
+                : activeAccount?.web3Address
             }
             bgColor="#fff"
             fgColor="#000"

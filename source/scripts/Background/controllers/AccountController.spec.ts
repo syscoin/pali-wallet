@@ -77,6 +77,7 @@ describe('AccountController tests', () => {
       label: newLabel,
       chainId: 57,
       beUrl: newUrl,
+      type: 'syscoin',
     });
 
     const { networks } = store.getState().wallet;
