@@ -16,7 +16,10 @@ import CryptoJS from 'crypto-js';
 import store from 'state/store';
 import axios from 'axios';
 import { IWalletController } from 'types/controllers';
-import { changeNetwork as changeWeb3Network } from '@pollum-io-test/syscoin-web3-sdk/provider/web3Provider';
+import {
+  changeNetwork as changeWeb3Network,
+  web3Provider,
+} from '@pollum-io-test/syscoin-web3-sdk/provider/web3Provider';
 
 import AccountController from './AccountController';
 
@@ -423,13 +426,13 @@ const WalletController = (): IWalletController => {
         })
       );
     } else {
-      const newWeb3Provider: any = await changeWeb3Network(chainId);
+      await changeWeb3Network(chainId);
 
       store.dispatch(
         changeActiveNetwork({
           id: newNetwork[0]?.id,
           chainId: newNetwork[0]?.chainId,
-          beUrl: newWeb3Provider,
+          beUrl: web3Provider?.currentProvider?.host,
           label: newNetwork[0]?.label,
           type: newNetwork[0]?.type,
         })

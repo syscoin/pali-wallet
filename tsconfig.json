@@ -7,6 +7,7 @@
     "jsx": "react",
     "declaration": false,
     "isolatedModules": true,
+
     /* Additional Checks */
     "useDefineForClassFields": true,
     "skipLibCheck": true,

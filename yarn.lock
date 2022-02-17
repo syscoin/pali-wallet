@@ -1804,7 +1804,7 @@
 
 "@pollum-io-test/syscoin-web3-sdk@https://github.com/Pollum-io/syscoin-web3.js":
   version "1.0.0"
-  resolved "https://github.com/Pollum-io/syscoin-web3.js#5f5e0a910aedabbf81165fba006d511428420169"
+  resolved "https://github.com/Pollum-io/syscoin-web3.js#e886b27a9748ffeab60efb636adab4441385e918"
   dependencies:
     bip39 "^3.0.4"
     crypto-js "4.0.0"
@@ -2263,6 +2263,13 @@
   version "8.3.4"
   resolved "https://registry.yarnpkg.com/@types/uuid/-/uuid-8.3.4.tgz#bd86a43617df0594787d38b735f55c805becf1bc"
   integrity sha512-c/I8ZRb51j+pYGAu5CrFMRxqZ2ke4y2grEBO5AUjgSkSk+qT2Ea+OdWElz/OiMf5MNpn2b17kuVBwZLQJXzihw==
+
+"@types/web3@^1.2.2":
+  version "1.2.2"
+  resolved "https://registry.yarnpkg.com/@types/web3/-/web3-1.2.2.tgz#d95a101547ce625c5ebd0470baa5dbd4b9f3c015"
+  integrity sha512-eFiYJKggNrOl0nsD+9cMh2MLk4zVBfXfGnVeRFbpiZzBE20eet4KLA3fXcjSuHaBn0RnQzwLAGdgzgzdet4C0A==
+  dependencies:
+    web3 "*"
 
 "@types/webextension-polyfill@^0.8.2":
   version "0.8.2"
@@ -13695,7 +13702,7 @@ web3-utils@1.7.0:
     randombytes "^2.1.0"
     utf8 "3.0.0"
 
-web3@^1.4.0, web3@^1.7.0:
+web3@*, web3@^1.4.0, web3@^1.7.0:
   version "1.7.0"
   resolved "https://registry.yarnpkg.com/web3/-/web3-1.7.0.tgz#5867cd10a2bebb5c33fc218368e3f6f826f6897e"
   integrity sha512-n39O7QQNkpsjhiHMJ/6JY6TaLbdX+2FT5iGs8tb3HbIWOhPm4+a7UDbr5Lkm+gLa9aRKWesZs5D5hWyEvg4aJA==
