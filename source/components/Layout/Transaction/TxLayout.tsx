@@ -18,10 +18,10 @@ import { Form, Input } from 'antd';
 interface ITxLayout {
   confirmRoute: string;
   title: string;
-  txName: string;
+  txType: string;
 }
 
-export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txName, title }) => {
+export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
   const controller = useController();
 
   const { navigate, getHost } = useUtils();
@@ -34,7 +34,7 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txName, title }) => {
   const [form] = Form.useForm();
 
   const temporaryTransaction =
-    controller.wallet.account.getTemporaryTransaction(txName);
+    controller.wallet.account.getTemporaryTransaction(txType);
 
   const handleGetFee = async () => {
     const recommendFee = await controller.wallet.account.getRecommendFee();
@@ -54,7 +54,7 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txName, title }) => {
         ...temporaryTransaction,
         fee,
       },
-      type: txName,
+      type: txType,
     });
 
     setLoading(true);

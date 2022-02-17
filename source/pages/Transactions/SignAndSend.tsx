@@ -6,6 +6,6 @@ export const SignAndSend = () => (
     sign
     signAndSend
     title="SIGNATURE REQUEST"
-    txName="signAndSendPSBT"
+    txType="signAndSendPSBT"
   />
 );

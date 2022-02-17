@@ -3,13 +3,13 @@ import { TxConfirmLayout, TxLayout } from 'components/Layout';
 
 // confirmAssetTransfer
 export const TransferOwnershipConfirm = () => (
-  <TxConfirmLayout title="TRANSFER ASSET" txName="transferAsset" />
+  <TxConfirmLayout title="TRANSFER ASSET" txType="transferAsset" />
 );
 
 export const TransferOwnership = () => (
   <TxLayout
     confirmRoute="/tx/asset/transfer/confirm"
-    txName="transferAsset"
+    txType="transferAsset"
     title="Transfer Asset"
   />
 );

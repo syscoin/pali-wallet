@@ -3,13 +3,13 @@ import { TxConfirmLayout, TxLayout } from 'components/Layout';
 
 // confirmAssetTransfer
 export const MintNFTConfirm = () => (
-  <TxConfirmLayout title="MINT NFT" txName="mintNFT" />
+  <TxConfirmLayout title="MINT NFT" txType="mintNFT" />
 );
 
 export const MintNFT = () => (
   <TxLayout
     confirmRoute="/tx/asset/nft/mint/confirm"
-    txName="mintNFT"
+    txType="mintNFT"
     title="Mint NFT"
   />
 );

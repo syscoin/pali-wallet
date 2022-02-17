@@ -403,21 +403,21 @@ export type ITxConfirmLayout = {
   sign?: boolean;
   signAndSend?: boolean;
   title: string;
-  txName: string;
+  txType: string;
 };
 
 export const TxConfirmLayout: FC<ITxConfirmLayout> = ({
   sign = false,
   signAndSend = false,
   title,
-  txName,
+  txType,
 }) => {
   const walletCtlr = useController().wallet;
   const { getTemporaryTransaction } = walletCtlr.account;
 
-  const temporaryTransaction = getTemporaryTransaction(txName);
+  const temporaryTransaction = getTemporaryTransaction(txType);
 
-  const callbackName = callbackNameResolver(txName);
+  const callbackName = callbackNameResolver(txType);
   const callback = walletCtlr.account[callbackName];
 
   return (
@@ -432,7 +432,7 @@ export const TxConfirmLayout: FC<ITxConfirmLayout> = ({
         <TxConfirm
           callback={callback}
           temporaryTransaction={temporaryTransaction}
-          temporaryTransactionStringToClear={txName}
+          temporaryTransactionStringToClear={txType}
           title={title}
         />
       )}
