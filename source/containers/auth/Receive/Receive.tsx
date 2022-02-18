@@ -31,7 +31,10 @@ export const Receive = () => {
   }, []);
 
   return (
-    <AuthViewLayout title="RECEIVE SYS" id="receiveSYS-title">
+    <AuthViewLayout
+      title={activeNetworkType === 'syscoin' ? 'RECEIVE SYS' : 'RECEIVE ETH'}
+      id="receiveSYS-title"
+    >
       {loaded && activeAccount && activeNetworkType ? (
         <div className="flex flex-col items-center justify-center pt-8 w-full">
           <QRCode
@@ -55,7 +58,13 @@ export const Receive = () => {
           <div className="absolute bottom-12" id="copy-address-receive-btn">
             <SecondaryButton
               type="button"
-              onClick={() => copyText(activeAccount.address.main)}
+              onClick={() =>
+                copyText(
+                  activeNetworkType === 'syscoin'
+                    ? activeAccount.address.main
+                    : activeAccount.web3Address
+                )
+              }
             >
               <span className="text-xs">
                 {isCopied ? 'Copied address' : 'Copy'}

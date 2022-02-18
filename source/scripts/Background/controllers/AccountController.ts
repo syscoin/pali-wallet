@@ -826,7 +826,7 @@ const AccountController = (actions: {
       web3Address: web3Account.address,
       web3PrivateKey: CryptoJS.AES.encrypt(
         web3Account.privateKey,
-        encriptedPassword
+        'encripted'
       ).toString(),
     };
     store.dispatch(createAccount(globalAccount));

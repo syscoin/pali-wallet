@@ -89,6 +89,7 @@
         "singleQuote": true
       }
     ],
+    "no-nested-ternary": "off",
     "no-bitwise": "off",
     "no-plusplus": "off",
     "import/no-cycle": "off",

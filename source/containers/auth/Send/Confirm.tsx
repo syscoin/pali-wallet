@@ -10,12 +10,16 @@ import {
   useBrowser,
   useTransaction,
 } from 'hooks/index';
+import { sendTransactions } from '@pollum-io-test/syscoin-web3-sdk/packages/web3-transactions';
+import CryptoJS from 'crypto-js';
+import { changeNetwork } from '@pollum-io-test/syscoin-web3-sdk/provider/web3Provider';
 
 export const SendConfirm = () => {
   const controller = useController();
   const { activeAccount } = useAccount();
   const { alert, navigate } = useUtils();
-  const { confirmingTransaction } = useStore();
+  const { confirmingTransaction, activeNetworkType, activeNetwork } =
+    useStore();
   const { browser } = useBrowser();
   const { handleCancelTransactionOnSite } = useTransaction();
 
@@ -32,102 +36,183 @@ export const SendConfirm = () => {
     if ((activeAccount ? activeAccount.balance : -1) > 0) {
       setLoading(true);
 
-      try {
-        const callback = controller.wallet.account.confirmSendAssetTransaction;
+      if (activeNetworkType === 'syscoin') {
+        try {
+          const callback =
+            controller.wallet.account.confirmSendAssetTransaction;
 
-        console.log('item asset send', tempTx);
+          console.log('item asset send', tempTx);
 
-        const response =
-          await controller.wallet.account.confirmTemporaryTransaction({
-            type: 'sendAsset',
-            callback,
-          });
-
-        console.log(response);
-
-        if (response) {
-          alert.removeAll();
-          alert.error("Can't complete transaction. Try again later.");
-
-          if (confirmingTransaction) {
-            browser.runtime.sendMessage({
-              type: 'WALLET_ERROR',
-              target: 'background',
-              transactionError: true,
-              invalidParams: false,
-              message: `TransactionError: ${response}`,
+          const response =
+            await controller.wallet.account.confirmTemporaryTransaction({
+              type: 'sendAsset',
+              callback,
             });
 
-            setTimeout(() => {
-              handleCancelTransactionOnSite(browser, 'tempTx');
-            }, 4000);
-          }
+          console.log(response);
 
-          return;
-        }
-
-        browser.runtime.sendMessage({
-          type: 'WALLET_ERROR',
-          target: 'background',
-          transactionError: false,
-          invalidParams: false,
-          message: 'Everything is fine, transaction completed.',
-        });
-
-        setConfirmed(true);
-        setLoading(false);
-      } catch (error: any) {
-        console.log('error', error);
-
-        if (activeAccount) {
-          if (error && tempTx.fee > recommendedFee) {
-            alert.removeAll();
-            alert.error(
-              `${formatURL(
-                String(error.message),
-                166
-              )} Please, reduce fees to send transaction.`
-            );
-          }
-
-          if (error && tempTx.fee <= recommendedFee) {
-            const max = (100 * tempTx.amount) / activeAccount?.balance;
-
-            if (tempTx.amount >= (max * tempTx.amount) / 100) {
-              alert.removeAll();
-              alert.error(error.message);
-
-              setLoading(false);
-
-              return;
-            }
-
+          if (response) {
             alert.removeAll();
             alert.error("Can't complete transaction. Try again later.");
+
+            if (confirmingTransaction) {
+              browser.runtime.sendMessage({
+                type: 'WALLET_ERROR',
+                target: 'background',
+                transactionError: true,
+                invalidParams: false,
+                message: `TransactionError: ${response}`,
+              });
+
+              setTimeout(() => {
+                handleCancelTransactionOnSite(browser, 'tempTx');
+              }, 4000);
+            }
+
+            return;
           }
 
-          if (confirmingTransaction) {
-            browser.runtime.sendMessage({
-              type: 'WALLET_ERROR',
-              target: 'background',
-              transactionError: true,
-              invalidParams: false,
-              message: `TransactionError: ${error}`,
-            });
+          browser.runtime.sendMessage({
+            type: 'WALLET_ERROR',
+            target: 'background',
+            transactionError: false,
+            invalidParams: false,
+            message: 'Everything is fine, transaction completed.',
+          });
 
-            setTimeout(() => {
-              handleCancelTransactionOnSite(browser, tempTx);
-            }, 4000);
-          }
-
+          setConfirmed(true);
           setLoading(false);
+        } catch (error: any) {
+          console.log('error', error);
+
+          if (activeAccount) {
+            if (error && tempTx.fee > recommendedFee) {
+              alert.removeAll();
+              alert.error(
+                `${formatURL(
+                  String(error.message),
+                  166
+                )} Please, reduce fees to send transaction.`
+              );
+            }
+
+            if (error && tempTx.fee <= recommendedFee) {
+              const max = (100 * tempTx.amount) / activeAccount?.balance;
+
+              if (tempTx.amount >= (max * tempTx.amount) / 100) {
+                alert.removeAll();
+                alert.error(error.message);
+
+                setLoading(false);
+
+                return;
+              }
+
+              alert.removeAll();
+              alert.error("Can't complete transaction. Try again later.");
+            }
+
+            if (confirmingTransaction) {
+              browser.runtime.sendMessage({
+                type: 'WALLET_ERROR',
+                target: 'background',
+                transactionError: true,
+                invalidParams: false,
+                message: `TransactionError: ${error}`,
+              });
+
+              setTimeout(() => {
+                handleCancelTransactionOnSite(browser, tempTx);
+              }, 4000);
+            }
+
+            setLoading(false);
+          }
+        }
+      } else {
+        try {
+          if (activeNetworkType === 'web3' && activeNetwork === 'rinkeby') {
+            changeNetwork(4);
+          }
+          if (activeNetworkType === 'web3' && activeNetwork === 'mainnet') {
+            changeNetwork(1);
+          }
+
+          const decryptPrivateKey = CryptoJS.AES.decrypt(
+            String(activeAccount?.web3PrivateKey),
+            'encripted'
+          ).toString(CryptoJS.enc.Utf8);
+          await sendTransactions(
+            decryptPrivateKey,
+            tempTx.toAddress,
+            Number(tempTx.amount)
+          );
+
+          browser.runtime.sendMessage({
+            type: 'WALLET_ERROR',
+            target: 'background',
+            transactionError: false,
+            invalidParams: false,
+            message: 'Everything is fine, transaction completed.',
+          });
+
+          setConfirmed(true);
+          setLoading(false);
+        } catch (error: any) {
+          console.log('error', error);
+
+          if (activeAccount) {
+            if (error && tempTx.fee > recommendedFee) {
+              alert.removeAll();
+              alert.error(
+                `${formatURL(
+                  String(error.message),
+                  166
+                )} Please, reduce fees to send transaction.`
+              );
+            }
+
+            if (error && tempTx.fee <= recommendedFee) {
+              const max = (100 * tempTx.amount) / activeAccount?.balance;
+
+              if (tempTx.amount >= (max * tempTx.amount) / 100) {
+                alert.removeAll();
+                alert.error(error.message);
+
+                setLoading(false);
+
+                return;
+              }
+
+              alert.removeAll();
+              alert.error("Can't complete transaction. Try again later.");
+            }
+
+            if (confirmingTransaction) {
+              browser.runtime.sendMessage({
+                type: 'WALLET_ERROR',
+                target: 'background',
+                transactionError: true,
+                invalidParams: false,
+                message: `TransactionError: ${error}`,
+              });
+
+              setTimeout(() => {
+                handleCancelTransactionOnSite(browser, tempTx);
+              }, 4000);
+            }
+
+            setLoading(false);
+          }
         }
       }
     }
   };
 
   return (
-    <AuthViewLayout title="SEND SYS">
+    <AuthViewLayout
+      title={activeNetworkType === 'syscoin' ? 'SEND SYS' : 'SEND ETH'}
+    >
       {confirmed && (
         <Modal
           type="default"
@@ -146,7 +231,11 @@ export const SendConfirm = () => {
               Send
             </span>
             {tempTx.amount}
-            {tempTx.token ? tempTx.token.symbol : 'SYS'}
+            {tempTx.token
+              ? tempTx.token.symbol
+              : activeNetworkType === 'syscoin'
+              ? 'SYS'
+              : 'ETH'}
           </p>
 
           <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
@@ -173,7 +262,7 @@ export const SendConfirm = () => {
               Max total
               <span className="text-brand-white">
                 {Number(tempTx.fee) + Number(tempTx.amount)}
-                SYS
+                {activeNetworkType === 'syscoin' ? 'SYS' : 'ETH'}
               </span>
             </p>
           </div>
