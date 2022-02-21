@@ -1,19 +1,18 @@
 import React, { FC } from 'react';
-import { BrowserRouter as Router } from 'react-router-dom';
-import Container from 'containers/common/Container/index';
-import { AuthRouter, UnAuthRouter } from 'routers/index';
-import { useStore } from 'hooks/index';
+import { Container } from 'components/index';
+import { Router } from 'routers/index';
+import { BrowserRouter } from 'react-router-dom';
 
-const App: FC = () => {
-  const { encriptedMnemonic } = useStore();
-
-  return (
-    <section className="mx-auto min-w-popup h-full min-h-popup bg-bkg-2 md:max-w-2xl">
-      <Container>
-        <Router>{encriptedMnemonic ? <AuthRouter /> : <UnAuthRouter />}</Router>
-      </Container>
-    </section>
-  );
-};
+const App: FC = () => (
+  <section className="mx-auto min-w-popup h-full min-h-popup bg-bkg-2 md:max-w-2xl">
+    <Container>
+      <BrowserRouter>
+        <div className="w-full min-w-popup h-full min-h-popup">
+          <Router />
+        </div>
+      </BrowserRouter>
+    </Container>
+  </section>
+);
 
 export default App;

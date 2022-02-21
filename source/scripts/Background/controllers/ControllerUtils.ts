@@ -22,7 +22,7 @@ export interface IControllerUtils {
 }
 
 const ControllerUtils = (): IControllerUtils => {
-  let route = '/app.html';
+  let route = '/';
 
   const ping = async () => {
     const data = await CoinGeckoClient.ping();
