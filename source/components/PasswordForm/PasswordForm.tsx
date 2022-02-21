@@ -1,7 +1,6 @@
 import React from 'react';
-import { Layout } from 'containers/common/Layout';
 import { Form, Input } from 'antd';
-import { PrimaryButton } from 'components/index';
+import { Layout, PrimaryButton } from 'components/index';
 
 export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
   <Layout title="Password" onlySection>

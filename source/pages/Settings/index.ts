@@ -1,0 +1,12 @@
+export { default as About } from './About';
+export { default as AutoLock } from './AutoLock';
+export { default as ConnectedSites } from './ConnectedSites';
+export { default as ConnectHardwareWallet } from './ConnectHardwareWallet';
+export { default as CreateAccount } from './CreateAccount';
+export { default as Currency } from './Currency';
+export { default as CustomRPC } from './CustomRPC';
+export { default as DeleteWallet } from './DeleteWallet';
+export { default as EditNetwork } from './EditNetwork';
+export { default as Phrase } from './Phrase';
+export { default as PrivateKey } from './PrivateKey';
+export { default as TrustedSites } from './TrustedSites';

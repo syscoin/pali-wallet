@@ -1,1 +1,0 @@
-export { SignAndSend } from './SignAndSend';
