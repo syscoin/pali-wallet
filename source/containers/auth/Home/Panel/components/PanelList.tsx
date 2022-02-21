@@ -45,7 +45,7 @@ export const PanelList: FC<IPanelList> = ({
   return (
     <>
       {activity && (
-        <ul className="pb-8">
+        <ul className="pb-24 md:pb-8">
           {data.map((tx: Transaction, idx: number) => {
             const isConfirmed = tx.confirmations > 0;
             const timestamp = new Date(tx.blockTime * 1000).toLocaleTimeString(
@@ -114,7 +114,7 @@ export const PanelList: FC<IPanelList> = ({
       )}
 
       {assets && (
-        <ul className="pb-4">
+        <ul className="pb-24 md:pb-4">
           {data.map((asset: Assets) => {
             if (asset.assetGuid && asset.balance > 0) {
               return (

@@ -65,6 +65,9 @@ module.exports = {
         xxs: '0.01px',
         '10px': '10px',
       },
+      screens: {
+        small: { min: '640px', max: '1280px' },
+      },
     },
   },
   variants: {

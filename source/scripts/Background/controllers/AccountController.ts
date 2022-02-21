@@ -261,7 +261,9 @@ const AccountController = (actions: {
           item[assetGuid] = <Assets>{
             type,
             assetGuid,
-            symbol: symbol ? Buffer.from(symbol, 'base64') : '',
+            symbol: symbol
+              ? Buffer.from(symbol, 'base64').toString('utf-8')
+              : '',
             balance:
               (item[assetGuid] ? item[assetGuid].balance : 0) + Number(balance),
             decimals,

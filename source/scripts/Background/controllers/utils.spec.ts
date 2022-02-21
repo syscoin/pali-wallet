@@ -2,11 +2,8 @@ import { isNFT, countDecimals, sortList } from './utils';
 
 describe('controllers utils', () => {
   it('should check if given token is a nft', () => {
-    console.log(isNFT(2512785514));
-    console.log(isNFT(831140473));
-    console.log(isNFT(1214075697));
-    expect(isNFT(2512785514)).toEqual(true);
-    expect(isNFT(831140473)).toEqual(false);
+    expect(isNFT(5271816415)).toEqual(true);
+    expect(isNFT(70131121)).toEqual(false);
   });
 
   it('should check amount decimals to be less than or equal permitted decimals', () => {
