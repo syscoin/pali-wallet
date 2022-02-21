@@ -215,7 +215,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
         </Disclosure>
       )}
 
-      <div className="fixed bottom-0 left-0 flex gap-x-6 items-center justify-between p-4 text-xs bg-bkg-3">
+      <div className="small:fixed bottom-0 left-0 flex gap-x-6 items-center justify-between p-4 text-xs bg-bkg-3 xl:mt-2">
         <p>Would you like to go to view transaction on SYS Block Explorer?</p>
 
         <Button
