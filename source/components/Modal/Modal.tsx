@@ -120,6 +120,7 @@ const DefaultModal = ({
                   onClick={
                     goTo ? closePopup || (() => navigate(goTo)) : onClose
                   }
+                  id="got-it-btn"
                 >
                   {closeMessage}
                 </button>

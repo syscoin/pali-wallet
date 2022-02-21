@@ -1,7 +1,7 @@
-import { FAKE_PASSWORD, FAKE_SEED_PHRASE } from 'constants/tests';
-
 import store, { currentWalletState } from 'state/store';
 import { initialState } from 'state/wallet';
+
+import { FAKE_PASSWORD, FAKE_SEED_PHRASE } from '../../../../tests/mocks';
 
 import WalletController from './WalletController';
 

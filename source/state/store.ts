@@ -28,7 +28,8 @@ const middleware = [
   ...getDefaultMiddleware({ thunk: false, serializableCheck: false }),
 ];
 
-if (process.env.NODE_ENV !== 'production') {
+const nodeEnv = process.env.NODE_ENV;
+if (nodeEnv !== 'production' && nodeEnv != 'test') {
   middleware.push(logger);
 }
 

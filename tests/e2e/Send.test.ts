@@ -1,12 +1,12 @@
 import assert from 'assert';
 
-import { beforeEach, afterEach } from 'mocha';
-import { buildWebDriver } from '../webdriver';
-import { importWallet } from '../initialize';
 import { By } from 'selenium-webdriver';
 
-describe('<Send /> tests', async () => {
-  let uiWebDriver = null;
+import { buildWebDriver, Driver } from './driver';
+import { importWallet } from './initialize';
+
+describe('Send screen tests', () => {
+  let uiWebDriver: Driver;
 
   beforeEach(async () => {
     const { driver } = await buildWebDriver();
@@ -15,14 +15,18 @@ describe('<Send /> tests', async () => {
 
     await driver.navigate();
     await importWallet({ driver });
+  });
 
+  afterEach(async () => {
+    await uiWebDriver.quit();
+  });
+
+  it('should check send button', async () => {
+    //  * find send btn
     const sendButton = await uiWebDriver.findElement(By.id('send-btn'));
 
-    assert.ok(
-      typeof sendButton === 'object',
-      '<!> Cannot find Send button <!>'
-    );
-
+    assert.ok(sendButton, '<!> Cannot find Send button <!>');
+    //  * go to send page
     await uiWebDriver.clickElement('#send-btn');
 
     const findSendSYS = await uiWebDriver.findElement(By.id('sendSYS-title'));
@@ -35,16 +39,11 @@ describe('<Send /> tests', async () => {
     );
   });
 
-  afterEach((done) => {
-    done();
-
-    uiWebDriver.quit();
-  });
-
-  it("should check if send form it's being shown", async () => {
-    const sendBalance = await uiWebDriver.findElement(By.id('send'));
-
-    assert.ok(typeof sendBalance === 'object', '<!> Cannot find send form <!>');
+  it('should check send form', async () => {
+    //  * go to send page
+    await uiWebDriver.clickElement('#send-btn');
+    const sendForm = await uiWebDriver.findElement(By.id('send-form'));
+    assert.ok(sendForm, '<!> Cannot find send form <!>');
   });
 
   /**

@@ -77,7 +77,7 @@ export const CopyCard: FC<CopyCarType> = ({
     <div className="flex items-center justify-between w-full">
       <p>{label}</p>
 
-      <Icon name="copy" className="text-brand-white" />
+      <Icon name="copy" className="text-brand-white" id="copy-btn" />
     </div>
 
     <p>{children}</p>

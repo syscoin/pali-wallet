@@ -1,9 +1,23 @@
-const { promises: fs } = require('fs');
-const { strict: assert } = require('assert');
-const { until, error: webdriverError, By } = require('selenium-webdriver');
-const cssToXPath = require('css-to-xpath');
+/* eslint-disable class-methods-use-this */
+import { promises as fs } from 'fs';
+import { strict as assert } from 'assert';
 
-function wrapElementWithAPI(element, driver) {
+import {
+  until,
+  error as webdriverError,
+  By,
+  WebDriver,
+  WebElement,
+} from 'selenium-webdriver';
+import cssToXPath from 'css-to-xpath';
+
+interface CustomWebElement extends WebElement {
+  fill(input);
+  press(key): Promise<void>;
+  waitForElementState(state, timeout);
+}
+
+function wrapElementWithAPI(element, driver): CustomWebElement {
   element.press = (key) => element.sendKeys(key);
   element.fill = async (input) => {
     await element.clear();
@@ -12,9 +26,9 @@ function wrapElementWithAPI(element, driver) {
   element.waitForElementState = async (state, timeout) => {
     switch (state) {
       case 'hidden':
-        return await driver.wait(until.stalenessOf(element), timeout);
+        return driver.wait(until.stalenessOf(element), timeout);
       case 'visible':
-        return await driver.wait(until.elementIsVisible(element), timeout);
+        return driver.wait(until.elementIsVisible(element), timeout);
       default:
         throw new Error(`Provided state: '${state}' is not supported`);
     }
@@ -22,7 +36,23 @@ function wrapElementWithAPI(element, driver) {
   return element;
 }
 
-class Driver {
+export class Driver {
+  driver: WebDriver;
+
+  browser: any;
+
+  extensionUrl: any;
+
+  timeout: number;
+
+  Key: { BACK_SPACE: string; ENTER: string };
+
+  static PAGES = {
+    HOME: 'app',
+    NOTIFICATION: 'notification',
+    POPUP: 'popup',
+  };
+
   constructor(driver, browser, extensionUrl, timeout = 10000) {
     this.driver = driver;
     this.browser = browser;
@@ -35,13 +65,10 @@ class Driver {
   }
 
   buildLocator(locator) {
-    if (typeof locator === 'string') {
-      return By.css(locator);
-    } else if (locator.value) {
-      return locator;
-    } else if (locator.xpath) {
-      return By.xpath(locator.xpath);
-    } else if (locator.text) {
+    if (typeof locator === 'string') return By.css(locator);
+    if (locator.value) return locator;
+    if (locator.xpath) return By.xpath(locator.xpath);
+    if (locator.text) {
       if (locator.css) {
         const xpath = cssToXPath
           .parse(locator.css)
@@ -89,22 +116,27 @@ class Driver {
   }
 
   async close() {
-    return await this.driver.close();
+    return this.driver.close();
   }
 
   async manage() {
-    return await this.driver.manage();
+    return this.driver.manage();
   }
 
   async getTitle() {
-    return await this.driver.getTitle();
+    return this.driver.getTitle();
   }
 
-  async executeScript() {
-    return await this.driver.executeScript();
+  async executeScript(script) {
+    return this.driver.executeScript(script);
   }
+
+  async getCurrentUrl() {
+    return this.driver.getCurrentUrl();
+  }
+
   async getWindowHandle() {
-    return await this.driver.getWindowHandle();
+    return this.driver.getWindowHandle();
   }
 
   async waitForSelector(
@@ -167,7 +199,7 @@ class Driver {
   }
 
   async findAllElementsWithId(id) {
-    let elements = await this.driver.findElements(By.id(id));
+    const elements = await this.driver.findElements(By.id(id));
     return elements.map((element) => wrapElementWithAPI(element, this));
   }
 
@@ -175,7 +207,7 @@ class Driver {
     const locator = this.buildLocator(rawLocator);
     const elements = await this.findElements(locator);
     await Promise.all(
-      elements.reduce((acc, element) => {
+      elements.reduce((acc: WebElement[], element) => {
         acc.push(
           this.driver.wait(until.elementIsVisible(element), this.timeout),
           this.driver.wait(until.elementIsEnabled(element), this.timeout)
@@ -224,11 +256,11 @@ class Driver {
   }
 
   async navigate(page = Driver.PAGES.HOME) {
-    return await this.driver.get(`${this.extensionUrl}/${page}.html`);
+    return this.driver.get(`${this.extensionUrl}/${page}.html`);
   }
 
   async openNewPage(url) {
-    const newHandle = await this.driver.switchTo().newWindow();
+    const newHandle = await this.driver.switchTo().newWindow('window');
     await this.driver.get(url);
     return newHandle;
   }
@@ -238,14 +270,13 @@ class Driver {
   }
 
   async getAllWindowHandles() {
-    return await this.driver.getAllWindowHandles();
+    return this.driver.getAllWindowHandles();
   }
 
   async waitUntilXWindowHandles(x, delayStep = 1000, timeout = 5000) {
     let timeElapsed = 0;
-    let windowHandles = [];
     while (timeElapsed <= timeout) {
-      windowHandles = await this.driver.getAllWindowHandles();
+      const windowHandles = await this.driver.getAllWindowHandles();
       if (windowHandles.length === x) {
         return windowHandles;
       }
@@ -304,6 +335,7 @@ class Driver {
     const htmlSource = await this.driver.getPageSource();
     await fs.writeFile(`${filepathBase}-dom.html`, htmlSource);
     const uiState = await this.driver.executeScript(
+      // @ts-ignore
       () => window.getCleanAppState && window.getCleanAppState()
     );
     await fs.writeFile(
@@ -328,11 +360,3 @@ class Driver {
     );
   }
 }
-
-Driver.PAGES = {
-  HOME: 'app',
-  NOTIFICATION: 'notification',
-  POPUP: 'popup',
-};
-
-module.exports = Driver;

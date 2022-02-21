@@ -3,7 +3,7 @@ const os = require('os');
 const path = require('path');
 const { Builder, By, until } = require('selenium-webdriver');
 const firefox = require('selenium-webdriver/firefox');
-const { version } = require('../../../../package.json');
+const { version } = require('../../../package.json');
 
 const TEMP_PROFILE_PATH_PREFIX = path.join(os.tmpdir(), 'pali wallet');
 class FirefoxDriver {

@@ -27,6 +27,7 @@ const ConnectHardwareWalletView: FC = () => {
                 : 'bg-bkg-1 border-brand-royalblue'
             } rounded-full py-2 w-72 mx-auto text-center  border  text-sm my-6 cursor-pointer`}
             onClick={() => setSelected(!selected)}
+            id="trezor-btn"
           >
             Trezor
           </p>
@@ -95,6 +96,7 @@ const ConnectHardwareWalletView: FC = () => {
             type="button"
             onClick={handleCreateHardwareWallet}
             disabled={!selected}
+            id="connect-btn"
           >
             Connect
           </SecondaryButton>

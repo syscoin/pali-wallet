@@ -62,7 +62,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
     >
       <Menu.Button className="inline-flex justify-center w-full hover:text-button-primaryhover text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
         {encriptedMnemonic && !importSeed && (
-          <Icon name="dots" className="z-0" />
+          <Icon name="dots" className="z-0" id="account-settings-btn" />
         )}
       </Menu.Button>
 
@@ -107,6 +107,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                     <Icon
                       name="user"
                       className="mb-2 ml-1 mr-4 text-brand-white"
+                      id="accounts-btn"
                     />
 
                     <span className="px-3 text-base">Accounts</span>
@@ -123,6 +124,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                     <li
                       onClick={() => navigate('/settings/account/new')}
                       className="backface-visibility-hidden border-menu-dasheddark flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed focus:outline-none cursor-pointer transform transition duration-300"
+                      id="create-new-account-btn"
                     >
                       <Icon
                         name="appstoreadd"
@@ -163,11 +165,11 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
             <li
               onClick={() => navigate('/settings/account/hardware')}
               className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
-              id="hardware-wallet-btn"
             >
               <Icon
                 name="partition"
                 className="mb-2 ml-1 mr-4 text-brand-white"
+                id="hardware-wallet-btn"
               />
 
               <span className="px-3">Hardware wallet</span>
@@ -195,14 +197,16 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
         <div className="add-identicon ml-1 mr-2 my-2" />
 
         <div className="items-center justify-center px-1 text-brand-white">
-          <p className="mb-1 text-base">{activeAccount?.label}</p>
+          <p className="mb-1 text-base" id="active-account-label">
+            {activeAccount?.label}
+          </p>
           <p className="text-xs">
             {ellipsis(activeAccount?.address.main, 6, 14)}
           </p>
         </div>
 
         <IconButton
-          onClick={() => copy(activeAccount?.address.main)}
+          onClick={() => copy(activeAccount?.address.main ?? '')}
           type="primary"
           shape="circle"
           className="mt-3"
