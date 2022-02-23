@@ -75,6 +75,23 @@ export const initialState: IWalletState = {
         type: 'web3',
       },
     },
+
+    polygon: {
+      mainnet: {
+        id: 'mainnet',
+        chainId: 137,
+        label: 'Mainnet',
+        beUrl: '',
+        type: 'polygon',
+      },
+      testnet: {
+        id: 'testnet',
+        chainId: 80001,
+        label: 'Testnet',
+        beUrl: '',
+        type: 'polygon',
+      },
+    },
   },
   trustedApps: {
     'app.uniswap.org': 'app.uniswap.org',

@@ -80,7 +80,11 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                   style={{ borderColor: 'rgb(46 98 183)' }}
                 >
                   <span style={{ fontSize: '0.65rem' }}>
-                    {activeNetworkType === 'syscoin' ? 'syscoin' : 'web3'}
+                    {activeNetworkType === 'syscoin'
+                      ? 'syscoin'
+                      : activeNetworkType === 'web3'
+                      ? 'web3'
+                      : 'polygon'}
                   </span>
                 </div>
                 <div>
@@ -235,6 +239,54 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
                       <Disclosure.Panel className="pb-2 pt-0.5 text-sm bg-menu-secondary">
                         {Object.values(networks.web3).map(
+                          (currentNetwork: any) => (
+                            <li
+                              key={currentNetwork.chainId}
+                              className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                              onClick={() =>
+                                handleChangeNetwork(currentNetwork.chainId)
+                              }
+                            >
+                              <span>{currentNetwork.label}</span>
+
+                              {activeChainId === currentNetwork.chainId && (
+                                <Icon
+                                  name="check"
+                                  className="mb-1 w-4"
+                                  wrapperClassname="w-6 absolute right-1"
+                                />
+                              )}
+                            </li>
+                          )
+                        )}
+                      </Disclosure.Panel>
+                    </>
+                  )}
+                </Disclosure>
+              </Menu.Item>
+
+              <Menu.Item>
+                <Disclosure>
+                  {({ open }) => (
+                    <>
+                      <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
+                        <Icon
+                          name="dolar"
+                          className="ml-1 mr-4 text-brand-white"
+                        />
+
+                        <span className="px-3 text-base">Polygon networks</span>
+
+                        <Icon
+                          name="select-down"
+                          className={`${
+                            open ? 'transform rotate-180' : ''
+                          } mb-1 text-brand-white`}
+                        />
+                      </Disclosure.Button>
+
+                      <Disclosure.Panel className="pb-2 pt-0.5 text-sm bg-menu-secondary">
+                        {Object.values(networks.polygon).map(
                           (currentNetwork: any) => (
                             <li
                               key={currentNetwork.chainId}
