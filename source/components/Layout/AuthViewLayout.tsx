@@ -26,7 +26,7 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
     <div
       className={`bg-${background} w-full min-h-popup min-w-popup h-full text-brand-white relative`}
     >
-      <Header normalHeader />
+      <Header />
 
       <div className="relative flex items-center justify-center pt-6 w-full text-brand-white bg-bkg-3">
         {url && canGoBack && (

@@ -1,6 +1,6 @@
 import React, { ReactNode, FC } from 'react';
 import { QuestionCircleOutlined } from '@ant-design/icons';
-import { Header, Tooltip } from 'components/index';
+import { LogoHeader, Tooltip } from 'components/index';
 
 interface ILayout {
   accountHeader?: boolean;
@@ -12,20 +12,9 @@ interface ILayout {
   tooltipText?: string;
 }
 
-export const Layout: FC<ILayout> = ({
-  title,
-  children,
-  onlySection = false,
-  accountHeader = false,
-  normalHeader = false,
-  tooltipText = '',
-}) => (
+export const Layout: FC<ILayout> = ({ title, children, tooltipText = '' }) => (
   <div className="flex flex-col gap-4 items-center justify-center">
-    <Header
-      onlySection={onlySection}
-      accountHeader={accountHeader}
-      normalHeader={normalHeader}
-    />
+    <LogoHeader />
 
     <section>
       {tooltipText ? (

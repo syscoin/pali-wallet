@@ -1,5 +1,4 @@
-// @ts-ignore
-import React, { FC, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Icon, IconButton } from 'components/index';
 import {
   useStore,
@@ -10,44 +9,42 @@ import {
 } from 'hooks/index';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 
-interface INormalHeader {
-  importSeed: boolean;
-  isUnlocked?: boolean;
-}
-
-export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
-  const controller = useController();
+export const NormalHeader: React.FC = () => {
+  const { wallet } = useController();
 
   const { activeNetwork, encriptedMnemonic, networks } = useStore();
   const { handleRefresh, navigate, getHost } = useUtils();
   const { activeAccount } = useAccount();
   const { browser } = useBrowser();
 
-  const [isConnected, setIsConnected] = useState<any>(null);
-  const [currentTabURL, setCurrentTabURL] = useState<any>(null);
+  const [isConnected, setIsConnected] = useState<boolean>(false);
+  const [currentTabURL, setCurrentTabURL] = useState<string>('');
 
   const handleChangeNetwork = (value: string) => {
-    controller.wallet.switchNetwork(value as string);
-    controller.wallet.getNewAddress();
+    wallet.switchNetwork(value as string);
+    wallet.getNewAddress();
+  };
+
+  const updateCurrentTabUrl = async () => {
+    const windows = await browser.windows.getAll({ populate: true });
+
+    for (const window of windows) {
+      const views = browser.extension.getViews({ windowId: window.id });
+
+      if (views) {
+        const tabs = await browser.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+        setCurrentTabURL(String(tabs[0].url));
+        return;
+      }
+    }
   };
 
   useEffect(() => {
-    browser.windows.getAll({ populate: true }).then((windows) => {
-      for (const window of windows) {
-        const views = browser.extension.getViews({ windowId: window.id });
-
-        if (views) {
-          browser.tabs
-            .query({ active: true, currentWindow: true })
-            .then((tabs) => {
-              setCurrentTabURL(String(tabs[0].url));
-            });
-
-          return;
-        }
-      }
-    });
-  }, [!controller.wallet.isLocked()]);
+    updateCurrentTabUrl();
+  }, [!wallet.isLocked()]);
 
   useEffect(() => {
     if (activeAccount && activeAccount.connectedTo.length > 0) {
@@ -59,6 +56,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
     }
   }, [activeAccount, currentTabURL]);
 
+  // TODO: breakdown NetworkMenu
   const NetworkMenu = () => (
     <Menu as="div" className="absolute left-2 inline-block mr-8 text-left">
       {(menuprops) => (
@@ -279,17 +277,18 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
     </Menu>
   );
 
+  // TODO: breakdown GeneralMenu
   const GeneralMenu = () => (
     <Menu as="div" className="absolute z-10 right-2 inline-block text-right">
       {() => (
         <>
-          <Menu.Button as="button" className="mb-2 mr-0.8">
-            {encriptedMnemonic && !importSeed ? (
-              <IconButton
-                type="primary"
-                shape="circle"
-                id="general-settings-button"
-              >
+          <Menu.Button
+            as="button"
+            id="general-settings-button"
+            className="mb-2 mr-0.8"
+          >
+            {encriptedMnemonic ? (
+              <IconButton type="primary" shape="circle">
                 <Icon
                   name="settings"
                   className="z-0 hover:text-brand-royalblue text-brand-white"
