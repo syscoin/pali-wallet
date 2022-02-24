@@ -2,7 +2,7 @@ import React from 'react';
 import { useController, useStore } from 'hooks/index';
 import { Icon } from 'components/Icon';
 
-import { AccountHeader, NormalHeader, Section } from './index';
+import { AccountHeader, NormalHeader, LogoHeader } from './index';
 
 type HeaderType = {
   accountHeader?: boolean;
@@ -35,7 +35,7 @@ export const Header = ({
         </div>
       )}
 
-      {onlySection && <Section />}
+      {onlySection && <LogoHeader />}
 
       <div className="fixed z-10 w-full md:max-w-2xl">
         {normalHeader && (

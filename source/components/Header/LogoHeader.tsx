@@ -3,7 +3,7 @@ import LogoImage from 'assets/images/logo-s.svg';
 import { IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 
-export const Section = () => {
+export const LogoHeader: React.FC = () => {
   const { navigate } = useUtils();
 
   return (
