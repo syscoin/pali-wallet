@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Layout, PrimaryButton } from 'components/index';
+import { OnboardingLayout, PrimaryButton } from 'components/index';
 import { useController } from 'hooks/index';
 
 export const CreatePhrase: FC = () => {
@@ -14,10 +14,9 @@ export const CreatePhrase: FC = () => {
   };
 
   return (
-    <Layout
+    <OnboardingLayout
       title="Recovery phrase"
       tooltipText="A recovery phrase is a series of 12 words in a specific order. This word combination is unique to your wallet. Make sure to have pen and paper ready so you can write it down."
-      onlySection
     >
       <div className="flex flex-col gap-4 items-center justify-center max-w-xs">
         {phrases && (
@@ -43,6 +42,6 @@ export const CreatePhrase: FC = () => {
           </PrimaryButton>
         </div>
       </div>
-    </Layout>
+    </OnboardingLayout>
   );
 };

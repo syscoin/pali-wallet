@@ -1,6 +1,6 @@
 import React, { FC, useState } from 'react';
 import { useController } from 'hooks/index';
-import { Layout, PrimaryButton } from 'components/index';
+import { OnboardingLayout, PrimaryButton } from 'components/index';
 import { Form } from 'antd';
 import TextArea from 'antd/lib/input/TextArea';
 import { useForm } from 'antd/lib/form/Form';
@@ -23,7 +23,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
   const [form] = useForm();
 
   return (
-    <Layout onlySection title="Import wallet">
+    <OnboardingLayout title="Import wallet">
       <Form
         form={form}
         name="import"
@@ -78,7 +78,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           </PrimaryButton>
         </div>
       </Form>
-    </Layout>
+    </OnboardingLayout>
   );
 };
 

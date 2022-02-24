@@ -1,9 +1,9 @@
 import React from 'react';
 import { Form, Input } from 'antd';
-import { Layout, PrimaryButton } from 'components/index';
+import { OnboardingLayout, PrimaryButton } from 'components/index';
 
 export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
-  <Layout title="Password" onlySection>
+  <OnboardingLayout title="Password">
     <Form
       name="basic"
       labelCol={{ span: 8 }}
@@ -70,5 +70,5 @@ export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
         </PrimaryButton>
       </div>
     </Form>
-  </Layout>
+  </OnboardingLayout>
 );
