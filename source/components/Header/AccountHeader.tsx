@@ -1,4 +1,4 @@
-import React, { FC, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { IconButton, Icon } from 'components/index';
 import {
   useFormat,
@@ -9,61 +9,31 @@ import {
 } from 'hooks/index';
 import { toSvg } from 'jdenticon';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
-import { IAccountState } from 'state/wallet/types';
+import { useNavigate } from 'react-router-dom';
 
-interface IAccountHeader {
-  importSeed: boolean;
-  isUnlocked: boolean;
-}
-
-export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
-  const controller = useController();
-
-  const { activeAccount } = useAccount();
+const AccountMenu: React.FC = () => {
+  const navigate = useNavigate();
+  const { wallet } = useController();
   const { ellipsis } = useFormat();
-  const { navigate, useCopyClipboard, alert } = useUtils();
   const { encriptedMnemonic, accounts, activeAccountId } = useStore();
 
-  const [copied, copy] = useCopyClipboard();
-
-  useEffect(() => {
-    const placeholder = document.querySelector('.add-identicon');
-
-    if (placeholder) {
-      placeholder.innerHTML = toSvg(activeAccount?.xpub, 50, {
-        backColor: '#07152B',
-        padding: 1,
-      });
-    }
-  }, [activeAccount?.address.main]);
-
   const switchAccount = (id: number) => {
-    controller.wallet.switchWallet(Number(id));
-    controller.wallet.account.watchMemPool(accounts[Number(id)]);
+    wallet.switchWallet(Number(id));
+    wallet.account.watchMemPool(accounts[Number(id)]);
   };
 
   const handleLogout = () => {
-    controller.wallet.logOut();
-
+    wallet.logOut();
     navigate('/');
   };
 
-  const showSuccessAlert = () => {
-    if (copied) {
-      alert.removeAll();
-      alert.success('Address successfully copied');
-    }
-  };
-
-  const AccountMenu = () => (
+  return (
     <Menu
       as="div"
       className="absolute right-3 inline-block text-right md:max-w-2xl"
     >
       <Menu.Button className="inline-flex justify-center w-full hover:text-button-primaryhover text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-        {encriptedMnemonic && !importSeed && (
-          <Icon name="dots" className="z-0" id="account-settings-btn" />
-        )}
+        {encriptedMnemonic && <Icon name="dots" className="z-0" />}
       </Menu.Button>
 
       <Transition
@@ -134,7 +104,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                       <span>Create new account</span>
                     </li>
 
-                    {accounts.map((account: IAccountState, index) => (
+                    {accounts.map((account, index) => (
                       <li
                         key={account.id}
                         className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
@@ -190,6 +160,31 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
       </Transition>
     </Menu>
   );
+};
+
+export const AccountHeader: React.FC = () => {
+  const { ellipsis } = useFormat();
+  const { activeAccount } = useAccount();
+  const { useCopyClipboard, alert } = useUtils();
+
+  const [copied, copy] = useCopyClipboard();
+
+  useEffect(() => {
+    const placeholder = document.querySelector('.add-identicon');
+    if (!placeholder) return;
+
+    placeholder.innerHTML = toSvg(activeAccount?.xpub, 50, {
+      backColor: '#07152B',
+      padding: 1,
+    });
+  }, [activeAccount?.address.main]);
+
+  useEffect(() => {
+    if (!copied) return;
+
+    alert.removeAll();
+    alert.success('Address successfully copied');
+  }, [copied]);
 
   return (
     <div className="flex items-center justify-between p-1 bg-bkg-3">
@@ -213,8 +208,6 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
         >
           <Icon name="copy" className="text-xs" id="copy-address-btn" />
         </IconButton>
-
-        {copied && showSuccessAlert()}
       </div>
 
       <AccountMenu />

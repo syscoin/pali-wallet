@@ -42,9 +42,7 @@ export const Header = ({
           <>
             <NormalHeader importSeed={importSeed} isUnlocked={isUnlocked} />
 
-            {accountHeader && (
-              <AccountHeader importSeed={importSeed} isUnlocked={isUnlocked} />
-            )}
+            {accountHeader && <AccountHeader />}
           </>
         )}
       </div>
