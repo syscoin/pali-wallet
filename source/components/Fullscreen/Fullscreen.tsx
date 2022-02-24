@@ -3,12 +3,13 @@ import React from 'react';
 
 import { Icon } from '..';
 
-export const Fullscreen = () => {
+export const Fullscreen: React.FC = () => {
   const { browser } = useBrowser();
 
   const url = browser.runtime.getURL('app.html');
+  if (!url) return <></>;
 
-  return url ? (
+  return (
     <div
       className="fixed bottom-0 left-0 flex gap-2 items-center justify-center p-4 w-full text-brand-white text-sm bg-bkg-4 cursor-pointer sm:hidden"
       onClick={() => window.open(url)}
@@ -17,5 +18,5 @@ export const Fullscreen = () => {
 
       <p>Go to fullscreen</p>
     </div>
-  ) : null;
+  );
 };
