@@ -22,43 +22,38 @@ interface ITxLayout {
 }
 
 export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
-  const controller = useController();
+  const accountCtlr = useController().wallet.account;
+  const transaction = accountCtlr.getTemporaryTransaction(txType);
 
   const { navigate, getHost } = useUtils();
   const { currentSenderURL, activeNetwork } = useStore();
   const { handleRejectTransaction } = useTransaction();
   const { browser } = useBrowser();
 
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
   const [recommend, setRecommend] = useState(0.00001);
   const [form] = Form.useForm();
 
-  const temporaryTransaction =
-    controller.wallet.account.getTemporaryTransaction(txType);
-
-  const handleGetFee = async () => {
-    const recommendFee = await controller.wallet.account.getRecommendFee();
-
+  const getFee = async () => {
+    const recommendFee = await accountCtlr.getRecommendFee();
     setRecommend(recommendFee);
-
     form.setFieldsValue({ fee: recommendFee });
   };
 
   useEffect(() => {
-    handleGetFee();
-  }, []);
+    getFee();
+  });
 
-  const handleCreateTemporaryTransaction = ({ fee }) => {
-    controller.wallet.account.updateTemporaryTransaction({
+  const updateTemporaryTransaction = ({ fee }) => {
+    accountCtlr.updateTemporaryTransaction({
       tx: {
-        ...temporaryTransaction,
+        ...transaction,
         fee,
       },
       type: txType,
     });
 
     setLoading(true);
-
     navigate(confirmRoute);
   };
 
@@ -79,7 +74,7 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
           labelCol={{ span: 8 }}
           initialValues={{ fee: recommend }}
           wrapperCol={{ span: 8 }}
-          onFinish={handleCreateTemporaryTransaction}
+          onFinish={updateTemporaryTransaction}
           autoComplete="off"
           className="flex flex-col gap-3 items-center justify-center mt-4 text-center"
         >
@@ -103,7 +98,7 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
                     : 'Click to use the recommended fee'
                 }`}
               >
-                <div onClick={handleGetFee}>
+                <div onClick={getFee}>
                   <Icon
                     wrapperClassname="w-6 ml-5 mb-1"
                     name="verified"
@@ -152,7 +147,7 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
               type="button"
               action
               onClick={() =>
-                handleRejectTransaction(browser, temporaryTransaction, navigate)
+                handleRejectTransaction(browser, transaction, navigate)
               }
             >
               Cancel
