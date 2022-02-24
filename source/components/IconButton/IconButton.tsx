@@ -5,7 +5,7 @@ interface IIconButton {
   children: ReactNode;
   className?: string;
   id?: string;
-  onClick?: any | undefined;
+  onClick?: () => any;
   shape?: 'circle' | 'round' | undefined;
   type?:
     | 'primary'
@@ -19,18 +19,18 @@ interface IIconButton {
 
 export const IconButton: FC<IIconButton> = ({
   children,
-  id = '',
-  type = 'primary',
-  onClick = undefined,
-  shape = 'circle',
   className = '',
+  id = '',
+  onClick,
+  shape = 'circle',
+  type = 'primary',
 }) => (
   <AntButton
     className={className}
     id={id}
     onClick={onClick}
-    type={type}
     shape={shape}
+    type={type}
   >
     {children}
   </AntButton>
