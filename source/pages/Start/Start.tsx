@@ -1,8 +1,9 @@
 import React from 'react';
 import LogoImage from 'assets/images/logo-s.svg';
-import { PrimaryButton, Link } from 'components/index';
+import { PrimaryButton } from 'components/index';
 import { useController, useStore, useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
+import { Link } from 'react-router-dom';
 
 export const Start = () => {
   const { navigate } = useUtils();

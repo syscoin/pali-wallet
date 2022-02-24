@@ -6,7 +6,6 @@ export * from './Header';
 export * from './Icon';
 export * from './IconButton';
 export * from './Layout';
-export * from './Link';
 export * from './Modal';
 export * from './PasswordForm';
 export * from './ToastAlert';
