@@ -1,3 +1,4 @@
 export * from './Layout';
 export * from './OnboardingLayout';
-export * from './Transaction';
+export * from './TxConfirmLayout';
+export * from './TxLayout';
