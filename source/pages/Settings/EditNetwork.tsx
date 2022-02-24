@@ -32,7 +32,7 @@ const EditNetworkView = () => {
             Click on network to edit
           </p>
 
-          <ul className="scrollbar-styled mb-3 mt-2 p-2 w-full h-80 text-sm overflow-auto">
+          <ul className="scrollbar-styled mb-3 mt-2 px-6 py-2 w-full h-80 text-sm overflow-auto">
             {Object.values(networks).map((network: any) => (
               <li
                 key={network.id}

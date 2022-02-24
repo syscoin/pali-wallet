@@ -33,7 +33,7 @@ const TrustedSitesView = () => {
 
   return (
     <AuthViewLayout title="TRUSTED WEBSITES">
-      <p className="ml-2 mt-2 text-center text-white text-sm">
+      <p className="m-4 text-center text-white text-xs">
         Check all sites included on our trusted list.
       </p>
 
@@ -64,12 +64,12 @@ const TrustedSitesView = () => {
       </Form>
 
       <div className="flex flex-col items-center justify-center w-full">
-        <ul className="scrollbar-styled my-4 p-2 w-full h-72 overflow-auto">
+        <ul className="scrollbar-styled my-4 p-4 w-full h-72 overflow-auto">
           {filteredSearch &&
             filteredSearch.map((url: string) => (
               <li
                 key={url}
-                className="my-2 p-2 w-full text-xs border-b border-dashed border-bkg-3"
+                className="my-2 py-2 w-full text-xs border-b border-dashed border-gray-500"
               >
                 <p>{formatURL(url, 40)}</p>
               </li>

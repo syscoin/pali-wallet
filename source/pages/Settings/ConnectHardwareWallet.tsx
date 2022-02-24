@@ -16,7 +16,7 @@ const ConnectHardwareWalletView: FC = () => {
     <AuthViewLayout title="HARDWARE WALLET" id="hardware-wallet-title">
       <div className="flex flex-col items-center justify-center w-full">
         <div className="scrollbar-styled px-4 h-85 text-sm overflow-auto">
-          <p className="mb-1 mt-8 mx-4 text-white text-sm">
+          <p className="mb-1 mt-8 mx-2.5 w-80 text-white text-sm">
             Select the hardware wallet you'd like to connect to Pali
           </p>
 
@@ -25,14 +25,14 @@ const ConnectHardwareWalletView: FC = () => {
               selected
                 ? 'bg-bkg-3 border-brand-deepPink'
                 : 'bg-bkg-1 border-brand-royalblue'
-            } rounded-full py-2 w-72 mx-auto text-center  border  text-sm my-6 cursor-pointer`}
+            } rounded-full py-2 w-80 mx-auto text-center  border  text-sm my-6 cursor-pointer`}
             onClick={() => setSelected(!selected)}
             id="trezor-btn"
           >
             Trezor
           </p>
 
-          <div className="mb-6 mx-2 p-4 text-brand-white text-xs bg-bkg-4 border border-dashed border-brand-royalblue rounded-lg">
+          <div className="mb-6 mx-auto p-4 w-80 text-brand-white text-xs bg-bkg-4 border border-dashed border-brand-royalblue rounded-lg">
             <p>
               <b>Don't have a hardware wallet?</b>
               <br />
@@ -54,7 +54,7 @@ const ConnectHardwareWalletView: FC = () => {
                 <Disclosure.Button
                   className={`${
                     open ? 'rounded-t-lg' : 'rounded-lg'
-                  } mt-3 w-80 py-2 px-4 flex justify-between items-center ml-2 border border-bkg-1 cursor-pointer transition-all duration-300 bg-bkg-1 learn-more-btn`}
+                  } mt-3 w-80 py-2 px-4 flex justify-between items-center mx-auto border border-bkg-1 cursor-pointer transition-all duration-300 bg-bkg-1 learn-more-btn`}
                 >
                   Learn more
                   <Icon
@@ -66,7 +66,7 @@ const ConnectHardwareWalletView: FC = () => {
                 </Disclosure.Button>
 
                 <Disclosure.Panel>
-                  <div className="flex flex-col items-start justify-start mx-2 px-4 py-2 w-80 bg-bkg-3 border border-bkg-3 rounded-b-lg cursor-pointer transition-all duration-300">
+                  <div className="flex flex-col items-start justify-start mx-auto px-4 py-2 w-80 bg-bkg-3 border border-bkg-3 rounded-b-lg cursor-pointer transition-all duration-300">
                     <p className="my-2 text-sm">
                       1 - Connect a hardware wallet
                     </p>

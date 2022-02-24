@@ -116,7 +116,7 @@ const DefaultModal = ({
               <div className="mt-4">
                 <button
                   type="button"
-                  className="inline-flex justify-center px-10 py-2 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
+                  className="inline-flex justify-center px-10 py-2 hover:text-bkg-4 text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
                   onClick={
                     goTo ? closePopup || (() => navigate(goTo)) : onClose
                   }

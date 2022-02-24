@@ -169,7 +169,9 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                               handleChangeNetwork(currentNetwork.id)
                             }
                           >
-                            <span>{currentNetwork.label}</span>
+                            <span className="text-left">
+                              {currentNetwork.label}
+                            </span>
 
                             {activeNetwork === currentNetwork.id && (
                               <Icon
