@@ -19,8 +19,9 @@ const ConnectedAccounts = () => {
   const controller = useController();
   const alert = useAlert();
 
-  const { accounts, tabs, activeAccountId }: IWalletState =
-    useSelector((state: RootState) => state.wallet);
+  const { accounts, tabs, activeAccountId }: IWalletState = useSelector(
+    (state: RootState) => state.wallet
+  );
   const [changeAccountIsOpen, setChangeAccountIsOpen] =
     useState<boolean>(false);
   const [accountId, setAccountId] = useState<number>(-1);
@@ -83,17 +84,22 @@ const ConnectedAccounts = () => {
               return (
                 <li
                   key={account.id}
-                  className={account.id === connectedAccount[0].id ? styles.disabled : styles.account}
+                  className={
+                    account.id === connectedAccount[0].id
+                      ? styles.disabled
+                      : styles.account
+                  }
                   onClick={() => handleChangeAccount(account.id)}
-                > 
+                >
                   <div className={styles.label}>
                     <p>{account.label}</p>
                     <small>{ellipsis(account.address.main)}</small>
                   </div>
                   {account.id === activeAccountId && <small>(active)</small>}
-                  {account.id === accountId && account.id !== connectedAccount[0].id && (
-                    <img src={checkGreen} alt="check" />
-                  )}
+                  {account.id === accountId &&
+                    account.id !== connectedAccount[0].id && (
+                      <img src={checkGreen} alt="check" />
+                    )}
                 </li>
               );
             })}
@@ -127,9 +133,10 @@ const ConnectedAccounts = () => {
               <br />
               {getHost(currentSenderURL)}
             </p>
-            {connectedAccount[0].isTrezorWallet ? (
+            {connectedAccount[0] && connectedAccount[0].isTrezorWallet ? (
               <small>
-                To change your connected Trezor account, you need to disconnect and connect the account you want.
+                To change your connected Trezor account, you need to disconnect
+                and connect the account you want.
               </small>
             ) : (
               <small>
@@ -160,7 +167,9 @@ const ConnectedAccounts = () => {
               type="button"
               theme="btn-outline-primary"
               variant={styles.button}
-              disabled={accounts.length === 1 || accountId === connectedAccount[0].id}
+              disabled={
+                accounts.length === 1 || accountId === connectedAccount[0].id
+              }
               onClick={() => setChangeAccountIsOpen(!changeAccountIsOpen)}
             >
               Change

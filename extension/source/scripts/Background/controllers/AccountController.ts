@@ -14,7 +14,7 @@ import {
   updateAccountXpub,
   updateSwitchNetwork,
   updateAllTokens,
-  setTimer
+  setTimer,
 } from 'state/wallet';
 
 import {
@@ -32,7 +32,7 @@ import {
   ISPTIssuePage,
   ISPTIssueWallet,
   UpdateTokenPageInfo,
-  UpdateTokenWalletInfo
+  UpdateTokenWalletInfo,
 } from '../../types';
 import CryptoJS from 'crypto-js';
 // import axios from 'axios';
@@ -95,7 +95,9 @@ const AccountController = (actions: {
 
   const updateTransactionData = (item: string, txinfo: any) => {
     const transactionItem = store.getState().wallet[item];
-    const transactions = transactionItem ? getConnectedAccount().transactions : account.transactions;
+    const transactions = transactionItem
+      ? getConnectedAccount().transactions
+      : account.transactions;
 
     store.dispatch(
       updateTransactions({
@@ -119,14 +121,18 @@ const AccountController = (actions: {
 
   const countDecimals = (x: number) => {
     if (Math.floor(x) === x) return 0;
-    return x.toString().split(".")[1].length || 0;
-  }
+    return x.toString().split('.')[1].length || 0;
+  };
 
   const getSysExplorerSearch = () => {
     return sysjs.blockbookURL;
   };
 
-  const updateAccountLabel = (id: number, label: string, isHardwareWallet?: boolean) => {
+  const updateAccountLabel = (
+    id: number,
+    label: string,
+    isHardwareWallet?: boolean
+  ) => {
     if (isHardwareWallet) {
       return;
     }
@@ -137,11 +143,11 @@ const AccountController = (actions: {
   const isNFT = (guid: number) => {
     const assetGuid = BigInt.asUintN(64, BigInt(guid));
 
-    return (assetGuid >> BigInt(32)) > 0;
+    return assetGuid >> BigInt(32) > 0;
   };
 
   const getRecommendFee = async () => {
-    return await sys.utils.fetchEstimateFee(sysjs.blockbookURL, 1) / 10 ** 8;
+    return (await sys.utils.fetchEstimateFee(sysjs.blockbookURL, 1)) / 10 ** 8;
   };
 
   const updateTxs = () => {
@@ -159,10 +165,10 @@ const AccountController = (actions: {
         break;
       case 'currentPSBT':
         currentPSBT = null;
-        break
+        break;
       case 'currentPsbtToSign':
         currentPsbtToSign = null;
-        break
+        break;
       case 'newSPT':
         newSPT = null;
         break;
@@ -182,7 +188,7 @@ const AccountController = (actions: {
         tempTx = null;
         break;
     }
-  }
+  };
 
   const updateTempTx = (tx: ITransactionInfo) => {
     tempTx = { ...tx };
@@ -201,19 +207,19 @@ const AccountController = (actions: {
     );
 
     return true;
-  }
+  };
 
   const setNewXpub = (id: number, xpub: string, xprv: string, key: string) => {
     store.dispatch(
       updateAccountXpub({
         id,
         xpub,
-        xprv: CryptoJS.AES.encrypt(xprv, String(key)).toString()
+        xprv: CryptoJS.AES.encrypt(xprv, String(key)).toString(),
       })
     );
 
     return true;
-  }
+  };
 
   const getPrimaryAccount = (pwd: string, sjs: any) => {
     const { accounts, activeAccountId }: IWalletState = store.getState().wallet;
@@ -227,7 +233,10 @@ const AccountController = (actions: {
     getLatestUpdate();
 
     if (!account && accounts) {
-      account = accounts.find((account: IAccountState) => account.id === activeAccountId) || accounts[activeAccountId];
+      account =
+        accounts.find(
+          (account: IAccountState) => account.id === activeAccountId
+        ) || accounts[activeAccountId];
 
       store.dispatch(updateStatus());
     }
@@ -243,7 +252,9 @@ const AccountController = (actions: {
 
       const { accounts }: IWalletState = store.getState().wallet;
 
-      const activeAccount = accounts.find((account: IAccountState) => account.id === currentAccount.id);
+      const activeAccount = accounts.find(
+        (account: IAccountState) => account.id === currentAccount.id
+      );
 
       if (
         !activeAccount ||
@@ -271,20 +282,32 @@ const AccountController = (actions: {
       mintSPT: mintSPT || null,
       mintNFT: mintNFT || null,
       updateAssetItem: updateAssetItem || null,
-      transferOwnershipData: transferOwnershipData || null
+      transferOwnershipData: transferOwnershipData || null,
     };
   };
 
   const getTransactionData = async (txid: string) => {
     return await getTransactionInfoByTxId(txid);
-  }
+  };
 
-  const fetchBackendConnectedAccount = async (connectedAccount: IAccountState) => {
-    if (connectedAccount.isTrezorWallet) {
-      return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=nonzero&details=txs', true);
+  const fetchBackendConnectedAccount = async (
+    connectedAccount: IAccountState
+  ) => {
+    if (connectedAccount && connectedAccount.isTrezorWallet) {
+      return await sys.utils.fetchBackendAccount(
+        sysjs.blockbookURL,
+        account.xpub,
+        'tokens=nonzero&details=txs',
+        true
+      );
     }
 
-    return await sys.utils.fetchBackendAccount(sysjs.blockbookURL, connectedAccount.xpub, 'details=txs&assetMask=non-token-transfers', true);
+    return await sys.utils.fetchBackendAccount(
+      sysjs.blockbookURL,
+      connectedAccount.xpub,
+      'details=txs&assetMask=non-token-transfers',
+      true
+    );
   };
 
   const getChangeAddress = async () => {
@@ -295,20 +318,20 @@ const AccountController = (actions: {
       return await 'Error: wallet is locked, ask client to unlock it to get change address';
     }
 
-    if (connectedAccount.isTrezorWallet) {
+    if (connectedAccount && connectedAccount.isTrezorWallet) {
       let addr: string = 'Error: Failed to fetch trezor change address';
 
       const inter = await getNewChangeAddress(true);
 
       if (inter !== null) {
-        addr = inter
+        addr = inter;
       }
 
       return addr;
     }
 
     return await sysjs.Signer.getNewChangeAddress(true);
-  }
+  };
 
   const sortList = (list: any) => {
     return list.sort((a: any, b: any) => {
@@ -317,8 +340,8 @@ const AccountController = (actions: {
 
       //@ts-ignore
       return (previous > next) - (previous < next);
-    })
-  }
+    });
+  };
 
   const updateTokensState = async () => {
     if (!sysjs) {
@@ -327,130 +350,158 @@ const AccountController = (actions: {
 
     const { accounts }: IWalletState = store.getState().wallet;
 
-    return await Promise.all(accounts.map(async (account: IAccountState) => {
-      const assetsData: any = {};
+    return await Promise.all(
+      accounts.map(async (account: IAccountState) => {
+        const assetsData: any = {};
 
-      const { tokensAsset } = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, 'tokens=derived&details=txs', true);
-      const { transactions } = await fetchBackendConnectedAccount(account);
+        const { tokensAsset } = await sys.utils.fetchBackendAccount(
+          sysjs.blockbookURL,
+          account.xpub,
+          'tokens=derived&details=txs',
+          true
+        );
+        const { transactions } = await fetchBackendConnectedAccount(account);
 
-      let tokensMap: any = {};
-      let mintedTokens: any = {};
+        let tokensMap: any = {};
+        let mintedTokens: any = {};
 
-      if (!tokensAsset) {
-        store.dispatch(updateAllTokens({
-          accountId: account.id,
-          accountXpub: account.xpub,
-          tokens: tokensMap,
-          holdings: sortList(Object.values(assetsData)),
-          mintedTokens: sortList(Object.values(mintedTokens)),
-        }));
+        if (!tokensAsset) {
+          store.dispatch(
+            updateAllTokens({
+              accountId: account.id,
+              accountXpub: account.xpub,
+              tokens: tokensMap,
+              holdings: sortList(Object.values(assetsData)),
+              mintedTokens: sortList(Object.values(mintedTokens)),
+            })
+          );
 
-        return;
-      }
-
-      await new Promise((resolve) => {
-        each(tokensAsset, function ({ balance, symbol, assetGuid, decimals, type }: any, done: any) {
-          tokensMap[assetGuid] = {
-            balance: Number(tokensMap[assetGuid] ? tokensMap[assetGuid].balance : 0) + Number(balance),
-            type,
-            decimals,
-            symbol: symbol ? atob(String(symbol)) : '',
-            assetGuid
-          };
-
-
-          done();
-        }, function () {
-          resolve('ok');
-        });
-      });
-
-      try {
-        if (transactions) {
-          await new Promise((resolve) => {
-            each(transactions, function ({ tokenType, tokenTransfers }: any, done: any) {
-              if (tokenType === 'SPTAssetActivate') {
-                for (const token of tokenTransfers) {
-                  try {
-                    getDataAsset(token.token).then((assetData: any) => {
-                      mintedTokens[token.token] = {
-                        assetGuid: token.token,
-                        symbol: token.symbol ? atob(String(token.symbol)) : '',
-                        maxSupply: Number(assetData.maxSupply),
-                        totalSupply: Number(assetData.totalSupply)
-                      }
-                    });
-                  } catch (error) {
-                    console.log(error);
-                  }
-                }
-              }
-
-              done();
-            }, function () {
-              resolve('ok');
-            });
-          })
+          return;
         }
 
-        await Promise.all(Object.values(tokensMap).map(async (value) => {
-          try {
-            const {
-              balance,
-              type,
-              decimals,
-              symbol,
-              assetGuid
-            }: any = value;
+        await new Promise((resolve) => {
+          each(
+            tokensAsset,
+            function (
+              { balance, symbol, assetGuid, decimals, type }: any,
+              done: any
+            ) {
+              tokensMap[assetGuid] = {
+                balance:
+                  Number(
+                    tokensMap[assetGuid] ? tokensMap[assetGuid].balance : 0
+                  ) + Number(balance),
+                type,
+                decimals,
+                symbol: symbol ? atob(String(symbol)) : '',
+                assetGuid,
+              };
 
-            const { pubData } = await getDataAsset(assetGuid);
-
-            const { baseAssetID, NFTID } = sys.utils.getAssetIDs(assetGuid);
-
-            const assetData = {
-              balance,
-              type,
-              decimals,
-              symbol,
-              assetGuid,
-              baseAssetID,
-              childAssetID: isNFT(assetGuid) ? sys.utils.createAssetID(NFTID, assetGuid) : null,
-              NFTID,
-              description: pubData && pubData.desc ? atob(pubData.desc) : ''
+              done();
+            },
+            function () {
+              resolve('ok');
             }
+          );
+        });
 
-            assetsData[assetData.assetGuid] = assetData;
+        try {
+          if (transactions) {
+            await new Promise((resolve) => {
+              each(
+                transactions,
+                function ({ tokenType, tokenTransfers }: any, done: any) {
+                  if (tokenType === 'SPTAssetActivate') {
+                    for (const token of tokenTransfers) {
+                      try {
+                        getDataAsset(token.token).then((assetData: any) => {
+                          mintedTokens[token.token] = {
+                            assetGuid: token.token,
+                            symbol: token.symbol
+                              ? atob(String(token.symbol))
+                              : '',
+                            maxSupply: Number(assetData.maxSupply),
+                            totalSupply: Number(assetData.totalSupply),
+                          };
+                        });
+                      } catch (error) {
+                        console.log(error);
+                      }
+                    }
+                  }
 
-            return;
-          } catch (error) {
-            console.log('error minted tokens', error)
+                  done();
+                },
+                function () {
+                  resolve('ok');
+                }
+              );
+            });
           }
-        }));
 
-        store.dispatch(updateAllTokens({
-          accountId: account.id,
-          accountXpub: account.xpub,
-          tokens: tokensMap,
-          holdings: sortList(Object.values(assetsData)),
-          mintedTokens: sortList(Object.values(mintedTokens)),
-        }));
+          await Promise.all(
+            Object.values(tokensMap).map(async (value) => {
+              try {
+                const { balance, type, decimals, symbol, assetGuid }: any =
+                  value;
+
+                const { pubData } = await getDataAsset(assetGuid);
+
+                const { baseAssetID, NFTID } = sys.utils.getAssetIDs(assetGuid);
+
+                const assetData = {
+                  balance,
+                  type,
+                  decimals,
+                  symbol,
+                  assetGuid,
+                  baseAssetID,
+                  childAssetID: isNFT(assetGuid)
+                    ? sys.utils.createAssetID(NFTID, assetGuid)
+                    : null,
+                  NFTID,
+                  description:
+                    pubData && pubData.desc ? atob(pubData.desc) : '',
+                };
+
+                assetsData[assetData.assetGuid] = assetData;
+
+                return;
+              } catch (error) {
+                console.log('error minted tokens', error);
+              }
+            })
+          );
+
+          store.dispatch(
+            updateAllTokens({
+              accountId: account.id,
+              accountXpub: account.xpub,
+              tokens: tokensMap,
+              holdings: sortList(Object.values(assetsData)),
+              mintedTokens: sortList(Object.values(mintedTokens)),
+            })
+          );
+
+          return;
+        } catch (error) {
+          console.log(error);
+        }
 
         return;
-      } catch (error) {
-        console.log(error)
-      }
-
-      return;
-    }));
-  }
+      })
+    );
+  };
 
   const getHoldingsData = async () => {
     const { walletTokens }: IWalletState = store.getState().wallet;
 
     if (walletTokens) {
-      const connectedAccountId = walletTokens.findIndex((accountTokens: any) => {
-        return accountTokens.accountId === getConnectedAccount().id;
-      });
+      const connectedAccountId = walletTokens.findIndex(
+        (accountTokens: any) => {
+          return accountTokens.accountId === getConnectedAccount().id;
+        }
+      );
 
       if (connectedAccountId > -1) {
         return walletTokens[connectedAccountId].holdings;
@@ -464,9 +515,11 @@ const AccountController = (actions: {
     const { walletTokens }: IWalletState = store.getState().wallet;
 
     if (walletTokens) {
-      const connectedAccountId = walletTokens.findIndex((accountTokens: any) => {
-        return accountTokens.accountId === getConnectedAccount().id;
-      });
+      const connectedAccountId = walletTokens.findIndex(
+        (accountTokens: any) => {
+          return accountTokens.accountId === getConnectedAccount().id;
+        }
+      );
 
       if (connectedAccountId > -1) {
         return walletTokens[connectedAccountId].mintedTokens;
@@ -477,20 +530,21 @@ const AccountController = (actions: {
   };
 
   const getConnectedAccountXpub = () => {
-
     if (getConnectedAccount() === undefined) {
       return null;
-    }
-    else {
+    } else {
       return getConnectedAccount().xpub;
     }
-  }
+  };
 
   const signTransaction = async (jsonData: any, sendPSBT: boolean) => {
-    const base64 = /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
+    const base64 =
+      /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
 
     if (!base64.test(jsonData.psbt) || typeof jsonData.assets !== 'string') {
-      throw new Error(`PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.`);
+      throw new Error(
+        `PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.`
+      );
     }
 
     try {
@@ -502,19 +556,30 @@ const AccountController = (actions: {
         new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
       }
 
+      const isTrezorWallet =
+        getConnectedAccount() && getConnectedAccount().isTrezorWallet;
+
       if (sendPSBT) {
-        if (getConnectedAccount().isTrezorWallet) {
-          return sys.utils.exportPsbtToJson(await TrezorSigner.sign(response.psbt));
+        if (isTrezorWallet) {
+          return sys.utils.exportPsbtToJson(
+            await TrezorSigner.sign(response.psbt)
+          );
         }
 
-        return sys.utils.exportPsbtToJson(await sysjs.Signer.sign(response.psbt));
+        return sys.utils.exportPsbtToJson(
+          await sysjs.Signer.sign(response.psbt)
+        );
       }
 
-      if (getConnectedAccount().isTrezorWallet) {
-        return sys.utils.exportPsbtToJson(await sysjs.signAndSend(response.psbt, response.assets, TrezorSigner));
+      if (isTrezorWallet) {
+        return sys.utils.exportPsbtToJson(
+          await sysjs.signAndSend(response.psbt, response.assets, TrezorSigner)
+        );
       }
 
-      return sys.utils.exportPsbtToJson(await sysjs.signAndSend(response.psbt, response.assets));
+      return sys.utils.exportPsbtToJson(
+        await sysjs.signAndSend(response.psbt, response.assets)
+      );
     } catch (error) {
       throw new Error(String(error));
     }
@@ -526,49 +591,61 @@ const AccountController = (actions: {
     } catch (error) {
       return psbt;
     }
-  }
+  };
 
   const confirmSignature = (sendPSBT: boolean) => {
     return new Promise((resolve, reject) => {
       const item = sendPSBT ? currentPsbtToSign : currentPSBT;
-      handleTransactions(item, signTransaction, sendPSBT).then((response) => {
-        resolve(response);
+      handleTransactions(item, signTransaction, sendPSBT)
+        .then((response) => {
+          resolve(response);
 
-        currentPSBT = null;
-      }).catch((error) => {
-        reject(error);
-      });
+          currentPSBT = null;
+        })
+        .catch((error) => {
+          reject(error);
+        });
     });
-  }
+  };
 
   const setCurrentPSBT = (psbt: any) => {
     currentPSBT = psbt;
 
     return;
-  }
+  };
 
   const setCurrentPsbtToSign = (psbtToSign: any) => {
     currentPsbtToSign = psbtToSign;
 
     return;
-  }
+  };
 
   const getNewChangeAddress = async (fromConnectionsController: boolean) => {
     let userAccount: IAccountState;
     if (fromConnectionsController) {
       userAccount = getConnectedAccount();
-    }
-    else {
-      const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
-      userAccount = accounts.find((account: IAccountState) => account.id === activeAccountId) as IAccountState;
-
+    } else {
+      const { activeAccountId, accounts }: IWalletState =
+        store.getState().wallet;
+      userAccount = accounts.find(
+        (account: IAccountState) => account.id === activeAccountId
+      ) as IAccountState;
     }
     let address = '';
 
-    if (userAccount!.isTrezorWallet) {
-      const response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, userAccount.xpub, 'tokens=nonzero&details=txs', true);
+    if (userAccount && userAccount.isTrezorWallet) {
+      const response = await sys.utils.fetchBackendAccount(
+        sysjs.blockbookURL,
+        userAccount.xpub,
+        'tokens=nonzero&details=txs',
+        true
+      );
 
-      const TrezorAccount = new fromZPub(userAccount.xpub, sysjs.Signer.Signer.pubtypes, sysjs.Signer.Signer.networks);
+      const TrezorAccount = new fromZPub(
+        userAccount.xpub,
+        sysjs.Signer.Signer.pubtypes,
+        sysjs.Signer.Signer.networks
+      );
       let receivingIndex = -1;
       let changeIndex = -1;
 
@@ -601,16 +678,25 @@ const AccountController = (actions: {
     }
 
     return null;
-  }
+  };
 
   const fetchAccountInfo = async (isHardwareWallet?: boolean, xpub?: any) => {
     let response: any = null;
     let address: any = null;
 
     if (isHardwareWallet) {
-      response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, xpub, 'tokens=nonzero&details=txs', true);
+      response = await sys.utils.fetchBackendAccount(
+        sysjs.blockbookURL,
+        xpub,
+        'tokens=nonzero&details=txs',
+        true
+      );
 
-      const account0: any = new fromZPub(xpub, sysjs.Signer.Signer.pubtypes, sysjs.Signer.Signer.networks);
+      const account0: any = new fromZPub(
+        xpub,
+        sysjs.Signer.Signer.pubtypes,
+        sysjs.Signer.Signer.networks
+      );
       let receivingIndex = -1;
 
       if (response.tokens) {
@@ -638,65 +724,80 @@ const AccountController = (actions: {
 
       return {
         address,
-        response
+        response,
       };
     }
 
-    response = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, sysjs.Signer.getAccountXpub(), 'tokens=nonzero&details=txs', true);
+    response = await sys.utils.fetchBackendAccount(
+      sysjs.blockbookURL,
+      sysjs.Signer.getAccountXpub(),
+      'tokens=nonzero&details=txs',
+      true
+    );
 
     return {
       address,
-      response
+      response,
     };
-  }
+  };
 
-  const getAccountInfo = async (isHardwareWallet?: boolean, xpub?: any): Promise<IAccountInfo> => {
-    const { address, response } = await fetchAccountInfo(isHardwareWallet, xpub);
+  const getAccountInfo = async (
+    isHardwareWallet?: boolean,
+    xpub?: any
+  ): Promise<IAccountInfo> => {
+    const { address, response } = await fetchAccountInfo(
+      isHardwareWallet,
+      xpub
+    );
 
     const balance = response.balance / 1e8;
     const assets: Assets[] = [];
     let transactions: Transaction[] = [];
 
     if (response.transactions) {
-      transactions = response.transactions.map(({
-        txid,
-        value,
-        confirmations,
-        fees,
-        blockTime,
-        tokenType
-      }: Transaction
-      ) => {
-        return <Transaction>
-          {
+      transactions = response.transactions
+        .map(
+          ({
             txid,
             value,
             confirmations,
             fees,
             blockTime,
             tokenType,
+          }: Transaction) => {
+            return <Transaction>{
+              txid,
+              value,
+              confirmations,
+              fees,
+              blockTime,
+              tokenType,
+            };
           }
-      }).slice(0, 10);
+        )
+        .slice(0, 10);
     }
 
     if (response.tokensAsset) {
-      const transform = response.tokensAsset.reduce((response: any, {
-        type,
-        assetGuid,
-        symbol,
-        balance,
-        decimals
-      }: any) => {
-        response[assetGuid] = <Assets>{
-          type,
-          assetGuid,
-          symbol: symbol ? atob(String(symbol)) : '',
-          balance: (response[assetGuid] ? response[assetGuid].balance : 0) + Number(balance),
-          decimals,
-        };
+      const transform = response.tokensAsset.reduce(
+        (
+          response: any,
+          { type, assetGuid, symbol, balance, decimals }: any
+        ) => {
+          response[assetGuid] = <Assets>{
+            type,
+            assetGuid,
+            symbol: symbol ? atob(String(symbol)) : '',
+            balance:
+              (response[assetGuid] ? response[assetGuid].balance : 0) +
+              Number(balance),
+            decimals,
+          };
 
-        return response;
-      }, {});
+          return response;
+        },
+        {}
+      );
 
       for (const key in transform) {
         assets.push(transform[key]);
@@ -708,41 +809,57 @@ const AccountController = (actions: {
         balance,
         assets,
         transactions,
-        address
+        address,
       };
     }
 
     return {
       balance,
       assets,
-      transactions
+      transactions,
     };
   };
 
-  const subscribeAccount = async (encriptedPassword: any, isHardwareWallet = false, sjs?: any, label?: string, walletCreation?: boolean) => {
+  const subscribeAccount = async (
+    encriptedPassword: any,
+    isHardwareWallet = false,
+    sjs?: any,
+    label?: string,
+    walletCreation?: boolean
+  ) => {
     if (isHardwareWallet) {
       if (TrezorSigner === null || TrezorSigner === undefined) {
-        TrezorSigner = sjs
+        TrezorSigner = sjs;
         new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
       }
       const { accounts }: IWalletState = store.getState().wallet;
-      const trezorID: number = accounts.reduce((trezorID: number, account: IAccountState) => (account.trezorId) ? trezorID = trezorID > account.trezorId ? trezorID : account.trezorId : trezorID, 0);
+      const trezorID: number = accounts.reduce(
+        (trezorID: number, account: IAccountState) =>
+          account.trezorId
+            ? (trezorID =
+                trezorID > account.trezorId ? trezorID : account.trezorId)
+            : trezorID,
+        0
+      );
 
-      const trezorinfo: IAccountInfo | null = await getAccountInfo(isHardwareWallet, sjs.getAccountXpub());
+      const trezorinfo: IAccountInfo | null = await getAccountInfo(
+        isHardwareWallet,
+        sjs.getAccountXpub()
+      );
 
       if (trezorinfo.address) {
         account = {
           id: 9999 + trezorID,
           label: `Trezor ${trezorID + 1}`,
-          balance: trezorinfo.balance / (10 ** 8),
+          balance: trezorinfo.balance / 10 ** 8,
           transactions: trezorinfo.transactions,
           xpub: sjs.getAccountXpub(),
           xprv: '',
-          address: { 'main': trezorinfo.address },
+          address: { main: trezorinfo.address },
           assets: trezorinfo.assets,
           connectedTo: [],
           isTrezorWallet: true,
-          trezorId: trezorID + 1
+          trezorId: trezorID + 1,
         };
 
         store.dispatch(createAccount(account));
@@ -768,27 +885,35 @@ const AccountController = (actions: {
     try {
       mainAddress = await sysjs.Signer.getNewReceivingAddress(true);
 
-      console.log('sysjs signer', sysjs.Signer.Signer.blockbookURL)
-      console.log('sysjs signer', sysjs.Signer)
+      console.log('sysjs signer', sysjs.Signer.Signer.blockbookURL);
+      console.log('sysjs signer', sysjs.Signer);
 
-      console.log('main address get new receiving address', mainAddress)
+      console.log('main address get new receiving address', mainAddress);
     } catch (error: any) {
-      console.log('error getting receiving address from sys', error)
+      console.log('error getting receiving address from sys', error);
 
       throw new Error(error);
     }
 
     account = {
-      id: sysjs.Signer.Signer.accountIndex === 0 ? 0 : sysjs.Signer.Signer.accountIndex,
+      id:
+        sysjs.Signer.Signer.accountIndex === 0
+          ? 0
+          : sysjs.Signer.Signer.accountIndex,
       label: label || `Account ${sysjs.Signer.Signer.accountIndex + 1}`,
       balance: res.balance,
       transactions: res.transactions,
       xpub: sysjs.Signer.getAccountXpub(),
-      xprv: CryptoJS.AES.encrypt(sysjs.Signer.Signer.accounts[sysjs.Signer.Signer.accountIndex].getAccountPrivateKey(), encriptedPassword).toString(),
-      address: { 'main': mainAddress },
+      xprv: CryptoJS.AES.encrypt(
+        sysjs.Signer.Signer.accounts[
+          sysjs.Signer.Signer.accountIndex
+        ].getAccountPrivateKey(),
+        encriptedPassword
+      ).toString(),
+      address: { main: mainAddress },
       assets: res.assets,
       connectedTo: [],
-      isTrezorWallet: false
+      isTrezorWallet: false,
     };
 
     store.dispatch(createAccount(account));
@@ -799,13 +924,17 @@ const AccountController = (actions: {
   const getLatestUpdate = async () => {
     const { activeAccountId, accounts }: IWalletState = store.getState().wallet;
 
-    if (!accounts.find((account: IAccountState) => account.id === activeAccountId)) {
+    if (
+      !accounts.find((account: IAccountState) => account.id === activeAccountId)
+    ) {
       return;
     }
 
-    account = accounts.find((account: IAccountState) => account.id === activeAccountId)!;
+    account = accounts.find(
+      (account: IAccountState) => account.id === activeAccountId
+    )!;
 
-    if (!account.isTrezorWallet) {
+    if (account && !account.isTrezorWallet) {
       sysjs.Signer.setAccountIndex(activeAccountId);
 
       const accLatestInfo = await getAccountInfo();
@@ -819,11 +948,11 @@ const AccountController = (actions: {
           id: activeAccountId,
           balance,
           transactions,
-          assets
+          assets,
         })
       );
 
-      store.dispatch(updateSwitchNetwork(false))
+      store.dispatch(updateSwitchNetwork(false));
 
       return;
     }
@@ -839,14 +968,18 @@ const AccountController = (actions: {
         id: activeAccountId,
         balance,
         transactions,
-        assets
+        assets,
       })
     );
 
-    store.dispatch(updateSwitchNetwork(false))
+    store.dispatch(updateSwitchNetwork(false));
   };
 
-  const isValidSYSAddress = (address: string, network: string, verification: boolean = true) => {
+  const isValidSYSAddress = (
+    address: string,
+    network: string,
+    verification: boolean = true
+  ) => {
     if (!verification) {
       return true;
     }
@@ -887,104 +1020,109 @@ const AccountController = (actions: {
       dataFromPageToUpdateAsset: dataFromPageToUpdateAsset || null,
       dataFromWalletToUpdateAsset: dataFromWalletToUpdateAsset || null,
       dataFromPageToTransferOwnership: dataFromPageToTransferOwnership || null,
-      dataFromWalletToTransferOwnership: dataFromWalletToTransferOwnership || null
-    }
-  }
+      dataFromWalletToTransferOwnership:
+        dataFromWalletToTransferOwnership || null,
+    };
+  };
 
   const setDataFromPageToIssueNFT = (data: any) => {
     dataFromPageToIssueNFT = data;
-  }
+  };
 
   const setDataFromWalletToIssueNFT = (data: any) => {
     dataFromWalletToIssueNFT = data;
-  }
+  };
 
   const setDataFromPageToCreateNewSPT = (data: ISPTPageInfo) => {
     dataFromPageToCreateSPT = data;
-  }
+  };
 
   const setDataFromWalletToCreateSPT = (data: ISPTWalletInfo) => {
     dataFromWalletToCreateSPT = data;
-  }
+  };
 
   const setDataFromPageToMintSPT = (data: ISPTIssuePage) => {
     dataFromPageToMintSPT = data;
-  }
+  };
 
   const setDataFromWalletToMintSPT = (data: ISPTIssueWallet) => {
     dataFromWalletToMintSPT = data;
-  }
+  };
 
   const setDataFromPageToMintNFT = (data: INFTPageInfo) => {
     dataFromPageToMintNFT = data;
-  }
+  };
 
   const setDataFromWalletToMintNFT = (data: INFTWalletInfo) => {
     dataFromWalletToMintNFT = data;
-  }
+  };
 
   const setDataFromPageToUpdateAsset = (data: UpdateTokenPageInfo) => {
     dataFromPageToUpdateAsset = data;
-  }
+  };
 
   const setDataFromWalletToUpdateAsset = (data: UpdateTokenWalletInfo) => {
     dataFromWalletToUpdateAsset = data;
-  }
+  };
 
   const setDataFromPageToTransferOwnership = (data: any) => {
     dataFromPageToTransferOwnership = data;
-  }
+  };
 
   const setDataFromWalletToTransferOwnership = (data: any) => {
     dataFromWalletToTransferOwnership = data;
-  }
+  };
 
   const createSPT = (spt: ISPTInfo) => {
     newSPT = spt;
 
     return true;
-  }
+  };
 
   const setNewIssueNFT = (nft: any) => {
     issueNFTItem = nft;
 
     return true;
-  }
+  };
 
   const issueSPT = (spt: ISPTIssue) => {
     mintSPT = spt;
 
     return true;
-  }
+  };
 
   const issueNFT = (nft: INFTIssue) => {
     mintNFT = nft;
 
     return true;
-  }
+  };
   const setUpdateAsset = (asset: any) => {
     updateAssetItem = asset;
 
     return true;
-  }
+  };
 
   const setNewOwnership = (asset: any) => {
     transferOwnershipData = asset;
 
     return true;
-  }
+  };
 
-  const handleTransactions = async (item: any, executeTransaction: any, condition?: boolean) => {
+  const handleTransactions = async (
+    item: any,
+    executeTransaction: any,
+    condition?: boolean
+  ) => {
     if (!sysjs) {
       throw new Error('Error: No signed account exists');
     }
 
     if (!account) {
-      throw new Error('Error: Can\'t find active account info');
+      throw new Error("Error: Can't find active account info");
     }
 
     if (!item) {
-      throw new Error('Error: Can\'t find item info');
+      throw new Error("Error: Can't find item info");
     }
 
     return new Promise((resolve: any, reject: any) => {
@@ -1011,10 +1149,10 @@ const AccountController = (actions: {
       fee,
       notaryAddress,
       payoutAddress,
-      receiver
+      receiver,
     } = item;
 
-    const newMaxSupply = maxsupply * (10 ** precision);
+    const newMaxSupply = maxsupply * 10 ** precision;
 
     let _assetOpts = {
       precision,
@@ -1024,36 +1162,38 @@ const AccountController = (actions: {
       updatecapabilityflags: capabilityflags ? String(capabilityflags) : '127',
       notarydetails,
       auxfeedetails,
-      notarykeyid: Buffer.from('', 'hex')
+      notarykeyid: Buffer.from('', 'hex'),
     };
 
     if (notaryAddress) {
       const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
         address: notaryAddress,
-        network: sysjs.Signer.Signer.network
+        network: sysjs.Signer.Signer.network,
       });
 
       _assetOpts = {
         ..._assetOpts,
         notarydetails: {
           ...notarydetails,
-          endpoint: Buffer.from(syscointx.utils.encodeToBase64(notarydetails.endpoint))
+          endpoint: Buffer.from(
+            syscointx.utils.encodeToBase64(notarydetails.endpoint)
+          ),
         },
-        notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
-      }
+        notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex'),
+      };
     }
 
     if (notarydetails) {
       _assetOpts = {
         ..._assetOpts,
-        notarydetails
-      }
+        notarydetails,
+      };
     }
 
     if (payoutAddress) {
       const payment = sys.utils.bitcoinjs.payments.p2wpkh({
         address: payoutAddress,
-        network: sysjs.Signer.Signer.network
+        network: sysjs.Signer.Signer.network,
       });
 
       const auxFeeKeyID = Buffer.from(payment.hash.toString('hex'), 'hex');
@@ -1062,27 +1202,33 @@ const AccountController = (actions: {
         ..._assetOpts,
         auxfeedetails: {
           ..._assetOpts.auxfeedetails,
-          auxfeekeyid: auxFeeKeyID
-        }
-      }
+          auxfeekeyid: auxFeeKeyID,
+        },
+      };
     }
 
     if (auxfeedetails) {
       _assetOpts = {
         ..._assetOpts,
-        auxfeedetails
-      }
+        auxfeedetails,
+      };
     }
 
     const txOpts = { rbf: true };
 
-    if (getConnectedAccount().isTrezorWallet) {
-      throw new Error('Trezor don\'t support burning of coins');
+    if (getConnectedAccount() && getConnectedAccount().isTrezorWallet) {
+      throw new Error("Trezor don't support burning of coins");
     }
 
     sysjs.Signer.setAccountIndex(getConnectedAccount().id);
 
-    const pendingTx = await sysjs.assetNew(_assetOpts, txOpts, await sysjs.Signer.getNewChangeAddress(true), receiver, new sys.utils.BN(fee * 1e8));
+    const pendingTx = await sysjs.assetNew(
+      _assetOpts,
+      txOpts,
+      await sysjs.Signer.getNewChangeAddress(true),
+      receiver,
+      new sys.utils.BN(fee * 1e8)
+    );
 
     const txInfoNew = pendingTx.extractTransaction().getId();
 
@@ -1101,24 +1247,40 @@ const AccountController = (actions: {
             const sptCreated = await getTransactionInfoByTxId(txInfoNew);
 
             if (sptCreated?.confirmations > 1) {
-              console.log('confirmations > 1', createdAsset)
-              const changeaddress = await sysjs.Signer.getNewChangeAddress(true);
+              console.log('confirmations > 1', createdAsset);
+              const changeaddress = await sysjs.Signer.getNewChangeAddress(
+                true
+              );
 
               try {
                 const assetMap = new Map([
-                  [String(createdAsset), {
-                    changeAddress: changeaddress,
-                    outputs: [{
-                      value: new sys.utils.BN(initialSupply * (10 ** precision)),
-                      address: receiver
-                    }]
-                  }]
+                  [
+                    String(createdAsset),
+                    {
+                      changeAddress: changeaddress,
+                      outputs: [
+                        {
+                          value: new sys.utils.BN(
+                            initialSupply * 10 ** precision
+                          ),
+                          address: receiver,
+                        },
+                      ],
+                    },
+                  ],
                 ]);
 
-                const pendingTx = await sysjs.assetSend(txOpts, assetMap, receiver, new sys.utils.BN(fee * 1e8));
+                const pendingTx = await sysjs.assetSend(
+                  txOpts,
+                  assetMap,
+                  receiver,
+                  new sys.utils.BN(fee * 1e8)
+                );
 
                 if (!pendingTx) {
-                  console.log('Could not create transaction, not enough funds?');
+                  console.log(
+                    'Could not create transaction, not enough funds?'
+                  );
 
                   return;
                 }
@@ -1157,34 +1319,32 @@ const AccountController = (actions: {
       txid: txInfoNew,
       txConfirmations: transactionData.confirmations,
       txAssetGuid: createdAsset,
-    }
+    };
   };
 
   const confirmNewSPT = () => {
     return new Promise((resolve, reject) => {
-      handleTransactions(newSPT, confirmSPTCreation).then((response) => {
-        resolve(response);
-      }).catch((error) => {
-        reject(error);
-      });
+      handleTransactions(newSPT, confirmSPTCreation)
+        .then((response) => {
+          resolve(response);
+        })
+        .catch((error) => {
+          reject(error);
+        });
 
       newSPT = null;
     });
   };
 
   const confirmMintSPT = async (item: any) => {
-    const {
-      fee,
-      assetGuid,
-      amount
-    } = item;
+    const { fee, assetGuid, amount } = item;
 
     const feeRate = new sys.utils.BN(fee * 1e8);
     const txOpts = { rbf: true };
 
     let txInfo;
 
-    if (!getConnectedAccount().isTrezorWallet) {
+    if (getConnectedAccount() && !getConnectedAccount().isTrezorWallet) {
       sysjs.Signer.setAccountIndex(getConnectedAccount().id);
     }
 
@@ -1192,27 +1352,38 @@ const AccountController = (actions: {
     const receivingAddress = await sysjs.Signer.getNewReceivingAddress(true);
 
     const assetMap = new Map([
-      [assetGuid, {
-        changeAddress: null,
-        outputs: [{
-          value: new sys.utils.BN(amount * (10 ** decimals)),
-          address: receivingAddress
-        }]
-      }]
+      [
+        assetGuid,
+        {
+          changeAddress: null,
+          outputs: [
+            {
+              value: new sys.utils.BN(amount * 10 ** decimals),
+              address: receivingAddress,
+            },
+          ],
+        },
+      ],
     ]);
 
     let sysChangeAddress = null;
 
-    if (getConnectedAccount().isTrezorWallet) {
+    if (getConnectedAccount() && getConnectedAccount().isTrezorWallet) {
       sysChangeAddress = await getNewChangeAddress(true);
 
       // @ts-ignore
       assetMap.get(assetGuid)!.changeAddress = sysChangeAddress;
 
-      const txData = await sysjs.assetSend(txOpts, assetMap, sysChangeAddress, feeRate, account.xpub);
+      const txData = await sysjs.assetSend(
+        txOpts,
+        assetMap,
+        sysChangeAddress,
+        feeRate,
+        account.xpub
+      );
 
       if (!txData) {
-        console.log('Could not create transaction, not enough funds?')
+        console.log('Could not create transaction, not enough funds?');
         //TODO: add error and show on the UI for user
         return;
       }
@@ -1226,28 +1397,36 @@ const AccountController = (actions: {
       try {
         let waitTrezor = true;
 
-        sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner).then((txInfo: string) => {
-          updateTransactionData('issuingSPT', txInfo);
+        sysjs
+          .signAndSend(txData.psbt, txData.assets, TrezorSigner)
+          .then((txInfo: string) => {
+            updateTransactionData('issuingSPT', txInfo);
 
-          watchMemPool(getConnectedAccount());
+            watchMemPool(getConnectedAccount());
 
-          waitTrezor = false;
+            waitTrezor = false;
 
-          return {
-            txid: txInfo
-          }
-        });
+            return {
+              txid: txInfo,
+            };
+          });
 
-        if (waitTrezor) { }
+        if (waitTrezor) {
+        }
 
-        return
+        return;
       } catch (error) {
         console.log(`error processing tx: ${error}`);
 
         return;
       }
     } else {
-      const pendingTx = await sysjs.assetSend(txOpts, assetMap, await sysjs.Signer.getNewChangeAddress(true), feeRate);
+      const pendingTx = await sysjs.assetSend(
+        txOpts,
+        assetMap,
+        await sysjs.Signer.getNewChangeAddress(true),
+        feeRate
+      );
 
       if (!pendingTx) {
         console.log('Could not create transaction, not enough funds?');
@@ -1263,17 +1442,19 @@ const AccountController = (actions: {
     watchMemPool(getConnectedAccount());
 
     return {
-      txid: txInfo
-    }
+      txid: txInfo,
+    };
   };
 
   const confirmIssueSPT = () => {
     return new Promise((resolve, reject) => {
-      handleTransactions(mintSPT, confirmMintSPT).then((response) => {
-        resolve(response);
-      }).catch((error) => {
-        reject(error);
-      });
+      handleTransactions(mintSPT, confirmMintSPT)
+        .then((response) => {
+          resolve(response);
+        })
+        .catch((error) => {
+          reject(error);
+        });
 
       mintSPT = null;
     });
@@ -1283,13 +1464,19 @@ const AccountController = (actions: {
     const txOpts: any = { rbf: true };
     const feeRate = new sys.utils.BN(fee * 1e8);
 
-    if (!getConnectedAccount().isTrezorWallet) {
+    if (getConnectedAccount() && !getConnectedAccount().isTrezorWallet) {
       sysjs.Signer.setAccountIndex(getConnectedAccount().id);
     }
 
     let assetChangeAddress = await sysjs.Signer.getNewChangeAddress(true);
 
-    const psbt = await sysjs.assetNew(assetOpts, txOpts, assetChangeAddress, assetChangeAddress, feeRate);
+    const psbt = await sysjs.assetNew(
+      assetOpts,
+      txOpts,
+      assetChangeAddress,
+      assetChangeAddress,
+      feeRate
+    );
 
     if (!psbt) {
       console.log('Could not create transaction, not enough funds?');
@@ -1302,7 +1489,7 @@ const AccountController = (actions: {
 
     return {
       asset_guid: assets.keys().next().value,
-      txid: txInfo
+      txid: txInfo,
     };
   };
 
@@ -1312,28 +1499,25 @@ const AccountController = (actions: {
    */
 
   const confirmMintNFT = async (item: any) => {
-    const {
-      fee,
-      symbol,
-      description,
-      issuer,
-      precision,
-    } = item;
+    const { fee, symbol, description, issuer, precision } = item;
 
-    if (getConnectedAccount().isTrezorWallet) {
+    const isTrezorWallet =
+      getConnectedAccount() && getConnectedAccount().isTrezorWallet;
+
+    if (isTrezorWallet) {
       throw new Error('trezor does not support nft creation');
     }
 
-    if (!getConnectedAccount().isTrezorWallet) {
+    if (!isTrezorWallet) {
       sysjs.Signer.setAccountIndex(getConnectedAccount().id);
     }
 
     const assetOpts = {
       precision,
       symbol,
-      maxsupply: new sys.utils.BN(1 * (10 ** precision)),
+      maxsupply: new sys.utils.BN(1 * 10 ** precision),
       description,
-    }
+    };
 
     const newParentAsset = await createParentAsset(assetOpts, fee);
 
@@ -1349,31 +1533,44 @@ const AccountController = (actions: {
           let interval: any;
 
           interval = setInterval(async () => {
-            const newParentTx = await getTransactionInfoByTxId(newParentAsset.txid);
+            const newParentTx = await getTransactionInfoByTxId(
+              newParentAsset.txid
+            );
             const feeRate = new sys.utils.BN(fee * 1e8);
             const txOpts = { rbf: true };
 
             if (newParentTx.confirmations > 1 && !parentConfirmed) {
               parentConfirmed = true;
 
-              console.log('confirmations parent tx > 1', newParentAsset)
+              console.log('confirmations parent tx > 1', newParentAsset);
 
               const assetMap = new Map([
-                [newParentAsset!.asset_guid,
-                {
-                  changeAddress: null,
-                  outputs: [{
-                    value: new sys.utils.BN(1 * (10 ** precision)),
-                    address: issuer
-                  }]
-                }]
+                [
+                  newParentAsset!.asset_guid,
+                  {
+                    changeAddress: null,
+                    outputs: [
+                      {
+                        value: new sys.utils.BN(1 * 10 ** precision),
+                        address: issuer,
+                      },
+                    ],
+                  },
+                ],
               ]);
 
               try {
-                const pendingTx = await sysjs.assetSend(txOpts, assetMap, null, feeRate);
+                const pendingTx = await sysjs.assetSend(
+                  txOpts,
+                  assetMap,
+                  null,
+                  feeRate
+                );
 
                 if (!pendingTx) {
-                  console.log('Could not create transaction, not enough funds?')
+                  console.log(
+                    'Could not create transaction, not enough funds?'
+                  );
 
                   return;
                 }
@@ -1396,7 +1593,10 @@ const AccountController = (actions: {
               try {
                 theNFTTx = await getTransactionInfoByTxId(txInfo);
               } catch (error) {
-                console.log('Transaction still not indexed by explorer:', error);
+                console.log(
+                  'Transaction still not indexed by explorer:',
+                  error
+                );
 
                 return;
               }
@@ -1408,27 +1608,41 @@ const AccountController = (actions: {
                 const assetOpts = { updatecapabilityflags: '0' };
 
                 const assetMap = new Map([
-                  [assetGuid, {
-                    changeAddress: null,
-                    outputs: [{
-                      value: new sys.utils.BN(0),
-                      address: issuer
-                    }]
-                  }]
+                  [
+                    assetGuid,
+                    {
+                      changeAddress: null,
+                      outputs: [
+                        {
+                          value: new sys.utils.BN(0),
+                          address: issuer,
+                        },
+                      ],
+                    },
+                  ],
                 ]);
 
-                const psbt = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, issuer, feeRate);
+                const psbt = await sysjs.assetUpdate(
+                  assetGuid,
+                  assetOpts,
+                  txOpts,
+                  assetMap,
+                  issuer,
+                  feeRate
+                );
 
-                console.log('after update psbt', psbt)
+                console.log('after update psbt', psbt);
 
                 if (!psbt) {
-                  console.log('Could not create transaction, not enough funds?');
+                  console.log(
+                    'Could not create transaction, not enough funds?'
+                  );
                 }
 
                 clearInterval(interval);
 
                 resolve({
-                  txid: psbt.extractTransaction().getId()
+                  txid: psbt.extractTransaction().getId(),
                 });
               }
 
@@ -1444,47 +1658,54 @@ const AccountController = (actions: {
 
   const confirmIssueNFT = () => {
     return new Promise((resolve, reject) => {
-      handleTransactions(mintNFT, confirmMintNFT).then((response) => {
-        resolve(response);
-      }).catch((error) => {
-        reject(error);
-      });
+      handleTransactions(mintNFT, confirmMintNFT)
+        .then((response) => {
+          resolve(response);
+        })
+        .catch((error) => {
+          reject(error);
+        });
 
       mintNFT = null;
     });
   };
 
   const confirmTxIssueNFT = async (item: any) => {
-    const {
-      fee,
-      amount,
-      assetGuid,
-    }: any = item;
+    const { fee, amount, assetGuid }: any = item;
 
     const { decimals } = await getDataAsset(assetGuid);
     const feeRate = new sys.utils.BN(fee * 1e8);
     const txOpts = { rbf: true };
 
     const assetMap = new Map([
-      [assetGuid,
+      [
+        assetGuid,
         {
           changeAddress: await sysjs.Signer.getNewChangeAddress(true),
-          outputs: [{
-            value: new sys.utils.BN(amount * (10 ** decimals)),
-            address: await sysjs.Signer.getNewReceivingAddress(true)
-          }]
-        }]
+          outputs: [
+            {
+              value: new sys.utils.BN(amount * 10 ** decimals),
+              address: await sysjs.Signer.getNewReceivingAddress(true),
+            },
+          ],
+        },
+      ],
     ]);
 
     try {
-      if (!getConnectedAccount().isTrezorWallet) {
+      if (getConnectedAccount() && !getConnectedAccount().isTrezorWallet) {
         sysjs.Signer.setAccountIndex(getConnectedAccount().id);
       }
 
-      const pendingTx = await sysjs.assetSend(txOpts, assetMap, await sysjs.Signer.getNewChangeAddress(true), feeRate);
+      const pendingTx = await sysjs.assetSend(
+        txOpts,
+        assetMap,
+        await sysjs.Signer.getNewChangeAddress(true),
+        feeRate
+      );
 
       if (!pendingTx) {
-        console.log('Could not create transaction, not enough funds?')
+        console.log('Could not create transaction, not enough funds?');
       }
 
       const txInfo = pendingTx.extractTransaction().getId();
@@ -1492,64 +1713,69 @@ const AccountController = (actions: {
       updateTransactionData('issuingNFT', txInfo);
 
       return {
-        txid: txInfo
-      }
+        txid: txInfo,
+      };
     } catch (error) {
       return error;
     }
-  }
+  };
 
   const confirmIssueNFTTx = () => {
     return new Promise((resolve, reject) => {
-      handleTransactions(issueNFTItem, confirmTxIssueNFT).then((response) => {
-        resolve(response);
-      }).catch((error) => {
-        reject(error);
-      });
+      handleTransactions(issueNFTItem, confirmTxIssueNFT)
+        .then((response) => {
+          resolve(response);
+        })
+        .catch((error) => {
+          reject(error);
+        });
 
       issueNFTItem = null;
     });
   };
 
   const estimateSysTxFee = async (items: any) => {
-    const {
-      outputsArray,
-      changeAddress,
-      feeRateBN
-    } = items;
-    
+    const { outputsArray, changeAddress, feeRateBN } = items;
+
     const txOpts = { rbf: false };
 
-    const utxos = await sys.utils.fetchBackendUTXOS(sysjs.blockbookURL, account.xpub);
-    const utxosSanitized = sys.utils.sanitizeBlockbookUTXOs(null, utxos, sysjs.network);
+    const utxos = await sys.utils.fetchBackendUTXOS(
+      sysjs.blockbookURL,
+      account.xpub
+    );
+    const utxosSanitized = sys.utils.sanitizeBlockbookUTXOs(
+      null,
+      utxos,
+      sysjs.network
+    );
 
     // 0 feerate to create tx, then find bytes and multiply feeRate by bytes to get estimated txfee
-    const tx = await syscointx.createTransaction(txOpts, utxosSanitized, changeAddress, outputsArray, new sys.utils.BN(0));
-    const bytes = coinSelectSyscoin.utils.transactionBytes(tx.inputs, tx.outputs);
+    const tx = await syscointx.createTransaction(
+      txOpts,
+      utxosSanitized,
+      changeAddress,
+      outputsArray,
+      new sys.utils.BN(0)
+    );
+    const bytes = coinSelectSyscoin.utils.transactionBytes(
+      tx.inputs,
+      tx.outputs
+    );
     const txFee = feeRateBN.mul(new sys.utils.BN(bytes));
 
     return txFee;
-  }
+  };
 
-  const confirmTransactionTx = async (
-    items: {
-      amount: number,
-      fee: number,
-      fromAddress: string,
-      isToken: boolean,
-      rbf: boolean,
-      toAddress: string,
-      token: string
-    }
-  ) => {
-    const {
-      toAddress,
-      amount,
-      fee,
-      token,
-      isToken,
-      rbf
-    } = items;
+  const confirmTransactionTx = async (items: {
+    amount: number;
+    fee: number;
+    fromAddress: string;
+    isToken: boolean;
+    rbf: boolean;
+    toAddress: string;
+    token: string;
+  }) => {
+    const { toAddress, amount, fee, token, isToken, rbf } = items;
 
     const feeRateBN = new sys.utils.BN(fee * 1e8);
 
@@ -1560,28 +1786,45 @@ const AccountController = (actions: {
       const value = new sys.utils.BN(amount * 10 ** decimals);
       const valueDecimals = countDecimals(amount);
       if (valueDecimals > decimals) {
-        throw new Error('This token has ' + decimals + ' decimals and you are trying to send a value with ' + valueDecimals + ' decimals, please check your tx')
+        throw new Error(
+          'This token has ' +
+            decimals +
+            ' decimals and you are trying to send a value with ' +
+            valueDecimals +
+            ' decimals, please check your tx'
+        );
       }
 
       const assetMap = new Map([
-        [token, {
-          changeAddress: null,
-          outputs: [{
-            value,
-            address: toAddress
-          }]
-        }]
+        [
+          token,
+          {
+            changeAddress: null,
+            outputs: [
+              {
+                value,
+                address: toAddress,
+              },
+            ],
+          },
+        ],
       ]);
 
-      if (account.isTrezorWallet) {
+      if (account && account.isTrezorWallet) {
         const changeAddress = await getNewChangeAddress(true);
         // @ts-ignore: Unreachable code error
         assetMap.get(token)!.changeAddress = changeAddress;
 
-        const txData = await sysjs.assetAllocationSend(txOpts, assetMap, changeAddress, feeRateBN, account.xpub);
+        const txData = await sysjs.assetAllocationSend(
+          txOpts,
+          assetMap,
+          changeAddress,
+          feeRateBN,
+          account.xpub
+        );
 
         if (!txData) {
-          console.log('Could not create transaction, not enough funds?')
+          console.log('Could not create transaction, not enough funds?');
         }
         if (TrezorSigner === null || TrezorSigner === undefined) {
           TrezorSigner = new sys.utils.TrezorSigner();
@@ -1590,31 +1833,46 @@ const AccountController = (actions: {
         try {
           // TrezorSigner.sign(txData.psbt).then(() => {
 
-          sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner).then(() => {
-            const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
-            watchMemPool(acc);
-          })
+          sysjs
+            .signAndSend(txData.psbt, txData.assets, TrezorSigner)
+            .then(() => {
+              const acc = store.getState().wallet.confirmingTransaction
+                ? getConnectedAccount()
+                : account;
+              watchMemPool(acc);
+            });
           tempTx = null;
-          return
-        }
-        catch (e) {
+          return;
+        } catch (e) {
           return;
         }
       } else {
-        const pendingTx = await sysjs.assetAllocationSend(txOpts, assetMap, null, feeRateBN);
+        const pendingTx = await sysjs.assetAllocationSend(
+          txOpts,
+          assetMap,
+          null,
+          feeRateBN
+        );
 
         txInfo = pendingTx.extractTransaction().getId();
       }
 
       updateTransactionData('confirmingTransaction', txInfo);
     } else {
-      const backendAccount = await sys.utils.fetchBackendAccount(sysjs.blockbookURL, account.xpub, {}, true);
+      const backendAccount = await sys.utils.fetchBackendAccount(
+        sysjs.blockbookURL,
+        account.xpub,
+        {},
+        true
+      );
       const value = new sys.utils.BN(amount * 1e8);
 
-      let outputsArray = [{
-        address: toAddress,
-        value
-      }];
+      let outputsArray = [
+        {
+          address: toAddress,
+          value,
+        },
+      ];
 
       const txOpts = { rbf: false };
 
@@ -1622,20 +1880,32 @@ const AccountController = (actions: {
 
       const changeAddress = await sysjs.Signer.getNewChangeAddress(true);
 
-      const txFee = await estimateSysTxFee({outputsArray, changeAddress, feeRateBN});
+      const txFee = await estimateSysTxFee({
+        outputsArray,
+        changeAddress,
+        feeRateBN,
+      });
 
       if (value.add(txFee).gte(backendAccount.balance)) {
-        outputsArray = [{
-          address: toAddress,
-          value: value.sub(txFee)
-        }]
+        outputsArray = [
+          {
+            address: toAddress,
+            value: value.sub(txFee),
+          },
+        ];
       }
 
-      if (account.isTrezorWallet) {
-        const txData = await sysjs.createTransaction(txOpts, await getNewChangeAddress(true), outputsArray, feeRateBN, account.xpub);
+      if (account && account.isTrezorWallet) {
+        const txData = await sysjs.createTransaction(
+          txOpts,
+          await getNewChangeAddress(true),
+          outputsArray,
+          feeRateBN,
+          account.xpub
+        );
 
         if (!txData) {
-          console.log('Could not create transaction, not enough funds?')
+          console.log('Could not create transaction, not enough funds?');
         }
 
         if (TrezorSigner === null || TrezorSigner === undefined) {
@@ -1644,24 +1914,30 @@ const AccountController = (actions: {
         }
 
         try {
-          sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner).then(() => {
-            const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
+          sysjs
+            .signAndSend(txData.psbt, txData.assets, TrezorSigner)
+            .then(() => {
+              const acc = store.getState().wallet.confirmingTransaction
+                ? getConnectedAccount()
+                : account;
 
-            watchMemPool(acc);
-          })
+              watchMemPool(acc);
+            });
           tempTx = null;
 
-          return
-        }
-
-        catch (e) {
-          console.log('Error processing tx: ' + e)
+          return;
+        } catch (e) {
+          console.log('Error processing tx: ' + e);
           return;
         }
-
       } else {
         try {
-          const pendingTx = await sysjs.createTransaction(txOpts, changeAddress, outputsArray, feeRateBN);
+          const pendingTx = await sysjs.createTransaction(
+            txOpts,
+            changeAddress,
+            outputsArray,
+            feeRateBN
+          );
 
           txInfo = pendingTx.extractTransaction().getId();
         } catch (error) {
@@ -1674,26 +1950,30 @@ const AccountController = (actions: {
 
     tempTx = null;
 
-    const acc = store.getState().wallet.confirmingTransaction ? getConnectedAccount() : account;
+    const acc = store.getState().wallet.confirmingTransaction
+      ? getConnectedAccount()
+      : account;
 
     watchMemPool(acc);
-  }
+  };
 
   const confirmTempTx = () => {
     return new Promise((resolve, reject) => {
-      handleTransactions(tempTx, confirmTransactionTx).then((response) => {
-        resolve(response);
-      }).catch((error) => {
-        reject(error);
-      });;
+      handleTransactions(tempTx, confirmTransactionTx)
+        .then((response) => {
+          resolve(response);
+        })
+        .catch((error) => {
+          reject(error);
+        });
     });
   };
 
   const setHDSigner = (accountId: number) => {
-    if (!account.isTrezorWallet) {
+    if (account && !account.isTrezorWallet) {
       sysjs.Signer.setAccountIndex(accountId);
     }
-  }
+  };
 
   const confirmUpdateAsset = async (item: any) => {
     const {
@@ -1706,16 +1986,16 @@ const AccountController = (actions: {
       notarydetails,
       auxfeedetails,
       notaryAddress,
-      payoutAddress
+      payoutAddress,
     } = item;
 
     let txOpts: any = {
-      rbf: true
+      rbf: true,
     };
 
     let assetOpts: any = {
       updatecapabilityflags: capabilityflags ? String(capabilityflags) : '127',
-      description
+      description,
     };
 
     if (assetWhiteList) {
@@ -1730,14 +2010,14 @@ const AccountController = (actions: {
         ...assetOpts,
         notarydetails,
         auxfeedetails,
-        notarykeyid: null
-      }
+        notarykeyid: null,
+      };
     }
 
     if (contract) {
       assetOpts = {
         ...assetOpts,
-        contract: Buffer.from(contract, 'hex')
+        contract: Buffer.from(contract, 'hex'),
       };
     }
 
@@ -1745,9 +2025,9 @@ const AccountController = (actions: {
       const scalarPct = 1000;
       const payment = sys.utils.bitcoinjs.payments.p2wpkh({
         address: payoutAddress,
-        network: sysjs.Signer.Signer.network
-      })
-      const auxfeekeyid = Buffer.from(payment.hash.toString('hex'), 'hex')
+        network: sysjs.Signer.Signer.network,
+      });
+      const auxfeekeyid = Buffer.from(payment.hash.toString('hex'), 'hex');
 
       assetOpts = {
         ...assetOpts,
@@ -1755,44 +2035,55 @@ const AccountController = (actions: {
           auxfees: [
             {
               bound: new sys.utils.BN(0),
-              percent: 1 * scalarPct
-            }
+              percent: 1 * scalarPct,
+            },
           ],
-          auxfeekeyid
-        }
+          auxfeekeyid,
+        },
       };
     }
 
     if (notaryAddress) {
       const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
         address: notaryAddress,
-        network: sysjs.Signer.Signer.network
+        network: sysjs.Signer.Signer.network,
       });
 
       assetOpts = {
         ...assetOpts,
-        notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex')
-      }
+        notarykeyid: Buffer.from(vNotaryPayment.hash.toString('hex'), 'hex'),
+      };
     }
 
-    console.log('asset opts update asset', assetOpts, assetGuid)
+    console.log('asset opts update asset', assetOpts, assetGuid);
 
     const thisAssetMap = new Map([
-      [assetGuid, {
-        changeAddress: await sysjs.Signer.getNewChangeAddress(true),
-        outputs: [{
-          value: new sys.utils.BN(0),
-          address: await sysjs.Signer.getNewReceivingAddress(true)
-        }]
-      }]
+      [
+        assetGuid,
+        {
+          changeAddress: await sysjs.Signer.getNewChangeAddress(true),
+          outputs: [
+            {
+              value: new sys.utils.BN(0),
+              address: await sysjs.Signer.getNewReceivingAddress(true),
+            },
+          ],
+        },
+      ],
     ]);
 
-
-    if (!getConnectedAccount().isTrezorWallet) {
+    if (getConnectedAccount() && !getConnectedAccount().isTrezorWallet) {
       sysjs.Signer.setAccountIndex(getConnectedAccount().id);
     }
 
-    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, thisAssetMap, null, new sys.utils.BN(fee * 1e8));
+    const pendingTx = await sysjs.assetUpdate(
+      assetGuid,
+      assetOpts,
+      txOpts,
+      thisAssetMap,
+      null,
+      new sys.utils.BN(fee * 1e8)
+    );
 
     const txInfo = pendingTx.extractTransaction().getId();
 
@@ -1807,34 +2098,32 @@ const AccountController = (actions: {
     watchMemPool(getConnectedAccount());
 
     return {
-      txid: txInfo
-    }
-  }
+      txid: txInfo,
+    };
+  };
 
   const confirmUpdateAssetTransaction = () => {
     return new Promise((resolve, reject) => {
-      handleTransactions(updateAssetItem, confirmUpdateAsset).then((response) => {
-        resolve(response)
+      handleTransactions(updateAssetItem, confirmUpdateAsset)
+        .then((response) => {
+          resolve(response);
 
-        updateAssetItem = null;
-      }).catch((error) => {
-        reject(error)
+          updateAssetItem = null;
+        })
+        .catch((error) => {
+          reject(error);
 
-        updateAssetItem = null;
-      });
+          updateAssetItem = null;
+        });
 
       updateAssetItem = null;
     });
-  }
+  };
 
   const transferAsset = async (item: any) => {
-    const {
-      fee,
-      assetGuid,
-      newOwner
-    } = item;
+    const { fee, assetGuid, newOwner } = item;
 
-    if (!getConnectedAccount().isTrezorWallet) {
+    if (getConnectedAccount() && !getConnectedAccount().isTrezorWallet) {
       sysjs.Signer.setAccountIndex(getConnectedAccount().id);
     }
 
@@ -1845,25 +2134,37 @@ const AccountController = (actions: {
     let txInfo = null;
 
     const assetMap = new Map([
-      [assetGuid, {
-        changeAddress: await sysjs.Signer.getNewChangeAddress(true),
-        outputs: [{
-          value: new sys.utils.BN(0),
-          address: newOwner
-        }]
-      }]
+      [
+        assetGuid,
+        {
+          changeAddress: await sysjs.Signer.getNewChangeAddress(true),
+          outputs: [
+            {
+              value: new sys.utils.BN(0),
+              address: newOwner,
+            },
+          ],
+        },
+      ],
     ]);
 
-    if (getConnectedAccount().isTrezorWallet) {
+    if (getConnectedAccount() && getConnectedAccount().isTrezorWallet) {
       const sysChangeAddress = await getNewChangeAddress(true);
 
       // @ts-ignore
       assetMap.get(assetGuid)!.changeAddress = sysChangeAddress;
 
-      const txData = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, sysChangeAddress, feeRate);
+      const txData = await sysjs.assetUpdate(
+        assetGuid,
+        assetOpts,
+        txOpts,
+        assetMap,
+        sysChangeAddress,
+        feeRate
+      );
 
       if (!txData) {
-        console.log('Could not create transaction, not enough funds?')
+        console.log('Could not create transaction, not enough funds?');
       }
       if (TrezorSigner === null || TrezorSigner === undefined) {
         TrezorSigner = new sys.utils.TrezorSigner();
@@ -1871,20 +2172,30 @@ const AccountController = (actions: {
       }
       try {
         //TODO: test might have same problem as them mintSPT
-        txInfo = await sysjs.signAndSend(txData.psbt, txData.assets, TrezorSigner)
+        txInfo = await sysjs.signAndSend(
+          txData.psbt,
+          txData.assets,
+          TrezorSigner
+        );
 
         updateTransactionData('transferringOwnership', txInfo);
 
         watchMemPool(getConnectedAccount());
-      }
-      catch (e) {
-        console.log('Error processing tx: ' + e)
+      } catch (e) {
+        console.log('Error processing tx: ' + e);
         return;
       }
       return;
     }
 
-    const pendingTx = await sysjs.assetUpdate(assetGuid, assetOpts, txOpts, assetMap, null, feeRate);
+    const pendingTx = await sysjs.assetUpdate(
+      assetGuid,
+      assetOpts,
+      txOpts,
+      assetMap,
+      null,
+      feeRate
+    );
 
     if (!pendingTx) {
       console.log('Could not create transaction, not enough funds?');
@@ -1897,29 +2208,33 @@ const AccountController = (actions: {
     watchMemPool(getConnectedAccount());
 
     return {
-      txid: txInfo
-    }
-  }
+      txid: txInfo,
+    };
+  };
 
   const confirmTransferOwnership = () => {
     return new Promise((resolve, reject) => {
-      handleTransactions(transferOwnershipData, transferAsset).then((response) => {
-        resolve(response);
-      }).catch((error) => {
-        reject(error)
-      });
+      handleTransactions(transferOwnershipData, transferAsset)
+        .then((response) => {
+          resolve(response);
+        })
+        .catch((error) => {
+          reject(error);
+        });
 
       transferOwnershipData = null;
     });
-  }
+  };
 
   const decryptAES = (encryptedString: any, key: string) => {
-    return CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
-  }
+    return CryptoJS.AES.decrypt(encryptedString, key).toString(
+      CryptoJS.enc.Utf8
+    );
+  };
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
-  }
+  };
 
   return {
     subscribeAccount,
