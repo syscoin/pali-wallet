@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useController, useFormat } from 'hooks/index';
 import { Form, Input } from 'antd';
-import { AuthViewLayout, SecondaryButton, Modal } from 'components/index';
+import { Layout, SecondaryButton, Modal } from 'components/index';
 
 const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();
@@ -25,7 +25,7 @@ const CreateAccount = () => {
   };
 
   return (
-    <AuthViewLayout title="CREATE ACCOUNT" id="create-account-title">
+    <Layout title="CREATE ACCOUNT" id="create-account-title">
       {address ? (
         <Modal
           type="default"
@@ -71,7 +71,7 @@ const CreateAccount = () => {
           </div>
         </Form>
       )}
-    </AuthViewLayout>
+    </Layout>
   );
 };
 

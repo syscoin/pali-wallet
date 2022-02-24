@@ -1,31 +1,28 @@
 import React, { FC } from 'react';
 import { Header, Icon, IconButton, Tooltip } from 'components/index';
-import { useUtils, useBrowser } from 'hooks/index';
+import { useBrowser } from 'hooks/index';
+import { useNavigate } from 'react-router-dom';
 
-interface IAuthViewLayout {
-  background?: string;
+interface ILayout {
   canGoBack?: boolean;
-  children: any;
+  children: React.ReactNode;
   id?: string;
   title: string;
 }
 
-export const AuthViewLayout: FC<IAuthViewLayout> = ({
-  title,
-  id = '',
-  children,
-  background = 'bkg-2',
+export const Layout: FC<ILayout> = ({
   canGoBack = true,
+  children,
+  id = '',
+  title,
 }) => {
-  const { navigate } = useUtils();
+  const navigate = useNavigate();
   const { browser } = useBrowser();
 
   const url = browser.runtime.getURL('app.html');
 
   return (
-    <div
-      className={`bg-${background} w-full min-h-popup min-w-popup h-full text-brand-white relative`}
-    >
+    <div className="relative w-full min-w-popup h-full min-h-popup text-brand-white bg-bkg-2">
       <Header />
 
       <div className="relative flex items-center justify-center pt-6 w-full text-brand-white bg-bkg-3">
@@ -56,14 +53,12 @@ export const AuthViewLayout: FC<IAuthViewLayout> = ({
           size={36}
           name="select-up"
           wrapperClassname="w-8"
-          className={`text-${background} fixed top-24`}
+          className="fixed top-24 text-bkg-2"
           color="#111E33"
         />
       </div>
 
-      <div
-        className={`bg-${background} text-brand-white flex flex-col justify-center items-center w-full xl:h-full`}
-      >
+      <div className="flex flex-col items-center justify-center w-full text-brand-white bg-bkg-2 xl:h-full">
         {children}
       </div>
     </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AuthViewLayout, SecondaryButton, Modal } from 'components/index';
+import { Layout, SecondaryButton, Modal } from 'components/index';
 import { useController, useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
 
@@ -21,7 +21,7 @@ const AutolockView = () => {
   };
 
   return (
-    <AuthViewLayout title="AUTO LOCK TIMER" id="auto-lock-timer-title">
+    <Layout title="AUTO LOCK TIMER" id="auto-lock-timer-title">
       <p className="px-10 py-6 text-white text-sm">
         You can set auto lock timer. Default is 5 minutes after no activity.
         Maximum is 30 minutes.
@@ -81,7 +81,7 @@ const AutolockView = () => {
           </SecondaryButton>
         </div>
       </Form>
-    </AuthViewLayout>
+    </Layout>
   );
 };
 

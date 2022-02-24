@@ -1,3 +1,3 @@
-export * from './AuthViewLayout';
+export * from './Layout';
 export * from './OnboardingLayout';
 export * from './Transaction';

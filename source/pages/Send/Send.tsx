@@ -11,12 +11,7 @@ import {
 } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
-import {
-  AuthViewLayout,
-  SecondaryButton,
-  Tooltip,
-  Icon,
-} from 'components/index';
+import { Layout, SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Assets } from 'types/transactions';
 
@@ -419,8 +414,8 @@ export const Send: FC<ISend> = () => {
     </div>
   );
   return (
-    <AuthViewLayout title="SEND SYS" id="sendSYS-title">
+    <Layout title="SEND SYS" id="sendSYS-title">
       <SendForm />
-    </AuthViewLayout>
+    </Layout>
   );
 };

@@ -9,7 +9,7 @@ import {
   useBrowser,
 } from 'hooks/index';
 import {
-  AuthViewLayout,
+  Layout,
   PrimaryButton,
   Modal,
   SecondaryButton,
@@ -421,7 +421,7 @@ export const TxConfirmLayout: FC<ITxConfirmLayout> = ({
   const callback = walletCtlr.account[callbackName];
 
   return (
-    <AuthViewLayout canGoBack={false} title={title}>
+    <Layout canGoBack={false} title={title}>
       {sign ? (
         <TxConfirmSign
           psbt={temporaryTransaction}
@@ -436,6 +436,6 @@ export const TxConfirmLayout: FC<ITxConfirmLayout> = ({
           title={title}
         />
       )}
-    </AuthViewLayout>
+    </Layout>
   );
 };

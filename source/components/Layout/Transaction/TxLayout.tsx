@@ -1,6 +1,6 @@
 import React, { useState, FC, useEffect } from 'react';
 import {
-  AuthViewLayout,
+  Layout,
   PrimaryButton,
   SecondaryButton,
   Tooltip,
@@ -65,7 +65,7 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
   const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
 
   return (
-    <AuthViewLayout canGoBack={false} title={title.toUpperCase()}>
+    <Layout canGoBack={false} title={title.toUpperCase()}>
       <div className="flex flex-col items-center justify-center">
         <h1 className="mt-4 text-sm">FEE</h1>
 
@@ -164,6 +164,6 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
           </div>
         </Form>
       </div>
-    </AuthViewLayout>
+    </Layout>
   );
 };

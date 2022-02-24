@@ -7,7 +7,7 @@ import {
   useUtils,
   useAccount,
 } from 'hooks/index';
-import { AuthViewLayout, SecondaryButton, Icon, Modal } from 'components/index';
+import { Layout, SecondaryButton, Icon, Modal } from 'components/index';
 import { Menu, Transition } from '@headlessui/react';
 import { Input } from 'antd';
 import getSymbolFromCurrency from 'currency-symbol-map';
@@ -80,7 +80,7 @@ const CurrencyView = () => {
     : 'USD';
 
   return (
-    <AuthViewLayout title="FIAT CURRENCY" id="fiat-currency-title">
+    <Layout title="FIAT CURRENCY" id="fiat-currency-title">
       {confirmed && (
         <Modal
           type="default"
@@ -290,7 +290,7 @@ const CurrencyView = () => {
           </div>
         </div>
       </div>
-    </AuthViewLayout>
+    </Layout>
   );
 };
 

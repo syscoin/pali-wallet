@@ -1,6 +1,6 @@
 import { useController } from 'hooks/index';
 import React, { useState, useEffect } from 'react';
-import { AuthViewLayout, Icon } from 'components/index';
+import { Layout, Icon } from 'components/index';
 import { useLocation } from 'react-router-dom';
 
 import { AssetDetails } from './AssetDetails';
@@ -41,7 +41,7 @@ export const DetailsView = () => {
   }, [state.tx || state.assetGuid]);
 
   return (
-    <AuthViewLayout
+    <Layout
       title={`${state.assetGuid ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}
     >
       {transactionDetails ? (
@@ -61,6 +61,6 @@ export const DetailsView = () => {
       ) : (
         <Icon name="loading" className="absolute left-1/2 top-1/2 w-3" />
       )}
-    </AuthViewLayout>
+    </Layout>
   );
 };

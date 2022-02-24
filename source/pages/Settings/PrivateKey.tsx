@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useFormat, useAccount, useUtils, useController } from 'hooks/index';
 import {
-  AuthViewLayout,
+  Layout,
   Icon,
   SecondaryButton,
   InfoCard,
@@ -22,7 +22,7 @@ const PrivateKeyView = () => {
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   return (
-    <AuthViewLayout title="YOUR KEYS">
+    <Layout title="YOUR KEYS">
       <div className="scrollbar-styled px-2 py-5 h-96 overflow-auto">
         <InfoCard>
           <p>
@@ -131,7 +131,7 @@ const PrivateKeyView = () => {
           {copied ? 'Copied' : 'Close'}
         </SecondaryButton>
       </div>
-    </AuthViewLayout>
+    </Layout>
   );
 };
 

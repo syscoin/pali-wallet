@@ -1,9 +1,5 @@
 import React, { useState } from 'react';
-import {
-  AuthViewLayout,
-  SecondaryButton,
-  PrimaryButton,
-} from 'components/index';
+import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
 import {
   useFormat,
   useAccount,
@@ -34,7 +30,7 @@ export const ConnectedAccounts = () => {
   };
 
   return (
-    <AuthViewLayout canGoBack={false} title="CONNECTED ACCOUNT">
+    <Layout canGoBack={false} title="CONNECTED ACCOUNT">
       <div className="flex flex-col items-center justify-center w-full">
         <h1 className="mt-4 text-sm">PALI WALLET</h1>
 
@@ -83,6 +79,6 @@ export const ConnectedAccounts = () => {
           </PrimaryButton>
         </div>
       </div>
-    </AuthViewLayout>
+    </Layout>
   );
 };

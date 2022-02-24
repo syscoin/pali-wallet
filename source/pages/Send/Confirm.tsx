@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AuthViewLayout, SecondaryButton, Modal } from 'components/index';
+import { Layout, SecondaryButton, Modal } from 'components/index';
 import {
   useController,
   useStore,
@@ -126,7 +126,7 @@ export const SendConfirm = () => {
   };
 
   return (
-    <AuthViewLayout title="SEND SYS">
+    <Layout title="SEND SYS">
       {confirmed && (
         <Modal
           type="default"
@@ -189,6 +189,6 @@ export const SendConfirm = () => {
           </div>
         </div>
       )}
-    </AuthViewLayout>
+    </Layout>
   );
 };

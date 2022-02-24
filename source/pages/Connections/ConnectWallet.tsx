@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  AuthViewLayout,
+  Layout,
   PrimaryButton,
   SecondaryButton,
   Icon,
@@ -42,7 +42,7 @@ export const ConnectWallet = () => {
   });
 
   return (
-    <AuthViewLayout canGoBack={false} title="CONNECT WITH">
+    <Layout canGoBack={false} title="CONNECT WITH">
       <div className="flex flex-col items-center justify-center w-full">
         <h1 className="mt-4 text-sm">PALI WALLET</h1>
 
@@ -157,6 +157,6 @@ export const ConnectWallet = () => {
           </Modal>
         )}
       </div>
-    </AuthViewLayout>
+    </Layout>
   );
 };

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  AuthViewLayout,
+  Layout,
   SecondaryButton,
   PrimaryButton,
   InfoCard,
@@ -28,7 +28,7 @@ const DeleteWalletView = () => {
   const [form] = Form.useForm();
 
   return (
-    <AuthViewLayout title="DELETE WALLET">
+    <Layout title="DELETE WALLET">
       <InfoCard>
         <p>
           <b className="text-warning-info">WARNING:</b> This will delete the
@@ -143,7 +143,7 @@ const DeleteWalletView = () => {
           </div>
         </Form>
       </div>
-    </AuthViewLayout>
+    </Layout>
   );
 };
 

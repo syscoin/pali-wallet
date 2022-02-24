@@ -1,9 +1,4 @@
-import {
-  AuthViewLayout,
-  Icon,
-  IconButton,
-  SecondaryButton,
-} from 'components/index';
+import { Layout, Icon, IconButton, SecondaryButton } from 'components/index';
 import React, { Fragment, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { useUtils, useBrowser, useAccount, useFormat } from 'hooks/index';
@@ -29,7 +24,7 @@ const ConnectedSites = (): any => {
   };
 
   return (
-    <AuthViewLayout title="CONNECTED SITES">
+    <Layout title="CONNECTED SITES">
       <p className="m-4 text-white text-xs">
         {activeAccount?.connectedTo.length
           ? `${activeAccount.label} is connected to:`
@@ -161,7 +156,7 @@ const ConnectedSites = (): any => {
           </SecondaryButton>
         </div>
       </div>
-    </AuthViewLayout>
+    </Layout>
   );
 };
 

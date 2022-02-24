@@ -1,12 +1,7 @@
 import React, { useState } from 'react';
 import { Form, Input } from 'antd';
 import { useController, useUtils } from 'hooks/index';
-import {
-  AuthViewLayout,
-  SecondaryButton,
-  InfoCard,
-  CopyCard,
-} from 'components/index';
+import { Layout, SecondaryButton, InfoCard, CopyCard } from 'components/index';
 
 const PhraseView = () => {
   const [phrase, setPhrase] = useState<string>(
@@ -22,7 +17,7 @@ const PhraseView = () => {
   };
 
   return (
-    <AuthViewLayout title="WALLET SEED PHRASE" id="seed-phrase-title">
+    <Layout title="WALLET SEED PHRASE" id="seed-phrase-title">
       <p className="px-10 py-3 text-white text-sm">
         Please input your wallet password
       </p>
@@ -95,7 +90,7 @@ const PhraseView = () => {
           </SecondaryButton>
         </div>
       </div>
-    </AuthViewLayout>
+    </Layout>
   );
 };
 
