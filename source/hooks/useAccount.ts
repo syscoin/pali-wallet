@@ -2,7 +2,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import IWalletState, { IAccountState } from 'state/wallet/types';
 
-import { useController, useUtils, useWindowsAPI } from '.';
+import { useController, getHost, useWindowsAPI } from '.';
 
 export const useAccount = () => {
   const { accounts, activeAccountId }: IWalletState = useSelector(
@@ -10,7 +10,6 @@ export const useAccount = () => {
   );
 
   const { getCurrentOrigin } = useWindowsAPI();
-  const { getHost } = useUtils();
 
   const controller = useController();
 
