@@ -22,9 +22,8 @@ export const Home = () => {
   const { accounts, activeNetwork, fiat } = useStore();
 
   useEffect(() => {
-    if (!controller.wallet.isLocked() && accounts.length > 0 && activeAccount) {
-      handleRefresh(controller, activeAccount);
-    }
+    if (!controller.wallet.isLocked() && accounts.length > 0 && activeAccount)
+      handleRefresh();
   }, [!controller.wallet.isLocked(), accounts.length > 0]);
 
   return (

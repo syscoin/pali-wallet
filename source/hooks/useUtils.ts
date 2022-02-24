@@ -1,8 +1,8 @@
 import { useAlert } from 'react-alert';
-import { IAccountState } from 'state/wallet/types';
 import { useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
-import { IMasterController } from 'scripts/Background/controllers';
+
+import { useAccount, useController } from '.';
 
 export const isNFT = (guid: number): boolean => {
   const assetGuid = BigInt.asUintN(64, BigInt(guid));
@@ -20,18 +20,17 @@ export const getHost = (url: string): string => {
 export const useUtils = () => {
   const alert = useAlert();
   const navigate = useNavigate();
+  const controller = useController();
+  const { activeAccount } = useAccount();
 
   const useSettingsView = () =>
     useCallback((view) => {
       navigate(view);
     }, []);
 
-  const handleRefresh = (
-    controller: IMasterController,
-    activeAccount: IAccountState
-  ): void => {
+  const handleRefresh = (): void => {
     controller.wallet.account.getLatestUpdate();
-    controller.wallet.account.watchMemPool(activeAccount);
+    if (activeAccount) controller.wallet.account.watchMemPool(activeAccount);
     controller.stateUpdater();
   };
 
