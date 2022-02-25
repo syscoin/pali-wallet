@@ -11,7 +11,7 @@ interface IOnboardingLayout {
 export const OnboardingLayout: FC<IOnboardingLayout> = ({
   title,
   children,
-  tooltipText = '',
+  tooltipText,
 }) => (
   <div className="flex flex-col gap-4 items-center justify-center">
     <LogoHeader />
@@ -22,9 +22,11 @@ export const OnboardingLayout: FC<IOnboardingLayout> = ({
           {title}
         </span>
 
-        <Tooltip content={tooltipText}>
-          <QuestionCircleOutlined className="inline-flex w-3 text-brand-graylight text-sm" />
-        </Tooltip>
+        {tooltipText && (
+          <Tooltip content={tooltipText}>
+            <QuestionCircleOutlined className="inline-flex w-3 text-brand-graylight text-sm" />
+          </Tooltip>
+        )}
       </div>
     </section>
 
