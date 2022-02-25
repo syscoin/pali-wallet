@@ -167,7 +167,9 @@ export const NormalHeader: React.FC = () => {
                               handleChangeNetwork(currentNetwork.id)
                             }
                           >
-                            <span>{currentNetwork.label}</span>
+                            <span className="text-left">
+                              {currentNetwork.label}
+                            </span>
 
                             {activeNetwork === currentNetwork.id && (
                               <Icon

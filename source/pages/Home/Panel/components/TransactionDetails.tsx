@@ -95,7 +95,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
           <IconButton onClick={() => copyText(address)}>
             <Icon
               name="copy"
-              className="text-brand-white hover:text-fields-input-borderfocus"
+              className="px-1 text-brand-white hover:text-fields-input-borderfocus"
             />
           </IconButton>
         </div>
