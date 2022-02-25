@@ -7,7 +7,7 @@ import { useController } from 'hooks/index';
 import shuffle from 'lodash/shuffle';
 import {
   Button,
-  Modal,
+  DefaultModal,
   PrimaryButton,
   OnboardingLayout,
 } from 'components/index';
@@ -90,15 +90,12 @@ export const ConfirmPhrase = () => {
           </div>
         </>
 
-        {passed && (
-          <Modal
-            type="default"
-            title="YOUR WALLET IS READY"
-            description="You should now have your recovery phrase and your wallet password written down for future reference."
-            open={passed}
-            onClose={handleConfirm}
-          />
-        )}
+        <DefaultModal
+          show={passed}
+          title="YOUR WALLET IS READY"
+          description="You should now have your recovery phrase and your wallet password written down for future reference."
+          onClose={handleConfirm}
+        />
       </div>
     </OnboardingLayout>
   );

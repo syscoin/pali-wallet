@@ -11,7 +11,8 @@ import {
 import {
   Layout,
   PrimaryButton,
-  Modal,
+  ErrorModal,
+  DefaultModal,
   SecondaryButton,
 } from 'components/index';
 import { useNavigate } from 'react-router-dom';
@@ -151,35 +152,28 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   return (
     <>
       {failed ? (
-        <Modal
-          type="error"
+        <ErrorModal
           onClose={closePopup}
-          open
           title={`${capitalizeFirstLetter(title.toLowerCase())} request failed`}
           description="Sorry, we could not submit your request. Try again later."
           log={logError || 'No description provided'}
-          closeMessage="Ok"
+          buttonText="Ok"
         />
       ) : (
-        submitted && (
-          <Modal
-            type="default"
-            closePopup={closePopup}
-            onClose={closePopup}
-            open
-            title={`${capitalizeFirstLetter(
-              title.toLowerCase()
-            )} request successfully submitted`}
-            description="You can check your request under activity on your home screen."
-            closeMessage="Got it"
-          />
-        )
+        <DefaultModal
+          show={submitted}
+          onClose={closePopup}
+          title={`${capitalizeFirstLetter(
+            title.toLowerCase()
+          )} request successfully submitted`}
+          description="You can check your request under activity on your home screen."
+          buttonText="Got it"
+        />
       )}
 
       {transaction && (
         <div className="flex flex-col items-center justify-center w-full">
           <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
-            {/* move the mapping function outside */}
             {data.map(
               (item: any) =>
                 !item.advanced && (
@@ -304,26 +298,22 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
   return (
     <>
       {confirmed && (
-        <Modal
-          type="default"
-          closePopup={closePopup}
+        <DefaultModal
           onClose={closePopup}
-          open={!failed}
+          show={!failed}
           title={`${title.toLowerCase()} request successfully submitted`}
           description="You can check your request under activity on your home screen."
-          closeMessage="Got it"
+          buttonText="Got it"
         />
       )}
 
       {failed && (
-        <Modal
-          type="error"
+        <ErrorModal
           onClose={closePopup}
-          open
           title="Token creation request failed"
           description="Sorry, we could not submit your request. Try again later."
           log={logError || '...'}
-          closeMessage="Ok"
+          buttonText="Ok"
         />
       )}
 

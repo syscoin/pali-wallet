@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { useController, useFormat } from 'hooks/index';
 import { Form, Input } from 'antd';
-import { Layout, SecondaryButton, Modal } from 'components/index';
+import { Layout, SecondaryButton, DefaultModal } from 'components/index';
+import { useNavigate } from 'react-router-dom';
 
 const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();
   const [loading, setLoading] = useState<boolean>(false);
 
   const controller = useController();
+  const navigate = useNavigate();
 
   const { ellipsis } = useFormat();
 
@@ -27,10 +29,12 @@ const CreateAccount = () => {
   return (
     <Layout title="CREATE ACCOUNT" id="create-account-title">
       {address ? (
-        <Modal
-          type="default"
-          open={address !== ''}
-          onClose={() => setAddress('')}
+        <DefaultModal
+          show={address !== ''}
+          onClose={() => {
+            setAddress('');
+            navigate('/home');
+          }}
           title="Your new account has been created"
           description={`${ellipsis(address)}`}
         />
