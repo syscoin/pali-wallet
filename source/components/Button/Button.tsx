@@ -50,8 +50,6 @@ export const Button: React.FC<IButton> = ({
 const disabledStyle =
   'text-button-disabled cursor-not-allowed font-light border-2 border-button-disabled';
 
-const loadingIcon = <Icon name="loading" className="text-brand-white" />;
-
 export const PrimaryButton: React.FC<IPrimaryButton> = ({
   action = false,
   children,
@@ -65,6 +63,8 @@ export const PrimaryButton: React.FC<IPrimaryButton> = ({
   const enabledStyle = action
     ? 'border-warning-success bg-warning-success hover:bg-warning-successhover text-brand-white w-40'
     : `border-button-primary bg-button-primary hover:bg-button-primaryhover text-brand-white w-${width}`;
+
+  const loadingIcon = <Icon name="loading" className="text-brand-white" />;
 
   const checkIcon = (
     <Icon
@@ -107,6 +107,8 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
   const actionStyle = action
     ? 'bg-transparent border-2 border-brand-white hover:bg-warning-error hover:border-warning-error hover:text-brand-white w-40'
     : 'border-button-secondary hover:bg-button-secondaryhover bg-button-secondary text-brand-white w-36 py-2.5';
+
+  const loadingIcon = <Icon name="loading" className="text-brand-white" />;
 
   const closeIcon = (
     <Icon name="close" wrapperClassname="mb-0.5" className="font-bold" />
