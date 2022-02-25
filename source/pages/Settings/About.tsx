@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import { useUtils } from 'hooks/index';
-import { Layout, Icon, SecondaryButton, Card } from 'components/index';
+import { Layout, Icon, SecondaryButton, SimpleCard } from 'components/index';
 
 const AboutView: FC = () => {
   const handleRedirect = (url: string) => {
@@ -27,7 +27,7 @@ const AboutView: FC = () => {
         className="flex flex-col items-center justify-center w-full"
         id="user-support-btn"
       >
-        <Card
+        <SimpleCard
           onClick={() =>
             handleRedirect('https://discord.com/invite/8QKeyurHRd')
           }
@@ -47,7 +47,7 @@ const AboutView: FC = () => {
             Click here to be redirected to Syscoin Discord, please contact
             support team at #pali_support.
           </p>
-        </Card>
+        </SimpleCard>
 
         <div className="absolute bottom-12">
           <SecondaryButton type="button" onClick={() => navigate('/home')}>

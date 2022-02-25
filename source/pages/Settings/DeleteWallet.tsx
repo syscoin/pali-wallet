@@ -1,10 +1,5 @@
 import React, { useState } from 'react';
-import {
-  Layout,
-  SecondaryButton,
-  PrimaryButton,
-  InfoCard,
-} from 'components/index';
+import { Layout, SecondaryButton, PrimaryButton, Card } from 'components/index';
 import { Form, Input } from 'antd';
 import { useController, useAccount, useUtils } from 'hooks/index';
 import TextArea from 'antd/lib/input/TextArea';
@@ -29,13 +24,13 @@ const DeleteWalletView = () => {
 
   return (
     <Layout title="DELETE WALLET">
-      <InfoCard>
+      <Card type="info">
         <p>
           <b className="text-warning-info">WARNING:</b> This will delete the
           wallet created with your current seed phrase. If in the future you
           want to use Pali again, you will need to create a new wallet.
         </p>
-      </InfoCard>
+      </Card>
 
       <p className="mr-28 my-3 text-left text-white text-xs">
         Please input your wallet password
