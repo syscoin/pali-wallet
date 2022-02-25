@@ -289,14 +289,14 @@ export const NormalHeader: React.FC = () => {
             id="general-settings-button"
             className="mb-2 mr-0.8"
           >
-            {encriptedMnemonic ? (
+            {encriptedMnemonic && (
               <IconButton type="primary" shape="circle">
                 <Icon
                   name="settings"
                   className="z-0 hover:text-brand-royalblue text-brand-white"
                 />
               </IconButton>
-            ) : null}
+            )}
           </Menu.Button>
 
           <Transition
