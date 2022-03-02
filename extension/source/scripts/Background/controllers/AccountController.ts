@@ -1737,7 +1737,7 @@ const AccountController = (actions: {
   const estimateSysTxFee = async (items: any) => {
     const { outputsArray, changeAddress, feeRateBN } = items;
 
-    const txOpts = { rbf: false };
+    const txOpts = { rbf: true };
 
     const utxos = await sys.utils.fetchBackendUTXOS(
       sysjs.blockbookURL,
@@ -1874,7 +1874,7 @@ const AccountController = (actions: {
         },
       ];
 
-      const txOpts = { rbf: false };
+      const txOpts = { rbf: true };
 
       let txInfo;
 

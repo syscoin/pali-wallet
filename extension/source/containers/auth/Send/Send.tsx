@@ -100,7 +100,7 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
           fee,
           token: selectedAsset.assetGuid,
           isToken: true,
-          rbf: !checked,
+          rbf: true,
         });
 
         history.push('/send/confirm');
