@@ -59,6 +59,19 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
     }
   }, [activeAccount, currentTabURL]);
 
+  const ethNetworks = {
+    main: {
+      id: 'eth main',
+      label: 'Main Network',
+      beUrl: 'https://blockbook.elint.services/',
+    },
+    localhost: {
+      id: 'localhost',
+      label: 'Localhost 8545',
+      beUrl: 'https://blockbook-dev.elint.services/',
+    },
+  };
+
   const NetworkMenu = () => (
     <Menu as="div" className="absolute left-2 inline-block mr-8 text-left">
       {(menuprops) => (
@@ -103,7 +116,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
             <Menu.Items
               as="div"
-              className="scrollbar-styled absolute z-10 left-0 pb-6 w-72 h-bigmenu text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
+              className="scrollbar-styled absolute z-10 left-0 pb-6 w-72 h-menu text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
             >
               <h2
                 className="mb-6 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light"
@@ -164,12 +177,15 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                         {Object.values(networks).map((currentNetwork: any) => (
                           <li
                             key={currentNetwork.id}
-                            className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                            className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                             onClick={() =>
                               handleChangeNetwork(currentNetwork.id)
                             }
                           >
-                            <span className="text-left">
+                            <span
+                              className="text-left"
+                              style={{ marginLeft: '3.2rem' }}
+                            >
                               {currentNetwork.label}
                             </span>
 
@@ -177,7 +193,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                               <Icon
                                 name="check"
                                 className="mb-1 w-4"
-                                wrapperClassname="w-6 absolute right-1"
+                                wrapperClassname="w-6 absolute right-20"
                               />
                             )}
                           </li>
@@ -210,44 +226,37 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
                         />
                       </Disclosure.Button>
 
-                      <Disclosure.Panel className="pb-2 pt-0.5 text-sm bg-menu-secondary">
-                        <li
-                          className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                          onClick={() => handleChangeNetwork('main')}
-                        >
-                          <span>Main network</span>
+                      <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
+                        {Object.values(ethNetworks).map(
+                          (currentNetwork: any) => (
+                            <li
+                              key={currentNetwork.id}
+                              className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                              onClick={() =>
+                                handleChangeNetwork(currentNetwork.id)
+                              }
+                            >
+                              <span
+                                className="text-left"
+                                style={{ marginLeft: '3.2rem' }}
+                              >
+                                {currentNetwork.label}
+                              </span>
 
-                          {activeNetwork === 'main' && (
-                            <Icon
-                              name="check"
-                              className="mb-1 w-4"
-                              wrapperClassname="w-6 absolute right-1"
-                            />
-                          )}
-                        </li>
+                              {activeNetwork === currentNetwork.id && (
+                                <Icon
+                                  name="check"
+                                  className="mb-1 w-4"
+                                  wrapperClassname="w-6 absolute right-20"
+                                />
+                              )}
+                            </li>
+                          )
+                        )}
                       </Disclosure.Panel>
                     </>
                   )}
                 </Disclosure>
-              </Menu.Item>
-
-              <Menu.Item>
-                <li
-                  onClick={() => handleChangeNetwork('localhost')}
-                  className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
-                >
-                  <Icon name="home" className="ml-1 mr-4 text-brand-white" />
-
-                  <span className="px-3">Localhost 8545</span>
-
-                  {activeNetwork === 'localhost' && (
-                    <Icon
-                      name="check"
-                      className="mb-1 w-4"
-                      wrapperClassname="w-6"
-                    />
-                  )}
-                </li>
               </Menu.Item>
 
               <Menu.Item>
