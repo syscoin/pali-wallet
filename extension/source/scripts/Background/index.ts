@@ -54,7 +54,7 @@ const restartLockTimeout = () => {
     signingTransaction,
     signingPSBT,
     mintNFT,
-    timer
+    timer,
   } = store.getState().wallet;
 
   if (timeout) {
@@ -63,16 +63,16 @@ const restartLockTimeout = () => {
 
   timeout = setTimeout(() => {
     if (
-      !checkIsLocked()
-      && !confirmingTransaction
-      && !creatingAsset
-      && !issuingNFT
-      && !issuingAsset
-      && !updatingAsset
-      && !transferringOwnership
-      && !signingTransaction
-      && !signingPSBT
-      && !mintNFT
+      !checkIsLocked() &&
+      !confirmingTransaction &&
+      !creatingAsset &&
+      !issuingNFT &&
+      !issuingAsset &&
+      !updatingAsset &&
+      !transferringOwnership &&
+      !signingTransaction &&
+      !signingPSBT &&
+      !mintNFT
     ) {
       window.controller.wallet.logOut();
 
@@ -81,7 +81,7 @@ const restartLockTimeout = () => {
       return;
     }
 
-    console.log('can\'t lock automatically - wallet is under transaction');
+    console.log("can't lock automatically - wallet is under transaction");
   }, timer * 60 * 1000);
 };
 
@@ -90,11 +90,13 @@ const getTabs = async (options: any) => {
 };
 
 const getConnectedAccountIndex = ({ match }: any) => {
-  return store.getState().wallet.accounts.findIndex((account: IAccountState) => {
-    return account.connectedTo.find((url: string) => {
-      return url === match;
-    })
-  });
+  return store
+    .getState()
+    .wallet.accounts.findIndex((account: IAccountState) => {
+      return account.connectedTo.find((url: string) => {
+        return url === match;
+      });
+    });
 };
 
 const checkIsLocked = () => {
@@ -106,18 +108,22 @@ const checkToCallPrivateMethods = () => {
     throw new Error('Please, check if your wallet is unlocked and try again.');
   }
 
-  if (getConnectedAccountIndex({ match: new URL(store.getState().wallet.tabs.currentURL).host }) === -1) {
+  if (
+    getConnectedAccountIndex({
+      match: new URL(store.getState().wallet.tabs.currentURL).host,
+    }) === -1
+  ) {
     throw new Error('Connect an account and try again.');
   }
 };
 
 const runtimeSendMessageToTabs = async ({ tabId, messageDetails }: any) => {
   return await browser.tabs.sendMessage(Number(tabId), messageDetails);
-}
+};
 
 const updateActiveWindow = async ({ windowId, options }: any) => {
   return await browser.windows.update(Number(windowId), options);
-}
+};
 
 const observeStore = async (store: any) => {
   let currentState: any;
@@ -132,15 +138,19 @@ const observeStore = async (store: any) => {
 
       for (const tab of tabs) {
         if (tab) {
-          if (getConnectedAccountIndex({ match: new URL(String(tab.url)).host }) >= 0) {
+          if (
+            getConnectedAccountIndex({
+              match: new URL(String(tab.url)).host,
+            }) >= 0
+          ) {
             try {
               await runtimeSendMessageToTabs({
                 tabId: Number(tab.id),
                 messageDetails: {
                   type: 'WALLET_UPDATED',
                   target: 'contentScript',
-                  connected: false
-                }
+                  connected: false,
+                },
               });
             } catch (error) {
               console.log('error', error);
@@ -149,7 +159,7 @@ const observeStore = async (store: any) => {
         }
       }
     }
-  }
+  };
 
   const unsubscribe = store.subscribe(handleChange);
 
@@ -164,7 +174,8 @@ const closePopup = () => {
   store.dispatch(updateCanConnect(false));
   store.dispatch(clearAllTransactions());
 
-  browser.tabs.query({ active: true })
+  browser.tabs
+    .query({ active: true })
     .then(async (tabs) => {
       tabs.map(async (tab) => {
         if (tab.title === 'Pali Wallet') {
@@ -177,7 +188,7 @@ const closePopup = () => {
     });
 
   return;
-}
+};
 
 const createPopup = async (url: string) => {
   const [tab]: any = await getTabs({ active: true, lastFocusedWindow: true });
@@ -188,19 +199,21 @@ const createPopup = async (url: string) => {
 
   store.dispatch(updateCurrentURL(String(tab.url)));
 
-  const [sysWalletPopup]: any = await getTabs({ url: browser.runtime.getURL('app.html') });
+  const [sysWalletPopup]: any = await getTabs({
+    url: browser.runtime.getURL('app.html'),
+  });
 
-  console.log('sysWalletpopup exists', sysWalletPopup)
+  console.log('sysWalletpopup exists', sysWalletPopup);
 
   if (sysWalletPopup) {
-    console.log('sys wallet popup active update window', sysWalletPopup)
+    console.log('sys wallet popup active update window', sysWalletPopup);
 
     await updateActiveWindow({
       windowId: Number(sysWalletPopup.windowId),
       options: {
         drawAttention: true,
-        focused: true
-      }
+        focused: true,
+      },
     });
 
     return;
@@ -208,7 +221,7 @@ const createPopup = async (url: string) => {
 
   const sysPopup = await browser.windows.create({
     url,
-    type: "popup",
+    type: 'popup',
     height: 640,
     width: 372,
     left: 900,
@@ -220,17 +233,14 @@ const createPopup = async (url: string) => {
 
 browser.windows.onRemoved.addListener((windowId: any) => {
   if (windowId > -1 && windowId === window.syspopup) {
-    console.log('clearing all transactions')
+    console.log('clearing all transactions');
 
     store.dispatch(clearAllTransactions());
   }
-})
+});
 
 browser.runtime.onMessage.addListener(async (request, sender) => {
-  const {
-    type,
-    target
-  } = request;
+  const { type, target } = request;
 
   let tabId: any;
 
@@ -239,7 +249,9 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
   const [tab]: any = await getTabs({ active: true, windowType: 'normal' });
 
   if (tab) {
-    if (getConnectedAccountIndex({ match: new URL(String(tab.url)).host }) >= 0) {
+    if (
+      getConnectedAccountIndex({ match: new URL(String(tab.url)).host }) >= 0
+    ) {
       tabId = tab.id;
     }
   }
@@ -250,27 +262,47 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     }
 
     if (type == 'WALLET_ERROR' && target == 'background') {
-      const {
-        transactionError,
-        invalidParams,
-        message
-      } = request;
+      const { transactionError, invalidParams, message } = request;
 
-      runtimeSendMessageToTabs({ tabId, messageDetails: { type: 'WALLET_ERROR', target: 'contentScript', transactionError, invalidParams, message } });
+      runtimeSendMessageToTabs({
+        tabId,
+        messageDetails: {
+          type: 'WALLET_ERROR',
+          target: 'contentScript',
+          transactionError,
+          invalidParams,
+          message,
+        },
+      });
     }
 
     if (type == 'TRANSACTION_RESPONSE' && target == 'background') {
-      runtimeSendMessageToTabs({ tabId, messageDetails: { type: 'TRANSACTION_RESPONSE', target: 'contentScript', response: request.response } });
+      runtimeSendMessageToTabs({
+        tabId,
+        messageDetails: {
+          type: 'TRANSACTION_RESPONSE',
+          target: 'contentScript',
+          response: request.response,
+        },
+      });
 
       const interval = setInterval(async () => {
         if (request.response.txid) {
-          const data = await window.controller.wallet.account.getTransactionInfoByTxId(request.response.txid);
+          const data =
+            await window.controller.wallet.account.getTransactionInfoByTxId(
+              request.response.txid
+            );
 
-          console.log('updating tokens state using txid: ', request.response.txid)
+          console.log(
+            'updating tokens state using txid: ',
+            request.response.txid
+          );
 
           if (data.confirmations > 0) {
             window.controller.wallet.account.updateTokensState().then(() => {
-              window.controller.wallet.account.setHDSigner(store.getState().wallet.activeAccountId);
+              window.controller.wallet.account.setHDSigner(
+                store.getState().wallet.activeAccountId
+              );
             });
 
             clearInterval(interval);
@@ -280,28 +312,49 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     }
 
     if (type == 'RESET_CONNECTION_INFO' && target == 'background') {
-      const { id, url } = request;
+      const { id, url } = request.messageData;
+
+      let accountId = -1;
+
+      if (!id) {
+        const index = getConnectedAccountIndex({
+          match: new URL(url).host,
+        });
+
+        if (!accountId || !id) {
+          accountId = store.getState().wallet.accounts[index].id;
+        }
+      }
 
       store.dispatch(updateCanConnect(false));
-      store.dispatch(removeConnection({ accountId: id, url }));
+      store.dispatch(removeConnection({ accountId, url }));
       store.dispatch(setSenderURL(''));
 
-      browser.tabs.query({ url })
+      browser.tabs
+        .query({ url })
         .then((tabs) => {
           if (tabs) {
             tabs.map((tab: any) => {
-              Promise.resolve(browser.tabs.sendMessage(Number(tab.id), {
-                type: 'WALLET_UPDATED',
-                target: 'contentScript',
-                connected: false
-              }).then(() => {
-                console.log('wallet updated')
-              }).catch(() => {
-                console.log('extension context invalidated in other tabs with the same url, you need to refresh the tab')
-              }))
-            })
+              Promise.resolve(
+                browser.tabs
+                  .sendMessage(Number(tab.id), {
+                    type: 'WALLET_UPDATED',
+                    target: 'contentScript',
+                    connected: false,
+                  })
+                  .then(() => {
+                    console.log('wallet updated');
+                  })
+                  .catch(() => {
+                    console.log(
+                      'extension context invalidated in other tabs with the same url, you need to refresh the tab'
+                    );
+                  })
+              );
+            });
           }
-        }).catch((error) => {
+        })
+        .catch((error) => {
           console.log('error getting tabs', error);
         });
 
@@ -309,19 +362,23 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     }
 
     if (type == 'SELECT_ACCOUNT' && target == 'background') {
-      store.dispatch(updateConnectionsArray({
-        accountId: request.id,
-        url: window.senderURL
-      }));
+      store.dispatch(
+        updateConnectionsArray({
+          accountId: request.id,
+          url: window.senderURL,
+        })
+      );
 
       return;
     }
 
     if (type == 'CHANGE_CONNECTED_ACCOUNT' && target == 'background') {
-      store.dispatch(updateConnectionsArray({
-        accountId: request.id,
-        url: window.senderURL
-      }));
+      store.dispatch(
+        updateConnectionsArray({
+          accountId: request.id,
+          url: window.senderURL,
+        })
+      );
 
       return;
     }
@@ -331,16 +388,19 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         store.dispatch(updateCanConnect(false));
 
         for (let tab of tabs) {
-          browser.tabs.sendMessage(Number(tab.id), {
-            type: 'WALLET_CONNECTION_CONFIRMED',
-            target: 'contentScript',
-            connectionConfirmed: true,
-            state: store.getState().wallet
-          }).then(() => {
-            console.log('wallet connection confirmed')
-          }).catch((error) => {
-            console.log('error confirming connection', error);
-          });
+          browser.tabs
+            .sendMessage(Number(tab.id), {
+              type: 'WALLET_CONNECTION_CONFIRMED',
+              target: 'contentScript',
+              connectionConfirmed: true,
+              state: store.getState().wallet,
+            })
+            .then(() => {
+              console.log('wallet connection confirmed');
+            })
+            .catch((error) => {
+              console.log('error confirming connection', error);
+            });
         }
       }
 
@@ -384,7 +444,16 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
       const copyAccounts: any = {};
 
-      for (const { address, id, balance, assets, isTrezorWallet, label, transactions, xpub } of accounts) {
+      for (const {
+        address,
+        id,
+        balance,
+        assets,
+        isTrezorWallet,
+        label,
+        transactions,
+        xpub,
+      } of accounts) {
         copyAccounts[id] = {
           address,
           balance,
@@ -393,30 +462,35 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
           isTrezorWallet: isTrezorWallet,
           label: label,
           transactions: transactions,
-          xpub: xpub
-        }
+          xpub: xpub,
+        };
       }
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'SEND_STATE_TO_PAGE',
         target: 'contentScript',
-        state: getConnectedAccountIndex({ match: new URL(store.getState().wallet.tabs.currentURL).host }) > -1 && !window.controller.wallet.isLocked() ? {
-          status,
-          accounts: Object.values(copyAccounts),
-          activeAccountId,
-          activeNetwork,
-          confirmingTransaction,
-          creatingAsset,
-          issuingAsset,
-          issuingNFT,
-          mintNFT,
-          updatingAsset,
-          transferringOwnership,
-          changingNetwork,
-          signingTransaction,
-          signingPSBT,
-          walletTokens,
-        } : null
+        state:
+          getConnectedAccountIndex({
+            match: new URL(store.getState().wallet.tabs.currentURL).host,
+          }) > -1 && !window.controller.wallet.isLocked()
+            ? {
+                status,
+                accounts: Object.values(copyAccounts),
+                activeAccountId,
+                activeNetwork,
+                confirmingTransaction,
+                creatingAsset,
+                issuingAsset,
+                issuingNFT,
+                mintNFT,
+                updatingAsset,
+                transferringOwnership,
+                changingNetwork,
+                signingTransaction,
+                signingPSBT,
+                walletTokens,
+              }
+            : null,
       });
     }
 
@@ -426,16 +500,18 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'CHECK_IS_LOCKED',
         target: 'contentScript',
-        isLocked
+        isLocked,
       });
     }
 
     if (type == 'SEND_CONNECTED_ACCOUNT' && target == 'background') {
-      const connectedAccount: any = store.getState().wallet.accounts.find((account: IAccountState) => {
-        return account.connectedTo.find((url) => {
-          return url === getHost(store.getState().wallet.tabs.currentURL)
+      const connectedAccount: any = store
+        .getState()
+        .wallet.accounts.find((account: IAccountState) => {
+          return account.connectedTo.find((url) => {
+            return url === getHost(store.getState().wallet.tabs.currentURL);
+          });
         });
-      });
 
       let copyConnectedAccount: any = null;
 
@@ -448,14 +524,14 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
           isTrezorWallet: connectedAccount.isTrezorWallet,
           label: connectedAccount.label,
           transactions: connectedAccount.transactions,
-          xpub: connectedAccount.xpub
-        }
+          xpub: connectedAccount.xpub,
+        };
       }
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'SEND_CONNECTED_ACCOUNT',
         target: 'contentScript',
-        copyConnectedAccount
+        copyConnectedAccount,
       });
     }
 
@@ -465,7 +541,8 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'CONNECTED_ACCOUNT_XPUB',
         target: 'contentScript',
-        connectedAccountXpub: window.controller.wallet.account.getConnectedAccountXpub()
+        connectedAccountXpub:
+          window.controller.wallet.account.getConnectedAccountXpub(),
       });
     }
 
@@ -475,98 +552,122 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'CONNECTED_ACCOUNT_CHANGE_ADDRESS',
         target: 'contentScript',
-        connectedAccountChangeAddress: await window.controller.wallet.account.getChangeAddress()
+        connectedAccountChangeAddress:
+          await window.controller.wallet.account.getChangeAddress(),
       });
     }
 
     if (type == 'CHECK_ADDRESS' && target == 'background') {
       checkToCallPrivateMethods();
 
-      const isValidSYSAddress = window.controller.wallet.account.isValidSYSAddress(request.messageData, store.getState().wallet.activeNetwork, true);
+      const isValidSYSAddress =
+        window.controller.wallet.account.isValidSYSAddress(
+          request.messageData,
+          store.getState().wallet.activeNetwork,
+          true
+        );
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'CHECK_ADDRESS',
         target: 'contentScript',
-        isValidSYSAddress
+        isValidSYSAddress,
       });
     }
 
     if (type == 'GET_HOLDINGS_DATA' && target == 'background') {
       checkToCallPrivateMethods();
 
-      const holdingsData = await window.controller.wallet.account.getHoldingsData();
+      const holdingsData =
+        await window.controller.wallet.account.getHoldingsData();
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'GET_HOLDINGS_DATA',
         target: 'contentScript',
-        holdingsData
+        holdingsData,
       });
-
     }
 
     if (type == 'DATA_FROM_WALLET_TO_CREATE_TOKEN' && target == 'background') {
       window.controller.wallet.account.createSPT({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToCreateSPT,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToCreateSPT
+        ...window.controller.wallet.account.getDataFromPageToInitTransaction()
+          .dataFromPageToCreateSPT,
+        ...window.controller.wallet.account.getDataFromPageToInitTransaction()
+          .dataFromWalletToCreateSPT,
       });
     }
 
     if (type == 'DATA_FROM_WALLET_TO_MINT_TOKEN' && target == 'background') {
       window.controller.wallet.account.issueSPT({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToMintSPT,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToMintSPT
+        ...window.controller.wallet.account.getDataFromPageToInitTransaction()
+          .dataFromPageToMintSPT,
+        ...window.controller.wallet.account.getDataFromPageToInitTransaction()
+          .dataFromWalletToMintSPT,
       });
     }
 
     if (type == 'DATA_FROM_WALLET_TO_MINT_NFT' && target == 'background') {
       window.controller.wallet.account.issueNFT({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToMintNFT,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToMintNFT
+        ...window.controller.wallet.account.getDataFromPageToInitTransaction()
+          .dataFromPageToMintNFT,
+        ...window.controller.wallet.account.getDataFromPageToInitTransaction()
+          .dataFromWalletToMintNFT,
       });
     }
 
     if (type == 'DATA_FROM_WALLET_TO_UPDATE_TOKEN' && target == 'background') {
       window.controller.wallet.account.setUpdateAsset({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToUpdateAsset,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToUpdateAsset
+        ...window.controller.wallet.account.getDataFromPageToInitTransaction()
+          .dataFromPageToUpdateAsset,
+        ...window.controller.wallet.account.getDataFromPageToInitTransaction()
+          .dataFromWalletToUpdateAsset,
       });
     }
 
-    if (type == 'DATA_FROM_WALLET_TO_TRANSFER_OWNERSHIP' && target == 'background') {
+    if (
+      type == 'DATA_FROM_WALLET_TO_TRANSFER_OWNERSHIP' &&
+      target == 'background'
+    ) {
       window.controller.wallet.account.setNewOwnership({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToTransferOwnership,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToTransferOwnership
+        ...window.controller.wallet.account.getDataFromPageToInitTransaction()
+          .dataFromPageToTransferOwnership,
+        ...window.controller.wallet.account.getDataFromPageToInitTransaction()
+          .dataFromWalletToTransferOwnership,
       });
     }
 
     if (type == 'DATA_FROM_WALLET_TO_ISSUE_NFT' && target == 'background') {
       window.controller.wallet.account.setNewIssueNFT({
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromPageToIssueNFT,
-        ...window.controller.wallet.account.getDataFromPageToInitTransaction().dataFromWalletToIssueNFT
+        ...window.controller.wallet.account.getDataFromPageToInitTransaction()
+          .dataFromPageToIssueNFT,
+        ...window.controller.wallet.account.getDataFromPageToInitTransaction()
+          .dataFromWalletToIssueNFT,
       });
     }
 
     if (type == 'GET_USER_MINTED_TOKENS' && target == 'background') {
       checkToCallPrivateMethods();
 
-      const tokensMinted = await window.controller.wallet.account.getUserMintedTokens();
+      const tokensMinted =
+        await window.controller.wallet.account.getUserMintedTokens();
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'GET_USER_MINTED_TOKENS',
         target: 'contentScript',
-        userTokens: tokensMinted
+        userTokens: tokensMinted,
       });
     }
 
     if (type == 'GET_ASSET_DATA' && target == 'background') {
       checkToCallPrivateMethods();
 
-      const assetData = await window.controller.wallet.account.getDataAsset(request.messageData);
+      const assetData = await window.controller.wallet.account.getDataAsset(
+        request.messageData
+      );
 
       browser.tabs.sendMessage(Number(sender.tab?.id), {
         type: 'GET_ASSET_DATA',
         target: 'contentScript',
-        assetData
+        assetData,
       });
     }
   }
@@ -600,7 +701,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'SIGN_AND_SEND',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 
@@ -620,7 +721,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'SIGN_PSBT',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 
@@ -634,7 +735,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       fee,
       token,
       isToken,
-      rbf
+      rbf,
     } = request.messageData;
 
     window.controller.wallet.account.updateTempTx({
@@ -644,7 +745,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       fee,
       token,
       isToken,
-      rbf
+      rbf,
     });
 
     store.dispatch(updateCanConfirmTransaction(true));
@@ -656,7 +757,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'SEND_TOKEN',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 
@@ -672,7 +773,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       notarydetails,
       auxfeedetails,
       notaryAddress,
-      payoutAddress
+      payoutAddress,
     } = request.messageData;
 
     if (precision < 0 || precision > 8) {
@@ -687,7 +788,13 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       throw new Error('invalid initial supply value');
     }
 
-    if (!window.controller.wallet.account.isValidSYSAddress(receiver, store.getState().wallet.activeNetwork, true)) {
+    if (
+      !window.controller.wallet.account.isValidSYSAddress(
+        receiver,
+        store.getState().wallet.activeNetwork,
+        true
+      )
+    ) {
       throw new Error('invalid receiver address');
     }
 
@@ -702,7 +809,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       notarydetails,
       auxfeedetails,
       notaryAddress,
-      payoutAddress
+      payoutAddress,
     });
 
     store.dispatch(createAsset(true));
@@ -714,19 +821,17 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'DATA_FROM_PAGE_TO_CREATE_TOKEN',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 
   if (type == 'ISSUE_SPT' && target == 'background') {
     checkToCallPrivateMethods();
 
-    const {
-      amount,
-      assetGuid
-    } = request.messageData;
+    const { amount, assetGuid } = request.messageData;
 
-    const assetFromAssetGuid = window.controller.wallet.account.getDataAsset(assetGuid);
+    const assetFromAssetGuid =
+      window.controller.wallet.account.getDataAsset(assetGuid);
 
     if (amount < 0 || amount >= assetFromAssetGuid.balance) {
       throw new Error('invalid amount value');
@@ -734,7 +839,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
 
     window.controller.wallet.account.setDataFromPageToMintSPT({
       assetGuid,
-      amount: Number(amount)
+      amount: Number(amount),
     });
 
     store.dispatch(issueAsset(true));
@@ -746,10 +851,9 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'ISSUE_SPT',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
-
 
   if (type == 'CREATE_AND_ISSUE_NFT' && target == 'background') {
     checkToCallPrivateMethods();
@@ -769,7 +873,13 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       throw new Error('invalid total shares value');
     }
 
-    if (!window.controller.wallet.account.isValidSYSAddress(issuer, store.getState().wallet.activeNetwork, true)) {
+    if (
+      !window.controller.wallet.account.isValidSYSAddress(
+        issuer,
+        store.getState().wallet.activeNetwork,
+        true
+      )
+    ) {
       throw new Error('invalid receiver address');
     }
 
@@ -793,7 +903,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'CREATE_AND_ISSUE_NFT',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 
@@ -808,7 +918,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       notarydetails,
       auxfeedetails,
       notaryAddress,
-      payoutAddress
+      payoutAddress,
     } = request.messageData;
 
     window.controller.wallet.account.setDataFromPageToUpdateAsset({
@@ -819,7 +929,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       notarydetails,
       auxfeedetails,
       notaryAddress,
-      payoutAddress
+      payoutAddress,
     });
 
     store.dispatch(setUpdateAsset(true));
@@ -831,25 +941,28 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'UPDATE_ASSET',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 
   if (type == 'TRANSFER_OWNERSHIP' && target == 'background') {
     checkToCallPrivateMethods();
 
-    const {
-      assetGuid,
-      newOwner
-    } = request.messageData;
+    const { assetGuid, newOwner } = request.messageData;
 
-    if (!window.controller.wallet.account.isValidSYSAddress(newOwner, store.getState().wallet.activeNetwork, true)) {
+    if (
+      !window.controller.wallet.account.isValidSYSAddress(
+        newOwner,
+        store.getState().wallet.activeNetwork,
+        true
+      )
+    ) {
       throw new Error('invalid new owner address');
     }
 
     window.controller.wallet.account.setDataFromPageToTransferOwnership({
       assetGuid,
-      newOwner
+      newOwner,
     });
 
     store.dispatch(setTransferOwnership(true));
@@ -861,21 +974,18 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'TRANSFER_OWNERSHIP',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 
   if (type == 'ISSUE_NFT' && target == 'background') {
     checkToCallPrivateMethods();
 
-    const {
-      assetGuid,
-      amount
-    } = request.messageData;
+    const { assetGuid, amount } = request.messageData;
 
     window.controller.wallet.account.setDataFromPageToIssueNFT({
       assetGuid,
-      amount
+      amount,
     });
 
     store.dispatch(setIssueNFT(true));
@@ -887,7 +997,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
     browser.tabs.sendMessage(Number(sender.tab?.id), {
       type: 'ISSUE_NFT',
       target: 'contentScript',
-      complete: true
+      complete: true,
     });
   }
 });
@@ -897,14 +1007,13 @@ browser.runtime.onConnect.addListener((port) => {
     return;
   }
 
-  browser.tabs.query({ active: true, lastFocusedWindow: true })
-    .then((tabs) => {
-      if (tabs[0].title === 'Pali Wallet') {
-        return;
-      }
+  browser.tabs.query({ active: true, lastFocusedWindow: true }).then((tabs) => {
+    if (tabs[0].title === 'Pali Wallet') {
+      return;
+    }
 
-      store.dispatch(updateCurrentURL(String(tabs[0].url)));
-    });
+    store.dispatch(updateCurrentURL(String(tabs[0].url)));
+  });
 });
 
 const bowser = Bowser.getParser(window.navigator.userAgent);

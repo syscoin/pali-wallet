@@ -1,5 +1,5 @@
 import { sendMessage } from 'scripts/Background/helpers';
- 
+
 const ConnectionsController = () => {
   const checkParams = ({ data, throwError, message }: any) => {
     if (!data) {
@@ -11,7 +11,7 @@ const ConnectionsController = () => {
 
       return;
     }
-  }
+  };
 
   const getConnectedAccountXpub = async () => {
     return sendMessage(
@@ -44,7 +44,12 @@ const ConnectionsController = () => {
   };
 
   const signAndSend = async (psbt: any) => {
-    checkParams({ data: psbt, throwError: true, message: 'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.' });
+    checkParams({
+      data: psbt,
+      throwError: true,
+      message:
+        'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.',
+    });
 
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
@@ -114,7 +119,11 @@ const ConnectionsController = () => {
   };
 
   const isNFT = (guid: number) => {
-    checkParams({ data: guid, throwError: false, message: 'Invalid asset guid.' });
+    checkParams({
+      data: guid,
+      throwError: false,
+      message: 'Invalid asset guid.',
+    });
 
     const assetGuid = BigInt.asUintN(64, BigInt(guid));
 
@@ -122,7 +131,6 @@ const ConnectionsController = () => {
   };
 
   const connectWallet = async () => {
-    console.log('called connect wallet firefox')
     sendMessage(
       {
         type: 'CONNECT_WALLET',
@@ -181,7 +189,11 @@ const ConnectionsController = () => {
   };
 
   const handleSendToken = async (items: SendTokenItems) => {
-    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: items,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
     if (items.isToken && typeof items.token !== 'string') {
       throw new Error('Invalid token data.');
@@ -231,12 +243,16 @@ const ConnectionsController = () => {
     const connectedAccount: any = await getConnectedAccount();
 
     if (connectedAccount && connectedAccount.isTrezorWallet) {
-      console.log('Trezor don\'t support burning of coins.');
+      console.log("Trezor don't support burning of coins.");
 
-      throw new Error('Trezor don\'t support burning of coins.');
-    } 
+      throw new Error("Trezor don't support burning of coins.");
+    }
 
-    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: items,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
@@ -304,7 +320,11 @@ const ConnectionsController = () => {
   };
 
   const handleIssueSPT = async (items: IssueTokenItems) => {
-    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: items,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
@@ -351,7 +371,11 @@ const ConnectionsController = () => {
   };
 
   const handleCreateNFT = async (items: CreateAndIssueNFTItems) => {
-    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: items,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
     return new Promise(async (_, reject) => {
       const callback = (event: any) => {
@@ -379,7 +403,7 @@ const ConnectionsController = () => {
         notaryAddress,
         payoutAddress,
       } = items;
-      
+
       await sendMessage(
         {
           type: 'CREATE_AND_ISSUE_NFT',
@@ -404,7 +428,11 @@ const ConnectionsController = () => {
   };
 
   const handleIssueNFT = async (items: any) => {
-    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: items,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
@@ -444,7 +472,7 @@ const ConnectionsController = () => {
           type: 'ISSUE_NFT',
           target: 'contentScript',
           assetGuid,
-          amount
+          amount,
         }
       );
     });
@@ -466,7 +494,11 @@ const ConnectionsController = () => {
   };
 
   const getDataAsset = async (assetGuid: any) => {
-    checkParams({ data: assetGuid, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: assetGuid,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
     return sendMessage(
       {
@@ -484,7 +516,11 @@ const ConnectionsController = () => {
   };
 
   const handleUpdateAsset = async (items: UpdateAssetItems) => {
-    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: items,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
     return new Promise(async (_, reject) => {
       const callback = (event: any) => {
@@ -537,7 +573,11 @@ const ConnectionsController = () => {
   };
 
   const handleTransferOwnership = async (items: TransferOwnershipItems) => {
-    checkParams({ data: items, throwError: false, message: 'Invalid token data.' });
+    checkParams({
+      data: items,
+      throwError: false,
+      message: 'Invalid token data.',
+    });
 
     return new Promise(async (_, reject) => {
       const callback = (event: any) => {
@@ -575,7 +615,11 @@ const ConnectionsController = () => {
   };
 
   const isValidSYSAddress = async (address: string) => {
-    checkParams({ data: address, throwError: true, message: 'Invalid address.' });
+    checkParams({
+      data: address,
+      throwError: true,
+      message: 'Invalid address.',
+    });
 
     return sendMessage(
       {
@@ -608,7 +652,12 @@ const ConnectionsController = () => {
   };
 
   const signPSBT = (psbtToSign: any) => {
-    checkParams({ data: psbtToSign, throwError: true, message: 'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.' });
+    checkParams({
+      data: psbtToSign,
+      throwError: true,
+      message:
+        'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.',
+    });
 
     return new Promise(async (resolve, reject) => {
       const callback = (event: any) => {
@@ -649,7 +698,51 @@ const ConnectionsController = () => {
         }
       );
     });
-  }
+  };
+
+  const disconnectWallet = () => {
+    console.log('sending message to wallet');
+
+    window.postMessage(
+      {
+        type: 'RESET_CONNECTION_INFO',
+        target: 'contentScript',
+        url: window.location.href,
+      },
+      '*'
+    );
+
+    // return new Promise(async (_, reject) => {
+    //   const callback = (event: any) => {
+    //     if (
+    //       event.data.type === 'WALLET_ERROR' &&
+    //       event.data.target === 'connectionsController'
+    //     ) {
+    //       reject(event.data.error);
+
+    //       window.removeEventListener('message', callback);
+    //     }
+
+    //     return null;
+    //   };
+
+    //   window.addEventListener('message', callback);
+
+    //   await sendMessage(
+    //     {
+    //       type: 'RESET_CONNECTION_INFO',
+    //       target: 'connectionsController',
+    //       freeze: true,
+    //       eventResult: 'complete',
+    //     },
+    //     {
+    //       type: 'RESET_CONNECTION_INFO',
+    //       target: 'contentScript',
+    //       url: window.location.href,
+    //     }
+    //   );
+    // });
+  };
 
   return {
     isLocked,
@@ -672,9 +765,10 @@ const ConnectionsController = () => {
     signAndSend,
     getConnectedAccountXpub,
     getChangeAddress,
-    signPSBT
+    signPSBT,
+    disconnectWallet,
   };
 };
 
 const connectionsController = ConnectionsController();
-export default Object.freeze(connectionsController); 
+export default Object.freeze(connectionsController);

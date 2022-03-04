@@ -25,8 +25,7 @@ const Modal: FC<IModal> = ({ title, message, connected, callback }) => {
     browser.runtime.sendMessage({
       type: 'RESET_CONNECTION_INFO',
       target: 'background',
-      id,
-      url: title,
+      messageData: { id, url: title },
     });
   };
 
@@ -50,10 +49,7 @@ const Modal: FC<IModal> = ({ title, message, connected, callback }) => {
 
       {!connected && (
         <div className={styles.close}>
-          <button
-            type="button"
-            onClick={() => callback()
-          }>
+          <button type="button" onClick={() => callback()}>
             Close
           </button>
         </div>
@@ -102,10 +98,7 @@ const Modal: FC<IModal> = ({ title, message, connected, callback }) => {
           </div>
 
           <div className={styles.close}>
-            <button
-              type="button"
-              onClick={() => callback()
-            }>
+            <button type="button" onClick={() => callback()}>
               Close
             </button>
           </div>

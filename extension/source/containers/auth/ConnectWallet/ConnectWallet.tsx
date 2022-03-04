@@ -17,10 +17,11 @@ import { useAlert } from 'react-alert';
 
 const ConnectWallet = () => {
   const history = useHistory();
-  const alert = useAlert()
+  const alert = useAlert();
 
-  const { accounts, activeAccountId, tabs }: IWalletState =
-    useSelector((state: RootState) => state.wallet);
+  const { accounts, activeAccountId, tabs }: IWalletState = useSelector(
+    (state: RootState) => state.wallet
+  );
   const [accountId, setAccountId] = useState<number>(-1);
   const { currentSenderURL } = tabs;
   const [continueConnection, setContinueConnection] = useState(false);
@@ -73,15 +74,13 @@ const ConnectWallet = () => {
         .sendMessage({
           type: 'RESET_CONNECTION_INFO',
           target: 'background',
-          id: accountId,
-          url: currentSenderURL,
+          messageData: { id: accountId, url: currentSenderURL },
         })
         .then(() => {
-          browser.runtime
-            .sendMessage({
-              type: 'CLOSE_POPUP',
-              target: 'background',
-            });
+          browser.runtime.sendMessage({
+            type: 'CLOSE_POPUP',
+            target: 'background',
+          });
         });
 
       return;
@@ -189,7 +188,7 @@ const ConnectWallet = () => {
               theme="btn-outline-secondary"
               variant={clsx(styles.button, styles.cancel)}
               onClick={handleCancelConnection}
-            // linkTo="/home"
+              // linkTo="/home"
             >
               Cancel
             </Button>
@@ -207,7 +206,6 @@ const ConnectWallet = () => {
         </div>
       )}
     </div>
-
   );
 };
 
