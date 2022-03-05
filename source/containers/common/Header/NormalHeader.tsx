@@ -65,18 +65,18 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
     }
   }, [activeAccount, currentTabURL]);
 
-  const ethNetworks = {
-    main: {
-      id: 'eth main',
-      label: 'Main Network',
-      beUrl: 'https://blockbook.elint.services/',
-    },
-    localhost: {
-      id: 'localhost',
-      label: 'Localhost 8545',
-      beUrl: 'https://blockbook-dev.elint.services/',
-    },
-  };
+  // const ethNetworks = {
+  //   main: {
+  //     id: 'eth main',
+  //     label: 'Main Network',
+  //     beUrl: 'https://blockbook.elint.services/',
+  //   },
+  //   localhost: {
+  //     id: 'localhost',
+  //     label: 'Localhost 8545',
+  //     beUrl: 'https://blockbook-dev.elint.services/',
+  //   },
+  // };
 
   const NetworkMenu = () => (
     <Menu

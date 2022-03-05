@@ -1,12 +1,7 @@
 import React, { FC } from 'react';
 import { useUtils } from 'hooks/index';
-import {
-  AuthViewLayout,
-  Icon,
-  IconButton,
-  SecondaryButton,
-  Card,
-} from 'components/index';
+import { Icon, IconButton, SecondaryButton, Card } from 'components/index';
+import { AuthViewLayout } from 'containers/common/Layout';
 
 const AboutView: FC = () => {
   const handleRedirect = (url: string) => {
