@@ -1,19 +1,22 @@
 import { useAlert } from 'react-alert';
-import { IAccountState } from 'state/wallet/types';
 import { useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
 
+import { useAccount, useController } from '.';
+
 export const useUtils = (): any => {
   const navigate = useNavigate();
+  const controller = useController();
+  const { activeAccount } = useAccount();
 
   const useSettingsView = () =>
     useCallback((view) => {
       navigate(view);
     }, []);
 
-  const handleRefresh = (controller: any, activeAccount: IAccountState) => {
+  const handleRefresh = (): void => {
     controller.wallet.account.getLatestUpdate();
-    controller.wallet.account.watchMemPool(activeAccount);
+    if (activeAccount) controller.wallet.account.watchMemPool(activeAccount);
     controller.stateUpdater();
   };
   // eslint-disable-next-line no-shadow

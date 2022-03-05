@@ -1,14 +1,26 @@
 import React, { FC } from 'react';
 import { useUtils } from 'hooks/index';
-import { AuthViewLayout } from 'containers/common/Layout/AuthViewLayout';
-import { Icon, SecondaryButton, Card } from 'components/index';
+import {
+  AuthViewLayout,
+  Icon,
+  IconButton,
+  SecondaryButton,
+  Card,
+} from 'components/index';
 
 const AboutView: FC = () => {
   const handleRedirect = (url: string) => {
     window.open(url);
   };
+  const { navigate, useCopyClipboard, alert } = useUtils();
+  const [copied, copy] = useCopyClipboard();
 
-  const { navigate } = useUtils();
+  const showSuccessAlert = () => {
+    if (copied) {
+      alert.removeAll();
+      alert.success('Link successfully copied');
+    }
+  };
 
   return (
     <AuthViewLayout title="INFO & HELP" id="info-help-title">
@@ -24,11 +36,11 @@ const AboutView: FC = () => {
         </p>
       </div>
 
-      <div className="flex flex-col items-center justify-center w-full">
-        <Card
-          onClick={() => handleRedirect('https://discord.gg/8QKeyurHRd')}
-          className="cursor-pointer"
-        >
+      <div
+        className="flex flex-col items-center justify-center w-full"
+        id="user-support-btn"
+      >
+        <Card>
           <div className="flex items-center justify-start mb-4 font-poppins text-base font-bold">
             <Icon
               name="message"
@@ -39,9 +51,30 @@ const AboutView: FC = () => {
             <p className="text-sm">User support</p>
           </div>
 
-          <p className="text-brand-white text-xs">
+          <p
+            className="text-brand-white underline text-xs cursor-pointer"
+            onClick={() =>
+              handleRedirect('https://discord.com/invite/8QKeyurHRd')
+            }
+          >
             Click here to be redirected to Syscoin Discord, please contact
             support team at #pali_support.
+          </p>
+          <p className="pt-3 text-brand-white text-xs">
+            To access the support link, you need to give permission or copy and
+            paste the link below
+            <div className="flex flex-row mt-2">
+              <p className="pt-1">https://discord.com/invite/8QKeyurHRd</p>
+              <IconButton
+                onClick={() => copy('https://discord.com/invite/8QKeyurHRd')}
+                type="primary"
+                shape="circle"
+                className="align-center pl-2"
+              >
+                <Icon name="copy" className="text-xs" id="copy-address-btn" />
+              </IconButton>
+              {copied && showSuccessAlert()}
+            </div>
           </p>
         </Card>
 

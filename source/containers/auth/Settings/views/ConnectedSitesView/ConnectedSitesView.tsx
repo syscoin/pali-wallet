@@ -37,17 +37,13 @@ const ConnectedSites = (): any => {
           activeAccount.connectedTo.map((url: string) => (
             <ul
               key={url}
-              className="scrollbar-styled p-2 w-full h-80 overflow-auto"
+              className="scrollbar-styled px-4 py-2 w-full h-80 overflow-auto"
             >
-              <li className="flex items-center justify-between my-2 p-3 w-full text-xs border-b border-dashed border-yellow-300">
+              <li className="flex items-center justify-between my-2 py-3 w-full text-xs border-b border-dashed border-gray-500">
                 <p>{formatURL(url, 25)}</p>
 
                 <IconButton onClick={() => setSelected(url)}>
-                  <Icon
-                    name="edit"
-                    className="text-yellow-300"
-                    wrapperClassname="w-4"
-                  />
+                  <Icon name="edit" wrapperClassname="w-4" />
                 </IconButton>
               </li>
             </ul>
@@ -57,7 +53,7 @@ const ConnectedSites = (): any => {
           <Transition appear show={selected !== ''} as={Fragment}>
             <Dialog
               as="div"
-              className="fixed z-10 inset-0 overflow-y-auto"
+              className="fixed z-10 inset-0 text-center overflow-y-auto"
               onClose={() => setSelected('')}
             >
               <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
@@ -90,7 +86,7 @@ const ConnectedSites = (): any => {
                   leaveFrom="opacity-100 scale-100"
                   leaveTo="opacity-0 scale-95"
                 >
-                  <div className="inline-block align-middle my-8 py-6 w-full max-w-2xl font-poppins bg-bkg-2 rounded-2xl shadow-xl overflow-hidden transform transition-all">
+                  <div className="inline-block align-middle my-8 py-6 w-full max-w-2xl text-left font-poppins bg-bkg-2 rounded-2xl shadow-xl overflow-hidden transform transition-all">
                     <Dialog.Title
                       as="h3"
                       className="pb-3 text-center text-brand-white text-lg font-medium leading-6 border-b border-dashed border-brand-white"
@@ -108,7 +104,7 @@ const ConnectedSites = (): any => {
                         <IconButton
                           onClick={() => disconnectSite(activeAccount?.id)}
                         >
-                          <Icon name="delete" className="text-yellow-300" />
+                          <Icon name="delete" />
                         </IconButton>
                       </div>
 
@@ -138,7 +134,7 @@ const ConnectedSites = (): any => {
                     <div className="mt-4 text-center">
                       <button
                         type="button"
-                        className="inline-flex justify-center px-12 py-2 text-brand-royalblue text-sm font-medium bg-blue-100 hover:bg-blue-200 border border-transparent rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
+                        className="transparent inline-flex justify-center px-12 py-2 hover:text-bkg-4 text-brand-white text-sm font-medium hover:bg-white bg-repeat border border-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
                         onClick={() => setSelected('')}
                       >
                         Close

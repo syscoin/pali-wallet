@@ -65,6 +65,19 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
     }
   }, [activeAccount, currentTabURL]);
 
+  const ethNetworks = {
+    main: {
+      id: 'eth main',
+      label: 'Main Network',
+      beUrl: 'https://blockbook.elint.services/',
+    },
+    localhost: {
+      id: 'localhost',
+      label: 'Localhost 8545',
+      beUrl: 'https://blockbook-dev.elint.services/',
+    },
+  };
+
   const NetworkMenu = () => (
     <Menu
       as="div"
@@ -130,7 +143,7 @@ export const NormalHeader: FC<INormalHeader> = ({ importSeed }) => {
 
             <Menu.Items
               as="div"
-              className="scrollbar-styled absolute z-10 left-0 pb-6 w-72 h-bigmenu text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
+              className="scrollbar-styled absolute z-10 left-0 pb-6 w-72 h-menu text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
             >
               <h2
                 className="mb-6 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light"

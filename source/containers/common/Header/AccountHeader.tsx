@@ -94,7 +94,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
               onClick={() => navigate('/account-priv')}
               className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
             >
-              <Icon name="key" className="mb-2 ml-1 mr-4 text-brand-white" />
+              <Icon name="key" className="mb-2 ml-1 mr-2 text-brand-white" />
 
               <span className="px-3">Your keys</span>
             </li>
@@ -107,7 +107,8 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
                   <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
                     <Icon
                       name="user"
-                      className="mb-2 ml-1 mr-4 text-brand-white"
+                      className="mb-2 ml-1 mr-2 text-brand-white"
+                      id="accounts-btn"
                     />
 
                     <span className="px-3 text-base">Accounts</span>
@@ -122,8 +123,9 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
 
                   <Disclosure.Panel className="scrollbar-styled pb-2 h-auto max-h-40 text-sm bg-menu-secondary overflow-auto">
                     <li
-                      onClick={() => navigate('/account-newaccount')}
-                      className="backface-visibility-hidden border-menu-dasheddark flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed focus:outline-none cursor-pointer transform transition duration-300"
+                      onClick={() => navigate('/settings/account/new')}
+                      className="backface-visibility-hidden flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
+                      id="create-new-account-btn"
                     >
                       <Icon
                         name="appstoreadd"
@@ -171,7 +173,8 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
             >
               <Icon
                 name="partition"
-                className="mb-2 ml-1 mr-4 text-brand-white"
+                className="mb-2 ml-1 mr-2 text-brand-white"
+                id="hardware-wallet-btn"
               />
 
               <span className="px-3">Hardware wallet</span>
@@ -183,7 +186,7 @@ export const AccountHeader: FC<IAccountHeader> = ({ importSeed }) => {
               onClick={handleLogout}
               className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
             >
-              <Icon name="lock" className="mb-2 ml-1 mr-4 text-brand-white" />
+              <Icon name="lock" className="mb-2 ml-1 mr-2 text-brand-white" />
 
               <span className="px-3">Lock</span>
             </li>

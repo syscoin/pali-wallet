@@ -56,11 +56,11 @@ export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
         <Input.Password placeholder="Confirm password" />
       </Form.Item>
 
-      <span className="text-brand-graylight text-xs">
+      <span className="px-3 text-brand-graylight text-xs">
         At least 8 characters, 1 lower-case and 1 numeral. {'   '}
       </span>
 
-      <span className="text-left text-brand-royalblue text-xs">
+      <span className="px-3 text-left text-brand-royalblue text-xs">
         Do not forget to save your password. You will need this password to
         unlock your wallet.
       </span>
