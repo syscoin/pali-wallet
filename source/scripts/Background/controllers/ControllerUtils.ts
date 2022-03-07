@@ -2,6 +2,7 @@ import { ASSET_PRICE_API, PRICE_SYS_ID } from 'constants/index';
 
 import store from 'state/store';
 import { updateFiatPrice } from 'state/price';
+import { logError } from 'source/utils';
 
 const CoinGecko = require('coingecko-api');
 
@@ -109,7 +110,7 @@ const ControllerUtils = (): IControllerUtils => {
         );
       }
     } catch (error) {
-      console.log('<!> Fetching asset price error: ', error);
+      logError('Failed to retrieve asset price', '', error);
     }
   };
 

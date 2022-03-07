@@ -9,6 +9,7 @@ import {
   useBrowser,
   useTransaction,
 } from 'hooks/index';
+import { log, logError } from 'source/utils';
 
 export const SendConfirm = () => {
   const controller = useController();
@@ -34,15 +35,13 @@ export const SendConfirm = () => {
       try {
         const callback = controller.wallet.account.confirmSendAssetTransaction;
 
-        console.log('item asset send', tempTx);
+        log('asset sent', 'Transaction', tempTx);
 
         const response =
           await controller.wallet.account.confirmTemporaryTransaction({
             type: 'sendAsset',
             callback,
           });
-
-        console.log(response);
 
         if (response) {
           alert.removeAll();
@@ -76,7 +75,7 @@ export const SendConfirm = () => {
         setConfirmed(true);
         setLoading(false);
       } catch (error: any) {
-        console.log('error', error);
+        logError('error', 'Transaction', error);
 
         if (activeAccount) {
           if (error && tempTx.fee > recommendedFee) {

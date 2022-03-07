@@ -1,3 +1,4 @@
+import { logError } from 'source/utils';
 import { browser } from 'webextension-polyfill-ts';
 
 import {
@@ -81,7 +82,7 @@ const injectScript = (content: string) => {
 
     container.insertBefore(scriptTag, container.children[0]);
   } catch (error) {
-    console.error('Pali Wallet: Provider injection failed.', error);
+    logError('Provider injection failed', 'Connection');
   }
 };
 
@@ -93,7 +94,7 @@ const injectScriptFile = (file: string) => {
 
     container.insertBefore(scriptTag, container.children[0]);
   } catch (error) {
-    console.error('Pali Wallet: Provider injection failed.', error);
+    logError('Provider injection failed', 'Connection');
   }
 };
 

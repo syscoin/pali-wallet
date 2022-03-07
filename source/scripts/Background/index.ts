@@ -17,6 +17,7 @@ import {
   setTemporaryTransactionState,
 } from 'state/wallet';
 import { IAccountState } from 'state/wallet/types';
+import { log, logError } from 'source/utils';
 
 import MasterController, { IMasterController } from './controllers';
 import { getHost } from './helpers';
@@ -52,7 +53,7 @@ const closePopup = () => {
       });
     })
     .catch((error) => {
-      console.log('error removing window', error);
+      logError('error removing window', 'UI', error);
     });
 };
 
@@ -72,7 +73,7 @@ const restartLockTimeout = () => {
       return;
     }
 
-    console.log("can't lock automatically - wallet is under transaction");
+    log('unable to lock - wallet is under transaction', 'autolock');
   }, timer * 60 * 1000);
 };
 
@@ -142,7 +143,7 @@ const observeStore = async (observedStore: any) => {
                 },
               });
             } catch (error) {
-              console.log('error', error);
+              logError('error', '', error);
             }
           }
         }
@@ -198,7 +199,7 @@ const createPopup = async (url: string) => {
 
 browser.windows.onRemoved.addListener((windowId: any) => {
   if (windowId > -1 && windowId === window.syspopup) {
-    console.log('clearing all transactions');
+    log('clearing all transactions', 'transactions');
 
     store.dispatch(clearAllTransactions());
   }
@@ -263,10 +264,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
               request.response.txid
             );
 
-          console.log(
-            'updating tokens state using txid: ',
-            request.response.txid
-          );
+          log(`updating tokens state for transaction ${request.response.txid}`);
 
           if (data.confirmations > 0) {
             window.controller.wallet.account.updateTokensState().then(() => {
@@ -301,11 +299,12 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
                     connected: false,
                   })
                   .then(() => {
-                    console.log('wallet updated');
+                    log('wallet updated');
                   })
                   .catch(() => {
-                    console.log(
-                      'extension context invalidated in other tabs with the same url, you need to refresh the tab'
+                    logError(
+                      'extension context invalidated in other tabs with the same url, you need to refresh the tab',
+                      'Connection'
                     );
                   })
               );
@@ -313,7 +312,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
           }
         })
         .catch((error) => {
-          console.log('error getting tabs', error);
+          logError('error getting tabs', 'Connection', error);
         });
 
       return;
@@ -354,10 +353,10 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
               state: store.getState().wallet,
             })
             .then(() => {
-              console.log('wallet connection confirmed');
+              log('wallet connection confirmed');
             })
             .catch((error) => {
-              console.log('error confirming connection', error);
+              logError('error confirming connection', 'Connection', error);
             });
         }
       }
@@ -933,7 +932,7 @@ const bowser = Bowser.getParser(window.navigator.userAgent);
 
 browser.tabs.onUpdated.addListener((tabId, _, tab) => {
   if (bowser.getBrowserName() === 'Firefox') {
-    console.log('browser is firefox, do nothing', tab, tab.title, tabId);
+    logError('browser is firefox, do nothing', '', { tab, tabId });
 
     // fix issue between sysmint & bridge
 
@@ -955,7 +954,7 @@ browser.runtime.onInstalled.addListener(() => {
     setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
   }
 
-  console.emoji('🤩', 'Pali extension ebabled');
+  console.emoji('🤩', 'Pali extension enabled');
 
   window.controller.stateUpdater();
 });

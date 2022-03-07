@@ -13,6 +13,8 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
 
   const [newRecipients, setNewRecipients] = useState<any>({});
   const [newSenders, setNewSenders] = useState<any>({});
+  // ? missing modal for copy feedback
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [copy, copyText] = useCopyClipboard();
 
   const recipients: any = {};
@@ -56,7 +58,6 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
         }
 
         if (vin.length > 1) {
-          console.log('vin > 1', vin, vout);
           for (const item of vin) {
             if (item.addresses) {
               senders[item.addresses[0]] = {
@@ -69,8 +70,6 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
 
         setNewRecipients(recipients);
         setNewSenders(senders);
-
-        console.log(copy);
       }
     }
   }, [transactionDetails]);
