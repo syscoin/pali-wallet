@@ -13,9 +13,8 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
 
   const [newRecipients, setNewRecipients] = useState<any>({});
   const [newSenders, setNewSenders] = useState<any>({});
-  // ? missing modal for copy feedback
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [copy, copyText] = useCopyClipboard();
+  // ? missing feedback for copy
+  const [, copyText] = useCopyClipboard();
 
   const recipients: any = {};
   const senders: any = {};
