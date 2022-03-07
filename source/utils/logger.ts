@@ -33,17 +33,17 @@ export function log(
   if (!isProd || alwaysShowObject) console.dir(object);
 }
 
-type ErrorType = 'User' | 'UI' | 'Connection' | 'Transaction' | 'Trezor';
+type ErrorType = '' | 'User' | 'UI' | 'Connection' | 'Transaction' | 'Trezor';
 
 export function logError(
   message: string,
-  type?: ErrorType,
+  type: ErrorType = '',
   object?: any,
   alwaysShowObject = false
 ) {
   //* format type
   let typeString = '';
-  if (type) typeString = `${type} `;
+  if (type !== '') typeString = `${type} `;
   typeString = typeString.concat('Error');
 
   //* format message
