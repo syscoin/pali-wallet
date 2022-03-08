@@ -43,7 +43,7 @@
     "@babel/runtime": "^7.14.0",
     "@headlessui/react": "^1.4.2",
     "@heroicons/react": "^1.0.5",
-    "@pollum-io-test/syscoin-web3-sdk": "https://github.com/Pollum-io/syscoin-web3.js",
+    "@pollum-io/sysweb3": "https://github.com/Pollum-io/sysweb3",
     "@reduxjs/toolkit": "^1.4.0",
     "@tippyjs/react": "^4.2.6",
     "@types/chrome": "^0.0.177",

@@ -31,8 +31,8 @@ import {
   updateNetwork,
   setTemporaryTransactionState,
 } from 'state/wallet';
-import { importAccount } from '@pollum-io-test/syscoin-web3-sdk/packages/web3-import';
-import { getBalance } from '@pollum-io-test/syscoin-web3-sdk/packages/web3-balance';
+import { importAccount } from '@pollum-io/sysweb3/packages/web3-import';
+import { getBalance } from '@pollum-io/sysweb3/packages/web3-balance';
 
 import { sortList, isNFT, countDecimals } from './utils';
 
@@ -799,9 +799,8 @@ const AccountController = (actions: {
 
     const signer = sysjs.Signer.Signer;
 
-    const encryptedMnemonic = CryptoJS.AES.encrypt(
-      sysjs.Signer.mnemonic,
-      encriptedPassword
+    const encryptedMnemonic = String(
+      CryptoJS.AES.encrypt(sysjs.Signer.mnemonic, encriptedPassword)
     );
 
     const web3Account = await importAccount(

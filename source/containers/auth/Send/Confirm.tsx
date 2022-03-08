@@ -10,9 +10,9 @@ import {
   useBrowser,
   useTransaction,
 } from 'hooks/index';
-import { sendTransactions } from '@pollum-io-test/syscoin-web3-sdk/packages/web3-transactions';
+import { sendTransactions } from '@pollum-io/sysweb3/packages/web3-transactions';
 import CryptoJS from 'crypto-js';
-import { changeNetwork } from '@pollum-io-test/syscoin-web3-sdk/provider/web3Provider';
+import { changeNetwork } from '@pollum-io/sysweb3/provider/web3Provider';
 
 export const SendConfirm = () => {
   const controller = useController();

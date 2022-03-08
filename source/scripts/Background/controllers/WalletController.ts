@@ -19,7 +19,7 @@ import { IWalletController } from 'types/controllers';
 import {
   changeNetwork as changeWeb3Network,
   web3Provider,
-} from '@pollum-io-test/syscoin-web3-sdk/provider/web3Provider';
+} from '@pollum-io/sysweb3/provider/web3Provider';
 
 import AccountController from './AccountController';
 
