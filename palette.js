@@ -4,6 +4,7 @@ module.exports = {
     2: '#111E33',
     3: '#162742',
     4: '#1E365C',
+    5: '#222222',
     disabled: '#FFFFFF4D',
   },
 
@@ -17,6 +18,15 @@ module.exports = {
     disabled: '#4F4F4F',
 
     popuphover: '#fff',
+  },
+
+  alert: {
+    lightsuccess: '#079C31',
+    darksuccess: '#078029',
+    lightwarning: '#FF9900',
+    darkwarning: '#E58C07',
+    lighterror: '#AF0404',
+    darkerror: '#8E0707',
   },
 
   warning: {
