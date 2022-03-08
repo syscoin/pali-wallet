@@ -22,8 +22,8 @@ interface ITxLayout {
 }
 
 export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
-  const accountCtlr = useController().wallet.account;
-  const transaction = accountCtlr.getTemporaryTransaction(txType);
+  const accountController = useController().wallet.account;
+  const transaction = accountController.getTemporaryTransaction(txType);
 
   const { navigate, getHost } = useUtils();
   const { currentSenderURL, activeNetwork } = useStore();
@@ -45,7 +45,7 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
   });
 
   const updateTemporaryTransaction = ({ fee }) => {
-    accountCtlr.updateTemporaryTransaction({
+    accountController.updateTemporaryTransaction({
       tx: {
         ...transaction,
         fee,
