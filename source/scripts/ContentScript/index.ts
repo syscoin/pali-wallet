@@ -1,4 +1,4 @@
-import { logError } from 'source/utils';
+import { logError } from 'utils/index';
 import { browser } from 'webextension-polyfill-ts';
 
 import {

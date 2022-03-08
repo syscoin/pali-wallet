@@ -19,7 +19,7 @@ import {
 } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Assets } from 'types/transactions';
-import { log } from 'source/utils';
+import { log } from 'utils/index';
 
 interface ISend {
   initAddress?: string;

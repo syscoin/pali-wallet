@@ -17,7 +17,7 @@ import {
   setTemporaryTransactionState,
 } from 'state/wallet';
 import { IAccountState } from 'state/wallet/types';
-import { log, logError } from 'source/utils';
+import { log, logError } from 'utils/index';
 
 import MasterController, { IMasterController } from './controllers';
 import { getHost } from './helpers';

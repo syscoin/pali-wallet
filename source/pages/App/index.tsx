@@ -10,7 +10,7 @@ import { ToastAlert } from 'components/index';
 import appStore from 'state/store';
 import 'assets/styles/tailwind.css';
 import 'assets/fonts/index.css';
-import { log } from 'source/utils';
+import { log } from 'utils/index';
 
 import App from './App';
 

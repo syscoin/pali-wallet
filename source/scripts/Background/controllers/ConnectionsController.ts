@@ -1,5 +1,5 @@
 import { sendMessage } from 'scripts/Background/helpers';
-import { log, logError } from 'source/utils';
+import { log, logError } from 'utils/index';
 
 const ConnectionsController = () => {
   const checkParams = ({ data, throwError, message }: any) => {

@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useController } from 'hooks/index';
 import { PasswordForm } from 'components/index';
-import { logError } from 'source/utils';
+import { logError } from 'utils/index';
 
 export const CreatePass = () => {
   const navigate = useNavigate();

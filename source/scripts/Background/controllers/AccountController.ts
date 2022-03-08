@@ -31,7 +31,7 @@ import {
   updateNetwork,
   setTemporaryTransactionState,
 } from 'state/wallet';
-import { log, logError } from 'source/utils';
+import { log, logError } from 'utils/index';
 
 import { sortList, isNFT, countDecimals } from './utils';
 

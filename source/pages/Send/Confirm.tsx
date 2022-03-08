@@ -9,7 +9,7 @@ import {
   useBrowser,
   useTransaction,
 } from 'hooks/index';
-import { log, logError } from 'source/utils';
+import { log, logError } from 'utils/index';
 
 export const SendConfirm = () => {
   const controller = useController();

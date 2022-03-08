@@ -16,7 +16,7 @@ import CryptoJS from 'crypto-js';
 import store from 'state/store';
 import axios from 'axios';
 import { IWalletController } from 'types/controllers';
-import { log, logError } from 'source/utils';
+import { log, logError } from 'utils/index';
 
 import AccountController from './AccountController';
 
