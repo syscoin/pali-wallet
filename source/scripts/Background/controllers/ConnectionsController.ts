@@ -1,4 +1,5 @@
 import { sendMessage } from 'scripts/Background/helpers';
+import { log, logError } from 'source/utils';
 
 const ConnectionsController = () => {
   const checkParams = ({ data, throwError, message }: any) => {
@@ -7,7 +8,7 @@ const ConnectionsController = () => {
         throw new Error(message);
       }
 
-      console.log(message);
+      log(message);
     }
   };
 
@@ -293,9 +294,9 @@ const ConnectionsController = () => {
     const connectedAccount: any = await getConnectedAccount();
 
     if (connectedAccount && connectedAccount.isTrezorWallet) {
-      console.log("Trezor don't support burning of coins.");
+      logError('Trezor does not support burning of coins', 'Trezor');
 
-      throw new Error("Trezor don't support burning of coins.");
+      throw new Error('Trezor does not support burning of coins');
     }
 
     checkParams({

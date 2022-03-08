@@ -19,6 +19,7 @@ import {
 } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Assets } from 'types/transactions';
+import { log } from 'source/utils';
 
 interface ISend {
   initAddress?: string;
@@ -108,7 +109,7 @@ export const Send: FC<ISend> = () => {
   };
 
   useEffect(() => {
-    console.log(activeAccount?.assets);
+    log(`assets: ${activeAccount?.assets}`);
   }, []);
 
   const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';

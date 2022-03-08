@@ -17,7 +17,6 @@ const ConnectedSites = (): any => {
   const { browser } = useBrowser();
 
   const disconnectSite = (id: any) => {
-    console.log('id selected', id, selected);
     browser.runtime.sendMessage({
       type: 'RESET_CONNECTION_INFO',
       target: 'background',

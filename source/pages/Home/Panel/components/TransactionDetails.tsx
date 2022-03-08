@@ -13,7 +13,8 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
 
   const [newRecipients, setNewRecipients] = useState<any>({});
   const [newSenders, setNewSenders] = useState<any>({});
-  const [copy, copyText] = useCopyClipboard();
+  // ? missing feedback for copy
+  const [, copyText] = useCopyClipboard();
 
   const recipients: any = {};
   const senders: any = {};
@@ -56,7 +57,6 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
         }
 
         if (vin.length > 1) {
-          console.log('vin > 1', vin, vout);
           for (const item of vin) {
             if (item.addresses) {
               senders[item.addresses[0]] = {
@@ -69,8 +69,6 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
 
         setNewRecipients(recipients);
         setNewSenders(senders);
-
-        console.log(copy);
       }
     }
   }, [transactionDetails]);

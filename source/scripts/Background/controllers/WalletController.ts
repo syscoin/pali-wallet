@@ -16,6 +16,7 @@ import CryptoJS from 'crypto-js';
 import store from 'state/store';
 import axios from 'axios';
 import { IWalletController } from 'types/controllers';
+import { log, logError } from 'source/utils';
 
 import AccountController from './AccountController';
 
@@ -118,7 +119,7 @@ const WalletController = (): IWalletController => {
         mnemonic = '';
 
         account.updateTokensState().then(() => {
-          console.log('update tokens state after create wallet');
+          log('update tokens state after create wallet');
         });
       });
   };
@@ -234,7 +235,7 @@ const WalletController = (): IWalletController => {
 
         for (let i = 1; i < accounts.length; i++) {
           if (i > 0 && accounts[i].isTrezorWallet) {
-            console.log(
+            log(
               'Should not derive from hdsigner if the account is from the hardware wallet'
             );
           } else {
@@ -385,7 +386,7 @@ const WalletController = (): IWalletController => {
     account.getPrimaryAccount(encriptedPassword, currentSysInstance);
 
     account.updateTokensState().then(() => {
-      console.log('tokens state updated after remove trezor');
+      log('tokens state updated after removing trezor');
     });
   };
 
@@ -475,8 +476,7 @@ const WalletController = (): IWalletController => {
               const index = parseInt(splitPath[5], 10);
 
               if (change === 1) {
-                console.log("Can't update it's change index");
-
+                logError("Can't update it's change index", 'Transaction');
                 return;
               }
 
@@ -493,7 +493,7 @@ const WalletController = (): IWalletController => {
       try {
         address = await sjs.Signer.getNewReceivingAddress(true);
       } catch (error: any) {
-        console.log('error getting receiving address from sysjs', error);
+        logError('Failed to get receiving address');
 
         throw new Error(error);
       }

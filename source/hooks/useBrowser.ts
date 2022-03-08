@@ -1,6 +1,7 @@
 import store from 'state/store';
 import { updateCurrentURL } from 'state/wallet';
 import { browser } from 'webextension-polyfill-ts';
+import { logError } from 'source/utils';
 
 export const useBrowser = () => ({ browser });
 
@@ -32,7 +33,7 @@ export const useWindowsAPI = () => {
         }
       });
     } catch (error: any) {
-      console.log('error removing window', error);
+      logError('error removing window', 'UI', error);
     }
   };
 

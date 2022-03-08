@@ -10,6 +10,7 @@ import { ToastAlert } from 'components/index';
 import appStore from 'state/store';
 import 'assets/styles/tailwind.css';
 import 'assets/fonts/index.css';
+import { log } from 'source/utils';
 
 import App from './App';
 
@@ -19,7 +20,7 @@ const store = new Store({ portName: STORE_PORT });
 const w = watch(appStore.getState, 'wallet.status');
 store.subscribe(
   w(() => {
-    console.log('watching webext store');
+    log('watching webext store');
   })
 );
 

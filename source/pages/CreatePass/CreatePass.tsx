@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useController } from 'hooks/index';
 import { PasswordForm } from 'components/index';
+import { logError } from 'source/utils';
 
 export const CreatePass = () => {
   const navigate = useNavigate();
@@ -13,7 +14,7 @@ export const CreatePass = () => {
 
       navigate('/phrase/create');
     } catch (error) {
-      console.log('error', error);
+      logError('could not create password');
     }
   };
 
