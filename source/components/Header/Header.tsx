@@ -1,31 +1,17 @@
 import React from 'react';
-import { useController, useStore } from 'hooks/index';
+import { useStore } from 'hooks/index';
 import { Icon } from 'components/Icon';
 
-import { AccountHeader, NormalHeader, Section } from './index';
+import { AccountHeader, NormalHeader } from '.';
 
-type HeaderType = {
+interface IHeader {
   accountHeader?: boolean;
-  importSeed?: boolean;
-  normalHeader?: boolean;
-  onlySection?: boolean;
-};
+}
 
-export const Header = ({
-  importSeed = false,
-  onlySection = false,
-  accountHeader = false,
-  normalHeader = true,
-}: HeaderType) => {
+export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
   const { changingNetwork } = useStore();
 
-  const controller = useController();
-  const isUnlocked = !controller.wallet.isLocked();
-
-  const onlySectionStyle = onlySection ? '' : 'pb-12';
-
-  const headerStyle =
-    normalHeader && accountHeader ? 'pb-32' : onlySectionStyle;
+  const headerStyle = accountHeader ? 'pb-32' : 'pb-12';
 
   return (
     <div className={headerStyle}>
@@ -35,18 +21,11 @@ export const Header = ({
         </div>
       )}
 
-      {onlySection && <Section />}
-
       <div className="fixed z-10 w-full md:max-w-2xl">
-        {normalHeader && (
-          <>
-            <NormalHeader importSeed={importSeed} isUnlocked={isUnlocked} />
-
-            {accountHeader && (
-              <AccountHeader importSeed={importSeed} isUnlocked={isUnlocked} />
-            )}
-          </>
-        )}
+        <>
+          <NormalHeader />
+          {accountHeader && <AccountHeader />}
+        </>
       </div>
     </div>
   );

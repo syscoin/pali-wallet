@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { AuthViewLayout, SecondaryButton, Modal } from 'components/index';
+import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import { useController, useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
+import { useNavigate } from 'react-router-dom';
 
 const AutolockView = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
   const controller = useController();
+  const navigate = useNavigate();
 
   const { timer } = useStore();
 
@@ -21,21 +23,21 @@ const AutolockView = () => {
   };
 
   return (
-    <AuthViewLayout title="AUTO LOCK TIMER" id="auto-lock-timer-title">
+    <Layout title="AUTO LOCK TIMER" id="auto-lock-timer-title">
       <p className="px-10 py-6 text-white text-sm">
         You can set auto lock timer. Default is 5 minutes after no activity.
         Maximum is 30 minutes.
       </p>
 
-      {confirmed && (
-        <Modal
-          type="default"
-          open={confirmed}
-          onClose={() => setConfirmed(false)}
-          title="Time set successfully"
-          description="Your auto lock was configured successfully. You can change it at any time."
-        />
-      )}
+      <DefaultModal
+        show={confirmed}
+        onClose={() => {
+          setConfirmed(false);
+          navigate('/home');
+        }}
+        title="Time set successfully"
+        description="Your auto lock was configured successfully. You can change it at any time."
+      />
 
       <Form
         className="flex flex-col gap-8 items-center justify-center text-center"
@@ -81,7 +83,7 @@ const AutolockView = () => {
           </SecondaryButton>
         </div>
       </Form>
-    </AuthViewLayout>
+    </Layout>
   );
 };
 

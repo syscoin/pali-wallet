@@ -5,7 +5,12 @@ import React, {
 import { useNavigate } from 'react-router-dom';
 import { useController } from 'hooks/index';
 import shuffle from 'lodash/shuffle';
-import { Button, Modal, PrimaryButton, Layout } from 'components/index';
+import {
+  Button,
+  DefaultModal,
+  PrimaryButton,
+  OnboardingLayout,
+} from 'components/index';
 // import isEqual from 'lodash/isEqual';
 
 export const ConfirmPhrase = () => {
@@ -48,7 +53,7 @@ export const ConfirmPhrase = () => {
   };
 
   return (
-    <Layout title="Confirm Recovery Phrase" onlySection>
+    <OnboardingLayout title="Confirm Recovery Phrase">
       <div className="flex flex-col gap-4 items-center justify-center mt-2 text-brand-white transition-all duration-300 ease-in-out">
         <>
           <section className="flex flex-wrap gap-3 items-center justify-center p-3 w-11/12 border-b border-brand-graylight box-border transition-all duration-300">
@@ -85,17 +90,14 @@ export const ConfirmPhrase = () => {
           </div>
         </>
 
-        {passed && (
-          <Modal
-            type="default"
-            title="YOUR WALLET IS READY"
-            description="You should now have your recovery phrase and your wallet password written down for future reference."
-            open={passed}
-            onClose={handleConfirm}
-          />
-        )}
+        <DefaultModal
+          show={passed}
+          title="YOUR WALLET IS READY"
+          description="You should now have your recovery phrase and your wallet password written down for future reference."
+          onClose={handleConfirm}
+        />
       </div>
-    </Layout>
+    </OnboardingLayout>
   );
 };
 

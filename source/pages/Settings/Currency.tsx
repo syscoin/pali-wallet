@@ -7,7 +7,7 @@ import {
   useUtils,
   useAccount,
 } from 'hooks/index';
-import { AuthViewLayout, SecondaryButton, Icon, Modal } from 'components/index';
+import { Layout, SecondaryButton, Icon, DefaultModal } from 'components/index';
 import { Menu, Transition } from '@headlessui/react';
 import { Input } from 'antd';
 import getSymbolFromCurrency from 'currency-symbol-map';
@@ -80,18 +80,15 @@ const CurrencyView = () => {
     : 'USD';
 
   return (
-    <AuthViewLayout title="FIAT CURRENCY" id="fiat-currency-title">
-      {confirmed && (
-        <Modal
-          type="default"
-          onClose={() => navigate('/home')}
-          open={confirmed}
-          title="Fiat currency set successfully"
-          description={`Now you will see the values in your wallet in SYS and ${
-            selectedCoin.toUpperCase() || 'USD'
-          }`}
-        />
-      )}
+    <Layout title="FIAT CURRENCY" id="fiat-currency-title">
+      <DefaultModal
+        show={confirmed}
+        onClose={() => navigate('/home')}
+        title="Fiat currency set successfully"
+        description={`Now you will see the values in your wallet in SYS and ${
+          selectedCoin.toUpperCase() || 'USD'
+        }`}
+      />
 
       <p className="mx-6 my-3 text-left text-white text-xs">
         You can choose and set your preferred currency to see in your wallet.
@@ -290,7 +287,7 @@ const CurrencyView = () => {
           </div>
         </div>
       </div>
-    </AuthViewLayout>
+    </Layout>
   );
 };
 

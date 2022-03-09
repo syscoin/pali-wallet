@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore, useFormat, useUtils } from 'hooks/index';
-import { AuthViewLayout, SecondaryButton } from 'components/index';
+import { Layout, SecondaryButton } from 'components/index';
 
 import { CustomRPC } from '..';
 
@@ -27,7 +27,7 @@ const EditNetworkView = () => {
           }
         />
       ) : (
-        <AuthViewLayout title="EDIT NETWORK">
+        <Layout title="EDIT NETWORK">
           <p className="mt-4 text-left text-brand-white font-poppins text-sm">
             Click on network to edit
           </p>
@@ -62,7 +62,7 @@ const EditNetworkView = () => {
               Close
             </SecondaryButton>
           </div>
-        </AuthViewLayout>
+        </Layout>
       )}
     </>
   );

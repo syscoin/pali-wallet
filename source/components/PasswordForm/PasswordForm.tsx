@@ -1,9 +1,13 @@
 import React from 'react';
 import { Form, Input } from 'antd';
-import { Layout, PrimaryButton } from 'components/index';
+import { OnboardingLayout, PrimaryButton } from 'components/index';
 
-export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
-  <Layout title="Password" onlySection>
+interface IPasswordForm {
+  onSubmit: (data: any) => any;
+}
+
+export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => (
+  <OnboardingLayout title="Password">
     <Form
       name="basic"
       labelCol={{ span: 8 }}
@@ -15,8 +19,8 @@ export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
     >
       <Form.Item
         name="password"
-        hasFeedback
         className="w-full"
+        hasFeedback
         rules={[
           {
             required: true,
@@ -32,10 +36,10 @@ export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
       </Form.Item>
 
       <Form.Item
-        className="w-full"
         name="repassword"
-        dependencies={['password']}
+        className="w-full"
         hasFeedback
+        dependencies={['password']}
         rules={[
           {
             required: true,
@@ -43,10 +47,8 @@ export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
           },
           ({ getFieldValue }) => ({
             validator(_, value) {
-              if (!value || getFieldValue('password') === value) {
+              if (!value || getFieldValue('password') === value)
                 return Promise.resolve();
-              }
-
               return Promise.reject();
             },
           }),
@@ -70,5 +72,5 @@ export const PasswordForm = ({ onSubmit }: { onSubmit: any }) => (
         </PrimaryButton>
       </div>
     </Form>
-  </Layout>
+  </OnboardingLayout>
 );

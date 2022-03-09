@@ -11,12 +11,7 @@ import {
 } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
-import {
-  AuthViewLayout,
-  SecondaryButton,
-  Tooltip,
-  Icon,
-} from 'components/index';
+import { Layout, SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Assets } from 'types/transactions';
 import { log } from 'utils/index';
@@ -248,7 +243,7 @@ export const Send: FC<ISend> = () => {
               ]}
             >
               <Tooltip
-                contentClassName="text-brand-white h-4"
+                childrenClassName="text-brand-white h-4"
                 content="Pali verifies your address to check if it is a valid SYS address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing."
               >
                 <p className="text-10px">Verify address</p>
@@ -281,7 +276,7 @@ export const Send: FC<ISend> = () => {
               ]}
             >
               <Tooltip
-                contentClassName="text-brand-white h-4"
+                childrenClassName="text-brand-white h-4"
                 content="Disable this option for Replace-by-fee (RBF) and enable for Z-DAG, a exclusive Syscoin feature. Z-DAG enables faster transactions but should not be used for high amounts."
               >
                 <p className="text-10px">Z-DAG</p>
@@ -420,8 +415,8 @@ export const Send: FC<ISend> = () => {
     </div>
   );
   return (
-    <AuthViewLayout title="SEND SYS" id="sendSYS-title">
+    <Layout title="SEND SYS" id="sendSYS-title">
       <SendForm />
-    </AuthViewLayout>
+    </Layout>
   );
 };

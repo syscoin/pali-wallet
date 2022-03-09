@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AuthViewLayout, SecondaryButton, Modal } from 'components/index';
+import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import {
   useController,
   useStore,
@@ -125,17 +125,13 @@ export const SendConfirm = () => {
   };
 
   return (
-    <AuthViewLayout title="SEND SYS">
-      {confirmed && (
-        <Modal
-          type="default"
-          title="Transaction successful"
-          description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
-          open={confirmed}
-          onClose={() => navigate('/home')}
-          doNothing
-        />
-      )}
+    <Layout title="SEND SYS">
+      <DefaultModal
+        show={confirmed}
+        title="Transaction successful"
+        description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
+        onClose={() => navigate('/home')}
+      />
 
       {tempTx && (
         <div className="flex flex-col items-center justify-center mt-4 w-full">
@@ -188,6 +184,6 @@ export const SendConfirm = () => {
           </div>
         </div>
       )}
-    </AuthViewLayout>
+    </Layout>
   );
 };

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useController, useUtils, useAccount, useFormat } from 'hooks/index';
 import QRCode from 'qrcode.react';
-import { AuthViewLayout, SecondaryButton, Icon } from 'components/index';
+import { Layout, SecondaryButton, Icon } from 'components/index';
 
 export const Receive = () => {
   const { useCopyClipboard } = useUtils();
@@ -23,7 +23,7 @@ export const Receive = () => {
   }, []);
 
   return (
-    <AuthViewLayout title="RECEIVE SYS" id="receiveSYS-title">
+    <Layout title="RECEIVE SYS" id="receiveSYS-title">
       {loaded && activeAccount ? (
         <div className="flex flex-col items-center justify-center pt-8 w-full">
           <QRCode
@@ -56,6 +56,6 @@ export const Receive = () => {
           className="w-4 text-brand-white"
         />
       )}
-    </AuthViewLayout>
+    </Layout>
   );
 };

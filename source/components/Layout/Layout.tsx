@@ -1,50 +1,66 @@
-import React, { ReactNode, FC } from 'react';
-import { QuestionCircleOutlined } from '@ant-design/icons';
-import { Header, Tooltip } from 'components/index';
+import React, { FC } from 'react';
+import { Header, Icon, IconButton, Tooltip } from 'components/index';
+import { useBrowser } from 'hooks/index';
+import { useNavigate } from 'react-router-dom';
 
 interface ILayout {
-  accountHeader?: boolean;
-  children: ReactNode;
-  importSeed?: boolean;
-  normalHeader?: boolean;
-  onlySection?: boolean;
+  canGoBack?: boolean;
+  children: React.ReactNode;
+  id?: string;
   title: string;
-  tooltipText?: string;
 }
 
 export const Layout: FC<ILayout> = ({
-  title,
+  canGoBack = true,
   children,
-  onlySection = false,
-  accountHeader = false,
-  normalHeader = false,
-  tooltipText = '',
-}) => (
-  <div className="flex flex-col gap-4 items-center justify-center">
-    <Header
-      onlySection={onlySection}
-      accountHeader={accountHeader}
-      normalHeader={normalHeader}
-    />
+  id = '',
+  title,
+}) => {
+  const navigate = useNavigate();
+  const { browser } = useBrowser();
 
-    <section>
-      {tooltipText ? (
-        <div className="flex gap-2 items-center justify-center">
-          <span className="text-center text-brand-royalblue text-xl font-bold tracking-normal">
-            {title}
-          </span>
+  const url = browser.runtime.getURL('app.html');
 
-          <Tooltip content={tooltipText}>
-            <QuestionCircleOutlined className="inline-flex w-3 text-brand-graylight text-sm" />
+  return (
+    <div className="relative w-full min-w-popup h-full min-h-popup text-brand-white bg-bkg-2">
+      <Header />
+
+      <div className="relative flex items-center justify-center pt-6 w-full text-brand-white bg-bkg-3">
+        {url && canGoBack && (
+          <Tooltip content="Go to fullscreen">
+            <IconButton onClick={() => window.open(url)}>
+              <Icon
+                className="absolute bottom-1 left-5 text-brand-white sm:hidden"
+                name="desktop"
+              />
+            </IconButton>
           </Tooltip>
-        </div>
-      ) : (
-        <span className="text-center text-brand-royalblue text-xl font-bold tracking-normal">
-          {title}
-        </span>
-      )}
-    </section>
+        )}
 
-    <section>{children}</section>
-  </div>
-);
+        <p className="w-full text-center text-xl" id={id}>
+          {title}
+        </p>
+
+        {canGoBack && (
+          <IconButton onClick={() => navigate('/home')}>
+            <Icon wrapperClassname="absolute bottom-1 right-4" name="close" />
+          </IconButton>
+        )}
+      </div>
+
+      <div className="relative flex items-center justify-center mb-3 pb-3 pt-2 bg-bkg-3">
+        <Icon
+          size={36}
+          name="select-up"
+          wrapperClassname="w-8"
+          className="fixed top-24 text-bkg-2"
+          color="#111E33"
+        />
+      </div>
+
+      <div className="flex flex-col items-center justify-center w-full text-brand-white bg-bkg-2 xl:h-full">
+        {children}
+      </div>
+    </div>
+  );
+};

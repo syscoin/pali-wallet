@@ -1,4 +1,4 @@
-import React, { FC, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   useController,
   usePopup,
@@ -9,29 +9,32 @@ import {
   useBrowser,
 } from 'hooks/index';
 import {
-  AuthViewLayout,
+  Layout,
   PrimaryButton,
-  Modal,
+  ErrorModal,
+  DefaultModal,
   SecondaryButton,
 } from 'components/index';
+import { useNavigate } from 'react-router-dom';
 
-type ITxConfirm = {
+interface ITxConfirm {
   callback: any;
-  temporaryTransaction: any;
-  temporaryTransactionStringToClear: string;
   title: string;
-};
-const TxConfirm = ({
+  transaction: any;
+  txType: string;
+}
+
+const TxConfirm: React.FC<ITxConfirm> = ({
   callback,
-  temporaryTransaction,
-  temporaryTransactionStringToClear,
+  transaction,
+  txType,
   title,
-}: ITxConfirm) => {
-  const controller = useController();
+}) => {
+  const navigate = useNavigate();
+  const accountCtlr = useController().wallet.account;
 
   const { ellipsis, formatURL, capitalizeFirstLetter } = useFormat();
   const { closePopup } = usePopup();
-  const { navigate } = useUtils();
   const { activeAccount } = useAccount();
   const { browser } = useBrowser();
   const { handleRejectTransaction, handleCancelTransactionOnSite } =
@@ -54,10 +57,10 @@ const TxConfirm = ({
   ];
 
   useEffect(() => {
-    if (temporaryTransaction) {
-      const newData: any = {};
+    if (transaction) {
+      const newData = {};
 
-      Object.entries(temporaryTransaction).map(([key, value]) => {
+      Object.entries(transaction).map(([key, value]) => {
         if (!newData[key]) {
           newData[key] = {
             label: key,
@@ -69,10 +72,10 @@ const TxConfirm = ({
 
       setData(Object.values(newData));
     }
-  }, [temporaryTransaction]);
+  }, [transaction]);
 
   const handleConfirmSiteTransaction = async () => {
-    const recommendedFee = await controller.wallet.account.getRecommendFee();
+    const recommendedFee = await accountCtlr.getRecommendFee();
 
     let isPending = false;
 
@@ -82,17 +85,16 @@ const TxConfirm = ({
       isPending = true;
 
       try {
-        if (temporaryTransactionStringToClear === 'newNFT') {
+        if (txType === 'newNFT') {
           setConfirmed(true);
           setLoading(false);
           setSubmitted(true);
         }
 
-        const response =
-          await controller.wallet.account.confirmTemporaryTransaction({
-            type: temporaryTransactionStringToClear,
-            callback,
-          });
+        const response = await accountCtlr.confirmTemporaryTransaction({
+          type: txType,
+          callback,
+        });
 
         isPending = false;
 
@@ -111,7 +113,7 @@ const TxConfirm = ({
         setFailed(true);
         setLogError(error.message);
 
-        if (error && temporaryTransaction.fee > recommendedFee) {
+        if (error && transaction.fee > recommendedFee) {
           setLogError(
             `${formatURL(
               String(error.message),
@@ -120,7 +122,7 @@ const TxConfirm = ({
           );
         }
 
-        if (error && temporaryTransaction.fee < recommendedFee) {
+        if (error && transaction.fee < recommendedFee) {
           setLogError(error.message);
         }
 
@@ -140,10 +142,7 @@ const TxConfirm = ({
           setLogError('');
 
           setTimeout(() => {
-            handleCancelTransactionOnSite(
-              browser,
-              temporaryTransactionStringToClear
-            );
+            handleCancelTransactionOnSite(browser, txType);
           }, 4000);
         }
       }, 8 * 60 * 1000);
@@ -153,55 +152,44 @@ const TxConfirm = ({
   return (
     <>
       {failed ? (
-        <Modal
-          type="error"
+        <ErrorModal
           onClose={closePopup}
-          open={failed}
           title={`${capitalizeFirstLetter(title.toLowerCase())} request failed`}
           description="Sorry, we could not submit your request. Try again later."
           log={logError || 'No description provided'}
-          closeMessage="Ok"
+          buttonText="Ok"
         />
       ) : (
-        <>
-          {submitted && (
-            <Modal
-              type="default"
-              closePopup={closePopup}
-              onClose={closePopup}
-              open={submitted && !failed}
-              title={`${capitalizeFirstLetter(
-                title.toLowerCase()
-              )} request successfully submitted`}
-              description="You can check your request under activity on your home screen."
-              closeMessage="Got it"
-            />
-          )}
-        </>
+        <DefaultModal
+          show={submitted}
+          onClose={closePopup}
+          title={`${capitalizeFirstLetter(
+            title.toLowerCase()
+          )} request successfully submitted`}
+          description="You can check your request under activity on your home screen."
+          buttonText="Got it"
+        />
       )}
 
-      {temporaryTransaction && (
+      {transaction && (
         <div className="flex flex-col items-center justify-center w-full">
           <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
-            {data &&
-              data.map((item: any) => (
-                <>
-                  {!item.advanced && (
-                    <li
-                      key={item.label}
-                      className="flex items-center justify-between my-2 p-2 w-full text-xs border-b border-dashed border-brand-royalblue"
-                    >
-                      <p>{item.label}</p>
-                      <p>
-                        {typeof item.value === 'string' &&
-                        item.value.length > 10
-                          ? ellipsis(item.value)
-                          : item.value}
-                      </p>
-                    </li>
-                  )}
-                </>
-              ))}
+            {data.map(
+              (item: any) =>
+                !item.advanced && (
+                  <li
+                    key={item.label}
+                    className="flex items-center justify-between my-2 p-2 w-full text-xs border-b border-dashed border-brand-royalblue"
+                  >
+                    <p>{item.label}</p>
+                    <p>
+                      {typeof item.value === 'string' && item.value.length > 10
+                        ? ellipsis(item.value)
+                        : item.value}
+                    </p>
+                  </li>
+                )
+            )}
           </ul>
 
           <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
@@ -209,7 +197,7 @@ const TxConfirm = ({
               type="button"
               action
               onClick={() =>
-                handleRejectTransaction(browser, temporaryTransaction, navigate)
+                handleRejectTransaction(browser, transaction, navigate)
               }
             >
               Cancel
@@ -231,18 +219,18 @@ const TxConfirm = ({
   );
 };
 
-type ITxConfirmSign = {
+interface ITxConfirmSign {
   psbt: any;
   signAndSend?: boolean;
   title?: string;
-};
+}
 
-const TxConfirmSign = ({
+const TxConfirmSign: React.FC<ITxConfirmSign> = ({
   psbt,
   signAndSend = false,
   title = 'SIGNATURE REQUEST',
-}: ITxConfirmSign) => {
-  const controller = useController();
+}) => {
+  const accountCtlr = useController().wallet.account;
   const base64 =
     /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
 
@@ -257,7 +245,7 @@ const TxConfirmSign = ({
   const [failed, setFailed] = useState(false);
   const [logError, setLogError] = useState('');
 
-  const handleConfirmSignature = () => {
+  const handleConfirmSignature = async () => {
     setLoading(true);
 
     if (!base64.test(psbt.psbt) || typeof psbt.assets !== 'string') {
@@ -273,67 +261,59 @@ const TxConfirmSign = ({
       return;
     }
 
-    controller.wallet.account
-      .signTransaction(psbt, signAndSend)
-      .then((response: any) => {
-        if (response) {
-          setConfirmed(true);
-          setLoading(false);
+    try {
+      const response = await accountCtlr.signTransaction(psbt, signAndSend);
+      if (response) {
+        setConfirmed(true);
+        setLoading(false);
 
-          setTimeout(() => {
-            handleCancelTransactionOnSite(browser, psbt);
-          }, 4000);
+        setTimeout(() => {
+          handleCancelTransactionOnSite(browser, psbt);
+        }, 4000);
 
-          browser.runtime.sendMessage({
-            type: 'TRANSACTION_RESPONSE',
-            target: 'background',
-            response,
-          });
-        }
-      })
-      .catch((error: any) => {
-        if (error) {
-          setFailed(true);
-          setLogError(error.message);
+        browser.runtime.sendMessage({
+          type: 'TRANSACTION_RESPONSE',
+          target: 'background',
+          response,
+        });
+      }
+    } catch (error: any) {
+      setFailed(true);
+      setLogError(error.message);
 
-          browser.runtime.sendMessage({
-            type: 'WALLET_ERROR',
-            target: 'background',
-            transactionError: true,
-            invalidParams: false,
-            message: "Can't sign transaction. Try again later.",
-          });
-
-          setTimeout(() => {
-            handleCancelTransactionOnSite(browser, psbt);
-          }, 4000);
-        }
+      browser.runtime.sendMessage({
+        type: 'WALLET_ERROR',
+        target: 'background',
+        transactionError: true,
+        invalidParams: false,
+        message: "Can't sign transaction. Try again later.",
       });
+
+      setTimeout(() => {
+        handleCancelTransactionOnSite(browser, psbt);
+      }, 4000);
+    }
   };
 
   return (
     <>
       {confirmed && (
-        <Modal
-          type="default"
-          closePopup={closePopup}
+        <DefaultModal
           onClose={closePopup}
-          open={confirmed && !failed}
+          show={!failed}
           title={`${title.toLowerCase()} request successfully submitted`}
           description="You can check your request under activity on your home screen."
-          closeMessage="Got it"
+          buttonText="Got it"
         />
       )}
 
       {failed && (
-        <Modal
-          type="error"
+        <ErrorModal
           onClose={closePopup}
-          open={failed}
           title="Token creation request failed"
           description="Sorry, we could not submit your request. Try again later."
           log={logError || '...'}
-          closeMessage="Ok"
+          buttonText="Ok"
         />
       )}
 
@@ -341,11 +321,7 @@ const TxConfirmSign = ({
         <div className="flex flex-col items-center justify-center w-full">
           <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
             <pre>
-              {`${JSON.stringify(
-                controller.wallet.account.importPsbt(psbt),
-                null,
-                2
-              )}`}
+              {`${JSON.stringify(accountCtlr.importPsbt(psbt), null, 2)}`}
             </pre>
           </ul>
 
@@ -374,8 +350,8 @@ const TxConfirmSign = ({
   );
 };
 
-const callbackNameResolver = (transactionName: string) => {
-  switch (transactionName) {
+const callbackNameResolver = (txType: string) => {
+  switch (txType) {
     case 'newAsset':
       return 'confirmSPTCreation';
 
@@ -399,14 +375,14 @@ const callbackNameResolver = (transactionName: string) => {
   }
 };
 
-export type ITxConfirmLayout = {
+interface ITxConfirmLayout {
   sign?: boolean;
   signAndSend?: boolean;
   title: string;
   txType: string;
-};
+}
 
-export const TxConfirmLayout: FC<ITxConfirmLayout> = ({
+export const TxConfirmLayout: React.FC<ITxConfirmLayout> = ({
   sign = false,
   signAndSend = false,
   title,
@@ -415,27 +391,27 @@ export const TxConfirmLayout: FC<ITxConfirmLayout> = ({
   const walletCtlr = useController().wallet;
   const { getTemporaryTransaction } = walletCtlr.account;
 
-  const temporaryTransaction = getTemporaryTransaction(txType);
+  const transaction = getTemporaryTransaction(txType);
 
   const callbackName = callbackNameResolver(txType);
   const callback = walletCtlr.account[callbackName];
 
   return (
-    <AuthViewLayout canGoBack={false} title={title}>
+    <Layout canGoBack={false} title={title}>
       {sign ? (
         <TxConfirmSign
-          psbt={temporaryTransaction}
+          psbt={transaction}
           signAndSend={signAndSend}
           title="SIGNATURE REQUEST"
         />
       ) : (
         <TxConfirm
           callback={callback}
-          temporaryTransaction={temporaryTransaction}
-          temporaryTransactionStringToClear={txType}
+          transaction={transaction}
+          txType={txType}
           title={title}
         />
       )}
-    </AuthViewLayout>
+    </Layout>
   );
 };

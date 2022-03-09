@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useFormat, useAccount, useUtils, useController } from 'hooks/index';
 import {
-  AuthViewLayout,
+  Layout,
   Icon,
   SecondaryButton,
-  InfoCard,
+  Card,
   CopyCard,
 } from 'components/index';
 import { Disclosure } from '@headlessui/react';
@@ -22,16 +22,16 @@ const PrivateKeyView = () => {
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   return (
-    <AuthViewLayout title="YOUR KEYS">
+    <Layout title="YOUR KEYS">
       <div className="scrollbar-styled px-2 py-5 h-96 overflow-auto">
-        <InfoCard>
+        <Card type="info">
           <p>
             <b className="text-warning-info">WARNING: </b>
             This is your account root indexer to check your full balance for{' '}
             {activeAccount?.label}, it isn't a receiving address. DO NOT SEND
             FUNDS TO THESE ADDRESSES, YOU WILL LOOSE THEM!
           </p>
-        </InfoCard>
+        </Card>
 
         <Disclosure>
           {({ open }) => (
@@ -131,7 +131,7 @@ const PrivateKeyView = () => {
           {copied ? 'Copied' : 'Close'}
         </SecondaryButton>
       </div>
-    </AuthViewLayout>
+    </Layout>
   );
 };
 

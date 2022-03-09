@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  AuthViewLayout,
+  Layout,
   PrimaryButton,
   SecondaryButton,
   Icon,
@@ -42,7 +42,7 @@ export const ConnectWallet = () => {
   });
 
   return (
-    <AuthViewLayout canGoBack={false} title="CONNECT WITH">
+    <Layout canGoBack={false} title="CONNECT WITH">
       <div className="flex flex-col items-center justify-center w-full">
         <h1 className="mt-4 text-sm">PALI WALLET</h1>
 
@@ -112,51 +112,48 @@ export const ConnectWallet = () => {
           </PrimaryButton>
         </div>
 
-        {openExtraConfirmation && (
-          <Modal
-            type=""
-            open={openExtraConfirmation}
-            onClose={() => setOpenExtraConfirmation(false)}
-          >
-            <div className="inline-block align-middle my-8 p-6 w-full max-w-2xl text-center font-poppins bg-bkg-4 border border-brand-royalblue rounded-2xl shadow-xl overflow-hidden transform transition-all">
-              <Dialog.Title
-                as="h3"
-                className="flex gap-3 items-center justify-center text-brand-white text-lg font-medium leading-6"
-              >
-                <Icon name="warning" className="mb-2 text-brand-white" />
-                <p>Not trusted site detected</p>
-              </Dialog.Title>
+        <Modal
+          show={openExtraConfirmation}
+          onClose={() => setOpenExtraConfirmation(false)}
+        >
+          <div className="inline-block align-middle my-8 p-6 w-full max-w-2xl text-center font-poppins bg-bkg-4 border border-brand-royalblue rounded-2xl shadow-xl overflow-hidden transform transition-all">
+            <Dialog.Title
+              as="h3"
+              className="flex gap-3 items-center justify-center text-brand-white text-lg font-medium leading-6"
+            >
+              <Icon name="warning" className="mb-2 text-brand-white" />
+              <p>Not trusted site detected</p>
+            </Dialog.Title>
 
-              <div className="mt-4">
-                <p className="text-brand-white text-sm">
-                  This site is not on our trusted list. Are you sure you want to
-                  connect?
-                </p>
-              </div>
-
-              <div className="flex gap-5 items-center justify-between mt-8">
-                <SecondaryButton
-                  action
-                  width="32"
-                  type="button"
-                  onClick={() => cancelConnection(accountId)}
-                >
-                  Cancel
-                </SecondaryButton>
-
-                <PrimaryButton
-                  action
-                  width="32"
-                  type="button"
-                  onClick={() => confirmConnection(accountId)}
-                >
-                  Confirm
-                </PrimaryButton>
-              </div>
+            <div className="mt-4">
+              <p className="text-brand-white text-sm">
+                This site is not on our trusted list. Are you sure you want to
+                connect?
+              </p>
             </div>
-          </Modal>
-        )}
+
+            <div className="flex gap-5 items-center justify-between mt-8">
+              <SecondaryButton
+                action
+                width="32"
+                type="button"
+                onClick={() => cancelConnection(accountId)}
+              >
+                Cancel
+              </SecondaryButton>
+
+              <PrimaryButton
+                action
+                width="32"
+                type="button"
+                onClick={() => confirmConnection(accountId)}
+              >
+                Confirm
+              </PrimaryButton>
+            </div>
+          </div>
+        </Modal>
       </div>
-    </AuthViewLayout>
+    </Layout>
   );
 };

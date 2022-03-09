@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Form, Input } from 'antd';
-import { AuthViewLayout, SecondaryButton } from 'components/index';
+import { Layout, SecondaryButton } from 'components/index';
 import axios from 'axios';
 import { useUtils, useController } from 'hooks/index';
 
@@ -51,7 +51,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
       {edit ? (
         <EditNetwork />
       ) : (
-        <AuthViewLayout title="CUSTOM RPC">
+        <Layout title="CUSTOM RPC">
           <Form
             id="rpc"
             name="rpc"
@@ -151,7 +151,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               </SecondaryButton>
             </div>
           </Form>
-        </AuthViewLayout>
+        </Layout>
       )}
     </>
   );

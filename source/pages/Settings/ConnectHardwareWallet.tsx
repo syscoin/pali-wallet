@@ -1,5 +1,5 @@
 import React, { FC, useState } from 'react';
-import { AuthViewLayout, SecondaryButton, Icon } from 'components/index';
+import { Layout, SecondaryButton, Icon } from 'components/index';
 import { useController } from 'hooks/index';
 import { Disclosure } from '@headlessui/react';
 
@@ -13,7 +13,7 @@ const ConnectHardwareWalletView: FC = () => {
   };
 
   return (
-    <AuthViewLayout title="HARDWARE WALLET" id="hardware-wallet-title">
+    <Layout title="HARDWARE WALLET" id="hardware-wallet-title">
       <div className="flex flex-col items-center justify-center w-full">
         <div className="scrollbar-styled px-4 h-85 text-sm overflow-auto">
           <p className="mb-1 mt-8 mx-2.5 w-80 text-white text-sm">
@@ -102,7 +102,7 @@ const ConnectHardwareWalletView: FC = () => {
           </SecondaryButton>
         </div>
       </div>
-    </AuthViewLayout>
+    </Layout>
   );
 };
 

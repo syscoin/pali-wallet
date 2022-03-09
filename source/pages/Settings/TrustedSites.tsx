@@ -1,4 +1,4 @@
-import { AuthViewLayout, SecondaryButton } from 'components/index';
+import { Layout, SecondaryButton } from 'components/index';
 import React, { useState } from 'react';
 import { useUtils, useFormat, useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
@@ -32,7 +32,7 @@ const TrustedSitesView = () => {
   };
 
   return (
-    <AuthViewLayout title="TRUSTED WEBSITES">
+    <Layout title="TRUSTED WEBSITES">
       <p className="m-4 text-center text-white text-xs">
         Check all sites included on our trusted list.
       </p>
@@ -82,7 +82,7 @@ const TrustedSitesView = () => {
           </SecondaryButton>
         </div>
       </div>
-    </AuthViewLayout>
+    </Layout>
   );
 };
 
