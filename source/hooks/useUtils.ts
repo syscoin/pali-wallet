@@ -23,11 +23,6 @@ export const useUtils = () => {
   const controller = useController();
   const { activeAccount } = useAccount();
 
-  const useSettingsView = () =>
-    useCallback((view) => {
-      navigate(view);
-    }, []);
-
   const handleRefresh = (): void => {
     controller.wallet.account.getLatestUpdate();
     if (activeAccount) controller.wallet.account.watchMemPool(activeAccount);
@@ -61,7 +56,6 @@ export const useUtils = () => {
   };
 
   return {
-    useSettingsView,
     useCopyClipboard,
     alert,
     getHost,
