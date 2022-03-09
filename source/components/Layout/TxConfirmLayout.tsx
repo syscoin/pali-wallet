@@ -3,7 +3,6 @@ import {
   useController,
   usePopup,
   useUtils,
-  useTransaction,
   useAccount,
   useBrowser,
 } from 'hooks/index';
@@ -15,7 +14,13 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useNavigate } from 'react-router-dom';
-import { ellipsis, formatUrl, capitalizeFirstLetter } from 'utils/index';
+import {
+  ellipsis,
+  formatUrl,
+  capitalizeFirstLetter,
+  handleRejectTransaction,
+  handleCancelTransactionOnSite,
+} from 'utils/index';
 
 interface ITxConfirm {
   callback: any;
@@ -36,8 +41,6 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   const { closePopup } = usePopup();
   const { activeAccount } = useAccount();
   const { browser } = useBrowser();
-  const { handleRejectTransaction, handleCancelTransactionOnSite } =
-    useTransaction();
 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -236,8 +239,6 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
   const { closePopup } = usePopup();
   const { navigate, alert } = useUtils();
   const { browser } = useBrowser();
-  const { handleRejectTransaction, handleCancelTransactionOnSite } =
-    useTransaction();
 
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);

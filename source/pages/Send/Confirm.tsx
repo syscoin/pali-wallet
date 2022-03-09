@@ -6,9 +6,14 @@ import {
   useUtils,
   useAccount,
   useBrowser,
-  useTransaction,
 } from 'hooks/index';
-import { log, logError, ellipsis, formatUrl } from 'utils/index';
+import {
+  log,
+  logError,
+  ellipsis,
+  formatUrl,
+  handleCancelTransactionOnSite,
+} from 'utils/index';
 
 export const SendConfirm = () => {
   const controller = useController();
@@ -16,7 +21,6 @@ export const SendConfirm = () => {
   const { alert, navigate } = useUtils();
   const { confirmingTransaction } = useStore();
   const { browser } = useBrowser();
-  const { handleCancelTransactionOnSite } = useTransaction();
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);

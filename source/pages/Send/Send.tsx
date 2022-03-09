@@ -6,14 +6,13 @@ import {
   useStore,
   useUtils,
   useAccount,
-  useTransaction,
 } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { Layout, SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Assets } from 'types/transactions';
-import { log, formatUrl, isNFT } from 'utils/index';
+import { log, formatUrl, isNFT, getAssetBalance } from 'utils/index';
 
 interface ISend {
   initAddress?: string;
@@ -23,7 +22,6 @@ export const Send: FC<ISend> = () => {
   const controller = useController();
 
   const { alert, navigate } = useUtils();
-  const { getAssetBalance } = useTransaction();
   const { activeAccount } = useAccount();
   const { activeNetwork, fiat } = useStore();
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);

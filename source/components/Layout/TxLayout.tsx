@@ -6,14 +6,8 @@ import {
   Tooltip,
   Icon,
 } from 'components/index';
-import {
-  useTransaction,
-  useController,
-  useUtils,
-  useStore,
-  useBrowser,
-} from 'hooks/index';
-import { getHost } from 'utils/index';
+import { useController, useUtils, useStore, useBrowser } from 'hooks/index';
+import { getHost, handleRejectTransaction } from 'utils/index';
 import { Form, Input } from 'antd';
 
 interface ITxLayout {
@@ -28,7 +22,6 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
 
   const { navigate } = useUtils();
   const { currentSenderURL, activeNetwork } = useStore();
-  const { handleRejectTransaction } = useTransaction();
   const { browser } = useBrowser();
 
   const [loading, setLoading] = useState(false);
