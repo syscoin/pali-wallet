@@ -12,7 +12,7 @@ import {
   logError,
   ellipsis,
   formatUrl,
-  handleCancelTransactionOnSite,
+  cancelTransaction,
 } from 'utils/index';
 
 export const SendConfirm = () => {
@@ -58,7 +58,7 @@ export const SendConfirm = () => {
             });
 
             setTimeout(() => {
-              handleCancelTransactionOnSite(browser, 'tempTx');
+              cancelTransaction(browser, 'tempTx');
             }, 4000);
           }
 
@@ -115,7 +115,7 @@ export const SendConfirm = () => {
             });
 
             setTimeout(() => {
-              handleCancelTransactionOnSite(browser, tempTx);
+              cancelTransaction(browser, tempTx);
             }, 4000);
           }
 

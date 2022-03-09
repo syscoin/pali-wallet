@@ -18,8 +18,8 @@ import {
   ellipsis,
   formatUrl,
   capitalizeFirstLetter,
-  handleRejectTransaction,
-  handleCancelTransactionOnSite,
+  rejectTransaction,
+  cancelTransaction,
 } from 'utils/index';
 
 interface ITxConfirm {
@@ -144,7 +144,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
           setLogError('');
 
           setTimeout(() => {
-            handleCancelTransactionOnSite(browser, txType);
+            cancelTransaction(browser, txType);
           }, 4000);
         }
       }, 8 * 60 * 1000);
@@ -198,9 +198,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
             <SecondaryButton
               type="button"
               action
-              onClick={() =>
-                handleRejectTransaction(browser, transaction, navigate)
-              }
+              onClick={() => rejectTransaction(browser, transaction, navigate)}
             >
               Cancel
             </SecondaryButton>
@@ -255,7 +253,7 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
       );
 
       setTimeout(() => {
-        handleCancelTransactionOnSite(browser, psbt);
+        cancelTransaction(browser, psbt);
       }, 10000);
 
       return;
@@ -268,7 +266,7 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
         setLoading(false);
 
         setTimeout(() => {
-          handleCancelTransactionOnSite(browser, psbt);
+          cancelTransaction(browser, psbt);
         }, 4000);
 
         browser.runtime.sendMessage({
@@ -290,7 +288,7 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
       });
 
       setTimeout(() => {
-        handleCancelTransactionOnSite(browser, psbt);
+        cancelTransaction(browser, psbt);
       }, 4000);
     }
   };
@@ -329,7 +327,7 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
             <SecondaryButton
               type="button"
               action
-              onClick={() => handleRejectTransaction(browser, psbt, navigate)}
+              onClick={() => rejectTransaction(browser, psbt, navigate)}
             >
               Cancel
             </SecondaryButton>

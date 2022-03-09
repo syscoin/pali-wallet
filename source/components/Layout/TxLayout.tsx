@@ -7,7 +7,7 @@ import {
   Icon,
 } from 'components/index';
 import { useController, useUtils, useStore, useBrowser } from 'hooks/index';
-import { getHost, handleRejectTransaction } from 'utils/index';
+import { getHost, rejectTransaction } from 'utils/index';
 import { Form, Input } from 'antd';
 
 interface ITxLayout {
@@ -140,9 +140,7 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
             <SecondaryButton
               type="button"
               action
-              onClick={() =>
-                handleRejectTransaction(browser, transaction, navigate)
-              }
+              onClick={() => rejectTransaction(browser, transaction, navigate)}
             >
               Cancel
             </SecondaryButton>

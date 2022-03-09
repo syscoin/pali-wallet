@@ -12,7 +12,7 @@ export const getAssetBalance = (
   return `${activeAccount?.balance.toFixed(8)} SYS`;
 };
 
-export const handleCancelTransactionOnSite = (browser: any, tempTx: any) => {
+export const cancelTransaction = (browser: any, tempTx: any) => {
   browser.runtime.sendMessage({
     type: 'CANCEL_TRANSACTION',
     target: 'background',
@@ -25,7 +25,7 @@ export const handleCancelTransactionOnSite = (browser: any, tempTx: any) => {
   });
 };
 
-export const handleRejectTransaction = (browser, item, navigate) => {
+export const rejectTransaction = (browser, item, navigate) => {
   navigate('/home');
 
   browser.runtime.sendMessage({
@@ -39,7 +39,7 @@ export const handleRejectTransaction = (browser, item, navigate) => {
   browser.runtime.sendMessage({
     type: 'CANCEL_TRANSACTION',
     target: 'background',
-    item: item || null,
+    item,
   });
 
   browser.runtime.sendMessage({
