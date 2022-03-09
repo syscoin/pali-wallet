@@ -4,19 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { useAccount, useController } from '.';
 
-export const isNFT = (guid: number): boolean => {
-  const assetGuid = BigInt.asUintN(64, BigInt(guid));
-  return assetGuid >> BigInt(32) > 0;
-};
-
-export const getHost = (url: string): string => {
-  if (typeof url === 'string' && url !== '') {
-    return new URL(url).host;
-  }
-
-  return url;
-};
-
 export const useUtils = () => {
   const alert = useAlert();
   const navigate = useNavigate();
@@ -61,6 +48,5 @@ export const useUtils = () => {
     getHost,
     navigate,
     handleRefresh,
-    isNFT,
   };
 };

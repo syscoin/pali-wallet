@@ -13,7 +13,7 @@ import { Switch, Menu, Transition } from '@headlessui/react';
 import { Layout, SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Assets } from 'types/transactions';
-import { log, formatUrl } from 'utils/index';
+import { log, formatUrl, isNFT } from 'utils/index';
 
 interface ISend {
   initAddress?: string;
@@ -22,7 +22,7 @@ export const Send: FC<ISend> = () => {
   const getFiatAmount = usePrice();
   const controller = useController();
 
-  const { alert, navigate, isNFT } = useUtils();
+  const { alert, navigate } = useUtils();
   const { getAssetBalance } = useTransaction();
   const { activeAccount } = useAccount();
   const { activeNetwork, fiat } = useStore();
