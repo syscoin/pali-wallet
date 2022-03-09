@@ -4,9 +4,9 @@ import {
   formatCurrency,
   formatDate,
   formatUrl,
-} from 'utils/index';
+} from './format';
 
-describe('format', () => {
+describe('Format', () => {
   //* ellipsis
   it('should minify a string', () => {
     const input = 'alaksdjalsdkjlaskdj';
