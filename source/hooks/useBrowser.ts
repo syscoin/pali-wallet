@@ -5,6 +5,17 @@ import { logError } from 'utils/index';
 
 export const useBrowser = () => ({ browser });
 
+export const usePopup = () => {
+  const closePopup = async () => {
+    await browser.runtime.sendMessage({
+      type: 'CLOSE_POPUP',
+      target: 'background',
+    });
+  };
+
+  return { closePopup };
+};
+
 export const useTabsAPI = () => {
   const getTabs = ({ options }: any) => browser.tabs.query(options);
 
