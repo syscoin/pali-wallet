@@ -10,11 +10,11 @@ import {
   useBrowser,
   useTransaction,
 } from 'hooks/index';
-import { sendTransactions } from '@pollum-io/sysweb3/packages/web3-transactions';
 import CryptoJS from 'crypto-js';
-import { changeNetwork } from '@pollum-io/sysweb3/provider/web3Provider';
+import { Web3Controller } from 'scripts/Background/controllers/Web3Controller';
 
 export const SendConfirm = () => {
+  const { changeNetwork, sendTransactions } = Web3Controller();
   const controller = useController();
   const { activeAccount } = useAccount();
   const { alert, navigate } = useUtils();

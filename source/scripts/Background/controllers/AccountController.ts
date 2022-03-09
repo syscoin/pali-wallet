@@ -31,10 +31,9 @@ import {
   updateNetwork,
   setTemporaryTransactionState,
 } from 'state/wallet';
-import { importAccount } from '@pollum-io/sysweb3/packages/web3-import';
-import { getBalance } from '@pollum-io/sysweb3/packages/web3-balance';
 
 import { sortList, isNFT, countDecimals } from './utils';
+import { Web3Controller } from './Web3Controller';
 
 const syscointx = require('syscointx-js');
 const coinSelectSyscoin = require('coinselectsyscoin');
@@ -59,6 +58,8 @@ const AccountController = (actions: {
     signAndSendPSBT: null,
     mintNFT: null,
   };
+
+  const { importAccount, getBalance } = Web3Controller();
 
   const decryptAES = (encryptedString: any, key: string) =>
     CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
