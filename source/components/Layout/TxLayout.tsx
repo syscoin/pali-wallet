@@ -13,6 +13,7 @@ import {
   useStore,
   useBrowser,
 } from 'hooks/index';
+import { getHost } from 'utils/index';
 import { Form, Input } from 'antd';
 
 interface ITxLayout {
@@ -25,7 +26,7 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
   const accountController = useController().wallet.account;
   const transaction = accountController.getTemporaryTransaction(txType);
 
-  const { navigate, getHost } = useUtils();
+  const { navigate } = useUtils();
   const { currentSenderURL, activeNetwork } = useStore();
   const { handleRejectTransaction } = useTransaction();
   const { browser } = useBrowser();

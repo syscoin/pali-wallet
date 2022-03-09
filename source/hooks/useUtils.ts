@@ -45,7 +45,6 @@ export const useUtils = () => {
   return {
     useCopyClipboard,
     alert,
-    getHost,
     navigate,
     handleRefresh,
   };

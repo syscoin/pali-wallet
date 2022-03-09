@@ -7,13 +7,14 @@ import {
   useController,
   useBrowser,
 } from 'hooks/index';
+import { getHost } from 'utils/index';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 
 export const NormalHeader: React.FC = () => {
   const { wallet } = useController();
 
   const { activeNetwork, encriptedMnemonic, networks } = useStore();
-  const { handleRefresh, navigate, getHost } = useUtils();
+  const { handleRefresh, navigate } = useUtils();
   const { activeAccount } = useAccount();
   const { browser } = useBrowser();
 

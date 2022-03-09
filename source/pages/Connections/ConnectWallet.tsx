@@ -6,12 +6,11 @@ import {
   Icon,
   Modal,
 } from 'components/index';
-import { useStore, useUtils, useDappConnection, useAccount } from 'hooks/index';
-import { ellipsis } from 'utils/index';
+import { useStore, useDappConnection, useAccount } from 'hooks/index';
+import { ellipsis, getHost } from 'utils/index';
 import { Dialog } from '@headlessui/react';
 
 export const ConnectWallet = () => {
-  const { getHost } = useUtils();
   const { confirmConnection, cancelConnection } = useDappConnection();
   const { accounts, currentSenderURL, trustedApps } = useStore();
   const { connectedAccount } = useAccount();
