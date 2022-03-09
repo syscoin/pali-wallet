@@ -1,16 +1,15 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
 import {
-  useFormat,
   useAccount,
   useUtils,
   useStore,
   useDappConnection,
   usePopup,
 } from 'hooks/index';
+import { ellipsis } from 'utils/index';
 
 export const ConnectedAccounts = () => {
-  const { ellipsis } = useFormat();
   const { getHost } = useUtils();
   const { closePopup } = usePopup();
   const { connectedAccount } = useAccount();

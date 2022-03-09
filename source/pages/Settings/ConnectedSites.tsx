@@ -1,13 +1,13 @@
 import { Layout, Icon, IconButton, SecondaryButton } from 'components/index';
 import React, { Fragment, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { useUtils, useBrowser, useAccount, useFormat } from 'hooks/index';
+import { useUtils, useBrowser, useAccount } from 'hooks/index';
+import { formatUrl, ellipsis } from 'utils/index';
 
 const ConnectedSites = (): any => {
   const [selected, setSelected] = useState<string>('');
 
   const { activeAccount } = useAccount();
-  const { formatURL, ellipsis } = useFormat();
   const { navigate } = useUtils();
   const { browser } = useBrowser();
 
@@ -38,7 +38,7 @@ const ConnectedSites = (): any => {
               className="scrollbar-styled px-4 py-2 w-full h-80 overflow-auto"
             >
               <li className="flex items-center justify-between my-2 py-3 w-full text-xs border-b border-dashed border-gray-500">
-                <p>{formatURL(url, 25)}</p>
+                <p>{formatUrl(url, 25)}</p>
 
                 <IconButton onClick={() => setSelected(url)}>
                   <Icon name="edit" wrapperClassname="w-4" />
@@ -97,7 +97,7 @@ const ConnectedSites = (): any => {
                       </p>
 
                       <div className="flex items-center justify-between m-3 text-brand-white">
-                        <p>{formatURL(selected, 20)}</p>
+                        <p>{formatUrl(selected, 20)}</p>
 
                         <IconButton
                           onClick={() => disconnectSite(activeAccount?.id)}

@@ -3,10 +3,10 @@ import {
   useController,
   usePrice,
   useStore,
-  useFormat,
   useUtils,
   useAccount,
 } from 'hooks/index';
+import { formatNumber } from 'utils/index';
 import { Layout, SecondaryButton, Icon, DefaultModal } from 'components/index';
 import { Menu, Transition } from '@headlessui/react';
 import { Input } from 'antd';
@@ -29,7 +29,6 @@ const CurrencyView = () => {
   });
 
   const { navigate } = useUtils();
-  const { formatNumber } = useFormat();
 
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();

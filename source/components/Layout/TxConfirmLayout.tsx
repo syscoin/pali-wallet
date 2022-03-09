@@ -3,7 +3,6 @@ import {
   useController,
   usePopup,
   useUtils,
-  useFormat,
   useTransaction,
   useAccount,
   useBrowser,
@@ -16,6 +15,7 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useNavigate } from 'react-router-dom';
+import { ellipsis, formatUrl, capitalizeFirstLetter } from 'utils/index';
 
 interface ITxConfirm {
   callback: any;
@@ -33,7 +33,6 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   const navigate = useNavigate();
   const accountCtlr = useController().wallet.account;
 
-  const { ellipsis, formatURL, capitalizeFirstLetter } = useFormat();
   const { closePopup } = usePopup();
   const { activeAccount } = useAccount();
   const { browser } = useBrowser();
@@ -115,7 +114,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
 
         if (error && transaction.fee > recommendedFee) {
           setLogError(
-            `${formatURL(
+            `${formatUrl(
               String(error.message),
               166
             )} Please, reduce fees to send transaction.`

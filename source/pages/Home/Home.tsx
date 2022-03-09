@@ -4,10 +4,10 @@ import {
   useController,
   useStore,
   usePrice,
-  useFormat,
   useUtils,
   useAccount,
 } from 'hooks/index';
+import { formatNumber } from 'utils/index';
 
 import { TxsPanel } from './TxsPanel';
 
@@ -16,7 +16,6 @@ export const Home = () => {
   const getFiatAmount = usePrice();
 
   const { navigate, handleRefresh } = useUtils();
-  const { formatNumber } = useFormat();
   const { activeAccount } = useAccount();
 
   const { accounts, activeNetwork, fiat } = useStore();

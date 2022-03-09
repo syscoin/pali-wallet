@@ -2,11 +2,11 @@ import {
   capitalizeFirstLetter,
   ellipsis,
   formatCurrency,
-  formatDistanceDate,
-  formatURL,
-} from 'hooks/useFormat';
+  formatDate,
+  formatUrl,
+} from 'utils/index';
 
-describe('useFormat methods test', () => {
+describe('format', () => {
   //* ellipsis
   it('should minify a string', () => {
     const input = 'alaksdjalsdkjlaskdj';
@@ -34,19 +34,19 @@ describe('useFormat methods test', () => {
     expect(afterDot.length).toBe(precision);
   });
 
-  //* formatDistanceDate
+  //* formatDate
   it('should format a date to mm-dd-yyyy', () => {
     const input = new Date(12 * 1000).toDateString();
-    const output = formatDistanceDate(input);
+    const output = formatDate(input);
 
     // regex to match 'xx-xx-xxxx' with numbers only
     expect(output).toMatch(RegExp('(\\d{2}-){2}\\d{4}'));
   });
 
-  //* formatURL
+  //* formatUrl
   it('should format an URL', () => {
     const input = 'www.testusingjest.com/users/values';
-    const output = formatURL(input);
+    const output = formatUrl(input);
 
     expect(input.length).toBeGreaterThanOrEqual(output.length);
     expect(output.endsWith('...')).toBe(true);

@@ -4,12 +4,11 @@ import {
   useController,
   useStore,
   useUtils,
-  useFormat,
   useAccount,
   useBrowser,
   useTransaction,
 } from 'hooks/index';
-import { log, logError } from 'utils/index';
+import { log, logError, ellipsis, formatUrl } from 'utils/index';
 
 export const SendConfirm = () => {
   const controller = useController();
@@ -21,8 +20,6 @@ export const SendConfirm = () => {
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
-
-  const { ellipsis, formatURL } = useFormat();
 
   const tempTx = controller.wallet.account.getTemporaryTransaction('sendAsset');
 
@@ -81,7 +78,7 @@ export const SendConfirm = () => {
           if (error && tempTx.fee > recommendedFee) {
             alert.removeAll();
             alert.error(
-              `${formatURL(
+              `${formatUrl(
                 String(error.message),
                 166
               )} Please, reduce fees to send transaction.`

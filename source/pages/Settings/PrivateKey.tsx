@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { useFormat, useAccount, useUtils, useController } from 'hooks/index';
+import { useAccount, useUtils, useController } from 'hooks/index';
+import { ellipsis } from 'utils/index';
 import {
   Layout,
   Icon,
@@ -14,7 +15,6 @@ const PrivateKeyView = () => {
   const controller = useController();
   const { navigate, useCopyClipboard } = useUtils();
   const { activeAccount } = useAccount();
-  const { ellipsis } = useFormat();
 
   const [copied, copyText] = useCopyClipboard();
   const [valid, setValid] = useState<boolean>(false);

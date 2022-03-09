@@ -1,10 +1,10 @@
 import { Layout, SecondaryButton } from 'components/index';
 import React, { useState } from 'react';
-import { useUtils, useFormat, useStore } from 'hooks/index';
+import { useUtils, useStore } from 'hooks/index';
+import { formatUrl } from 'utils/index';
 import { Form, Input } from 'antd';
 
 const TrustedSitesView = () => {
-  const { formatURL } = useFormat();
   const { navigate } = useUtils();
   const { trustedApps } = useStore();
 
@@ -71,7 +71,7 @@ const TrustedSitesView = () => {
                 key={url}
                 className="my-2 py-2 w-full text-xs border-b border-dashed border-gray-500"
               >
-                <p>{formatURL(url, 40)}</p>
+                <p>{formatUrl(url, 40)}</p>
               </li>
             ))}
         </ul>
