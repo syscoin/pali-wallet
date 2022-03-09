@@ -19,7 +19,7 @@ interface ISend {
   initAddress?: string;
 }
 export const Send: FC<ISend> = () => {
-  const getFiatAmount = usePrice();
+  const { getFiatAmount } = usePrice();
   const controller = useController();
 
   const { alert, navigate } = useUtils();

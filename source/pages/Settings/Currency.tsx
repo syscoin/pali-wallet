@@ -14,7 +14,7 @@ import getSymbolFromCurrency from 'currency-symbol-map';
 
 const CurrencyView = () => {
   const controller = useController();
-  const getFiatAmount = usePrice();
+  const { getFiatAmount } = usePrice();
   const { activeAccount } = useAccount();
 
   const { accounts, activeAccountId, fiat, activeNetwork } = useStore();

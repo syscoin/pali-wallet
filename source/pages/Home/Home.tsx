@@ -13,7 +13,7 @@ import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = useController();
-  const getFiatAmount = usePrice();
+  const { getFiatAmount } = usePrice();
 
   const { navigate, handleRefresh } = useUtils();
   const { activeAccount } = useAccount();
