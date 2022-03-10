@@ -39,7 +39,7 @@ const EditNetworkView = () => {
                 className={
                   defaultNetworks.includes(network.id)
                     ? 'my-3 cursor-not-allowed border-b border-dashed bg-opacity-60 border-dashed-light flex flex-col w-full'
-                    : 'my-3 w-full border border-dashed border-dashed-light cursor-pointer flex flex-col transition-all duration-300'
+                    : 'my-3 w-full border-b border-dashed border-dashed-light cursor-pointer flex flex-col transition-all duration-300'
                 }
                 onClick={() =>
                   !defaultNetworks.includes(network.id)
