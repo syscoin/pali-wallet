@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useController, useUtils, useAccount } from 'hooks/index';
+import { useUtils, useAccount } from 'hooks/index';
 import { browser } from 'webextension-polyfill-ts';
 import {
   Layout,
@@ -16,6 +16,7 @@ import {
   rejectTransaction,
   cancelTransaction,
   closePopup,
+  getController,
 } from 'utils/index';
 
 interface ITxConfirm {
@@ -32,7 +33,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   title,
 }) => {
   const navigate = useNavigate();
-  const accountCtlr = useController().wallet.account;
+  const accountCtlr = getController().wallet.account;
   const { activeAccount } = useAccount();
 
   const [data, setData] = useState([]);
@@ -223,7 +224,7 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
   signAndSend = false,
   title = 'SIGNATURE REQUEST',
 }) => {
-  const accountCtlr = useController().wallet.account;
+  const accountCtlr = getController().wallet.account;
   const base64 =
     /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
 
@@ -377,7 +378,7 @@ export const TxConfirmLayout: React.FC<ITxConfirmLayout> = ({
   title,
   txType,
 }) => {
-  const walletCtlr = useController().wallet;
+  const walletCtlr = getController().wallet;
   const { getTemporaryTransaction } = walletCtlr.account;
 
   const transaction = getTemporaryTransaction(txType);

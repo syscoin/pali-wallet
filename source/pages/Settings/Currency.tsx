@@ -1,19 +1,13 @@
 import React, { useEffect, Fragment, useState } from 'react';
-import {
-  useController,
-  usePrice,
-  useStore,
-  useUtils,
-  useAccount,
-} from 'hooks/index';
-import { formatNumber } from 'utils/index';
+import { usePrice, useStore, useUtils, useAccount } from 'hooks/index';
+import { formatNumber, getController } from 'utils/index';
 import { Layout, SecondaryButton, Icon, DefaultModal } from 'components/index';
 import { Menu, Transition } from '@headlessui/react';
 import { Input } from 'antd';
 import getSymbolFromCurrency from 'currency-symbol-map';
 
 const CurrencyView = () => {
-  const controller = useController();
+  const controller = getController();
   const { getFiatAmount } = usePrice();
   const { activeAccount } = useAccount();
 

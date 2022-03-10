@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useAccount, useUtils, useController } from 'hooks/index';
-import { ellipsis } from 'utils/index';
+import { useAccount, useUtils } from 'hooks/index';
+import { ellipsis, getController } from 'utils/index';
 import {
   Layout,
   Icon,
@@ -12,7 +12,7 @@ import { Disclosure } from '@headlessui/react';
 import { Input, Form } from 'antd';
 
 const PrivateKeyView = () => {
-  const controller = useController();
+  const controller = getController();
   const { navigate, useCopyClipboard } = useUtils();
   const { activeAccount } = useAccount();
 

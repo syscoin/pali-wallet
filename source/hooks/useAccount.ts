@@ -1,16 +1,14 @@
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
-import { getHost, getCurrentOrigin } from 'utils/index';
+import { getHost, getCurrentOrigin, getController } from 'utils/index';
 import IWalletState, { IAccountState } from 'state/wallet/types';
-
-import { useController } from '.';
 
 export const useAccount = () => {
   const { accounts, activeAccountId }: IWalletState = useSelector(
     (state: RootState) => state.wallet
   );
 
-  const controller = useController();
+  const controller = getController();
 
   const connectedAccount = () => {
     if (!controller.wallet.isLocked()) {

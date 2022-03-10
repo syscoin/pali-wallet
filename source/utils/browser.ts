@@ -3,6 +3,14 @@ import { updateCurrentURL } from 'state/wallet';
 import { browser } from 'webextension-polyfill-ts';
 import { logError } from 'utils/index';
 
+export const getController = () => {
+  const { controller } = browser.extension.getBackgroundPage();
+  if (controller) return controller;
+
+  browser.runtime.reload();
+  return controller;
+};
+
 export const closePopup = async () => {
   await browser.runtime.sendMessage({
     type: 'CLOSE_POPUP',

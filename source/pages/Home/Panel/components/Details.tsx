@@ -1,13 +1,13 @@
-import { useController } from 'hooks/index';
 import React, { useState, useEffect } from 'react';
 import { Layout, Icon } from 'components/index';
 import { useLocation } from 'react-router-dom';
+import { getController } from 'utils/index';
 
 import { AssetDetails } from './AssetDetails';
 import { TransactionDetails } from './TransactionDetails';
 
 export const DetailsView = () => {
-  const controller = useController();
+  const controller = getController();
 
   const { state }: any = useLocation();
 

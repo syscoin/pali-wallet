@@ -1,14 +1,14 @@
-import { useController, useStore, useUtils } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import React, { useState, useEffect } from 'react';
 import { Icon, IconButton, Button } from 'components/index';
-import { ellipsis, formatDate, formatUrl } from 'utils/index';
+import { ellipsis, formatDate, formatUrl, getController } from 'utils/index';
 import { Disclosure } from '@headlessui/react';
 
 export const TransactionDetails = ({ transactionType, transactionDetails }) => {
   const { activeNetwork } = useStore();
   const { useCopyClipboard } = useUtils();
 
-  const controller = useController();
+  const controller = getController();
 
   const [newRecipients, setNewRecipients] = useState<any>({});
   const [newSenders, setNewSenders] = useState<any>({});

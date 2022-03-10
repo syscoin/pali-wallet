@@ -1,14 +1,14 @@
 import React, { useEffect } from 'react';
 import { IconButton, Icon } from 'components/index';
-import { useAccount, useStore, useUtils, useController } from 'hooks/index';
+import { useAccount, useStore, useUtils } from 'hooks/index';
 import { toSvg } from 'jdenticon';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { useNavigate } from 'react-router-dom';
-import { ellipsis } from 'utils/index';
+import { ellipsis, getController } from 'utils/index';
 
 const AccountMenu: React.FC = () => {
   const navigate = useNavigate();
-  const { wallet } = useController();
+  const { wallet } = getController();
   const { encriptedMnemonic, accounts, activeAccountId } = useStore();
 
   const switchAccount = (id: number) => {

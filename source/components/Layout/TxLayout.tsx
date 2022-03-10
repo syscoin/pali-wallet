@@ -7,8 +7,8 @@ import {
   Icon,
 } from 'components/index';
 import { browser } from 'webextension-polyfill-ts';
-import { useController, useUtils, useStore } from 'hooks/index';
-import { getHost, rejectTransaction } from 'utils/index';
+import { useUtils, useStore } from 'hooks/index';
+import { getHost, rejectTransaction, getController } from 'utils/index';
 import { Form, Input } from 'antd';
 
 interface ITxLayout {
@@ -18,7 +18,7 @@ interface ITxLayout {
 }
 
 export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
-  const accountController = useController().wallet.account;
+  const accountController = getController().wallet.account;
   const transaction = accountController.getTemporaryTransaction(txType);
 
   const { navigate } = useUtils();

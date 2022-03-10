@@ -1,11 +1,11 @@
 import React, { FC } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { OnboardingLayout, PrimaryButton } from 'components/index';
-import { useController } from 'hooks/index';
+import { getController } from 'utils/index';
 
 export const CreatePhrase: FC = () => {
   const navigate = useNavigate();
-  const controller = useController();
+  const controller = getController();
 
   const phrases = controller.wallet.generatePhrase();
 

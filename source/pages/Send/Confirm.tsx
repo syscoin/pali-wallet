@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
-import { useController, useStore, useUtils, useAccount } from 'hooks/index';
+import { useStore, useUtils, useAccount } from 'hooks/index';
 import { browser } from 'webextension-polyfill-ts';
 import {
   log,
@@ -8,10 +8,11 @@ import {
   ellipsis,
   formatUrl,
   cancelTransaction,
+  getController,
 } from 'utils/index';
 
 export const SendConfirm = () => {
-  const controller = useController();
+  const controller = getController();
   const { activeAccount } = useAccount();
   const { alert, navigate } = useUtils();
   const { confirmingTransaction } = useStore();

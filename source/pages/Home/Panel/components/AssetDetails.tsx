@@ -1,12 +1,11 @@
-import { useController } from 'hooks/index';
 import React, { useEffect, useState } from 'react';
 import placeholder from 'assets/images/placeholder.png';
 import { Button, Tooltip, Icon } from 'components/index';
-import { formatUrl } from 'utils/index';
+import { formatUrl, getController } from 'utils/index';
 import axios from 'axios';
 
 export const AssetDetails = ({ assetType, assetData }) => {
-  const controller = useController();
+  const controller = getController();
 
   const [imageLink, setImageLink] = useState('');
   const [loadingImage, setLoadingImage] = useState(false);

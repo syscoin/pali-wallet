@@ -1,18 +1,12 @@
 import React, { useEffect } from 'react';
 import { Header, Icon, Button } from 'components/index';
-import {
-  useController,
-  useStore,
-  usePrice,
-  useUtils,
-  useAccount,
-} from 'hooks/index';
-import { formatNumber } from 'utils/index';
+import { useStore, usePrice, useUtils, useAccount } from 'hooks/index';
+import { formatNumber, getController } from 'utils/index';
 
 import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
-  const controller = useController();
+  const controller = getController();
   const { getFiatAmount } = usePrice();
 
   const { navigate, handleRefresh } = useUtils();

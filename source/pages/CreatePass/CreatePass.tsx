@@ -1,12 +1,11 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useController } from 'hooks/index';
 import { PasswordForm } from 'components/index';
-import { logError } from 'utils/index';
+import { logError, getController } from 'utils/index';
 
 export const CreatePass = () => {
   const navigate = useNavigate();
-  const controller = useController();
+  const controller = getController();
 
   const onSubmit = (data: any) => {
     try {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useController, useUtils, useAccount } from 'hooks/index';
-import { ellipsis } from 'utils/index';
+import { useUtils, useAccount } from 'hooks/index';
+import { ellipsis, getController } from 'utils/index';
 import QRCode from 'qrcode.react';
 import { Layout, SecondaryButton, Icon } from 'components/index';
 
@@ -8,7 +8,7 @@ export const Receive = () => {
   const { useCopyClipboard } = useUtils();
   const [isCopied, copyText] = useCopyClipboard();
   const { activeAccount } = useAccount();
-  const controller = useController();
+  const controller = getController();
 
   const [loaded, setLoaded] = useState<boolean>(false);
 

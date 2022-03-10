@@ -1,25 +1,25 @@
 import * as React from 'react';
 import { useState, useEffect, Fragment, FC, useCallback } from 'react';
-import {
-  useController,
-  usePrice,
-  useStore,
-  useUtils,
-  useAccount,
-} from 'hooks/index';
+import { usePrice, useStore, useUtils, useAccount } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { Layout, SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Assets } from 'types/transactions';
-import { log, formatUrl, isNFT, getAssetBalance } from 'utils/index';
+import {
+  log,
+  formatUrl,
+  isNFT,
+  getAssetBalance,
+  getController,
+} from 'utils/index';
 
 interface ISend {
   initAddress?: string;
 }
 export const Send: FC<ISend> = () => {
   const { getFiatAmount } = usePrice();
-  const controller = useController();
+  const controller = getController();
 
   const { alert, navigate } = useUtils();
   const { activeAccount } = useAccount();

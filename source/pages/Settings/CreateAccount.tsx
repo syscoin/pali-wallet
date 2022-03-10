@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { useController } from 'hooks/index';
-import { ellipsis } from 'utils/index';
+import { ellipsis, getController } from 'utils/index';
 import { Form, Input } from 'antd';
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import { useNavigate } from 'react-router-dom';
@@ -9,7 +8,7 @@ const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();
   const [loading, setLoading] = useState<boolean>(false);
 
-  const controller = useController();
+  const controller = getController();
   const navigate = useNavigate();
 
   const onSubmit = async (data: any) => {

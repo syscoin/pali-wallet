@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Icon, IconButton } from 'components/index';
-import { useStore, useAccount, useUtils, useController } from 'hooks/index';
-import { getHost } from 'utils/index';
+import { useStore, useAccount, useUtils } from 'hooks/index';
+import { getHost, getController } from 'utils/index';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { browser } from 'webextension-polyfill-ts';
 
 export const NormalHeader: React.FC = () => {
-  const { wallet } = useController();
+  const { wallet } = getController();
 
   const { activeNetwork, encriptedMnemonic, networks } = useStore();
   const { handleRefresh, navigate } = useUtils();
