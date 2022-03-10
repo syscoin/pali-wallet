@@ -1,12 +1,7 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
-import {
-  useController,
-  useStore,
-  useUtils,
-  useAccount,
-  useBrowser,
-} from 'hooks/index';
+import { useController, useStore, useUtils, useAccount } from 'hooks/index';
+import { browser } from 'webextension-polyfill-ts';
 import {
   log,
   logError,
@@ -20,7 +15,6 @@ export const SendConfirm = () => {
   const { activeAccount } = useAccount();
   const { alert, navigate } = useUtils();
   const { confirmingTransaction } = useStore();
-  const { browser } = useBrowser();
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);

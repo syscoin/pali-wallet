@@ -1,4 +1,3 @@
-export * from './useBrowser';
 export * from './usePrice';
 export * from './useStore';
 export * from './useUtils';

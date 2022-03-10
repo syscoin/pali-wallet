@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
-import { useAccount, useStore, useDappConnection, usePopup } from 'hooks/index';
-import { ellipsis, getHost } from 'utils/index';
+import { useAccount, useStore, useDappConnection } from 'hooks/index';
+import { ellipsis, getHost, closePopup } from 'utils/index';
 
 export const ConnectedAccounts = () => {
-  const { closePopup } = usePopup();
   const { connectedAccount } = useAccount();
   const { changeConnectedAccount } = useDappConnection();
   const { accounts, currentSenderURL } = useStore();

@@ -1,7 +1,8 @@
 import { Layout, Icon, IconButton, SecondaryButton } from 'components/index';
 import React, { Fragment, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { useUtils, useBrowser, useAccount } from 'hooks/index';
+import { browser } from 'webextension-polyfill-ts';
+import { useUtils, useAccount } from 'hooks/index';
 import { formatUrl, ellipsis } from 'utils/index';
 
 const ConnectedSites = (): any => {
@@ -9,7 +10,6 @@ const ConnectedSites = (): any => {
 
   const { activeAccount } = useAccount();
   const { navigate } = useUtils();
-  const { browser } = useBrowser();
 
   const disconnectSite = (id: any) => {
     browser.runtime.sendMessage({

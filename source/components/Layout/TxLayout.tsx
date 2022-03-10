@@ -6,7 +6,8 @@ import {
   Tooltip,
   Icon,
 } from 'components/index';
-import { useController, useUtils, useStore, useBrowser } from 'hooks/index';
+import { browser } from 'webextension-polyfill-ts';
+import { useController, useUtils, useStore } from 'hooks/index';
 import { getHost, rejectTransaction } from 'utils/index';
 import { Form, Input } from 'antd';
 
@@ -22,7 +23,6 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
 
   const { navigate } = useUtils();
   const { currentSenderURL, activeNetwork } = useStore();
-  const { browser } = useBrowser();
 
   const [loading, setLoading] = useState(false);
   const [recommend, setRecommend] = useState(0.00001);

@@ -1,11 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import {
-  useController,
-  usePopup,
-  useUtils,
-  useAccount,
-  useBrowser,
-} from 'hooks/index';
+import { useController, useUtils, useAccount } from 'hooks/index';
+import { browser } from 'webextension-polyfill-ts';
 import {
   Layout,
   PrimaryButton,
@@ -20,6 +15,7 @@ import {
   capitalizeFirstLetter,
   rejectTransaction,
   cancelTransaction,
+  closePopup,
 } from 'utils/index';
 
 interface ITxConfirm {
@@ -37,10 +33,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
 }) => {
   const navigate = useNavigate();
   const accountCtlr = useController().wallet.account;
-
-  const { closePopup } = usePopup();
   const { activeAccount } = useAccount();
-  const { browser } = useBrowser();
 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -234,9 +227,7 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
   const base64 =
     /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
 
-  const { closePopup } = usePopup();
   const { navigate, alert } = useUtils();
-  const { browser } = useBrowser();
 
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);

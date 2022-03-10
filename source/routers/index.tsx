@@ -6,7 +6,8 @@ import {
   useParams,
   Navigate,
 } from 'react-router-dom';
-import { useController, useStore, useUtils, useBrowser } from 'hooks/index';
+import { useController, useStore, useUtils } from 'hooks/index';
+import { browser } from 'webextension-polyfill-ts';
 
 import {
   About,
@@ -60,7 +61,6 @@ export const Router = () => {
 
   const { accounts, canConnect, temporaryTransactionState } = useStore();
   const { alert, navigate } = useUtils();
-  const { browser } = useBrowser();
 
   const connectedAccount = getConnectedAccount();
   const isUnlocked = !controller.wallet.isLocked();
