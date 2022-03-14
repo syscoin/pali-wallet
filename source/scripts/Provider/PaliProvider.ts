@@ -11,7 +11,7 @@ export const PaliProvider = () => {
 
   const getXpub = () => {};
 
-  const getTokens = (type: string) => {};
+  const getTokens = () => {};
 
   const getState = () => {};
 

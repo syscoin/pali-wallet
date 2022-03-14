@@ -11,7 +11,7 @@ export const EthereumProvider = () => {
 
   const getXpub = () => {};
 
-  const getTokens = (type: string) => {};
+  const getTokens = () => {};
 
   const getState = () => {};
 
