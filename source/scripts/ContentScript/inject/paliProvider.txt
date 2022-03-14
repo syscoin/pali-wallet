@@ -1,0 +1,193 @@
+const SUPPORTED_CHAINS = {
+  syscoin: {
+    prefix: 'sys',
+    asset: 'SYS',
+  },
+  ethereum: {
+    prefix: 'eth',
+    asset: 'ETH',
+  },
+};
+
+const { SUPPORTED_WALLET_METHODS } = window;
+
+const REQUEST_MAP = {
+  ETH: {
+    chainId: SUPPORTED_WALLET_METHODS.getChainId,
+    accounts: SUPPORTED_WALLET_METHODS.getAccounts,
+    blockNumber: SUPPORTED_WALLET_METHODS.getBlockNumber,
+    estimateGas: SUPPORTED_WALLET_METHODS.estimateGas,
+    sendTransaction: SUPPORTED_WALLET_METHODS.sendTransaction,
+    signMessage: SUPPORTED_WALLET_METHODS.signMessage,
+  },
+  SYS: {
+    chainId: SUPPORTED_WALLET_METHODS.getChainId,
+    accounts: SUPPORTED_WALLET_METHODS.getAccounts,
+    sendTransaction: SUPPORTED_WALLET_METHODS.sendTransaction,
+    getBalance: SUPPORTED_WALLET_METHODS.getBalance,
+    getPublicKey: SUPPORTED_WALLET_METHODS.getPublicKey,
+    signMessage: SUPPORTED_WALLET_METHODS.signMessage,
+  },
+  isConnected: SUPPORTED_WALLET_METHODS.isConnected,
+  getNetwork: SUPPORTED_WALLET_METHODS.getNetwork,
+  getAddress: SUPPORTED_WALLET_METHODS.getAddress,
+  getBalance: SUPPORTED_WALLET_METHODS.getBalance,
+};
+
+const ERRORS = {
+  USER_REJECTED: () => console.error('User rejected the request'),
+  INVALID_METHOD: () => console.error('invalid method'),
+};
+
+const handleRequest = async (chain, request) => {
+  const { asset } = SUPPORTED_CHAINS[chain];
+
+  const provider = window.providerManager.getProviderFor(asset);
+
+  if (request.method === 'personal_sign') {
+    request.method = 'eth_signMessage';
+  }
+
+  let [prefix, method] = request.method.split('_');
+
+  if (prefix && prefix.toLowerCase() !== SUPPORTED_CHAINS[chain].prefix) {
+    ERRORS.INVALID_METHOD();
+  }
+
+  if (!method) {
+    prefix = null;
+    method = request.method;
+  } else {
+    prefix = prefix.toUpperCase();
+  }
+
+  // All request accounts go to the same place
+  if (method === 'requestAccounts') {
+    const { result, data } = await window.providerManager.enable();
+
+    if (!result) {
+      ERRORS.USER_REJECTED();
+    }
+    return data.accounts;
+  }
+
+  if (
+    prefix &&
+    Object.prototype.hasOwnProperty.call(REQUEST_MAP, prefix) &&
+    Object.prototype.hasOwnProperty.call(REQUEST_MAP[prefix], method)
+  ) {
+    const response = await provider.getMethod(REQUEST_MAP[prefix][method])(
+      ...request.params
+    );
+
+    if (response.result === false) {
+      ERRORS.USER_REJECTED();
+    }
+
+    return response;
+  }
+
+  ERRORS.INVALID_METHOD();
+};
+
+const provider = (chain) => {
+  chain = chain.toLowerCase();
+
+  if (!Object.keys(SUPPORTED_CHAINS).includes(chain)) {
+    console.error('Unsupported chain:', chain);
+  }
+
+  return {
+    request: async (req) => {
+      const params = req.params || [];
+
+      return handleRequest(chain, {
+        method: req.method,
+        params,
+      }).catch((err) => {
+        console.error(err);
+        throw err;
+      });
+    },
+    on: (method, callback) => {
+      let origin = window.location.hostname;
+      if (window.location.port) {
+        origin += `:${window.location.port}`;
+      }
+
+      const id = `${chain}.${origin}.${method}`;
+
+      window.pali.listeners[id] = ({ detail }) => {
+        if (detail) {
+          callback(JSON.parse(detail));
+        }
+      };
+
+      window.addEventListener(id, window.pali.listeners[id], {
+        passive: true,
+      });
+
+      // Register the origin of the listening site.
+      window.postMessage(
+        {
+          id,
+          type: 'PALI_EVENT_REG',
+          data: {
+            method,
+            origin,
+            chain,
+          },
+        },
+        '*'
+      );
+    },
+    removeListener: (method) => {
+      let origin = window.location.hostname;
+      if (window.location.port) {
+        origin += `:${window.location.port}`;
+      }
+
+      const id = `${chain}.${origin}.${method}`;
+
+      if (window.pali.listeners[id]) {
+        window.removeEventListener(id, window.pali.listeners[id]);
+
+        delete window.pali.listeners[id];
+      }
+
+      window.postMessage(
+        {
+          id,
+          type: 'PALI_EVENT_DEREG',
+          data: {
+            method,
+            origin,
+            chain,
+          },
+        },
+        '*'
+      );
+    },
+  };
+};
+
+window.pali = {
+  version: 2,
+  getProvider: (chain) => provider(chain),
+  isConnected: async () => {
+    const pali = window.providerManager.getProviderFor('main');
+
+    return pali.getMethod('wallet.isConnected');
+  },
+  enable: async () => {
+    const { result, data } = await window.providerManager.enable();
+
+    if (!result) ERRORS.USER_REJECTED();
+
+    return data.accounts;
+  },
+  request: async (req) => {},
+  on: (method, callback) => {},
+  removeListener: (method) => {},
+  _listeners: {},
+};

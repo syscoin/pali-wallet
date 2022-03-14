@@ -1,0 +1,23 @@
+const injectedProvider = () => {
+  const getMethod = () => {};
+
+  return {
+    getMethod,
+  };
+};
+
+const providerManager = () => {
+  const proxy = () => {};
+
+  const getProviderFor = () => {};
+
+  const enable = () => {
+    console.log('enabling provider manager')
+  };
+
+  return {
+    proxy,
+    getProviderFor,
+    enable,
+  };
+};
