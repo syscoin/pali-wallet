@@ -1,4 +1,5 @@
-import { getHost, isNFT } from '.';
+import { getHost } from './getHost';
+import { isNFT } from './isNft';
 
 describe('Utils', () => {
   //* getHost
