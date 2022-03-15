@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
-import { useAccount, useStore, useDappConnection } from 'hooks/index';
-import { ellipsis, getHost, closePopup } from 'utils/index';
+import { useStore, useDappConnection } from 'hooks/index';
+import { ellipsis, getHost, closePopup, getController } from 'utils/index';
 
 export const ConnectedAccounts = () => {
-  const { connectedAccount } = useAccount();
+  const accountController = getController().wallet.account;
+  const connectedAccount = accountController.getConnectedAccount();
+
   const { changeConnectedAccount } = useDappConnection();
   const { accounts, currentSenderURL } = useStore();
 

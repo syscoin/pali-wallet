@@ -3,13 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
 import { getController } from 'utils/index';
 
-import { useAccount } from '.';
-
 export const useUtils = () => {
   const alert = useAlert();
   const navigate = useNavigate();
   const controller = getController();
-  const { activeAccount } = useAccount();
+  const activeAccount = controller.wallet.account.getActiveAccount();
 
   const handleRefresh = (): void => {
     controller.wallet.account.getLatestUpdate();

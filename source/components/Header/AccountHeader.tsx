@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { IconButton, Icon } from 'components/index';
-import { useAccount, useStore, useUtils } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import { toSvg } from 'jdenticon';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { useNavigate } from 'react-router-dom';
@@ -157,7 +157,7 @@ const AccountMenu: React.FC = () => {
 };
 
 export const AccountHeader: React.FC = () => {
-  const { activeAccount } = useAccount();
+  const activeAccount = getController().wallet.account.getActiveAccount();
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();

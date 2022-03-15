@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAccount, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
 import { ellipsis, getController } from 'utils/index';
 import {
   Layout,
@@ -13,8 +13,9 @@ import { Input, Form } from 'antd';
 
 const PrivateKeyView = () => {
   const controller = getController();
+  const activeAccount = controller.wallet.account.getActiveAccount();
+
   const { navigate, useCopyClipboard } = useUtils();
-  const { activeAccount } = useAccount();
 
   const [copied, copyText] = useCopyClipboard();
   const [valid, setValid] = useState<boolean>(false);

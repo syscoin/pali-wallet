@@ -47,6 +47,7 @@ export interface IAccountController {
   confirmUpdateAsset: (item: UpdateAsset) => any;
   connectedAccountXpub: string | null;
   decryptAES: (encryptedString: any, key: string) => any;
+  getActiveAccount: () => IAccountState | undefined;
   getChangeAddress: () => Promise<string>;
   getConnectedAccount: () => IAccountState;
   getDataAsset: (assetGuid: any) => any;

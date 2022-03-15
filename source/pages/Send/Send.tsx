@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect, Fragment, FC, useCallback } from 'react';
-import { usePrice, useStore, useUtils, useAccount } from 'hooks/index';
+import { usePrice, useStore, useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { Layout, SecondaryButton, Tooltip, Icon } from 'components/index';
@@ -20,9 +20,9 @@ interface ISend {
 export const Send: FC<ISend> = () => {
   const { getFiatAmount } = usePrice();
   const controller = getController();
+  const activeAccount = controller.wallet.account.getActiveAccount();
 
   const { alert, navigate } = useUtils();
-  const { activeAccount } = useAccount();
   const { activeNetwork, fiat } = useStore();
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);

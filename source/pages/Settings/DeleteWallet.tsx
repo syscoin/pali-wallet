@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, PrimaryButton, Card } from 'components/index';
 import { Form, Input } from 'antd';
-import { useAccount, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
 import TextArea from 'antd/lib/input/TextArea';
 import { getController } from 'utils/index';
 
 const DeleteWalletView = () => {
   const { navigate } = useUtils();
-  const { activeAccount } = useAccount();
 
   const controller = getController();
+  const activeAccount = controller.wallet.account.getActiveAccount();
 
   const [seedIsValid, setSeedIsValid] = useState<boolean>();
 

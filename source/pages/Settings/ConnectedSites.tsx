@@ -2,14 +2,16 @@ import { Layout, Icon, IconButton, SecondaryButton } from 'components/index';
 import React, { Fragment, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { browser } from 'webextension-polyfill-ts';
-import { useUtils, useAccount } from 'hooks/index';
-import { formatUrl, ellipsis } from 'utils/index';
+import { useUtils } from 'hooks/index';
+import { formatUrl, ellipsis, getController } from 'utils/index';
 
 const ConnectedSites = (): any => {
-  const [selected, setSelected] = useState<string>('');
-
-  const { activeAccount } = useAccount();
   const { navigate } = useUtils();
+
+  const accountController = getController().wallet.account;
+  const activeAccount = accountController.getActiveAccount();
+
+  const [selected, setSelected] = useState<string>('');
 
   const disconnectSite = (id: any) => {
     browser.runtime.sendMessage({

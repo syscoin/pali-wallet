@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Icon, IconButton } from 'components/index';
-import { useStore, useAccount, useUtils } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import { getHost, getController } from 'utils/index';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { browser } from 'webextension-polyfill-ts';
@@ -10,7 +10,7 @@ export const NormalHeader: React.FC = () => {
 
   const { activeNetwork, encriptedMnemonic, networks } = useStore();
   const { handleRefresh, navigate } = useUtils();
-  const { activeAccount } = useAccount();
+  const activeAccount = wallet.account.getActiveAccount();
 
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [currentTabURL, setCurrentTabURL] = useState<string>('');

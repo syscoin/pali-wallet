@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useUtils, useAccount } from 'hooks/index';
+import { useUtils } from 'hooks/index';
 import { browser } from 'webextension-polyfill-ts';
 import {
   Layout,
@@ -33,8 +33,8 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   title,
 }) => {
   const navigate = useNavigate();
-  const accountCtlr = getController().wallet.account;
-  const { activeAccount } = useAccount();
+  const accountController = getController().wallet.account;
+  const activeAccount = accountController.getActiveAccount();
 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -71,7 +71,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   }, [transaction]);
 
   const handleConfirmSiteTransaction = async () => {
-    const recommendedFee = await accountCtlr.getRecommendFee();
+    const recommendedFee = await accountController.getRecommendFee();
 
     let isPending = false;
 
@@ -87,7 +87,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
           setSubmitted(true);
         }
 
-        const response = await accountCtlr.confirmTemporaryTransaction({
+        const response = await accountController.confirmTemporaryTransaction({
           type: txType,
           callback,
         });

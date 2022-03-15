@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Header, Icon, Button } from 'components/index';
-import { useStore, usePrice, useUtils, useAccount } from 'hooks/index';
+import { useStore, usePrice, useUtils } from 'hooks/index';
 import { formatNumber, getController } from 'utils/index';
 
 import { TxsPanel } from './TxsPanel';
@@ -10,7 +10,7 @@ export const Home = () => {
   const { getFiatAmount } = usePrice();
 
   const { navigate, handleRefresh } = useUtils();
-  const { activeAccount } = useAccount();
+  const activeAccount = controller.wallet.account.getActiveAccount();
 
   const { accounts, activeNetwork, fiat } = useStore();
 

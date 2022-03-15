@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
-import { useStore, useUtils, useAccount } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import { browser } from 'webextension-polyfill-ts';
 import {
   log,
@@ -13,7 +13,7 @@ import {
 
 export const SendConfirm = () => {
   const controller = getController();
-  const { activeAccount } = useAccount();
+  const activeAccount = controller.wallet.account.getActiveAccount();
   const { alert, navigate } = useUtils();
   const { confirmingTransaction } = useStore();
 
