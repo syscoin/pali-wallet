@@ -68,6 +68,10 @@ module.exports = {
       screens: {
         small: { min: '640px', max: '1280px' },
       },
+
+      width: {
+        footer: '42rem',
+      },
     },
   },
   variants: {
