@@ -117,10 +117,14 @@ module.exports = {
       },
       {
         test: /\.txt$/i,
-        use: 'raw-loader',
-        options: {
-          esModule: false,
-        },
+        use: [
+          {
+            loader: 'raw-loader',
+            options: {
+              esModule: false,
+            },
+          },
+        ],
       },
       {
         test: /\.(jpg|png|svg)x?$/,
