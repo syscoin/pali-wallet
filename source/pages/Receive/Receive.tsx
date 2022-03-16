@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { useController, useUtils, useAccount, useFormat } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { ellipsis, getController } from 'utils/index';
 import QRCode from 'qrcode.react';
 import { Layout, SecondaryButton, Icon } from 'components/index';
 
 export const Receive = () => {
   const { useCopyClipboard } = useUtils();
-  const { ellipsis } = useFormat();
   const [isCopied, copyText] = useCopyClipboard();
-  const { activeAccount } = useAccount();
-  const controller = useController();
+
+  const controller = getController();
+  const activeAccount = controller.wallet.account.getActiveAccount();
 
   const [loaded, setLoaded] = useState<boolean>(false);
 

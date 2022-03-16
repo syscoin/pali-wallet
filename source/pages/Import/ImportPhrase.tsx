@@ -1,6 +1,6 @@
 import React, { FC, useState } from 'react';
-import { useController } from 'hooks/index';
 import { OnboardingLayout, PrimaryButton } from 'components/index';
+import { getController } from 'utils/index';
 import { Form } from 'antd';
 import TextArea from 'antd/lib/input/TextArea';
 import { useForm } from 'antd/lib/form/Form';
@@ -10,7 +10,7 @@ interface IImportPhrase {
 }
 
 const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
-  const controller = useController();
+  const controller = getController();
 
   const [seedIsValid, setSeedIsValid] = useState<boolean>();
 

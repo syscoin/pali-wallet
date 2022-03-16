@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
-import { useController, useStore } from 'hooks/index';
+import { useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { useNavigate } from 'react-router-dom';
+import { getController } from 'utils/index';
 
 const AutolockView = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
-  const controller = useController();
+  const controller = getController();
   const navigate = useNavigate();
 
   const { timer } = useStore();

@@ -1,15 +1,14 @@
-import { useFormat, useController, useStore, useUtils } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import React, { useState, useEffect } from 'react';
 import { Icon, IconButton, Button } from 'components/index';
+import { ellipsis, formatDate, formatUrl, getController } from 'utils/index';
 import { Disclosure } from '@headlessui/react';
 
 export const TransactionDetails = ({ transactionType, transactionDetails }) => {
-  const { formatDistanceDate, ellipsis, formatURL } = useFormat();
-
   const { activeNetwork } = useStore();
   const { useCopyClipboard } = useUtils();
 
-  const controller = useController();
+  const controller = getController();
 
   const [newRecipients, setNewRecipients] = useState<any>({});
   const [newSenders, setNewSenders] = useState<any>({});
@@ -84,8 +83,8 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
 
         <div>
           <small>
-            {formatURL(String(Number(addressValue) / 10 ** 8), 18)
-              ? formatURL(String(Number(addressValue) / 10 ** 8), 18)
+            {formatUrl(String(Number(addressValue) / 10 ** 8), 18)
+              ? formatUrl(String(Number(addressValue) / 10 ** 8), 18)
               : 0}{' '}
             {activeNetwork === 'main' ? 'SYS' : 'tSYS'}
           </small>
@@ -124,7 +123,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
     {
       label: 'Mined',
       value: blockTime
-        ? formatDistanceDate(new Date(blockTime * 1000).toDateString())
+        ? formatDate(new Date(blockTime * 1000).toDateString())
         : '',
     },
     {

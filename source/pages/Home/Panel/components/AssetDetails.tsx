@@ -1,12 +1,11 @@
-import { useFormat, useController } from 'hooks/index';
 import React, { useEffect, useState } from 'react';
 import placeholder from 'assets/images/placeholder.png';
 import { Button, Tooltip, Icon } from 'components/index';
+import { formatUrl, getController } from 'utils/index';
 import axios from 'axios';
 
 export const AssetDetails = ({ assetType, assetData }) => {
-  const controller = useController();
-  const { formatURL } = useFormat();
+  const controller = getController();
 
   const [imageLink, setImageLink] = useState('');
   const [loadingImage, setLoadingImage] = useState(false);
@@ -50,7 +49,7 @@ export const AssetDetails = ({ assetType, assetData }) => {
     },
     {
       label: 'Contract',
-      value: formatURL(String(contract), 15),
+      value: formatUrl(String(contract), 15),
     },
     {
       label: 'Symbol',
@@ -58,7 +57,7 @@ export const AssetDetails = ({ assetType, assetData }) => {
     },
     {
       label: 'Description',
-      value: formatURL(description, 15),
+      value: formatUrl(description, 15),
     },
     {
       label: 'Total supply',

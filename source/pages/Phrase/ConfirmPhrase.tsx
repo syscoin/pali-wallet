@@ -3,7 +3,7 @@ import React, {
   // useMemo
 } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useController } from 'hooks/index';
+import { getController } from 'utils/index';
 import shuffle from 'lodash/shuffle';
 import {
   Button,
@@ -15,7 +15,7 @@ import {
 
 export const ConfirmPhrase = () => {
   const navigate = useNavigate();
-  const controller = useController();
+  const controller = getController();
   const phrases = controller.wallet.generatePhrase();
 
   const [orgList, setOrgList] = useState<Array<string>>(

@@ -1,15 +1,16 @@
 import React from 'react';
 import LogoImage from 'assets/images/logo-s.svg';
 import { PrimaryButton } from 'components/index';
-import { useController, useStore, useUtils } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Link } from 'react-router-dom';
+import { getController } from 'utils/index';
 
 export const Start = () => {
   const { navigate } = useUtils();
   const {
     wallet: { unLock },
-  } = useController();
+  } = getController();
   const { encriptedMnemonic } = useStore();
 
   const getStarted = (

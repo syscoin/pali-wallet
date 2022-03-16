@@ -1904,6 +1904,7 @@ const AccountController = (actions: {
     getHoldingsData: getHoldings,
     getDataAsset: getAsset,
     clearTemporaryTransaction,
+    getActiveAccount,
     getConnectedAccount,
     getChangeAddress,
     updateTokensState: updateTokens,
