@@ -7,14 +7,21 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
   const { formatDistanceDate, ellipsis, formatURL } = useFormat();
 
   const { activeNetwork } = useStore();
-  const { useCopyClipboard } = useUtils();
+  const { useCopyClipboard, alert } = useUtils();
 
   const controller = useController();
 
   const [newRecipients, setNewRecipients] = useState<any>({});
   const [newSenders, setNewSenders] = useState<any>({});
   // ? missing feedback for copy
-  const [, copyText] = useCopyClipboard();
+  const [copied, copyText] = useCopyClipboard();
+
+  const showSuccessAlert = () => {
+    if (copied) {
+      alert.removeAll();
+      alert.success('Link successfully copied');
+    }
+  };
 
   const recipients: any = {};
   const senders: any = {};
@@ -220,8 +227,9 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
           )}
         </Disclosure>
       )}
+      {copied && showSuccessAlert()}
 
-      <div className="fixed bottom-0 left-0 flex gap-x-6 items-center justify-between p-4 text-xs bg-bkg-3 md:left-auto md:w-footer xl:mt-2">
+      <div className="fixed bottom-0 left-0 flex gap-x-6 items-center justify-between p-4 w-full max-w-2xl text-xs bg-bkg-3 md:left-auto xl:mt-2">
         <p>Would you like to go to view transaction on SYS Block Explorer?</p>
 
         <Button
