@@ -56,7 +56,7 @@ export const ConfirmPhrase = () => {
     <OnboardingLayout title="Confirm Recovery Phrase">
       <div className="flex flex-col gap-4 items-center justify-center mt-2 text-brand-white transition-all duration-300 ease-in-out">
         <>
-          <section className="flex flex-wrap gap-3 items-center justify-center p-3 w-11/12 border-b border-brand-graylight box-border transition-all duration-300">
+          <section className="flex flex-wrap gap-3 items-center justify-center p-3 w-11/12 border-b border-brand-graylight box-border transition-all duration-300 md:w-9/12">
             {newList.map((phrase, idx) => (
               <Button
                 useDefaultWidth={false}
@@ -69,7 +69,7 @@ export const ConfirmPhrase = () => {
               </Button>
             ))}
           </section>
-          <section className="flex flex-wrap gap-3 items-center justify-center w-11/12 box-border transition-all duration-300">
+          <section className="flex flex-wrap gap-3 items-center justify-center w-11/12 box-border transition-all duration-300 md:w-9/12">
             {orgList.map((phrase, idx) => (
               <Button
                 useDefaultWidth={false}

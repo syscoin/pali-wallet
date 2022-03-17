@@ -78,7 +78,7 @@ export const Start = () => {
   );
 
   return (
-    <div className="flex flex-col items-center justify-center mt-20 p-2 min-w-full">
+    <div className="flex flex-col items-center justify-center p-2 pt-20 min-w-full">
       <p className="mb-2 text-center text-brand-deepPink100 text-lg font-normal tracking-wider">
         WELCOME TO
       </p>
