@@ -11,7 +11,12 @@ const DeleteWalletView = () => {
   const controller = getController();
   const activeAccount = controller.wallet.account.getActiveAccount();
 
-  const [seedIsValid, setSeedIsValid] = useState<boolean>();
+  if (!activeAccount) throw new Error('No active account');
+  const hasAccountFunds = activeAccount.balance > 0;
+
+  // if account has no funds, no need to input the seed
+  const [isSeedValid, setIsSeedValid] = useState<boolean>(!hasAccountFunds);
+  const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
 
   const onSubmit = (data: any) => {
     if (controller.wallet.checkPassword(data.password)) {
@@ -59,9 +64,11 @@ const DeleteWalletView = () => {
                   const seed = controller.wallet.getPhrase(value);
 
                   if (seed) {
+                    setIsPasswordValid(true);
                     return Promise.resolve();
                   }
 
+                  setIsPasswordValid(false);
                   return Promise.reject();
                 },
               }),
@@ -73,50 +80,50 @@ const DeleteWalletView = () => {
             />
           </Form.Item>
 
-          {activeAccount && activeAccount.balance > 0 && (
-            <p className="max-w-xs text-left text-xs leading-4">
-              You still have funds in your wallet. Paste your seed phrase below
-              to delete wallet.
-            </p>
-          )}
+          {hasAccountFunds && (
+            <>
+              <p className="max-w-xs text-left text-xs leading-4">
+                You still have funds in your wallet. Paste your seed phrase
+                below to delete wallet.
+              </p>
 
-          {activeAccount && activeAccount.balance > 0 && (
-            <Form.Item
-              name="seed"
-              className="w-full"
-              dependencies={['password']}
-              rules={[
-                {
-                  required: true,
-                  message: '',
-                },
-                ({ getFieldValue }) => ({
-                  validator(_, value) {
-                    const seed = controller.wallet.getPhrase(
-                      getFieldValue('password')
-                    );
-
-                    setSeedIsValid(seed === value);
-
-                    if (seed === value) {
-                      return Promise.resolve();
-                    }
-
-                    return Promise.reject();
+              <Form.Item
+                name="seed"
+                className="w-full"
+                dependencies={['password']}
+                rules={[
+                  {
+                    required: true,
+                    message: '',
                   },
-                }),
-              ]}
-            >
-              <TextArea
-                className={`${
-                  !seedIsValid && form.getFieldValue('seed')
-                    ? 'border-warning-error'
-                    : 'border-fields-input-border'
-                } bg-bkg-4 border border-bkg-4 text-sm outline-none rounded-lg p-5`}
-                placeholder="Paste your wallet seed phrase"
-                id="delete_seed"
-              />
-            </Form.Item>
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      const seed = controller.wallet.getPhrase(
+                        getFieldValue('password')
+                      );
+
+                      if (seed === value) {
+                        setIsSeedValid(true);
+                        return Promise.resolve();
+                      }
+
+                      setIsSeedValid(false);
+                      return Promise.reject();
+                    },
+                  }),
+                ]}
+              >
+                <TextArea
+                  className={`${
+                    !isSeedValid && form.getFieldValue('seed')
+                      ? 'border-warning-error'
+                      : 'border-fields-input-border'
+                  } bg-bkg-4 border border-bkg-4 text-sm outline-none rounded-lg p-5`}
+                  placeholder="Paste your wallet seed phrase"
+                  id="delete_seed"
+                />
+              </Form.Item>
+            </>
           )}
 
           <div className="absolute bottom-12 flex gap-x-4 justify-between">
@@ -131,7 +138,7 @@ const DeleteWalletView = () => {
             <PrimaryButton
               action
               type="submit"
-              disabled={!form.getFieldValue('password') || !seedIsValid}
+              disabled={!isPasswordValid || !isSeedValid}
               id="delete-btn"
             >
               Delete
