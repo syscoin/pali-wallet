@@ -22,9 +22,9 @@ const PhraseView = () => {
         Please input your wallet password
       </p>
 
-      <div className="flex flex-col items-center justify-center">
+      <div className="flex flex-col items-center justify-center md:w-full md:max-w-md">
         <Form
-          className="password flex flex-col gap-8 items-center justify-center my-6 w-full max-w-xs text-center"
+          className="password flex flex-col gap-8 items-center justify-center my-6 w-full max-w-xs text-center md:max-w-md"
           name="phraseview"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
@@ -33,7 +33,7 @@ const PhraseView = () => {
           <Form.Item
             name="password"
             hasFeedback
-            className="w-full"
+            className="w-full md:max-w-md"
             rules={[
               {
                 required: true,
@@ -84,7 +84,7 @@ const PhraseView = () => {
           </p>
         </Card>
 
-        <div className="absolute bottom-12">
+        <div className="absolute bottom-12 md:bottom-64">
           <SecondaryButton type="button" onClick={() => navigate('/home')}>
             {copied ? 'Copied' : 'Close'}
           </SecondaryButton>
