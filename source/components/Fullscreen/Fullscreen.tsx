@@ -1,11 +1,9 @@
-import { useBrowser } from 'hooks/useBrowser';
+import { browser } from 'webextension-polyfill-ts';
 import React from 'react';
 
 import { Icon } from '..';
 
 export const Fullscreen: React.FC = () => {
-  const { browser } = useBrowser();
-
   const url = browser.runtime.getURL('app.html');
   if (!url) return <></>;
 

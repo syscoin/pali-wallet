@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, PrimaryButton, Card } from 'components/index';
 import { Form, Input } from 'antd';
-import { useController, useAccount, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
 import TextArea from 'antd/lib/input/TextArea';
+import { getController } from 'utils/index';
 
 const DeleteWalletView = () => {
   const { navigate } = useUtils();
-  const { activeAccount } = useAccount();
+
+  const controller = getController();
+  const activeAccount = controller.wallet.account.getActiveAccount();
 
   if (!activeAccount) throw new Error('No active account');
   const hasAccountFunds = activeAccount.balance > 0;
-
-  const controller = useController();
 
   // if account has no funds, no need to input the seed
   const [isSeedValid, setIsSeedValid] = useState<boolean>(!hasAccountFunds);

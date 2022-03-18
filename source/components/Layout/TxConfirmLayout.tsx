@@ -1,13 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import {
-  useController,
-  usePopup,
-  useUtils,
-  useFormat,
-  useTransaction,
-  useAccount,
-  useBrowser,
-} from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { browser } from 'webextension-polyfill-ts';
 import {
   Layout,
   PrimaryButton,
@@ -16,6 +9,15 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useNavigate } from 'react-router-dom';
+import {
+  ellipsis,
+  formatUrl,
+  capitalizeFirstLetter,
+  rejectTransaction,
+  cancelTransaction,
+  closePopup,
+  getController,
+} from 'utils/index';
 
 interface ITxConfirm {
   callback: any;
@@ -31,14 +33,8 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   title,
 }) => {
   const navigate = useNavigate();
-  const accountCtlr = useController().wallet.account;
-
-  const { ellipsis, formatURL, capitalizeFirstLetter } = useFormat();
-  const { closePopup } = usePopup();
-  const { activeAccount } = useAccount();
-  const { browser } = useBrowser();
-  const { handleRejectTransaction, handleCancelTransactionOnSite } =
-    useTransaction();
+  const accountController = getController().wallet.account;
+  const activeAccount = accountController.getActiveAccount();
 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -75,7 +71,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   }, [transaction]);
 
   const handleConfirmSiteTransaction = async () => {
-    const recommendedFee = await accountCtlr.getRecommendFee();
+    const recommendedFee = await accountController.getRecommendFee();
 
     let isPending = false;
 
@@ -91,7 +87,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
           setSubmitted(true);
         }
 
-        const response = await accountCtlr.confirmTemporaryTransaction({
+        const response = await accountController.confirmTemporaryTransaction({
           type: txType,
           callback,
         });
@@ -115,7 +111,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
 
         if (error && transaction.fee > recommendedFee) {
           setLogError(
-            `${formatURL(
+            `${formatUrl(
               String(error.message),
               166
             )} Please, reduce fees to send transaction.`
@@ -142,7 +138,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
           setLogError('');
 
           setTimeout(() => {
-            handleCancelTransactionOnSite(browser, txType);
+            cancelTransaction(browser, txType);
           }, 4000);
         }
       }, 8 * 60 * 1000);
@@ -196,9 +192,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
             <SecondaryButton
               type="button"
               action
-              onClick={() =>
-                handleRejectTransaction(browser, transaction, navigate)
-              }
+              onClick={() => rejectTransaction(browser, transaction, navigate)}
             >
               Cancel
             </SecondaryButton>
@@ -230,15 +224,11 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
   signAndSend = false,
   title = 'SIGNATURE REQUEST',
 }) => {
-  const accountCtlr = useController().wallet.account;
+  const accountCtlr = getController().wallet.account;
   const base64 =
     /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
 
-  const { closePopup } = usePopup();
   const { navigate, alert } = useUtils();
-  const { browser } = useBrowser();
-  const { handleRejectTransaction, handleCancelTransactionOnSite } =
-    useTransaction();
 
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -255,7 +245,7 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
       );
 
       setTimeout(() => {
-        handleCancelTransactionOnSite(browser, psbt);
+        cancelTransaction(browser, psbt);
       }, 10000);
 
       return;
@@ -268,7 +258,7 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
         setLoading(false);
 
         setTimeout(() => {
-          handleCancelTransactionOnSite(browser, psbt);
+          cancelTransaction(browser, psbt);
         }, 4000);
 
         browser.runtime.sendMessage({
@@ -290,7 +280,7 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
       });
 
       setTimeout(() => {
-        handleCancelTransactionOnSite(browser, psbt);
+        cancelTransaction(browser, psbt);
       }, 4000);
     }
   };
@@ -329,7 +319,7 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
             <SecondaryButton
               type="button"
               action
-              onClick={() => handleRejectTransaction(browser, psbt, navigate)}
+              onClick={() => rejectTransaction(browser, psbt, navigate)}
             >
               Cancel
             </SecondaryButton>
@@ -388,7 +378,7 @@ export const TxConfirmLayout: React.FC<ITxConfirmLayout> = ({
   title,
   txType,
 }) => {
-  const walletCtlr = useController().wallet;
+  const walletCtlr = getController().wallet;
   const { getTemporaryTransaction } = walletCtlr.account;
 
   const transaction = getTemporaryTransaction(txType);

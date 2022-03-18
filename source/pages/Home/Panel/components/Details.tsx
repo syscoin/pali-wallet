@@ -1,13 +1,13 @@
-import { useController } from 'hooks/index';
 import React, { useState, useEffect } from 'react';
 import { Layout, Icon } from 'components/index';
 import { useLocation } from 'react-router-dom';
+import { getController } from 'utils/index';
 
 import { AssetDetails } from './AssetDetails';
 import { TransactionDetails } from './TransactionDetails';
 
 export const DetailsView = () => {
-  const controller = useController();
+  const controller = getController();
 
   const { state }: any = useLocation();
 
@@ -45,7 +45,7 @@ export const DetailsView = () => {
       title={`${state.assetGuid ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}
     >
       {transactionDetails ? (
-        <ul className="scrollbar-styled mt-4 px-4 w-full h-96 text-sm overflow-auto xl:h-full">
+        <ul className="scrollbar-styled mt-4 w-full h-96 text-sm overflow-auto xl:pb-56 xl:h-screen">
           {state.assetGuid ? (
             <AssetDetails
               assetType={state.assetType}

@@ -6,13 +6,9 @@ import {
   Tooltip,
   Icon,
 } from 'components/index';
-import {
-  useTransaction,
-  useController,
-  useUtils,
-  useStore,
-  useBrowser,
-} from 'hooks/index';
+import { browser } from 'webextension-polyfill-ts';
+import { useUtils, useStore } from 'hooks/index';
+import { getHost, rejectTransaction, getController } from 'utils/index';
 import { Form, Input } from 'antd';
 
 interface ITxLayout {
@@ -22,13 +18,11 @@ interface ITxLayout {
 }
 
 export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
-  const accountController = useController().wallet.account;
+  const accountController = getController().wallet.account;
   const transaction = accountController.getTemporaryTransaction(txType);
 
-  const { navigate, getHost } = useUtils();
+  const { navigate } = useUtils();
   const { currentSenderURL, activeNetwork } = useStore();
-  const { handleRejectTransaction } = useTransaction();
-  const { browser } = useBrowser();
 
   const [loading, setLoading] = useState(false);
   const [recommend, setRecommend] = useState(0.00001);
@@ -146,9 +140,7 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
             <SecondaryButton
               type="button"
               action
-              onClick={() =>
-                handleRejectTransaction(browser, transaction, navigate)
-              }
+              onClick={() => rejectTransaction(browser, transaction, navigate)}
             >
               Cancel
             </SecondaryButton>

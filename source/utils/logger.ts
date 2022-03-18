@@ -1,4 +1,4 @@
-import { capitalizeFirstLetter } from 'hooks/useFormat';
+import { capitalizeFirstLetter } from './format';
 
 const environment = process.env.NODE_ENV;
 const isProd = environment === 'production';
