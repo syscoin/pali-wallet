@@ -229,7 +229,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
       )}
       {copied && showSuccessAlert()}
 
-      <div className="fixed bottom-0 left-0 flex gap-x-6 items-center justify-between p-4 w-full max-w-2xl text-xs bg-bkg-3 md:left-auto xl:mt-2">
+      <div className="fixed bottom-0 left-0 flex gap-x-6 items-center justify-between p-4 w-full max-w-2xl text-xs bg-bkg-3 md:bottom-12 md:left-auto xl:mt-2">
         <p>Would you like to go to view transaction on SYS Block Explorer?</p>
 
         <Button

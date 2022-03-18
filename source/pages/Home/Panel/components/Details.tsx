@@ -45,7 +45,7 @@ export const DetailsView = () => {
       title={`${state.assetGuid ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}
     >
       {transactionDetails ? (
-        <ul className="scrollbar-styled mt-4 w-full h-96 text-sm overflow-auto xl:pb-56 xl:h-screen">
+        <ul className="scrollbar-styled mt-4 w-full h-96 text-sm overflow-auto md:h-full">
           {state.assetGuid ? (
             <AssetDetails
               assetType={state.assetType}
