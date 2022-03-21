@@ -1,23 +1,29 @@
 import { PRICE_SYS_ID } from 'constants/index';
 
 import { useSelector } from 'react-redux';
-import IPriceState from 'state/price/types';
 import { RootState } from 'state/store';
 import getSymbolFromCurrency from 'currency-symbol-map';
 
 export const usePrice = () => {
-  const price: IPriceState = useSelector((state: RootState) => state.price);
+  const fiat = useSelector((state: RootState) => state.price.fiat);
 
-  return (amount: number, fraction = 4, selectedCoin = 'usd') => {
-    const value = amount * price.fiat[PRICE_SYS_ID];
+  const getFiatAmount = (
+    amount: number,
+    precision = 4,
+    currency = 'usd'
+  ): string => {
+    const value = amount * fiat[PRICE_SYS_ID];
 
-    return `${
-      getSymbolFromCurrency(selectedCoin.toUpperCase())
-        ? getSymbolFromCurrency(selectedCoin.toUpperCase())
-        : '  '
-    }  ${value.toLocaleString(navigator.language, {
-      minimumFractionDigits: fraction,
-      maximumFractionDigits: fraction,
-    })}  ${selectedCoin.toUpperCase()}`;
+    currency = currency.toUpperCase();
+    const currencySymbol = getSymbolFromCurrency(currency);
+
+    const formattedValue = value.toLocaleString(navigator.language, {
+      minimumFractionDigits: precision,
+      maximumFractionDigits: precision,
+    });
+
+    return `${currencySymbol || '  '}  ${formattedValue}  ${currency}`;
   };
+
+  return { getFiatAmount };
 };

@@ -6,24 +6,18 @@ import {
   Icon,
   Modal,
 } from 'components/index';
-import {
-  useStore,
-  useUtils,
-  useFormat,
-  useDappConnection,
-  useAccount,
-} from 'hooks/index';
+import { useStore, useDappConnection } from 'hooks/index';
+import { ellipsis, getHost, getController } from 'utils/index';
 import { Dialog } from '@headlessui/react';
 import { browser } from 'webextension-polyfill-ts';
 import queryString from 'query-string';
 import { useLocation } from 'react-router-dom';
 
 export const ConnectWallet = () => {
-  const { getHost } = useUtils();
-  const { ellipsis } = useFormat();
   const { confirmConnection, cancelConnection } = useDappConnection();
   const { accounts, currentSenderURL, trustedApps } = useStore();
-  const { connectedAccount } = useAccount();
+  const accountController = getController().wallet.account;
+  const connectedAccount = accountController.getConnectedAccount();
 
   const [accountId, setAccountId] = useState<number>(-1);
   const [isInTrustedList, setIsInTrustedList] = useState<boolean>(false);

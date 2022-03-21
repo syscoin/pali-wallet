@@ -1,12 +1,11 @@
-import { useFormat, useController } from 'hooks/index';
 import React, { useEffect, useState } from 'react';
 import placeholder from 'assets/images/placeholder.png';
 import { Button, Tooltip, Icon } from 'components/index';
+import { formatUrl, getController } from 'utils/index';
 import axios from 'axios';
 
 export const AssetDetails = ({ assetType, assetData }) => {
-  const controller = useController();
-  const { formatURL } = useFormat();
+  const controller = getController();
 
   const [imageLink, setImageLink] = useState('');
   const [loadingImage, setLoadingImage] = useState(false);
@@ -50,7 +49,7 @@ export const AssetDetails = ({ assetType, assetData }) => {
     },
     {
       label: 'Contract',
-      value: formatURL(String(contract), 15),
+      value: formatUrl(String(contract), 15),
     },
     {
       label: 'Symbol',
@@ -58,7 +57,7 @@ export const AssetDetails = ({ assetType, assetData }) => {
     },
     {
       label: 'Description',
-      value: formatURL(description, 15),
+      value: formatUrl(description, 15),
     },
     {
       label: 'Total supply',
@@ -108,14 +107,14 @@ export const AssetDetails = ({ assetType, assetData }) => {
       {assetTransaction.map(({ label, value }: any) => (
         <div
           key={label}
-          className="flex items-center justify-between my-1 p-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
+          className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
         >
           <p>{label}</p>
           <b>{value}</b>
         </div>
       ))}
 
-      <div className="small:fixed bottom-0 left-0 flex gap-x-6 items-center justify-between p-4 text-xs bg-bkg-3 xl:mt-2">
+      <div className="fixed bottom-0 left-0 flex gap-x-6 items-center justify-between p-4 w-full max-w-2xl text-xs bg-bkg-3 md:left-auto xl:mt-2">
         <p>Would you like to go to view asset on SYS Block Explorer?</p>
 
         <Button

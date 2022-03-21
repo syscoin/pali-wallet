@@ -1,20 +1,26 @@
-import { useFormat, useController, useStore, useUtils } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import React, { useState, useEffect } from 'react';
 import { Icon, IconButton, Button } from 'components/index';
+import { ellipsis, formatDate, formatUrl, getController } from 'utils/index';
 import { Disclosure } from '@headlessui/react';
 
 export const TransactionDetails = ({ transactionType, transactionDetails }) => {
-  const { formatDistanceDate, ellipsis, formatURL } = useFormat();
-
   const { activeNetwork } = useStore();
-  const { useCopyClipboard } = useUtils();
+  const { useCopyClipboard, alert } = useUtils();
 
-  const controller = useController();
+  const controller = getController();
 
   const [newRecipients, setNewRecipients] = useState<any>({});
   const [newSenders, setNewSenders] = useState<any>({});
   // ? missing feedback for copy
-  const [, copyText] = useCopyClipboard();
+  const [copied, copyText] = useCopyClipboard();
+
+  const showSuccessAlert = () => {
+    if (copied) {
+      alert.removeAll();
+      alert.success('Link successfully copied');
+    }
+  };
 
   const recipients: any = {};
   const senders: any = {};
@@ -84,8 +90,8 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
 
         <div>
           <small>
-            {formatURL(String(Number(addressValue) / 10 ** 8), 18)
-              ? formatURL(String(Number(addressValue) / 10 ** 8), 18)
+            {formatUrl(String(Number(addressValue) / 10 ** 8), 18)
+              ? formatUrl(String(Number(addressValue) / 10 ** 8), 18)
               : 0}{' '}
             {activeNetwork === 'main' ? 'SYS' : 'tSYS'}
           </small>
@@ -124,7 +130,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
     {
       label: 'Mined',
       value: blockTime
-        ? formatDistanceDate(new Date(blockTime * 1000).toDateString())
+        ? formatDate(new Date(blockTime * 1000).toDateString())
         : '',
     },
     {
@@ -147,7 +153,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
         <>
           <div
             key={label}
-            className="flex items-center justify-between my-1 px-2 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
+            className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
           >
             <p>{label}</p>
             <b>{currentValue}</b>
@@ -159,24 +165,28 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
         <Disclosure>
           {({ open }) => (
             <>
-              <Disclosure.Button
-                className={`${
-                  open ? 'rounded-t-md' : 'rounded-md'
-                } mt-3 p-2 flex justify-between items-center  w-full border border-bkg-3 bg-bkg-1 cursor-pointer transition-all duration-300 text-xs`}
-              >
-                From
-                <Icon
-                  name="select-down"
+              <div className="px-6">
+                <Disclosure.Button
                   className={`${
-                    open ? 'transform rotate-180' : ''
-                  } mb-1 text-brand-white`}
-                />
-              </Disclosure.Button>
+                    open ? 'rounded-t-md' : 'rounded-md'
+                  } mt-3 py-2 px-2 flex justify-between items-center  w-full border border-bkg-3 bg-bkg-1 cursor-pointer transition-all duration-300 text-xs`}
+                >
+                  From
+                  <Icon
+                    name="select-down"
+                    className={`${
+                      open ? 'transform rotate-180' : ''
+                    } mb-1 text-brand-white`}
+                  />
+                </Disclosure.Button>
+              </div>
 
               <Disclosure.Panel>
-                <div className="flex flex-col pb-2 px-2 w-full text-brand-white text-sm bg-bkg-3 border border-t-0 border-bkg-4 rounded-lg rounded-t-none transition-all duration-300">
-                  {Object.values(newSenders).length &&
-                    renderAddresses(newSenders)}
+                <div className="px-6">
+                  <div className="flex flex-col pb-2 px-2 w-full text-brand-white text-sm bg-bkg-3 border border-t-0 border-bkg-4 rounded-lg rounded-t-none transition-all duration-300">
+                    {Object.values(newSenders).length &&
+                      renderAddresses(newSenders)}
+                  </div>
                 </div>
               </Disclosure.Panel>
             </>
@@ -188,32 +198,37 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
         <Disclosure>
           {({ open }) => (
             <>
-              <Disclosure.Button
-                className={`${
-                  open ? 'rounded-t-md' : 'rounded-md'
-                } mt-3 p-2 flex justify-between items-center  w-full border border-bkg-3 bg-bkg-1 cursor-pointer transition-all duration-300 text-xs`}
-              >
-                To
-                <Icon
-                  name="select-down"
+              <div className="px-6">
+                <Disclosure.Button
                   className={`${
-                    open ? 'transform rotate-180' : ''
-                  } mb-1 text-brand-white`}
-                />
-              </Disclosure.Button>
+                    open ? 'rounded-t-md' : 'rounded-md'
+                  } mt-3 py-2 px-2 flex justify-between items-center  w-full border border-bkg-3 bg-bkg-1 cursor-pointer transition-all duration-300 text-xs`}
+                >
+                  To
+                  <Icon
+                    name="select-down"
+                    className={`${
+                      open ? 'transform rotate-180' : ''
+                    } mb-1 text-brand-white`}
+                  />
+                </Disclosure.Button>
+              </div>
 
-              <Disclosure.Panel>
-                <div className="flex flex-col pb-2 px-2 w-full text-brand-white text-sm bg-bkg-3 border border-t-0 border-bkg-4 rounded-lg rounded-t-none transition-all duration-300">
-                  {Object.values(newRecipients).length &&
-                    renderAddresses(newRecipients)}
-                </div>
-              </Disclosure.Panel>
+              <div className="px-6">
+                <Disclosure.Panel>
+                  <div className="flex flex-col pb-2 px-2 w-full text-brand-white text-sm bg-bkg-3 border border-t-0 border-bkg-4 rounded-lg rounded-t-none transition-all duration-300">
+                    {Object.values(newRecipients).length &&
+                      renderAddresses(newRecipients)}
+                  </div>
+                </Disclosure.Panel>
+              </div>
             </>
           )}
         </Disclosure>
       )}
+      {copied && showSuccessAlert()}
 
-      <div className="small:fixed bottom-0 left-0 flex gap-x-6 items-center justify-between p-4 text-xs bg-bkg-3 xl:mt-2">
+      <div className="fixed bottom-0 left-0 flex gap-x-6 items-center justify-between p-4 w-full max-w-2xl text-xs bg-bkg-3 md:left-auto xl:mt-2">
         <p>Would you like to go to view transaction on SYS Block Explorer?</p>
 
         <Button

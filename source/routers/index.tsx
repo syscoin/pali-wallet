@@ -6,13 +6,9 @@ import {
   useParams,
   Navigate,
 } from 'react-router-dom';
-import {
-  useController,
-  useStore,
-  useUtils,
-  useBrowser,
-  useQuery,
-} from 'hooks/index';
+import { useQuery, useStore, useUtils } from 'hooks/index';
+import { getController } from 'utils/browser';
+import { browser } from 'webextension-polyfill-ts';
 
 import {
   About,
@@ -59,11 +55,13 @@ import { ProtectedRoute } from './ProtectedRoute';
 
 export const Router = () => {
   const params = useParams();
-  const controller = useController();
+  // const location = useLocation();
+  const controller = getController();
+  // const { getConnectedAccount, getTemporaryTransaction } =
+  //   controller.wallet.account;
 
   const { temporaryTransactionState } = useStore();
   const { alert, navigate } = useUtils();
-  const { browser } = useBrowser();
   const { pathname } = useLocation();
 
   const isUnlocked = !controller.wallet.isLocked();

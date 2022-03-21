@@ -1,32 +1,13 @@
 import { useAlert } from 'react-alert';
 import { useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
-
-import { useAccount, useController } from '.';
-
-export const isNFT = (guid: number): boolean => {
-  const assetGuid = BigInt.asUintN(64, BigInt(guid));
-  return assetGuid >> BigInt(32) > 0;
-};
-
-export const getHost = (url: string): string => {
-  if (typeof url === 'string' && url !== '') {
-    return new URL(url).host;
-  }
-
-  return url;
-};
+import { getController } from 'utils/index';
 
 export const useUtils = () => {
   const alert = useAlert();
   const navigate = useNavigate();
-  const controller = useController();
-  const { activeAccount } = useAccount();
-
-  const useSettingsView = () =>
-    useCallback((view) => {
-      navigate(view);
-    }, []);
+  const controller = getController();
+  const activeAccount = controller.wallet.account.getActiveAccount();
 
   const handleRefresh = (): void => {
     controller.wallet.account.getLatestUpdate();
@@ -61,12 +42,9 @@ export const useUtils = () => {
   };
 
   return {
-    useSettingsView,
     useCopyClipboard,
     alert,
-    getHost,
     navigate,
     handleRefresh,
-    isNFT,
   };
 };

@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { useStore, useFormat, useUtils } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import { Layout, SecondaryButton } from 'components/index';
+import { formatUrl } from 'utils/index';
 
 import { CustomRPC } from '..';
 
 const EditNetworkView = () => {
   const { networks } = useStore();
-  const { formatURL } = useFormat();
   const { navigate } = useUtils();
 
   const defaultNetworks = ['main', 'testnet'];
@@ -47,11 +47,11 @@ const EditNetworkView = () => {
                     : undefined
                 }
               >
-                <span>{formatURL(network.label, 25)}</span>
+                <span>{formatUrl(network.label, 25)}</span>
 
                 <small className="flex gap-x-3 items-center justify-start">
                   <span>Blockbook URL:</span>
-                  <span> {formatURL(String(network.beUrl), 25)}</span>
+                  <span> {formatUrl(String(network.beUrl), 25)}</span>
                 </small>
               </li>
             ))}

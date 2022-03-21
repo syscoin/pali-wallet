@@ -26,7 +26,7 @@ store.subscribe(
 
 const options = {
   position: positions.BOTTOM_CENTER,
-  timeout: 20 * 1000,
+  timeout: 2 * 1000,
   offset: '30px',
   transition: transitions.FADE,
 };

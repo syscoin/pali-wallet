@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Form, Input } from 'antd';
 import { Layout, SecondaryButton } from 'components/index';
 import axios from 'axios';
-import { useUtils, useController } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { getController } from 'utils/index';
 
 import { EditNetwork } from '.';
 
@@ -11,7 +12,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   const [edit, setEdit] = useState(false);
 
   const { alert } = useUtils();
-  const controller = useController();
+  const controller = getController();
 
   const onSubmit = async ({ network, blockbookURL }: any) => {
     setLoading(true);

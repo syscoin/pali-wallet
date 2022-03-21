@@ -1,17 +1,11 @@
 import format from 'date-fns/format';
 import currency from 'currency.js';
 
-const getYesterday = () => {
-  const date = new Date();
-  date.setDate(date.getDate() - 1);
-
-  return date;
-};
-
-export const ellipsis = (str: any, start = 7, end = 4) => {
-  if (typeof str !== 'string') {
-    return str;
-  }
+/**
+ * Add `...` to shorten a string. Keeps chars at the beginning and end
+ */
+export const ellipsis = (str: any, start = 7, end = 4): string => {
+  if (typeof str !== 'string') return str;
 
   return `${str.substring(0, start)}...${str.substring(
     str.length - end,
@@ -22,11 +16,19 @@ export const ellipsis = (str: any, start = 7, end = 4) => {
 export const capitalizeFirstLetter = (string: string) =>
   string.charAt(0).toUpperCase() + string.slice(1);
 
-export const formatDistanceDate = (timestamp: string) => {
+const getYesterday = () => {
+  const date = new Date();
+  date.setDate(date.getDate() - 1);
+
+  return date;
+};
+
+export const formatDate = (timestamp: string) => {
   const formatStyle = 'M-d-yyyy';
+  const formatedDate = format(new Date(timestamp), formatStyle);
+
   const today = new Date();
   const yesterday = getYesterday();
-  const formatedDate = format(new Date(timestamp), formatStyle);
 
   if (formatedDate === format(today, formatStyle)) return 'Today';
   if (formatedDate === format(yesterday, formatStyle)) return 'Yesterday';
@@ -53,20 +55,13 @@ export const formatCurrency = (number: string, precision: number) => {
   }).format();
 };
 
-// truncate
-export const formatURL = (url: string, size = 30) => {
-  if (url.length >= size) {
-    return `${url.slice(0, size)}...`;
-  }
+/**
+ * Truncate the `url` if length is greater than `size`
+ *
+ * Default `size` is 30
+ */
+export const formatUrl = (url: string, size = 30) => {
+  if (url.length < size) return url;
 
-  return url;
+  return `${url.slice(0, size)}...`;
 };
-
-export const useFormat = () => ({
-  ellipsis,
-  formatURL,
-  formatCurrency,
-  formatNumber,
-  formatDistanceDate,
-  capitalizeFirstLetter,
-});
