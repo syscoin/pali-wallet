@@ -131,10 +131,11 @@ export const Send: FC<ISend> = () => {
         }}
         onFinish={nextStep}
         autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center mt-4 text-center"
+        className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
       >
         <Form.Item
           name="receiver"
+          className="md:w-full md:max-w-md"
           hasFeedback
           rules={[
             {
@@ -162,11 +163,11 @@ export const Send: FC<ISend> = () => {
           <Input
             type="text"
             placeholder="Receiver"
-            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none"
+            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
           />
         </Form.Item>
 
-        <div className="flex items-center justify-center">
+        <div className="flex items-center justify-center md:w-full md:max-w-md">
           <Form.Item
             name="asset"
             className=""
@@ -230,11 +231,11 @@ export const Send: FC<ISend> = () => {
             </Menu>
           </Form.Item>
 
-          <div className="flex gap-x-0.5 items-center justify-center mx-2 w-48">
+          <div className="flex gap-x-0.5 items-center justify-center mx-2 w-48 md:w-full">
             <Form.Item
               id="verify-address-switch"
               name="verify"
-              className="flex-1 w-32 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full"
+              className="flex-1 w-32 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full md:w-full"
               rules={[
                 {
                   required: false,
@@ -302,6 +303,7 @@ export const Send: FC<ISend> = () => {
 
         <Form.Item
           name="amount"
+          className="md:w-full md:max-w-md"
           hasFeedback
           rules={[
             {
@@ -324,13 +326,13 @@ export const Send: FC<ISend> = () => {
           ]}
         >
           <Input
-            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none"
+            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
             type="number"
             placeholder="Amount"
           />
         </Form.Item>
 
-        <div className="flex gap-x-0.5 items-center justify-center mx-2">
+        <div className="flex gap-x-0.5 items-center justify-center mx-2 md:w-full md:max-w-md">
           <Form.Item
             name="recommend"
             className={`${
@@ -366,6 +368,7 @@ export const Send: FC<ISend> = () => {
 
           <Form.Item
             name="fee"
+            className="md:w-full"
             hasFeedback
             rules={[
               {
@@ -380,7 +383,7 @@ export const Send: FC<ISend> = () => {
                 className={`${
                   disabledFee &&
                   'opacity-50 cursor-not-allowed text-button-disabled'
-                } border border-fields-input-border bg-fields-input-primary rounded-r-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
+                } border border-fields-input-border bg-fields-input-primary rounded-r-full md:w-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
                 id="fee-input"
                 type="number"
                 placeholder="Fee network"
@@ -390,7 +393,7 @@ export const Send: FC<ISend> = () => {
           </Form.Item>
         </div>
 
-        <p className="flex flex-col items-center justify-center mx-14 p-0 text-center text-brand-royalblue">
+        <p className="flex flex-col items-center justify-center mx-14 p-0 text-center text-brand-royalblue md:my-4">
           <span className="text-xs">
             {`With current network conditions we recommend a fee of
             ${recommend} SYS`}
