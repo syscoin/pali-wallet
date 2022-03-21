@@ -117,7 +117,7 @@ const DeleteWalletView = () => {
             </Form.Item>
           )}
 
-          <div className="absolute bottom-12 flex gap-x-4 justify-between md:bottom-64">
+          <div className="absolute bottom-12 flex gap-x-4 justify-between md:bottom-40">
             <SecondaryButton
               type="button"
               onClick={() => navigate('/home')}
