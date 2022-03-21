@@ -13,7 +13,6 @@ import {
 } from '../../../../tests/mocks';
 
 import AccountController from './AccountController';
-import { base64 } from './utils';
 import WalletController from './WalletController';
 
 describe('AccountController tests', () => {
