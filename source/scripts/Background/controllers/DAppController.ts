@@ -1,5 +1,3 @@
-import includes from 'lodash/includes';
-import filter from 'lodash/filter';
 import { browser } from 'webextension-polyfill-ts';
 import {
   listNewDapp,
@@ -7,7 +5,7 @@ import {
   registerListeningSite as registerListeningSiteAction,
   deregisterListeningSite as deregisterListeningSiteAction,
 } from 'state/dapp';
-import { IDAppInfo, IDAppState, IDappAccounts } from 'state/dapp/types';
+import { IDAppInfo, IDAppState } from 'state/dapp/types';
 import store from 'state/store';
 
 export interface IDAppController {
@@ -28,7 +26,6 @@ export interface IDAppController {
   isSiteListening: (origin: string, eventName: string) => boolean;
   isDAppConnected: (origin: string) => boolean;
 }
-
 interface ISigRequest {
   address: string;
   message: string;
@@ -86,7 +83,8 @@ const DAppController = (): IDAppController => {
       }
 
       if (site) {
-        const siteAccounts = site.accounts as IDappAccounts;
+        console.log('accounts', accounts);
+        // const siteAccounts = site.accounts as IDappAccounts;
         // const allAccountsWithDuplicates = accounts.concat(
         //   siteAccounts.Syscoin,
         //   siteAccounts.Ethereum
@@ -96,25 +94,22 @@ const DAppController = (): IDAppController => {
         //   (value, index, iteratee) =>
         //     includes(iteratee, value as string, index + 1)
         // );
-
         // if (matchingAccounts.length) {
         //   const ethAccounts = matchingAccounts.filter((account) =>
         //     account.toLowerCase().startsWith('0x')
         //   );
-        //   const dagAccounts = matchingAccounts.filter((account) =>
-        //     account.toLowerCase().startsWith('dag')
+        //   const sysAccounts = matchingAccounts.filter((account) =>
+        //     account.toLowerCase().startsWith('sys')
         //   );
-
         //   // Dispatch a separate event for each chain
         //   const _events = [
         //     new CustomEvent('accountsChanged', {
         //       detail: { data: ethAccounts, origin, chain: 'ethereum' },
         //     }),
         //     new CustomEvent('accountsChanged', {
-        //       detail: { data: dagAccounts, origin, chain: 'constellation' },
+        //       detail: { data: sysAccounts, origin, chain: 'syscoin' },
         //     }),
         //   ];
-
         //   events = [...events, ..._events];
         // }
       }
@@ -140,7 +135,7 @@ const DAppController = (): IDAppController => {
         detail: { data: {}, origin, chain: 'ethereum' },
       }),
       new CustomEvent('close', {
-        detail: { data: {}, origin, chain: 'constellation' },
+        detail: { data: {}, origin, chain: 'syscoin' },
       }),
     ];
 
