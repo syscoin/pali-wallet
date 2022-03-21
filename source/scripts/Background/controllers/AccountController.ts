@@ -33,7 +33,7 @@ import {
 } from 'state/wallet';
 import { log, logError } from 'utils/index';
 
-import { sortList, isNFT, countDecimals } from './utils';
+import { sortList, isNFT, countDecimals, base64 } from './utils';
 
 const syscointx = require('syscointx-js');
 const coinSelectSyscoin = require('coinselectsyscoin');
@@ -656,10 +656,6 @@ const AccountController = (actions: {
   };
 
   const signTransaction = async (jsonData: any, sendPSBT: boolean) => {
-    // needs comment
-    const base64 =
-      /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
-
     if (!base64.test(jsonData.psbt) || typeof jsonData.assets !== 'string') {
       throw new Error(
         'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.'
