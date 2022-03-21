@@ -54,12 +54,12 @@ import { useQuery } from 'hooks/useQuery';
 
 export const Router = () => {
   const params = useParams();
-  const { pathname } = useLocation();
   const controller = useController();
 
   const { temporaryTransactionState } = useStore();
   const { alert, navigate } = useUtils();
   const { browser } = useBrowser();
+  const { pathname } = useLocation();
 
   const isUnlocked = !controller.wallet.isLocked();
 
@@ -129,8 +129,6 @@ export const Router = () => {
 
   useEffect(() => {
     const { executing, type } = temporaryTransactionState;
-
-    debugger;
 
     if (isUnlocked) {
       if (route === 'connect-wallet') {

@@ -5,8 +5,6 @@ import ControllerUtils, { IControllerUtils } from './ControllerUtils';
 import ConnectionsController from './ConnectionsController';
 import DAppController, { IDAppController } from './DAppController';
 import { browser } from 'webextension-polyfill-ts';
-import { setAppRoute } from 'state/wallet';
-import store from 'state/store';
 
 export interface IMasterController {
   appRoute: (newRoute?: string) => string;
@@ -44,8 +42,6 @@ const MasterController = (): IMasterController => {
       url += `route=${route}&windowId=${windowId}&data=${JSON.stringify(
         data
       )}&network=${network}`;
-
-      store.dispatch(setAppRoute(url));
     }
 
     console.log('creating popup', url);
