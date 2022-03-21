@@ -29,7 +29,7 @@ export const useDappConnection = () => {
 
       navigate('/home');
 
-      await closePopup();
+      window.close();
 
       return true;
     } catch (error) {

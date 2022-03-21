@@ -100,4 +100,5 @@ export default interface IWalletState {
     [id: string]: string;
   };
   walletTokens: IWalletTokenState[];
+  route: string;
 }

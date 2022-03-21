@@ -14,6 +14,8 @@ import {
   useAccount,
 } from 'hooks/index';
 import { Dialog } from '@headlessui/react';
+import { browser } from 'webextension-polyfill-ts';
+import queryString from 'query-string';
 
 export const ConnectWallet = () => {
   const { getHost } = useUtils();
@@ -27,12 +29,22 @@ export const ConnectWallet = () => {
   const [openExtraConfirmation, setOpenExtraConfirmation] =
     useState<boolean>(false);
 
-  const handleSelectAccount = (id: number) => {
+  const handleSelectAccount = async (id: number) => {
     if (connectedAccount && id === connectedAccount.id) {
       return;
     }
 
     setAccountId(id);
+
+    const background = await browser.runtime.getBackgroundPage();
+
+    const { windowId } = queryString.parse(location.search);
+
+    background.dispatchEvent(
+      new CustomEvent('connectWallet', {
+        detail: { windowId, accounts },
+      })
+    );
   };
 
   useEffect(() => {

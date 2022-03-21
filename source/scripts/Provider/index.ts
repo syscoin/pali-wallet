@@ -4,7 +4,7 @@ import { browser } from 'webextension-polyfill-ts';
 
 const emitter = new EventEmitter();
 const backgroundPort = browser.runtime.connect(undefined, {
-  name: 'stargazer',
+  name: 'pali',
 });
 
 const onMessage = ({ id, data }: { data: string; id: string }) => {
@@ -17,7 +17,9 @@ backgroundPort.onMessage.addListener((message: { data: string; id: string }) =>
 );
 
 const checkForPaliRegisterEvent = (type, id) => {
+  console.log('checking for pali register event');
   if (type === 'PALI_EVENT_REG') {
+    console.log('pali register event found');
     emitter.on(id, (result) => {
       // console.log('Script - emitter', id, result);
       window.dispatchEvent(

@@ -180,11 +180,11 @@ window.pali = {
     return pali.getMethod('wallet.isConnected');
   },
   enable: async () => {
-    const { result, data } = await window.providerManager.enable();
+    console.log('enabling pali', window.providerManager)
 
-    if (!result) ERRORS.USER_REJECTED();
+    const response = await window.providerManager.enable();
 
-    return data.accounts;
+    console.log(response)
   },
   request: async (req) => {},
   on: (method, callback) => {},

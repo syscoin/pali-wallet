@@ -62,6 +62,7 @@ export const initialState: IWalletState = {
     executing: false,
     type: '',
   },
+  route: '',
 };
 
 const WalletState = createSlice({
@@ -375,6 +376,9 @@ const WalletState = createSlice({
 
       state.accounts[indexOf].label = action.payload.label;
     },
+    setAppRoute(state: IWalletState, action: PayloadAction<string>) {
+      state.route = action.payload;
+    },
   },
 });
 
@@ -404,6 +408,7 @@ export const {
   setTimer,
   updateNetwork,
   setTemporaryTransactionState,
+  setAppRoute,
 } = WalletState.actions;
 
 export default WalletState.reducer;
