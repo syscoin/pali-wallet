@@ -39,7 +39,7 @@ const PrivateKeyView = () => {
               <Disclosure.Button
                 className={`${
                   open ? 'rounded-t-lg' : 'rounded-lg'
-                } w-full max-w-xs px-4 mt-6 py-2 flex justify-between items-center border border-bkg-1 text-xs cursor-pointer transition-all duration-300 bg-bkg-1`}
+                } w-full max-w-xs md:max-w-md px-4 mt-6 py-2 flex justify-between items-center border border-bkg-1 text-xs cursor-pointer transition-all duration-300 bg-bkg-1`}
               >
                 XPUB
                 <Icon
@@ -69,7 +69,7 @@ const PrivateKeyView = () => {
         </p>
 
         <Form
-          className="password flex flex-col gap-8 items-center justify-center my-3 w-full max-w-xs text-center"
+          className="password flex flex-col gap-8 items-center justify-center my-3 w-full max-w-xs text-center md:max-w-md"
           name="phraseview"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
@@ -126,7 +126,7 @@ const PrivateKeyView = () => {
         </div>
       </div>
 
-      <div className="absolute bottom-8">
+      <div className="absolute bottom-8 md:bottom-48">
         <SecondaryButton type="button" onClick={() => navigate('/home')}>
           {copied ? 'Copied' : 'Close'}
         </SecondaryButton>
