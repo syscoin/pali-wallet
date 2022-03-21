@@ -1,0 +1,132 @@
+{
+  "extends": [
+    "plugin:react/recommended", // Uses the recommended rules from @eslint-plugin-react
+    "plugin:@typescript-eslint/recommended",
+    "airbnb-typescript",
+    "prettier",
+    "prettier/react",
+    "airbnb"
+  ],
+  "plugins": ["@typescript-eslint", "eslint-plugin-prettier", "react-hooks"],
+  "overrides": [
+    {
+      "files": ["*.{ts,tsx}"],
+      "parser": "@typescript-eslint/parser",
+      "parserOptions": {
+        "project": "**/tsconfig.json",
+        "tsconfigRootDir": ".",
+        "sourceType": "module"
+      },
+      "plugins": ["typescript-sort-keys"],
+      "rules": {
+        "typescript-sort-keys/interface": 2,
+        "typescript-sort-keys/string-enum": 2,
+        "@typescript-eslint/no-unused-vars": 1,
+        "@typescript-eslint/switch-exhaustiveness-check": 2
+      }
+    }
+  ],
+  "rules": {
+    "implicit-arrow-linebreak": "off",
+    "arrow-body-style": ["error", "as-needed"],
+    "comma-dangle": [
+      "error",
+      {
+        "arrays": "always-multiline",
+        "objects": "always-multiline",
+        "imports": "always-multiline",
+        "exports": "always-multiline",
+        "functions": "never"
+      }
+    ],
+    "react/jsx-wrap-multilines": "off",
+    "no-undef": "off",
+    "curly": "off",
+    "nonblock-statement-body-position": "off",
+    "semi": "off",
+    "react-hooks/rules-of-hooks": "error",
+    "no-use-before-define": "off",
+    "import/extensions": "off",
+    "react/jsx-filename-extension": "off",
+    "no-confusing-arrow": "off",
+    "react/jsx-one-expression-per-line": "off",
+    "react/jsx-curly-newline": "off",
+    "import/no-extraneous-dependencies": "error",
+    "@typescript-eslint/explicit-module-boundary-types": "off",
+    "consistent-return": "off",
+    "no-unused-vars": "off",
+    "no-console": "off",
+    "guard-for-in": "off",
+    "indent": "off",
+    "max-len": "off",
+    "no-extend-native": "off",
+    "no-alert": "off",
+    "operator-linebreak": "off",
+    "react/jsx-props-no-spreading": "off",
+    "jsx-a11y/label-has-associated-control": "off",
+    "import/no-webpack-loader-syntax": "off",
+    "import/prefer-default-export": "off",
+    "jsx-a11y/no-noninteractive-element-interactions": "off",
+    "@typescript-eslint/interface-name-prefix": "off",
+    "import/no-unresolved": "off",
+    "no-semicolon-interface": 0,
+    "@typescript-eslint/explicit-function-return-type": "off",
+    "@typescript-eslint/no-explicit-any": "off",
+    "react/require-default-props": 0,
+    "react/no-unused-prop-types": "off",
+    "react/button-has-type": "off",
+    "jsx-a11y/click-events-have-key-events": "off",
+    "jsx-a11y/no-static-element-interactions": "off",
+    "@typescript-eslint/indent": "off",
+    "@typescript-eslint/no-var-requires": "off",
+    "no-await-in-loop": "off",
+    "prettier/prettier": [
+      "error",
+      {
+        "trailingComma": "es5",
+        "tabWidth": 2,
+        "semi": true,
+        "singleQuote": true
+      }
+    ],
+    "no-bitwise": "off",
+    "no-plusplus": "off",
+    "import/no-cycle": "off",
+    "eqeqeq": "off",
+    "new-cap": "off",
+    "no-new": "off",
+    "@typescript-eslint/no-non-null-assertion": "error",
+    "@typescript-eslint/comma-dangle": "off",
+    "array-callback-return": "off",
+    "no-restricted-syntax": "off",
+    "@typescript-eslint/no-shadow": "off",
+    "@typescript-eslint/ban-ts-comment": "off",
+    "no-param-reassign": "off",
+    "function-paren-newline": "off",
+    "@typescript-eslint/object-curly-spacing": "off",
+    "object-curly-newline": "off",
+    "import/order": [
+      "error",
+      {
+        "groups": [
+          "builtin",
+          ["external", "internal"],
+          "parent",
+          ["sibling", "index"]
+        ],
+        "newlines-between": "always"
+      }
+    ],
+    "react/no-unescaped-entities": 0, // Checks rules of Hooks
+    "react-hooks/exhaustive-deps": "off" // Checks effect dependencies
+  },
+  "env": {
+    "webextensions": true
+  },
+  "settings": {
+    "react": {
+      "version": "detect"
+    }
+  },
+  "globals": {}
+}

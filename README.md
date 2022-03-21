@@ -21,7 +21,7 @@ Then run the following:
 - `yarn run build:chrome` to build chrome extension
 - `yarn run build:firefox` to build firefox addon
 - `yarn run build:opera` to build opera extension
-- `yarn run build` builds and packs extensions all at once to extension/ directory
+- `yarn run build` builds and packs extensions all at once to build/ directory
 
 ### Development
 
@@ -56,6 +56,6 @@ Then run the following:
 
 ### Production
 
-- `yarn run build` builds the extension for all the browsers to `extension/BROWSER` directory respectively.
+- `yarn run build` builds the extension for all the browsers to `build/BROWSER` directory respectively.
 
 Note: By default the `manifest.json` is set with version `0.0.0`. The webpack loader will update the version in the build with that of the `package.json` version. In order to release a new version, update version in `package.json` and run script.
