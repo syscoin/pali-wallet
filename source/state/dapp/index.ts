@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
 import { IDAppState, IDAppInfo } from './types';
 
 const initialState: IDAppState = {
@@ -13,7 +14,7 @@ const DAppState = createSlice({
   reducers: {
     registerListeningSite(
       state: IDAppState,
-      action: PayloadAction<{ origin: string; eventName: string }>
+      action: PayloadAction<{ eventName: string; origin: string }>
     ) {
       const { origin, eventName } = action.payload;
 
@@ -31,7 +32,7 @@ const DAppState = createSlice({
     },
     deregisterListeningSite(
       state: IDAppState,
-      action: PayloadAction<{ origin: string; eventName: string }>
+      action: PayloadAction<{ eventName: string; origin: string }>
     ) {
       const { origin, eventName } = action.payload;
 
@@ -60,10 +61,10 @@ const DAppState = createSlice({
     listNewDapp(
       state: IDAppState,
       action: PayloadAction<{
-        id: string;
-        dapp: IDAppInfo;
-        network: string;
         accounts: string[];
+        dapp: IDAppInfo;
+        id: string;
+        network: string;
       }>
     ) {
       const { dapp, network, accounts } = action.payload;
@@ -94,7 +95,7 @@ const DAppState = createSlice({
       };
     },
     unlistDapp(state: IDAppState, action: PayloadAction<{ id: string }>) {
-      console.log('Unlist App ID: ' + action.payload.id);
+      console.log('Unlist App ID: ', action.payload.id);
       delete state.whitelist[action.payload.id];
       delete state.listening[action.payload.id];
     },

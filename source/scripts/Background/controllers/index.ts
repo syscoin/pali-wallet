@@ -1,19 +1,24 @@
 import { IWalletController } from 'types/controllers';
+import { browser } from 'webextension-polyfill-ts';
 
 import WalletController from './WalletController';
 import ControllerUtils, { IControllerUtils } from './ControllerUtils';
 import ConnectionsController from './ConnectionsController';
 import DAppController, { IDAppController } from './DAppController';
-import { browser } from 'webextension-polyfill-ts';
 
 export interface IMasterController {
   appRoute: (newRoute?: string) => string;
   connections: Readonly<any>;
+  createPopup: (
+    windowId: any,
+    network: string,
+    route: string,
+    data: object
+  ) => any;
+  dapp: Readonly<IDAppController>;
   stateUpdater: () => void;
-  createPopup: (windowId: any, network: string, route: string, data: {}) => any;
   utils: Readonly<IControllerUtils>;
   wallet: Readonly<IWalletController>;
-  dapp: Readonly<IDAppController>;
 }
 
 const MasterController = (): IMasterController => {
@@ -27,16 +32,16 @@ const MasterController = (): IMasterController => {
   };
 
   const createPopup = async (
-    windowId: any,
-    network: string = 'main',
-    route: string = '',
-    data: {} = {}
+    windowId,
+    network = 'main',
+    route = '',
+    data = {}
   ) => {
     const _window = await browser.windows.getCurrent();
 
     if (!_window || !_window.width) return null;
 
-    let url = `/app.html?`;
+    let url = '/app.html?';
 
     if (route) {
       url += `route=${route}&windowId=${windowId}&data=${JSON.stringify(
@@ -46,7 +51,7 @@ const MasterController = (): IMasterController => {
 
     console.log('creating popup', url);
 
-    return await browser.windows.create({
+    return browser.windows.create({
       url,
       width: 372,
       height: 600,

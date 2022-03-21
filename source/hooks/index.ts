@@ -8,3 +8,4 @@ export * from './useUtils';
 export * from './useController';
 export * from './useDappConnection';
 export * from './useAccount';
+export * from './useQuery';

@@ -3,10 +3,10 @@ export interface IDappAccounts {
   Syscoin?: string[] | undefined;
 }
 export interface IDAppInfo {
-  origin: string;
-  logo: string;
-  title: string;
   accounts?: IDappAccounts;
+  logo: string;
+  origin: string;
+  title: string;
 }
 
 export interface IDAppState {

@@ -16,6 +16,7 @@ import {
 import { Dialog } from '@headlessui/react';
 import { browser } from 'webextension-polyfill-ts';
 import queryString from 'query-string';
+import { useLocation } from 'react-router-dom';
 
 export const ConnectWallet = () => {
   const { getHost } = useUtils();
@@ -28,6 +29,7 @@ export const ConnectWallet = () => {
   const [isInTrustedList, setIsInTrustedList] = useState<boolean>(false);
   const [openExtraConfirmation, setOpenExtraConfirmation] =
     useState<boolean>(false);
+  const location = useLocation();
 
   const handleSelectAccount = async (id: number) => {
     if (connectedAccount && id === connectedAccount.id) {

@@ -9,7 +9,8 @@ import { IDAppInfo, IDAppState } from 'state/dapp/types';
 import store from 'state/store';
 
 export interface IDAppController {
-  getCurrent: () => IDAppInfo;
+  deregisterListeningSite: (origin: string, eventName: string) => void;
+  fromPageConnectDApp: (origin: string, title: string) => boolean;
   fromUserConnectDApp: (
     origin: string,
     dapp: IDAppInfo,
@@ -17,14 +18,13 @@ export interface IDAppController {
     accounts: string[]
   ) => void;
   fromUserDisconnectDApp: (origin: string) => void;
-  notifyAccountsChanged: (accounts: string[]) => void;
-  fromPageConnectDApp: (origin: string, title: string) => boolean;
-  setSigRequest: (req: ISigRequest) => void;
+  getCurrent: () => IDAppInfo;
   getSigRequest: () => ISigRequest;
-  registerListeningSite: (origin: string, eventName: string) => void;
-  deregisterListeningSite: (origin: string, eventName: string) => void;
-  isSiteListening: (origin: string, eventName: string) => boolean;
   isDAppConnected: (origin: string) => boolean;
+  isSiteListening: (origin: string, eventName: string) => boolean;
+  notifyAccountsChanged: (accounts: string[]) => void;
+  registerListeningSite: (origin: string, eventName: string) => void;
+  setSigRequest: (req: ISigRequest) => void;
 }
 interface ISigRequest {
   address: string;
@@ -71,7 +71,7 @@ const DAppController = (): IDAppController => {
     const state = store.getState();
     const { whitelist, listening } = state.dapp;
 
-    let events: any[] = [];
+    const events: any[] = [];
 
     // Will only notify whitelisted dapps that are listening for a wallet change.
     for (const origin of Object.keys(listening)) {
@@ -79,7 +79,7 @@ const DAppController = (): IDAppController => {
       const listeningEvents = listening[origin];
 
       if (!listeningEvents.includes('accountsChanged')) {
-        continue;
+        return;
       }
 
       if (site) {
@@ -120,8 +120,9 @@ const DAppController = (): IDAppController => {
 
   const notifySiteDisconnected = async (origin: string): Promise<void> => {
     console.log('notifySiteDisconnected');
-    const state = store.getState();
-    const listening: { [origin: string]: Array<string> } = state.dapp.listening;
+
+    const { listening } = store.getState().dapp;
+
     const listeningEvents = listening[origin];
 
     if (!listeningEvents.includes('close')) {
@@ -158,22 +159,18 @@ const DAppController = (): IDAppController => {
   };
 
   const isSiteListening = (origin: string, eventName: string) => {
-    const dapp: IDAppState = store.getState().dapp;
+    const { dapp } = store.getState();
 
     return dapp.listening[origin] && dapp.listening[origin].includes(eventName);
   };
 
-  const getCurrent = () => {
-    return current;
-  };
+  const getCurrent = () => current;
 
   const setSigRequest = (req: ISigRequest) => {
     request = req;
   };
 
-  const getSigRequest = () => {
-    return request;
-  };
+  const getSigRequest = () => request;
 
   return {
     getCurrent,

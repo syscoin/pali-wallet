@@ -37,9 +37,9 @@ if (nodeEnv !== 'production' && nodeEnv != 'test') {
 }
 
 const store: Store<{
+  dapp: IDAppState;
   price: IPriceState;
   wallet: IWalletState;
-  dapp: IDAppState;
 }> = configureStore({
   reducer: persistedReducer,
   middleware,

@@ -1,4 +1,5 @@
 import { SupportedWalletMethods } from 'scripts/Background/controllers/MessageHandler/types';
+
 import { provider } from '../Provider/index';
 
 import { paliProvider, providerManager } from './inject';

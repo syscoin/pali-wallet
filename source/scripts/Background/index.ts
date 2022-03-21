@@ -8,6 +8,7 @@ import store from 'state/store';
 
 import MasterController, { IMasterController } from './controllers';
 import { messagesHandler } from './controllers/MessageHandler';
+
 declare global {
   interface Window {
     controller: Readonly<IMasterController>;
@@ -21,8 +22,6 @@ browser.runtime.onConnect.addListener((port: Runtime.Port) => {
     console.log('on connect port pali');
 
     messagesHandler(port, window.controller);
-
-    return;
   }
 });
 

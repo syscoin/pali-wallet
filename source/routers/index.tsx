@@ -6,7 +6,13 @@ import {
   useParams,
   Navigate,
 } from 'react-router-dom';
-import { useController, useStore, useUtils, useBrowser } from 'hooks/index';
+import {
+  useController,
+  useStore,
+  useUtils,
+  useBrowser,
+  useQuery,
+} from 'hooks/index';
 
 import {
   About,
@@ -50,7 +56,6 @@ import {
 } from '../pages';
 
 import { ProtectedRoute } from './ProtectedRoute';
-import { useQuery } from 'hooks/useQuery';
 
 export const Router = () => {
   const params = useParams();
@@ -120,8 +125,7 @@ export const Router = () => {
       case 'transferAsset':
         navigate('/tx/asset/transfer');
 
-        return;
-
+        break;
       default:
         break;
     }
