@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import { Header, Icon, IconButton, Tooltip } from 'components/index';
-import { useBrowser } from 'hooks/index';
+import { browser } from 'webextension-polyfill-ts';
 import { useNavigate } from 'react-router-dom';
 
 interface ILayout {
@@ -17,7 +17,6 @@ export const Layout: FC<ILayout> = ({
   title,
 }) => {
   const navigate = useNavigate();
-  const { browser } = useBrowser();
 
   const url = browser.runtime.getURL('app.html');
 

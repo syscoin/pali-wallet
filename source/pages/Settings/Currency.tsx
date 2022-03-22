@@ -1,21 +1,15 @@
 import React, { useEffect, Fragment, useState } from 'react';
-import {
-  useController,
-  usePrice,
-  useStore,
-  useFormat,
-  useUtils,
-  useAccount,
-} from 'hooks/index';
+import { usePrice, useStore, useUtils } from 'hooks/index';
+import { formatNumber, getController } from 'utils/index';
 import { Layout, SecondaryButton, Icon, DefaultModal } from 'components/index';
 import { Menu, Transition } from '@headlessui/react';
 import { Input } from 'antd';
 import getSymbolFromCurrency from 'currency-symbol-map';
 
 const CurrencyView = () => {
-  const controller = useController();
-  const getFiatAmount = usePrice();
-  const { activeAccount } = useAccount();
+  const controller = getController();
+  const { getFiatAmount } = usePrice();
+  const activeAccount = controller.wallet.account.getActiveAccount();
 
   const { accounts, activeAccountId, fiat, activeNetwork } = useStore();
 
@@ -29,7 +23,6 @@ const CurrencyView = () => {
   });
 
   const { navigate } = useUtils();
-  const { formatNumber } = useFormat();
 
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();

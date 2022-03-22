@@ -1,12 +1,12 @@
 import React, { FC, useState } from 'react';
 import { Layout, SecondaryButton, Icon } from 'components/index';
-import { useController } from 'hooks/index';
+import { getController } from 'utils/index';
 import { Disclosure } from '@headlessui/react';
 
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
 
-  const controller = useController();
+  const controller = getController();
 
   const handleCreateHardwareWallet = () => {
     controller.wallet.createHardwareWallet();

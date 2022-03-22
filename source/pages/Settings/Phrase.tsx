@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Form, Input } from 'antd';
-import { useController, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
 import { Layout, SecondaryButton, Card, CopyCard } from 'components/index';
+import { getController } from 'utils/index';
 
 const PhraseView = () => {
   const [phrase, setPhrase] = useState<string>(
@@ -9,7 +10,7 @@ const PhraseView = () => {
   );
 
   const { useCopyClipboard, navigate } = useUtils();
-  const controller = useController();
+  const controller = getController();
   const [copied, copyText] = useCopyClipboard();
 
   const handleCopySeed = () => {

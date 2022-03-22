@@ -1,18 +1,12 @@
-import {
-  useUtils,
-  useStore,
-  usePopup,
-  useController,
-  useBrowser,
-} from 'hooks/index';
+import { browser } from 'webextension-polyfill-ts';
+import { useUtils, useStore } from 'hooks/index';
+import { closePopup, getController } from 'utils/index';
 
 export const useDappConnection = () => {
-  const controller = useController();
+  const controller = getController();
 
   const { alert, navigate } = useUtils();
   const { currentSenderURL } = useStore();
-  const { closePopup } = usePopup();
-  const { browser } = useBrowser();
 
   const confirmConnection = async (accountId: number) => {
     try {

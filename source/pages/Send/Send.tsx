@@ -1,33 +1,29 @@
 import * as React from 'react';
 import { useState, useEffect, Fragment, FC, useCallback } from 'react';
-import {
-  useController,
-  usePrice,
-  useStore,
-  useUtils,
-  useAccount,
-  useTransaction,
-  useFormat,
-} from 'hooks/index';
+import { usePrice, useStore, useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { Layout, SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Assets } from 'types/transactions';
-import { log } from 'utils/index';
+import {
+  log,
+  formatUrl,
+  isNFT,
+  getAssetBalance,
+  getController,
+} from 'utils/index';
 
 interface ISend {
   initAddress?: string;
 }
 export const Send: FC<ISend> = () => {
-  const getFiatAmount = usePrice();
-  const controller = useController();
+  const { getFiatAmount } = usePrice();
+  const controller = getController();
+  const activeAccount = controller.wallet.account.getActiveAccount();
 
-  const { alert, navigate, isNFT } = useUtils();
-  const { getAssetBalance } = useTransaction();
-  const { activeAccount } = useAccount();
+  const { alert, navigate } = useUtils();
   const { activeNetwork, fiat } = useStore();
-  const { formatURL } = useFormat();
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
@@ -184,7 +180,7 @@ export const Send: FC<ISend> = () => {
                 className="inline-flex justify-center px-4 py-3 w-full text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
               >
                 {selectedAsset?.symbol
-                  ? formatURL(String(selectedAsset?.symbol), 2)
+                  ? formatUrl(String(selectedAsset?.symbol), 2)
                   : 'SYS'}
                 <ChevronDoubleDownIcon
                   className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
