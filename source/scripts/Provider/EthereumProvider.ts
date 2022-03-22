@@ -1,49 +1,53 @@
-import { Web3Accounts } from '@syspollum/sysweb3-keyring';
-import {
-  getNftImage as web3NFTImage,
-  getTokenIconBySymbol as getTokenIcon,
-} from '@syspollum/sysweb3-utils';
-import { web3Provider as provider } from '@syspollum/sysweb3-network';
+import { web3Provider } from '@pollum-io/sysweb3-network';
 
 export const EthereumProvider = () => {
-  const createAccount = () => Web3Accounts().createAccount();
+  const getNetwork = async () => {
+    const currentNetwork = await web3Provider.eth.net.getNetworkType();
+    return currentNetwork;
+  };
 
-  const importAccount = (
-    mnemonicOrPrivateKey: string,
-    encryptedPwdAccount: string
-  ) => Web3Accounts().importAccount(mnemonicOrPrivateKey, encryptedPwdAccount);
+  const getAccounts = () => {
+    await window.ethereum.enable();
+    const accounts = await window.ethereum.request({
+      method: 'eth_accounts',
+    });
 
-  const sendTransactions = (
-    fromPrivateKey: string,
-    toAddress: string,
-    value: number
-  ) => Web3Accounts().sendTransaction(fromPrivateKey, toAddress, value);
+    return accounts;
+  };
 
-  const getBalance = (walletAddress: string) =>
-    Web3Accounts().getBalance(walletAddress);
+  const getChainId = async () => {
+    await window.ethereum.enable();
+    const chain: number = await window.ethereum.request({
+      method: 'net_version',
+    });
 
-  const changeNetwork = (networkId: number) =>
-    Web3Accounts().setActiveNetwork(networkId);
+    return chain;
+  };
 
-  const getNFTImage = (NFTContractAddress: string, tokenId: number) =>
-    web3NFTImage(NFTContractAddress, tokenId);
-  const getUserNFT = (walletAddress: string) =>
-    Web3Accounts().getNftsByAddress(walletAddress);
-  const getTokens = (walletAddress: string) =>
-    Web3Accounts().getTokens(walletAddress);
-  const getTokenIconBySymbol = (symbol: string) => getTokenIcon(symbol);
-  const web3Provider = provider;
+  const getAddress = async () => {
+    await window.ethereum.enable();
+    const address = await window.ethereum.request({
+      method: 'eth_requestAccounts',
+    });
+
+    return address[0];
+  };
+
+  const getBalance = (address) => {
+    await window.ethereum.enable();
+    const balance: number = await window.ethereum.request({
+      method: 'eth_getBalance',
+      params: [address, 'latest'],
+    });
+
+    return balance;
+  };
 
   return {
-    createAccount,
-    importAccount,
-    sendTransactions,
-    changeNetwork,
-    getNFTImage,
-    getUserNFT,
-    getTokenIconBySymbol,
-    web3Provider,
+    getAccounts,
+    getNetwork,
+    getChainId,
+    getAddress,
     getBalance,
-    getTokens,
   };
 };
