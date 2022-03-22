@@ -127,17 +127,17 @@ const DeleteWalletView = () => {
           )}
 
           <div className="flex gap-x-8 justify-between md:absolute md:bottom-48">
-            <PrimaryButton type="button" onClick={() => navigate('/home')}>
+            <SecondaryButton type="button" onClick={() => navigate('/home')}>
               Cancel
-            </PrimaryButton>
+            </SecondaryButton>
 
-            <SecondaryButton
+            <PrimaryButton
               type="submit"
               disabled={!isPasswordValid || !isSeedValid}
               id="delete-btn"
             >
               Delete
-            </SecondaryButton>
+            </PrimaryButton>
           </div>
         </Form>
       </div>

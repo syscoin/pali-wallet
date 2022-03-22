@@ -21,6 +21,7 @@ export const Tooltip: React.FC<ITooltip> = ({
     appendTo={document.body}
     maxWidth="20rem"
     interactive
+    delay={[1500, 200]}
     content={
       <div
         className={`p-3 text-xs bg-bkg-1 border border-bkg-3 rounded-lg leading-5 shadow-md text-brand-white outline-none focus:outline-none ${className}`}

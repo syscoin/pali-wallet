@@ -243,7 +243,7 @@ export const Send: FC<ISend> = () => {
                 childrenClassName="text-brand-white h-4"
                 content="Pali verifies your address to check if it is a valid SYS address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing."
               >
-                <p className="text-10px">Verify address</p>
+                <p className="text-10px cursor-default">Verify address</p>
               </Tooltip>
 
               <Switch
@@ -276,7 +276,7 @@ export const Send: FC<ISend> = () => {
                 childrenClassName="text-brand-white h-4"
                 content="Disable this option for Replace-by-fee (RBF) and enable for Z-DAG, a exclusive Syscoin feature. Z-DAG enables faster transactions but should not be used for high amounts."
               >
-                <p className="text-10px">Z-DAG</p>
+                <p className="text-10px cursor-default">Z-DAG</p>
               </Tooltip>
               <Switch
                 checked={ZDAG}
