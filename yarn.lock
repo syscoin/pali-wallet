@@ -1953,6 +1953,19 @@
     "@jridgewell/resolve-uri" "^3.0.3"
     "@jridgewell/sourcemap-codec" "^1.4.10"
 
+"@metamask/obs-store@^7.0.0":
+  version "7.0.0"
+  resolved "https://registry.yarnpkg.com/@metamask/obs-store/-/obs-store-7.0.0.tgz#6cae5f28306bb3e83a381bc9ae22682316095bd3"
+  integrity sha512-Tr61Uu9CGXkCg5CZwOYRMQERd+y6fbtrtLd/PzDTPHO5UJpmSbU+7MPcQK7d1DwZCOCeCIvhmZSUCvYliC8uGw==
+  dependencies:
+    "@metamask/safe-event-emitter" "^2.0.0"
+    through2 "^2.0.3"
+
+"@metamask/safe-event-emitter@^2.0.0":
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/@metamask/safe-event-emitter/-/safe-event-emitter-2.0.0.tgz#af577b477c683fad17c619a78208cede06f9605c"
+  integrity sha512-/kSXhY692qiV1MXu6EeOZvg5nECLclxNXcKCxJ3cXQgYuRymRHpdx/t7JXfsK+JLjwA1e1c1/SBrlQYpusC29Q==
+
 "@nodelib/fs.scandir@2.1.5":
   version "2.1.5"
   resolved "https://registry.yarnpkg.com/@nodelib/fs.scandir/-/fs.scandir-2.1.5.tgz#7619c2eb21b25483f6d167548b4cfd5a7488c3d5"
@@ -2068,6 +2081,34 @@
   dependencies:
     "@sinonjs/commons" "^1.7.0"
 
+"@syspollum/sysweb3-core@^1.0.2":
+  version "1.0.2"
+  resolved "https://registry.yarnpkg.com/@syspollum/sysweb3-core/-/sysweb3-core-1.0.2.tgz#b82192b173011d464723a84a1a71d71089c2d0c2"
+  integrity sha512-5h6aa95qvijAXYQKoIplQdJ3siVVIkG5RVWbTBUE4bVhiJTj/L9vOpgzrWFXVLGh3sETv/seQhuW6uGx7Wko8Q==
+  dependencies:
+    rimraf "^3.0.2"
+
+"@syspollum/sysweb3-keyring@^1.0.2":
+  version "1.0.2"
+  resolved "https://registry.yarnpkg.com/@syspollum/sysweb3-keyring/-/sysweb3-keyring-1.0.2.tgz#9de6877c4c352f7ddd9b4b755719e62036691818"
+  integrity sha512-zspuYgO8yJ7oBiGuf5sq+TAF8aDnvFbijrJh69vFY5UogzeoZR2viPQY8eyzUgln3/rVu1rOTkwlqrSqzsSXsg==
+  dependencies:
+    "@metamask/obs-store" "^7.0.0"
+    "@metamask/safe-event-emitter" "^2.0.0"
+    "@syspollum/sysweb3-core" "^1.0.2"
+    "@syspollum/sysweb3-types" "^1.0.1"
+    "@syspollum/sysweb3-utils" "^1.0.2"
+    "@types/crypto-js" "^4.1.1"
+    axios "^0.26.1"
+    bip39 "^3.0.4"
+    crypto-js "^4.1.1"
+    ethereumjs-wallet "^1.0.2"
+    ethers "^5.6.0"
+    lodash "^4.17.21"
+    syscoinjs-lib "^1.0.209"
+    web3 "^1.7.1"
+    web3-utils "^1.7.1"
+
 "@syspollum/sysweb3-network@^1.0.3":
   version "1.0.3"
   resolved "https://registry.yarnpkg.com/@syspollum/sysweb3-network/-/sysweb3-network-1.0.3.tgz#d5df372f21526993dae2feaf3e2bdcfd2806fc55"
@@ -2080,12 +2121,12 @@
     tslib "^2.3.1"
     web3 "^1.7.1"
 
-"@syspollum/sysweb3-types@^1.0.2":
+"@syspollum/sysweb3-types@^1.0.1", "@syspollum/sysweb3-types@^1.0.2", "@syspollum/sysweb3-types@^1.0.3":
   version "1.0.3"
   resolved "https://registry.yarnpkg.com/@syspollum/sysweb3-types/-/sysweb3-types-1.0.3.tgz#bd76bc6740dd0a024fc3948b6a8d1f4bbde7d7ac"
   integrity sha512-KlKCEfNWoYTgj7sVITDOpzeqjnF0kF56nr6Co4hLqfQvmv6lwdgnWSdbomXS5A7qbzUAupF3/73FfvRNxUBL4w==
 
-"@syspollum/sysweb3-utils@^1.0.3":
+"@syspollum/sysweb3-utils@^1.0.2", "@syspollum/sysweb3-utils@^1.0.3":
   version "1.0.3"
   resolved "https://registry.yarnpkg.com/@syspollum/sysweb3-utils/-/sysweb3-utils-1.0.3.tgz#0aa915b59461da584b7c4f07c626449cc212acbc"
   integrity sha512-YsV8tEBZho4NXEIujooJGX8LS3CxPXpWiiePf7RrAP+5pZkeh/jHLvs1Tr5rdPJ6OSH33xv1FRq6bRvWFAkWcA==
@@ -3192,6 +3233,11 @@ aes-js@3.0.0:
   version "3.0.0"
   resolved "https://registry.yarnpkg.com/aes-js/-/aes-js-3.0.0.tgz#e21df10ad6c2053295bcbb8dab40b09dbea87e4d"
   integrity sha1-4h3xCtbCBTKVvLuNq0Cwnb6ofk0=
+
+aes-js@^3.1.2:
+  version "3.1.2"
+  resolved "https://registry.yarnpkg.com/aes-js/-/aes-js-3.1.2.tgz#db9aabde85d5caabbfc0d4f2a4446960f627146a"
+  integrity sha512-e5pEa2kBnBOgR4Y/p20pskXI74UEz7de8ZGVo58asOtvSVG5YAbJeELPZxOmt+Bnz3rX753YKhfIn4X4l1PPRQ==
 
 agent-base@6, agent-base@^6.0.2:
   version "6.0.2"
@@ -6321,6 +6367,12 @@ eth-object@^1.0.3:
   dependencies:
     eth-util-lite "^1.0.1"
 
+"eth-object@git+https://github.com/syscoin/eth-object.git":
+  version "1.0.3"
+  resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
+  dependencies:
+    eth-util-lite "^1.0.1"
+
 eth-proof@^2.1.6:
   version "2.1.6"
   resolved "https://registry.yarnpkg.com/eth-proof/-/eth-proof-2.1.6.tgz#6c8a468f82334d9c79347324e6eb237f1ecc965f"
@@ -6396,7 +6448,7 @@ ethereumjs-util@^5.2.0:
     rlp "^2.0.0"
     safe-buffer "^5.1.1"
 
-ethereumjs-util@^7.0.10, ethereumjs-util@^7.1.0, ethereumjs-util@^7.1.4:
+ethereumjs-util@^7.0.10, ethereumjs-util@^7.1.0, ethereumjs-util@^7.1.2, ethereumjs-util@^7.1.4:
   version "7.1.4"
   resolved "https://registry.yarnpkg.com/ethereumjs-util/-/ethereumjs-util-7.1.4.tgz#a6885bcdd92045b06f596c7626c3e89ab3312458"
   integrity sha512-p6KmuPCX4mZIqsQzXfmSx9Y0l2hqf+VkAiwSisW3UKUFdk8ZkAt+AYaor83z2nSi6CU2zSsXMlD80hAbNEGM0A==
@@ -6407,7 +6459,21 @@ ethereumjs-util@^7.0.10, ethereumjs-util@^7.1.0, ethereumjs-util@^7.1.4:
     ethereum-cryptography "^0.1.3"
     rlp "^2.2.4"
 
-ethers@^5.5.4:
+ethereumjs-wallet@^1.0.2:
+  version "1.0.2"
+  resolved "https://registry.yarnpkg.com/ethereumjs-wallet/-/ethereumjs-wallet-1.0.2.tgz#2c000504b4c71e8f3782dabe1113d192522e99b6"
+  integrity sha512-CCWV4RESJgRdHIvFciVQFnCHfqyhXWchTPlkfp28Qc53ufs+doi5I/cV2+xeK9+qEo25XCWfP9MiL+WEPAZfdA==
+  dependencies:
+    aes-js "^3.1.2"
+    bs58check "^2.1.2"
+    ethereum-cryptography "^0.1.3"
+    ethereumjs-util "^7.1.2"
+    randombytes "^2.1.0"
+    scrypt-js "^3.0.1"
+    utf8 "^3.0.0"
+    uuid "^8.3.2"
+
+ethers@^5.5.4, ethers@^5.6.0:
   version "5.6.1"
   resolved "https://registry.yarnpkg.com/ethers/-/ethers-5.6.1.tgz#a56cd67f1595b745dc3dde0ccf2b5de53a41a6d0"
   integrity sha512-qtl/2W+dwmUa5Z3JqwsbV3JEBZZHNARe5K/A2ePcNAuhJYnEKIgGOT/O9ouPwBijSqVoQnmQMzi5D48LFNOY2A==
@@ -13127,6 +13193,39 @@ syscoinjs-lib@^1.0.199:
     varuint-bitcoin "^1.1.2"
     web3 "^1.4.0"
 
+syscoinjs-lib@^1.0.209:
+  version "1.0.209"
+  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.209.tgz#3f7139a0474248c620598a3f9435c06584bf9e83"
+  integrity sha512-/idbSMlm52/p53D6xJjih1Xss4MlQuecbTeU93Ms51ddcH0TW+GOxz4qk1WgUG/41bXczi8a8g5LRffP9WiznA==
+  dependencies:
+    "@trezor/utxo-lib" "^0.1.2"
+    axios "^0.21.1"
+    bip84 "^0.2.7"
+    bitcoin-ops "^1.4.1"
+    bitcoinjs-lib "^5.2.0"
+    bn.js "^5.1.3"
+    crypto-js "^4.0.0"
+    eth-object "https://github.com/syscoin/eth-object.git"
+    eth-proof "^2.1.6"
+    node-localstorage "^2.1.6"
+    syscointx-js "^1.0.101"
+    trezor-connect "^8.1.29"
+    varuint-bitcoin "^1.1.2"
+    web3 "^1.4.0"
+
+syscointx-js@^1.0.101:
+  version "1.0.101"
+  resolved "https://registry.yarnpkg.com/syscointx-js/-/syscointx-js-1.0.101.tgz#b07d82074fefed66a6659c82d7b70eb26e42def9"
+  integrity sha512-iJgHaj+YcnI1OVIugX11iCfCZtwocyNkVLM/nSfIMLjcdyJ2xcxmNfv54Fv+u2+VuwKZjOGNaSQRDi2chYzGXg==
+  dependencies:
+    bitcoin-ops "^1.4.1"
+    bitcoinjs-lib "^5.2.0"
+    bn.js "^5.1.3"
+    coinselectsyscoin "^1.0.77"
+    secp256k1 "^3.8.0"
+    typeforce "^1.18.0"
+    varuint-bitcoin "^1.1.2"
+
 syscointx-js@^1.0.90, syscointx-js@^1.0.99:
   version "1.0.99"
   resolved "https://registry.yarnpkg.com/syscointx-js/-/syscointx-js-1.0.99.tgz#2c1fbdcd972a196b50223a8b689abb82b4ba2c6f"
@@ -13320,7 +13419,7 @@ throat@^6.0.1:
   resolved "https://registry.yarnpkg.com/throat/-/throat-6.0.1.tgz#d514fedad95740c12c2d7fc70ea863eb51ade375"
   integrity sha512-8hmiGIJMDlwjg7dlJ4yKGLK8EsYqKgPWbG3b4wjJddKNwc7N7Dpn08Df4szr/sZdMVeOstrdYSsqzX6BYbcB+w==
 
-through2@^2.0.0:
+through2@^2.0.0, through2@^2.0.3:
   version "2.0.5"
   resolved "https://registry.yarnpkg.com/through2/-/through2-2.0.5.tgz#01c1e39eb31d07cb7d03a96a70823260b23132cd"
   integrity sha512-/mrRod8xqpA+IHSLyGCQ2s8SPHiCDEeQJSep1jqLYeEUClOFG2Qsh+4FU6G9VeqpZnGW/Su8LQGc4YKni5rYSQ==
@@ -13838,7 +13937,7 @@ utf-8-validate@^5.0.2:
   dependencies:
     node-gyp-build "^4.3.0"
 
-utf8@3.0.0:
+utf8@3.0.0, utf8@^3.0.0:
   version "3.0.0"
   resolved "https://registry.yarnpkg.com/utf8/-/utf8-3.0.0.tgz#f052eed1364d696e769ef058b183df88c87f69d1"
   integrity sha512-E8VjFIQ/TyQgp+TZfS6l8yp/xWppSAHzidGiRrqe4bK4XP9pTRyKFgGJpO3SN7zdX4DeomTrwaseCHovfpFcqQ==
@@ -14453,7 +14552,7 @@ web3-utils@1.7.0:
     randombytes "^2.1.0"
     utf8 "3.0.0"
 
-web3-utils@1.7.1:
+web3-utils@1.7.1, web3-utils@^1.7.1:
   version "1.7.1"
   resolved "https://registry.yarnpkg.com/web3-utils/-/web3-utils-1.7.1.tgz#77d8bacaf426c66027d8aa4864d77f0ed211aacd"
   integrity sha512-fef0EsqMGJUgiHPdX+KN9okVWshbIumyJPmR+btnD1HgvoXijKEkuKBv0OmUqjbeqmLKP2/N9EiXKJel5+E1Dw==
