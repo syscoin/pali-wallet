@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { web3Provider } from '@pollum-io/sysweb3-network';
 
 export const EthereumProvider = () => {
