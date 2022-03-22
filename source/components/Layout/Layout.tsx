@@ -53,7 +53,7 @@ export const Layout: FC<ILayout> = ({
           size={36}
           name="select-up"
           wrapperClassname="w-8"
-          className="fixed top-24 text-bkg-2 md:top-36"
+          className="fixed top-24 text-bkg-2"
           color="#111E33"
         />
       </div>
