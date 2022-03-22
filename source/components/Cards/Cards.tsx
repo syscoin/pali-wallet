@@ -52,7 +52,7 @@ export const Card: React.FC<ICard> = ({
 
   return (
     <div
-      className={`${className} bg-bkg-3 border border-dashed border-warning-${type} p-4 text-xs rounded-lg gap-x-3 cursor-default flex items-center w-full md:max-w-md max-w-xs`}
+      className={`${className} bg-bkg-3 border border-dashed border-warning-${type} p-4 text-xs rounded-lg gap-x-3 cursor-default flex items-center w-full md:max-w-md max-w-xs mx-auto`}
       onClick={onClick}
     >
       <Icon name={iconName} className={`text-warning-${type}`} size={25} />

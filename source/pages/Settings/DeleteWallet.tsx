@@ -36,6 +36,7 @@ const DeleteWalletView = () => {
         <p className="my-3 w-full max-w-xs text-left text-white text-xs md:max-w-md">
           Please input your wallet password
         </p>
+
         <Form
           form={form}
           onFinish={onSubmit}
@@ -117,23 +118,18 @@ const DeleteWalletView = () => {
             </Form.Item>
           )}
 
-          <div className="absolute bottom-12 flex gap-x-4 justify-between md:bottom-40 xl:bottom-64">
-            <SecondaryButton
-              type="button"
-              onClick={() => navigate('/home')}
-              action
-            >
+          <div className="flex gap-x-8 justify-between md:absolute md:bottom-48">
+            <PrimaryButton type="button" onClick={() => navigate('/home')}>
               Cancel
-            </SecondaryButton>
+            </PrimaryButton>
 
-            <PrimaryButton
-              action
+            <SecondaryButton
               type="submit"
               disabled={!form.getFieldValue('password') || !seedIsValid}
               id="delete-btn"
             >
               Delete
-            </PrimaryButton>
+            </SecondaryButton>
           </div>
         </Form>
       </div>

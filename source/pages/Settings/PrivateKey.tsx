@@ -126,7 +126,7 @@ const PrivateKeyView = () => {
         </div>
       </div>
 
-      <div className="absolute bottom-8 md:bottom-48 xl:bottom-64">
+      <div className="sm:absolute sm:bottom-48">
         <SecondaryButton type="button" onClick={() => navigate('/home')}>
           {copied ? 'Copied' : 'Close'}
         </SecondaryButton>
