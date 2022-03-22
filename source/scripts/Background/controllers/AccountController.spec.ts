@@ -2,8 +2,15 @@ import CryptoJS from 'crypto-js';
 import store from 'state/store';
 import { createAccount } from 'state/wallet';
 import { IAccountState } from 'state/wallet/types';
+import sys from 'syscoinjs-lib';
 
-import { FAKE_ACCOUNT, FAKE_XPRV, FAKE_XPUB } from '../../../../tests/mocks';
+import FAKE_PSBT from '../../../../tests/psbt.json';
+import {
+  FAKE_ACCOUNT,
+  FAKE_XPRV,
+  FAKE_XPUB,
+  FAKE_PSBT as PSBT,
+} from '../../../../tests/mocks';
 
 import AccountController from './AccountController';
 import WalletController from './WalletController';
@@ -130,5 +137,36 @@ describe('AccountController tests', () => {
     // INDEX VALUE = 0
     const account0 = accounts[0].xpub;
     expect(account0).toBe(newXpub);
+  });
+
+  it('should import psbt from json', () => {
+    expect(typeof FAKE_PSBT.assets).toBe('string');
+
+    const { psbt } = sys.utils.importPsbtFromJson(FAKE_PSBT);
+
+    const { inputs, outputs } = psbt.data;
+
+    expect(Object.keys(inputs[0])).toEqual([
+      'witnessUtxo',
+      'partialSig',
+      'bip32Derivation',
+      'finalScriptWitness',
+      'unknownKeyVals',
+    ]);
+
+    expect(inputs).toEqual(PSBT.data.inputs);
+    expect(outputs).toStrictEqual(PSBT.data.outputs);
+  });
+
+  it('should check if it is removing the trezor account correctly if network is testnet', () => {
+    const { accounts, activeNetwork } = store.getState().wallet;
+
+    if (activeNetwork === 'testnet') {
+      const trezorAccountId = accounts.findIndex(
+        (account: IAccountState) => account && account.trezorId
+      );
+
+      expect(accounts).toEqual(accounts.splice(trezorAccountId, 1));
+    }
   });
 });
