@@ -7,40 +7,52 @@ export const EthereumProvider = () => {
   };
 
   const getAccounts = () => {
-    await window.ethereum.enable();
-    const accounts = await window.ethereum.request({
-      method: 'eth_accounts',
-    });
+    if (window.ethereum) {
+      await window.ethereum.enable();
+      const accounts = await window.ethereum.request({
+        method: 'eth_accounts',
+      });
 
-    return accounts;
+      return accounts;
+    }
+    return console.log('window.ethereum not found');
   };
 
   const getChainId = async () => {
-    await window.ethereum.enable();
-    const chain: number = await window.ethereum.request({
-      method: 'net_version',
-    });
+    if (window.ethereum) {
+      await window.ethereum.enable();
+      const chain: number = await window.ethereum.request({
+        method: 'net_version',
+      });
 
-    return chain;
+      return chain;
+    }
+    return console.log('window.ethereum not found');
   };
 
   const getAddress = async () => {
-    await window.ethereum.enable();
-    const address = await window.ethereum.request({
-      method: 'eth_requestAccounts',
-    });
+    if (window.ethereum) {
+      await window.ethereum.enable();
+      const address = await window.ethereum.request({
+        method: 'eth_requestAccounts',
+      });
 
-    return address[0];
+      return address[0];
+    }
+    return console.log('window.ethereum not found');
   };
 
-  const getBalance = (address) => {
-    await window.ethereum.enable();
-    const balance: number = await window.ethereum.request({
-      method: 'eth_getBalance',
-      params: [address, 'latest'],
-    });
+  const getBalance = async (address) => {
+    if (window.ethereum) {
+      await window.ethereum.enable();
+      const balance: number = await window.ethereum.request({
+        method: 'eth_getBalance',
+        params: [address, 'latest'],
+      });
 
-    return balance;
+      return balance;
+    }
+    return console.log('window.ethereum not found');
   };
 
   return {
