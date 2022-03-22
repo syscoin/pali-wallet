@@ -43,7 +43,7 @@ export const EthereumProvider = () => {
     return console.log('window.ethereum not found');
   };
 
-  const getBalance = async (address) => {
+  const getBalance = async (address: string) => {
     if (window.ethereum) {
       await window.ethereum.enable();
       const balance: number = await window.ethereum.request({
