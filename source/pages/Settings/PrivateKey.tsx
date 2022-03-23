@@ -8,7 +8,6 @@ import {
   Card,
   CopyCard,
 } from 'components/index';
-import { Disclosure } from '@headlessui/react';
 import { Input, Form } from 'antd';
 
 const PrivateKeyView = () => {
