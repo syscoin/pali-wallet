@@ -1,7 +1,7 @@
 export const PaliProvider = () => {
   const getNetwork = () => {};
 
-  const getAccounts = () => ({ accounts: 123 });
+  const getAccounts = () => ({ accounts: 456 });
 
   const getChainId = () => {};
 

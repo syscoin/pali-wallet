@@ -1,5 +1,13 @@
-const injectedProvider = () => {
-  const getMethod = () => {};
+const injectedProvider = (asset) => {
+  let currentAsset;
+
+  const getMethod = () => {
+     return(...args) => window.providerManager.proxy('CAL_REQUEST', {
+      asset: currentAsset,
+      method,
+      args
+    })
+  };
 
   return {
     getMethod,
@@ -7,56 +15,66 @@ const injectedProvider = () => {
 };
 
 const ProviderManager = () => {
+  let cache = {};
+
+  console.log('providerManager injected')
+
   const proxy = (type, data) => {
-  return new Promise((resolve, reject) => {
-    const id = Date.now() + '.' + Math.random();
+    return new Promise((resolve, reject) => {
+      const id = Date.now() + '.' + Math.random();
 
-    console.log('id listener', id);
+      console.log('id listener', id);
 
-    window.addEventListener(
-      id,
-      (event) => {
-        const response = JSON.parse(event.detail);
-
-        console.log(1, response);
-
-        if (response.error) {
-          reject(new Error(response.error));
-        } else {
-          resolve(response);
-        }
-      },
-      {
-        once: true,
-        passive: true,
-      }
-    );
-
-    console.log('posting message', type, id, data)
-
-    window.postMessage(
-      {
+      window.addEventListener(
         id,
-        type,
-        data,
-      },
-      '*'
-    );
-  });
-};
+        (event) => {
+          const response = JSON.parse(event.detail);
 
-const getProviderFor = () => {};
+          console.log(1, response);
 
-const enable = () => {
-  console.log('enabling provider manager');
+          if (response.error) {
+            reject(new Error(response.error));
+          } else {
+            resolve(response);
+          }
+        },
+        {
+          once: true,
+          passive: true,
+        }
+      );
 
-  return proxy('ENABLE_REQUEST', { asset: 'SYS', network: 'main' });
-};
+      console.log('posting message', type, id, data)
+
+      window.postMessage(
+        {
+          id,
+          type,
+          data,
+        },
+        '*'
+      );
+    });
+  };
+
+  const getProviderFor = (asset) => {
+    if (cache[asset]) return cache[asset];
+
+    cache[asset] = injectedProvider(asset);
+
+    return cache[asset];
+  };
+
+  const enable = () => {
+    console.log('enabling provider manager');
+
+    return proxy('ENABLE_REQUEST', { asset: 'syscoin', network: 'main' });
+  };
 
   return {
-  proxy,
-  getProviderFor,
-  enable,
+    proxy,
+    getProviderFor,
+    enable,
   }
 }
 

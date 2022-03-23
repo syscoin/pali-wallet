@@ -62,6 +62,8 @@ export const initialState: IWalletState = {
     'facebook.com': 'https://accounts.google.com/b/0/AddMailService',
     'sysmint.paliwallet.com': 'sysmint.paliwallet.com',
   },
+  temporaryTransactionState: { executing: false, type: '' },
+  timer: 5,
 };
 
 const WalletState = createSlice({

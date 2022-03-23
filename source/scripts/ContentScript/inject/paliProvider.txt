@@ -61,14 +61,17 @@ const handleRequest = async (chain, request) => {
     prefix = prefix.toUpperCase();
   }
 
-  // All request accounts go to the same place
-  if (method === 'requestAccounts') {
-    const { result, data } = await window.providerManager.enable();
+  // window.pali.getProvider('ethereum/pali').request({ method: 'getAccounts', asset: 'syscoin', args: {} })
 
-    if (!result) {
-      ERRORS.USER_REJECTED();
-    }
-    return data.accounts;
+  // All request accounts go to the same place
+  if (method === 'getAccounts') {
+    // const { result, data } = await window.providerManager.enable();
+
+    // if (!result) {
+    //   ERRORS.USER_REJECTED();
+    // }
+
+    return 123;
   }
 
   if (
@@ -171,11 +174,13 @@ const provider = (chain) => {
   };
 };
 
+const ethProvider = provider('ethereum');
+
 window.pali = {
   version: 2,
   getProvider: (chain) => provider(chain),
   isConnected: async () => {
-    const pali = window.providerManager.getProviderFor('main');
+    const pali = window.providerManager.getProviderFor('syscoin');
 
     return pali.getMethod('wallet.isConnected');
   },
@@ -186,8 +191,14 @@ window.pali = {
 
     console.log(response)
   },
-  request: async (req) => {},
-  on: (method, callback) => {},
-  removeListener: (method) => {},
+  request: async (req) => {
+    return ethProvider.request(req);
+  },
+  on: (method, callback) => {
+     return ethProvider.on(method, callback);
+  },
+  removeListener: (method) => {
+    return ethProvider.removeListener(method);
+  },
   _listeners: {},
 };
