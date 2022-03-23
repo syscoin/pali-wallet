@@ -45,7 +45,7 @@ export const useStore = () => {
     connections,
     networks: {},
     trustedApps,
-    temporaryTransactionState: {},
+    temporaryTransactionState: { executing: false, type: '' },
     fiat,
   };
 };
