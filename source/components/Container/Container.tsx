@@ -5,5 +5,5 @@ interface IContainer {
 }
 
 export const Container: FC<IContainer> = ({ children }) => (
-  <div className="min-w-popup min-h-popup font-poppins">{children}</div>
+  <div className="min-w-popup min-h-popup font-poppins text-xl">{children}</div>
 );

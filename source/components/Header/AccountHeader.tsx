@@ -180,7 +180,7 @@ export const AccountHeader: React.FC = () => {
   }, [copied]);
 
   return (
-    <div className="flex items-center justify-between p-1 bg-bkg-3">
+    <div className="flex items-center justify-between h-20 bg-bkg-3">
       <div className="flex items-center w-full text-brand-white">
         <div className="add-identicon ml-1 mr-2 my-2" />
 

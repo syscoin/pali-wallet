@@ -395,7 +395,7 @@ export const NormalHeader: React.FC = () => {
   );
 
   return (
-    <div className="relative flex items-center justify-between p-2 py-6 w-full text-gray-300 bg-bkg-1">
+    <div className="relative flex items-center justify-between w-full h-12 text-gray-300 bg-bkg-1">
       <NetworkMenu />
 
       <IconButton

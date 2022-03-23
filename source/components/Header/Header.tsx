@@ -11,11 +11,9 @@ interface IHeader {
 export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
   const { changingNetwork } = useStore();
 
-  const headerStyle = accountHeader ? 'pb-32' : 'pb-12';
-
   return (
     <div>
-      <div className="w-full h-28" />
+      <div className={`w-full ${accountHeader ? 'h-32' : 'h-12'}`} />
 
       {changingNetwork && (
         <div className="fixed z-20 flex items-center justify-center w-full min-w-popup h-full min-h-popup bg-brand-black bg-opacity-50">
