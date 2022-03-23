@@ -38,8 +38,6 @@ export const Send: FC<ISend> = () => {
     form.setFieldsValue({ fee: recommendFee });
   }, [controller.wallet.account, form]);
 
-  const hasAccountAssets = activeAccount && activeAccount.assets.length > 0;
-
   useEffect(() => {
     handleGetFee();
 
@@ -48,6 +46,8 @@ export const Send: FC<ISend> = () => {
       ZDAG: false,
     });
   }, [form, handleGetFee]);
+
+  const hasAccountAssets = activeAccount && activeAccount.assets.length > 0;
 
   const handleSelectedAsset = (item: number) => {
     if (activeAccount?.assets) {
@@ -202,21 +202,9 @@ export const Send: FC<ISend> = () => {
                 >
                   {hasAccountAssets && (
                     <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
-                      <Menu.Item>
-                        <button
-                          onClick={() => handleSelectedAsset(-1)}
-                          className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                        >
-                          <p>SYS</p>
-
-                          <small>Native</small>
-                        </button>
-                      </Menu.Item>
-
-                      {hasAccountAssets &&
-                        activeAccount &&
+                      {activeAccount &&
                         activeAccount.assets.map((item) => (
-                          <Menu.Item key={item.assetGuid}>
+                          <Menu.Item>
                             <button
                               onClick={() =>
                                 handleSelectedAsset(item.assetGuid)
@@ -245,7 +233,7 @@ export const Send: FC<ISend> = () => {
             <Form.Item
               id="verify-address-switch"
               name="verify"
-              className="flex-1 w-32 h-12 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full md:w-full"
+              className="flex-1 w-32 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full md:w-full"
               rules={[
                 {
                   required: false,
@@ -286,7 +274,7 @@ export const Send: FC<ISend> = () => {
 
             <Form.Item
               name="ZDAG"
-              className="flex-1 w-32 h-12 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full"
+              className="flex-1 w-32 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full"
               rules={[
                 {
                   required: false,
