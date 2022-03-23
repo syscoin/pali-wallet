@@ -42,7 +42,6 @@ const DeleteWalletView = () => {
         <p className="my-5 w-full max-w-xs text-left text-white text-xs sm:max-w-xl">
           Please input your wallet password
         </p>
-
         <Form
           form={form}
           onFinish={onSubmit}

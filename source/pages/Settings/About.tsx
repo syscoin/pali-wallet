@@ -78,7 +78,7 @@ const AboutView: FC = () => {
           </p>
         </SimpleCard>
 
-        <div className="sm:absolute sm:bottom-48">
+        <div className="absolute bottom-12 md:bottom-48 xl:bottom-64">
           <SecondaryButton type="button" onClick={() => navigate('/home')}>
             Close
           </SecondaryButton>

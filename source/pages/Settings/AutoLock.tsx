@@ -25,7 +25,7 @@ const AutolockView = () => {
 
   return (
     <Layout title="AUTO LOCK TIMER" id="auto-lock-timer-title">
-      <p className="mx-4 my-6 text-white text-xs sm:mx-0 sm:text-center sm:text-sm">
+      <p className="px-10 py-6 text-white text-sm md:pb-10 md:px-4 md:w-96 md:text-center">
         You can set auto lock timer. Default is 5 minutes after no activity.
         Maximum is 30 minutes.
       </p>
@@ -78,7 +78,7 @@ const AutolockView = () => {
           />
         </Form.Item>
 
-        <div className="md:absolute md:bottom-48">
+        <div className="absolute bottom-12 md:top-80">
           <SecondaryButton type="submit" loading={loading}>
             Save
           </SecondaryButton>

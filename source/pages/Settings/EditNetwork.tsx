@@ -28,7 +28,7 @@ const EditNetworkView = () => {
         />
       ) : (
         <Layout title="EDIT NETWORK">
-          <p className="mt-4 mx-6 text-left text-brand-white font-poppins text-sm">
+          <p className="mt-4 text-left text-brand-white font-poppins text-sm">
             Click on network to edit
           </p>
 
@@ -57,7 +57,7 @@ const EditNetworkView = () => {
             ))}
           </ul>
 
-          <div className="flex items-center justify-center">
+          <div className="absolute bottom-12">
             <SecondaryButton type="button" onClick={() => navigate('/home')}>
               Close
             </SecondaryButton>

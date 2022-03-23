@@ -91,7 +91,7 @@ const ConnectHardwareWalletView: FC = () => {
           </Disclosure>
         </div>
 
-        <div className="sm:absolute sm:bottom-48">
+        <div className="absolute bottom-12 md:bottom-40 xl:bottom-56">
           <SecondaryButton
             type="button"
             onClick={handleCreateHardwareWallet}

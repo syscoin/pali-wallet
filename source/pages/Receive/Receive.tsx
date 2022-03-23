@@ -45,7 +45,7 @@ export const Receive = () => {
           </p>
 
           <div
-            className="sm:absolute sm:bottom-48"
+            className="absolute bottom-12 md:bottom-48 xl:bottom-96"
             id="copy-address-receive-btn"
           >
             <SecondaryButton
