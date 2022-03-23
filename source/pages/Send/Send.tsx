@@ -393,7 +393,7 @@ export const Send: FC<ISend> = () => {
           </span>
 
           <span className="mt-0.5 text-brand-white font-rubik text-xs">
-            ≈ ' '
+            {'≈ '}
             {selectedAsset
               ? getFiatAmount(
                   Number(recommend) + Number(recommend),
