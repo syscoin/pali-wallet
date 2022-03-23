@@ -2,7 +2,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 import { IDAppState, IDAppInfo } from './types';
 
-const initialState: IDAppState = {
+export const initialState: IDAppState = {
   listening: {},
   whitelist: {},
 };
@@ -18,8 +18,11 @@ const DAppState = createSlice({
     ) {
       const { origin, eventName } = action.payload;
 
-      const originState = state.listening.hasOwnProperty(origin)
-        ? state.listening[origin].filter((val: string) => val !== eventName)
+      const originState = Object.prototype.hasOwnProperty.call(
+        state.listening,
+        origin
+      )
+        ? state.listening[origin].filter((item: string) => item !== eventName)
         : [];
 
       return {
@@ -36,9 +39,12 @@ const DAppState = createSlice({
     ) {
       const { origin, eventName } = action.payload;
 
-      if (!state.listening.hasOwnProperty(origin)) {
-        return state;
-      }
+      const hasOriginListening = Object.prototype.hasOwnProperty.call(
+        state.listening,
+        origin
+      );
+
+      if (!hasOriginListening) return state;
 
       const originState = state.listening[origin].filter(
         (val: string) => val !== eventName
@@ -61,13 +67,12 @@ const DAppState = createSlice({
     listNewDapp(
       state: IDAppState,
       action: PayloadAction<{
-        accounts: string[];
         dapp: IDAppInfo;
         id: string;
         network: string;
       }>
     ) {
-      const { dapp, network, accounts } = action.payload;
+      const { dapp, network } = action.payload;
 
       const id = action.payload.id.replace(/(^\w+:|^)\/\//, '');
 
@@ -88,14 +93,13 @@ const DAppState = createSlice({
             ...dapp,
             accounts: {
               ...accountsByNetwork,
-              [network]: [...accounts],
+              [network]: dapp.accounts[network],
             },
           },
         },
       };
     },
     unlistDapp(state: IDAppState, action: PayloadAction<{ id: string }>) {
-      console.log('Unlist App ID: ', action.payload.id);
       delete state.whitelist[action.payload.id];
       delete state.listening[action.payload.id];
     },

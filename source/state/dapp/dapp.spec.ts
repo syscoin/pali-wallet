@@ -1,75 +1,78 @@
-// import reducer, {
-//   registerListeningSite,
-//   deregisterListeningSite,
-//   listNewDapp,
-//   unlistDapp,
-//   initialState,
-// } from '.';
-// import { IDAppInfo } from './types';
-// /*  ----- Tests ----- */
+import reducer, {
+  registerListeningSite,
+  deregisterListeningSite,
+  listNewDapp,
+  unlistDapp,
+  initialState,
+} from '.';
+import { IDAppInfo } from './types';
 
-// describe('dapp store actions', () => {
-//   describe('Listening sites tests', () => {
-//     //* registerListenerSite
-//     it('should register listening site', () => {
-//       const payload = {
-//         eventName: 'fake event',
-//         origin: 'fake origin',
-//       };
-//       const newState = reducer(initialState, registerListeningSite(payload));
-//       expect(newState.listening[payload.origin]).toContain(payload.eventName);
-//     });
+/*  ----- Tests ----- */
 
-//     //* deregisterListenerSite
-//     it('should deregister listening site ', () => {
-//       const payload = {
-//         eventName: 'fake event',
-//         origin: 'fake origin',
-//       };
+describe('dapp store actions', () => {
+  describe('Listening sites tests', () => {
+    //* registerListenerSite
+    it('should register listening site', () => {
+      const payload = {
+        eventName: 'fake event',
+        origin: 'fake origin',
+      };
+      const newState = reducer(initialState, registerListeningSite(payload));
+      expect(newState.listening[payload.origin]).toContain(payload.eventName);
+    });
 
-//       const customState = reducer(initialState, registerListeningSite(payload));
+    //* deregisterListenerSite
+    it('should deregister listening site ', () => {
+      const payload = {
+        eventName: 'fake event',
+        origin: 'fake origin',
+      };
 
-//       const newState = reducer(customState, deregisterListeningSite(payload));
+      const customState = reducer(initialState, registerListeningSite(payload));
 
-//       expect(newState.listening).not.toContain(payload.origin);
-//     });
-//   });
+      const newState = reducer(customState, deregisterListeningSite(payload));
 
-//   describe('Dapp tests', () => {
-//     const FAKE_IDAPPINFO: IDAppInfo = {
-//       logo: 'fake logo',
-//       origin: 'fake origin',
-//       title: 'fake title',
-//     };
-//     //* listNewDapp
-//     it('should list new dapp', () => {
-//       const payload = {
-//         dapp: FAKE_IDAPPINFO,
-//         id: 'fake id',
-//         network: 'main',
-//       };
+      expect(newState.listening).not.toContain(payload.origin);
+    });
+  });
 
-//       const newState = reducer(initialState, listNewDapp(payload));
-//       console.log(newState);
-//       // expect(newState.trustedApps[payload.id]).toEqual(payload.dapp);
-//     });
+  describe('Dapp tests', () => {
+    const FAKE_IDAPPINFO: IDAppInfo = {
+      logo: 'fake logo',
+      origin: 'fake origin',
+      title: 'fake title',
+      accounts: {
+        Syscoin: 0,
+      },
+    };
 
-//     it('should unlist dapp', () => {
-//       const listPayload = {
-//         dapp: FAKE_IDAPPINFO,
-//         id: 'fake id',
-//         network: 'main',
-//       };
+    //* listNewDapp
+    it('should list new dapp', () => {
+      const payload = {
+        dapp: FAKE_IDAPPINFO,
+        id: 'fake id',
+        network: 'Syscoin',
+      };
 
-//       const unlistPayload = {
-//         id: 'fake id',
-//       };
+      const newState = reducer(initialState, listNewDapp(payload));
 
-//       const customState = reducer(initialState, listNewDapp(listPayload));
-//       const newState = reducer(customState, unlistDapp(unlistPayload));
-//       expect(newState.trustedApps).toEqual(initialState.trustedApps);
-//     });
-//   });
-// });
+      expect(newState.whitelist[payload.id]).toEqual({
+        ...payload.dapp,
+        id: payload.id,
+      });
+    });
 
-export {};
+    it('should unlist dapp', () => {
+      const listPayload = {
+        dapp: FAKE_IDAPPINFO,
+        id: 'fake id',
+        network: 'Syscoin',
+      };
+
+      const customState = reducer(initialState, listNewDapp(listPayload));
+      const newState = reducer(customState, unlistDapp({ id: listPayload.id }));
+
+      expect(newState.whitelist).toEqual(initialState.whitelist);
+    });
+  });
+});
