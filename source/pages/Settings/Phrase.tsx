@@ -34,7 +34,7 @@ const PhraseView = () => {
           <Form.Item
             name="password"
             hasFeedback
-            className="w-full sm:max-w-xl"
+            className="w-full md:max-w-md"
             rules={[
               {
                 required: true,

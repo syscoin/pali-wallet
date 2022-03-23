@@ -9,7 +9,7 @@ export const ActivityPanel: FC = () => {
 
   return (
     <>
-      <div className="p-4 w-full h-full text-white text-base bg-bkg-2">
+      <div className="p-4 w-full h-full text-white text-base bg-bkg-3">
         {activeAccount?.transactions &&
         activeAccount.transactions.length > 0 ? (
           <PanelList

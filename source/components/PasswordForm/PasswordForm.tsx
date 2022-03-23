@@ -15,7 +15,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => (
       initialValues={{ remember: true }}
       onFinish={onSubmit}
       autoComplete="off"
-      className="password flex flex-col gap-4 items-center justify-center w-full max-w-xs text-center sm:max-w-xl"
+      className="password flex flex-col gap-4 items-center justify-center w-full max-w-xs text-center md:max-w-md"
     >
       <Form.Item
         name="password"

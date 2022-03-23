@@ -1,14 +1,21 @@
 import React, { useState } from 'react';
 import { useUtils } from 'hooks/index';
-import { ellipsis, getController, showSuccessAlert } from 'utils/index';
-import { Layout, Icon, Card, CopyCard } from 'components/index';
+import { ellipsis, getController } from 'utils/index';
+import {
+  Layout,
+  Icon,
+  SecondaryButton,
+  Card,
+  CopyCard,
+} from 'components/index';
+import { Disclosure } from '@headlessui/react';
 import { Input, Form } from 'antd';
 
 const PrivateKeyView = () => {
   const controller = getController();
   const activeAccount = controller.wallet.account.getActiveAccount();
 
-  const { useCopyClipboard, alert } = useUtils();
+  const { navigate, useCopyClipboard } = useUtils();
 
   const [copied, copyText] = useCopyClipboard();
   const [valid, setValid] = useState<boolean>(false);
@@ -98,7 +105,11 @@ const PrivateKeyView = () => {
         </div>
       </div>
 
-      {showSuccessAlert(copied, 'Key succesfully copied', alert)}
+      <div className="sm:absolute sm:bottom-48">
+        <SecondaryButton type="button" onClick={() => navigate('/home')}>
+          {copied ? 'Copied' : 'Close'}
+        </SecondaryButton>
+      </div>
     </Layout>
   );
 };

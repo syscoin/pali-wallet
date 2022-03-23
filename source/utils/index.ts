@@ -4,4 +4,3 @@ export * from './getHost';
 export * from './isNft';
 export * from './logger';
 export * from './transactions';
-export * from './alerts';
