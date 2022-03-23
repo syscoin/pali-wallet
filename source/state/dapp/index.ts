@@ -67,18 +67,18 @@ const DAppState = createSlice({
     listNewDapp(
       state: IDAppState,
       action: PayloadAction<{
-        accounts: string[];
         dapp: IDAppInfo;
         id: string;
         network: string;
       }>
     ) {
-      const { dapp, network, accounts } = action.payload;
+      const { dapp, network } = action.payload;
 
       const id = action.payload.id.replace(/(^\w+:|^)\/\//, '');
 
       // Append to accounts if a network already exists
       let accountsByNetwork = {};
+
       if (state.whitelist[id]) {
         accountsByNetwork = {
           ...state.whitelist[id].accounts,
@@ -94,14 +94,13 @@ const DAppState = createSlice({
             ...dapp,
             accounts: {
               ...accountsByNetwork,
-              [network]: [...accounts],
+              [network]: [...dapp.accounts[network]],
             },
           },
         },
       };
     },
     unlistDapp(state: IDAppState, action: PayloadAction<{ id: string }>) {
-      console.log('Unlist App ID: ', action.payload.id);
       delete state.whitelist[action.payload.id];
       delete state.listening[action.payload.id];
     },
