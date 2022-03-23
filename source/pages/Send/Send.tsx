@@ -214,6 +214,7 @@ export const Send: FC<ISend> = () => {
                       </Menu.Item>
 
                       {hasAccountAssets &&
+                        activeAccount &&
                         activeAccount.assets.map((item) => (
                           <Menu.Item key={item.assetGuid}>
                             <button
