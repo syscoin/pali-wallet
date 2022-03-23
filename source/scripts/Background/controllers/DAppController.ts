@@ -52,7 +52,7 @@ const DAppController = (): IDAppController => {
     return isDAppConnected(origin);
   };
 
-  const fromUserConnectDApp = (
+  const userConnectDApp = (
     origin: string,
     dapp: IDAppInfo,
     network: string,
