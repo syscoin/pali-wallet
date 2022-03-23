@@ -129,11 +129,11 @@ export const Send: FC<ISend> = () => {
         }}
         onFinish={nextStep}
         autoComplete="off"
-        className="max-w-80 flex flex-col gap-3 items-center justify-center mt-4 mx-auto w-full text-center sm:max-w-xl"
+        className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
       >
         <Form.Item
           name="receiver"
-          className="w-full max-w-xs sm:max-w-xl"
+          className="md:w-full md:max-w-md"
           hasFeedback
           rules={[
             {
@@ -161,11 +161,11 @@ export const Send: FC<ISend> = () => {
           <Input
             type="text"
             placeholder="Receiver"
-            className="pl-4 pr-8 py-3 w-full text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none sm:w-full"
+            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
           />
         </Form.Item>
 
-        <div className="flex gap-x-1.5 items-center justify-center w-full max-w-xs sm:max-w-xl">
+        <div className="flex items-center justify-center md:w-full md:max-w-md">
           {hasAccountAssets && (
             <Form.Item
               name="asset"
@@ -227,8 +227,8 @@ export const Send: FC<ISend> = () => {
 
           <div
             className={`${
-              hasAccountAssets ? 'w-56' : 'w-full'
-            } flex gap-x-0.5 items-center justify-center md:w-full`}
+              hasAccountAssets ? 'w-48' : 'w-72'
+            } flex gap-x-0.5 items-center justify-center mx-2  md:w-full`}
           >
             <Form.Item
               id="verify-address-switch"
@@ -247,9 +247,7 @@ export const Send: FC<ISend> = () => {
               >
                 <p
                   className={`${
-                    !hasAccountAssets
-                      ? 'absolute top-0 left-8 sm:relative sm:left-auto'
-                      : 'my-1'
+                    !hasAccountAssets && ' absolute top-0 left-8'
                   } text-10px cursor-default`}
                 >
                   Verify address
@@ -288,9 +286,7 @@ export const Send: FC<ISend> = () => {
               >
                 <p
                   className={`${
-                    !hasAccountAssets
-                      ? 'absolute top-0 right-14 sm:relative sm:right-auto'
-                      : 'my-1'
+                    !hasAccountAssets && 'absolute top-0 right-14'
                   } text-10px cursor-default`}
                 >
                   Z-DAG
@@ -317,7 +313,7 @@ export const Send: FC<ISend> = () => {
 
         <Form.Item
           name="amount"
-          className="w-full max-w-xs sm:max-w-xl"
+          className="md:w-full md:max-w-md"
           hasFeedback
           rules={[
             {
@@ -340,17 +336,17 @@ export const Send: FC<ISend> = () => {
           ]}
         >
           <Input
-            className="pl-4 pr-8 py-3 w-full max-w-xl text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none sm:w-full"
+            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
             type="number"
             placeholder="Amount"
           />
         </Form.Item>
 
-        <div className="flex gap-x-0.5 items-center justify-center mx-2 w-full max-w-xs sm:max-w-xl">
+        <div className="flex gap-x-0.5 items-center justify-center mx-2 md:w-full md:max-w-md">
           <Form.Item
             name="recommend"
             className={`${
-              disabledFee && 'opacity-60 cursor-not-allowed'
+              disabledFee && 'opacity-50 cursor-not-allowed'
             } bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus w-12 py-1.5 rounded-l-full text-center`}
             rules={[
               {
@@ -368,7 +364,7 @@ export const Send: FC<ISend> = () => {
             >
               <div onClick={handleGetFee}>
                 <Icon
-                  wrapperClassname="w-8 ml-3 mb-1"
+                  wrapperClassname="w-6 ml-3 mb-1"
                   name="verified"
                   className={`${
                     disabledFee
@@ -382,7 +378,7 @@ export const Send: FC<ISend> = () => {
 
           <Form.Item
             name="fee"
-            className="w-full max-w-xs sm:max-w-xl"
+            className="md:w-full"
             hasFeedback
             rules={[
               {
@@ -396,8 +392,8 @@ export const Send: FC<ISend> = () => {
                 disabled={disabledFee}
                 className={`${
                   disabledFee &&
-                  'opacity-60 cursor-not-allowed text-button-disabled'
-                } border border-fields-input-border bg-fields-input-primary rounded-r-full md:w-full w-full outline-none py-3 pr-8 pl-4 text-sm`}
+                  'opacity-50 cursor-not-allowed text-button-disabled'
+                } border border-fields-input-border bg-fields-input-primary rounded-r-full md:w-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
                 id="fee-input"
                 type="number"
                 placeholder="Fee network"

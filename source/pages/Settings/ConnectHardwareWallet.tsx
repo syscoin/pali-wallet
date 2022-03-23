@@ -14,8 +14,8 @@ const ConnectHardwareWalletView: FC = () => {
 
   return (
     <Layout title="HARDWARE WALLET" id="hardware-wallet-title">
-      <div className="flex flex-col items-center justify-center w-full">
-        <div className="scrollbar-styled px-4 h-85 text-sm overflow-y-auto sm:max-w-xl md:px-0 md:w-full">
+      <div className="flex flex-col items-center justify-center w-full md:max-w-md">
+        <div className="scrollbar-styled px-4 h-85 text-sm overflow-y-auto md:px-0 md:w-full md:max-w-md">
           <p className="mb-1 mt-8 mx-2.5 w-80 text-white text-sm md:mx-0 md:w-full">
             Select the hardware wallet you'd like to connect to Pali
           </p>
