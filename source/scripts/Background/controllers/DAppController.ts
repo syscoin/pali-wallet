@@ -39,7 +39,7 @@ const DAppController = (): IDAppController => {
   const isDAppConnected = (origin: string) => {
     const { whitelist } = store.getState().dapp;
 
-    return !!whitelist[origin as keyof IDAppState];
+    return Object.keys(whitelist).includes(origin);
   };
 
   const fromPageConnectDApp = (origin: string, title: string) => {
