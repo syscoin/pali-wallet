@@ -94,7 +94,7 @@ const DAppState = createSlice({
             ...dapp,
             accounts: {
               ...accountsByNetwork,
-              [network]: [...dapp.accounts[network]],
+              [network]: dapp.accounts[network],
             },
           },
         },

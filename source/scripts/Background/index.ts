@@ -87,12 +87,7 @@ const getConnectedAccountIndex = ({ match }: any) =>
     );
 
 const checkToCallPrivateMethods = () => {
-  if (
-    checkIsLocked() ||
-    getConnectedAccountIndex({
-      match: new URL(store.getState().wallet.tabs.currentURL).host,
-    }) === -1
-  ) {
+  if (checkIsLocked()) {
     return {
       error: true,
       message:

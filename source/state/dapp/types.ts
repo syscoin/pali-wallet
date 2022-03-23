@@ -1,6 +1,6 @@
 export interface IDappAccounts {
-  Ethereum?: number[] | [];
-  Syscoin?: number[] | [];
+  Ethereum?: number;
+  Syscoin?: number;
 }
 export interface IDAppInfo {
   accounts: IDappAccounts;

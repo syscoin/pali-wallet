@@ -42,7 +42,7 @@ describe('dapp store actions', () => {
       origin: 'fake origin',
       title: 'fake title',
       accounts: {
-        Syscoin: [0],
+        Syscoin: 0,
       },
     };
 
