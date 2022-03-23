@@ -1,28 +1,24 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
+import { useStore, useUtils } from 'hooks/index';
+import { browser } from 'webextension-polyfill-ts';
 import {
-  useController,
-  useStore,
-  useUtils,
-  useFormat,
-  useAccount,
-  useBrowser,
-  useTransaction,
-} from 'hooks/index';
-import { log, logError } from 'utils/index';
+  log,
+  logError,
+  ellipsis,
+  formatUrl,
+  cancelTransaction,
+  getController,
+} from 'utils/index';
 
 export const SendConfirm = () => {
-  const controller = useController();
-  const { activeAccount } = useAccount();
+  const controller = getController();
+  const activeAccount = controller.wallet.account.getActiveAccount();
   const { alert, navigate } = useUtils();
   const { confirmingTransaction } = useStore();
-  const { browser } = useBrowser();
-  const { handleCancelTransactionOnSite } = useTransaction();
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
-
-  const { ellipsis, formatURL } = useFormat();
 
   const tempTx = controller.wallet.account.getTemporaryTransaction('sendAsset');
 
@@ -57,7 +53,7 @@ export const SendConfirm = () => {
             });
 
             setTimeout(() => {
-              handleCancelTransactionOnSite(browser, 'tempTx');
+              cancelTransaction(browser, 'tempTx');
             }, 4000);
           }
 
@@ -81,7 +77,7 @@ export const SendConfirm = () => {
           if (error && tempTx.fee > recommendedFee) {
             alert.removeAll();
             alert.error(
-              `${formatURL(
+              `${formatUrl(
                 String(error.message),
                 166
               )} Please, reduce fees to send transaction.`
@@ -114,7 +110,7 @@ export const SendConfirm = () => {
             });
 
             setTimeout(() => {
-              handleCancelTransactionOnSite(browser, tempTx);
+              cancelTransaction(browser, tempTx);
             }, 4000);
           }
 
@@ -172,7 +168,7 @@ export const SendConfirm = () => {
             </p>
           </div>
 
-          <div className="absolute bottom-12 md:bottom-48 xl:bottom-80">
+          <div className="md:absolute md:bottom-48">
             <SecondaryButton
               loading={loading}
               onClick={handleConfirm}

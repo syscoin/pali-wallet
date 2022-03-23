@@ -52,7 +52,7 @@ export const Card: React.FC<ICard> = ({
 
   return (
     <div
-      className={`${className} bg-bkg-3 border border-dashed border-warning-${type} p-4 text-xs rounded-lg gap-x-3 cursor-default flex items-center w-full md:max-w-md max-w-xs`}
+      className={`${className} bg-bkg-3 border border-dashed border-warning-${type} p-4 text-xs rounded-lg gap-x-3 cursor-default flex items-center w-full sm:max-w-xl max-w-xs mx-auto`}
       onClick={onClick}
     >
       <Icon name={iconName} className={`text-warning-${type}`} size={25} />
@@ -69,7 +69,7 @@ export const CopyCard: React.FC<ICopyCard> = ({
   onClick,
 }) => (
   <div
-    className={`${className} bg-bkg-4 border border-bkg-4 p-4 text-xs rounded-lg cursor-pointer w-full max-w-xs md:max-w-md`}
+    className={`${className} bg-bkg-4 border border-bkg-4 p-4 text-xs rounded-lg cursor-pointer w-80 sm:w-full max-w-xl mx-auto`}
     onClick={onClick}
   >
     <div className="flex items-center justify-between w-full">

@@ -1,15 +1,15 @@
 import { Fullscreen } from 'components/Fullscreen';
-import { useAccount } from 'hooks/useAccount';
+import { getController } from 'utils/index';
 import React, { FC } from 'react';
 
 import { PanelList } from './components/PanelList';
 
 export const AssetsPanel: FC = () => {
-  const { activeAccount } = useAccount();
+  const activeAccount = getController().wallet.account.getActiveAccount();
 
   return (
     <>
-      <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
+      <ul className="p-4 w-full h-full text-white text-base bg-bkg-2">
         {activeAccount?.assets && activeAccount?.assets.length > 0 ? (
           <PanelList data={activeAccount?.assets} activity={false} assets />
         ) : (

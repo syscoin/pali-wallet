@@ -1,15 +1,16 @@
 import React from 'react';
 import LogoImage from 'assets/images/logo-s.svg';
 import { PrimaryButton } from 'components/index';
-import { useController, useStore, useUtils } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Link } from 'react-router-dom';
+import { getController } from 'utils/index';
 
 export const Start = () => {
   const { navigate } = useUtils();
   const {
     wallet: { unLock },
-  } = useController();
+  } = getController();
   const { encriptedMnemonic } = useStore();
 
   const getStarted = (
@@ -34,7 +35,7 @@ export const Start = () => {
   const unlock = (
     <>
       <Form
-        className="flex flex-col gap-8 items-center justify-center w-full max-w-xs text-center md:max-w-md"
+        className="flex flex-col gap-8 items-center justify-center w-full max-w-xs text-center sm:max-w-xl"
         name="basic"
         onFinish={onSubmit}
         autoComplete="off"

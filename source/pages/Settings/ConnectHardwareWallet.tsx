@@ -1,12 +1,12 @@
 import React, { FC, useState } from 'react';
 import { Layout, SecondaryButton, Icon } from 'components/index';
-import { useController } from 'hooks/index';
+import { getController } from 'utils/index';
 import { Disclosure } from '@headlessui/react';
 
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
 
-  const controller = useController();
+  const controller = getController();
 
   const handleCreateHardwareWallet = () => {
     controller.wallet.createHardwareWallet();
@@ -14,8 +14,8 @@ const ConnectHardwareWalletView: FC = () => {
 
   return (
     <Layout title="HARDWARE WALLET" id="hardware-wallet-title">
-      <div className="flex flex-col items-center justify-center w-full md:max-w-md">
-        <div className="scrollbar-styled px-4 h-85 text-sm overflow-y-auto md:px-0 md:w-full md:max-w-md">
+      <div className="flex flex-col items-center justify-center w-full">
+        <div className="scrollbar-styled px-4 h-85 text-sm overflow-y-auto sm:max-w-xl md:px-0 md:w-full">
           <p className="mb-1 mt-8 mx-2.5 w-80 text-white text-sm md:mx-0 md:w-full">
             Select the hardware wallet you'd like to connect to Pali
           </p>
@@ -66,7 +66,7 @@ const ConnectHardwareWalletView: FC = () => {
                 </Disclosure.Button>
 
                 <Disclosure.Panel>
-                  <div className="flex flex-col items-start justify-start mx-auto px-4 py-2 w-80 bg-bkg-3 border border-bkg-3 rounded-b-lg cursor-pointer transition-all duration-300 md:w-full md:max-w-md">
+                  <div className="flex flex-col items-start justify-start mx-auto px-4 py-2 w-80 bg-bkg-3 border border-bkg-3 rounded-b-lg cursor-pointer transition-all duration-300 sm:max-w-xl md:w-full">
                     <p className="my-2 text-sm">
                       1 - Connect a hardware wallet
                     </p>
@@ -91,7 +91,7 @@ const ConnectHardwareWalletView: FC = () => {
           </Disclosure>
         </div>
 
-        <div className="absolute bottom-12 md:bottom-40 xl:bottom-56">
+        <div className="sm:absolute sm:bottom-48">
           <SecondaryButton
             type="button"
             onClick={handleCreateHardwareWallet}

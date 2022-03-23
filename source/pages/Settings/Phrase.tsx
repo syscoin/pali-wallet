@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Form, Input } from 'antd';
-import { useController, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
 import { Layout, SecondaryButton, Card, CopyCard } from 'components/index';
+import { getController } from 'utils/index';
 
 const PhraseView = () => {
   const [phrase, setPhrase] = useState<string>(
@@ -9,7 +10,7 @@ const PhraseView = () => {
   );
 
   const { useCopyClipboard, navigate } = useUtils();
-  const controller = useController();
+  const controller = getController();
   const [copied, copyText] = useCopyClipboard();
 
   const handleCopySeed = () => {
@@ -18,13 +19,13 @@ const PhraseView = () => {
 
   return (
     <Layout title="WALLET SEED PHRASE" id="seed-phrase-title">
-      <p className="px-10 py-3 text-white text-sm">
+      <p className="m-6 mb-2 text-left text-white text-sm md:ml-28">
         Please input your wallet password
       </p>
 
-      <div className="flex flex-col items-center justify-center md:w-full md:max-w-md">
+      <div className="flex flex-col items-center justify-center text-center">
         <Form
-          className="password flex flex-col gap-8 items-center justify-center my-6 w-full max-w-xs text-center md:max-w-md"
+          className="password flex flex-col gap-8 items-center justify-center my-2 w-full max-w-xs text-center sm:max-w-xl"
           name="phraseview"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
@@ -33,7 +34,7 @@ const PhraseView = () => {
           <Form.Item
             name="password"
             hasFeedback
-            className="w-full md:max-w-md"
+            className="w-full sm:max-w-xl"
             rules={[
               {
                 required: true,
@@ -76,7 +77,7 @@ const PhraseView = () => {
           </p>
         </CopyCard>
 
-        <Card type="info">
+        <Card className="my-3" type="info">
           <p>
             <b className="text-warning-info">WARNING:</b> Keep your seed phrase
             secret! Anyone with your seed phrase can access any account
@@ -84,7 +85,7 @@ const PhraseView = () => {
           </p>
         </Card>
 
-        <div className="absolute bottom-12 md:bottom-48 xl:bottom-64">
+        <div className="sm:absolute sm:bottom-48">
           <SecondaryButton type="button" onClick={() => navigate('/home')}>
             {copied ? 'Copied' : 'Close'}
           </SecondaryButton>

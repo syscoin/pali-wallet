@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import { Header, Icon, IconButton, Tooltip } from 'components/index';
-import { useBrowser } from 'hooks/index';
+import { browser } from 'webextension-polyfill-ts';
 import { useNavigate } from 'react-router-dom';
 
 interface ILayout {
@@ -17,7 +17,6 @@ export const Layout: FC<ILayout> = ({
   title,
 }) => {
   const navigate = useNavigate();
-  const { browser } = useBrowser();
 
   const url = browser.runtime.getURL('app.html');
 
@@ -53,12 +52,12 @@ export const Layout: FC<ILayout> = ({
           size={36}
           name="select-up"
           wrapperClassname="w-8"
-          className="fixed top-24 text-bkg-2 md:top-36"
+          className="fixed top-24 text-bkg-2"
           color="#111E33"
         />
       </div>
 
-      <div className="flex flex-col items-center justify-center w-full text-brand-white bg-bkg-2">
+      <div className="relative w-full h-screen text-brand-white bg-bkg-2">
         {children}
       </div>
     </div>

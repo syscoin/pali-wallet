@@ -1,15 +1,17 @@
 import { Layout, Icon, IconButton, SecondaryButton } from 'components/index';
 import React, { Fragment, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { useUtils, useBrowser, useAccount, useFormat } from 'hooks/index';
+import { browser } from 'webextension-polyfill-ts';
+import { useUtils } from 'hooks/index';
+import { formatUrl, ellipsis, getController } from 'utils/index';
 
 const ConnectedSites = (): any => {
-  const [selected, setSelected] = useState<string>('');
-
-  const { activeAccount } = useAccount();
-  const { formatURL, ellipsis } = useFormat();
   const { navigate } = useUtils();
-  const { browser } = useBrowser();
+
+  const accountController = getController().wallet.account;
+  const activeAccount = accountController.getActiveAccount();
+
+  const [selected, setSelected] = useState<string>('');
 
   const disconnectSite = (id: any) => {
     browser.runtime.sendMessage({
@@ -24,7 +26,7 @@ const ConnectedSites = (): any => {
 
   return (
     <Layout title="CONNECTED SITES">
-      <p className="m-4 text-white text-xs md:max-w-md">
+      <p className="m-4 text-white text-xs">
         {activeAccount?.connectedTo.length
           ? `${activeAccount.label} is connected to:`
           : `${activeAccount?.label} is not connected to any sites. To connect to a SYS platform site, find the connect button on their site.`}
@@ -38,7 +40,7 @@ const ConnectedSites = (): any => {
               className="scrollbar-styled px-4 py-2 w-full h-80 overflow-auto"
             >
               <li className="flex items-center justify-between my-2 py-3 w-full text-xs border-b border-dashed border-gray-500">
-                <p>{formatURL(url, 25)}</p>
+                <p>{formatUrl(url, 25)}</p>
 
                 <IconButton onClick={() => setSelected(url)}>
                   <Icon name="edit" wrapperClassname="w-4" />
@@ -97,7 +99,7 @@ const ConnectedSites = (): any => {
                       </p>
 
                       <div className="flex items-center justify-between m-3 text-brand-white">
-                        <p>{formatURL(selected, 20)}</p>
+                        <p>{formatUrl(selected, 20)}</p>
 
                         <IconButton
                           onClick={() => disconnectSite(activeAccount?.id)}
@@ -145,7 +147,7 @@ const ConnectedSites = (): any => {
           </Transition>
         )}
 
-        <div className="absolute bottom-12">
+        <div className="sm:absolute sm:bottom-48">
           <SecondaryButton type="button" onClick={() => navigate('/home')}>
             Close
           </SecondaryButton>

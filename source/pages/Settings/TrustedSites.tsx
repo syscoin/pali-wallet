@@ -1,10 +1,10 @@
 import { Layout, SecondaryButton } from 'components/index';
 import React, { useState } from 'react';
-import { useUtils, useFormat, useStore } from 'hooks/index';
+import { useUtils, useStore } from 'hooks/index';
+import { formatUrl } from 'utils/index';
 import { Form, Input } from 'antd';
 
 const TrustedSitesView = () => {
-  const { formatURL } = useFormat();
   const { navigate } = useUtils();
   const { trustedApps } = useStore();
 
@@ -59,7 +59,7 @@ const TrustedSitesView = () => {
             onChange={(event) => handleSearch(event)}
             type="text"
             placeholder="Search"
-            className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
+            className="mx-auto px-4 py-2 w-80 max-w-xl text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full sm:w-full"
           />
         </Form.Item>
       </Form>
@@ -70,14 +70,14 @@ const TrustedSitesView = () => {
             filteredSearch.map((url: string) => (
               <li
                 key={url}
-                className="my-2 py-2 w-full text-xs border-b border-dashed border-gray-500"
+                className="my-2 py-2 w-full text-xs border-b border-dashed border-gray-700"
               >
-                <p>{formatURL(url, 40)}</p>
+                <p>{formatUrl(url, 40)}</p>
               </li>
             ))}
         </ul>
 
-        <div className="absolute bottom-12 md:bottom-40 xl:bottom-80">
+        <div className="md:bottom-40 xl:bottom-80">
           <SecondaryButton type="button" onClick={() => navigate('/home')}>
             Close
           </SecondaryButton>

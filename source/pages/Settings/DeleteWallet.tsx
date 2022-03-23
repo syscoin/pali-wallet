@@ -1,16 +1,22 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, PrimaryButton, Card } from 'components/index';
 import { Form, Input } from 'antd';
-import { useController, useAccount, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
 import TextArea from 'antd/lib/input/TextArea';
+import { getController } from 'utils/index';
 
 const DeleteWalletView = () => {
   const { navigate } = useUtils();
-  const { activeAccount } = useAccount();
 
-  const controller = useController();
+  const controller = getController();
+  const activeAccount = controller.wallet.account.getActiveAccount();
 
-  const [seedIsValid, setSeedIsValid] = useState<boolean>();
+  if (!activeAccount) throw new Error('No active account');
+  const hasAccountFunds = activeAccount.balance > 0;
+
+  // if account has no funds, no need to input the seed
+  const [isSeedValid, setIsSeedValid] = useState<boolean>(!hasAccountFunds);
+  const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
 
   const onSubmit = (data: any) => {
     if (controller.wallet.checkPassword(data.password)) {
@@ -33,13 +39,14 @@ const DeleteWalletView = () => {
       </Card>
 
       <div className="flex flex-col items-center justify-center px-5 w-full">
-        <p className="my-3 w-full max-w-xs text-left text-white text-xs md:max-w-md">
+        <p className="my-5 w-full max-w-xs text-left text-white text-xs sm:max-w-xl">
           Please input your wallet password
         </p>
+
         <Form
           form={form}
           onFinish={onSubmit}
-          className="password flex flex-col gap-6 items-center justify-center w-full max-w-xs text-center md:max-w-md"
+          className="password w-full max-w-xs text-center sm:max-w-xl"
           name="delete"
           autoComplete="off"
         >
@@ -57,9 +64,11 @@ const DeleteWalletView = () => {
                   const seed = controller.wallet.getPhrase(value);
 
                   if (seed) {
+                    setIsPasswordValid(true);
                     return Promise.resolve();
                   }
 
+                  setIsPasswordValid(false);
                   return Promise.reject();
                 },
               }),
@@ -71,65 +80,60 @@ const DeleteWalletView = () => {
             />
           </Form.Item>
 
-          {activeAccount && activeAccount.balance > 0 && (
-            <p className="max-w-xs text-left text-xs leading-4 md:max-w-md">
-              You still have funds in your wallet. Paste your seed phrase below
-              to delete wallet.
-            </p>
-          )}
+          {hasAccountFunds && (
+            <>
+              <p className="my-5 text-left text-xs leading-4">
+                You still have funds in your wallet. Paste your seed phrase
+                below to delete wallet.
+              </p>
 
-          {activeAccount && activeAccount.balance > 0 && (
-            <Form.Item
-              name="seed"
-              className="w-full"
-              dependencies={['password']}
-              rules={[
-                {
-                  required: true,
-                  message: '',
-                },
-                ({ getFieldValue }) => ({
-                  validator(_, value) {
-                    const seed = controller.wallet.getPhrase(
-                      getFieldValue('password')
-                    );
-
-                    setSeedIsValid(seed === value);
-
-                    if (seed === value) {
-                      return Promise.resolve();
-                    }
-
-                    return Promise.reject();
+              <Form.Item
+                name="seed"
+                className="w-full"
+                dependencies={['password']}
+                rules={[
+                  {
+                    required: true,
+                    message: '',
                   },
-                }),
-              ]}
-            >
-              <TextArea
-                className={`${
-                  !seedIsValid && form.getFieldValue('seed')
-                    ? 'border-warning-error'
-                    : 'border-fields-input-border'
-                } bg-bkg-4 border border-bkg-4 text-sm outline-none rounded-lg p-5`}
-                placeholder="Paste your wallet seed phrase"
-                id="delete_seed"
-              />
-            </Form.Item>
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      const seed = controller.wallet.getPhrase(
+                        getFieldValue('password')
+                      );
+
+                      if (seed === value) {
+                        setIsSeedValid(true);
+                        return Promise.resolve();
+                      }
+
+                      setIsSeedValid(false);
+                      return Promise.reject();
+                    },
+                  }),
+                ]}
+              >
+                <TextArea
+                  className={`${
+                    !isSeedValid && form.getFieldValue('seed')
+                      ? 'border-warning-error'
+                      : 'border-fields-input-border'
+                  } bg-bkg-4 border border-bkg-4 text-sm outline-none rounded-lg p-5`}
+                  placeholder="Paste your wallet seed phrase"
+                  id="delete_seed"
+                />
+              </Form.Item>
+            </>
           )}
 
-          <div className="absolute bottom-12 flex gap-x-4 justify-between md:bottom-40 xl:bottom-64">
-            <SecondaryButton
-              type="button"
-              onClick={() => navigate('/home')}
-              action
-            >
+          <div className="flex gap-x-8 justify-between sm:absolute sm:bottom-48">
+            <SecondaryButton type="button" onClick={() => navigate('/home')}>
               Cancel
             </SecondaryButton>
 
             <PrimaryButton
-              action
               type="submit"
-              disabled={!form.getFieldValue('password') || !seedIsValid}
+              disabled={!isPasswordValid || !isSeedValid}
               id="delete-btn"
             >
               Delete

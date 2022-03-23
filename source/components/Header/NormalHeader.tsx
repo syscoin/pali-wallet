@@ -1,21 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { Icon, IconButton } from 'components/index';
-import {
-  useStore,
-  useAccount,
-  useUtils,
-  useController,
-  useBrowser,
-} from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
+import { getHost, getController } from 'utils/index';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
+import { browser } from 'webextension-polyfill-ts';
 
 export const NormalHeader: React.FC = () => {
-  const { wallet } = useController();
+  const { wallet } = getController();
 
   const { activeNetwork, encriptedMnemonic, networks } = useStore();
-  const { handleRefresh, navigate, getHost } = useUtils();
-  const { activeAccount } = useAccount();
-  const { browser } = useBrowser();
+  const { handleRefresh, navigate } = useUtils();
+  const activeAccount = wallet.account.getActiveAccount();
 
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [currentTabURL, setCurrentTabURL] = useState<string>('');
@@ -400,7 +395,7 @@ export const NormalHeader: React.FC = () => {
   );
 
   return (
-    <div className="relative flex items-center justify-between p-2 py-6 w-full text-gray-300 bg-bkg-1">
+    <div className="relative flex items-center justify-between w-full h-12 text-gray-300 bg-bkg-1">
       <NetworkMenu />
 
       <IconButton

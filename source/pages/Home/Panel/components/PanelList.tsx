@@ -1,6 +1,7 @@
 import React, { FC, useCallback, Fragment } from 'react';
 import { IconButton, Icon } from 'components/index';
-import { useFormat, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { ellipsis, formatCurrency, formatDate } from 'utils/index';
 import { Assets, Transaction } from 'types/transactions';
 
 interface IPanelList {
@@ -14,8 +15,6 @@ export const PanelList: FC<IPanelList> = ({
   assets = false,
   activity = false,
 }) => {
-  const { formatDistanceDate, ellipsis, formatCurrency } = useFormat();
-
   const { navigate } = useUtils();
 
   const isShowedGroupBar = useCallback(
@@ -60,9 +59,7 @@ export const PanelList: FC<IPanelList> = ({
               <Fragment key={tx.txid}>
                 {isShowedGroupBar(tx, idx) && (
                   <li className="my-3 text-center text-sm bg-bkg-1">
-                    {formatDistanceDate(
-                      new Date(tx.blockTime * 1000).toDateString()
-                    )}
+                    {formatDate(new Date(tx.blockTime * 1000).toDateString())}
                   </li>
                 )}
 

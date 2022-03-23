@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
-import { useController, useStore } from 'hooks/index';
+import { useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { useNavigate } from 'react-router-dom';
+import { getController } from 'utils/index';
 
 const AutolockView = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
-  const controller = useController();
+  const controller = getController();
   const navigate = useNavigate();
 
   const { timer } = useStore();
@@ -24,7 +25,7 @@ const AutolockView = () => {
 
   return (
     <Layout title="AUTO LOCK TIMER" id="auto-lock-timer-title">
-      <p className="px-10 py-6 text-white text-sm md:pb-10 md:px-4 md:w-96 md:text-center">
+      <p className="mx-4 my-6 text-white text-xs sm:mx-0 sm:text-center sm:text-sm">
         You can set auto lock timer. Default is 5 minutes after no activity.
         Maximum is 30 minutes.
       </p>
@@ -73,11 +74,11 @@ const AutolockView = () => {
           <Input
             type="number"
             placeholder="Minutes"
-            className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-96"
+            className="px-4 py-2 w-80 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-96"
           />
         </Form.Item>
 
-        <div className="absolute bottom-12 md:top-80">
+        <div className="md:absolute md:bottom-48">
           <SecondaryButton type="submit" loading={loading}>
             Save
           </SecondaryButton>

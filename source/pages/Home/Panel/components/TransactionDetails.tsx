@@ -1,32 +1,28 @@
-import { useFormat, useController, useStore, useUtils } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import React, { useState, useEffect } from 'react';
-import { Icon, IconButton, Button } from 'components/index';
+import { Icon, IconButton } from 'components/index';
+import {
+  ellipsis,
+  formatDate,
+  formatUrl,
+  getController,
+  showSuccessAlert,
+} from 'utils/index';
 import { Disclosure } from '@headlessui/react';
 
 export const TransactionDetails = ({ transactionType, transactionDetails }) => {
-  const { formatDistanceDate, ellipsis, formatURL } = useFormat();
-
   const { activeNetwork } = useStore();
   const { useCopyClipboard, alert } = useUtils();
 
-  const controller = useController();
+  const controller = getController();
 
   const [newRecipients, setNewRecipients] = useState<any>({});
   const [newSenders, setNewSenders] = useState<any>({});
   // ? missing feedback for copy
   const [copied, copyText] = useCopyClipboard();
 
-  const showSuccessAlert = () => {
-    if (copied) {
-      alert.removeAll();
-      alert.success('Link successfully copied');
-    }
-  };
-
   const recipients: any = {};
   const senders: any = {};
-
-  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   useEffect(() => {
     if (transactionDetails) {
@@ -91,8 +87,8 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
 
         <div>
           <small>
-            {formatURL(String(Number(addressValue) / 10 ** 8), 18)
-              ? formatURL(String(Number(addressValue) / 10 ** 8), 18)
+            {formatUrl(String(Number(addressValue) / 10 ** 8), 18)
+              ? formatUrl(String(Number(addressValue) / 10 ** 8), 18)
               : 0}{' '}
             {activeNetwork === 'main' ? 'SYS' : 'tSYS'}
           </small>
@@ -131,7 +127,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
     {
       label: 'Mined',
       value: blockTime
-        ? formatDistanceDate(new Date(blockTime * 1000).toDateString())
+        ? formatDate(new Date(blockTime * 1000).toDateString())
         : '',
     },
     {
@@ -227,21 +223,8 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
           )}
         </Disclosure>
       )}
-      {copied && showSuccessAlert()}
 
-      <div className="fixed bottom-0 left-0 flex gap-x-6 items-center justify-between p-4 w-full max-w-2xl text-xs bg-bkg-3 md:bottom-12 md:left-auto xl:mt-2">
-        <p>Would you like to go to view transaction on SYS Block Explorer?</p>
-
-        <Button
-          type="button"
-          onClick={() =>
-            window.open(`${sysExplorer}/tx/${transactionDetails.txid}`)
-          }
-          className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
-        >
-          Go
-        </Button>
-      </div>
+      {showSuccessAlert(copied, 'Address succesfully copied', alert)}
     </>
   );
 };
