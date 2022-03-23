@@ -38,6 +38,8 @@ export const Send: FC<ISend> = () => {
     form.setFieldsValue({ fee: recommendFee });
   }, [controller.wallet.account, form]);
 
+  const hasAccountAssets = activeAccount && activeAccount.assets.length > 0;
+
   useEffect(() => {
     handleGetFee();
 
@@ -164,74 +166,85 @@ export const Send: FC<ISend> = () => {
         </Form.Item>
 
         <div className="flex items-center justify-center md:w-full md:max-w-md">
-          <Form.Item
-            name="asset"
-            className=""
-            rules={[
-              {
-                required: false,
-                message: '',
-              },
-            ]}
-          >
-            <Menu as="div" className="relative inline-block text-left">
-              <Menu.Button
-                disabled={activeAccount?.assets.length === 0}
-                className="inline-flex justify-center px-4 py-3 w-full text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
-              >
-                {selectedAsset?.symbol
-                  ? formatUrl(String(selectedAsset?.symbol), 2)
-                  : 'SYS'}
-                <ChevronDoubleDownIcon
-                  className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
-                  aria-hidden="true"
-                />
-              </Menu.Button>
+          {hasAccountAssets && (
+            <Form.Item
+              name="asset"
+              className=""
+              rules={[
+                {
+                  required: false,
+                  message: '',
+                },
+              ]}
+            >
+              <Menu as="div" className="relative inline-block text-left">
+                <Menu.Button
+                  disabled={!hasAccountAssets}
+                  className="inline-flex justify-center px-4 py-3 w-full text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+                >
+                  {selectedAsset?.symbol
+                    ? formatUrl(String(selectedAsset?.symbol), 2)
+                    : 'SYS'}
+                  <ChevronDoubleDownIcon
+                    className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
+                    aria-hidden="true"
+                  />
+                </Menu.Button>
 
-              <Transition
-                as={Fragment}
-                enter="transition ease-out duration-100"
-                enterFrom="transform opacity-0 scale-95"
-                enterTo="transform opacity-100 scale-100"
-                leave="transition ease-in duration-75"
-                leaveFrom="transform opacity-100 scale-100"
-                leaveTo="transform opacity-0 scale-95"
-              >
-                {activeAccount?.assets && activeAccount?.assets.length > 0 && (
-                  <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
-                    <Menu.Item>
-                      <button
-                        onClick={() => handleSelectedAsset(-1)}
-                        className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                      >
-                        <p>SYS</p>
-
-                        <small>Native</small>
-                      </button>
-                    </Menu.Item>
-
-                    {activeAccount?.assets.map((item) => (
-                      <Menu.Item key={item.assetGuid}>
+                <Transition
+                  as={Fragment}
+                  enter="transition ease-out duration-100"
+                  enterFrom="transform opacity-0 scale-95"
+                  enterTo="transform opacity-100 scale-100"
+                  leave="transition ease-in duration-75"
+                  leaveFrom="transform opacity-100 scale-100"
+                  leaveTo="transform opacity-0 scale-95"
+                >
+                  {hasAccountAssets && (
+                    <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
+                      <Menu.Item>
                         <button
-                          onClick={() => handleSelectedAsset(item.assetGuid)}
+                          onClick={() => handleSelectedAsset(-1)}
                           className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                         >
-                          <p>{item.symbol}</p>
-                          <small>{isNFT(item.assetGuid) ? 'NFT' : 'SPT'}</small>
+                          <p>SYS</p>
+
+                          <small>Native</small>
                         </button>
                       </Menu.Item>
-                    ))}
-                  </Menu.Items>
-                )}
-              </Transition>
-            </Menu>
-          </Form.Item>
 
-          <div className="flex gap-x-0.5 items-center justify-center mx-2 w-48 md:w-full">
+                      {hasAccountAssets &&
+                        activeAccount.assets.map((item) => (
+                          <Menu.Item key={item.assetGuid}>
+                            <button
+                              onClick={() =>
+                                handleSelectedAsset(item.assetGuid)
+                              }
+                              className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                            >
+                              <p>{item.symbol}</p>
+                              <small>
+                                {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
+                              </small>
+                            </button>
+                          </Menu.Item>
+                        ))}
+                    </Menu.Items>
+                  )}
+                </Transition>
+              </Menu>
+            </Form.Item>
+          )}
+
+          <div
+            className={`${
+              hasAccountAssets ? 'w-48' : 'w-72'
+            } flex gap-x-0.5 items-center justify-center mx-2  md:w-full`}
+          >
             <Form.Item
               id="verify-address-switch"
               name="verify"
-              className="flex-1 w-32 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full md:w-full"
+              className="flex-1 w-32 h-12 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full md:w-full"
               rules={[
                 {
                   required: false,
@@ -243,7 +256,13 @@ export const Send: FC<ISend> = () => {
                 childrenClassName="text-brand-white h-4"
                 content="Pali verifies your address to check if it is a valid SYS address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing."
               >
-                <p className="text-10px cursor-default">Verify address</p>
+                <p
+                  className={`${
+                    !hasAccountAssets && ' absolute top-0 left-8'
+                  } text-10px cursor-default`}
+                >
+                  Verify address
+                </p>
               </Tooltip>
 
               <Switch
@@ -264,7 +283,7 @@ export const Send: FC<ISend> = () => {
 
             <Form.Item
               name="ZDAG"
-              className="flex-1 w-32 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full"
+              className="flex-1 w-32 h-12 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full"
               rules={[
                 {
                   required: false,
@@ -276,7 +295,13 @@ export const Send: FC<ISend> = () => {
                 childrenClassName="text-brand-white h-4"
                 content="Disable this option for Replace-by-fee (RBF) and enable for Z-DAG, a exclusive Syscoin feature. Z-DAG enables faster transactions but should not be used for high amounts."
               >
-                <p className="text-10px cursor-default">Z-DAG</p>
+                <p
+                  className={`${
+                    !hasAccountAssets && 'absolute top-0 right-14'
+                  } text-10px cursor-default`}
+                >
+                  Z-DAG
+                </p>
               </Tooltip>
               <Switch
                 checked={ZDAG}
