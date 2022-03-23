@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Icon, IconButton } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
 import { getHost, getController } from 'utils/index';
+import { Badge } from 'antd';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { browser } from 'webextension-polyfill-ts';
 
@@ -397,6 +398,15 @@ export const NormalHeader: React.FC = () => {
   return (
     <div className="relative flex items-center justify-between p-2 py-6 w-full text-gray-300 bg-bkg-1">
       <NetworkMenu />
+
+      <div className="absolute right-20">
+        <Badge
+          className="bg-green text-green absolute right-0 top-0"
+          color="green"
+        >
+          <Icon name="globe" className="text-white" />
+        </Badge>
+      </div>
 
       <IconButton
         onClick={handleRefresh}
