@@ -78,7 +78,7 @@ export const DefaultModal = ({
   title = '',
 }: IDefaultModal) => (
   <Modal show={show} onClose={onClose}>
-    <div className="inline-block align-middle my-8 p-6 w-full max-w-2xl text-center font-poppins bg-bkg-4 rounded-2xl shadow-xl overflow-hidden transform transition-all">
+    <div className="inline-block align-middle my-8 p-6 w-full max-w-md text-center font-poppins bg-bkg-4 rounded-2xl shadow-xl overflow-hidden transform transition-all">
       <Dialog.Title
         as="h3"
         className="pb-4 pt-2 text-brand-white text-lg font-medium leading-6 border-b border-dashed border-gray-600"
