@@ -8,24 +8,6 @@ import {
 import { IDAppInfo, IDAppState } from 'state/dapp/types';
 import store from 'state/store';
 
-export interface IDAppController {
-  deregisterListeningSite: (origin: string, eventName: string) => void;
-  fromPageConnectDApp: (origin: string, title: string) => boolean;
-  fromUserConnectDApp: (
-    origin: string,
-    dapp: IDAppInfo,
-    network: string,
-    accounts: string[]
-  ) => void;
-  fromUserDisconnectDApp: (origin: string) => void;
-  getCurrent: () => IDAppInfo;
-  getSigRequest: () => ISigRequest;
-  isDAppConnected: (origin: string) => boolean;
-  isSiteListening: (origin: string, eventName: string) => boolean;
-  notifyAccountsChanged: (accounts: string[]) => void;
-  registerListeningSite: (origin: string, eventName: string) => void;
-  setSigRequest: (req: ISigRequest) => void;
-}
 interface ISigRequest {
   address: string;
   message: string;
@@ -33,7 +15,7 @@ interface ISigRequest {
 }
 
 const DAppController = (): IDAppController => {
-  let current: IDAppInfo = { origin: '', logo: '', title: '' };
+  let current: IDAppInfo = { accounts: {}, origin: '', logo: '', title: '' };
   let request: ISigRequest;
 
   const isDAppConnected = (origin: string) => {
@@ -44,6 +26,7 @@ const DAppController = (): IDAppController => {
 
   const fromPageConnectDApp = (origin: string, title: string) => {
     current = {
+      ...current,
       origin,
       logo: `chrome://favicon/size/64@1x/${origin}`,
       title,
@@ -55,27 +38,25 @@ const DAppController = (): IDAppController => {
   const fromUserConnectDApp = (
     origin: string,
     dapp: IDAppInfo,
-    network: string,
-    accounts: string[]
+    network: string
   ) => {
-    store.dispatch(listNewDapp({ id: origin, dapp, network, accounts }));
+    store.dispatch(listNewDapp({ id: origin, dapp, network }));
   };
 
-  const _dispatchEvents = async (events: any[]) => {
+  const _dispatchEvents = async (events: Event[]) => {
     const background = await browser.runtime.getBackgroundPage();
 
     events.forEach((event) => background.dispatchEvent(event));
   };
 
-  const notifyAccountsChanged = async (accounts: string[]): Promise<void> => {
-    const state = store.getState();
-    const { whitelist, listening } = state.dapp;
+  const notifyAccountsChanged = async (accountId: number): Promise<void> => {
+    const { whitelist, listening } = store.getState().dapp;
 
-    const events: any[] = [];
+    let events: Event[] = [];
 
     // Will only notify whitelisted dapps that are listening for a wallet change.
     for (const origin of Object.keys(listening)) {
-      const site = whitelist[origin as any];
+      const site = whitelist[origin as string];
       const listeningEvents = listening[origin];
 
       if (!listeningEvents.includes('accountsChanged')) {
@@ -83,39 +64,21 @@ const DAppController = (): IDAppController => {
       }
 
       if (site) {
-        console.log('accounts', accounts);
-        // const siteAccounts = site.accounts as IDappAccounts;
-        // const allAccountsWithDuplicates = accounts.concat(
-        //   siteAccounts.Syscoin,
-        //   siteAccounts.Ethereum
-        // );
-        // const matchingAccounts = filter(
-        //   allAccountsWithDuplicates,
-        //   (value, index, iteratee) =>
-        //     includes(iteratee, value as string, index + 1)
-        // );
-        // if (matchingAccounts.length) {
-        //   const ethAccounts = matchingAccounts.filter((account) =>
-        //     account.toLowerCase().startsWith('0x')
-        //   );
-        //   const sysAccounts = matchingAccounts.filter((account) =>
-        //     account.toLowerCase().startsWith('sys')
-        //   );
-        //   // Dispatch a separate event for each chain
-        //   const _events = [
-        //     new CustomEvent('accountsChanged', {
-        //       detail: { data: ethAccounts, origin, chain: 'ethereum' },
-        //     }),
-        //     new CustomEvent('accountsChanged', {
-        //       detail: { data: sysAccounts, origin, chain: 'syscoin' },
-        //     }),
-        //   ];
-        //   events = [...events, ..._events];
-        // }
+        // Dispatch a separate event for each chain
+        const _events = [
+          new CustomEvent('accountsChanged', {
+            detail: { data: accountId, origin, chain: 'ethereum' },
+          }),
+          new CustomEvent('accountsChanged', {
+            detail: { data: accountId, origin, chain: 'syscoin' },
+          }),
+        ];
+
+        events = [...events, ..._events];
       }
     }
 
-    return _dispatchEvents(events);
+    _dispatchEvents(events);
   };
 
   const notifySiteDisconnected = async (origin: string): Promise<void> => {
@@ -127,6 +90,7 @@ const DAppController = (): IDAppController => {
 
     if (!listeningEvents.includes('close')) {
       console.log('notifySiteDisconnected includes close');
+
       return;
     }
 
@@ -142,7 +106,7 @@ const DAppController = (): IDAppController => {
 
     console.log('notifySiteDisconnected dispatching: ', events);
 
-    return _dispatchEvents(events);
+    _dispatchEvents(events);
   };
 
   const fromUserDisconnectDApp = (origin: string) => {
