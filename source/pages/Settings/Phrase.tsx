@@ -85,7 +85,7 @@ const PhraseView = () => {
           </p>
         </Card>
 
-        <div className="absolute bottom-12 md:bottom-48 xl:bottom-64">
+        <div className="absolute bottom-12 2xl:bottom-64 md:bottom-40">
           <SecondaryButton type="button" onClick={() => navigate('/home')}>
             {copied ? 'Copied' : 'Close'}
           </SecondaryButton>

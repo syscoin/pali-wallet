@@ -81,7 +81,7 @@ const DeleteWalletView = () => {
 
           {hasAccountFunds && (
             <>
-              <p className="max-w-xs text-left text-xs leading-4">
+              <p className="max-w-xs text-left text-xs leading-4 md:max-w-md">
                 You still have funds in your wallet. Paste your seed phrase
                 below to delete wallet.
               </p>
@@ -125,7 +125,7 @@ const DeleteWalletView = () => {
             </>
           )}
 
-          <div className="flex gap-x-8 justify-between md:absolute md:bottom-48">
+          <div className="2xl:bottom-60 flex gap-x-8 justify-between md:absolute md:bottom-36">
             <PrimaryButton type="button" onClick={() => navigate('/home')}>
               Cancel
             </PrimaryButton>

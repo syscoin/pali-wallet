@@ -23,7 +23,7 @@ const PrivateKeyView = () => {
 
   return (
     <Layout title="YOUR KEYS">
-      <div className="scrollbar-styled px-2 py-5 overflow-auto">
+      <div className="scrollbar-styled px-2 py-5 h-96 overflow-auto md:h-full">
         <Card type="info">
           <p>
             <b className="text-warning-info">WARNING: </b>
@@ -104,7 +104,7 @@ const PrivateKeyView = () => {
         </div>
       </div>
 
-      <div className="sm:absolute sm:bottom-48">
+      <div className="absolute 2xl:bottom-52 bottom-8 md:bottom-32">
         <SecondaryButton type="button" onClick={() => navigate('/home')}>
           {copied ? 'Copied' : 'Close'}
         </SecondaryButton>
