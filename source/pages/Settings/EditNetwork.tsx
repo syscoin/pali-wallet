@@ -57,7 +57,7 @@ const EditNetworkView = () => {
             ))}
           </ul>
 
-          <div className="sm:absolute sm:bottom-48">
+          <div className="flex items-center justify-center">
             <SecondaryButton type="button" onClick={() => navigate('/home')}>
               Close
             </SecondaryButton>
