@@ -1,5 +1,7 @@
 import { IWalletController } from 'types/controllers';
 import { browser } from 'webextension-polyfill-ts';
+import { EthereumProvider } from 'scripts/Provider/EthereumProvider';
+import { PaliProvider } from 'scripts/Provider/PaliProvider';
 
 import WalletController from './WalletController';
 import ControllerUtils, { IControllerUtils } from './ControllerUtils';
@@ -16,6 +18,8 @@ export interface IMasterController {
     data: object
   ) => any;
   dapp: Readonly<IDAppController>;
+  ethereumProvider: Readonly<any>;
+  paliProvider: Readonly<any>;
   stateUpdater: () => void;
   utils: Readonly<IControllerUtils>;
   wallet: Readonly<IWalletController>;
@@ -26,6 +30,8 @@ const MasterController = (): IMasterController => {
   const utils = Object.freeze(ControllerUtils());
   const dapp = Object.freeze(DAppController());
   const connectionsPrototype = Object.create(ConnectionsController);
+  const paliProvider = Object.freeze(PaliProvider());
+  const ethereumProvider = Object.freeze(EthereumProvider());
 
   const stateUpdater = () => {
     utils.updateFiat();
@@ -69,6 +75,8 @@ const MasterController = (): IMasterController => {
     utils,
     stateUpdater,
     createPopup,
+    paliProvider,
+    ethereumProvider,
   };
 };
 

@@ -22,11 +22,15 @@ export const enable = async (
   const { asset } = message.data;
 
   const provider =
-    asset === 'SYS'
+    asset === 'syscoin'
       ? masterController.paliProvider
       : masterController.ethereumProvider;
 
+  console.log('current provider', provider);
+
   const allowed = masterController.dapp.isDAppConnected(origin);
+
+  console.log('origin is allowed', allowed);
 
   if (origin && !allowed) {
     if (isPendingWindow()) {

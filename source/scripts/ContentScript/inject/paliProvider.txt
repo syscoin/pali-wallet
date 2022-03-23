@@ -65,11 +65,11 @@ const handleRequest = async (chain, request) => {
 
   // All request accounts go to the same place
   if (method === 'getAccounts') {
-    // const { result, data } = await window.providerManager.enable();
+    const { result, data } = await window.providerManager.enable();
 
-    // if (!result) {
-    //   ERRORS.USER_REJECTED();
-    // }
+    if (!result) {
+      ERRORS.USER_REJECTED();
+    }
 
     return 123;
   }
