@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Form, Input } from 'antd';
 import { useUtils } from 'hooks/index';
 import { Layout, SecondaryButton, Card, CopyCard } from 'components/index';
-import { getController } from 'utils/index';
+import { getController } from 'utils/browser';
 
 const PhraseView = () => {
   const [phrase, setPhrase] = useState<string>(

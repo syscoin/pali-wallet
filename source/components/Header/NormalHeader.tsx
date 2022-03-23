@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Icon, IconButton } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
-import { getHost, getController } from 'utils/index';
+import { getHost } from 'utils/index';
+import { getController } from 'utils/browser';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { browser } from 'webextension-polyfill-ts';
 

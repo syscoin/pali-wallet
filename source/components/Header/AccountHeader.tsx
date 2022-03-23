@@ -4,7 +4,8 @@ import { useStore, useUtils } from 'hooks/index';
 import { toSvg } from 'jdenticon';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { useNavigate } from 'react-router-dom';
-import { ellipsis, getController } from 'utils/index';
+import { ellipsis } from 'utils/index';
+import { getController } from 'utils/browser';
 
 const AccountMenu: React.FC = () => {
   const navigate = useNavigate();

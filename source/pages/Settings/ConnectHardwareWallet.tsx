@@ -1,6 +1,6 @@
 import React, { FC, useState } from 'react';
 import { Layout, SecondaryButton, Icon } from 'components/index';
-import { getController } from 'utils/index';
+import { getController } from 'utils/browser';
 import { Disclosure } from '@headlessui/react';
 
 const ConnectHardwareWalletView: FC = () => {

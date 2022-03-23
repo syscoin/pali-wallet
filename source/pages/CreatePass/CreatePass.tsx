@@ -1,7 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PasswordForm } from 'components/index';
-import { logError, getController } from 'utils/index';
+import { logError } from 'utils/index';
+import { getController } from 'utils/browser';
 
 export const CreatePass = () => {
   const navigate = useNavigate();

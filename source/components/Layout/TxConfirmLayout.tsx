@@ -15,9 +15,8 @@ import {
   capitalizeFirstLetter,
   rejectTransaction,
   cancelTransaction,
-  closePopup,
-  getController,
 } from 'utils/index';
+import { closePopup, getController } from 'utils/browser';
 
 interface ITxConfirm {
   callback: any;

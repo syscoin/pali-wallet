@@ -3,7 +3,7 @@ import { Layout, SecondaryButton, PrimaryButton, Card } from 'components/index';
 import { Form, Input } from 'antd';
 import { useUtils } from 'hooks/index';
 import TextArea from 'antd/lib/input/TextArea';
-import { getController } from 'utils/index';
+import { getController } from 'utils/browser';
 
 const DeleteWalletView = () => {
   const { navigate } = useUtils();

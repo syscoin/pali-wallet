@@ -3,7 +3,7 @@ import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import { useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { getController } from 'utils/index';
+import { getController } from 'utils/browser';
 
 const AutolockView = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
