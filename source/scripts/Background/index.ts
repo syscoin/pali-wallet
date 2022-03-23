@@ -12,6 +12,7 @@ import { messagesHandler } from './controllers/MessageHandler';
 declare global {
   interface Window {
     controller: Readonly<IMasterController>;
+    gatewayNetwork: string;
     senderURL: string;
     syspopup: any;
   }

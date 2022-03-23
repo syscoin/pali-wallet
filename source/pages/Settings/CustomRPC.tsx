@@ -95,17 +95,10 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
                 () => ({
                   async validator(_, value) {
                     try {
-                      const response = await axios.get(`${value}/api/v2`);
-                      const { coin } = response.data.blockbook;
+                      const result = await controller.wallet.validateRPC(value);
 
-                      if (response && coin) {
-                        if (
-                          coin === 'Syscoin' ||
-                          coin === 'Syscoin Testnet' ||
-                          !value
-                        ) {
-                          return await Promise.resolve();
-                        }
+                      if (result) {
+                        return await Promise.resolve();
                       }
                     } catch (error) {
                       return Promise.reject();
@@ -129,16 +122,30 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
                   required: false,
                   message: '',
                 },
+                ({ getFieldValue }) => ({
+                  async validator(_, value) {
+                    try {
+                      const rpcURL = getFieldValue('blockbookURL');
+
+                      const result = await controller.wallet.validateRPC(
+                        rpcURL,
+                        value
+                      );
+
+                      if (result) {
+                        return await Promise.resolve();
+                      }
+                    } catch (error) {
+                      return Promise.reject();
+                    }
+                  },
+                }),
               ]}
             >
               <Input
-                disabled
                 type="text"
                 placeholder="Chain ID"
-                className={`${
-                  true &&
-                  'opacity-50 rounded-full py-2 pl-4 w-72 bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus'
-                }`}
+                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
               />
             </Form.Item>
 
