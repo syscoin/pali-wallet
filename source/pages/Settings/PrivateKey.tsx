@@ -17,7 +17,7 @@ const PrivateKeyView = () => {
 
   return (
     <Layout title="YOUR KEYS">
-      <div className="scrollbar-styled px-2 py-5 h-96 overflow-auto">
+      <div className="scrollbar-styled px-2 py-5 overflow-auto">
         <Card type="info">
           <p>
             <b className="text-warning-info">WARNING: </b>
@@ -74,52 +74,6 @@ const PrivateKeyView = () => {
 
         <CopyCard
           className="my-3"
-          onClick={
-            valid ? () => copyText(String(activeAccount?.xprv)) : undefined
-          }
-          label="Your private key"
-        >
-          <p>
-            {valid
-              ? ellipsis(activeAccount?.xprv, 4, 16)
-              : '********...************'}
-          </p>
-        </CopyCard>
-
-        <Form
-          className="password flex flex-col gap-8 items-center justify-center my-3 w-full max-w-xs text-center md:max-w-md"
-          name="phraseview"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 16 }}
-          autoComplete="off"
-        >
-          <Form.Item
-            name="password"
-            hasFeedback
-            className="w-full"
-            rules={[
-              {
-                required: true,
-                message: '',
-              },
-              () => ({
-                validator(_, value) {
-                  if (controller.wallet.getPhrase(value)) {
-                    setValid(true);
-
-                    return Promise.resolve();
-                  }
-
-                  return Promise.reject();
-                },
-              }),
-            ]}
-          >
-            <Input.Password placeholder="Enter your password" />
-          </Form.Item>
-        </Form>
-
-        <CopyCard
           onClick={
             valid ? () => copyText(String(activeAccount?.xprv)) : undefined
           }
