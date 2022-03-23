@@ -4,6 +4,7 @@ import { useStore, useUtils } from 'hooks/index';
 import { getHost, getController } from 'utils/index';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { browser } from 'webextension-polyfill-ts';
+import { Badge } from 'antd';
 
 export const NormalHeader: React.FC = () => {
   const { wallet } = getController();
@@ -72,17 +73,6 @@ export const NormalHeader: React.FC = () => {
           <Menu.Button className="inline-flex justify-center w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
             <div className="flex gap-x-6 items-center justify-start ml-2 w-full cursor-pointer">
               <span>{activeNetwork}</span>
-
-              <div
-                id="badge-connected-status"
-                className={
-                  isConnected
-                    ? 'rounded-full text-xs w-28 h-5 flex justify-center items-center border border-warning-success bg-warning-success text-brand-white'
-                    : 'rounded-full text-xs w-28 h-5 flex justify-center items-center border bg-warning-error border-warning-error text-brand-white'
-                }
-              >
-                {isConnected ? 'connected' : 'not connected'}
-              </div>
 
               <IconButton className="mb-1">
                 <Icon
@@ -397,14 +387,23 @@ export const NormalHeader: React.FC = () => {
   return (
     <div className="relative flex items-center justify-between p-2 py-6 w-full text-gray-300 bg-bkg-1">
       <NetworkMenu />
-
       <IconButton
         onClick={handleRefresh}
         className="absolute right-10 hover:text-brand-deepPink100 text-brand-white"
       >
         <Icon name="reload" wrapperClassname="mb-2 mr-2" />
       </IconButton>
-
+      {!isConnected && (
+        <div className="absolute right-20">
+          <Badge className="ant-badge">
+            <Icon
+              id="badge-connected-status"
+              name="globe"
+              className="inline-block mb-2 mr-2 text-brand-white"
+            />
+          </Badge>
+        </div>
+      )}
       <GeneralMenu />
     </div>
   );
