@@ -7,8 +7,9 @@ import {
 } from 'state/dapp';
 import { IDAppInfo, IDAppState } from 'state/dapp/types';
 import store from 'state/store';
+import { IDAppController } from 'types/controllers';
 
-interface ISigRequest {
+export interface ISigRequest {
   address: string;
   message: string;
   origin: string;
