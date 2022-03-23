@@ -5,6 +5,7 @@ import { Icon } from '..';
 
 export const Fullscreen: React.FC = () => {
   const url = browser.runtime.getURL('app.html');
+
   if (!url) return <></>;
 
   return (

@@ -9,7 +9,7 @@ export const AssetsPanel: FC = () => {
 
   return (
     <>
-      <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
+      <ul className="p-4 w-full h-full text-white text-base bg-bkg-2">
         {activeAccount?.assets && activeAccount?.assets.length > 0 ? (
           <PanelList data={activeAccount?.assets} activity={false} assets />
         ) : (

@@ -39,14 +39,14 @@ const DeleteWalletView = () => {
       </Card>
 
       <div className="flex flex-col items-center justify-center px-5 w-full">
-        <p className="my-3 w-full max-w-xs text-left text-white text-xs md:max-w-md">
+        <p className="my-5 w-full max-w-xs text-left text-white text-xs sm:max-w-xl">
           Please input your wallet password
         </p>
 
         <Form
           form={form}
           onFinish={onSubmit}
-          className="password flex flex-col gap-6 items-center justify-center w-full max-w-xs text-center md:max-w-md"
+          className="password w-full max-w-xs text-center sm:max-w-xl"
           name="delete"
           autoComplete="off"
         >
@@ -82,7 +82,7 @@ const DeleteWalletView = () => {
 
           {hasAccountFunds && (
             <>
-              <p className="max-w-xs text-left text-xs leading-4">
+              <p className="my-5 text-left text-xs leading-4">
                 You still have funds in your wallet. Paste your seed phrase
                 below to delete wallet.
               </p>
@@ -126,7 +126,7 @@ const DeleteWalletView = () => {
             </>
           )}
 
-          <div className="flex gap-x-8 justify-between md:absolute md:bottom-48">
+          <div className="flex gap-x-8 justify-between sm:absolute sm:bottom-48">
             <SecondaryButton type="button" onClick={() => navigate('/home')}>
               Cancel
             </SecondaryButton>

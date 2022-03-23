@@ -1,7 +1,13 @@
 import { useStore, useUtils } from 'hooks/index';
 import React, { useState, useEffect } from 'react';
 import { Icon, IconButton } from 'components/index';
-import { ellipsis, formatDate, formatUrl, getController } from 'utils/index';
+import {
+  ellipsis,
+  formatDate,
+  formatUrl,
+  getController,
+  showSuccessAlert,
+} from 'utils/index';
 import { Disclosure } from '@headlessui/react';
 
 export const TransactionDetails = ({ transactionType, transactionDetails }) => {
@@ -14,13 +20,6 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
   const [newSenders, setNewSenders] = useState<any>({});
   // ? missing feedback for copy
   const [copied, copyText] = useCopyClipboard();
-
-  const showSuccessAlert = () => {
-    if (copied) {
-      alert.removeAll();
-      alert.success('Link successfully copied');
-    }
-  };
 
   const recipients: any = {};
   const senders: any = {};
@@ -225,7 +224,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
         </Disclosure>
       )}
 
-      {copied && showSuccessAlert()}
+      {showSuccessAlert(copied, 'Address succesfully copied', alert)}
     </>
   );
 };

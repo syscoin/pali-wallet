@@ -25,7 +25,7 @@ const PhraseView = () => {
 
       <div className="flex flex-col items-center justify-center text-center">
         <Form
-          className="password flex flex-col gap-8 items-center justify-center my-2 w-full max-w-xs text-center md:max-w-md"
+          className="password flex flex-col gap-8 items-center justify-center my-2 w-full max-w-xs text-center sm:max-w-xl"
           name="phraseview"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
@@ -34,7 +34,7 @@ const PhraseView = () => {
           <Form.Item
             name="password"
             hasFeedback
-            className="w-full md:max-w-md"
+            className="w-full sm:max-w-xl"
             rules={[
               {
                 required: true,

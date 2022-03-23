@@ -35,7 +35,7 @@ export const Start = () => {
   const unlock = (
     <>
       <Form
-        className="flex flex-col gap-8 items-center justify-center w-full max-w-xs text-center md:max-w-md"
+        className="flex flex-col gap-8 items-center justify-center w-full max-w-xs text-center sm:max-w-xl"
         name="basic"
         onFinish={onSubmit}
         autoComplete="off"

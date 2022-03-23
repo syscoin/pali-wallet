@@ -83,7 +83,7 @@ const CurrencyView = () => {
         }`}
       />
 
-      <p className="mx-6 my-3 text-left text-white text-xs">
+      <p className="mx-6 my-3 text-left text-white text-xs sm:text-center">
         You can choose and set your preferred currency to see in your wallet.
       </p>
 
@@ -174,7 +174,7 @@ const CurrencyView = () => {
         </div>
       </div>
 
-      <div className="fixed bottom-0 flex flex-col gap-y-3 items-center justify-center w-full h-44 bg-bkg-4">
+      <div className="fixed bottom-0 left-0 right-0 flex flex-col gap-y-3 items-center justify-center mx-auto w-full max-w-3xl h-44 bg-bkg-4">
         <p className="mb-2 text-left text-white text-sm">
           Check your balance in different currencies
         </p>

@@ -81,7 +81,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               <Input
                 type="text"
                 placeholder="Network name"
-                className="px-4 py-2 w-80 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
+                className="px-4 py-2 w-80 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full sm:max-w-xl md:w-full"
               />
             </Form.Item>
 
@@ -119,7 +119,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               <Input
                 type="text"
                 placeholder="Blockbook URL"
-                className="px-4 py-2 w-80 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
+                className="px-4 py-2 w-80 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full sm:max-w-xl md:w-full"
               />
             </Form.Item>
 
@@ -140,7 +140,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
                 placeholder="Chain ID"
                 className={`${
                   true &&
-                  'opacity-50 rounded-full py-2 pl-4 w-80 md:w-full bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus md:max-w-md'
+                  'opacity-50 rounded-full py-2 pl-4 w-80 md:w-full bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus sm:max-w-xl'
                 }`}
               />
             </Form.Item>

@@ -16,19 +16,17 @@ export const OnboardingLayout: FC<IOnboardingLayout> = ({
   <div className="flex flex-col gap-4 items-center justify-center md:pt-20">
     <LogoHeader />
 
-    <section>
-      <div className="flex gap-2 items-center justify-center">
-        <span className="text-center text-brand-royalblue text-xl font-bold tracking-normal">
-          {title}
-        </span>
+    <div className="flex gap-2 items-center justify-center">
+      <span className="text-center text-brand-royalblue text-xl font-bold tracking-normal">
+        {title}
+      </span>
 
-        {tooltipText && (
-          <Tooltip content={tooltipText}>
-            <QuestionCircleOutlined className="inline-flex w-3 text-brand-graylight text-sm" />
-          </Tooltip>
-        )}
-      </div>
-    </section>
+      {tooltipText && (
+        <Tooltip content={tooltipText}>
+          <QuestionCircleOutlined className="inline-flex w-3 text-brand-graylight text-sm" />
+        </Tooltip>
+      )}
+    </div>
 
     <section>{children}</section>
   </div>
