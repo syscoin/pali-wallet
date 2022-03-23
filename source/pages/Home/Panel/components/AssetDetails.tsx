@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import placeholder from 'assets/images/placeholder.png';
-import { Button, Tooltip, Icon } from 'components/index';
+import { Tooltip, Icon } from 'components/index';
 import { formatUrl, getController } from 'utils/index';
 import axios from 'axios';
 
@@ -35,8 +35,6 @@ export const AssetDetails = ({ assetType, assetData }) => {
 
     getImageLink();
   }, [description]);
-
-  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   const assetTransaction = [
     {
