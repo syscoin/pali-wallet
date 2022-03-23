@@ -157,16 +157,4 @@ describe('AccountController tests', () => {
     expect(inputs).toEqual(PSBT.data.inputs);
     expect(outputs).toStrictEqual(PSBT.data.outputs);
   });
-
-  it('should check if it is removing the trezor account correctly if network is testnet', () => {
-    const { accounts, activeNetwork } = store.getState().wallet;
-
-    if (activeNetwork === 'testnet') {
-      const trezorAccountId = accounts.findIndex(
-        (account: IAccountState) => account && account.trezorId
-      );
-
-      expect(accounts).toEqual(accounts.splice(trezorAccountId, 1));
-    }
-  });
 });
