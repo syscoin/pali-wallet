@@ -1,19 +1,31 @@
+// @ts-nocheck
+import { web3Provider } from '@pollum-io/sysweb3-network';
+
 export const EthereumProvider = () => {
-  const getNetwork = () => {};
+  const getNetwork = async () => {
+    const currentNetwork = await web3Provider.eth.net.getNetworkType();
+    return currentNetwork;
+  };
 
-  const getAccounts = () => {};
+  const getAccounts = async () => {
+    const accounts = await web3Provider.eth.getAccounts();
+    return accounts;
+  };
 
-  const getChainId = () => {};
+  const getChainId = async () => {
+    const currentChainId = await web3Provider.eth.getChainId();
+    return currentChainId;
+  };
 
-  const getAddress = () => {};
+  const getAddress = async () => {
+    const address = await web3Provider.eth.getAccounts();
+    return address[0];
+  };
 
-  const getBalance = () => {};
-
-  const getXpub = () => {};
-
-  const getTokens = () => {};
-
-  const getState = () => {};
+  const getBalance = async (address: string) => {
+    const accountBalance = await web3Provider.eth.getBalance(address);
+    return accountBalance;
+  };
 
   return {
     getAccounts,
@@ -21,8 +33,5 @@ export const EthereumProvider = () => {
     getChainId,
     getAddress,
     getBalance,
-    getXpub,
-    getTokens,
-    getState,
   };
 };
