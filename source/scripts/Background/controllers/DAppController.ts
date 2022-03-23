@@ -42,7 +42,7 @@ const DAppController = (): IDAppController => {
     return Object.keys(whitelist).includes(origin);
   };
 
-  const fromPageConnectDApp = (origin: string, title: string) => {
+  const pageConnectDApp = (origin: string, title: string) => {
     current = {
       origin,
       logo: `chrome://favicon/size/64@1x/${origin}`,
