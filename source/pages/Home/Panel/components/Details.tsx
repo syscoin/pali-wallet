@@ -47,7 +47,7 @@ export const DetailsView = () => {
   }, [tx || assetGuid]);
 
   return (
-    <Layout title={`${isAsset ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}>
+    <Layout title={`${assetGuid ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}>
       {transactionDetails ? (
         <>
           <ul className="scrollbar-styled mt-4 w-full h-96 text-sm overflow-auto md:h-full">

@@ -18,7 +18,6 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
 
   const [newRecipients, setNewRecipients] = useState<any>({});
   const [newSenders, setNewSenders] = useState<any>({});
-  // ? missing feedback for copy
   const [copied, copyText] = useCopyClipboard();
 
   const recipients: any = {};
