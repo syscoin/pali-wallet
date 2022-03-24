@@ -5,7 +5,6 @@ import { getHost, getController } from 'utils/index';
 import { Badge } from 'antd';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { browser } from 'webextension-polyfill-ts';
-import { Badge } from 'antd';
 
 export const NormalHeader: React.FC = () => {
   const { wallet } = getController();
