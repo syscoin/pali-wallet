@@ -1,8 +1,10 @@
+const { browser } = require('webextension-polyfill-ts');
+
 /*
 Passing messages from background script to popup
 */
 
-let port = chrome.runtime.connect({ name: 'trezor-connect' });
+let port = browser.runtime.connect({ name: 'trezor-connect' });
 
 port.onMessage.addListener((message) => {
   window.postMessage(message, window.location.origin);
