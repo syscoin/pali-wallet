@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import placeholder from 'assets/images/placeholder.png';
 import { Button, Tooltip, Icon } from 'components/index';
 import { formatUrl } from 'utils/index';
 import { getController } from 'utils/browser';
@@ -7,9 +6,6 @@ import axios from 'axios';
 
 export const AssetDetails = ({ assetType, assetData }) => {
   const controller = getController();
-
-  const [imageLink, setImageLink] = useState('');
-  const [loadingImage, setLoadingImage] = useState(false);
 
   const {
     assetGuid,
@@ -22,20 +18,19 @@ export const AssetDetails = ({ assetType, assetData }) => {
     description,
   } = assetData;
 
+  const hasImage = description.startsWith('https://ipfs.io/ipfs/');
+  const [imageLink, setImageLink] = useState<string>();
+
+  const getImageLink = async () => {
+    if (!hasImage) return;
+
+    const response = await axios.get(description);
+    setImageLink(response.data.image);
+  };
+
   useEffect(() => {
-    const getImageLink = async () => {
-      if (description && description.startsWith('https://ipfs.io/ipfs/')) {
-        setLoadingImage(true);
-
-        const response = await axios.get(description);
-
-        setImageLink(response.data.image);
-        setLoadingImage(false);
-      }
-    };
-
     getImageLink();
-  }, [description]);
+  }, [hasImage]);
 
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
@@ -80,7 +75,12 @@ export const AssetDetails = ({ assetType, assetData }) => {
 
   return (
     <>
-      {imageLink && !loadingImage ? (
+      {hasImage && !imageLink && (
+        <div className="flex items-center justify-center h-40">
+          <Icon name="loading" className="text-brand-royalblue" size={50} />
+        </div>
+      )}
+      {imageLink && (
         <Tooltip content="Click to open on IPFS">
           <img
             src={`${imageLink}`}
@@ -89,20 +89,6 @@ export const AssetDetails = ({ assetType, assetData }) => {
             onClick={() => imageLink && window.open(imageLink)}
           />
         </Tooltip>
-      ) : (
-        <>
-          {loadingImage ? (
-            <div className="flex items-center justify-center h-40">
-              <Icon name="loading" className="text-brand-royalblue" size={50} />
-            </div>
-          ) : (
-            <img
-              src={`${placeholder}`}
-              alt="syscoin"
-              className="mb-8 mt-4 mx-auto w-40 h-40 rounded-md cursor-not-allowed transition-all duration-200"
-            />
-          )}
-        </>
       )}
 
       {assetTransaction.map(({ label, value }: any) => (
