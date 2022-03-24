@@ -30,6 +30,8 @@ export const formatDate = (timestamp: string) => {
   const today = new Date();
   const yesterday = getYesterday();
 
+  console.log(formatedDate);
+
   if (formatedDate === format(today, formatStyle)) return 'Today';
   if (formatedDate === format(yesterday, formatStyle)) return 'Yesterday';
 
