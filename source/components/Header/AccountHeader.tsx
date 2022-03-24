@@ -4,7 +4,8 @@ import { useStore, useUtils } from 'hooks/index';
 import { toSvg } from 'jdenticon';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { useNavigate } from 'react-router-dom';
-import { ellipsis, getController } from 'utils/index';
+import { ellipsis } from 'utils/index';
+import { getController } from 'utils/browser';
 
 const AccountMenu: React.FC = () => {
   const navigate = useNavigate();
@@ -27,7 +28,9 @@ const AccountMenu: React.FC = () => {
       className="absolute right-3 inline-block text-right md:max-w-2xl"
     >
       <Menu.Button className="inline-flex justify-center w-full hover:text-button-primaryhover text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-        {encriptedMnemonic && <Icon name="dots" className="z-0" />}
+        {encriptedMnemonic && (
+          <Icon id="account-settings-btn" name="dots" className="z-0" />
+        )}
       </Menu.Button>
 
       <Transition

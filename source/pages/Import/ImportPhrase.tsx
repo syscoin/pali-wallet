@@ -1,6 +1,6 @@
 import React, { FC, useState } from 'react';
 import { OnboardingLayout, PrimaryButton } from 'components/index';
-import { getController } from 'utils/index';
+import { getController } from 'utils/browser';
 import { Form } from 'antd';
 import TextArea from 'antd/lib/input/TextArea';
 import { useForm } from 'antd/lib/form/Form';

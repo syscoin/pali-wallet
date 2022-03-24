@@ -1,4 +1,3 @@
-export * from './browser';
 export * from './format';
 export * from './getHost';
 export * from './isNft';
