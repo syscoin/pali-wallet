@@ -8,7 +8,7 @@ import AccountController from './AccountController';
 import WalletController from './WalletController';
 
 describe('AccountController tests', () => {
-  const { checkPassword } = WalletController();
+  const { checkPassword, web3 } = WalletController();
 
   const {
     decryptAES,
@@ -24,6 +24,7 @@ describe('AccountController tests', () => {
     setNewXpub,
   } = AccountController({
     checkPassword: () => checkPassword('secret'),
+    web3,
   });
 
   it('should encrypt and decrypt string correctly', () => {
