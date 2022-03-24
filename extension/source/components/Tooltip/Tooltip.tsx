@@ -22,7 +22,7 @@ interface ITooltip {
   title: string | ReactElement;
 }
 
-const Tooltip: FC<ITooltip> = ({ title, children, arrow, placement }) => {
+const Tooltip: FC<ITooltip> = ({ title, children, arrow = true, placement = 'bottom' }) => {
   return (
     <MUITooltip
       classes={{ tooltip: styles.tooltip, arrow: styles.arrow }}

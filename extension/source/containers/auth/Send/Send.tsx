@@ -30,6 +30,7 @@ import Spinner from '@material-ui/core/CircularProgress';
 import { Assets } from '../../../scripts/types';
 
 import styles from './Send.scss';
+import Tooltip from 'components/Tooltip';
 
 interface IWalletSend {
   initAddress?: string;
@@ -209,7 +210,9 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
       <Header backLink="/home" showName={false} />
 
       <form onSubmit={handleSubmit(onSubmit)} autoComplete="off">
-        <section className={styles.subheading}>Send {selectedAsset ? selectedAsset.symbol : "SYS"}</section>
+        <section className={styles.subheading}>
+          Send {selectedAsset ? selectedAsset.symbol : 'SYS'}
+        </section>
         <section className={styles.balance}>
           <div>
             Balance:{' '}
@@ -218,29 +221,46 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
             ) : (
               <span>{showAssetBalance()}</span>
             )}
-
-            {selectedAsset
-              ? selectedAsset.symbol
-              : <small>{activeNetwork == "testnet" ? "TSYS" : "SYS"}</small>}
+            {selectedAsset ? (
+              selectedAsset.symbol
+            ) : (
+              <small>{activeNetwork == 'testnet' ? 'TSYS' : 'SYS'}</small>
+            )}
           </div>
         </section>
 
         <section className={styles.content}>
           <ul className={styles.form}>
             <li className={styles.item}>
-              <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
                 <div>
                   <label htmlFor="address">Recipient Address</label>
                 </div>
 
-                <div style={{ columnGap: '3px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div
+                  style={{
+                    columnGap: '3px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
                   <label htmlFor="address">Verify address</label>
 
-                  <HelpOutlineIcon
-                    style={{ width: '17px', height: '17px' }}
-                    data-tip
-                    data-for="address_info"
-                  />
+                  <Tooltip
+                    title="ON for enable verification (recommended): Pali verify that is a valid SYS address and OFF for disable address verification: only disable this verification if you are fully aware of what you are doing and if you trust the recipient address you want to send for."
+                  >
+                    <HelpOutlineIcon
+                      style={{ width: '17px', height: '17px' }}
+                    />
+                  </Tooltip>
                 </div>
               </div>
 
@@ -253,8 +273,12 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               <img
                 src={Close}
                 alt="checked"
-                onClick={() => setAddress("")}
-                className={address && !isValidAddress ? styles.statusIsNotValidClass : styles.hideCloseIcon}
+                onClick={() => setAddress('')}
+                className={
+                  address && !isValidAddress
+                    ? styles.statusIsNotValidClass
+                    : styles.hideCloseIcon
+                }
               />
 
               <TextInput
@@ -269,33 +293,6 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
               <li className={styles.item}>
                 <div className={styles.textBtn} style={{ top: '-49px' }}>
-                  <div >
-                    <div className={styles.tooltip}>
-                      <ReactTooltip id="address_info"
-                        getContent={() =>
-                          <div style={{ backgroundColor: 'white' }}>
-                            <small style={{ fontWeight: 'bold' }}>
-                              ON for enable verification (recommended): Pali verify that is a valid SYS address <br />
-                              OFF for disable address verification: only disable this verification if you are <br /> fully aware of what you are doing and if you trust the recipient address you want to send for.<br />
-                              <br />
-                            </small>
-                          </div>
-                        }
-                        backgroundColor="white"
-                        textColor="black"
-                        borderColor="#4d76b8"
-                        effect='solid'
-                        delayHide={300}
-                        delayShow={300}
-                        delayUpdate={300}
-                        place="top"
-                        border
-                        type="info"
-                        multiline
-                      />
-                    </div>
-                  </div>
-
                   <Switch
                     offColor="#1b2e4d"
                     height={20}
@@ -304,53 +301,79 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                     onChange={handleAddressTypeChanged}
                   />
                 </div>
-
               </li>
             </li>
 
-            <div className={!selectedAsset ? styles.formBlockOne : styles.formBlock}>
+            <div
+              className={
+                !selectedAsset ? styles.formBlockOne : styles.formBlock
+              }
+            >
               <li className={!selectedAsset ? styles.noAssetItem : styles.item}>
-                <div
-                  className={styles.select}
-                  id="asset"
-                >
+                <div className={styles.select} id="asset">
                   <label
                     htmlFor="asset"
-                    style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
                   >
                     Choose Asset
                   </label>
                   <div
-                    className={clsx(styles.fullselect, { [styles.expanded]: expanded })}
+                    className={clsx(styles.fullselect, {
+                      [styles.expanded]: expanded,
+                    })}
                     onClick={() => setExpanded(!expanded)}
                   >
                     <span className={styles.selected}>
-                      {selectedAsset?.symbol || "SYS"}
+                      {selectedAsset?.symbol || 'SYS'}
                       <DownArrowIcon className={styles.arrow} />
                     </span>
                     <ul className={styles.options}>
-                      <li className={styles.option} onClick={() => handleAssetSelected(1)}>
+                      <li
+                        className={styles.option}
+                        onClick={() => handleAssetSelected(1)}
+                      >
                         <p>SYS</p>
                         <p>Native</p>
                       </li>
 
-                      {accounts.find(element => element.id === activeAccountId)!.assets.map((item, index) => {
-                        if (!controller.wallet.account.isNFT(item.assetGuid)) {
-                          return (
-                            <li className={styles.option} key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
-                              <p>{item.symbol}</p>
-                              <p>SPT</p>
-                            </li>
-                          )
-                        }
+                      {accounts
+                        .find((element) => element.id === activeAccountId)!
+                        .assets.map((item, index) => {
+                          if (
+                            !controller.wallet.account.isNFT(item.assetGuid)
+                          ) {
+                            return (
+                              <li
+                                className={styles.option}
+                                key={index}
+                                onClick={() =>
+                                  handleAssetSelected(item.assetGuid)
+                                }
+                              >
+                                <p>{item.symbol}</p>
+                                <p>SPT</p>
+                              </li>
+                            );
+                          }
 
-                        return (
-                          <li className={styles.option} key={index} onClick={() => handleAssetSelected(item.assetGuid)}>
-                            <p>{item.symbol}</p>
-                            <p>NFT</p>
-                          </li>
-                        )
-                      })}
+                          return (
+                            <li
+                              className={styles.option}
+                              key={index}
+                              onClick={() =>
+                                handleAssetSelected(item.assetGuid)
+                              }
+                            >
+                              <p>{item.symbol}</p>
+                              <p>NFT</p>
+                            </li>
+                          );
+                        })}
                     </ul>
                   </div>
                 </div>
@@ -366,30 +389,35 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                       data-tip
                       data-for="zdag_info"
                     />
-                    <ReactTooltip id="zdag_info"
-                      getContent={() =>
+                    <ReactTooltip
+                      id="zdag_info"
+                      getContent={() => (
                         <div style={{ backgroundColor: 'white' }}>
                           <small style={{ fontWeight: 'bold' }}>
                             OFF for Replace-by-fee (RBF) and ON for Z-DAG <br />
-                            Z-DAG: a exclusive Syscoin feature.<br />
-                            Z-DAG enable faster transactions but should not be used for high amounts
+                            Z-DAG: a exclusive Syscoin feature.
+                            <br />
+                            Z-DAG enable faster transactions but should not be
+                            used for high amounts
                             <br />
                             <strong>To know more:</strong>
                             <span
                               style={{ cursor: 'pointer' }}
                               onClick={() => {
-                                window.open("https://syscoin.org/news/what-is-z-dag");
+                                window.open(
+                                  'https://syscoin.org/news/what-is-z-dag'
+                                );
                               }}
                             >
                               <a href=""> What is Z-DAG?</a>
                             </span>
                           </small>
                         </div>
-                      }
+                      )}
                       backgroundColor="white"
                       textColor="black"
                       borderColor="#4d76b8"
-                      effect='solid'
+                      effect="solid"
                       delayHide={300}
                       delayShow={300}
                       delayUpdate={300}
@@ -414,10 +442,28 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
             <div>
               <li className={styles.item}>
-                <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label htmlFor="amount"> {selectedAsset ? selectedAsset.symbol : "SYS"} Amount</label>
+                <div
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <label htmlFor="amount">
+                    {' '}
+                    {selectedAsset ? selectedAsset.symbol : 'SYS'} Amount
+                  </label>
 
-                  {accounts.find(element => element.id === activeAccountId)!.balance === 0 && <small className={styles.description} style={{ textAlign: 'left' }}>You don't have SYS available.</small>}
+                  {accounts.find((element) => element.id === activeAccountId)!
+                    .balance === 0 && (
+                    <small
+                      className={styles.description}
+                      style={{ textAlign: 'left' }}
+                    >
+                      You don't have SYS available.
+                    </small>
+                  )}
                 </div>
 
                 <TextInput
@@ -435,7 +481,24 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                   type="button"
                   variant={styles.textBtn}
                   onClick={() =>
-                    setAmount(selectedAsset ? controller.wallet.account.isNFT(selectedAsset.assetGuid) ? String(selectedAsset.balance) : String((selectedAsset.balance / 10 ** selectedAsset.decimals).toFixed(selectedAsset.decimals)) : String(accounts.find(element => element.id === activeAccountId)!.balance))
+                    setAmount(
+                      selectedAsset
+                        ? controller.wallet.account.isNFT(
+                            selectedAsset.assetGuid
+                          )
+                          ? String(selectedAsset.balance)
+                          : String(
+                              (
+                                selectedAsset.balance /
+                                10 ** selectedAsset.decimals
+                              ).toFixed(selectedAsset.decimals)
+                            )
+                        : String(
+                            accounts.find(
+                              (element) => element.id === activeAccountId
+                            )!.balance
+                          )
+                    )
                   }
                 >
                   Max
@@ -445,7 +508,12 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
               <li className={styles.item}>
                 <label
                   htmlFor="fee"
-                  style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
                 >
                   Transaction Fee
                 </label>
@@ -478,8 +546,10 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
 
             <div className={styles.status}>
               <span className={styles.equalAmount}>
-                ≈ {!selectedAsset ? getFiatAmount(Number(amount) + Number(fee), 6) : getFiatAmount(Number(fee), 6)}
-
+                ≈{' '}
+                {!selectedAsset
+                  ? getFiatAmount(Number(amount) + Number(fee), 6)
+                  : getFiatAmount(Number(fee), 6)}
               </span>
               {!!Object.values(errors).length && (
                 <span className={styles.error}>
@@ -503,7 +573,8 @@ const WalletSend: FC<IWalletSend> = ({ initAddress = '' }) => {
                 theme="btn-outline-primary"
                 variant={styles.button}
                 disabled={
-                  accounts.find(element => element.id === activeAccountId)!.balance === 0 ||
+                  accounts.find((element) => element.id === activeAccountId)!
+                    .balance === 0 ||
                   checkAssetBalance() < Number(amount) ||
                   !isValidAddress ||
                   !amount ||
