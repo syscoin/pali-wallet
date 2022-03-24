@@ -1,6 +1,6 @@
 import { browser } from 'webextension-polyfill-ts';
 import {
-  listNewDapp,
+  // listNewDapp,
   unlistDapp,
   registerListeningSite as registerListeningSiteAction,
   deregisterListeningSite as deregisterListeningSiteAction,
@@ -10,13 +10,13 @@ import store from 'state/store';
 
 export interface IDAppController {
   deregisterListeningSite: (origin: string, eventName: string) => void;
-  fromPageConnectDApp: (origin: string, title: string) => boolean;
-  fromUserConnectDApp: (
-    origin: string,
-    dapp: IDAppInfo,
-    network: string,
-    accounts: string[]
-  ) => void;
+  // fromPageConnectDApp: (origin: string, title: string) => boolean;
+  // fromUserConnectDApp: (
+  //   origin: string,
+  //   dapp: IDAppInfo,
+  //   network: string,
+  //   accounts: string[]
+  // ) => void;
   fromUserDisconnectDApp: (origin: string) => void;
   getCurrent: () => IDAppInfo;
   getSigRequest: () => ISigRequest;
@@ -33,7 +33,7 @@ interface ISigRequest {
 }
 
 const DAppController = (): IDAppController => {
-  // let current: IDAppInfo = { origin: '', logo: '', title: '' };
+  let current: IDAppInfo = { origin: '', logo: '', title: '' };
   let request: ISigRequest;
 
   const isDAppConnected = (origin: string) => {
@@ -42,24 +42,26 @@ const DAppController = (): IDAppController => {
     return Object.keys(whitelist).includes(origin);
   };
 
-  // const pageConnectDApp = (origin: string, title: string) => {
-  //   current = {
-  //     origin,
-  //     logo: `chrome://favicon/size/64@1x/${origin}`,
-  //     title,
-  //   };
+  const pageConnectDApp = (origin: string, title: string) => {
+    current = {
+      origin,
+      logo: `chrome://favicon/size/64@1x/${origin}`,
+      title,
+    };
 
-  //   return isDAppConnected(origin);
-  // };
+    return isDAppConnected(origin);
+  };
 
-  // const userConnectDApp = (
-  //   origin: string,
-  //   dapp: IDAppInfo,
-  //   network: string,
-  //   accounts: string[]
-  // ) => {
-  //   store.dispatch(listNewDapp({ id: origin, dapp, network, accounts }));
-  // };
+  const userConnectDApp = (
+    origin: string,
+    dapp: IDAppInfo,
+    network: string,
+    accounts: string[]
+  ) => {
+    store.dispatch(listNewDapp({ id: origin, dapp, network, accounts }));
+  };
+
+  console.log(userConnectDApp, pageConnectDApp);
 
   const _dispatchEvents = async (events: any[]) => {
     const background = await browser.runtime.getBackgroundPage();
