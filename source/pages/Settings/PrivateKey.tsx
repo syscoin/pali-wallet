@@ -41,7 +41,7 @@ const PrivateKeyView = () => {
           <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>
         </CopyCard>
 
-        <p className="ml-8 my-5 text-xs sm:text-center md:ml-0">
+        <p className="ml-8 my-5 text-xs sm:text-center md:ml-0 md:text-left">
           To see your private key, input your password
         </p>
 
@@ -99,7 +99,6 @@ const PrivateKeyView = () => {
           }
         >
           <p>View account on explorer</p>
-
           <Icon name="select" className="mb-1" />
         </div>
       </div>
