@@ -4,7 +4,7 @@ on:
 
 jobs:
   test:
-    name: test and lint
+    name: yarn test-all
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -13,4 +13,4 @@ jobs:
           node-version: lts/*
           cache: yarn
       - run: yarn install
-      - run: yarn lint
+      - run: yarn test-all
