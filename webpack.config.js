@@ -73,12 +73,12 @@ module.exports = {
     app: path.join(sourcePath, 'pages/App', 'index.tsx'),
     trezorScript: path.join(
       sourcePath,
-      'scripts/ContentScript',
+      'scripts/ContentScript/trezor',
       'trezor-content-script.ts'
     ),
     trezorUSB: path.join(
       sourcePath,
-      'scripts/ContentScript',
+      'scripts/ContentScript/trezor',
       'trezor-usb-permissions.ts'
     ),
   },
