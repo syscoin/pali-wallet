@@ -12,9 +12,7 @@ import {
 import cssToXPath from 'css-to-xpath';
 
 interface CustomWebElement extends WebElement {
-  click(): Promise<void>;
   fill(input);
-  getText(): string;
   press(key): Promise<void>;
   waitForElementState(state, timeout);
 }
