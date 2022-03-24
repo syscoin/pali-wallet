@@ -18,7 +18,7 @@ import axios from 'axios';
 import { IWalletController } from 'types/controllers';
 
 import AccountController from './AccountController';
-import { Web3Controller } from './Web3Controller';
+import Web3Controller from './Web3Controller';
 
 const sys = require('syscoinjs-lib');
 
@@ -64,7 +64,10 @@ const WalletController = (): IWalletController => {
     return encriptedPassword === pwd;
   };
 
-  const account = AccountController({ checkPassword });
+  const web3 = Web3Controller();
+  const account = AccountController({ checkPassword, web3 });
+
+  const { setActiveNetwork, web3Provider } = web3;
 
   const isLocked = () => !encriptedPassword || !HDsigner;
 
@@ -410,8 +413,6 @@ const WalletController = (): IWalletController => {
       return Object.assign(getSpecificNetwork[0]);
     };
 
-    const { changeNetwork, web3Provider } = Web3Controller();
-
     const newNetwork = await getTheNewNetwork(networks, chainId);
 
     if (chainId === 57 || chainId === 5700) {
@@ -425,13 +426,13 @@ const WalletController = (): IWalletController => {
         })
       );
     } else {
-      await changeNetwork(chainId);
+      await setActiveNetwork(chainId);
 
       store.dispatch(
         changeActiveNetwork({
           id: newNetwork[0]?.id,
           chainId: newNetwork[0]?.chainId,
-          beUrl: web3Provider?.currentProvider?.host,
+          beUrl: String(web3Provider?.currentProvider),
           label: newNetwork[0]?.label,
           type: newNetwork[0]?.type,
         })
@@ -548,6 +549,7 @@ const WalletController = (): IWalletController => {
   };
 
   return {
+    web3,
     account,
     isLocked,
     setWalletPassword,

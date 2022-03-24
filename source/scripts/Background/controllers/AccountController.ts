@@ -33,7 +33,6 @@ import {
 } from 'state/wallet';
 
 import { sortList, isNFT, countDecimals } from './utils';
-import { Web3Controller } from './Web3Controller';
 
 const syscointx = require('syscointx-js');
 const coinSelectSyscoin = require('coinselectsyscoin');
@@ -42,6 +41,7 @@ const sys = require('syscoinjs-lib');
 
 const AccountController = (actions: {
   checkPassword: (pwd: string) => boolean;
+  web3: any;
 }): IAccountController => {
   let intervalId: any;
   let globalAccount: IAccountState | undefined;
@@ -59,7 +59,7 @@ const AccountController = (actions: {
     mintNFT: null,
   };
 
-  const { importAccount, getBalance } = Web3Controller();
+  const { importAccount, getBalance } = actions.web3;
 
   const decryptAES = (encryptedString: any, key: string) =>
     CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);

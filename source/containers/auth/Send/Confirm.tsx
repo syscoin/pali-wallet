@@ -11,11 +11,11 @@ import {
   useTransaction,
 } from 'hooks/index';
 import CryptoJS from 'crypto-js';
-import { Web3Controller } from 'scripts/Background/controllers/Web3Controller';
 
 export const SendConfirm = () => {
-  const { changeNetwork, sendTransactions } = Web3Controller();
-  const controller = useController();
+  const {
+    wallet: { account, web3 },
+  } = useController();
   const { activeAccount } = useAccount();
   const { alert, navigate } = useUtils();
   const { confirmingTransaction, activeNetworkType, activeNetwork } =
@@ -28,26 +28,24 @@ export const SendConfirm = () => {
 
   const { ellipsis, formatURL } = useFormat();
 
-  const tempTx = controller.wallet.account.getTemporaryTransaction('sendAsset');
+  const tempTx = account.getTemporaryTransaction('sendAsset');
 
   const handleConfirm = async () => {
-    const recommendedFee = await controller.wallet.account.getRecommendFee();
+    const recommendedFee = await account.getRecommendFee();
 
     if ((activeAccount ? activeAccount.balance : -1) > 0) {
       setLoading(true);
 
       if (activeNetworkType === 'syscoin') {
         try {
-          const callback =
-            controller.wallet.account.confirmSendAssetTransaction;
+          const callback = account.confirmSendAssetTransaction;
 
           console.log('item asset send', tempTx);
 
-          const response =
-            await controller.wallet.account.confirmTemporaryTransaction({
-              type: 'sendAsset',
-              callback,
-            });
+          const response = await account.confirmTemporaryTransaction({
+            type: 'sendAsset',
+            callback,
+          });
 
           console.log(response);
 
@@ -132,17 +130,17 @@ export const SendConfirm = () => {
       } else {
         try {
           if (activeNetworkType === 'web3' && activeNetwork === 'rinkeby') {
-            changeNetwork(4);
+            web3.changeNetwork(4);
           }
           if (activeNetworkType === 'web3' && activeNetwork === 'mainnet') {
-            changeNetwork(1);
+            web3.changeNetwork(1);
           }
 
           const decryptPrivateKey = CryptoJS.AES.decrypt(
             String(activeAccount?.web3PrivateKey),
             'encripted'
           ).toString(CryptoJS.enc.Utf8);
-          await sendTransactions(
+          await web3.sendTransactions(
             decryptPrivateKey,
             tempTx.toAddress,
             Number(tempTx.amount)

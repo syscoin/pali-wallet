@@ -30,6 +30,7 @@ export interface IWalletController {
   switchNetwork: (chainId: number) => void;
   switchWallet: (id: number) => void;
   unLock: (pwd: string) => Promise<boolean>;
+  web3: Readonly<any>;
 }
 
 export interface IAccountController {
