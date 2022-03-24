@@ -24,11 +24,13 @@ const getYesterday = () => {
 };
 
 export const formatDate = (timestamp: string) => {
-  const formatStyle = 'M-d-yyyy';
+  const formatStyle = 'MM-dd-yyyy';
   const formatedDate = format(new Date(timestamp), formatStyle);
 
   const today = new Date();
   const yesterday = getYesterday();
+
+  console.log(formatedDate);
 
   if (formatedDate === format(today, formatStyle)) return 'Today';
   if (formatedDate === format(yesterday, formatStyle)) return 'Yesterday';
