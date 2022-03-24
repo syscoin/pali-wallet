@@ -213,6 +213,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: path.join(viewsPath, 'trezor-usb-permissions.html'),
       filename: 'trezor-usb-permissions.html',
+      inject: 'body',
       chunks: ['trezorUSB'],
     }),
     new HtmlWebpackPlugin({

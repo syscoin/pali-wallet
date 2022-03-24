@@ -6,6 +6,16 @@ import IWalletState, {
 } from 'state/wallet/types';
 import { Assets, Transaction } from 'types/transactions';
 
+export interface PsbtTransaction {
+  addInput(objectArg: any): void;
+  addOutput(objectArg: any): void;
+  getInputOutputCounts(): {
+    inputCount: number;
+    outputCount: number;
+  };
+  toBuffer(): Buffer;
+}
+
 export const FAKE_PASSWORD = 'Asdqwe123!';
 export const FAKE_INVALID_PASSWORD = '12345';
 export const FAKE_SEED_PHRASE =
@@ -117,4 +127,86 @@ export const FAKE_TAB: ITab = {
 export const STATE_W_ACCOUNT: IWalletState = {
   ...initialState,
   accounts: [FAKE_ACCOUNT],
+};
+
+export const WITNESS_UTXO = {
+  script: Buffer.from([
+    0, 20, 170, 182, 235, 123, 26, 239, 64, 130, 174, 135, 252, 151, 153, 203,
+    118, 82, 30, 223, 183, 103,
+  ]),
+  value: 41845537606,
+};
+
+export const PARTIAL_SIG = [
+  {
+    pubkey: Buffer.from([
+      2, 128, 200, 72, 47, 230, 29, 211, 241, 250, 100, 236, 91, 40, 32, 160,
+      138, 94, 30, 17, 112, 204, 215, 54, 185, 3, 195, 235, 118, 147, 170, 47,
+      244,
+    ]),
+    signature: Buffer.from([
+      48, 68, 2, 32, 91, 31, 18, 138, 243, 95, 166, 68, 50, 142, 44, 219, 103,
+      126, 26, 117, 16, 144, 250, 126, 177, 166, 248, 39, 199, 156, 163, 144,
+      66, 162, 148, 1, 2, 32, 106, 110, 77, 165, 232, 246, 81, 180, 204, 137,
+      194, 224, 15, 214, 65, 160, 224, 91, 97, 196, 215, 100, 102, 38, 220, 64,
+      43, 225, 120, 140, 20, 43, 1,
+    ]),
+  },
+];
+
+export const BIP_32_DERIVATION = [
+  {
+    masterFingerprint: Buffer.from([107, 150, 207, 141]),
+    path: "m/84'/1'/0'/1/1443",
+    pubkey: Buffer.from([
+      2, 128, 200, 72, 47, 230, 29, 211, 241, 250, 100, 236, 91, 40, 32, 160,
+      138, 94, 30, 17, 112, 204, 215, 54, 185, 3, 195, 235, 118, 147, 170, 47,
+      244,
+    ]),
+  },
+];
+
+export const FINAL_SCRIPT_WITNESS = Buffer.from([
+  2, 71, 48, 68, 2, 32, 91, 31, 18, 138, 243, 95, 166, 68, 50, 142, 44, 219,
+  103, 126, 26, 117, 16, 144, 250, 126, 177, 166, 248, 39, 199, 156, 163, 144,
+  66, 162, 148, 1, 2, 32, 106, 110, 77, 165, 232, 246, 81, 180, 204, 137, 194,
+  224, 15, 214, 65, 160, 224, 91, 97, 196, 215, 100, 102, 38, 220, 64, 43, 225,
+  120, 140, 20, 43, 1, 33, 2, 128, 200, 72, 47, 230, 29, 211, 241, 250, 100,
+  236, 91, 40, 32, 160, 138, 94, 30, 17, 112, 204, 215, 54, 185, 3, 195, 235,
+  118, 147, 170, 47, 244,
+]);
+
+export const UNKNOWN_KEY_VALS = [
+  {
+    key: Buffer.from([97, 100, 100, 114, 101, 115, 115]),
+    value: Buffer.from([
+      116, 115, 121, 115, 49, 113, 52, 50, 109, 119, 107, 55, 99, 54, 97, 97,
+      113, 103, 57, 116, 53, 56, 108, 106, 116, 101, 110, 106, 109, 107, 50,
+      103, 48, 100, 108, 100, 109, 56, 117, 51, 110, 52, 121, 108,
+    ]),
+  },
+  {
+    key: Buffer.from([112, 97, 116, 104]),
+    value: Buffer.from([
+      109, 47, 56, 52, 39, 47, 49, 39, 47, 48, 39, 47, 49, 47, 49, 52, 52, 51,
+    ]),
+  },
+];
+
+export const FAKE_PSBT: any = {
+  data: {
+    inputs: [
+      {
+        witnessUtxo: WITNESS_UTXO,
+        partialSig: PARTIAL_SIG,
+        bip32Derivation: BIP_32_DERIVATION,
+        finalScriptWitness: FINAL_SCRIPT_WITNESS,
+        unknownKeyVals: UNKNOWN_KEY_VALS,
+      },
+    ],
+    outputs: [{}, {}, {}],
+    globalMap: {
+      unsignedTx: undefined,
+    },
+  },
 };

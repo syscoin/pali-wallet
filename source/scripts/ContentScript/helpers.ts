@@ -348,6 +348,12 @@ export const listenAndSendMessageFromPageToBackground = (event: any) => {
       messageNewTarget: 'background',
       messageData: null,
     },
+    {
+      messageType: 'RESET_CONNECTION_INFO',
+      messageTarget: 'contentScript',
+      messageNewTarget: 'background',
+      messageData: { id: null },
+    },
   ];
 
   return browserMessagesArray;
