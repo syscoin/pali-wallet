@@ -23,7 +23,7 @@ export const Send: FC<ISend> = () => {
   const activeAccount = controller.wallet.account.getActiveAccount();
 
   const { alert, navigate } = useUtils();
-  const { activeNetwork, fiat } = useStore();
+  const { activeNetwork, fiat, activeNetworkType } = useStore();
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
@@ -81,7 +81,10 @@ export const Send: FC<ISend> = () => {
     try {
       controller.wallet.account.updateTemporaryTransaction({
         tx: {
-          fromAddress: activeAccount?.address.main,
+          fromAddress:
+            activeNetworkType === 'syscoin'
+              ? activeAccount?.address.main
+              : activeAccount?.web3Address,
           toAddress: receiver,
           amount,
           fee,
@@ -180,7 +183,9 @@ export const Send: FC<ISend> = () => {
               >
                 {selectedAsset?.symbol
                   ? formatUrl(String(selectedAsset?.symbol), 2)
-                  : 'SYS'}
+                  : activeNetworkType === 'syscoin'
+                  ? 'SYS'
+                  : 'ETH'}
                 <ChevronDoubleDownIcon
                   className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
                   aria-hidden="true"
@@ -203,7 +208,7 @@ export const Send: FC<ISend> = () => {
                         onClick={() => handleSelectedAsset(-1)}
                         className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                       >
-                        <p>SYS</p>
+                        <p>{activeNetworkType === 'syscoin' ? 'SYS' : 'ETH'}</p>
 
                         <small>Native</small>
                       </button>
@@ -240,7 +245,9 @@ export const Send: FC<ISend> = () => {
             >
               <Tooltip
                 childrenClassName="text-brand-white h-4"
-                content="Pali verifies your address to check if it is a valid SYS address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing."
+                content={`Pali verifies your address to check if it is a valid ${
+                  activeNetworkType === 'syscoin' ? 'SYS' : 'Ethereum'
+                } address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing.`}
               >
                 <p className="text-10px">Verify address</p>
               </Tooltip>
@@ -411,7 +418,10 @@ export const Send: FC<ISend> = () => {
     </div>
   );
   return (
-    <Layout title="SEND SYS" id="sendSYS-title">
+    <Layout
+      title={activeNetworkType === 'syscoin' ? 'SEND SYS' : 'SEND ETH'}
+      id="sendSYS-title"
+    >
       <SendForm />
     </Layout>
   );

@@ -109,6 +109,7 @@ export const FAKE_ACCOUNT: IAccountState = {
   ],
   xprv: FAKE_XPRV,
   xpub: FAKE_XPUB,
+  web3Address: '0x6a92eF94F6Db88098625a30396e0fde7255E97d5',
 };
 
 export const FAKE_CONNECTION: Connection = {
