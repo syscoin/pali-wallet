@@ -490,7 +490,7 @@ describe('Wallet store actions', () => {
 
     const newState = reducer(initialState, changeActiveNetwork(payload));
 
-    expect(newState.activeNetwork).toEqual(payload.id);
+    expect(newState.activeNetwork).toEqual(payload.label);
     expect(newState.currentBlockbookURL).toEqual(payload.beUrl);
   });
 

@@ -183,7 +183,7 @@ export const NormalHeader: React.FC = () => {
                               {currentNetwork.label}
                             </span>
 
-                            {activeNetwork === currentNetwork.id && (
+                            {activeNetwork === currentNetwork.label && (
                               <Icon
                                 name="check"
                                 className="mb-1 w-4"
@@ -237,7 +237,7 @@ export const NormalHeader: React.FC = () => {
                                 {currentNetwork.label}
                               </span>
 
-                              {activeNetwork === currentNetwork.id && (
+                              {activeNetwork === currentNetwork.label && (
                                 <Icon
                                   name="check"
                                   className="mb-1 w-4"

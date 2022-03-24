@@ -393,13 +393,7 @@ const WalletController = (): IWalletController => {
   const switchNetwork = async (networkId: string) => {
     const { networks } = store.getState().wallet;
 
-    store.dispatch(
-      changeActiveNetwork({
-        id: networkId,
-        beUrl: networks[networkId]?.beUrl,
-        label: '',
-      })
-    );
+    store.dispatch(changeActiveNetwork(networks[networkId]));
 
     try {
       const response = await axios.get(`${networks[networkId].beUrl}/api/v2`);
