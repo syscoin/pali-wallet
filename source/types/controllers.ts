@@ -14,7 +14,6 @@ export interface IWalletController {
   account: Readonly<IAccountController>;
   addNewAccount: (label?: string) => Promise<string | null>;
   checkPassword: (pwd: string) => boolean;
-  createHardwareWallet: () => void;
   createWallet: (isUpdated?: boolean) => void;
   deleteWallet: (pwd: string) => void;
   encryptedPassword: string;

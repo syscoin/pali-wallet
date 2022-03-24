@@ -8,8 +8,8 @@ const ConnectHardwareWalletView: FC = () => {
 
   const controller = getController();
 
-  const handleCreateHardwareWallet = () => {
-    controller.wallet.createHardwareWallet();
+  const handleCreateHardwareWallet = async () => {
+    await controller.wallet.trezor.connectHardware();
   };
 
   return (

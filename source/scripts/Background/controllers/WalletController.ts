@@ -124,42 +124,6 @@ const WalletController = (): IWalletController => {
     });
   };
 
-  const createHardwareWallet = async () => {
-    const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
-
-    if (isTestnet) {
-      openNotificationsPopup(
-        "Can't create hardware wallet on testnet",
-        "Trezor doesn't support SYS testnet"
-      );
-
-      return;
-    }
-
-    try {
-      const TrezorSigner = new sys.utils.TrezorSigner();
-
-      TrezorSigner.createAccount()
-        .then(async () => {
-          openNotificationsPopup(
-            'Hardware Wallet connected',
-            'Trezor Wallet account created'
-          );
-
-          await account.subscribeAccount(true, TrezorSigner, undefined, false);
-          await account.updateTokensState();
-        })
-        .catch((error: any) => {
-          openNotificationsPopup(
-            'Hardware Wallet error',
-            `Trezor Error: ${error}`
-          );
-        });
-    } catch (error) {
-      openNotificationsPopup('Hardware Wallet error', `Trezor Error: ${error}`);
-    }
-  };
-
   const getPhrase = (pwd: string) =>
     checkPassword(pwd) ? HDsigner.mnemonic : null;
 
@@ -493,7 +457,6 @@ const WalletController = (): IWalletController => {
     setWalletPassword,
     generatePhrase,
     createWallet,
-    createHardwareWallet,
     checkPassword,
     getPhrase,
     deleteWallet,
