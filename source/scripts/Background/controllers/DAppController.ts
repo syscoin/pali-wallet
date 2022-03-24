@@ -58,7 +58,8 @@ const DAppController = (): IDAppController => {
     network: string,
     accounts: string[]
   ) => {
-    store.dispatch(listNewDapp({ id: origin, dapp, network, accounts }));
+    // store.dispatch(listNewDapp({ id: origin, dapp, network, accounts }));
+    console.log(origin, dapp, network, accounts);
   };
 
   console.log(userConnectDApp, pageConnectDApp);
