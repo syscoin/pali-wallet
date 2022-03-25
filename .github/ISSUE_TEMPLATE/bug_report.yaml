@@ -52,8 +52,8 @@ body:
       label: Is this a trezor issue?
       multiple: false
       options:
-        - Yes
-        - No
+        - 'Yes'
+        - 'No'
     validations:
       required: true
   - type: textarea
