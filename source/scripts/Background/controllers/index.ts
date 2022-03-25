@@ -1,4 +1,4 @@
-import { IWalletController } from 'types/controllers';
+import { IDAppController, IWalletController } from 'types/controllers';
 import { browser } from 'webextension-polyfill-ts';
 import { EthereumProvider } from 'scripts/Provider/EthereumProvider';
 import { PaliProvider } from 'scripts/Provider/PaliProvider';
@@ -6,7 +6,7 @@ import { PaliProvider } from 'scripts/Provider/PaliProvider';
 import WalletController from './WalletController';
 import ControllerUtils, { IControllerUtils } from './ControllerUtils';
 import ConnectionsController from './ConnectionsController';
-import DAppController, { IDAppController } from './DAppController';
+import DAppController from './DAppController';
 
 export interface IMasterController {
   appRoute: (newRoute?: string) => string;
