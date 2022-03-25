@@ -70,7 +70,7 @@ const WalletController = (): IWalletController => {
   const account = AccountController({ checkPassword, web3 });
 
   const { setActiveNetwork, web3Provider } = web3;
-  const isLocked = () => !encriptedPassword || !HDsigner;
+  const isLocked = () => !encryptedPassword || !HDsigner;
   const trezor = TrezorController({ account });
   const retrieveEncriptedMnemonic = () => {
     // not encrypted for now but we got to retrieve

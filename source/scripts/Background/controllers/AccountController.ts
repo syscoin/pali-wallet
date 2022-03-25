@@ -799,12 +799,12 @@ const AccountController = (actions: {
 
     const encryptedMnemonic = CryptoJS.AES.encrypt(
       sysjs.Signer.mnemonic,
-      encriptedPassword
+      encryptedPassword
     );
 
     const web3Account = await importAccount(
       encryptedMnemonic,
-      encriptedPassword
+      encryptedPassword
     );
 
     globalAccount = {
