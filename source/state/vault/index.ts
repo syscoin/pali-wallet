@@ -25,6 +25,7 @@ export const initialState: IVaultState = {
     trezorId: -1,
     xprv: '',
     xpub: '',
+    web3Address: '',
   },
   networks: {
     syscoin: {
