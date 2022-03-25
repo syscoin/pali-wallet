@@ -69,6 +69,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
           >
             <Form.Item
               name="network"
+              className="md:w-full"
               hasFeedback
               rules={[
                 {
@@ -80,12 +81,13 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               <Input
                 type="text"
                 placeholder="Network name"
-                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
+                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
               />
             </Form.Item>
 
             <Form.Item
               name="blockbookURL"
+              className="md:w-full"
               hasFeedback
               rules={[
                 {
@@ -110,12 +112,13 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               <Input
                 type="text"
                 placeholder="Blockbook URL"
-                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
+                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
               />
             </Form.Item>
 
             <Form.Item
               name="chainID"
+              className="md:w-full"
               hasFeedback
               rules={[
                 {
@@ -145,7 +148,10 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               <Input
                 type="text"
                 placeholder="Chain ID"
-                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
+                className={`${
+                  true &&
+                  'opacity-50 rounded-full py-2 pl-4 w-72 md:w-full bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus md:max-w-md'
+                }`}
               />
             </Form.Item>
 
@@ -153,7 +159,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               You can edit this later if you need on network settings menu.
             </p>
 
-            <div className="absolute bottom-12">
+            <div className="absolute bottom-12 md:bottom-72 xl:top-96">
               <SecondaryButton type="submit" loading={loading}>
                 Save
               </SecondaryButton>

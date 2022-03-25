@@ -30,7 +30,7 @@ const DeleteWalletView = () => {
 
   return (
     <Layout title="DELETE WALLET">
-      <Card type="info">
+      <Card type="info" className="md:mt-8">
         <p>
           <b className="text-warning-info">WARNING:</b> This will delete the
           wallet created with your current seed phrase. If in the future you
@@ -38,15 +38,14 @@ const DeleteWalletView = () => {
         </p>
       </Card>
 
-      <p className="mr-28 my-3 text-left text-white text-xs">
-        Please input your wallet password
-      </p>
-
       <div className="flex flex-col items-center justify-center px-5 w-full">
+        <p className="my-3 w-full max-w-xs text-left text-white text-xs md:max-w-md">
+          Please input your wallet password
+        </p>
         <Form
           form={form}
           onFinish={onSubmit}
-          className="password flex flex-col gap-6 items-center justify-center w-full max-w-xs text-center"
+          className="password flex flex-col gap-6 items-center justify-center w-full max-w-xs text-center md:max-w-md"
           name="delete"
           autoComplete="off"
         >
@@ -82,7 +81,7 @@ const DeleteWalletView = () => {
 
           {hasAccountFunds && (
             <>
-              <p className="max-w-xs text-left text-xs leading-4">
+              <p className="max-w-xs text-left text-xs leading-4 md:max-w-md">
                 You still have funds in your wallet. Paste your seed phrase
                 below to delete wallet.
               </p>
@@ -126,23 +125,18 @@ const DeleteWalletView = () => {
             </>
           )}
 
-          <div className="absolute bottom-12 flex gap-x-4 justify-between">
-            <SecondaryButton
-              type="button"
-              onClick={() => navigate('/home')}
-              action
-            >
+          <div className="2xl:bottom-60 flex gap-x-8 justify-between md:absolute md:bottom-36">
+            <PrimaryButton type="button" onClick={() => navigate('/home')}>
               Cancel
-            </SecondaryButton>
+            </PrimaryButton>
 
-            <PrimaryButton
-              action
+            <SecondaryButton
               type="submit"
               disabled={!isPasswordValid || !isSeedValid}
               id="delete-btn"
             >
               Delete
-            </PrimaryButton>
+            </SecondaryButton>
           </div>
         </Form>
       </div>
