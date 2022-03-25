@@ -410,10 +410,10 @@ const WalletController = (): IWalletController => {
       if (response && blockbook && backend) {
         let isTestnet = false;
 
-        if (
-          blockbook.coin === 'Syscoin' ||
-          blockbook.coin === 'Syscoin Testnet'
-        ) {
+        const blockBookVerification =
+          blockbook.coin === 'Syscoin' || blockbook.coin === 'Syscoin Testnet';
+
+        if (blockBookVerification) {
           if (backend.chain === 'main') {
             isTestnet = false;
           }
