@@ -56,21 +56,21 @@ export const initialState: IWalletState = {
         beUrl: 'https://blockbook-dev.elint.services/',
         type: 'syscoin',
       },
-      polygon: {
-        mainnet: {
-          id: 'mainnet',
-          chainId: 137,
-          label: 'Mainnet',
-          beUrl: '',
-          type: 'polygon',
-        },
-        testnet: {
-          id: 'testnet',
-          chainId: 80001,
-          label: 'Testnet',
-          beUrl: '',
-          type: 'polygon',
-        },
+    },
+    polygon: {
+      mainnet: {
+        id: 'mainnet',
+        chainId: 137,
+        label: 'Mainnet',
+        beUrl: '',
+        type: 'polygon',
+      },
+      testnet: {
+        id: 'testnet',
+        chainId: 80001,
+        label: 'Testnet',
+        beUrl: '',
+        type: 'polygon',
       },
     },
     web3: {

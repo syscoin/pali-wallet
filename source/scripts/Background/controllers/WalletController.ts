@@ -100,7 +100,7 @@ const WalletController = (): IWalletController => {
       walletPassword: null,
       isTestnet: false,
     });
-    setSjs({ SignerIn: HDsigner, blockbookURL: networks.main.beUrl });
+    setSjs({ SignerIn: HDsigner, blockbookURL: networks.syscoin.main.beUrl });
 
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
@@ -411,6 +411,7 @@ const WalletController = (): IWalletController => {
     };
 
     const newNetwork = await getTheNewNetwork(networks, chainId);
+    console.log(newNetwork);
 
     if (chainId === 57 || chainId === 5700) {
       store.dispatch(
