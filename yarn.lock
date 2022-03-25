@@ -2054,22 +2054,7 @@
   dependencies:
     rimraf "^3.0.2"
 
-  dependencies:
-    "@metamask/obs-store" "^7.0.0"
-    "@metamask/safe-event-emitter" "^2.0.0"
-    "@pollum-io/sysweb3-utils" "^1.0.3"
-    "@types/crypto-js" "^4.1.1"
-    axios "^0.26.1"
-    bip39 "^3.0.4"
-    crypto-js "^4.1.1"
-    ethereumjs-wallet "^1.0.2"
-    ethers "^5.6.0"
-    lodash "^4.17.21"
-    syscoinjs-lib "^1.0.209"
-    web3 "^1.7.1"
-    web3-utils "^1.7.1"
-
-"@pollum-io/sysweb3-keyring@^1.0.5":
+"@pollum-io/sysweb3-keyring@^1.0.4", "@pollum-io/sysweb3-keyring@^1.0.5":
   version "1.0.5"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.5.tgz#7e27554f64f3e2311aad02d0c3d49662be12f235"
   integrity sha512-vFS/EjuE+sx88cCjLH2enfM+BsbCu4TCna9jeUBJer9+5lGctXGOHpZ0AidTHhsGG1oxcvWqNG3+XVPKV9M7yg==
@@ -2458,7 +2443,6 @@
   resolved "https://registry.yarnpkg.com/@types/node/-/node-12.20.43.tgz#6cf47894da4a4748c62fccf720ba269e1b1ff5a4"
   integrity sha512-HCfJdaYqJX3BCzeihgZrD7b85Cu05OC/GVJ4kEYIflwUs4jbnUlLLWoq7hw1LBcdvUyehO+gr6P5JQ895/2ZfA==
 
-
 "@types/node@^16.7.13":
   version "16.11.26"
   resolved "https://registry.yarnpkg.com/@types/node/-/node-16.11.26.tgz#63d204d136c9916fb4dcd1b50f9740fe86884e47"
@@ -2468,7 +2452,6 @@
   version "17.0.23"
   resolved "https://registry.yarnpkg.com/@types/node/-/node-17.0.23.tgz#3b41a6e643589ac6442bdbd7a4a3ded62f33f7da"
   integrity sha512-UxDxWn7dl97rKVeVS61vErvw086aCYhDLyvRQZ5Rk65rZKepaFdm53GeqXaKBuOhED4e9uWq34IC3TdSdJJ2Gw==
-
 
 "@types/normalize-package-data@^2.4.0":
   version "2.4.1"
@@ -6519,7 +6502,7 @@ ethereumjs-wallet@^1.0.2:
     utf8 "^3.0.0"
     uuid "^8.3.2"
 
-ethers@^5.6.0:
+ethers@^5.5.4, ethers@^5.6.0, ethers@^5.6.1:
   version "5.6.1"
   resolved "https://registry.yarnpkg.com/ethers/-/ethers-5.6.1.tgz#a56cd67f1595b745dc3dde0ccf2b5de53a41a6d0"
   integrity sha512-qtl/2W+dwmUa5Z3JqwsbV3JEBZZHNARe5K/A2ePcNAuhJYnEKIgGOT/O9ouPwBijSqVoQnmQMzi5D48LFNOY2A==

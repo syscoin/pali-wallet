@@ -16,6 +16,17 @@ export interface IAccountState {
   xpub: string;
 }
 
+export type OmitExclude<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
+
+export type ICopyAccountState = Omit<
+  IAccountState,
+  'xprv' | 'web3PrivateKey' | 'connectedTo'
+>;
+
+export type ICopyWalletState = Omit<IWalletState, 'accounts'> & {
+  accounts: ICopyAccountState[];
+};
+
 export interface IAccountUpdateState {
   assets: Assets[];
   balance: number;

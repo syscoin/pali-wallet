@@ -32,6 +32,10 @@ export interface IWalletController {
   switchWallet: (id: number) => void;
   trezor: Readonly<any>;
   unLock: (pwd: string) => Promise<boolean>;
+  validateRPC: (
+    rpcURL: string,
+    chainID?: number | undefined
+  ) => Promise<boolean>;
   web3: Readonly<any>;
 }
 

@@ -68,6 +68,8 @@ const FAKE_ACCOUNT: IAccountState = {
   ],
   xprv: FAKE_XPRV,
   xpub: FAKE_XPUB,
+  web3Address: '',
+  web3PrivateKey: '',
 };
 
 export const FAKE_ASSETS: Assets[] = [

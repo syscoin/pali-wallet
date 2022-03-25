@@ -406,6 +406,8 @@ const AccountController = (actions: {
       assets: [],
       connectedTo: [],
       isTrezorWallet: false,
+      web3Address: '',
+      web3PrivateKey: '',
     };
 
     store.dispatch(updateStatus());

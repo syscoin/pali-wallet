@@ -18,11 +18,8 @@ export const useStore = () => {
     walletTokens,
     tabs,
     trustedApps,
+    networks,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
-
-  // const { temporaryTransactionState, status, timer, networks } = useSelector(
-  //   (state: RootState) => state.vault
-  // );
 
   const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
 
@@ -47,7 +44,7 @@ export const useStore = () => {
     currentURL,
     canConnect,
     connections,
-    networks: {},
+    networks,
     trustedApps,
     temporaryTransactionState: { executing: false, type: '' },
     fiat,
