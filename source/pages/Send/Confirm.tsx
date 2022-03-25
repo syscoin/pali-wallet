@@ -132,7 +132,7 @@ export const SendConfirm = () => {
 
           const decryptPrivateKey = CryptoJS.AES.decrypt(
             String(activeAccount?.web3PrivateKey),
-            'encripted'
+            'encrypted'
           ).toString(CryptoJS.enc.Utf8);
           await web3.sendTransactions(
             decryptPrivateKey,
