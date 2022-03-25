@@ -1,5 +1,5 @@
 import store from 'state/store';
-import IWalletState, {
+import {
   IAccountState,
   ICopyAccountState,
   ICopyWalletState,
@@ -28,17 +28,13 @@ const _getOmittedSensitiveAccountState = () => {
 
   const sensitiveData = ['xprv', 'connectedTo', 'web3PrivateKey'];
 
-  const _accounts: ICopyAccountState[] = [];
-
   for (const account of accounts) {
     sensitiveData.map((data: string) => {
       delete account[data];
-
-      _accounts.push(account);
     });
   }
 
-  return _accounts;
+  return accounts as ICopyAccountState[];
 };
 
 export const _getOmittedSensitiveState = () => {
