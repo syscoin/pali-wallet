@@ -33,6 +33,10 @@ export interface IWalletController {
   trezor: Readonly<any>;
   unLock: (pwd: string) => Promise<boolean>;
   web3: Readonly<any>;
+  validateRPC: (
+    rpcURL: string,
+    chainID?: number | undefined
+  ) => Promise<boolean>;
 }
 
 export interface IAccountController {
