@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Icon, IconButton } from 'components/index';
+import { Icon, IconButton, Tooltip } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
 import { getHost, getController } from 'utils/index';
+import { Badge } from 'antd';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { browser } from 'webextension-polyfill-ts';
 
@@ -352,14 +353,42 @@ export const NormalHeader: React.FC = () => {
 
   // TODO: breakdown GeneralMenu
   const GeneralMenu = () => (
-    <Menu as="div" className="absolute z-10 right-2 inline-block text-right">
+    <Menu
+      as="div"
+      className="absolute z-10 right-2 top-2 flex gap-x-4 items-center justify-evenly"
+    >
       {() => (
         <>
-          <Menu.Button as="button" className="mb-2 mr-0.8">
+          <Tooltip content={currentTabURL}>
+            <IconButton
+              onClick={() => navigate('/settings/networks/connected-sites')}
+              className="relative text-brand-white"
+            >
+              <Icon
+                name="globe"
+                className="hover:text-brand-royalblue text-white"
+              />
+
+              <Badge
+                className={`${
+                  isConnected
+                    ? 'text-warning-success bg-warning-succes'
+                    : 'text-warning-error bg-warning-error'
+                } absolute -right-1 top-1 w-3 h-3 s rounded-full `}
+              />
+            </IconButton>
+          </Tooltip>
+          <IconButton
+            onClick={handleRefresh}
+            className="hover:text-brand-deepPink100 text-brand-white"
+          >
+            <Icon name="reload" />
+          </IconButton>
+
+          <Menu.Button as="button" id="general-settings-button">
             {encriptedMnemonic && (
               <IconButton type="primary" shape="circle">
                 <Icon
-                  id="general-settings-button"
                   name="settings"
                   className="z-0 hover:text-brand-royalblue text-brand-white"
                 />
@@ -461,13 +490,6 @@ export const NormalHeader: React.FC = () => {
   return (
     <div className="relative flex items-center justify-between p-2 py-6 w-full text-gray-300 bg-bkg-1">
       <NetworkMenu />
-
-      <IconButton
-        onClick={handleRefresh}
-        className="absolute right-10 hover:text-brand-deepPink100 text-brand-white"
-      >
-        <Icon name="reload" wrapperClassname="mb-2 mr-2" />
-      </IconButton>
 
       <GeneralMenu />
     </div>

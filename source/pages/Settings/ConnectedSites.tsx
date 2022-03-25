@@ -26,7 +26,7 @@ const ConnectedSites = (): any => {
 
   return (
     <Layout title="CONNECTED SITES">
-      <p className="m-4 text-white text-xs">
+      <p className="m-4 text-white text-xs md:max-w-md">
         {activeAccount?.connectedTo.length
           ? `${activeAccount.label} is connected to:`
           : `${activeAccount?.label} is not connected to any sites. To connect to a SYS platform site, find the connect button on their site.`}
@@ -147,7 +147,7 @@ const ConnectedSites = (): any => {
           </Transition>
         )}
 
-        <div className="absolute bottom-12">
+        <div className="absolute bottom-12 md:static">
           <SecondaryButton type="button" onClick={() => navigate('/home')}>
             Close
           </SecondaryButton>

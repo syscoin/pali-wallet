@@ -825,6 +825,50 @@ const ConnectionsController = () => {
     });
   };
 
+  const disconnectWallet = () => {
+    console.log('sending message to wallet');
+
+    window.postMessage(
+      {
+        type: 'RESET_CONNECTION_INFO',
+        target: 'contentScript',
+        url: window.location.href,
+      },
+      '*'
+    );
+
+    // return new Promise(async (_, reject) => {
+    //   const callback = (event: any) => {
+    //     if (
+    //       event.data.type === 'WALLET_ERROR' &&
+    //       event.data.target === 'connectionsController'
+    //     ) {
+    //       reject(event.data.error);
+
+    //       window.removeEventListener('message', callback);
+    //     }
+
+    //     return null;
+    //   };
+
+    //   window.addEventListener('message', callback);
+
+    //   await sendMessage(
+    //     {
+    //       type: 'RESET_CONNECTION_INFO',
+    //       target: 'connectionsController',
+    //       freeze: true,
+    //       eventResult: 'complete',
+    //     },
+    //     {
+    //       type: 'RESET_CONNECTION_INFO',
+    //       target: 'contentScript',
+    //       url: window.location.href,
+    //     }
+    //   );
+    // });
+  };
+
   return {
     isLocked,
     isNFT,
@@ -847,6 +891,7 @@ const ConnectionsController = () => {
     getConnectedAccountXpub,
     getChangeAddress,
     signPSBT,
+    disconnectWallet,
   };
 };
 

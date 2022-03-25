@@ -721,7 +721,6 @@ const AccountController = (actions: {
   };
 
   const subscribeAccount = async (
-    encriptedPassword: any,
     isHardwareWallet = false,
     sjs?: any,
     label?: string,
@@ -816,7 +815,7 @@ const AccountController = (actions: {
       xpub: sysjs.Signer.getAccountXpub(),
       xprv: CryptoJS.AES.encrypt(
         signer.accounts[signer.accountIndex].getAccountPrivateKey(),
-        encriptedPassword
+        window.controller.wallet.encryptedPassword
       ).toString(),
       address: { main: mainAddress },
       assets: account.assets,
