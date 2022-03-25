@@ -8,8 +8,11 @@ import getSymbolFromCurrency from 'currency-symbol-map';
 
 const CurrencyView = () => {
   const controller = getController();
+  const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
   const activeAccount = controller.wallet.account.getActiveAccount();
+
+  if (!activeAccount) throw new Error('No account');
 
   const { accounts, activeAccountId, fiat, activeNetwork } = useStore();
 
@@ -17,12 +20,41 @@ const CurrencyView = () => {
   const [checkValueCoin, setCheckValueCoin] = useState('usd');
   const [confirmed, setConfirmed] = useState(false);
 
+  const { availableCoins } = fiat;
+  const convertCurrency = (value: number, toCoin: string) =>
+    value * availableCoins[toCoin];
+
+  const convertToSys = (value: number, fromCoin: string) =>
+    value / availableCoins[fromCoin];
+
   const [conversorValues, setConversorValues] = useState({
-    sys: activeAccount?.balance || 0,
-    fiat: 0,
+    sys: activeAccount.balance,
+    fiat: convertCurrency(activeAccount.balance, checkValueCoin),
   });
 
-  const { navigate } = useUtils();
+  const handleConvert = (value: number, toCoin: string) => {
+    setConversorValues({
+      sys: value,
+      fiat: convertCurrency(value, toCoin),
+    });
+  };
+
+  const handleReverseConvert = (value: number, fromCoin: string) => {
+    setConversorValues({
+      sys: convertToSys(value, fromCoin),
+      fiat: value,
+    });
+  };
+
+  const handleConfirmCurrencyChange = () => {
+    controller.utils.updateFiat(selectedCoin, 'syscoin');
+
+    setConfirmed(true);
+  };
+
+  const useFiatCurrency = fiat.current
+    ? String(fiat.current).toUpperCase()
+    : 'USD';
 
   const handleRefresh = () => {
     controller.wallet.account.getLatestUpdate();
@@ -39,38 +71,6 @@ const CurrencyView = () => {
       handleRefresh();
     }
   }, [!controller.wallet.isLocked(), accounts.length > 0]);
-
-  const handleSelectCoin = async (coin: string) => {
-    setSelectedCoin(coin);
-  };
-
-  const handleConvert = (value: number, type: string, comparedCoin: string) => {
-    if (type === 'sys') {
-      setConversorValues({
-        fiat: Number(
-          value * fiat.availableCoins[comparedCoin || checkValueCoin]
-        ),
-        sys: Number(value),
-      });
-
-      return;
-    }
-
-    setConversorValues({
-      fiat: Number(value),
-      sys: Number(value * fiat.availableCoins[comparedCoin || checkValueCoin]),
-    });
-  };
-
-  const handleConfirmCurrencyChange = () => {
-    controller.utils.updateFiat(selectedCoin, 'syscoin');
-
-    setConfirmed(true);
-  };
-
-  const useFiatCurrency = fiat.current
-    ? String(fiat.current).toUpperCase()
-    : 'USD';
 
   return (
     <Layout title="FIAT CURRENCY" id="fiat-currency-title">
@@ -123,7 +123,7 @@ const CurrencyView = () => {
                   <Menu.Item key={key}>
                     <button
                       key={key}
-                      onClick={() => handleSelectCoin(key)}
+                      onClick={() => setSelectedCoin(key)}
                       className="group flex gap-x-1 items-center justify-start px-4 py-2 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-brand-royalblue border-transparent border-opacity-30 transition-all duration-300"
                     >
                       {getSymbolFromCurrency(key.toUpperCase())}
@@ -183,7 +183,7 @@ const CurrencyView = () => {
           <Input
             type="number"
             onChange={(event) =>
-              handleConvert(Number(event.target.value), 'sys', checkValueCoin)
+              handleConvert(Number(event.target.value), checkValueCoin)
             }
             maxLength={20}
             value={Number(conversorValues.sys)}
@@ -194,11 +194,7 @@ const CurrencyView = () => {
             <p
               className="cursor-pointer"
               onClick={() =>
-                handleConvert(
-                  Number(activeAccount?.balance),
-                  checkValueCoin,
-                  checkValueCoin
-                )
+                handleConvert(Number(activeAccount.balance), checkValueCoin)
               }
             >
               MAX
@@ -221,11 +217,7 @@ const CurrencyView = () => {
             type="number"
             maxLength={20}
             onChange={(event) => {
-              handleConvert(
-                Number(event.target.value),
-                checkValueCoin,
-                checkValueCoin
-              );
+              handleReverseConvert(Number(event.target.value), checkValueCoin);
             }}
             value={Number(conversorValues.fiat)}
             className="flex items-center justify-between px-4 py-2 w-80 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none"
@@ -263,7 +255,7 @@ const CurrencyView = () => {
                           key={key}
                           onClick={() => {
                             setCheckValueCoin(key);
-                            handleConvert(0, key, key);
+                            handleConvert(conversorValues.sys, key);
                           }}
                           className="group flex gap-x-1 items-center justify-start px-4 py-2 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-brand-royalblue border-transparent border-opacity-30 transition-all duration-300"
                         >
