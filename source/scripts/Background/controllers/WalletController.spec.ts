@@ -104,13 +104,11 @@ describe('WalletController.ts tests', () => {
 
     importPhrase(seedphrase);
 
-    const { activeNetwork } = store.getState().wallet;
-
-    expect(activeNetwork).toEqual('main');
+    expect(store.getState().wallet.activeNetwork).toBe('main');
 
     switchNetwork('testnet');
 
-    expect(activeNetwork).toEqual('testnet');
+    expect(store.getState().wallet.activeNetwork).toBe('testnet');
   });
 
   it('should check if it is removing the trezor account correctly if network is testnet', () => {
@@ -130,6 +128,6 @@ describe('WalletController.ts tests', () => {
       (account) => account && account.trezorId
     );
 
-    expect(accounts).toEqual(accounts.splice(trezorAccountId, 1));
+    expect(trezorAccountId).toBe(-1);
   });
 });

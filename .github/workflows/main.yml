@@ -1,7 +1,6 @@
 on:
   pull_request:
     types: [opened, synchronize]
-
 jobs:
   test:
     name: yarn test-all
@@ -11,6 +10,6 @@ jobs:
       - uses: actions/setup-node@v2
         with:
           node-version: '16'
-          cache: yarn
+          check-latest: true
       - run: yarn install
       - run: yarn test-all
