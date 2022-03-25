@@ -13,7 +13,6 @@ describe('WalletController.ts tests', () => {
     checkPassword,
     importPhrase,
     logOut,
-    switchNetwork,
     isLocked,
     password,
     encryptedPassword,
@@ -93,43 +92,5 @@ describe('WalletController.ts tests', () => {
 
     const Locked = isLocked();
     expect(Locked).toBe(true);
-  });
-
-  it('should change network', () => {
-    const pwd = FAKE_PASSWORD;
-
-    setWalletPassword(pwd);
-
-    const seedphrase = FAKE_SEED_PHRASE;
-
-    importPhrase(seedphrase);
-
-    const { activeNetwork } = store.getState().wallet;
-
-    expect(activeNetwork).toEqual('main');
-
-    switchNetwork('testnet');
-
-    expect(activeNetwork).toEqual('testnet');
-  });
-
-  it('should check if it is removing the trezor account correctly if network is testnet', () => {
-    const pwd = FAKE_PASSWORD;
-
-    setWalletPassword(pwd);
-
-    const seedphrase = FAKE_SEED_PHRASE;
-
-    importPhrase(seedphrase);
-
-    switchNetwork('testnet');
-
-    const { accounts } = store.getState().wallet;
-
-    const trezorAccountId = accounts.findIndex(
-      (account) => account && account.trezorId
-    );
-
-    expect(accounts).toEqual(accounts.splice(trezorAccountId, 1));
   });
 });
