@@ -1,7 +1,8 @@
 const palette = require('./palette.js');
 
 module.exports = {
-  purge: ['./source/**/*.tsx'],
+  purge: false,
+  content: ['./source/*/.{html,js,jsx,ts,tsx}'],
   darkMode: false, // or 'media' or 'class'
   theme: {
     extend: {

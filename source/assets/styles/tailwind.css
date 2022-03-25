@@ -35,6 +35,17 @@ input[type='number']::-webkit-inner-spin-button {
   @apply p-2 pl-4 w-full h-20 text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none;
 }
 
+.ant-badge.ant-badge-status {
+  width: 10px;
+  height: 10px;
+  background: green;
+  color: green;
+  position: absolute;
+  top: 0;
+  border-radius: 50%;
+  right: 0;
+}
+
 .ant-input-affix-wrapper.ant-input-password > input,
 .ant-input-affix-wrapper.ant-input > input {
   @apply p-2 pl-4 w-full text-brand-graylight text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full;
