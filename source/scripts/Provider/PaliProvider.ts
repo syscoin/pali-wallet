@@ -1,4 +1,6 @@
 import { getController } from 'utils/browser';
+import { browser } from 'webextension-polyfill-ts';
+import store from 'state/store';
 
 export const PaliProvider = () => {
   const getNetwork = () => {};
@@ -62,6 +64,26 @@ export const PaliProvider = () => {
     };
   };
 
+  const notifyWalletChanges = async (): Promise<void> => {
+    const { activeNetworkType } = store.getState().wallet;
+    const { ...walletInfo } = store.getState().wallet;
+    const background = await browser.runtime.getBackgroundPage();
+
+    if (activeNetworkType === 'web3') {
+      return store.subscribe(() =>
+        background.dispatchEvent(
+          new CustomEvent('walletChanged', {
+            detail: {
+              data: { ...walletInfo },
+              chain: 'ethereum',
+            },
+          })
+        )
+      );
+    }
+    console.log('building...');
+  };
+
   return {
     getAccounts,
     getNetwork,
@@ -76,5 +98,6 @@ export const PaliProvider = () => {
     transferToken,
     signPSBT,
     getSignedPSBT,
+    notifyWalletChanges,
   };
 };
