@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Icon, IconButton } from 'components/index';
+import { Icon, IconButton, Tooltip } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
 import { getHost, getController } from 'utils/index';
 import { Badge } from 'antd';
@@ -277,21 +277,25 @@ export const NormalHeader: React.FC = () => {
     >
       {() => (
         <>
-          <IconButton
-            onClick={handleRefresh}
-            className="relative hover:text-brand-deepPink100 text-brand-white"
-          >
-            <Icon name="globe" className="text-white" />
+          <Tooltip content={currentTabURL}>
+            <IconButton
+              onClick={() => navigate('/settings/networks/connected-sites')}
+              className="relative text-brand-white"
+            >
+              <Icon
+                name="globe"
+                className="hover:text-brand-royalblue text-white"
+              />
 
-            <Badge
-              className={`${
-                isConnected
-                  ? 'text-warning-success bg-warning-succes'
-                  : 'text-warning-error bg-warning-error'
-              } absolute -right-1 top-1 w-3 h-3 s rounded-full`}
-            />
-          </IconButton>
-
+              <Badge
+                className={`${
+                  isConnected
+                    ? 'text-warning-success bg-warning-succes'
+                    : 'text-warning-error bg-warning-error'
+                } absolute -right-1 top-1 w-3 h-3 s rounded-full `}
+              />
+            </IconButton>
+          </Tooltip>
           <IconButton
             onClick={handleRefresh}
             className="hover:text-brand-deepPink100 text-brand-white"
