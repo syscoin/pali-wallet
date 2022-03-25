@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Pali Wallet",
-  "version": "1.0.25",
+  "version": "2.0.0",
   "icons": {
     "16": "assets/icons/favicon-16.png",
     "32": "assets/icons/favicon-32.png",
@@ -27,7 +27,7 @@
   "content_security_policy": "script-src 'self'; object-src 'self'",
   "__chrome|firefox__author": "Pollum Sys Teams",
   "__opera__developer": {
-    "name": "pollum labs"
+    "name": "Pollum Labs"
   },
   "__firefox__applications": {
     "gecko": {
@@ -66,7 +66,7 @@
       "js": ["js/webextension.bundle.js", "js/trezorScript.bundle.js"]
     }
   ],
-  "web_accessible_resources": ["app.html", "inpage.ts", "js/inpage.bundle.js"],
+  "web_accessible_resources": ["app.html"],
   "commands": {
     "_execute_browser_action": {
       "suggested_key": {
