@@ -40,15 +40,9 @@ describe('Send screen tests', () => {
   });
 
   it('should check send form', async () => {
-    //  * find send btn
-    const sendButton = await uiWebDriver.findElement(By.id('send-btn'));
-
-    assert.ok(sendButton, '<!> Cannot find Send button <!>');
     //  * go to send page
     await uiWebDriver.clickElement('#send-btn');
-
     const sendForm = await uiWebDriver.findElement(By.id('send-form'));
-
     assert.ok(sendForm, '<!> Cannot find send form <!>');
   });
 

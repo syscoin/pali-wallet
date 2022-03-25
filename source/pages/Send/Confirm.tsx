@@ -168,7 +168,7 @@ export const SendConfirm = () => {
             </p>
           </div>
 
-          <div className="absolute bottom-12">
+          <div className="absolute bottom-12 md:static md:mt-10">
             <SecondaryButton
               loading={loading}
               onClick={handleConfirm}

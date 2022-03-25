@@ -33,14 +33,22 @@ export const Receive = () => {
             bgColor="#fff"
             fgColor="#000"
             id="qr-code"
-            style={{ height: '240px', width: '225px' }}
+            style={{
+              height: '240px',
+              width: '225px',
+              padding: '6px',
+              backgroundColor: '#fff',
+            }}
           />
 
           <p className="mt-4 text-base">
             {ellipsis(activeAccount.address.main, 4, 10)}
           </p>
 
-          <div className="absolute bottom-12" id="copy-address-receive-btn">
+          <div
+            className="absolute bottom-12 md:static md:mt-6"
+            id="copy-address-receive-btn"
+          >
             <SecondaryButton
               type="button"
               onClick={() => copyText(activeAccount.address.main)}

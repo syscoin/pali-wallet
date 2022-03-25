@@ -24,7 +24,7 @@ const getYesterday = () => {
 };
 
 export const formatDate = (timestamp: string) => {
-  const formatStyle = 'MM-dd-yyyy';
+  const formatStyle = 'M-d-yyyy';
   const formatedDate = format(new Date(timestamp), formatStyle);
 
   const today = new Date();

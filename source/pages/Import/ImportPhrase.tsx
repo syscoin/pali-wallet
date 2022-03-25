@@ -68,7 +68,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
           with this seed phrase.
         </span>
 
-        <div className="absolute bottom-12">
+        <div className="absolute bottom-12 md:bottom-80">
           <PrimaryButton
             type="submit"
             disabled={!seedIsValid || !form.getFieldValue('phrase')}

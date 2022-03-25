@@ -1,11 +1,6 @@
 # Pali Wallet Browser extension
 
-<<<<<<< HEAD
-This zips contains the build version for Pali wallet for version 1.0.21
-=======
-This zips contains the build version for Pali wallet for version 1.0.22
-
-> > > > > > > master
+This zips contains the build version for Pali wallet for version 2.0.0
 
 ## Chrome/Brave Installation
 

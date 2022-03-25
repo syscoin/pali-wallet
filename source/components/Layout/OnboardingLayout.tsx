@@ -13,7 +13,7 @@ export const OnboardingLayout: FC<IOnboardingLayout> = ({
   children,
   tooltipText,
 }) => (
-  <div className="flex flex-col gap-4 items-center justify-center">
+  <div className="flex flex-col gap-4 items-center justify-center md:pt-20">
     <LogoHeader />
 
     <section>

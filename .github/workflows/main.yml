@@ -4,13 +4,13 @@ on:
 
 jobs:
   test:
-    name: yarn test-all
+    name: test and lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v2
         with:
-          node-version: 16
-          cache: yarn
+          node-version: '16'
+          check-latest: true
       - run: yarn install
-      - run: yarn test-all
+      - run: yarn lint

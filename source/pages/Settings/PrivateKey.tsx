@@ -9,7 +9,6 @@ import {
   Card,
   CopyCard,
 } from 'components/index';
-import { Disclosure } from '@headlessui/react';
 import { Input, Form } from 'antd';
 
 const PrivateKeyView = () => {
@@ -25,7 +24,7 @@ const PrivateKeyView = () => {
 
   return (
     <Layout title="YOUR KEYS">
-      <div className="scrollbar-styled px-2 py-5 h-96 overflow-auto">
+      <div className="scrollbar-styled px-2 py-5 h-96 overflow-auto md:h-full">
         <Card type="info">
           <p>
             <b className="text-warning-info">WARNING: </b>
@@ -35,43 +34,20 @@ const PrivateKeyView = () => {
           </p>
         </Card>
 
-        <Disclosure>
-          {({ open }) => (
-            <>
-              <Disclosure.Button
-                className={`${
-                  open ? 'rounded-t-lg' : 'rounded-lg'
-                } w-full max-w-xs px-4 mt-6 py-2 flex justify-between items-center border border-bkg-1 text-xs cursor-pointer transition-all duration-300 bg-bkg-1`}
-              >
-                XPUB
-                <Icon
-                  name="select-down"
-                  className={`${
-                    open ? 'transform rotate-180' : ''
-                  } mb-1 text-brand-white`}
-                />
-              </Disclosure.Button>
+        <CopyCard
+          className="my-4"
+          onClick={() => copyText(String(activeAccount?.xpub))}
+          label="Your XPUB"
+        >
+          <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>
+        </CopyCard>
 
-              <Disclosure.Panel className="flex flex-col items-start justify-start px-4 py-4 w-80 bg-bkg-3 border border-bkg-3 rounded-b-lg cursor-pointer transition-all duration-300">
-                <div
-                  className="flex items-center justify-between w-full text-xs"
-                  onClick={() => copyText(String(activeAccount?.xpub))}
-                >
-                  <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>
-
-                  <Icon name="copy" className="mb-1 text-brand-white" />
-                </div>
-              </Disclosure.Panel>
-            </>
-          )}
-        </Disclosure>
-
-        <p className="mt-4 text-xs">
+        <p className="ml-8 my-5 text-xs sm:text-center md:ml-0 md:text-left">
           To see your private key, input your password
         </p>
 
         <Form
-          className="password flex flex-col gap-8 items-center justify-center my-3 w-full max-w-xs text-center"
+          className="password mx-auto my-3 w-80 max-w-xl text-center sm:w-full"
           name="phraseview"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
@@ -104,6 +80,7 @@ const PrivateKeyView = () => {
         </Form>
 
         <CopyCard
+          className="my-3"
           onClick={
             valid ? () => copyText(String(activeAccount?.xprv)) : undefined
           }
@@ -123,12 +100,11 @@ const PrivateKeyView = () => {
           }
         >
           <p>View account on explorer</p>
-
           <Icon name="select" className="mb-1" />
         </div>
       </div>
 
-      <div className="absolute bottom-8">
+      <div className="absolute bottom-8 md:static">
         <SecondaryButton type="button" onClick={() => navigate('/home')}>
           {copied ? 'Copied' : 'Close'}
         </SecondaryButton>

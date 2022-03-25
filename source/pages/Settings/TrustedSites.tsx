@@ -43,10 +43,11 @@ const TrustedSitesView = () => {
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         autoComplete="off"
-        className="flex flex-col gap-4 items-center justify-center text-center"
+        className="flex flex-col gap-4 items-center justify-center text-center md:w-full"
       >
         <Form.Item
           name="search"
+          className="md:w-full"
           rules={[
             {
               required: false,
@@ -58,7 +59,7 @@ const TrustedSitesView = () => {
             onChange={(event) => handleSearch(event)}
             type="text"
             placeholder="Search"
-            className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
+            className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
           />
         </Form.Item>
       </Form>
@@ -76,7 +77,7 @@ const TrustedSitesView = () => {
             ))}
         </ul>
 
-        <div className="absolute bottom-12">
+        <div className="absolute bottom-12 md:static">
           <SecondaryButton type="button" onClick={() => navigate('/home')}>
             Close
           </SecondaryButton>
