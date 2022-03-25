@@ -414,7 +414,13 @@ const WalletController = (): IWalletController => {
           blockbook.coin === 'Syscoin' || blockbook.coin === 'Syscoin Testnet';
 
         if (blockBookVerification) {
-          backend.chain === 'main' ? (isTestnet = false) : (isTestnet = true);
+          if (backend.chain === 'main') {
+            isTestnet = false;
+          }
+
+          if (backend.chain === 'test') {
+            isTestnet = true;
+          }
 
           setHDSigner({
             walletMnemonic: HDsigner.mnemonic,
