@@ -1,16 +1,24 @@
-import React, { FC, useState } from 'react';
-import { Layout, SecondaryButton, Icon } from 'components/index';
+import React, { FC, useEffect, useState } from 'react';
+import { Layout, SecondaryButton, Icon, Tooltip } from 'components/index';
 import { getController } from 'utils/index';
 import { Disclosure } from '@headlessui/react';
+import store from 'state/store';
 
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
+  const [isTestnet, setIsTestnet] = useState<boolean>(false);
 
   const controller = getController();
 
   const handleCreateHardwareWallet = async () => {
     await controller.wallet.trezor.connectHardware();
   };
+
+  const { activeNetwork } = store.getState().wallet;
+
+  useEffect(() => {
+    setIsTestnet(activeNetwork === 'testnet');
+  }, [activeNetwork]);
 
   return (
     <Layout title="HARDWARE WALLET" id="hardware-wallet-title">
@@ -95,10 +103,17 @@ const ConnectHardwareWalletView: FC = () => {
           <SecondaryButton
             type="button"
             onClick={handleCreateHardwareWallet}
-            disabled={!selected}
+            disabled={isTestnet || !selected}
             id="connect-btn"
           >
-            Connect
+            <Tooltip
+              content={
+                isTestnet &&
+                "Trezor doesn't support SYS testnet. Change your network to be able to connect to trezor."
+              }
+            >
+              <p>Connect</p>
+            </Tooltip>
           </SecondaryButton>
         </div>
       </div>
