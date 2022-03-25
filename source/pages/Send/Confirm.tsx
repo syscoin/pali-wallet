@@ -10,7 +10,6 @@ import {
   cancelTransaction,
   getController,
 } from 'utils/index';
-
 import { encryptor } from '@pollum-io/sysweb3-utils';
 
 export const SendConfirm = () => {
