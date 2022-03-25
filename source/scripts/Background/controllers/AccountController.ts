@@ -845,7 +845,7 @@ const AccountController = (actions: {
       web3Address: web3Account.address,
       web3PrivateKey: CryptoJS.AES.encrypt(
         web3Account.privateKey,
-        'encripted'
+        window.controller.wallet.encryptedPassword
       ).toString(),
     };
 

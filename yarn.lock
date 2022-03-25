@@ -2047,14 +2047,14 @@
     node-gyp "^8.2.0"
     read-package-json-fast "^2.0.1"
 
-"@pollum-io/sysweb3-core@^1.0.1", "@pollum-io/sysweb3-core@^1.0.4":
+"@pollum-io/sysweb3-core@^1.0.4":
   version "1.0.4"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.4.tgz#fa1f29bdac269f910fc5228bf3762b8d5dbac778"
   integrity sha512-CtgylQFzxh01Cmm6bsbqFEyWJkk8VJat8V6iaNePG1MLknJ8P/NdTeWSHyfySeLwrvaisC0zuGQcu1wd4/ltcQ==
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.4", "@pollum-io/sysweb3-keyring@^1.0.5":
+"@pollum-io/sysweb3-keyring@1.0.5":
   version "1.0.5"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.5.tgz#7e27554f64f3e2311aad02d0c3d49662be12f235"
   integrity sha512-vFS/EjuE+sx88cCjLH2enfM+BsbCu4TCna9jeUBJer9+5lGctXGOHpZ0AidTHhsGG1oxcvWqNG3+XVPKV9M7yg==

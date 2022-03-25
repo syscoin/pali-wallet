@@ -2,6 +2,8 @@
 import { web3Provider } from '@pollum-io/sysweb3-network';
 import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import { getController } from 'utils/browser';
+import { useSelector } from 'react-redux';
+import { RootState } from 'state/store';
 
 export const EthereumProvider = () => {
   const getNetwork = async () => {
@@ -46,7 +48,65 @@ export const EthereumProvider = () => {
   const handleUnlockAccount = async (walletAddress: string) =>
     web3Provider.eth.personal.unlockAccount(walletAddress);
 
+  const getConnectedAccount = () => {
+    const controller = getController();
+
+    const {
+      address,
+      assets,
+      balance,
+      id,
+      isTrezorWallet,
+      label,
+      web3Address,
+      xpub,
+      trezorId,
+    } = controller?.wallet?.account?.getConnectedAccount();
+
+    return {
+      address,
+      assets,
+      balance,
+      id,
+      isTrezorWallet,
+      label,
+      web3Address,
+      xpub,
+      trezorId,
+    };
+  };
+
+  const getWalletState = () => {
+    const accountFiltered = getConnectedAccount();
+
+    const {
+      activeAccountId,
+      activeChainId,
+      activeNetwork,
+      activeNetworkType,
+      currentBlockbookURL,
+      status,
+      timer,
+      walletTokens,
+    } = useSelector((state: RootState) => state.wallet);
+
+    return {
+      accounts: accountFiltered,
+      activeAccountId,
+      activeChainId,
+      activeNetwork,
+      activeNetworkType,
+      currentBlockbookURL,
+      status,
+      timer,
+      walletTokens,
+    };
+  };
+
   return {
+    isConnected: Boolean(
+      getController()?.wallet?.account.getConnectedAccount()
+    ),
     getAccounts,
     getNetwork,
     getChainId,
@@ -56,5 +116,7 @@ export const EthereumProvider = () => {
     getBalance,
     handleLockAccount,
     handleUnlockAccount,
+    getConnectedAccount,
+    getWalletState,
   };
 };

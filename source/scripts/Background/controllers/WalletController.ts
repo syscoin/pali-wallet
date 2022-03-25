@@ -68,11 +68,10 @@ const WalletController = (): IWalletController => {
 
   const web3 = Web3Controller();
   const account = AccountController({ checkPassword, web3 });
-  const trezor = TrezorController({ account });
 
   const { setActiveNetwork, web3Provider } = web3;
   const isLocked = () => !encryptedPassword || !HDsigner;
-
+  const trezor = TrezorController({ account });
   const retrieveEncriptedMnemonic = () => {
     // not encrypted for now but we got to retrieve
     const { encriptedMnemonic }: IWalletState = store.getState().wallet;
