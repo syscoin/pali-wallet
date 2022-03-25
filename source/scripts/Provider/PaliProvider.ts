@@ -46,20 +46,18 @@ export const PaliProvider = () => {
     return handleTransferToken;
   };
 
-  const signPSBT = async (psbtToSign: any) => {
+  const signPSBT = (psbtToSign: any) => {
     const controller = getController();
 
-    const handleSignPSBT = await controller?.connections?.signPSBT(psbtToSign);
+    const handleSignPSBT = controller?.connections?.signPSBT(psbtToSign);
 
     return handleSignPSBT;
   };
 
-  const getSignedPSBT = async (psbtToSign: any) => {
+  const getSignedPSBT = (psbtToSign: any) => {
     const controller = getController();
 
-    return {
-      isSigned: Boolean(await controller?.connections?.signPSBT(psbtToSign)),
-    };
+    return controller?.connections?.signPSBT(psbtToSign);
   };
 
   return {

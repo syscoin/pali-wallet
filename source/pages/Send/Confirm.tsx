@@ -11,6 +11,8 @@ import {
   getController,
 } from 'utils/index';
 
+import { encryptor } from '@pollum-io/sysweb3-utils';
+
 export const SendConfirm = () => {
   const controller = getController();
   const {
@@ -130,10 +132,11 @@ export const SendConfirm = () => {
             web3.changeNetwork(1);
           }
 
-          const decryptPrivateKey = CryptoJS.AES.decrypt(
+          const decryptPrivateKey = encryptor.decrypt(
             String(activeAccount?.web3PrivateKey),
-            'encrypted'
-          ).toString(CryptoJS.enc.Utf8);
+            window.controller.wallet.encryptedPassword
+          );
+
           await web3.sendTransactions(
             decryptPrivateKey,
             tempTx.toAddress,

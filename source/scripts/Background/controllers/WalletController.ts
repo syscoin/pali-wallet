@@ -359,7 +359,6 @@ const WalletController = (): IWalletController => {
     };
 
     const newNetwork = await getTheNewNetwork(networks, chainId);
-    console.log(newNetwork);
 
     if (chainId === 57 || chainId === 5700) {
       store.dispatch(
