@@ -32,7 +32,7 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 .ant-form-item-control-input-content > textarea {
-  @apply p-2 pl-4 w-full h-20 text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none;
+  @apply focus: p-2 pl-4 w-full h-20 text-brand-graylight text-sm border border-fields-input-borderfocus rounded-lg outline-none resize-none;
 }
 
 .ant-badge.ant-badge-status {
@@ -48,7 +48,7 @@ input[type='number']::-webkit-inner-spin-button {
 
 .ant-input-affix-wrapper.ant-input-password > input,
 .ant-input-affix-wrapper.ant-input > input {
-  @apply p-2 pl-4 w-full text-brand-graylight text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full;
+  @apply focus: p-2 pl-4 w-full text-brand-graylight text-sm bg-fields-input-primary border border-fields-input-border border-fields-input-borderfocus rounded-full;
 }
 
 .scrollbar-styled::-webkit-scrollbar {

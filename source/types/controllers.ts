@@ -1,3 +1,5 @@
+import { ISigRequest } from 'scripts/Background/controllers/DAppController';
+import { IDAppInfo } from 'state/dapp/types';
 import { IAccountState, INetwork } from 'state/wallet/types';
 
 import {
@@ -109,4 +111,23 @@ export interface IConnectionsController {
   onWalletUpdate: (callback: any) => any;
   signAndSend: (psbt: any) => Promise<any> | null;
   signPSBT: (psbtToSign: any) => Promise<any> | null;
+}
+
+export interface IDAppController {
+  deregisterListeningSite: (origin: string, eventName: string) => void;
+  getCurrent: () => IDAppInfo;
+  getSigRequest: () => ISigRequest;
+  isDAppConnected: (origin: string) => boolean;
+  isSiteListening: (origin: string, eventName: string) => boolean;
+  notifyAccountsChanged: (accountId: number) => void;
+  pageConnectDApp: (origin: string, title: string) => boolean;
+  registerListeningSite: (origin: string, eventName: string) => void;
+  setSigRequest: (req: ISigRequest) => void;
+  userConnectDApp: (
+    origin: string,
+    dapp: IDAppInfo,
+    network: string,
+    accounts: string[]
+  ) => void;
+  userDisconnectDApp: (origin: string) => void;
 }

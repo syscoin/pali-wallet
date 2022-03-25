@@ -124,6 +124,17 @@ module.exports = {
         exclude: /node_modules/,
       },
       {
+        test: /\.txt$/i,
+        use: [
+          {
+            loader: 'raw-loader',
+            options: {
+              esModule: false,
+            },
+          },
+        ],
+      },
+      {
         test: /\.(jpg|png|svg)x?$/,
         loader: 'file-loader',
         exclude: /node_modules/,

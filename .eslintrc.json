@@ -79,7 +79,11 @@
     "jsx-a11y/no-static-element-interactions": "off",
     "@typescript-eslint/indent": "off",
     "@typescript-eslint/no-var-requires": "off",
+    "class-methods-use-this": ["off"],
     "no-await-in-loop": "off",
+    "no-underscore-dangle": "off",
+    "dot-notation": "off",
+    "@typescript-eslint/dot-notation": ["off"],
     "prettier/prettier": [
       "error",
       {
@@ -103,7 +107,10 @@
     "no-restricted-syntax": "off",
     "@typescript-eslint/no-shadow": "off",
     "@typescript-eslint/ban-ts-comment": "off",
+    "@typescript-eslint/naming-convention": "off",
     "no-param-reassign": "off",
+    "no-shadow": "off",
+    "no-prototype-builtins": "off",
     "function-paren-newline": "off",
     "@typescript-eslint/object-curly-spacing": "off",
     "object-curly-newline": "off",

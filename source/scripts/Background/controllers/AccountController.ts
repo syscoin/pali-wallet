@@ -19,7 +19,6 @@ import {
 import { IAccountController } from 'types/controllers';
 import {
   createAccount,
-  updateStatus,
   updateAccount,
   updateLabel,
   updateTransactions,
@@ -27,10 +26,13 @@ import {
   updateAccountXpub,
   updateSwitchNetwork,
   updateAllTokens,
-  setTimer,
   updateNetwork,
-  setTemporaryTransactionState,
 } from 'state/wallet';
+import {
+  setTimer,
+  updateStatus,
+  setTemporaryTransactionState,
+} from 'state/vault';
 import { log, logError } from 'utils/index';
 
 import { sortList, isNFT, countDecimals, base64 } from './utils';
@@ -389,7 +391,24 @@ const AccountController = (actions: {
 
       // ? is this supposed to be inside this if?
       store.dispatch(updateStatus());
+
+      return;
     }
+
+    globalAccount = {
+      id: 55,
+      label: 'Account 1',
+      balance: 0,
+      transactions: [],
+      xpub: '',
+      xprv: '',
+      address: { main: 'mainAddress' },
+      assets: [],
+      connectedTo: [],
+      isTrezorWallet: false,
+    };
+
+    store.dispatch(updateStatus());
   };
 
   // ? 'fromConnectionsController' seems to be always true

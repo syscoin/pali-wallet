@@ -9,6 +9,9 @@ import {
 import { useStore, useDappConnection } from 'hooks/index';
 import { ellipsis, getHost, getController } from 'utils/index';
 import { Dialog } from '@headlessui/react';
+import { browser } from 'webextension-polyfill-ts';
+import queryString from 'query-string';
+import { useLocation } from 'react-router-dom';
 
 export const ConnectWallet = () => {
   const { confirmConnection, cancelConnection } = useDappConnection();
@@ -20,13 +23,24 @@ export const ConnectWallet = () => {
   const [isInTrustedList, setIsInTrustedList] = useState<boolean>(false);
   const [openExtraConfirmation, setOpenExtraConfirmation] =
     useState<boolean>(false);
+  const location = useLocation();
 
-  const handleSelectAccount = (id: number) => {
+  const handleSelectAccount = async (id: number) => {
     if (connectedAccount && id === connectedAccount.id) {
       return;
     }
 
     setAccountId(id);
+
+    const background = await browser.runtime.getBackgroundPage();
+
+    const { windowId } = queryString.parse(location.search);
+
+    background.dispatchEvent(
+      new CustomEvent('connectWallet', {
+        detail: { windowId, accounts },
+      })
+    );
   };
 
   useEffect(() => {

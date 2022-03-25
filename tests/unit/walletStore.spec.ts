@@ -11,8 +11,6 @@ import reducer, {
   removeConnection,
   setEncriptedMnemonic,
   setSenderURL,
-  setTemporaryTransactionState,
-  setTimer,
   updateAccount,
   updateAccountAddress,
   updateAccountXpub,
@@ -23,10 +21,14 @@ import reducer, {
   updateCurrentURL,
   updateLabel,
   updateNetwork,
-  updateStatus,
   updateSwitchNetwork,
   updateTransactions,
 } from 'state/wallet';
+import {
+  setTemporaryTransactionState,
+  setTimer,
+  updateStatus,
+} from 'state/vault';
 import IWalletState, {
   Connection,
   IAccountState,

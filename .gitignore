@@ -5,6 +5,7 @@
 .pnp.js
 .vscode
 .idea
+/extension
 chrome
 
 # testing

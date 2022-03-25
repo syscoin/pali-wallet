@@ -136,3 +136,27 @@ export type TemporaryTransaction = {
   transferAsset: TransferAsset | null;
   updateAsset: UpdateAsset | null;
 };
+
+export interface IETHTxConfig {
+  gasLimit?: number;
+  gasPrice: number;
+  memo?: string;
+  nonce?: number;
+  txData?: string;
+}
+
+export interface IETHPendingTx {
+  amount: string;
+  assetId: string;
+  data?: string;
+  fromAddress: string;
+  gasPrice: number;
+  network: ETHNetwork;
+  nonce: number;
+  onConfirmed?: () => void;
+  timestamp: number;
+  toAddress: string;
+  txHash: string;
+}
+
+export type ETHNetwork = 'testnet' | 'mainnet';

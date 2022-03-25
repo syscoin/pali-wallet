@@ -38,7 +38,6 @@ export const initialState: IWalletState = {
     canConnect: false,
     connections: [],
   },
-  timer: 5,
   currentBlockbookURL: 'https://blockbook.elint.services/',
   networks: {
     syscoin: {
@@ -89,6 +88,11 @@ export const initialState: IWalletState = {
         type: 'web3',
       },
     },
+    kovan: {
+      id: 'kovan',
+      label: 'Kovan Test',
+      beUrl: 'https://kovan.etherscan.io/',
+    },
   },
   trustedApps: {
     'app.uniswap.org': 'app.uniswap.org',
@@ -98,10 +102,8 @@ export const initialState: IWalletState = {
     'facebook.com': 'https://accounts.google.com/b/0/AddMailService',
     'sysmint.paliwallet.com': 'sysmint.paliwallet.com',
   },
-  temporaryTransactionState: {
-    executing: false,
-    type: '',
-  },
+  temporaryTransactionState: { executing: false, type: '' },
+  timer: 5,
 };
 
 const WalletState = createSlice({
@@ -400,9 +402,9 @@ const WalletState = createSlice({
       state.activeAccountId = action.payload;
     },
     changeActiveNetwork(state: IWalletState, action: PayloadAction<INetwork>) {
-      state.activeNetwork = action.payload.id;
       state.activeChainId = action.payload.chainId;
       state.activeNetworkType = action.payload.type;
+      state.activeNetwork = action.payload.label
       state.currentBlockbookURL = action.payload.beUrl;
     },
     updateTransactions(
@@ -431,7 +433,6 @@ const WalletState = createSlice({
 });
 
 export const {
-  updateStatus,
   createAccount,
   removeAccount,
   removeAccounts,
@@ -455,9 +456,7 @@ export const {
   updateAllTokens,
   setWeb3Address,
   setWeb3PrivateKey,
-  setTimer,
   updateNetwork,
-  setTemporaryTransactionState,
 } = WalletState.actions;
 
 export default WalletState.reducer;
