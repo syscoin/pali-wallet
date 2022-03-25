@@ -38,7 +38,7 @@ const CreateAccount = () => {
         />
       ) : (
         <Form
-          className="flex flex-col gap-8 items-center justify-center pt-4 text-center"
+          className="flex flex-col gap-8 items-center justify-center pt-4 text-center md:w-full"
           name="newaccount"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
@@ -47,6 +47,7 @@ const CreateAccount = () => {
         >
           <Form.Item
             name="label"
+            className="md:w-full"
             rules={[
               {
                 required: false,
@@ -55,13 +56,13 @@ const CreateAccount = () => {
             ]}
           >
             <Input
-              className="phrase-input px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
+              className="phrase-input px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
               placeholder="Name your new account (optional)"
               id="account-name-input"
             />
           </Form.Item>
 
-          <div className="absolute bottom-12">
+          <div className="absolute bottom-12 md:top-56">
             <SecondaryButton
               type="submit"
               loading={loading}

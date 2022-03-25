@@ -52,12 +52,12 @@ export const Layout: FC<ILayout> = ({
           size={36}
           name="select-up"
           wrapperClassname="w-8"
-          className="fixed top-24 text-bkg-2"
+          className="fixed top-24 text-bkg-2 md:top-36"
           color="#111E33"
         />
       </div>
 
-      <div className="flex flex-col items-center justify-center w-full text-brand-white bg-bkg-2 xl:h-full">
+      <div className="flex flex-col items-center justify-center w-full text-brand-white bg-bkg-2">
         {children}
       </div>
     </div>
