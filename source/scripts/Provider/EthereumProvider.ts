@@ -27,11 +27,19 @@ export const EthereumProvider = () => {
     return accountBalance;
   };
 
+  const handleLockAccount = async (walletAddress: string) =>
+    web3Provider.eth.personal.lockAccount(walletAddress);
+
+  const handleUnlockAccount = async (walletAddress: string) =>
+    web3Provider.eth.personal.unlockAccount(walletAddress);
+
   return {
     getAccounts,
     getNetwork,
     getChainId,
     getAddress,
     getBalance,
+    handleLockAccount,
+    handleUnlockAccount,
   };
 };

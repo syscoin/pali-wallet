@@ -5,26 +5,26 @@ import {
   registerListeningSite as registerListeningSiteAction,
   deregisterListeningSite as deregisterListeningSiteAction,
 } from 'state/dapp';
-import { IDAppInfo, IDAppState } from 'state/dapp/types';
+import { IDAppInfo } from 'state/dapp/types';
 import store from 'state/store';
 
 export interface IDAppController {
   deregisterListeningSite: (origin: string, eventName: string) => void;
-  fromPageConnectDApp: (origin: string, title: string) => boolean;
-  fromUserConnectDApp: (
-    origin: string,
-    dapp: IDAppInfo,
-    network: string,
-    accounts: string[]
-  ) => void;
   fromUserDisconnectDApp: (origin: string) => void;
   getCurrent: () => IDAppInfo;
   getSigRequest: () => ISigRequest;
   isDAppConnected: (origin: string) => boolean;
   isSiteListening: (origin: string, eventName: string) => boolean;
   notifyAccountsChanged: (accounts: string[]) => void;
+  pageConnectDApp: (origin: string, title: string) => boolean;
   registerListeningSite: (origin: string, eventName: string) => void;
   setSigRequest: (req: ISigRequest) => void;
+  userConnectDApp: (
+    origin: string,
+    dapp: IDAppInfo,
+    network: string,
+    accounts: string[]
+  ) => void;
 }
 interface ISigRequest {
   address: string;
@@ -174,8 +174,8 @@ const DAppController = (): IDAppController => {
 
   return {
     getCurrent,
-    fromPageConnectDApp,
-    fromUserConnectDApp,
+    pageConnectDApp,
+    userConnectDApp,
     setSigRequest,
     getSigRequest,
     fromUserDisconnectDApp,
