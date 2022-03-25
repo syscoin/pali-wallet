@@ -115,19 +115,19 @@ export interface IConnectionsController {
 
 export interface IDAppController {
   deregisterListeningSite: (origin: string, eventName: string) => void;
-  fromPageConnectDApp: (origin: string, title: string) => boolean;
-  fromUserConnectDApp: (
-    origin: string,
-    dapp: IDAppInfo,
-    network: string,
-    accounts: string[]
-  ) => void;
-  fromUserDisconnectDApp: (origin: string) => void;
   getCurrent: () => IDAppInfo;
   getSigRequest: () => ISigRequest;
   isDAppConnected: (origin: string) => boolean;
   isSiteListening: (origin: string, eventName: string) => boolean;
   notifyAccountsChanged: (accountId: number) => void;
+  pageConnectDApp: (origin: string, title: string) => boolean;
   registerListeningSite: (origin: string, eventName: string) => void;
   setSigRequest: (req: ISigRequest) => void;
+  userConnectDApp: (
+    origin: string,
+    dapp: IDAppInfo,
+    network: string,
+    accounts: string[]
+  ) => void;
+  userDisconnectDApp: (origin: string) => void;
 }

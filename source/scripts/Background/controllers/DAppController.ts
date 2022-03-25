@@ -5,7 +5,7 @@ import {
   registerListeningSite as registerListeningSiteAction,
   deregisterListeningSite as deregisterListeningSiteAction,
 } from 'state/dapp';
-import { IDAppInfo, IDAppState } from 'state/dapp/types';
+import { IDAppInfo } from 'state/dapp/types';
 import store from 'state/store';
 import { IDAppController } from 'types/controllers';
 
@@ -22,10 +22,10 @@ const DAppController = (): IDAppController => {
   const isDAppConnected = (origin: string) => {
     const { whitelist } = store.getState().dapp;
 
-    return !!whitelist[origin as keyof IDAppState];
+    return Object.keys(whitelist).includes(origin);
   };
 
-  const fromPageConnectDApp = (origin: string, title: string) => {
+  const pageConnectDApp = (origin: string, title: string) => {
     current = {
       ...current,
       origin,
@@ -36,7 +36,7 @@ const DAppController = (): IDAppController => {
     return isDAppConnected(origin);
   };
 
-  const fromUserConnectDApp = (
+  const userConnectDApp = (
     origin: string,
     dapp: IDAppInfo,
     network: string
@@ -110,7 +110,7 @@ const DAppController = (): IDAppController => {
     _dispatchEvents(events);
   };
 
-  const fromUserDisconnectDApp = (origin: string) => {
+  const userDisconnectDApp = (origin: string) => {
     notifySiteDisconnected(origin);
     store.dispatch(unlistDapp({ id: origin }));
   };
@@ -139,11 +139,11 @@ const DAppController = (): IDAppController => {
 
   return {
     getCurrent,
-    fromPageConnectDApp,
-    fromUserConnectDApp,
+    pageConnectDApp,
+    userConnectDApp,
     setSigRequest,
     getSigRequest,
-    fromUserDisconnectDApp,
+    userDisconnectDApp,
     notifyAccountsChanged,
     registerListeningSite,
     deregisterListeningSite,
