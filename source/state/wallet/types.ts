@@ -16,6 +16,30 @@ export interface IAccountState {
   xpub: string;
 }
 
+export type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
+
+export type ICopyAccountState = Omit<
+  IAccountState,
+  'xprv' | 'web3PrivateKey' | 'connectedTo'
+> & {
+  address: {
+    [assetId: string]: string;
+  };
+  assets: Assets[];
+  balance: number;
+  id: number;
+  isTrezorWallet: boolean;
+  label: string;
+  transactions: Transaction[];
+  trezorId?: number | undefined;
+  web3Address: string;
+  xpub: string;
+};
+
+export type ICopyWalletState = Omit<IWalletState, 'accounts'> & {
+  accounts: ICopyAccountState;
+};
+
 export interface IAccountUpdateState {
   assets: Assets[];
   balance: number;
