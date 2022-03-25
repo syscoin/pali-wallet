@@ -21,10 +21,6 @@ export const useStore = () => {
     networks,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
 
-  // const { temporaryTransactionState, status, timer, networks } = useSelector(
-  //   (state: RootState) => state.vault
-  // );
-
   const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
 
   const { currentSenderURL, currentURL, canConnect, connections } = tabs;

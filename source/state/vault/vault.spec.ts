@@ -68,6 +68,7 @@ const FAKE_ACCOUNT: IAccountState = {
   ],
   xprv: FAKE_XPRV,
   xpub: FAKE_XPUB,
+  web3PrivateKey: '',
   web3Address: '0x0beaDdE9e116ceF07aFedc45a8566d1aDd3168F3',
 };
 

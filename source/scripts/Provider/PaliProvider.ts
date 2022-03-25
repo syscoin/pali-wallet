@@ -1,23 +1,19 @@
 import { getController } from 'utils/browser';
 import { browser } from 'webextension-polyfill-ts';
 import store from 'state/store';
+import store from 'state/store';
+import { getConnectedAccount, _getOmittedSensitiveState } from 'utils/index';
 
 export const PaliProvider = () => {
-  const getNetwork = () => {};
+  const connectedAccount = getConnectedAccount('Syscoin');
 
-  const getAccounts = () => ({ accounts: 456 });
+  const { address, balance, xpub, assets } = connectedAccount;
 
-  const getChainId = () => {};
+  const getNetwork = () => store.getState().wallet.activeNetwork;
 
-  const getAddress = () => {};
+  const getChainId = () => store.getState().wallet.activeNetwork;
 
-  const getBalance = () => {};
-
-  const getXpub = () => {};
-
-  const getTokens = () => {};
-
-  const getState = () => {};
+  const getState = () => _getOmittedSensitiveState();
 
   const sendToken = async (items: any) => {
     const controller = getController();
@@ -87,13 +83,13 @@ export const PaliProvider = () => {
   };
 
   return {
-    getAccounts,
+    connectedAccount,
+    balance,
+    address,
+    xpub,
+    assets,
     getNetwork,
     getChainId,
-    getAddress,
-    getBalance,
-    getXpub,
-    getTokens,
     getState,
     sendToken,
     createToken,
