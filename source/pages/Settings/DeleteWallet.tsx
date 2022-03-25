@@ -125,7 +125,7 @@ const DeleteWalletView = () => {
             </>
           )}
 
-          <div className="2xl:bottom-60 flex gap-x-8 justify-between md:absolute md:bottom-36">
+          <div className="absolute bottom-12 flex gap-x-8 justify-between md:static md:gap-x-40">
             <PrimaryButton type="button" onClick={() => navigate('/home')}>
               Cancel
             </PrimaryButton>
