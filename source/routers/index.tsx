@@ -252,10 +252,10 @@ export const Router = () => {
             path="connected-sites"
             element={<ProtectedRoute element={<ConnectedSites />} />}
           />
-          <Route
-            path="custom-rpc"
-            element={<ProtectedRoute element={<CustomRPC />} />}
-          />
+          <Route path="custom-rpc">
+            <Route index element={<CustomRPC />} />
+            <Route path=":networkId" element={<CustomRPC />} />
+          </Route>
           <Route
             path="edit"
             element={<ProtectedRoute element={<EditNetwork />} />}
