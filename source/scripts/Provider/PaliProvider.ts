@@ -1,7 +1,6 @@
 import { getController } from 'utils/browser';
 import { browser } from 'webextension-polyfill-ts';
 import store from 'state/store';
-import store from 'state/store';
 import { getConnectedAccount, _getOmittedSensitiveState } from 'utils/index';
 
 export const PaliProvider = () => {
