@@ -70,9 +70,17 @@ module.exports = {
     background: path.join(sourcePath, 'scripts/Background', 'index.ts'),
     inpage: path.join(sourcePath, 'scripts/ContentScript', 'inpage.ts'),
     contentScript: path.join(sourcePath, 'scripts/ContentScript', 'index.ts'),
-    trezorScript: path.join(sourcePath, 'vendor', 'trezor-content-script.js'),
     app: path.join(sourcePath, 'pages/App', 'index.tsx'),
-    trezorUSB: path.join(sourcePath, 'vendor', 'trezor-usb-permissions.js'),
+    trezorScript: path.join(
+      sourcePath,
+      'scripts/ContentScript/trezor',
+      'trezor-content-script.ts'
+    ),
+    trezorUSB: path.join(
+      sourcePath,
+      'scripts/ContentScript/trezor',
+      'trezor-usb-permissions.ts'
+    ),
   },
 
   output: {
@@ -213,13 +221,8 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: path.join(viewsPath, 'trezor-usb-permissions.html'),
       filename: 'trezor-usb-permissions.html',
-      chunks: ['trezorUSB'],
-    }),
-    new HtmlWebpackPlugin({
-      template: path.join(viewsPath, 'app.html'),
       inject: 'body',
-      chunks: ['app'],
-      filename: 'app.html',
+      chunks: ['trezorUSB'],
     }),
     // write css file(s) to build folder
     new MiniCssExtractPlugin({ filename: 'css/[name].css' }),

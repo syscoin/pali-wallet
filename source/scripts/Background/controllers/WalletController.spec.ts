@@ -16,7 +16,7 @@ describe('WalletController.ts tests', () => {
     switchNetwork,
     isLocked,
     password,
-    encriptedPassword,
+    encryptedPassword,
     mnemonic,
   } = WalletController();
 
@@ -77,7 +77,7 @@ describe('WalletController.ts tests', () => {
     logOut();
 
     expect(password).toBe('');
-    expect(encriptedPassword).toBe('');
+    expect(encryptedPassword).toBe('');
     expect(mnemonic).toBe('');
   });
 

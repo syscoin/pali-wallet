@@ -14,10 +14,9 @@ export interface IWalletController {
   account: Readonly<IAccountController>;
   addNewAccount: (label?: string) => Promise<string | null>;
   checkPassword: (pwd: string) => boolean;
-  createHardwareWallet: () => void;
   createWallet: (isUpdated?: boolean) => void;
   deleteWallet: (pwd: string) => void;
-  encriptedPassword: string;
+  encryptedPassword: string;
   generatePhrase: () => string | null;
   getNewAddress: () => Promise<boolean>;
   getPhrase: (pwd: string) => string | null;
@@ -29,6 +28,7 @@ export interface IWalletController {
   setWalletPassword: (pwd: string) => void;
   switchNetwork: (chainId: number) => void;
   switchWallet: (id: number) => void;
+  trezor: Readonly<any>;
   unLock: (pwd: string) => Promise<boolean>;
   web3: Readonly<any>;
 }
@@ -73,7 +73,6 @@ export interface IAccountController {
   setNewXpub: (id: number, xpub: string, xprv: string, key: string) => void;
   signTransaction: (psbt: any, type: boolean) => any;
   subscribeAccount: (
-    encriptedPassword: any,
     isHardwareWallet: boolean,
     sjs?: any,
     label?: string,

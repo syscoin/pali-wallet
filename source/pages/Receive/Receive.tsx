@@ -40,7 +40,12 @@ export const Receive = () => {
             bgColor="#fff"
             fgColor="#000"
             id="qr-code"
-            style={{ height: '240px', width: '225px' }}
+            style={{
+              height: '240px',
+              width: '225px',
+              padding: '6px',
+              backgroundColor: '#fff',
+            }}
           />
 
           <p className="mt-4 text-base">
@@ -49,7 +54,10 @@ export const Receive = () => {
               : ellipsis(activeAccount.web3Address, 4, 10)}
           </p>
 
-          <div className="absolute bottom-12" id="copy-address-receive-btn">
+          <div
+            className="absolute bottom-12 2xl:bottom-72 md:bottom-48"
+            id="copy-address-receive-btn"
+          >
             <SecondaryButton
               type="button"
               onClick={

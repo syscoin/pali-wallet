@@ -16,16 +16,17 @@ import CryptoJS from 'crypto-js';
 import store from 'state/store';
 import axios from 'axios';
 import { IWalletController } from 'types/controllers';
-import { log, logError } from 'utils/index';
+import { log, logError, openNotificationsPopup } from 'utils/index';
 
 import Web3Controller from './Web3Controller';
 import AccountController from './AccountController';
+import TrezorController from './TrezorController';
 
 const sys = require('syscoinjs-lib');
 
 const WalletController = (): IWalletController => {
   let password: any = '';
-  let encriptedPassword: any = '';
+  let encryptedPassword: any = '';
   let mnemonic = '';
   let HDsigner: any = null;
   let sjs: any = null;
@@ -54,22 +55,23 @@ const WalletController = (): IWalletController => {
 
   const setWalletPassword = (pwd: string) => {
     password = pwd;
-    encriptedPassword = CryptoJS.SHA3(pwd).toString();
+    encryptedPassword = CryptoJS.SHA3(pwd).toString();
   };
 
   const checkPassword = (pwd: string) => {
-    if (encriptedPassword === CryptoJS.SHA3(pwd).toString()) {
+    if (encryptedPassword === CryptoJS.SHA3(pwd).toString()) {
       return true;
     }
 
-    return encriptedPassword === pwd;
+    return encryptedPassword === pwd;
   };
 
   const web3 = Web3Controller();
   const account = AccountController({ checkPassword, web3 });
+  const trezor = TrezorController({ account });
 
   const { setActiveNetwork, web3Provider } = web3;
-  const isLocked = () => !encriptedPassword || !HDsigner;
+  const isLocked = () => !encryptedPassword || !HDsigner;
 
   const retrieveEncriptedMnemonic = () => {
     // not encrypted for now but we got to retrieve
@@ -100,7 +102,7 @@ const WalletController = (): IWalletController => {
       walletPassword: null,
       isTestnet: false,
     });
-    setSjs({ SignerIn: HDsigner, blockbookURL: networks.main.beUrl });
+    setSjs({ SignerIn: HDsigner, blockbookURL: networks.syscoin.main.beUrl });
 
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
@@ -114,68 +116,15 @@ const WalletController = (): IWalletController => {
 
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
 
-    account
-      .subscribeAccount(encriptedPassword, false, sjs, undefined, true)
-      .then(() => {
-        account.getPrimaryAccount(password, sjs);
-        password = '';
-        mnemonic = '';
+    account.subscribeAccount(false, sjs, undefined, true).then(() => {
+      account.getPrimaryAccount(password, sjs);
+      password = '';
+      mnemonic = '';
 
-        account.updateTokensState().then(() => {
-          log('update tokens state after create wallet');
-        });
+      account.updateTokensState().then(() => {
+        log('update tokens state after create wallet');
       });
-  };
-
-  const openNotificationsPopup = (title: string, message: string) => {
-    chrome.notifications.create(new Date().getTime().toString(), {
-      type: 'basic',
-      iconUrl: 'assets/icons/favicon-48.png',
-      title,
-      message,
     });
-  };
-
-  const createHardwareWallet = async () => {
-    const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
-
-    if (isTestnet) {
-      openNotificationsPopup(
-        "Can't create hardware wallet on testnet",
-        "Trezor doesn't support SYS testnet"
-      );
-
-      return;
-    }
-
-    try {
-      const TrezorSigner = new sys.utils.TrezorSigner();
-
-      TrezorSigner.createAccount()
-        .then(async () => {
-          openNotificationsPopup(
-            'Hardware Wallet connected',
-            'Trezor Wallet account created'
-          );
-
-          await account.subscribeAccount(
-            encriptedPassword,
-            true,
-            TrezorSigner,
-            undefined,
-            false
-          );
-          await account.updateTokensState();
-        })
-        .catch((error: any) => {
-          openNotificationsPopup(
-            'Hardware Wallet error',
-            `Trezor Error: ${error}`
-          );
-        });
-    } catch (error) {
-      openNotificationsPopup('Hardware Wallet error', `Trezor Error: ${error}`);
-    }
   };
 
   const getPhrase = (pwd: string) =>
@@ -255,7 +204,7 @@ const WalletController = (): IWalletController => {
         }
       }
 
-      encriptedPassword = CryptoJS.SHA3(pwd).toString();
+      encryptedPassword = CryptoJS.SHA3(pwd).toString();
 
       account.getPrimaryAccount(pwd, sjs);
 
@@ -270,7 +219,7 @@ const WalletController = (): IWalletController => {
   const deleteWallet = (pwd: string) => {
     if (checkPassword(pwd)) {
       password = '';
-      encriptedPassword = '';
+      encryptedPassword = '';
       mnemonic = '';
       HDsigner = null;
       sjs = null;
@@ -297,7 +246,7 @@ const WalletController = (): IWalletController => {
 
   const logOut = () => {
     password = '';
-    encriptedPassword = '';
+    encryptedPassword = '';
     mnemonic = '';
     store.dispatch(updateStatus());
   };
@@ -308,7 +257,7 @@ const WalletController = (): IWalletController => {
         Number(index),
         sjs.Signer.Signer.accounts[Number(index)].getAccountPublicKey(),
         sjs.Signer.Signer.accounts[Number(index)].getAccountPrivateKey(),
-        encriptedPassword
+        encryptedPassword
       );
 
       return;
@@ -328,7 +277,7 @@ const WalletController = (): IWalletController => {
       Number(index),
       derived.getAccountPublicKey(),
       derived.getAccountPrivateKey(),
-      encriptedPassword
+      encryptedPassword
     );
   };
 
@@ -349,7 +298,7 @@ const WalletController = (): IWalletController => {
   };
 
   const addNewAccount = (label?: string) =>
-    account.subscribeAccount(encriptedPassword, false, null, label, false);
+    account.subscribeAccount(false, null, label, false);
 
   const getAccountDataByNetwork = (currentSysInstance: any) => {
     const { activeAccountId, accounts } = store.getState().wallet;
@@ -386,7 +335,7 @@ const WalletController = (): IWalletController => {
       }
     }
 
-    account.getPrimaryAccount(encriptedPassword, currentSysInstance);
+    account.getPrimaryAccount(encryptedPassword, currentSysInstance);
 
     account.updateTokensState().then(() => {
       log('tokens state updated after removing trezor');
@@ -550,7 +499,6 @@ const WalletController = (): IWalletController => {
     setWalletPassword,
     generatePhrase,
     createWallet,
-    createHardwareWallet,
     checkPassword,
     getPhrase,
     deleteWallet,
@@ -563,7 +511,8 @@ const WalletController = (): IWalletController => {
     addNewAccount,
     password,
     mnemonic,
-    encriptedPassword,
+    encryptedPassword,
+    trezor,
   };
 };
 

@@ -721,7 +721,6 @@ const AccountController = (actions: {
   };
 
   const subscribeAccount = async (
-    encriptedPassword: any,
     isHardwareWallet = false,
     sjs?: any,
     label?: string,
@@ -800,12 +799,12 @@ const AccountController = (actions: {
 
     const encryptedMnemonic = CryptoJS.AES.encrypt(
       sysjs.Signer.mnemonic,
-      encriptedPassword
+      window.controller.wallet.encryptedPassword
     );
 
     const web3Account = await importAccount(
       encryptedMnemonic,
-      encriptedPassword
+      window.controller.wallet.encryptedPassword
     );
 
     globalAccount = {
@@ -816,7 +815,7 @@ const AccountController = (actions: {
       xpub: sysjs.Signer.getAccountXpub(),
       xprv: CryptoJS.AES.encrypt(
         signer.accounts[signer.accountIndex].getAccountPrivateKey(),
-        encriptedPassword
+        window.controller.wallet.encryptedPassword
       ).toString(),
       address: { main: mainAddress },
       assets: account.assets,

@@ -64,7 +64,7 @@ export const PanelList: FC<IPanelList> = ({
                 )}
 
                 <li className="py-2 border-b border-dashed border-dashed-dark">
-                  <div className="relative flex justify-between pr-6 text-xs">
+                  <div className="relative flex grid grid-cols-2 text-xs">
                     <div>
                       <p>{ellipsis(String(tx.txid), 4, 14)}</p>
 
@@ -79,15 +79,15 @@ export const PanelList: FC<IPanelList> = ({
                       </p>
                     </div>
 
-                    <div className="flex justify-self-end">
-                      <div className="mr-6 text-right">
+                    <div className="flex justify-between pl-4 pr-2 md:pl-8">
+                      <div className="text-left">
                         <p className="text-blue-300">{timestamp}</p>
 
                         <p>{getTxType(tx)}</p>
                       </div>
 
                       <IconButton
-                        className="w-1"
+                        className="w-5"
                         onClick={() =>
                           navigate('/home/tx-details/', {
                             state: {
