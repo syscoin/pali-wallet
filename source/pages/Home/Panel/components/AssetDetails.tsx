@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import placeholder from 'assets/images/placeholder.png';
-import { Button, Tooltip, Icon } from 'components/index';
-import { formatUrl, getController } from 'utils/index';
+import { Tooltip, Icon } from 'components/index';
+import { formatUrl } from 'utils/index';
 import axios from 'axios';
 
 export const AssetDetails = ({ assetType, assetData }) => {
-  const controller = getController();
-
   const [imageLink, setImageLink] = useState('');
   const [loadingImage, setLoadingImage] = useState(false);
 
@@ -35,8 +33,6 @@ export const AssetDetails = ({ assetType, assetData }) => {
 
     getImageLink();
   }, [description]);
-
-  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   const assetTransaction = [
     {
@@ -113,18 +109,6 @@ export const AssetDetails = ({ assetType, assetData }) => {
           <b>{value}</b>
         </div>
       ))}
-
-      <div className="fixed bottom-0 left-0 flex gap-x-6 items-center justify-between p-4 w-full max-w-2xl text-xs bg-bkg-3 md:left-auto xl:mt-2">
-        <p>Would you like to go to view asset on SYS Block Explorer?</p>
-
-        <Button
-          type="button"
-          onClick={() => window.open(`${sysExplorer}/asset/${assetGuid}`)}
-          className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
-        >
-          Go
-        </Button>
-      </div>
     </>
   );
 };

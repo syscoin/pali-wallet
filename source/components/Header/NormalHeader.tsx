@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Icon, IconButton } from 'components/index';
+import { Icon, IconButton, Tooltip } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
 import { getHost, getController } from 'utils/index';
+import { Badge } from 'antd';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { browser } from 'webextension-polyfill-ts';
 
@@ -69,31 +70,16 @@ export const NormalHeader: React.FC = () => {
     <Menu as="div" className="absolute left-2 inline-block mr-8 text-left">
       {(menuprops) => (
         <>
-          <Menu.Button className="inline-flex justify-center w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-            <div className="flex gap-x-6 items-center justify-start ml-2 w-full cursor-pointer">
-              <span>{activeNetwork}</span>
+          <Menu.Button className="inline-flex gap-x-6 items-center justify-start ml-2 w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
+            <span>{activeNetwork}</span>
 
-              <div
-                id="badge-connected-status"
-                className={
-                  isConnected
-                    ? 'rounded-full text-xs w-28 h-5 flex justify-center items-center border border-warning-success bg-warning-success text-brand-white'
-                    : 'rounded-full text-xs w-28 h-5 flex justify-center items-center border bg-warning-error border-warning-error text-brand-white'
-                }
-              >
-                {isConnected ? 'connected' : 'not connected'}
-              </div>
-
-              <IconButton className="mb-1">
-                <Icon
-                  name="select-down"
-                  className={`${
-                    menuprops.open ? 'transform rotate-180' : ''
-                  } text-brand-white`}
-                  id="network-settings-btn"
-                />
-              </IconButton>
-            </div>
+            <Icon
+              name="select-down"
+              className={`${
+                menuprops.open ? 'transform rotate-180' : ''
+              } text-brand-white`}
+              id="network-settings-btn"
+            />
           </Menu.Button>
 
           <Transition
@@ -285,14 +271,39 @@ export const NormalHeader: React.FC = () => {
 
   // TODO: breakdown GeneralMenu
   const GeneralMenu = () => (
-    <Menu as="div" className="absolute z-10 right-2 inline-block text-right">
+    <Menu
+      as="div"
+      className="absolute z-10 right-2 top-2 flex gap-x-4 items-center justify-evenly"
+    >
       {() => (
         <>
-          <Menu.Button
-            as="button"
-            id="general-settings-button"
-            className="mb-2 mr-0.8"
+          <Tooltip content={currentTabURL}>
+            <IconButton
+              onClick={() => navigate('/settings/networks/connected-sites')}
+              className="relative text-brand-white"
+            >
+              <Icon
+                name="globe"
+                className="hover:text-brand-royalblue text-white"
+              />
+
+              <Badge
+                className={`${
+                  isConnected
+                    ? 'text-warning-success bg-warning-succes'
+                    : 'text-warning-error bg-warning-error'
+                } absolute -right-1 top-1 w-3 h-3 s rounded-full `}
+              />
+            </IconButton>
+          </Tooltip>
+          <IconButton
+            onClick={handleRefresh}
+            className="hover:text-brand-deepPink100 text-brand-white"
           >
+            <Icon name="reload" />
+          </IconButton>
+
+          <Menu.Button as="button" id="general-settings-button">
             {encriptedMnemonic && (
               <IconButton type="primary" shape="circle">
                 <Icon
@@ -397,13 +408,6 @@ export const NormalHeader: React.FC = () => {
   return (
     <div className="relative flex items-center justify-between p-2 py-6 w-full text-gray-300 bg-bkg-1">
       <NetworkMenu />
-
-      <IconButton
-        onClick={handleRefresh}
-        className="absolute right-10 hover:text-brand-deepPink100 text-brand-white"
-      >
-        <Icon name="reload" wrapperClassname="mb-2 mr-2" />
-      </IconButton>
 
       <GeneralMenu />
     </div>
