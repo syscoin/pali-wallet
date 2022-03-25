@@ -69,18 +69,22 @@ export const PaliProvider = () => {
     const { ...walletInfo } = store.getState().wallet;
     const background = await browser.runtime.getBackgroundPage();
 
-    if (activeNetworkType === 'web3') {
-      return store.subscribe(() =>
-        background.dispatchEvent(
-          new CustomEvent('walletChanged', {
-            detail: {
-              data: { ...walletInfo },
-              chain: 'ethereum',
-            },
-          })
-        )
+    const _dispatchEvent = (): void => {
+      background.dispatchEvent(
+        new CustomEvent('walletChanged', {
+          detail: {
+            data: { ...walletInfo },
+            chain: 'ethereum',
+          },
+        })
       );
+    };
+
+    if (activeNetworkType === 'web3') {
+      const subscribe = store.subscribe(_dispatchEvent);
+      return subscribe();
     }
+
     console.log('building...');
   };
 
