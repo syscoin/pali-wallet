@@ -76,14 +76,6 @@ export const EthereumProvider = () => {
     };
   };
 
-  const checkForConnectedAccount = () => {
-    const controller = getController();
-
-    return {
-      isConnected: Boolean(controller?.wallet?.account.getConnectedAccount()),
-    };
-  };
-
   const getWalletState = () => {
     const accountFiltered = getConnectedAccount();
 
@@ -99,7 +91,7 @@ export const EthereumProvider = () => {
     } = useSelector((state: RootState) => state.wallet);
 
     return {
-      accountFiltered,
+      accounts: accountFiltered,
       activeAccountId,
       activeChainId,
       activeNetwork,
@@ -112,6 +104,9 @@ export const EthereumProvider = () => {
   };
 
   return {
+    isConnected: Boolean(
+      getController()?.wallet?.account.getConnectedAccount()
+    ),
     getAccounts,
     getNetwork,
     getChainId,
@@ -122,7 +117,6 @@ export const EthereumProvider = () => {
     handleLockAccount,
     handleUnlockAccount,
     getConnectedAccount,
-    checkForConnectedAccount,
     getWalletState,
   };
 };
