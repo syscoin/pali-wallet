@@ -404,7 +404,7 @@ const WalletState = createSlice({
     changeActiveNetwork(state: IWalletState, action: PayloadAction<INetwork>) {
       state.activeChainId = action.payload.chainId;
       state.activeNetworkType = action.payload.type;
-      state.activeNetwork = action.payload.label
+      state.activeNetwork = action.payload.label;
       state.currentBlockbookURL = action.payload.beUrl;
     },
     updateTransactions(
