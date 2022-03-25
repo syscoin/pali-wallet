@@ -1,5 +1,5 @@
 import { Fullscreen } from 'components/Fullscreen';
-import { getController } from 'utils/browser';
+import { getController } from 'utils/index';
 import React, { FC } from 'react';
 
 import { PanelList } from './components/PanelList';

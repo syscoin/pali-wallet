@@ -4,7 +4,7 @@ on:
 
 jobs:
   test:
-    name: yarn test-all
+    name: test and lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -13,4 +13,4 @@ jobs:
           node-version: '14'
           check-latest: true
       - run: yarn install
-      - run: yarn test-all
+      - run: yarn lint

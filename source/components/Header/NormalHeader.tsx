@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Icon, IconButton } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
-import { getHost } from 'utils/index';
-import { getController } from 'utils/browser';
+import { getHost, getController } from 'utils/index';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { browser } from 'webextension-polyfill-ts';
 
@@ -289,11 +288,14 @@ export const NormalHeader: React.FC = () => {
     <Menu as="div" className="absolute z-10 right-2 inline-block text-right">
       {() => (
         <>
-          <Menu.Button as="button" className="mb-2 mr-0.8">
+          <Menu.Button
+            as="button"
+            id="general-settings-button"
+            className="mb-2 mr-0.8"
+          >
             {encriptedMnemonic && (
               <IconButton type="primary" shape="circle">
                 <Icon
-                  id="general-settings-button"
                   name="settings"
                   className="z-0 hover:text-brand-royalblue text-brand-white"
                 />

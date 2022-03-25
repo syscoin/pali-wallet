@@ -1,7 +1,7 @@
 import { useAlert } from 'react-alert';
 import { useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
-import { getController } from 'utils/browser';
+import { getController } from 'utils/index';
 
 export const useUtils = () => {
   const alert = useAlert();

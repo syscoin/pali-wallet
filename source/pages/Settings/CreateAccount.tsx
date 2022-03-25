@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { ellipsis } from 'utils/index';
-import { getController } from 'utils/browser';
+import { ellipsis, getController } from 'utils/index';
 import { Form, Input } from 'antd';
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import { useNavigate } from 'react-router-dom';

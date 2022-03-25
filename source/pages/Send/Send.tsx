@@ -6,8 +6,13 @@ import { Switch, Menu, Transition } from '@headlessui/react';
 import { Layout, SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Assets } from 'types/transactions';
-import { log, formatUrl, isNFT, getAssetBalance } from 'utils/index';
-import { getController } from 'utils/browser';
+import {
+  log,
+  formatUrl,
+  isNFT,
+  getAssetBalance,
+  getController,
+} from 'utils/index';
 
 interface ISend {
   initAddress?: string;

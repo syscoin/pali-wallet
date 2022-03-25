@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { OnboardingLayout, PrimaryButton } from 'components/index';
-import { getController } from 'utils/browser';
+import { getController } from 'utils/index';
 
 export const CreatePhrase: FC = () => {
   const navigate = useNavigate();

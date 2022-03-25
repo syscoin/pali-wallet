@@ -7,8 +7,7 @@ import {
   Modal,
 } from 'components/index';
 import { useStore, useDappConnection } from 'hooks/index';
-import { ellipsis, getHost } from 'utils/index';
-import { getController } from 'utils/browser';
+import { ellipsis, getHost, getController } from 'utils/index';
 import { Dialog } from '@headlessui/react';
 
 export const ConnectWallet = () => {

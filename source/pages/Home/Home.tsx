@@ -1,8 +1,7 @@
 import React, { useEffect } from 'react';
 import { Header, Icon, Button } from 'components/index';
 import { useStore, usePrice, useUtils } from 'hooks/index';
-import { formatNumber } from 'utils/index';
-import { getController } from 'utils/browser';
+import { formatNumber, getController } from 'utils/index';
 
 import { TxsPanel } from './TxsPanel';
 

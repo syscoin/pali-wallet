@@ -7,7 +7,7 @@ import {
   Navigate,
 } from 'react-router-dom';
 import { useStore, useUtils } from 'hooks/index';
-import { getController } from 'utils/browser';
+import { getController } from 'utils/index';
 import { browser } from 'webextension-polyfill-ts';
 
 import {

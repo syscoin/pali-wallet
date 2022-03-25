@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Icon } from 'components/index';
 import { useLocation } from 'react-router-dom';
-import { getController } from 'utils/browser';
+import { getController } from 'utils/index';
 
 import { AssetDetails } from './AssetDetails';
 import { TransactionDetails } from './TransactionDetails';

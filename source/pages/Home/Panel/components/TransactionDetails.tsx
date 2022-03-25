@@ -1,8 +1,7 @@
 import { useStore, useUtils } from 'hooks/index';
 import React, { useState, useEffect } from 'react';
 import { Icon, IconButton, Button } from 'components/index';
-import { ellipsis, formatDate, formatUrl } from 'utils/index';
-import { getController } from 'utils/browser';
+import { ellipsis, formatDate, formatUrl, getController } from 'utils/index';
 import { Disclosure } from '@headlessui/react';
 
 export const TransactionDetails = ({ transactionType, transactionDetails }) => {
