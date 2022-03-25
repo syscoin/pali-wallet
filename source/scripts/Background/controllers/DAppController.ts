@@ -1,6 +1,6 @@
 import { browser } from 'webextension-polyfill-ts';
 import {
-  listNewDapp,
+  // listNewDapp,
   unlistDapp,
   registerListeningSite as registerListeningSiteAction,
   deregisterListeningSite as deregisterListeningSiteAction,
@@ -58,8 +58,11 @@ const DAppController = (): IDAppController => {
     network: string,
     accounts: string[]
   ) => {
-    store.dispatch(listNewDapp({ id: origin, dapp, network, accounts }));
+    // store.dispatch(listNewDapp({ id: origin, dapp, network, accounts }));
+    console.log(origin, dapp, network, accounts);
   };
+
+  console.log(userConnectDApp, pageConnectDApp);
 
   const _dispatchEvents = async (events: any[]) => {
     const background = await browser.runtime.getBackgroundPage();
