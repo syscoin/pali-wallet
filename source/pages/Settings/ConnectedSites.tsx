@@ -147,7 +147,7 @@ const ConnectedSites = (): any => {
           </Transition>
         )}
 
-        <div className="absolute bottom-12">
+        <div className="absolute bottom-12 md:static">
           <SecondaryButton type="button" onClick={() => navigate('/home')}>
             Close
           </SecondaryButton>

@@ -1,15 +1,19 @@
+import { useStore } from 'hooks/useStore';
 import { Assets } from 'types/transactions';
 
 export const getAssetBalance = (
   selectedAsset: Assets | null,
   activeAccount
 ) => {
+  const { activeNetworkType } = useStore();
   if (selectedAsset) {
     const value = selectedAsset.balance / 10 ** selectedAsset.decimals;
     return `${value.toFixed(selectedAsset.decimals)} ${selectedAsset.symbol}`;
   }
 
-  return `${activeAccount?.balance.toFixed(8)} SYS`;
+  return `${activeAccount?.balance.toFixed(8)} ${
+    activeNetworkType === 'syscoin' ? 'SYS' : 'ETH'
+  }`;
 };
 
 export const cancelTransaction = (browser: any, tempTx: any) => {

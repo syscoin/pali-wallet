@@ -62,7 +62,7 @@ const CreateAccount = () => {
             />
           </Form.Item>
 
-          <div className="absolute bottom-12 md:top-56">
+          <div className="absolute bottom-12 md:static">
             <SecondaryButton
               type="submit"
               loading={loading}

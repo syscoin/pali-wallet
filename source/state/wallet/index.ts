@@ -24,6 +24,8 @@ export const initialState: IWalletState = {
   accounts: [],
   activeAccountId: 0,
   activeNetwork: 'main',
+  activeChainId: 57,
+  activeNetworkType: 'syscoin',
   encriptedMnemonic: null,
   confirmingTransaction: false,
   changingNetwork: false,
@@ -39,15 +41,53 @@ export const initialState: IWalletState = {
   timer: 5,
   currentBlockbookURL: 'https://blockbook.elint.services/',
   networks: {
-    main: {
-      id: 'main',
-      label: 'Main Network',
-      beUrl: 'https://blockbook.elint.services/',
+    syscoin: {
+      main: {
+        id: 'main',
+        chainId: 57,
+        label: 'Main Network',
+        beUrl: 'https://blockbook.elint.services/',
+        type: 'syscoin',
+      },
+      testnet: {
+        id: 'testnet',
+        chainId: 5700,
+        label: 'Test Network',
+        beUrl: 'https://blockbook-dev.elint.services/',
+        type: 'syscoin',
+      },
     },
-    testnet: {
-      id: 'testnet',
-      label: 'Test Network',
-      beUrl: 'https://blockbook-dev.elint.services/',
+    polygon: {
+      mainnet: {
+        id: 'mainnet',
+        chainId: 137,
+        label: 'Mainnet',
+        beUrl: '',
+        type: 'polygon',
+      },
+      testnet: {
+        id: 'testnet',
+        chainId: 80001,
+        label: 'Testnet',
+        beUrl: '',
+        type: 'polygon',
+      },
+    },
+    web3: {
+      mainnet: {
+        id: 'mainnet',
+        chainId: 1,
+        label: 'Mainnet',
+        beUrl: '',
+        type: 'web3',
+      },
+      rinkeby: {
+        id: 'rinkeby',
+        chainId: 4,
+        label: 'Rinkeby',
+        beUrl: '',
+        type: 'web3',
+      },
     },
   },
   trustedApps: {
@@ -260,6 +300,16 @@ const WalletState = createSlice({
     ) {
       state.encriptedMnemonic = action.payload.toString();
     },
+    setWeb3Address(state: IWalletState, action: PayloadAction<string>) {
+      if (state.activeAccountId) {
+        state.accounts[state.activeAccountId].web3Address = action.payload;
+      }
+    },
+    setWeb3PrivateKey(state: IWalletState, action: PayloadAction<string>) {
+      if (state.activeAccountId) {
+        state.accounts[state.activeAccountId].web3PrivateKey = action.payload;
+      }
+    },
     // TODO rename [status] to something more meaningful
     updateStatus(state: IWalletState) {
       state.status = Date.now();
@@ -351,6 +401,8 @@ const WalletState = createSlice({
     },
     changeActiveNetwork(state: IWalletState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload.id;
+      state.activeChainId = action.payload.chainId;
+      state.activeNetworkType = action.payload.type;
       state.currentBlockbookURL = action.payload.beUrl;
     },
     updateTransactions(
@@ -401,6 +453,8 @@ export const {
   updateSwitchNetwork,
   clearAllTransactions,
   updateAllTokens,
+  setWeb3Address,
+  setWeb3PrivateKey,
   setTimer,
   updateNetwork,
   setTemporaryTransactionState,

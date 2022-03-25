@@ -59,8 +59,10 @@ describe('Wallet store actions', () => {
     it('should update an existing network', () => {
       const payload: INetwork = {
         beUrl: 'https://this-is-an.url',
+        chainId: 57,
         id: 'main',
         label: 'CoinLabel',
+        type: 'syscoin',
       };
 
       const newState = reducer(initialState, updateNetwork(payload));
@@ -71,8 +73,10 @@ describe('Wallet store actions', () => {
     it('should create a network', () => {
       const payload: INetwork = {
         beUrl: 'https://this-is-an.url',
+        chainId: 57,
         id: 'somenet',
         label: 'CoinLabel',
+        type: 'syscoin',
       };
 
       const newState = reducer(initialState, updateNetwork(payload));
@@ -485,7 +489,9 @@ describe('Wallet store actions', () => {
     const payload: INetwork = {
       id: 'testnet',
       beUrl: 'https://blockbook-dev.elint.services/',
+      chainId: 57,
       label: 'Testnet',
+      type: 'syscoin',
     };
 
     const newState = reducer(initialState, changeActiveNetwork(payload));

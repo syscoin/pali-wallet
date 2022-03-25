@@ -9,8 +9,8 @@ import { ellipsis, getController } from 'utils/index';
 const AccountMenu: React.FC = () => {
   const navigate = useNavigate();
   const { wallet } = getController();
-  const { encriptedMnemonic, accounts, activeAccountId } = useStore();
-
+  const { encriptedMnemonic, accounts, activeAccountId, activeNetworkType } =
+    useStore();
   const switchAccount = (id: number) => {
     wallet.switchWallet(Number(id));
     wallet.account.watchMemPool(accounts[Number(id)]);
@@ -107,7 +107,10 @@ const AccountMenu: React.FC = () => {
                       >
                         <span>
                           {account.label} (
-                          {ellipsis(account.address.main, 4, 8)})
+                          {activeNetworkType === 'syscoin'
+                            ? ellipsis(account.address.main, 4, 8)
+                            : ellipsis(account.web3Address, 4, 8)}
+                          )
                         </span>
 
                         {activeAccountId === account.id && (
@@ -159,7 +162,7 @@ const AccountMenu: React.FC = () => {
 export const AccountHeader: React.FC = () => {
   const activeAccount = getController().wallet.account.getActiveAccount();
   const { useCopyClipboard, alert } = useUtils();
-
+  const { activeNetworkType } = useStore();
   const [copied, copy] = useCopyClipboard();
 
   useEffect(() => {
@@ -189,12 +192,20 @@ export const AccountHeader: React.FC = () => {
             {activeAccount?.label}
           </p>
           <p className="text-xs">
-            {ellipsis(activeAccount?.address.main, 6, 14)}
+            {activeNetworkType === 'syscoin'
+              ? ellipsis(activeAccount?.address.main, 6, 14)
+              : ellipsis(activeAccount?.web3Address, 6, 14)}
           </p>
         </div>
 
         <IconButton
-          onClick={() => copy(activeAccount?.address.main ?? '')}
+          onClick={() =>
+            copy(
+              activeNetworkType === 'syscoin'
+                ? String(activeAccount?.address.main)
+                : String(activeAccount?.web3Address)
+            )
+          }
           type="primary"
           shape="circle"
           className="mt-3"

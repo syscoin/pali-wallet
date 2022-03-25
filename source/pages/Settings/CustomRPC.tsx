@@ -27,8 +27,10 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             id: selectedToEdit
               ? selectedToEdit.id
               : network.toString().toLowerCase(),
+            chainId: 57,
             label: network,
             beUrl: blockbookURL,
+            type: 'syscoin',
           });
 
           setLoading(false);
@@ -149,7 +151,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               You can edit this later if you need on network settings menu.
             </p>
 
-            <div className="absolute bottom-12 md:bottom-72 xl:top-96">
+            <div className="absolute bottom-12 md:static">
               <SecondaryButton type="submit" loading={loading}>
                 Save
               </SecondaryButton>

@@ -77,7 +77,7 @@ const TrustedSitesView = () => {
             ))}
         </ul>
 
-        <div className="absolute bottom-12 2xl:bottom-56 md:bottom-40">
+        <div className="absolute bottom-12 md:static">
           <SecondaryButton type="button" onClick={() => navigate('/home')}>
             Close
           </SecondaryButton>

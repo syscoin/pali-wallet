@@ -16,7 +16,7 @@ import AccountController from './AccountController';
 import WalletController from './WalletController';
 
 describe('AccountController tests', () => {
-  const { checkPassword } = WalletController();
+  const { checkPassword, web3 } = WalletController();
 
   const {
     decryptAES,
@@ -32,6 +32,7 @@ describe('AccountController tests', () => {
     setNewXpub,
   } = AccountController({
     checkPassword: () => checkPassword('secret'),
+    web3,
   });
 
   it('should encrypt and decrypt string correctly', () => {
@@ -80,7 +81,13 @@ describe('AccountController tests', () => {
     const newLabel = 'test';
     const newUrl = 'test.com';
 
-    updateNetworkData({ id: 'main', label: newLabel, beUrl: newUrl });
+    updateNetworkData({
+      id: 'main',
+      label: newLabel,
+      chainId: 57,
+      beUrl: newUrl,
+      type: 'syscoin',
+    });
 
     const { networks } = store.getState().wallet;
 
