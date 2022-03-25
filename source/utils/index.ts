@@ -1,4 +1,4 @@
-export * from './browser';
+// browser export should not be here, import directly
 export * from './format';
 export * from './getHost';
 export * from './isNft';

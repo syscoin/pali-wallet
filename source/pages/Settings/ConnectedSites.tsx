@@ -3,7 +3,8 @@ import React, { Fragment, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { browser } from 'webextension-polyfill-ts';
 import { useUtils } from 'hooks/index';
-import { formatUrl, ellipsis, getController } from 'utils/index';
+import { formatUrl, ellipsis } from 'utils/index';
+import { getController } from 'utils/browser';
 
 const ConnectedSites = (): any => {
   const { navigate } = useUtils();

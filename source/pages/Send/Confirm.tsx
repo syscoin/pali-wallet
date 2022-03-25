@@ -8,8 +8,8 @@ import {
   ellipsis,
   formatUrl,
   cancelTransaction,
-  getController,
 } from 'utils/index';
+import { getController } from 'utils/browser';
 
 export const SendConfirm = () => {
   const controller = getController();
