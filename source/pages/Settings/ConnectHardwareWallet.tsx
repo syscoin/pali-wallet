@@ -15,7 +15,7 @@ const ConnectHardwareWalletView: FC = () => {
   return (
     <Layout title="HARDWARE WALLET" id="hardware-wallet-title">
       <div className="flex flex-col items-center justify-center w-full md:max-w-md">
-        <div className="scrollbar-styled px-4 h-85 text-sm overflow-y-auto md:px-0 md:w-full md:max-w-md">
+        <div className="scrollbar-styled px-4 h-85 text-sm overflow-y-auto md:px-0 md:w-full md:max-w-md md:h-3/4">
           <p className="mb-1 mt-8 mx-2.5 w-80 text-white text-sm md:mx-0 md:w-full">
             Select the hardware wallet you'd like to connect to Pali
           </p>
@@ -91,7 +91,7 @@ const ConnectHardwareWalletView: FC = () => {
           </Disclosure>
         </div>
 
-        <div className="absolute bottom-12 2xl:bottom-56 md:bottom-40">
+        <div className="absolute bottom-12 md:static md:mt-6">
           <SecondaryButton
             type="button"
             onClick={handleCreateHardwareWallet}
