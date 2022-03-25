@@ -98,6 +98,8 @@
     "import/no-cycle": "off",
     "eqeqeq": "off",
     "new-cap": "off",
+    "no-nested-ternary": "off",
+    "react-hooks/rules-of-hooks": "off",
     "no-new": "off",
     "@typescript-eslint/no-non-null-assertion": "error",
     "@typescript-eslint/comma-dangle": "off",

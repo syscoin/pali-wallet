@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useUtils } from 'hooks/index';
+import { useUtils, useStore } from 'hooks/index';
 import { ellipsis, getController } from 'utils/index';
 import QRCode from 'qrcode.react';
 import { Layout, SecondaryButton, Icon } from 'components/index';
@@ -9,6 +9,7 @@ export const Receive = () => {
   const [isCopied, copyText] = useCopyClipboard();
 
   const controller = getController();
+  const { activeNetworkType } = useStore();
   const activeAccount = controller.wallet.account.getActiveAccount();
 
   const [loaded, setLoaded] = useState<boolean>(false);
@@ -24,11 +25,18 @@ export const Receive = () => {
   }, []);
 
   return (
-    <Layout title="RECEIVE SYS" id="receiveSYS-title">
-      {loaded && activeAccount ? (
+    <Layout
+      title={activeNetworkType === 'syscoin' ? 'RECEIVE SYS' : 'RECEIVE ETH'}
+      id="receiveSYS-title"
+    >
+      {loaded && activeAccount && activeNetworkType ? (
         <div className="flex flex-col items-center justify-center pt-8 w-full">
           <QRCode
-            value={activeAccount.address.main}
+            value={
+              activeNetworkType === 'syscoin'
+                ? activeAccount.address.main
+                : activeAccount.web3Address
+            }
             bgColor="#fff"
             fgColor="#000"
             id="qr-code"
@@ -41,7 +49,9 @@ export const Receive = () => {
           />
 
           <p className="mt-4 text-base">
-            {ellipsis(activeAccount.address.main, 4, 10)}
+            {activeNetworkType === 'syscoin'
+              ? ellipsis(activeAccount.address.main, 4, 10)
+              : ellipsis(activeAccount.web3Address, 4, 10)}
           </p>
 
           <div
@@ -50,7 +60,11 @@ export const Receive = () => {
           >
             <SecondaryButton
               type="button"
-              onClick={() => copyText(activeAccount.address.main)}
+              onClick={
+                activeNetworkType === 'syscoin'
+                  ? () => copyText(activeAccount.address.main)
+                  : () => copyText(activeAccount.web3Address)
+              }
             >
               <span className="text-xs">
                 {isCopied ? 'Copied address' : 'Copy'}

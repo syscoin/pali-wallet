@@ -44,6 +44,7 @@ const sys = require('syscoinjs-lib');
 
 const AccountController = (actions: {
   checkPassword: (pwd: string) => boolean;
+  web3: any;
 }): IAccountController => {
   let intervalId: any;
   let globalAccount: IAccountState | undefined;
@@ -61,6 +62,8 @@ const AccountController = (actions: {
     signAndSendPSBT: null,
     mintNFT: null,
   };
+
+  const { importAccount, getBalance } = actions.web3;
 
   const decryptAES = (encryptedString: any, key: string) =>
     CryptoJS.AES.decrypt(encryptedString, key).toString(CryptoJS.enc.Utf8);
@@ -282,18 +285,29 @@ const AccountController = (actions: {
       }
     }
 
-    const accountData = {
-      balance: response.balance / 1e8,
-      assets,
-      transactions,
-    };
+    const { activeNetworkType, accounts } = store.getState().wallet;
 
-    if (address) {
-      return {
-        ...accountData,
-        address,
+    if (activeNetworkType === 'syscoin') {
+      const accountData = {
+        balance: response.balance / 1e8,
+        assets,
+        transactions,
       };
+      if (address) {
+        return {
+          ...accountData,
+          address,
+        };
+      }
+
+      return accountData;
     }
+    const balance: any = await getBalance(accounts[0]?.web3Address);
+    const accountData: any = {
+      balance,
+      assets: [],
+      transactions: [],
+    };
 
     return accountData;
   };
@@ -767,6 +781,7 @@ const AccountController = (actions: {
           assets: trezorInfo.assets,
           connectedTo: [],
           isTrezorWallet: true,
+          web3Address: '',
           trezorId: trezorID + 1,
         };
 
@@ -801,6 +816,16 @@ const AccountController = (actions: {
 
     const signer = sysjs.Signer.Signer;
 
+    const encryptedMnemonic = CryptoJS.AES.encrypt(
+      sysjs.Signer.mnemonic,
+      window.controller.wallet.encryptedPassword
+    );
+
+    const web3Account = await importAccount(
+      encryptedMnemonic,
+      window.controller.wallet.encryptedPassword
+    );
+
     globalAccount = {
       id: signer.accountIndex,
       label: label ?? `Account ${signer.accountIndex + 1}`,
@@ -815,6 +840,11 @@ const AccountController = (actions: {
       assets: account.assets,
       connectedTo: [],
       isTrezorWallet: false,
+      web3Address: web3Account.address,
+      web3PrivateKey: CryptoJS.AES.encrypt(
+        web3Account.privateKey,
+        'encripted'
+      ).toString(),
     };
 
     store.dispatch(createAccount(globalAccount));

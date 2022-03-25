@@ -9,15 +9,21 @@ import { browser } from 'webextension-polyfill-ts';
 export const NormalHeader: React.FC = () => {
   const { wallet } = getController();
 
-  const { activeNetwork, encriptedMnemonic, networks } = useStore();
+  const {
+    activeNetwork,
+    encriptedMnemonic,
+    networks,
+    activeNetworkType,
+    activeChainId,
+  } = useStore();
   const { handleRefresh, navigate } = useUtils();
   const activeAccount = wallet.account.getActiveAccount();
 
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [currentTabURL, setCurrentTabURL] = useState<string>('');
 
-  const handleChangeNetwork = (value: string) => {
-    wallet.switchNetwork(value as string);
+  const handleChangeNetwork = (value: number) => {
+    wallet.switchNetwork(value as number);
     wallet.getNewAddress();
   };
 
@@ -52,34 +58,44 @@ export const NormalHeader: React.FC = () => {
     }
   }, [activeAccount, currentTabURL]);
 
-  const ethNetworks = {
-    main: {
-      id: 'eth main',
-      label: 'Main Network',
-      beUrl: 'https://blockbook.elint.services/',
-    },
-    localhost: {
-      id: 'localhost',
-      label: 'Localhost 8545',
-      beUrl: 'https://blockbook-dev.elint.services/',
-    },
-  };
-
   // TODO: breakdown NetworkMenu
   const NetworkMenu = () => (
-    <Menu as="div" className="absolute left-2 inline-block mr-8 text-left">
+    <Menu
+      as="div"
+      className="align-center absolute left-2 inline-block mr-8 text-left"
+    >
       {(menuprops) => (
         <>
-          <Menu.Button className="inline-flex gap-x-6 items-center justify-start ml-2 w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
-            <span>{activeNetwork}</span>
+          <Menu.Button className="inline-flex justify-center w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+            <div className="flex gap-x-6 items-center justify-start ml-2 w-full cursor-pointer">
+              <div className="flex items-center">
+                <div className="border-brand-primary mr-3 px-2 text-brand-white border border rounded-full">
+                  <span className="text-xs">
+                    {activeNetworkType === 'syscoin'
+                      ? 'syscoin'
+                      : activeNetworkType === 'web3'
+                      ? 'web3'
+                      : 'polygon'}
+                  </span>
+                </div>
 
-            <Icon
-              name="select-down"
-              className={`${
-                menuprops.open ? 'transform rotate-180' : ''
-              } text-brand-white`}
-              id="network-settings-btn"
-            />
+                <div>
+                  <span style={{ textTransform: 'capitalize' }}>
+                    {activeNetwork}
+                  </span>
+                </div>
+              </div>
+
+              <IconButton className="mb-1">
+                <Icon
+                  name="select-down"
+                  className={`${
+                    menuprops.open ? 'transform rotate-180' : ''
+                  } text-brand-white`}
+                  id="network-settings-btn"
+                />
+              </IconButton>
+            </div>
           </Menu.Button>
 
           <Transition
@@ -153,30 +169,27 @@ export const NormalHeader: React.FC = () => {
                       </Disclosure.Button>
 
                       <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
-                        {Object.values(networks).map((currentNetwork: any) => (
-                          <li
-                            key={currentNetwork.id}
-                            className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                            onClick={() =>
-                              handleChangeNetwork(currentNetwork.id)
-                            }
-                          >
-                            <span
-                              className="text-left"
-                              style={{ marginLeft: '3.2rem' }}
+                        {Object.values(networks.syscoin).map(
+                          (currentNetwork: any) => (
+                            <li
+                              key={currentNetwork.chainId}
+                              className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                              onClick={() =>
+                                handleChangeNetwork(currentNetwork.chainId)
+                              }
                             >
-                              {currentNetwork.label}
-                            </span>
+                              <span>{currentNetwork.label}</span>
 
-                            {activeNetwork === currentNetwork.id && (
-                              <Icon
-                                name="check"
-                                className="mb-1 w-4"
-                                wrapperClassname="w-6 absolute right-20"
-                              />
-                            )}
-                          </li>
-                        ))}
+                              {activeChainId === currentNetwork.chainId && (
+                                <Icon
+                                  name="check"
+                                  className="mb-1 w-4"
+                                  wrapperClassname="w-6 absolute right-1"
+                                />
+                              )}
+                            </li>
+                          )
+                        )}
                       </Disclosure.Panel>
                     </>
                   )}
@@ -206,32 +219,76 @@ export const NormalHeader: React.FC = () => {
                       </Disclosure.Button>
 
                       <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
-                        {Object.values(ethNetworks).map(
+                        {Object.values(networks.web3).map(
                           (currentNetwork: any) => (
                             <li
-                              key={currentNetwork.id}
-                              className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                              key={currentNetwork.chainId}
+                              className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                               onClick={() =>
-                                handleChangeNetwork(currentNetwork.id)
+                                handleChangeNetwork(currentNetwork.chainId)
                               }
                             >
-                              <span
-                                className="text-left"
-                                style={{ marginLeft: '3.2rem' }}
-                              >
-                                {currentNetwork.label}
-                              </span>
+                              <span>{currentNetwork.label}</span>
 
-                              {activeNetwork === currentNetwork.id && (
+                              {activeChainId === currentNetwork.chainId && (
                                 <Icon
                                   name="check"
                                   className="mb-1 w-4"
-                                  wrapperClassname="w-6 absolute right-20"
+                                  wrapperClassname="w-6 absolute right-1"
                                 />
                               )}
                             </li>
                           )
                         )}
+                      </Disclosure.Panel>
+                    </>
+                  )}
+                </Disclosure>
+              </Menu.Item>
+
+              <Menu.Item>
+                <Disclosure>
+                  {({ open }) => (
+                    <>
+                      <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
+                        <Icon
+                          name="dolar"
+                          className="ml-1 mr-4 text-brand-white"
+                        />
+
+                        <span className="px-3 text-base">Polygon networks</span>
+
+                        <Icon
+                          name="select-down"
+                          className={`${
+                            open ? 'transform rotate-180' : ''
+                          } mb-1 text-brand-white`}
+                        />
+                      </Disclosure.Button>
+
+                      <Disclosure.Panel className="pb-2 pt-0.5 text-sm bg-menu-secondary">
+                        {networks.polygon &&
+                          Object.values(networks.polygon).map(
+                            (currentNetwork: any) => (
+                              <li
+                                key={currentNetwork.chainId}
+                                className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                                onClick={() =>
+                                  handleChangeNetwork(currentNetwork.chainId)
+                                }
+                              >
+                                <span>{currentNetwork.label}</span>
+
+                                {activeChainId === currentNetwork.chainId && (
+                                  <Icon
+                                    name="check"
+                                    className="mb-1 w-4"
+                                    wrapperClassname="w-6 absolute right-1"
+                                  />
+                                )}
+                              </li>
+                            )
+                          )}
                       </Disclosure.Panel>
                     </>
                   )}

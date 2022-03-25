@@ -2047,10 +2047,13 @@
     node-gyp "^8.2.0"
     read-package-json-fast "^2.0.1"
 
-"@pollum-io/sysweb3-keyring@^1.0.1":
-  version "1.0.1"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.1.tgz#ec1c906569c5ed145dbd0164497fb1deb179acda"
-  integrity sha512-ZL1NcP95zr4NzW/QrkVtI7OTJNxp2BvUaKcSaOdh5mLF8rlPnNiercEffS67ChOc2OJ8a6Mx33gnhkWLYrPU7g==
+"@pollum-io/sysweb3-core@^1.0.1", "@pollum-io/sysweb3-core@^1.0.4":
+  version "1.0.4"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.4.tgz#fa1f29bdac269f910fc5228bf3762b8d5dbac778"
+  integrity sha512-CtgylQFzxh01Cmm6bsbqFEyWJkk8VJat8V6iaNePG1MLknJ8P/NdTeWSHyfySeLwrvaisC0zuGQcu1wd4/ltcQ==
+  dependencies:
+    rimraf "^3.0.2"
+
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
@@ -2066,17 +2069,24 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
-"@pollum-io/sysweb3-network@^1.0.1":
-  version "1.0.1"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.1.tgz#709c4d4993fc9775d1c6b22471449303285e6362"
-  integrity sha512-yi5x0TyNoJEgM3g/wjEbewMFZwplZ0WY37lArtcmL3h2IDDpsJOTj6/bw1asKlHN/Yj1jM2bKDH230f7kAXceA==
+"@pollum-io/sysweb3-keyring@^1.0.5":
+  version "1.0.5"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.5.tgz#7e27554f64f3e2311aad02d0c3d49662be12f235"
+  integrity sha512-vFS/EjuE+sx88cCjLH2enfM+BsbCu4TCna9jeUBJer9+5lGctXGOHpZ0AidTHhsGG1oxcvWqNG3+XVPKV9M7yg==
   dependencies:
-    "@types/web3" "^1.2.2"
+    "@metamask/obs-store" "^7.0.0"
+    "@metamask/safe-event-emitter" "^2.0.0"
+    "@pollum-io/sysweb3-utils" "^1.0.3"
+    "@types/crypto-js" "^4.1.1"
     axios "^0.26.1"
-    node-fetch "^3.2.3"
-    rimraf "^3.0.2"
-    tslib "^2.3.1"
+    bip39 "^3.0.4"
+    crypto-js "^4.1.1"
+    ethereumjs-wallet "^1.0.2"
+    ethers "^5.6.0"
+    lodash "^4.17.21"
+    syscoinjs-lib "^1.0.209"
     web3 "^1.7.1"
+    web3-utils "^1.7.1"
 
 "@pollum-io/sysweb3-network@^1.0.3":
   version "1.0.3"
@@ -2105,6 +2115,16 @@
     syscoinjs-lib "^1.0.209"
     ts-node "^10.7.0"
     web3 "^1.7.1"
+
+"@pollum-io/sysweb3@^1.0.15":
+  version "1.0.15"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3/-/sysweb3-1.0.15.tgz#2ae5f1a713d88dadce493da597777470cd78c528"
+  integrity sha512-rL84lwFvA4Xh3aE13jhZIekGg6Tif3i3/38IC7MW9ret/T0CX3gVQ3BWhonoeiNPz3U9/ep1CPw0gGw0Cums8w==
+  dependencies:
+    "@pollum-io/sysweb3-core" "^1.0.1"
+    "@pollum-io/sysweb3-keyring" "^1.0.4"
+    "@pollum-io/sysweb3-network" "^1.0.3"
+    "@pollum-io/sysweb3-utils" "^1.0.3"
 
 "@popperjs/core@^2.9.0":
   version "2.11.2"
@@ -2438,6 +2458,7 @@
   resolved "https://registry.yarnpkg.com/@types/node/-/node-12.20.43.tgz#6cf47894da4a4748c62fccf720ba269e1b1ff5a4"
   integrity sha512-HCfJdaYqJX3BCzeihgZrD7b85Cu05OC/GVJ4kEYIflwUs4jbnUlLLWoq7hw1LBcdvUyehO+gr6P5JQ895/2ZfA==
 
+
 "@types/node@^16.7.13":
   version "16.11.26"
   resolved "https://registry.yarnpkg.com/@types/node/-/node-16.11.26.tgz#63d204d136c9916fb4dcd1b50f9740fe86884e47"
@@ -2447,6 +2468,7 @@
   version "17.0.23"
   resolved "https://registry.yarnpkg.com/@types/node/-/node-17.0.23.tgz#3b41a6e643589ac6442bdbd7a4a3ded62f33f7da"
   integrity sha512-UxDxWn7dl97rKVeVS61vErvw086aCYhDLyvRQZ5Rk65rZKepaFdm53GeqXaKBuOhED4e9uWq34IC3TdSdJJ2Gw==
+
 
 "@types/normalize-package-data@^2.4.0":
   version "2.4.1"
@@ -5188,7 +5210,7 @@ cross-env@^7.0.3:
   dependencies:
     cross-spawn "^7.0.1"
 
-cross-fetch@^3.1.4:
+cross-fetch@^3.1.4, cross-fetch@^3.1.5:
   version "3.1.5"
   resolved "https://registry.yarnpkg.com/cross-fetch/-/cross-fetch-3.1.5.tgz#e1389f44d9e7ba767907f7af8454787952ab534f"
   integrity sha512-lvb1SBsI0Z7GDwmuid+mU3kWVBwTVUbe7S0H52yaaAdQOXq2YktTCZdlAcNKFzE6QtRz0snpw9bNiPeOIkkQvw==
@@ -6497,7 +6519,7 @@ ethereumjs-wallet@^1.0.2:
     utf8 "^3.0.0"
     uuid "^8.3.2"
 
-ethers@^5.5.4, ethers@^5.6.0, ethers@^5.6.1:
+ethers@^5.6.0:
   version "5.6.1"
   resolved "https://registry.yarnpkg.com/ethers/-/ethers-5.6.1.tgz#a56cd67f1595b745dc3dde0ccf2b5de53a41a6d0"
   integrity sha512-qtl/2W+dwmUa5Z3JqwsbV3JEBZZHNARe5K/A2ePcNAuhJYnEKIgGOT/O9ouPwBijSqVoQnmQMzi5D48LFNOY2A==
@@ -6691,6 +6713,11 @@ extglob@^2.0.4:
     regex-not "^1.0.0"
     snapdragon "^0.8.1"
     to-regex "^3.0.1"
+
+extract-files@^9.0.0:
+  version "9.0.0"
+  resolved "https://registry.yarnpkg.com/extract-files/-/extract-files-9.0.0.tgz#8a7744f2437f81f5ed3250ed9f1550de902fe54a"
+  integrity sha512-CvdFfHkC95B4bBBk36hcEmvdR2awOdhhVUYH6S/zrVj3477zven/fJMYg7121h4T1xHZC+tetUpubpAhxwI7hQ==
 
 extsprintf@1.3.0:
   version "1.3.0"
@@ -7306,6 +7333,20 @@ graceful-fs@^4.1.11, graceful-fs@^4.1.15, graceful-fs@^4.1.2, graceful-fs@^4.1.6
   version "4.2.9"
   resolved "https://registry.yarnpkg.com/graceful-fs/-/graceful-fs-4.2.9.tgz#041b05df45755e587a24942279b9d113146e1c96"
   integrity sha512-NtNxqUcXgpW2iMrfqSfR73Glt39K+BLwWsPs94yR63v45T0Wbej7eRmL5cWfwEgqXnmjQp3zaJTshdRW/qC2ZQ==
+
+graphql-request@^4.2.0:
+  version "4.2.0"
+  resolved "https://registry.yarnpkg.com/graphql-request/-/graphql-request-4.2.0.tgz#063377bc2dd29cc46aed3fddcc65fe97b805ba81"
+  integrity sha512-uFeMyhhl8ss4LFgjlfPeAn2pqYw+CJto+cjj71uaBYIMMK2jPIqgHm5KEFxUk0YDD41A8Bq31a2b4G2WJBlp2Q==
+  dependencies:
+    cross-fetch "^3.1.5"
+    extract-files "^9.0.0"
+    form-data "^3.0.0"
+
+graphql@^16.3.0:
+  version "16.3.0"
+  resolved "https://registry.yarnpkg.com/graphql/-/graphql-16.3.0.tgz#a91e24d10babf9e60c706919bb182b53ccdffc05"
+  integrity sha512-xm+ANmA16BzCT5pLjuXySbQVFwH3oJctUVdy81w1sV0vBU0KgDdBGtxQOUd5zqOBk/JayAFeG8Dlmeq74rjm/A==
 
 har-schema@^2.0.0:
   version "2.0.0"

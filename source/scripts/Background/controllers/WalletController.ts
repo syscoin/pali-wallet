@@ -18,6 +18,7 @@ import axios from 'axios';
 import { IWalletController } from 'types/controllers';
 import { log, logError, openNotificationsPopup } from 'utils/index';
 
+import Web3Controller from './Web3Controller';
 import AccountController from './AccountController';
 import TrezorController from './TrezorController';
 
@@ -65,9 +66,11 @@ const WalletController = (): IWalletController => {
     return encryptedPassword === pwd;
   };
 
-  const account = AccountController({ checkPassword });
+  const web3 = Web3Controller();
+  const account = AccountController({ checkPassword, web3 });
   const trezor = TrezorController({ account });
 
+  const { setActiveNetwork, web3Provider } = web3;
   const isLocked = () => !encryptedPassword || !HDsigner;
 
   const retrieveEncriptedMnemonic = () => {
@@ -99,7 +102,7 @@ const WalletController = (): IWalletController => {
       walletPassword: null,
       isTestnet: false,
     });
-    setSjs({ SignerIn: HDsigner, blockbookURL: networks.main.beUrl });
+    setSjs({ SignerIn: HDsigner, blockbookURL: networks.syscoin.main.beUrl });
 
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
@@ -339,54 +342,90 @@ const WalletController = (): IWalletController => {
     });
   };
 
-  const switchNetwork = async (networkId: string) => {
+  const switchNetwork = async (chainId: number) => {
     const { networks } = store.getState().wallet;
 
-    const { id, beUrl, label } = networks[networkId];
+    const getTheNewNetwork = async (networkList: any, searchParam: number) => {
+      const getNetworksArray = Object.values(networkList).map((network: any) =>
+        Object.values(network).filter(
+          (search: any) => search.chainId === searchParam
+        )
+      );
 
-    store.dispatch(
-      changeActiveNetwork({
-        id,
-        beUrl,
-        label,
-      })
-    );
+      const getSpecificNetwork = getNetworksArray.filter(
+        (network) => network.length !== 0
+      );
+
+      return Object.assign(getSpecificNetwork[0]);
+    };
+
+    const newNetwork = await getTheNewNetwork(networks, chainId);
+
+    if (chainId === 57 || chainId === 5700) {
+      store.dispatch(
+        changeActiveNetwork({
+          id: newNetwork[0]?.id,
+          chainId: newNetwork[0]?.chainId,
+          beUrl: newNetwork[0]?.beUrl,
+          label: newNetwork[0]?.label,
+          type: newNetwork[0]?.type,
+        })
+      );
+    } else {
+      await setActiveNetwork(chainId);
+
+      store.dispatch(
+        changeActiveNetwork({
+          id: newNetwork[0]?.id,
+          chainId: newNetwork[0]?.chainId,
+          beUrl: String(web3Provider?.currentProvider),
+          label: newNetwork[0]?.label,
+          type: newNetwork[0]?.type,
+        })
+      );
+
+      store.dispatch(updateSwitchNetwork(true));
+
+      return;
+    }
 
     try {
-      const response = await axios.get(`${networks[networkId].beUrl}/api/v2`);
-      const { blockbook, backend } = response.data;
+      if (chainId === 57 || chainId === 5700) {
+        const response = await axios.get(`${newNetwork[0]?.beUrl}/api/v2`);
 
-      if (response && blockbook && backend) {
-        let isTestnet = false;
+        const { blockbook, backend } = response.data;
 
-        const blockBookVerification =
-          blockbook.coin === 'Syscoin' || blockbook.coin === 'Syscoin Testnet';
+        if (response && blockbook && backend) {
+          let isTestnet = false;
+          if (
+            blockbook.coin === 'Syscoin' ||
+            blockbook.coin === 'Syscoin Testnet'
+          ) {
+            if (backend.chain === 'main') {
+              isTestnet = false;
+            }
 
-        if (blockBookVerification) {
-          if (backend.chain === 'main') {
-            isTestnet = false;
+            if (backend.chain === 'test') {
+              isTestnet = true;
+            }
+
+            setHDSigner({
+              walletMnemonic: HDsigner.mnemonic,
+              walletPassword: null,
+              isTestnet,
+            });
+            setSjs({
+              SignerIn: HDsigner,
+              blockbookURL: newNetwork[0]?.beUrl,
+            });
+
+            store.dispatch(updateSwitchNetwork(true));
+
+            getAccountDataByNetwork(sjs);
           }
 
-          if (backend.chain === 'test') {
-            isTestnet = true;
-          }
-
-          setHDSigner({
-            walletMnemonic: HDsigner.mnemonic,
-            walletPassword: null,
-            isTestnet,
-          });
-          setSjs({
-            SignerIn: HDsigner,
-            blockbookURL: networks[networkId].beUrl,
-          });
-
-          store.dispatch(updateSwitchNetwork(true));
-
-          getAccountDataByNetwork(sjs);
+          return;
         }
-
-        return;
       }
     } catch (error) {
       throw new Error('Invalid network.');
@@ -490,6 +529,7 @@ const WalletController = (): IWalletController => {
   };
 
   return {
+    web3,
     account,
     isLocked,
     setWalletPassword,
