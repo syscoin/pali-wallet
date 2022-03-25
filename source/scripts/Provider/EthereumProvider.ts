@@ -51,7 +51,7 @@ export const EthereumProvider = () => {
   const getConnectedAccount = () => {
     const controller = getController();
 
-    return ({
+    const {
       address,
       assets,
       balance,
@@ -61,7 +61,19 @@ export const EthereumProvider = () => {
       web3Address,
       xpub,
       trezorId,
-    } = controller?.wallet?.account?.getConnectedAccount());
+    } = controller?.wallet?.account?.getConnectedAccount();
+
+    return {
+      address,
+      assets,
+      balance,
+      id,
+      isTrezorWallet,
+      label,
+      web3Address,
+      xpub,
+      trezorId,
+    };
   };
 
   const checkForConnectedAccount = () => {
@@ -109,5 +121,8 @@ export const EthereumProvider = () => {
     getBalance,
     handleLockAccount,
     handleUnlockAccount,
+    getConnectedAccount,
+    checkForConnectedAccount,
+    getWalletState,
   };
 };
