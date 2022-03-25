@@ -14,7 +14,7 @@ import cssToXPath from 'css-to-xpath';
 interface CustomWebElement extends WebElement {
   click(): Promise<void>;
   fill(input);
-  getText(): Promise<void>;
+  getText(): Promise<string>;
   press(key): Promise<void>;
   waitForElementState(state, timeout);
 }
