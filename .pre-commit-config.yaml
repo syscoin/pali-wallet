@@ -3,4 +3,3 @@ repos:
     rev: v2.3.0
     hooks:
     -   id: check-yaml
-    -   id: end-of-file-fixer
