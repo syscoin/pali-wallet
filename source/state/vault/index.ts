@@ -12,6 +12,8 @@ export const initialState: IVaultState = {
   lastLogin: 0,
   accounts: [],
   activeAccount: {
+    web3PrivateKey: '',
+    web3Address: '',
     address: {
       main: '',
     },
