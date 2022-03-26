@@ -71,7 +71,7 @@ export const NormalHeader: React.FC = () => {
     <Menu as="div" className="absolute left-2 inline-block mr-8 text-left">
       {(menuprops) => (
         <>
-          <Menu.Button className="inline-flex gap-x-6 items-center justify-start ml-2 w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
+          <Menu.Button className="z-0 inline-flex gap-x-2 items-center justify-start ml-2 w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
             <span>{activeNetwork}</span>
 
             <Icon
@@ -91,12 +91,13 @@ export const NormalHeader: React.FC = () => {
             leave="transition ease-in duration-75"
             leaveFrom="transform opacity-100 scale-100"
             leaveTo="transform opacity-0 scale-95"
+            className="z-40"
           >
-            <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
+            <div className="fixed z-50 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
 
             <Menu.Items
               as="div"
-              className="scrollbar-styled absolute z-10 left-0 pb-6 w-72 h-menu text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
+              className="scrollbar-styled absolute z-50 left-0 pb-6 w-72 h-menu text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
             >
               <h2
                 className="mb-6 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light"
@@ -274,14 +275,14 @@ export const NormalHeader: React.FC = () => {
   const GeneralMenu = () => (
     <Menu
       as="div"
-      className="absolute z-10 right-2 top-2 flex gap-x-4 items-center justify-evenly"
+      className="absolute right-2 top-2 flex items-center justify-evenly"
     >
       {() => (
         <>
           <Tooltip content={currentTabURL}>
             <IconButton
               onClick={() => navigate('/settings/networks/connected-sites')}
-              className="relative text-brand-white"
+              className="relative z-0 mx-1.5 text-brand-white"
             >
               <Icon
                 name="globe"
@@ -299,17 +300,21 @@ export const NormalHeader: React.FC = () => {
           </Tooltip>
           <IconButton
             onClick={handleRefresh}
-            className="hover:text-brand-deepPink100 text-brand-white"
+            className="z-0 mx-1.5 hover:text-brand-deepPink100 text-brand-white"
           >
             <Icon name="reload" />
           </IconButton>
 
-          <Menu.Button as="button" id="general-settings-button">
+          <Menu.Button
+            as="button"
+            id="general-settings-button"
+            className="z-0 mx-1.5"
+          >
             {encriptedMnemonic && (
               <IconButton type="primary" shape="circle">
                 <Icon
                   name="settings"
-                  className="z-0 hover:text-brand-royalblue text-brand-white"
+                  className="hover:text-brand-royalblue text-brand-white"
                 />
               </IconButton>
             )}
@@ -324,11 +329,11 @@ export const NormalHeader: React.FC = () => {
             leaveFrom="transform opacity-100 scale-100"
             leaveTo="transform opacity-0 scale-95"
           >
-            <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
+            <div className="fixed z-40 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
 
             <Menu.Items
               as="div"
-              className="scrollbar-styled absolute z-10 right-0 pb-6 w-72 h-96 text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
+              className="scrollbar-styled absolute z-50 right-0 pb-6 w-72 h-96 text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
             >
               <h2
                 className="mb-6 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light"
