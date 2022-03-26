@@ -3,7 +3,7 @@ import { Form, Input } from 'antd';
 import { Layout, SecondaryButton } from 'components/index';
 import axios from 'axios';
 import { useUtils } from 'hooks/index';
-import { getController } from 'utils/index';
+import { getController } from 'utils/browser';
 
 import { EditNetwork } from '.';
 

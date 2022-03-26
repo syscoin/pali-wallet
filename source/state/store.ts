@@ -32,7 +32,8 @@ const middleware = [
 ];
 
 const nodeEnv = process.env.NODE_ENV;
-if (nodeEnv !== 'production' && nodeEnv != 'test') {
+
+if (nodeEnv !== 'production' && nodeEnv !== 'test') {
   middleware.push(logger);
 }
 
@@ -43,7 +44,7 @@ const store: Store<{
 }> = configureStore({
   reducer: persistedReducer,
   middleware,
-  devTools: process.env.NODE_ENV !== 'production',
+  devTools: nodeEnv !== 'production' && nodeEnv !== 'test',
 });
 
 persistStore(store);

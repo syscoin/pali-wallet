@@ -1,6 +1,6 @@
 import { browser } from 'webextension-polyfill-ts';
 import { useUtils, useStore } from 'hooks/index';
-import { closePopup, getController } from 'utils/index';
+import { closePopup, getController } from 'utils/browser';
 
 export const useDappConnection = () => {
   const controller = getController();

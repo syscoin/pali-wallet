@@ -1,6 +1,7 @@
 import React, { useEffect, Fragment, useState } from 'react';
 import { usePrice, useStore, useUtils } from 'hooks/index';
-import { formatNumber, getController } from 'utils/index';
+import { formatNumber } from 'utils/index';
+import { getController } from 'utils/browser';
 import { Layout, SecondaryButton, Icon, DefaultModal } from 'components/index';
 import { Menu, Transition } from '@headlessui/react';
 import { Input } from 'antd';

@@ -8,5 +8,6 @@
     "^.+\\.mjs$": "babel-jest"
   },
   "testTimeout": 30000,
-  "testRegex": "((\\.|/*.)(spec)|(test))\\.ts?$"
+  "testRegex": "((\\.|/*.)(spec)|(test))\\.ts?$",
+  "setupFilesAfterEnv": ["./jest.setup.js"]
 }

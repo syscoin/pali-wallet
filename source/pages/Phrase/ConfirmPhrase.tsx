@@ -3,7 +3,7 @@ import React, {
   // useMemo
 } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getController } from 'utils/index';
+import { getController } from 'utils/browser';
 import shuffle from 'lodash/shuffle';
 import {
   Button,

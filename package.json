@@ -25,12 +25,13 @@
     "prepare": "husky install",
     "format": "prettier --single-quote --write .",
     "type-check": "tsc --pretty --noEmit",
-    "test": "jest",
-    "test:silent": "ENABLE_CHROME_LOGGING=false yarn test",
-    "test:unit": "jest source/ tests/unit",
-    "test:e2e": "jest tests/e2e",
-    "test:e2e:silent": "ENABLE_CHROME_LOGGING=false yarn test:e2e",
-    "postinstall": "npx patch-package"
+    "test": "NODE_ENV=test jest",
+    "test:silent": "NODE_ENV=test ENABLE_CHROME_LOGGING=false yarn test",
+    "test:unit": "NODE_ENV=test jest source/ tests/unit",
+    "test:e2e": "NODE_ENV=test jest tests/e2e",
+    "test:e2e:silent": "NODE_ENV=test ENABLE_CHROME_LOGGING=false yarn test:e2e",
+    "postinstall": "npx patch-package",
+    "test-all": "yarn lint && yarn test:unit"
   },
   "lint-staged": {
     "*.@(ts|tsx|js|jsx)": [
@@ -95,6 +96,7 @@
     "graphql-request": "^4.2.0",
     "jdenticon": "^3.1.1",
     "jest": "^27.4.0",
+    "jest-chrome": "^0.7.2",
     "lint-staged": "^12.1.7",
     "lodash": "^4.17.20",
     "neo-async": "^2.6.2",

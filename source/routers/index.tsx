@@ -7,7 +7,7 @@ import {
   useParams,
   Navigate,
 } from 'react-router-dom';
-import { useQuery, useStore, useUtils } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { browser } from 'webextension-polyfill-ts';
 
