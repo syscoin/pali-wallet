@@ -37,6 +37,7 @@ import {
 } from '../pages';
 
 import { ProtectedRoute } from './ProtectedRoute';
+import { ExternalRoute } from './ExternalRoute';
 
 export const Router = () => {
   const params = useParams();
@@ -74,6 +75,12 @@ export const Router = () => {
       return;
     }
 
+    if (route === 'connect-wallet') {
+      navigate('/external');
+
+      return;
+    }
+
     if (route !== '/') navigate(route);
   }, [isUnlocked, accounts]);
 
@@ -85,6 +92,7 @@ export const Router = () => {
   return (
     <Routes>
       <Route path="/" element={<Start />} />
+      <Route path="/external" element={<External />} />
 
       <Route path="create-password" element={<CreatePass />} />
       <Route path="import" element={<Import />} />

@@ -29,7 +29,7 @@ import {
 
 import { ProtectedRoute } from './ProtectedRoute';
 
-export const ExternalRouter = () => {
+export const ExternalRoute = () => {
   const {
     wallet: { isLocked },
     appRoute,
@@ -45,12 +45,12 @@ export const ExternalRouter = () => {
   useEffect(() => {
     // if (!isUnlocked) navigate('/');
 
-    // if (isUnlocked) navigate(`/external/${route}`);
+    if (isUnlocked && route) navigate(`/external/${route}`);
 
     console.log('route', route, isUnlocked);
 
     // if (storedRoute !== '/') navigate(storedRoute);
-  }, []);
+  }, [route]);
 
   return (
     <Routes>
