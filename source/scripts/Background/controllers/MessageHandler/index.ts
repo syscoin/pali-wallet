@@ -33,7 +33,7 @@ export const messagesHandler = (port: Runtime.Port, masterController: any) => {
     const origin = url && new URL(url as string).origin;
 
     // Set current page
-    masterController.dapp.fromPageConnectDApp(origin, title);
+    masterController.dapp.pageConnectDApp(origin, title);
 
     switch (message.type) {
       case 'PALI_EVENT_REG':
