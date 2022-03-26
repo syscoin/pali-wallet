@@ -15,7 +15,7 @@ import {
   About,
   AutoLock,
   ConfirmPhrase,
-  ConnectedAccounts,
+  ChangeAccount,
   ConnectedSites,
   ConnectHardwareWallet,
   ConnectWallet,
@@ -88,41 +88,41 @@ export const Router = () => {
 
         return;
       case 'signAndSendPSBT':
-        navigate('/tx/sign');
+        navigate('/external/tx/sign');
 
         return;
       case 'mintNFT':
-        navigate('/tx/asset/nft/mint');
+        navigate('/external/tx/asset/nft/mint');
 
         return;
 
       case 'signPSBT':
-        navigate('/tx/sign-psbt');
+        navigate('/external/tx/sign-psbt');
 
         return;
 
       case 'newAsset':
-        navigate('/tx/create');
+        navigate('/external/tx/create');
 
         return;
 
       case 'mintAsset':
-        navigate('/tx/asset/issue');
+        navigate('/external/tx/asset/issue');
 
         return;
 
       case 'newNFT':
-        navigate('/tx/asset/nft/issue');
+        navigate('/external/tx/asset/nft/issue');
 
         return;
 
       case 'updateAsset':
-        navigate('/tx/asset/update');
+        navigate('/external/tx/asset/update');
 
         return;
 
       case 'transferAsset':
-        navigate('/tx/asset/transfer');
+        navigate('/external/tx/asset/transfer');
 
         break;
       default:
@@ -164,15 +164,17 @@ export const Router = () => {
       <Route path="phrase/create" element={<CreatePhrase />} />
       <Route path="phrase/confirm" element={<ConfirmPhrase />} />
 
-      <Route
-        path="/connect-wallet"
-        element={<ProtectedRoute element={<ConnectWallet />} />}
-      />
+      <Route path="external">
+        <Route
+          path="connect-wallet"
+          element={<ProtectedRoute element={<ConnectWallet />} />}
+        />
 
-      <Route
-        path="connected-accounts"
-        element={<ProtectedRoute element={<ConnectedAccounts />} />}
-      />
+        <Route
+          path="change-account"
+          element={<ProtectedRoute element={<ChangeAccount />} />}
+        />
+      </Route>
 
       <Route path="home" element={<ProtectedRoute element={<Home />} />} />
       <Route
@@ -256,7 +258,7 @@ export const Router = () => {
       </Route>
 
       {/* /tx */}
-      <Route path="tx">
+      <Route path="external/tx">
         <Route
           path="create"
           element={<ProtectedRoute element={<Create />} />}
@@ -273,6 +275,7 @@ export const Router = () => {
           path="sign-psbt"
           element={<ProtectedRoute element={<SignPSBT />} />}
         />
+
         {/* /tx/asset */}
         <Route path="asset">
           <Route

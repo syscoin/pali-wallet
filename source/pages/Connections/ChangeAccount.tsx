@@ -3,7 +3,7 @@ import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
 import { useStore, useDappConnection } from 'hooks/index';
 import { ellipsis, getHost, closePopup, getController } from 'utils/index';
 
-export const ConnectedAccounts = () => {
+export const ChangeAccount = () => {
   const accountController = getController().wallet.account;
   const connectedAccount = accountController.getConnectedAccount();
 

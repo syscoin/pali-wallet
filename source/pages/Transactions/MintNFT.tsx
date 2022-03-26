@@ -8,7 +8,7 @@ export const MintNFTConfirm = () => (
 
 export const MintNFT = () => (
   <TxLayout
-    confirmRoute="/tx/asset/nft/mint/confirm"
+    confirmRoute="/external/tx/asset/nft/mint/confirm"
     txType="mintNFT"
     title="Mint NFT"
   />
