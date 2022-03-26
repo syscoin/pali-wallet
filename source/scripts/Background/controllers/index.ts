@@ -47,7 +47,7 @@ const MasterController = (): IMasterController => {
 
     if (!_window || !_window.width) return null;
 
-    let url = '/app.html?';
+    let url = `/external.html?`;
 
     if (route) {
       url += `route=${route}&windowId=${windowId}&data=${JSON.stringify(
