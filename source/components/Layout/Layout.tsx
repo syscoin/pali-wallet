@@ -57,7 +57,7 @@ export const Layout: FC<ILayout> = ({
         />
       </div>
 
-      <div className="flex flex-col items-center justify-center mx-auto w-full max-w-xs text-brand-white bg-bkg-2 sm:max-w-full">
+      <div className="flex flex-col items-center justify-center mx-auto w-full max-w-sm text-brand-white bg-bkg-2 sm:max-w-full">
         {children}
       </div>
     </div>

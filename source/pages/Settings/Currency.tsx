@@ -84,7 +84,7 @@ const CurrencyView = () => {
         }`}
       />
 
-      <p className="mx-6 my-3 text-left text-white text-xs">
+      <p className="mx-4 my-3 max-w-xs text-left text-white text-sm md:max-w-full">
         You can choose and set your preferred currency to see in your wallet.
       </p>
 
@@ -145,7 +145,7 @@ const CurrencyView = () => {
                 {formatNumber(Number(activeAccount?.balance) || 0)}{' '}
               </p>
 
-              <p className="mt-4 font-poppins">TSYS</p>
+              <p className="font-poppins md:mt-4">TSYS</p>
             </div>
           ) : (
             <>
@@ -154,7 +154,7 @@ const CurrencyView = () => {
                   {formatNumber(activeAccount?.balance || 0)}{' '}
                 </p>
 
-                <p className="mt-4 font-poppins">SYS</p>
+                <p className="font-poppins md:mt-4">SYS</p>
               </div>
 
               <p>
@@ -168,7 +168,7 @@ const CurrencyView = () => {
           )}
         </div>
 
-        <div className="mt-8">
+        <div className="mt-6 md:mt-8">
           <SecondaryButton type="button" onClick={handleConfirmCurrencyChange}>
             Save
           </SecondaryButton>
