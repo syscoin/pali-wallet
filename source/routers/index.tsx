@@ -7,7 +7,7 @@ import {
   useParams,
   Navigate,
 } from 'react-router-dom';
-import { useQuery, useStore, useUtils } from 'hooks/index';
+import { useQuery, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { browser } from 'webextension-polyfill-ts';
 
@@ -42,13 +42,18 @@ export * from './ExternalRoute';
 
 export const Router = () => {
   const params = useParams();
-  const controller = getController();
+  const {
+    wallet: {
+      account: { getTemporaryTransaction },
+      isLocked,
+    },
+    appRoute,
+  } = getController();
 
-  const { temporaryTransactionState } = useStore();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
 
-  const isUnlocked = !controller.wallet.isLocked();
+  const isUnlocked = !isLocked();
 
   useEffect(() => {
     if (isUnlocked) {
@@ -61,119 +66,25 @@ export const Router = () => {
     }
   }, [isUnlocked, browser.runtime]);
 
-  const query = useQuery();
-  const route = query.get('route');
-
   useEffect(() => {
-    const route = controller.appRoute();
-    const { executing, type } = temporaryTransactionState;
+    const route = appRoute();
 
     const hasSendAssetTx = getTemporaryTransaction('sendAsset') !== null;
-    const hasUpdateAssetTx = getTemporaryTransaction('updateAsset') !== null;
 
-    if (
-      route === '/send/confirm' &&
-      !hasSendAssetTx &&
-      !executing &&
-      type !== 'sendAsset'
-    ) {
+    if (route === '/send/confirm' && !hasSendAssetTx) {
       navigate('/home');
+
       return;
     }
 
-    if (route === '/tx/asset/update/confirm' && !hasUpdateAssetTx) {
-      navigate('/home');
-      return;
-    }
-
-    if (!isUnlocked && accounts.length > 0) {
-      navigate('/');
-      return;
-    }
-
-    if (executing && isUnlocked) {
-      if (type === 'sendAsset' && hasSendAssetTx) {
-        navigate('/send/confirm');
-        return;
-      }
-
-      switch (type) {
-        case 'signAndSendPSBT':
-          navigate('/tx/sign');
-          return;
-
-        case 'mintNFT':
-          navigate('/tx/asset/nft/mint');
-          return;
-
-        case 'signPSBT':
-          navigate('/tx/sign-psbt');
-          return;
-
-        case 'newAsset':
-          navigate('/tx/create');
-          return;
-
-        case 'mintAsset':
-          navigate('/tx/asset/issue');
-          return;
-
-        case 'newNFT':
-          navigate('/tx/asset/nft/issue');
-          return;
-
-        case 'updateAsset':
-          navigate('/tx/asset/update');
-          return;
-
-        case 'transferAsset':
-          navigate('/tx/asset/transfer');
-          return;
-
-        default:
-          break;
-      }
-    }
-
-    if (!executing && type !== 'sendAsset' && hasSendAssetTx) {
-      navigate('/home');
-      return;
-    }
-
-    if (isUnlocked) {
-      if (canConnect) {
-        if (connectedAccount) {
-          navigate('/connected-accounts');
-          return;
-        }
-
-        navigate('/connect-wallet');
-        return;
-      }
-
-      navigate('/home');
-      return;
-    }
+    if (isUnlocked) return navigate('/home');
 
     if (route !== '/') navigate(route);
-  }, [canConnect, isUnlocked]);
-
-  // useEffect(() => {
-  //   const appRoute = controller.appRoute();
-
-  //   console.log('app route', appRoute);
-
-  //   if (isUnlocked) {
-  //     if (appRoute !== '/app.html' || appRoute !== '/')
-  //       return navigate(appRoute);
-
-  //     navigate('/home');
-  //   }
-  // }, [isUnlocked]);
+  }, [isUnlocked]);
 
   useEffect(() => {
     alert.removeAll();
-    controller.appRoute(pathname);
+    appRoute(pathname);
   }, [pathname]);
 
   return (
