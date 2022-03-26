@@ -42,12 +42,12 @@ const PrivateKeyView = () => {
           <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>
         </CopyCard>
 
-        <p className="ml-8 my-5 text-xs sm:text-center md:ml-0 md:text-left">
+        <p className="my-5 max-w-xs text-xs sm:text-center md:text-left">
           To see your private key, input your password
         </p>
 
         <Form
-          className="password mx-auto my-3 w-80 max-w-xl text-center sm:w-full"
+          className="password mx-auto my-3 w-full max-w-xs text-center md:max-w-xl"
           name="phraseview"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}

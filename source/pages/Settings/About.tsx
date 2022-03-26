@@ -24,7 +24,7 @@ const AboutView: FC = () => {
 
   return (
     <Layout title="INFO & HELP" id="info-help-title">
-      <div className="flex flex-col gap-y-4 mt-8 pl-8 w-full text-brand-white text-sm md:pl-20">
+      <div className="flex flex-col gap-y-4 mt-4 pl-8 w-full text-brand-white text-sm md:pl-20">
         <p>Pali Wallet Browser Extension v2.0</p>
         <p>Version: 1.0.23</p>
 
@@ -37,10 +37,10 @@ const AboutView: FC = () => {
       </div>
 
       <div
-        className="flex flex-col items-center justify-center w-full"
+        className="flex flex-col items-center justify-center w-full max-w-xs md:max-w-full"
         id="user-support-btn"
       >
-        <SimpleCard>
+        <SimpleCard className="mt-4">
           <div className="flex items-center justify-start mb-4 font-poppins text-base font-bold">
             <Icon
               name="message"

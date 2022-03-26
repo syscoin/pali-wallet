@@ -398,7 +398,7 @@ export const Send: FC<ISend> = () => {
           </Form.Item>
         </div>
 
-        <p className="flex flex-col items-center justify-center mx-14 p-0 text-center text-brand-royalblue md:my-4">
+        <p className="flex flex-col items-center justify-center p-0 max-w-xs text-center text-brand-royalblue sm:w-full md:my-4">
           <span className="text-xs">
             {`With current network conditions we recommend a fee of
             ${recommend} SYS`}
