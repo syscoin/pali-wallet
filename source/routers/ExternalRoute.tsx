@@ -45,10 +45,12 @@ export const ExternalRouter = () => {
   useEffect(() => {
     // if (!isUnlocked) navigate('/');
 
-    if (route && isUnlocked) navigate(`/external/${route}`);
+    // if (isUnlocked) navigate(`/external/${route}`);
+
+    console.log('route', route, isUnlocked);
 
     // if (storedRoute !== '/') navigate(storedRoute);
-  }, [isUnlocked, route]);
+  }, []);
 
   return (
     <Routes>
