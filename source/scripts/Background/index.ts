@@ -23,6 +23,21 @@ browser.runtime.onConnect.addListener((port: Runtime.Port) => {
     console.log('on connect port pali');
 
     messagesHandler(port, window.controller);
+
+    return;
+  }
+
+  if (
+    port.sender &&
+    port.sender.url &&
+    (port.sender.url?.includes(browser.runtime.getURL('/app.html')) ||
+      port.sender.url?.includes(browser.runtime.getURL('/external.html')))
+  ) {
+    console.log('port is external', port);
+
+    port.onDisconnect.addListener(() => {
+      console.log('onDisconnect');
+    });
   }
 });
 
