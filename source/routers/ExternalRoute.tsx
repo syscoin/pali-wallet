@@ -32,15 +32,23 @@ import { ProtectedRoute } from './ProtectedRoute';
 export const ExternalRouter = () => {
   const {
     wallet: { isLocked },
+    appRoute,
   } = getController();
   const { navigate } = useUtils();
 
   const query = useQuery();
   const route = query.get('route');
 
+  const isUnlocked = !isLocked();
+  // const storedRoute = appRoute();
+
   useEffect(() => {
-    if (route && !isLocked) navigate(`/external/${route}`);
-  }, [route]);
+    // if (!isUnlocked) navigate('/');
+
+    if (route && isUnlocked) navigate(`/external/${route}`);
+
+    // if (storedRoute !== '/') navigate(storedRoute);
+  }, [isUnlocked, route]);
 
   return (
     <Routes>
