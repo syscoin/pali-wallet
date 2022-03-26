@@ -75,12 +75,6 @@ export const Router = () => {
       return;
     }
 
-    if (route === 'connect-wallet') {
-      navigate('/external');
-
-      return;
-    }
-
     if (route !== '/') navigate(route);
   }, [isUnlocked, accounts]);
 

@@ -32,29 +32,21 @@ import { ProtectedRoute } from './ProtectedRoute';
 export const ExternalRoute = () => {
   const {
     wallet: { isLocked },
-    appRoute,
   } = getController();
   const { navigate } = useUtils();
 
   const query = useQuery();
   const route = query.get('route');
 
-  const isUnlocked = !isLocked();
-  // const storedRoute = appRoute();
+  // const isUnlocked = !isLocked();
 
   useEffect(() => {
-    // if (!isUnlocked) navigate('/');
-
-    if (isUnlocked && route) navigate(`/external/${route}`);
-
-    console.log('route', route, isUnlocked);
-
-    // if (storedRoute !== '/') navigate(storedRoute);
-  }, [route]);
+    if (route) navigate(`/external/${route}`);
+  }, []);
 
   return (
     <Routes>
-      <Route path="/" element={<Start />} />
+      <Route path="/" element={<Start external />} />
 
       <Route path="create-password" element={<CreatePass />} />
       <Route path="import" element={<Import />} />
@@ -62,84 +54,38 @@ export const ExternalRoute = () => {
       <Route path="phrase/confirm" element={<ConfirmPhrase />} />
 
       <Route path="external">
-        <Route
-          path="connect-wallet"
-          element={<ProtectedRoute element={<ConnectWallet />} />}
-        />
+        <Route path="connect-wallet" element={<ConnectWallet />} />
 
-        <Route
-          path="change-account"
-          element={<ProtectedRoute element={<ChangeAccount />} />}
-        />
+        <Route path="change-account" element={<ChangeAccount />} />
 
         {/* /tx/ */}
         <Route path="tx">
-          <Route
-            path="create"
-            element={<ProtectedRoute element={<Create />} />}
-          />
-          <Route
-            path="create/confirm"
-            element={<ProtectedRoute element={<CreateTokenConfirm />} />}
-          />
-          <Route
-            path="sign"
-            element={<ProtectedRoute element={<SignAndSend />} />}
-          />
-          <Route
-            path="sign-psbt"
-            element={<ProtectedRoute element={<SignPSBT />} />}
-          />
+          <Route path="create" element={<Create />} />
+          <Route path="create/confirm" element={<CreateTokenConfirm />} />
+          <Route path="sign" element={<SignAndSend />} />
+          <Route path="sign-psbt" element={<SignPSBT />} />
 
           {/* /tx/asset */}
           <Route path="asset">
-            <Route
-              path="issue"
-              element={<ProtectedRoute element={<MintToken />} />}
-            />
-            <Route
-              path="issue/confirm"
-              element={<ProtectedRoute element={<MintTokenConfirm />} />}
-            />
-            <Route
-              path="transfer"
-              element={<ProtectedRoute element={<TransferOwnership />} />}
-            />
+            <Route path="issue" element={<MintToken />} />
+            <Route path="issue/confirm" element={<MintTokenConfirm />} />
+            <Route path="transfer" element={<TransferOwnership />} />
             <Route
               path="transfer/confirm"
-              element={
-                <ProtectedRoute element={<TransferOwnershipConfirm />} />
-              }
+              element={<TransferOwnershipConfirm />}
             />
-            <Route
-              path="update"
-              element={<ProtectedRoute element={<UpdateAsset />} />}
-            />
-            <Route
-              path="update/confirm"
-              element={<ProtectedRoute element={<UpdateAssetConfirm />} />}
-            />
+            <Route path="update" element={<UpdateAsset />} />
+            <Route path="update/confirm" element={<UpdateAssetConfirm />} />
 
             {/* /tx/asset/nft */}
             <Route path="nft">
-              <Route
-                path="issue"
-                element={<ProtectedRoute element={<CreateAndIssueNFT />} />}
-              />
+              <Route path="issue" element={<CreateAndIssueNFT />} />
               <Route
                 path="issue/confirm"
-                element={
-                  <ProtectedRoute element={<CreateAndIssueNFTConfirm />} />
-                }
+                element={<CreateAndIssueNFTConfirm />}
               />
-              <Route
-                path="mint"
-                element={<ProtectedRoute element={<MintNFT />} />}
-              />
-              <Route
-                path="mint/confirm"
-                element={<ProtectedRoute element={<MintNFTConfirm />} />}
-              />
+              <Route path="mint" element={<MintNFT />} />
+              <Route path="mint/confirm" element={<MintNFTConfirm />} />
             </Route>
           </Route>
         </Route>
