@@ -49,6 +49,7 @@ export const Router = () => {
   } = getController();
 
   const { alert, navigate } = useUtils();
+  const { accounts } = useStore();
   const { pathname } = useLocation();
 
   const isUnlocked = !isLocked();
@@ -67,14 +68,14 @@ export const Router = () => {
   useEffect(() => {
     const route = appRoute();
 
-    if (isUnlocked) {
+    if (isUnlocked && accounts) {
       navigate('/home');
 
       return;
     }
 
     if (route !== '/') navigate(route);
-  }, [isUnlocked]);
+  }, [isUnlocked, accounts]);
 
   useEffect(() => {
     alert.removeAll();

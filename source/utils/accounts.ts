@@ -1,5 +1,5 @@
 import store from 'state/store';
-import {
+import IWalletState, {
   IAccountState,
   ICopyAccountState,
   ICopyWalletState,
@@ -37,10 +37,8 @@ const _getOmittedSensitiveAccountState = () => {
   return accounts as ICopyAccountState[];
 };
 
-export const _getOmittedSensitiveState = () => {
+export const _getOmittedSensitiveState = (wallet: IWalletState) => {
   const accounts = _getOmittedSensitiveAccountState();
-
-  const { wallet } = store.getState();
 
   const _wallet: ICopyWalletState = {
     ...wallet,

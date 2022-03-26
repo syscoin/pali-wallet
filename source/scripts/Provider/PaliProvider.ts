@@ -1,7 +1,11 @@
 // import { getController } from 'utils/browser';
 import { browser } from 'webextension-polyfill-ts';
 import store from 'state/store';
-import { getConnectedAccount, _getOmittedSensitiveState } from 'utils/index';
+import {
+  getConnectedAccount,
+  _getOmittedSensitiveState,
+  log,
+} from 'utils/index';
 
 export const PaliProvider = () => {
   const connectedAccount = getConnectedAccount('Syscoin');
@@ -12,7 +16,7 @@ export const PaliProvider = () => {
 
   const getChainId = () => store.getState().wallet.activeNetwork;
 
-  const getState = () => _getOmittedSensitiveState();
+  const getState = () => _getOmittedSensitiveState(store.getState().wallet);
 
   // const sendToken = async (items: any) => {
   //   const controller = getController();
@@ -58,15 +62,16 @@ export const PaliProvider = () => {
   // };
 
   const notifyWalletChanges = async (): Promise<void> => {
-    const { activeNetworkType } = store.getState().wallet;
-    const { ...walletInfo } = store.getState().wallet;
+    const { wallet } = store.getState();
+    const { activeNetworkType } = wallet;
+
     const background = await browser.runtime.getBackgroundPage();
 
     const _dispatchEvent = (): void => {
       background.dispatchEvent(
         new CustomEvent('walletChanged', {
           detail: {
-            data: { ...walletInfo },
+            data: _getOmittedSensitiveState(wallet),
             chain: 'ethereum',
           },
         })
@@ -74,11 +79,10 @@ export const PaliProvider = () => {
     };
 
     if (activeNetworkType === 'web3') {
-      const subscribe = store.subscribe(_dispatchEvent);
-      return subscribe();
+      store.subscribe(_dispatchEvent);
     }
 
-    console.log('building...');
+    log('could not notify wallet changes, network is not web3', 'System');
   };
 
   return {
