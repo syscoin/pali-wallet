@@ -7,7 +7,7 @@ import {
   useParams,
   Navigate,
 } from 'react-router-dom';
-import { useQuery, useUtils, useStore } from 'hooks/index';
+import { useUtils, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { browser } from 'webextension-polyfill-ts';
 
@@ -37,7 +37,6 @@ import {
 } from '../pages';
 
 import { ProtectedRoute } from './ProtectedRoute';
-import { ExternalRoute } from './ExternalRoute';
 
 export const Router = () => {
   const params = useParams();
@@ -86,7 +85,6 @@ export const Router = () => {
   return (
     <Routes>
       <Route path="/" element={<Start />} />
-      <Route path="/external" element={<External />} />
 
       <Route path="create-password" element={<CreatePass />} />
       <Route path="import" element={<Import />} />

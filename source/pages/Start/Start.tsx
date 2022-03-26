@@ -1,12 +1,12 @@
 import React from 'react';
 import LogoImage from 'assets/images/logo-s.svg';
 import { PrimaryButton } from 'components/index';
-import { useStore, useUtils, useQuery } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Link } from 'react-router-dom';
 import { getController } from 'utils/browser';
 
-export const Start = ({ external }: { external?: boolean }) => {
+export const Start = () => {
   const { navigate } = useUtils();
   const {
     wallet: { unLock },
@@ -28,13 +28,8 @@ export const Start = ({ external }: { external?: boolean }) => {
     </>
   );
 
-  const query = useQuery();
-  const route = query.get('route');
-
   const onSubmit = async (data: any) => {
     await unLock(data.password);
-
-    if (external) navigate(`/external/${route}`);
   };
 
   const unlock = (
