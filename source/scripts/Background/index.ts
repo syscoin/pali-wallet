@@ -19,6 +19,8 @@ declare global {
 }
 
 browser.runtime.onConnect.addListener((port: Runtime.Port) => {
+  console.log('connected pali');
+
   if (port.name === 'pali') {
     console.log('on connect port pali');
 
@@ -44,6 +46,7 @@ browser.runtime.onConnect.addListener((port: Runtime.Port) => {
 browser.runtime.onInstalled.addListener(() => {
   if (!window.controller) {
     window.controller = Object.freeze(MasterController());
+
     setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
   }
 

@@ -20,11 +20,6 @@
     "notifications",
     "https://sysmint.paliwallet.com/"
   ],
-  "options_ui": {
-    "page": "app.html",
-    "open_in_tab": true,
-    "__chrome__chrome_style": false
-  },
   "content_security_policy": "script-src 'self'; object-src 'self'",
   "__chrome|firefox__author": "Pollum Sys Teams",
   "__opera__developer": {
@@ -67,12 +62,7 @@
       "js": ["js/webextension.bundle.js", "js/trezorScript.bundle.js"]
     }
   ],
-  "web_accessible_resources": [
-    "app.html",
-    "inpage.ts",
-    "connect-wallet",
-    "js/inpage.bundle.js"
-  ],
+  "web_accessible_resources": ["app.html"],
   "commands": {
     "_execute_browser_action": {
       "suggested_key": {

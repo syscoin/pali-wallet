@@ -1,4 +1,4 @@
-import { getController } from 'utils/browser';
+// import { getController } from 'utils/browser';
 import { browser } from 'webextension-polyfill-ts';
 import store from 'state/store';
 import { getConnectedAccount, _getOmittedSensitiveState } from 'utils/index';
@@ -14,48 +14,48 @@ export const PaliProvider = () => {
 
   const getState = () => _getOmittedSensitiveState();
 
-  const sendToken = async (items: any) => {
-    const controller = getController();
+  // const sendToken = async (items: any) => {
+  //   const controller = getController();
 
-    const handleSendToken = await controller?.connections?.handleSendToken(
-      items
-    );
+  //   const handleSendToken = await controller?.connections?.handleSendToken(
+  //     items
+  //   );
 
-    return handleSendToken;
-  };
+  //   return handleSendToken;
+  // };
 
-  const createToken = async (items: any) => {
-    const controller = getController();
+  // const createToken = async (items: any) => {
+  //   const controller = getController();
 
-    const handleCreateToken = await controller?.connections?.handleCreateToken(
-      items
-    );
+  //   const handleCreateToken = await controller?.connections?.handleCreateToken(
+  //     items
+  //   );
 
-    return handleCreateToken;
-  };
+  //   return handleCreateToken;
+  // };
 
-  const transferToken = async (items: any) => {
-    const controller = getController();
+  // const transferToken = async (items: any) => {
+  //   const controller = getController();
 
-    const handleTransferToken =
-      await controller?.connections?.handleTransferOwnership(items);
+  //   const handleTransferToken =
+  //     await controller?.connections?.handleTransferOwnership(items);
 
-    return handleTransferToken;
-  };
+  //   return handleTransferToken;
+  // };
 
-  const signPSBT = (psbtToSign: any) => {
-    const controller = getController();
+  // const signPSBT = (psbtToSign: any) => {
+  //   const controller = getController();
 
-    const handleSignPSBT = controller?.connections?.signPSBT(psbtToSign);
+  //   const handleSignPSBT = controller?.connections?.signPSBT(psbtToSign);
 
-    return handleSignPSBT;
-  };
+  //   return handleSignPSBT;
+  // };
 
-  const getSignedPSBT = (psbtToSign: any) => {
-    const controller = getController();
+  // const getSignedPSBT = (psbtToSign: any) => {
+  //   const controller = getController();
 
-    return controller?.connections?.signPSBT(psbtToSign);
-  };
+  //   return controller?.connections?.signPSBT(psbtToSign);
+  // };
 
   const notifyWalletChanges = async (): Promise<void> => {
     const { activeNetworkType } = store.getState().wallet;
@@ -90,11 +90,11 @@ export const PaliProvider = () => {
     getNetwork,
     getChainId,
     getState,
-    sendToken,
-    createToken,
-    transferToken,
-    signPSBT,
-    getSignedPSBT,
+    // sendToken,
+    // createToken,
+    // transferToken,
+    // signPSBT,
+    // getSignedPSBT,
     notifyWalletChanges,
   };
 };

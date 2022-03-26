@@ -7,11 +7,34 @@ import {
   useParams,
   Navigate,
 } from 'react-router-dom';
-import { useStore, useUtils } from 'hooks/index';
+import { useQuery, useStore, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { browser } from 'webextension-polyfill-ts';
 
-import * as p from '../pages';
+import {
+  About,
+  AutoLock,
+  ConfirmPhrase,
+  ConnectedSites,
+  ConnectHardwareWallet,
+  CreateAccount,
+  CreatePass,
+  CreatePhrase,
+  Currency,
+  CustomRPC,
+  DeleteWallet,
+  DetailsView,
+  EditNetwork,
+  Home,
+  Import,
+  Phrase,
+  PrivateKey,
+  Receive,
+  Send,
+  SendConfirm,
+  Start,
+  TrustedSites,
+} from '../pages';
 
 import { ProtectedRoute } from './ProtectedRoute';
 
@@ -45,6 +68,14 @@ export const Router = () => {
     alert.removeAll();
     controller.appRoute(pathname);
   }, [pathname]);
+
+  useEffect(() => {
+    const appRoute = controller.appRoute();
+
+    if (appRoute !== '/') return navigate(appRoute);
+
+    if (isUnlocked) navigate('/home');
+  }, [isUnlocked]);
 
   return (
     <Routes>
