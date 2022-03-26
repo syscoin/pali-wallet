@@ -1,19 +1,26 @@
-import React from 'react';
+import { useUtils, useQuery } from 'hooks/index';
+import React, { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { getController } from 'utils/browser';
 
 import {
   ChangeAccount,
+  ConfirmPhrase,
   ConnectWallet,
   Create,
   CreateAndIssueNFT,
   CreateAndIssueNFTConfirm,
+  CreatePass,
+  CreatePhrase,
   CreateTokenConfirm,
+  Import,
   MintNFT,
   MintNFTConfirm,
   MintToken,
   MintTokenConfirm,
   SignAndSend,
   SignPSBT,
+  Start,
   TransferOwnership,
   TransferOwnershipConfirm,
   UpdateAsset,
@@ -23,10 +30,27 @@ import {
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const ExternalRouter = () => {
-  // const params = useParams();
+  const {
+    wallet: { isLocked },
+  } = getController();
+  const { navigate } = useUtils();
+
+  const query = useQuery();
+  const route = query.get('route');
+
+  useEffect(() => {
+    if (route && !isLocked) navigate(`/external/${route}`);
+  }, [route]);
 
   return (
     <Routes>
+      <Route path="/" element={<Start />} />
+
+      <Route path="create-password" element={<CreatePass />} />
+      <Route path="import" element={<Import />} />
+      <Route path="phrase/create" element={<CreatePhrase />} />
+      <Route path="phrase/confirm" element={<ConfirmPhrase />} />
+
       <Route path="external">
         <Route
           path="connect-wallet"
@@ -113,7 +137,7 @@ export const ExternalRouter = () => {
 
       <Route
         path="external.html"
-        element={<Navigate to={{ pathname: '/' }} />}
+        element={<Navigate to={{ pathname: '/external.html' }} />}
       />
     </Routes>
   );

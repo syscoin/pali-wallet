@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import { Container } from 'components/index';
-import { ExternalRouter } from 'routers/index';
+import { ExternalRouter } from 'routers/ExternalRoute';
 import { BrowserRouter } from 'react-router-dom';
 
 const External: FC = () => (

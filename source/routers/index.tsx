@@ -7,7 +7,7 @@ import {
   useParams,
   Navigate,
 } from 'react-router-dom';
-import { useQuery, useUtils } from 'hooks/index';
+import { useQuery, useUtils, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { browser } from 'webextension-polyfill-ts';
 
@@ -38,8 +38,6 @@ import {
 
 import { ProtectedRoute } from './ProtectedRoute';
 
-export * from './ExternalRoute';
-
 export const Router = () => {
   const params = useParams();
   const {
@@ -69,15 +67,11 @@ export const Router = () => {
   useEffect(() => {
     const route = appRoute();
 
-    const hasSendAssetTx = getTemporaryTransaction('sendAsset') !== null;
-
-    if (route === '/send/confirm' && !hasSendAssetTx) {
+    if (isUnlocked) {
       navigate('/home');
 
       return;
     }
-
-    if (isUnlocked) return navigate('/home');
 
     if (route !== '/') navigate(route);
   }, [isUnlocked]);
@@ -98,8 +92,7 @@ export const Router = () => {
 
       <Route path="home" element={<ProtectedRoute element={<Home />} />} />
       <Route
-        // ? maybe this route should belong to transaction scope
-        path="home/tx-details"
+        path="home/details"
         element={<ProtectedRoute element={<DetailsView />} />}
       />
 
