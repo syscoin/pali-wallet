@@ -23,8 +23,5 @@ const inject = (content: string) => {
 inject(
   `window.SUPPORTED_WALLET_METHODS = ${JSON.stringify(SupportedWalletMethods)}`
 );
-
-console.log('injecting provider manager', providerManager);
-
 inject(providerManager);
 inject(paliProvider);
