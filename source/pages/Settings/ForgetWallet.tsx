@@ -34,7 +34,8 @@ const ForgetWalletView = () => {
         <p>
           <b className="text-warning-info">WARNING:</b> This will forget the
           wallet created with your current seed phrase. If in the future you
-          want to use Pali again, you will need to create a new wallet.
+          want to use Pali again, you will need to create a new wallet using
+          your seed or creating a new one.
         </p>
       </Card>
 
