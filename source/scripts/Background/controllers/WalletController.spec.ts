@@ -8,7 +8,7 @@ import WalletController from './WalletController';
 describe('WalletController.ts tests', () => {
   const {
     setWalletPassword,
-    deleteWallet,
+    forgetWallet,
     switchWallet,
     checkPassword,
     importPhrase,
@@ -19,12 +19,12 @@ describe('WalletController.ts tests', () => {
     mnemonic,
   } = WalletController();
 
-  it('should delete wallet and check if wallet state is equal to initial state', () => {
+  it('should forget wallet and check if wallet state is equal to initial state', () => {
     // eslint-disable-next-line no-shadow
     const password: any = FAKE_PASSWORD;
 
     setWalletPassword(password);
-    deleteWallet(password);
+    forgetWallet(password);
 
     const currentState = currentWalletState;
 

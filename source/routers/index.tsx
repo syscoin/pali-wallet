@@ -27,7 +27,7 @@ import {
   CreateTokenConfirm,
   Currency,
   CustomRPC,
-  DeleteWallet,
+  ForgetWallet,
   DetailsView,
   EditNetwork,
   Home,
@@ -224,8 +224,8 @@ export const Router = () => {
           element={<ProtectedRoute element={<Currency />} />}
         />
         <Route
-          path="delete-wallet"
-          element={<ProtectedRoute element={<DeleteWallet />} />}
+          path="forget-wallet"
+          element={<ProtectedRoute element={<ForgetWallet />} />}
         />
         <Route
           path="phrase"

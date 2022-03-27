@@ -1,7 +1,7 @@
 import { generateMnemonic, validateMnemonic } from 'bip39';
 import { fromZPrv, fromZPub } from 'bip84';
 import {
-  deleteWallet as deleteWalletState,
+  forgetWallet as forgetWalletState,
   changeAccountActiveId,
   changeActiveNetwork,
   updateStatus,
@@ -213,7 +213,7 @@ const WalletController = (): IWalletController => {
     }
   };
 
-  const deleteWallet = (pwd: string) => {
+  const forgetWallet = (pwd: string) => {
     if (checkPassword(pwd)) {
       password = '';
       encryptedPassword = '';
@@ -221,7 +221,7 @@ const WalletController = (): IWalletController => {
       HDsigner = null;
       sjs = null;
 
-      store.dispatch(deleteWalletState());
+      store.dispatch(forgetWalletState());
       store.dispatch(updateStatus());
     }
   };
@@ -459,7 +459,7 @@ const WalletController = (): IWalletController => {
     createWallet,
     checkPassword,
     getPhrase,
-    deleteWallet,
+    forgetWallet,
     importPhrase,
     unLock,
     switchWallet,

@@ -396,12 +396,12 @@ export const NormalHeader: React.FC = () => {
 
               <Menu.Item>
                 <li
-                  onClick={() => navigate('/settings/delete-wallet')}
+                  onClick={() => navigate('/settings/forget-wallet')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
                   <Icon name="delete" className="ml-1 mr-4 text-brand-white" />
 
-                  <span className="px-3">Delete wallet</span>
+                  <span className="px-3">Forget wallet</span>
                 </li>
               </Menu.Item>
             </Menu.Items>

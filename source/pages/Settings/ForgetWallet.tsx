@@ -5,7 +5,7 @@ import { useUtils } from 'hooks/index';
 import TextArea from 'antd/lib/input/TextArea';
 import { getController } from 'utils/browser';
 
-const DeleteWalletView = () => {
+const ForgetWalletView = () => {
   const { navigate } = useUtils();
 
   const controller = getController();
@@ -20,7 +20,7 @@ const DeleteWalletView = () => {
 
   const onSubmit = (data: any) => {
     if (controller.wallet.checkPassword(data.password)) {
-      controller.wallet.deleteWallet(data.password);
+      controller.wallet.forgetWallet(data.password);
 
       navigate('/');
     }
@@ -29,10 +29,10 @@ const DeleteWalletView = () => {
   const [form] = Form.useForm();
 
   return (
-    <Layout title="DELETE WALLET">
+    <Layout title="FORGET WALLET">
       <Card type="info" className="md:mt-8">
         <p>
-          <b className="text-warning-info">WARNING:</b> This will delete the
+          <b className="text-warning-info">WARNING:</b> This will forget the
           wallet created with your current seed phrase. If in the future you
           want to use Pali again, you will need to create a new wallet.
         </p>
@@ -46,7 +46,7 @@ const DeleteWalletView = () => {
           form={form}
           onFinish={onSubmit}
           className="password flex flex-col gap-6 items-center justify-center w-full max-w-xs text-center md:max-w-md"
-          name="delete"
+          name="forget"
           autoComplete="off"
         >
           <Form.Item
@@ -75,7 +75,7 @@ const DeleteWalletView = () => {
           >
             <Input.Password
               placeholder="Enter your password"
-              id="delete_password"
+              id="forget_password"
             />
           </Form.Item>
 
@@ -83,7 +83,7 @@ const DeleteWalletView = () => {
             <>
               <p className="max-w-xs text-left text-xs leading-4 md:max-w-md">
                 You still have funds in your wallet. Paste your seed phrase
-                below to delete wallet.
+                below to forget wallet.
               </p>
 
               <Form.Item
@@ -119,7 +119,7 @@ const DeleteWalletView = () => {
                       : 'border-fields-input-border'
                   } bg-bkg-4 border border-bkg-4 text-sm outline-none rounded-lg p-5`}
                   placeholder="Paste your wallet seed phrase"
-                  id="delete_seed"
+                  id="forget_seed"
                 />
               </Form.Item>
             </>
@@ -133,9 +133,9 @@ const DeleteWalletView = () => {
             <SecondaryButton
               type="submit"
               disabled={!isPasswordValid || !isSeedValid}
-              id="delete-btn"
+              id="forget-btn"
             >
-              Delete
+              Forget
             </SecondaryButton>
           </div>
         </Form>
@@ -144,4 +144,4 @@ const DeleteWalletView = () => {
   );
 };
 
-export default DeleteWalletView;
+export default ForgetWalletView;
