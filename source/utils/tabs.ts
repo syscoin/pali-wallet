@@ -1,8 +1,6 @@
 import { browser } from 'webextension-polyfill-ts';
 
 export const getCurrentTabUrl = async () => {
-  let currentURL = '';
-
   const windows = await browser.windows.getAll({ populate: true });
 
   for (const window of windows) {
@@ -14,11 +12,9 @@ export const getCurrentTabUrl = async () => {
         currentWindow: true,
       });
 
-      currentURL = String(tabs[0].url);
-
-      return;
+      return String(tabs[0].url);
     }
   }
 
-  return currentURL;
+  return '';
 };
