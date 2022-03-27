@@ -28,9 +28,11 @@ const ProviderManager = () => {
 
           if (response.error) {
             reject(new Error(response.error));
-          } else {
-            resolve(response);
+
+            return;
           }
+
+          resolve(response);
         },
         {
           once: true,

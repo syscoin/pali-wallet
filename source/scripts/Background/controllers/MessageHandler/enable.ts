@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 
 import { Message } from './types';
 import { log } from 'utils/logger';
+import { getHost } from 'utils/getHost';
 
 export const enable = async (
   port: Runtime.Port,
@@ -19,7 +20,7 @@ export const enable = async (
       ? masterController.paliProvider
       : masterController.ethereumProvider;
 
-  const allowed = masterController.dapp.isDAppConnected(origin);
+  const allowed = masterController.dapp.isDAppConnected(getHost(origin));
 
   if (origin && !allowed) {
     if (isPendingWindow()) {
