@@ -41,10 +41,7 @@ import { ProtectedRoute } from './ProtectedRoute';
 export const Router = () => {
   const params = useParams();
   const {
-    wallet: {
-      account: { getTemporaryTransaction },
-      isLocked,
-    },
+    wallet: { isLocked },
     appRoute,
   } = getController();
 

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-
 import { useQuery, useUtils } from 'hooks/index';
+import { getController } from 'utils/browser';
 
 import {
   ChangeAccount,
@@ -28,7 +28,6 @@ import {
 } from '../pages';
 
 import { ProtectedRoute } from './ProtectedRoute';
-import { getController } from 'utils/browser';
 
 export const ExternalRoute = () => {
   const {
