@@ -191,6 +191,9 @@ window.pali = {
 
     return response;
   },
+  disable: async () => {
+    return await window.providerManager.disable();
+  },
   request: async (req) => {
     return ethProvider.request(req);
   },

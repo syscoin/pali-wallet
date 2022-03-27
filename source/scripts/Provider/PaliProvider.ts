@@ -65,21 +65,19 @@ export const PaliProvider = () => {
     const { wallet } = store.getState();
     const { activeNetworkType } = wallet;
 
-    const background = await browser.runtime.getBackgroundPage();
-
-    const _dispatchEvent = (): void => {
-      background.dispatchEvent(
-        new CustomEvent('walletChanged', {
-          detail: {
-            data: _getOmittedSensitiveState(wallet),
-            chain: 'ethereum',
-          },
-        })
-      );
-    };
-
     if (activeNetworkType === 'web3') {
-      store.subscribe(_dispatchEvent);
+      store.subscribe(async () => {
+        const background = await browser.runtime.getBackgroundPage();
+
+        background.dispatchEvent(
+          new CustomEvent('walletChanged', {
+            detail: {
+              data: _getOmittedSensitiveState(wallet),
+              chain: 'ethereum',
+            },
+          })
+        );
+      });
     }
 
     log('could not notify wallet changes, network is not web3', 'System');

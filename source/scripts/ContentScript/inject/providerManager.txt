@@ -63,10 +63,15 @@ const ProviderManager = () => {
     return proxy('ENABLE_REQUEST', { asset: 'syscoin', network: 'main' });
   };
 
+  const disable = () => {
+    return proxy('DISABLE_REQUEST', { asset: 'syscoin', network: 'main' });
+  };
+
   return {
     proxy,
     getProviderFor,
     enable,
+    disable
   }
 }
 

@@ -5,6 +5,7 @@ import { initializeEvents, registerEvent, deregisterEvent } from './events';
 import { enable } from './enable';
 import { handleRequest } from './requests';
 import { log, logError } from 'utils/logger';
+import { disable } from './disable';
 
 export const messagesHandler = (port: Runtime.Port, masterController: any) => {
   let pendingWindow = false;
@@ -40,6 +41,15 @@ export const messagesHandler = (port: Runtime.Port, masterController: any) => {
         return deregisterEvent(masterController, message);
       case 'ENABLE_REQUEST':
         return enable(
+          port,
+          masterController,
+          message,
+          origin,
+          setPendingWindow,
+          isPendingWindow
+        );
+      case 'DISABLE_REQUEST':
+        return disable(
           port,
           masterController,
           message,
