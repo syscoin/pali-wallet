@@ -8,6 +8,7 @@ import store from 'state/store';
 
 import MasterController, { IMasterController } from './controllers';
 import { messagesHandler } from './controllers/MessageHandler';
+import { log } from 'utils/logger';
 
 declare global {
   interface Window {
@@ -19,11 +20,7 @@ declare global {
 }
 
 browser.runtime.onConnect.addListener((port: Runtime.Port) => {
-  console.log('connected pali');
-
   if (port.name === 'pali') {
-    console.log('on connect port pali');
-
     messagesHandler(port, window.controller);
 
     return;
@@ -35,10 +32,8 @@ browser.runtime.onConnect.addListener((port: Runtime.Port) => {
     (port.sender.url?.includes(browser.runtime.getURL('/app.html')) ||
       port.sender.url?.includes(browser.runtime.getURL('/external.html')))
   ) {
-    console.log('port is external', port);
-
     port.onDisconnect.addListener(() => {
-      console.log('onDisconnect');
+      log('pali disconnecting port', 'System');
     });
   }
 });

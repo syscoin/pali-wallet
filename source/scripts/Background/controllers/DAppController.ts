@@ -8,6 +8,7 @@ import {
 import { IDAppInfo } from 'state/dapp/types';
 import store from 'state/store';
 import { IDAppController } from 'types/controllers';
+import { log } from 'utils/logger';
 
 export interface ISigRequest {
   address: string;
@@ -83,14 +84,12 @@ const DAppController = (): IDAppController => {
   };
 
   const notifySiteDisconnected = async (origin: string): Promise<void> => {
-    console.log('notifySiteDisconnected');
-
     const { listening } = store.getState().dapp;
 
     const listeningEvents = listening[origin];
 
     if (!listeningEvents.includes('close')) {
-      console.log('notifySiteDisconnected includes close');
+      log('notifySiteDisconnected includes close', 'Connection');
 
       return;
     }
@@ -104,8 +103,6 @@ const DAppController = (): IDAppController => {
         detail: { data: {}, origin, chain: 'syscoin' },
       }),
     ];
-
-    console.log('notifySiteDisconnected dispatching: ', events);
 
     _dispatchEvents(events);
   };

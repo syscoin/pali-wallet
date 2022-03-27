@@ -185,11 +185,11 @@ window.pali = {
     return pali.getMethod('wallet.isConnected');
   },
   enable: async () => {
-    console.log('enabling pali', window.providerManager)
-
     const response = await window.providerManager.enable();
+    
+    if (!response) throw Errors.USER_REJECTED();
 
-    console.log(response)
+    return response;
   },
   request: async (req) => {
     return ethProvider.request(req);

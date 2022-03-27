@@ -503,10 +503,8 @@ const WalletController = (): IWalletController => {
       const web3Response = await axios.get(
         `${rpcURL}/api?module=account&action=txlist&address=0x5DD68C79CE18454Ab2b870a4f63eadDF19277110&startblock=0&endblock=99999999&page=1&offset=10&sort=asc&apikey=YourApiKeyToken`
       );
-      console.log('web3 response ok', web3Response);
 
       if (web3Response.data.message === 'OK') {
-        console.log('web3 response ok', web3Response);
         return true;
       }
 
@@ -515,7 +513,6 @@ const WalletController = (): IWalletController => {
 
     const sysResponse = await axios.get(`${rpcURL}/api/v2`);
 
-    console.log('sys response ok', sysResponse);
     const { coin } = sysResponse.data.blockbook;
 
     if (sysResponse && coin) {

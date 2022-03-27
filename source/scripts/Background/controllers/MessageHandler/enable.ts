@@ -2,6 +2,7 @@ import { browser, Runtime } from 'webextension-polyfill-ts';
 import { v4 as uuid } from 'uuid';
 
 import { Message } from './types';
+import { log } from 'utils/logger';
 
 export const enable = async (
   port: Runtime.Port,
@@ -11,14 +12,6 @@ export const enable = async (
   setPendingWindow: (isPending: boolean) => void,
   isPendingWindow: () => boolean
 ) => {
-  console.log(
-    'enable successful called',
-    port,
-    masterController,
-    message,
-    origin,
-    isPendingWindow
-  );
   const { asset } = message.data;
 
   const provider =
@@ -26,15 +19,10 @@ export const enable = async (
       ? masterController.paliProvider
       : masterController.ethereumProvider;
 
-  console.log('current provider', provider);
-
   const allowed = masterController.dapp.isDAppConnected(origin);
-
-  console.log('origin is allowed', allowed);
 
   if (origin && !allowed) {
     if (isPendingWindow()) {
-      console.log('isPendingWindow returning null');
       return Promise.resolve(null);
     }
 
@@ -55,7 +43,7 @@ export const enable = async (
             id: message.id,
             data: {
               result: true,
-              data: { accounts: ev.detail.accountId },
+              data: { accounts: provider.getAccounts() },
             },
           });
 
@@ -76,12 +64,10 @@ export const enable = async (
       }
     });
 
-    console.log('returning Promise.resolve null');
+    log('returning Promise.resolve null', 'Connection');
 
     return Promise.resolve(null);
   }
-
-  console.log('Sending message id');
 
   return Promise.resolve({ id: message.id, result: origin && allowed });
 };

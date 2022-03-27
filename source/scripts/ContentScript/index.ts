@@ -13,11 +13,7 @@ const inject = (content: string) => {
   scriptTag.setAttribute('async', 'false');
   scriptTag.textContent = `(() => {${content}})()`;
 
-  console.log('injecting content', content);
-
   container.insertBefore(scriptTag, container.children[0]);
-
-  console.log('content injected', content);
 };
 
 inject(

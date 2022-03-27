@@ -153,8 +153,6 @@ export const SendConfirm = () => {
           setConfirmed(true);
           setLoading(false);
         } catch (error: any) {
-          console.log('error', error);
-
           if (activeAccount) {
             if (error && tempTx.fee > recommendedFee) {
               alert.removeAll();
