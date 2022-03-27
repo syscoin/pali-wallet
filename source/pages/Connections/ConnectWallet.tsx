@@ -10,42 +10,26 @@ import { useStore, useDappConnection } from 'hooks/index';
 import { ellipsis, getHost } from 'utils/index';
 import { getController } from 'utils/browser';
 import { Dialog } from '@headlessui/react';
-import { browser } from 'webextension-polyfill-ts';
-import queryString from 'query-string';
-import { useLocation } from 'react-router-dom';
 
 export const ConnectWallet = () => {
-  const { confirmConnection, cancelConnection } = useDappConnection();
-  const { accounts, currentSenderURL, trustedApps } = useStore();
-  const accountController = getController().wallet.account;
-  const connectedAccount = accountController.getConnectedAccount();
+  const { confirmConnection } = useDappConnection();
+  const { accounts, trustedApps } = useStore();
+  const {
+    wallet: { account },
+    dapp,
+  } = getController();
+  const connectedAccount = account.getConnectedAccount();
+
+  const current = dapp.getCurrent();
+  const origin = current && current.origin;
 
   const [accountId, setAccountId] = useState<number>(-1);
   const [isInTrustedList, setIsInTrustedList] = useState<boolean>(false);
   const [openExtraConfirmation, setOpenExtraConfirmation] =
     useState<boolean>(false);
-  const location = useLocation();
-
-  const handleSelectAccount = async (id: number) => {
-    if (connectedAccount && id === connectedAccount.id) {
-      return;
-    }
-
-    setAccountId(id);
-
-    const background = await browser.runtime.getBackgroundPage();
-
-    const { windowId } = queryString.parse(location.search);
-
-    background.dispatchEvent(
-      new CustomEvent('connectWallet', {
-        detail: { windowId, accounts },
-      })
-    );
-  };
 
   useEffect(() => {
-    const trustedApp = trustedApps[getHost(currentSenderURL)] !== '';
+    const trustedApp = trustedApps[getHost(origin)] !== '';
 
     setIsInTrustedList(trustedApp);
   });
@@ -55,9 +39,7 @@ export const ConnectWallet = () => {
       <div className="flex flex-col items-center justify-center w-full">
         <h1 className="mt-4 text-sm">PALI WALLET</h1>
 
-        <p className="text-brand-royalblue text-sm">
-          {getHost(`${currentSenderURL}`)}
-        </p>
+        <p className="text-brand-royalblue text-sm">{getHost(`${origin}`)}</p>
 
         {accounts.length > 0 ? (
           <ul className="scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-64 overflow-auto">
@@ -69,7 +51,7 @@ export const ConnectWallet = () => {
                     : 'cursor-pointer hover:bg-bkg-4 border-brand-royalblue'
                 } border border-solid  rounded-lg px-2 py-4 text-xs bg-bkg-2 flex justify-between items-center transition-all duration-200`}
                 key={acc.id}
-                onClick={() => handleSelectAccount(acc.id)}
+                onClick={() => setAccountId(acc.id)}
               >
                 <p>{acc.label}</p>
 
@@ -99,11 +81,7 @@ export const ConnectWallet = () => {
         </small>
 
         <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
-          <SecondaryButton
-            type="button"
-            action
-            onClick={() => cancelConnection(accountId)}
-          >
+          <SecondaryButton type="button" action onClick={() => window.close()}>
             Cancel
           </SecondaryButton>
 
@@ -146,7 +124,7 @@ export const ConnectWallet = () => {
                 action
                 width="32"
                 type="button"
-                onClick={() => cancelConnection(accountId)}
+                onClick={() => window.close()}
               >
                 Cancel
               </SecondaryButton>

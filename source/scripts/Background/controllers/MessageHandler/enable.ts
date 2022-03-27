@@ -55,7 +55,7 @@ export const enable = async (
             id: message.id,
             data: {
               result: true,
-              data: { accounts: provider.getAccounts() },
+              data: { accounts: ev.detail.accountId },
             },
           });
 

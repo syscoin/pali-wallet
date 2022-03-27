@@ -16,7 +16,7 @@ export interface ISigRequest {
 }
 
 const DAppController = (): IDAppController => {
-  let current: IDAppInfo = { accounts: {}, origin: '', logo: '', title: '' };
+  let current: IDAppInfo = { accountId: -1, origin: '', logo: '', title: '' };
   let request: ISigRequest;
 
   const isDAppConnected = (origin: string) => {
@@ -39,9 +39,9 @@ const DAppController = (): IDAppController => {
   const userConnectDApp = (
     origin: string,
     dapp: IDAppInfo,
-    network: string
+    accountId: number
   ) => {
-    store.dispatch(listNewDapp({ id: origin, dapp, network }));
+    store.dispatch(listNewDapp({ id: origin, dapp, accountId }));
   };
 
   const _dispatchEvents = async (events: Event[]) => {

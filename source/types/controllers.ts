@@ -127,11 +127,6 @@ export interface IDAppController {
   pageConnectDApp: (origin: string, title: string) => boolean;
   registerListeningSite: (origin: string, eventName: string) => void;
   setSigRequest: (req: ISigRequest) => void;
-  userConnectDApp: (
-    origin: string,
-    dapp: IDAppInfo,
-    network: string,
-    accounts: string[]
-  ) => void;
+  userConnectDApp: (origin: string, dapp: IDAppInfo, accountId: number) => void;
   userDisconnectDApp: (origin: string) => void;
 }

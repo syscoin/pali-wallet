@@ -1,56 +1,31 @@
 import { browser } from 'webextension-polyfill-ts';
-import { useUtils, useStore } from 'hooks/index';
+import { useUtils, useQuery } from 'hooks/index';
 import { closePopup, getController } from 'utils/browser';
 
 export const useDappConnection = () => {
-  const controller = getController();
+  const {
+    dapp,
+    wallet: { account },
+  } = getController();
 
-  const { alert, navigate } = useUtils();
-  const { currentSenderURL } = useStore();
+  const { alert } = useUtils();
+  const query = useQuery();
+
+  const current = dapp.getCurrent();
+  const origin = current && current.origin;
 
   const confirmConnection = async (accountId: number) => {
-    try {
-      await browser.runtime.sendMessage({
-        type: 'SELECT_ACCOUNT',
-        target: 'background',
-        id: accountId,
-      });
+    dapp.userConnectDApp(origin, current, accountId);
 
-      await browser.runtime.sendMessage({
-        type: 'CONFIRM_CONNECTION',
-        target: 'background',
-      });
+    const background = await browser.runtime.getBackgroundPage();
 
-      navigate('/home');
+    const windowId = query.get('windowId');
 
-      window.close();
+    background.dispatchEvent(
+      new CustomEvent('connectWallet', { detail: { windowId, accountId } })
+    );
 
-      return true;
-    } catch (error) {
-      alert.removeAll();
-      alert.error('Sorry, an internal error has occurred.');
-
-      return false;
-    }
-  };
-
-  const cancelConnection = async (accountId: number) => {
-    navigate('/home');
-
-    if (accountId > -1) {
-      await browser.runtime.sendMessage({
-        type: 'RESET_CONNECTION_INFO',
-        target: 'background',
-        id: accountId,
-        url: currentSenderURL,
-      });
-
-      await closePopup();
-
-      return;
-    }
-
-    await closePopup();
+    window.close();
   };
 
   const changeConnectedAccount = async (accountId: number) => {
@@ -59,12 +34,12 @@ export const useDappConnection = () => {
         type: 'CHANGE_CONNECTED_ACCOUNT',
         target: 'background',
         id: accountId,
-        url: currentSenderURL,
+        url: origin,
       });
 
       await closePopup();
 
-      await controller.wallet.account.updateTokensState();
+      await account.updateTokensState();
     } catch (error) {
       alert.removeAll();
       alert.error('Error changing account. Try again.');
@@ -73,7 +48,6 @@ export const useDappConnection = () => {
 
   return {
     confirmConnection,
-    cancelConnection,
     changeConnectedAccount,
   };
 };

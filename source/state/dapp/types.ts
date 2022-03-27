@@ -1,9 +1,5 @@
-export interface IDappAccounts {
-  Ethereum?: number;
-  Syscoin?: number;
-}
 export interface IDAppInfo {
-  accounts: IDappAccounts;
+  accountId: number;
   logo: string;
   origin: string;
   title: string;
