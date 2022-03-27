@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Icon, IconButton, Tooltip } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
-import { getHost } from 'utils/index';
+import { getHost, ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 import { Badge } from 'antd';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
@@ -279,7 +279,7 @@ export const NormalHeader: React.FC = () => {
     >
       {() => (
         <>
-          <Tooltip content={currentTabURL}>
+          <Tooltip content={ellipsis(currentTabURL, 25, 0)}>
             <IconButton
               onClick={() => navigate('/settings/networks/connected-sites')}
               className="relative z-0 mx-1.5 text-brand-white"
@@ -396,12 +396,12 @@ export const NormalHeader: React.FC = () => {
 
               <Menu.Item>
                 <li
-                  onClick={() => navigate('/settings/delete-wallet')}
+                  onClick={() => navigate('/settings/forget-wallet')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
                   <Icon name="delete" className="ml-1 mr-4 text-brand-white" />
 
-                  <span className="px-3">Delete wallet</span>
+                  <span className="px-3">Forget wallet</span>
                 </li>
               </Menu.Item>
             </Menu.Items>

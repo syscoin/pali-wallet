@@ -4,7 +4,7 @@ import reducer, {
   changeActiveNetwork,
   clearAllTransactions,
   createAccount,
-  deleteWallet,
+  forgetWallet,
   initialState,
   removeAccount,
   removeAccounts,
@@ -437,8 +437,8 @@ describe('Wallet store actions', () => {
     expect(updatedAccount.xpub).toEqual(payload.xpub);
   });
 
-  //* deleteWallet
-  it('should delete the wallet', () => {
+  //* forgetWallet
+  it('should forget the wallet', () => {
     // these fields should not change when deleting the wallet
     const staticFields = {
       timer: 10,
@@ -467,7 +467,7 @@ describe('Wallet store actions', () => {
       ...staticFields,
     };
 
-    const newState = reducer(customState, deleteWallet());
+    const newState = reducer(customState, forgetWallet());
 
     expect(newState).toEqual(initialState);
   });

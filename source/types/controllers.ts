@@ -15,8 +15,8 @@ export interface IWalletController {
   addNewAccount: (label?: string) => Promise<string | null>;
   checkPassword: (pwd: string) => boolean;
   createWallet: (isUpdated?: boolean) => void;
-  deleteWallet: (pwd: string) => void;
   encryptedPassword: string;
+  forgetWallet: (pwd: string) => void;
   generatePhrase: () => string | null;
   getNewAddress: () => Promise<boolean>;
   getPhrase: (pwd: string) => string | null;

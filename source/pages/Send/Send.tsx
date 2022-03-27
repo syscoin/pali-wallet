@@ -175,7 +175,7 @@ export const Send: FC<ISend> = () => {
               <Menu as="div" className="relative inline-block text-left">
                 <Menu.Button
                   disabled={!hasAccountAssets}
-                  className="inline-flex justify-center px-4 py-3 w-full text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+                  className="inline-flex justify-center py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
                 >
                   {selectedAsset?.symbol
                     ? formatUrl(String(selectedAsset?.symbol), 2)
@@ -222,8 +222,8 @@ export const Send: FC<ISend> = () => {
 
           <div
             className={`${
-              hasAccountAssets ? 'w-48' : 'w-72'
-            } flex gap-x-0.5 items-center justify-center mx-2  md:w-full`}
+              hasAccountAssets ? 'w-48 ml-4' : 'w-72'
+            } flex gap-x-0.5 items-center justify-center md:w-full`}
           >
             <Form.Item
               id="verify-address-switch"
