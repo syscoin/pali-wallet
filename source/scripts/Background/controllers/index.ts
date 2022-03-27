@@ -6,7 +6,7 @@ import ControllerUtils, { IControllerUtils } from './ControllerUtils';
 import DAppController from './DAppController';
 
 export interface IMasterController {
-  appRoute: (newRoute?: string) => string;
+  appRoute: (newRoute?: string, external?: boolean) => string;
   createPopup: (
     windowId: any,
     network: string,

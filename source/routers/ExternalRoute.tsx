@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { useQuery, useUtils } from 'hooks/index';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useQuery, useUtils, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
 
 import {
@@ -32,8 +32,11 @@ import { ProtectedRoute } from './ProtectedRoute';
 export const ExternalRoute = () => {
   const {
     wallet: { isLocked },
+    appRoute,
   } = getController();
-  const { navigate } = useUtils();
+  const { navigate, alert } = useUtils();
+  const { accounts } = useStore();
+  const { pathname } = useLocation();
 
   const query = useQuery();
   const route = query.get('route');
@@ -41,19 +44,32 @@ export const ExternalRoute = () => {
   const isUnlocked = !isLocked();
 
   useEffect(() => {
-    if (route && isUnlocked) navigate(`/external/${route}`);
-  }, []);
+    const externalRoute = appRoute('/start', true);
+
+    if (isUnlocked && route && accounts) {
+      navigate(`/external/${route}`);
+
+      return;
+    }
+
+    if (externalRoute !== '/start') navigate(externalRoute);
+  }, [isUnlocked, accounts]);
+
+  useEffect(() => {
+    alert.removeAll();
+    appRoute(pathname);
+  }, [pathname]);
 
   return (
     <Routes>
-      <Route path="/" element={<Start />} />
-
-      <Route path="create-password" element={<CreatePass />} />
-      <Route path="import" element={<Import />} />
-      <Route path="phrase/create" element={<CreatePhrase />} />
-      <Route path="phrase/confirm" element={<ConfirmPhrase />} />
+      <Route path="start" element={<Start />} />
 
       <Route path="external">
+        <Route path="create-password" element={<CreatePass />} />
+        <Route path="import" element={<Import />} />
+        <Route path="phrase/create" element={<CreatePhrase />} />
+        <Route path="phrase/confirm" element={<ConfirmPhrase />} />
+
         <Route
           path="connect-wallet"
           element={<ProtectedRoute element={<ConnectWallet />} />}
@@ -139,7 +155,7 @@ export const ExternalRoute = () => {
 
       <Route
         path="external.html"
-        element={<Navigate to={{ pathname: '/' }} />}
+        element={<Navigate to={{ pathname: '/start' }} />}
       />
     </Routes>
   );
