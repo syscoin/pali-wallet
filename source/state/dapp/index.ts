@@ -80,7 +80,7 @@ const DAppState = createSlice({
         ...state,
         whitelist: {
           ...state.whitelist,
-          [dapp.origin]: {
+          [id]: {
             id,
             ...dapp,
             accountId,

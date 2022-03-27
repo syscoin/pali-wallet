@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Icon, IconButton, Tooltip } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
-import { getHost, getCurrentTabUrl } from 'utils/index';
+import { getCurrentTabUrl, getHost } from 'utils/index';
 import { getController } from 'utils/browser';
 import { Badge } from 'antd';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
@@ -15,6 +15,7 @@ export const NormalHeader: React.FC = () => {
     networks,
     activeNetworkType,
     activeChainId,
+    whitelist,
   } = useStore();
   const { handleRefresh, navigate } = useUtils();
   const activeAccount = wallet.account.getActiveAccount();
@@ -36,12 +37,10 @@ export const NormalHeader: React.FC = () => {
   }, [!wallet.isLocked()]);
 
   useEffect(() => {
-    if (activeAccount && activeAccount.connectedTo.length > 0) {
-      setIsConnected(
-        activeAccount.connectedTo.findIndex(
-          (url: any) => url === getHost(currentTabUrl)
-        ) > -1
-      );
+    const whitelistHasCurrentTabUrl = whitelist[getHost(currentTabUrl)];
+
+    if (whitelistHasCurrentTabUrl && whitelistHasCurrentTabUrl.accountId) {
+      setIsConnected(whitelistHasCurrentTabUrl.accountId === activeAccount?.id);
     }
   }, [activeAccount, currentTabUrl]);
 
