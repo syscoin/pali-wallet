@@ -6,14 +6,13 @@ import IWalletState, {
 } from 'state/wallet/types';
 import { browser } from 'webextension-polyfill-ts';
 
-export const getConnectedAccount = (chain: string): IAccountState => {
+export const getConnectedAccount = (): IAccountState => {
   const { accounts } = store.getState().wallet;
 
   const { sender } = browser.runtime.connect(window.location.port);
 
   if (sender && sender.id) {
-    const accountId =
-      store.getState().dapp.whitelist[sender.id].accounts[chain];
+    const { accountId } = store.getState().dapp.whitelist[sender.id];
 
     return accounts.find(
       (account) => account.id === accountId

@@ -8,7 +8,7 @@ import {
 } from 'utils/index';
 
 export const PaliProvider = () => {
-  const connectedAccount = getConnectedAccount('Syscoin');
+  const connectedAccount = getConnectedAccount();
 
   const { address, balance, xpub, assets } = connectedAccount;
 
