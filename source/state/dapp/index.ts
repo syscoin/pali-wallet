@@ -67,9 +67,9 @@ const DAppState = createSlice({
     listNewDapp(
       state: IDAppState,
       action: PayloadAction<{
+        accountId: number;
         dapp: IDAppInfo;
         id: string;
-        accountId: number;
       }>
     ) {
       const { dapp, accountId } = action.payload;

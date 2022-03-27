@@ -5,10 +5,10 @@ import { STORE_PORT } from 'constants/index';
 import { wrapStore } from 'webext-redux';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 import store from 'state/store';
+import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
 import { messagesHandler } from './controllers/MessageHandler';
-import { log } from 'utils/logger';
 
 declare global {
   interface Window {

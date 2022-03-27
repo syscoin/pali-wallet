@@ -1,9 +1,9 @@
 import { browser, Runtime } from 'webextension-polyfill-ts';
 import { v4 as uuid } from 'uuid';
-
-import { Message } from './types';
 import { log } from 'utils/logger';
 import { getHost } from 'utils/getHost';
+
+import { Message } from './types';
 
 export const enable = async (
   port: Runtime.Port,

@@ -1,8 +1,8 @@
 import { Runtime } from 'webextension-polyfill-ts';
 import { v4 as uuid } from 'uuid';
+import { getHost } from 'utils/getHost';
 
 import { Message } from './types';
-import { getHost } from 'utils/getHost';
 
 export const disable = async (
   port: Runtime.Port,
