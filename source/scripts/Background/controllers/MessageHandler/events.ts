@@ -3,7 +3,6 @@ import { Runtime } from 'webextension-polyfill-ts';
 import { Message, SupportedEventTypes } from './types';
 
 export const initializeEvents = (masterController: any, port: Runtime.Port) => {
-  console.log('events initializing');
   Object.values(SupportedEventTypes).map((method) => {
     window.addEventListener(
       method,
@@ -33,8 +32,6 @@ export const initializeEvents = (masterController: any, port: Runtime.Port) => {
 
 export const registerEvent = (masterController: any, message: Message) => {
   const { origin, method } = message.data;
-
-  console.log('registering event listener for: ', method);
 
   if (
     !Object.values(SupportedEventTypes).includes(method as SupportedEventTypes)

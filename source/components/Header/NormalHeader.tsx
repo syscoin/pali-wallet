@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Icon, IconButton, Tooltip } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
-import { getHost } from 'utils/index';
+import { getCurrentTabUrl, getHost } from 'utils/index';
 import { getController } from 'utils/browser';
 import { Badge } from 'antd';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
-import { browser } from 'webextension-polyfill-ts';
 
 export const NormalHeader: React.FC = () => {
   const { wallet } = getController();
@@ -16,48 +15,34 @@ export const NormalHeader: React.FC = () => {
     networks,
     activeNetworkType,
     activeChainId,
+    whitelist,
   } = useStore();
   const { handleRefresh, navigate } = useUtils();
   const activeAccount = wallet.account.getActiveAccount();
 
   const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [currentTabURL, setCurrentTabURL] = useState<string>('');
+  const [currentTabUrl, setCurrentTabUrl] = useState<string>('');
 
   const handleChangeNetwork = (value: number) => {
     wallet.switchNetwork(value as number);
     wallet.getNewAddress();
   };
 
-  const updateCurrentTabUrl = async () => {
-    const windows = await browser.windows.getAll({ populate: true });
-
-    for (const window of windows) {
-      const views = browser.extension.getViews({ windowId: window.id });
-
-      if (views) {
-        const tabs = await browser.tabs.query({
-          active: true,
-          currentWindow: true,
-        });
-        setCurrentTabURL(String(tabs[0].url));
-        return;
-      }
-    }
+  const setCurrentTabInfo = async () => {
+    setCurrentTabUrl(String(await getCurrentTabUrl()));
   };
 
   useEffect(() => {
-    updateCurrentTabUrl();
+    setCurrentTabInfo();
   }, [!wallet.isLocked()]);
 
   useEffect(() => {
-    if (activeAccount && activeAccount.connectedTo.length > 0) {
-      setIsConnected(
-        activeAccount.connectedTo.findIndex(
-          (url: any) => url === getHost(currentTabURL)
-        ) > -1
-      );
+    const whitelistHasCurrentTabUrl = whitelist[getHost(currentTabUrl)];
+
+    if (whitelistHasCurrentTabUrl && whitelistHasCurrentTabUrl.accountId) {
+      setIsConnected(whitelistHasCurrentTabUrl.accountId === activeAccount?.id);
     }
-  }, [activeAccount, currentTabURL]);
+  }, [activeAccount, currentTabUrl]);
 
   // TODO: breakdown NetworkMenu
   const NetworkMenu = () => (
@@ -336,7 +321,7 @@ export const NormalHeader: React.FC = () => {
     >
       {() => (
         <>
-          <Tooltip content={currentTabURL}>
+          <Tooltip content={currentTabUrl}>
             <IconButton
               onClick={() => navigate('/settings/networks/connected-sites')}
               className="relative z-0 mx-1.5 text-brand-white"

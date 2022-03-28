@@ -46,8 +46,6 @@ const MasterController = (): IMasterController => {
       )}&network=${network}`;
     }
 
-    console.log('creating popup', url);
-
     return browser.windows.create({
       url,
       width: 372,

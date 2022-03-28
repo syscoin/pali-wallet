@@ -457,6 +457,9 @@ export const {
   setWeb3Address,
   setWeb3PrivateKey,
   updateNetwork,
+  setTimer,
+  setTemporaryTransactionState,
+  updateStatus,
 } = WalletState.actions;
 
 export default WalletState.reducer;

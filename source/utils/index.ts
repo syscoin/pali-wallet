@@ -6,3 +6,4 @@ export * from './logger';
 export * from './transactions';
 export * from './notifications';
 export * from './accounts';
+export * from './tabs';

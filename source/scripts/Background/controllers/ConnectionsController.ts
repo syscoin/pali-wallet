@@ -826,8 +826,6 @@
 //   };
 
 //   const disconnectWallet = () => {
-//     console.log('sending message to wallet');
-
 //     window.postMessage(
 //       {
 //         type: 'RESET_CONNECTION_INFO',
