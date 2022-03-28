@@ -97,7 +97,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
                   message: '',
                 },
                 () => ({
-                  async validator(_, value) {
+                  async validator(_) {
                     try {
                       // todo: validate rpc
                       // const result = await controller.wallet.validateRPC(value);
@@ -128,10 +128,10 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
                   required: false,
                   message: '',
                 },
-                ({ getFieldValue }) => ({
-                  async validator(_, value) {
+                ({}) => ({
+                  async validator(_) {
                     try {
-                      const rpcURL = getFieldValue('blockbookURL');
+                      // const rpcURL = getFieldValue('blockbookURL');
 
                       // const result = await controller.wallet.validateRPC(
                       //   rpcURL,
