@@ -1,4 +1,5 @@
 import { useSelector } from 'react-redux';
+import { IDAppState } from 'state/dapp/types';
 import IPriceState from 'state/price/types';
 import { RootState } from 'state/store';
 import IWalletState from 'state/wallet/types';
@@ -20,6 +21,10 @@ export const useStore = () => {
     trustedApps,
     networks,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
+
+  const { listening, whitelist }: IDAppState = useSelector(
+    (state: RootState) => state.dapp
+  );
 
   const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
 
@@ -48,5 +53,7 @@ export const useStore = () => {
     trustedApps,
     temporaryTransactionState: { executing: false, type: '' },
     fiat,
+    listening,
+    whitelist,
   };
 };

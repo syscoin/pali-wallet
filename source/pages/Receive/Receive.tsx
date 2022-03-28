@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useUtils, useStore } from 'hooks/index';
-import { ellipsis, getController } from 'utils/index';
+import { ellipsis } from 'utils/index';
+import { getController } from 'utils/browser';
 import QRCode from 'qrcode.react';
 import { Layout, SecondaryButton, Icon } from 'components/index';
 

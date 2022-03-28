@@ -8,7 +8,8 @@ import {
 } from 'components/index';
 import { browser } from 'webextension-polyfill-ts';
 import { useUtils, useStore } from 'hooks/index';
-import { getHost, rejectTransaction, getController } from 'utils/index';
+import { getHost, rejectTransaction } from 'utils/index';
+import { getController } from 'utils/browser';
 import { Form, Input } from 'antd';
 
 interface ITxLayout {

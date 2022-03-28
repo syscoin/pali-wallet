@@ -3,7 +3,7 @@ import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import { useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { getController } from 'utils/index';
+import { getController } from 'utils/browser';
 
 const AutolockView = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
@@ -25,7 +25,7 @@ const AutolockView = () => {
 
   return (
     <Layout title="AUTO LOCK TIMER" id="auto-lock-timer-title">
-      <p className="px-10 py-6 text-white text-sm md:pb-10 md:px-4 md:w-96 md:text-center">
+      <p className="mx-auto py-6 max-w-xs text-white text-sm md:pb-10 md:max-w-md">
         You can set auto lock timer. Default is 5 minutes after no activity.
         Maximum is 30 minutes.
       </p>

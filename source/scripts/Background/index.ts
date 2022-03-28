@@ -5,6 +5,7 @@ import { STORE_PORT } from 'constants/index';
 import { wrapStore } from 'webext-redux';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 import store from 'state/store';
+import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
 import { messagesHandler } from './controllers/MessageHandler';
@@ -20,15 +21,27 @@ declare global {
 
 browser.runtime.onConnect.addListener((port: Runtime.Port) => {
   if (port.name === 'pali') {
-    console.log('on connect port pali');
-
     messagesHandler(port, window.controller);
+
+    return;
+  }
+
+  if (
+    port.sender &&
+    port.sender.url &&
+    (port.sender.url?.includes(browser.runtime.getURL('/app.html')) ||
+      port.sender.url?.includes(browser.runtime.getURL('/external.html')))
+  ) {
+    port.onDisconnect.addListener(() => {
+      log('pali disconnecting port', 'System');
+    });
   }
 });
 
 browser.runtime.onInstalled.addListener(() => {
   if (!window.controller) {
     window.controller = Object.freeze(MasterController());
+
     setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
   }
 

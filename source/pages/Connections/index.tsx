@@ -1,2 +1,2 @@
 export * from './ConnectWallet';
-export * from './ConnectedAccounts';
+export * from './ChangeAccount';

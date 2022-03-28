@@ -6,13 +6,8 @@ import { Switch, Menu, Transition } from '@headlessui/react';
 import { Layout, SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Assets } from 'types/transactions';
-import {
-  log,
-  formatUrl,
-  isNFT,
-  getAssetBalance,
-  getController,
-} from 'utils/index';
+import { log, formatUrl, isNFT, getAssetBalance } from 'utils/index';
+import { getController } from 'utils/browser';
 
 interface ISend {
   initAddress?: string;
@@ -414,7 +409,7 @@ export const Send: FC<ISend> = () => {
           </Form.Item>
         </div>
 
-        <p className="flex flex-col items-center justify-center mx-14 p-0 text-center text-brand-royalblue md:my-4">
+        <p className="flex flex-col items-center justify-center p-0 max-w-xs text-center text-brand-royalblue sm:w-full md:my-4">
           <span className="text-xs">
             {`With current network conditions we recommend a fee of
             ${recommend} SYS`}

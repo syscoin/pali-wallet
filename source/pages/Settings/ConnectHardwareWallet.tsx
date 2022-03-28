@@ -1,6 +1,6 @@
 import React, { FC, useEffect, useState } from 'react';
 import { Layout, SecondaryButton, Icon, Tooltip } from 'components/index';
-import { getController } from 'utils/index';
+import { getController } from 'utils/browser';
 import { Disclosure } from '@headlessui/react';
 import store from 'state/store';
 

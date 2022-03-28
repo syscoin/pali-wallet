@@ -41,19 +41,17 @@ describe('dapp store actions', () => {
       logo: 'fake logo',
       origin: 'fake origin',
       title: 'fake title',
-      accounts: {
-        Syscoin: 0,
-      },
+      accountId: 0,
+    };
+
+    const payload = {
+      dapp: FAKE_IDAPPINFO,
+      id: 'fake id',
+      accountId: 0,
     };
 
     //* listNewDapp
     it('should list new dapp', () => {
-      const payload = {
-        dapp: FAKE_IDAPPINFO,
-        id: 'fake id',
-        network: 'Syscoin',
-      };
-
       const newState = reducer(initialState, listNewDapp(payload));
 
       expect(newState.whitelist[payload.id]).toEqual({
@@ -63,14 +61,8 @@ describe('dapp store actions', () => {
     });
 
     it('should unlist dapp', () => {
-      const listPayload = {
-        dapp: FAKE_IDAPPINFO,
-        id: 'fake id',
-        network: 'Syscoin',
-      };
-
-      const customState = reducer(initialState, listNewDapp(listPayload));
-      const newState = reducer(customState, unlistDapp({ id: listPayload.id }));
+      const customState = reducer(initialState, listNewDapp(payload));
+      const newState = reducer(customState, unlistDapp({ id: payload.id }));
 
       expect(newState.whitelist).toEqual(initialState.whitelist);
     });

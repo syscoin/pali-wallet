@@ -14,8 +14,6 @@ export const handleRequest = async (
 ) => {
   const { method, args, asset } = message.data;
 
-  console.log('CAL_REQUEST.method', method, args);
-
   const allowed = masterController.dapp.isDAppConnected(origin);
   const walletIsLocked = !masterController.wallet.isUnlocked();
 
@@ -80,7 +78,6 @@ export const handleRequest = async (
     window.addEventListener(
       'transactionSent',
       (ev: any) => {
-        console.log('Connect window addEventListener', ev.detail);
         if (ev.detail.windowId === windowId) {
           port.postMessage({
             id: message.id,
@@ -106,7 +103,6 @@ export const handleRequest = async (
     window.addEventListener(
       'spendApproved',
       (ev: any) => {
-        console.log('Connect window addEventListener', ev.detail);
         if (ev.detail.windowId === windowId) {
           port.postMessage({
             id: message.id,

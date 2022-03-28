@@ -23,12 +23,10 @@ import reducer, {
   updateNetwork,
   updateSwitchNetwork,
   updateTransactions,
-} from 'state/wallet';
-import {
-  setTemporaryTransactionState,
   setTimer,
+  setTemporaryTransactionState,
   updateStatus,
-} from 'state/vault';
+} from 'state/wallet';
 import IWalletState, {
   Connection,
   IAccountState,
@@ -492,7 +490,7 @@ describe('Wallet store actions', () => {
       id: 'testnet',
       beUrl: 'https://blockbook-dev.elint.services/',
       chainId: 57,
-      label: 'Testnet',
+      label: 'testnet',
       type: 'syscoin',
     };
 

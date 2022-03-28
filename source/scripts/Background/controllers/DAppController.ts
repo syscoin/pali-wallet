@@ -8,6 +8,7 @@ import {
 import { IDAppInfo } from 'state/dapp/types';
 import store from 'state/store';
 import { IDAppController } from 'types/controllers';
+import { log } from 'utils/logger';
 
 export interface ISigRequest {
   address: string;
@@ -16,13 +17,13 @@ export interface ISigRequest {
 }
 
 const DAppController = (): IDAppController => {
-  let current: IDAppInfo = { accounts: {}, origin: '', logo: '', title: '' };
+  let current: IDAppInfo = { accountId: -1, origin: '', logo: '', title: '' };
   let request: ISigRequest;
 
   const isDAppConnected = (origin: string) => {
     const { whitelist } = store.getState().dapp;
 
-    return Object.keys(whitelist).includes(origin);
+    return !!whitelist[origin];
   };
 
   const pageConnectDApp = (origin: string, title: string) => {
@@ -39,9 +40,9 @@ const DAppController = (): IDAppController => {
   const userConnectDApp = (
     origin: string,
     dapp: IDAppInfo,
-    network: string
+    accountId: number
   ) => {
-    store.dispatch(listNewDapp({ id: origin, dapp, network }));
+    store.dispatch(listNewDapp({ id: origin, dapp, accountId }));
   };
 
   const _dispatchEvents = async (events: Event[]) => {
@@ -83,14 +84,12 @@ const DAppController = (): IDAppController => {
   };
 
   const notifySiteDisconnected = async (origin: string): Promise<void> => {
-    console.log('notifySiteDisconnected');
-
     const { listening } = store.getState().dapp;
 
     const listeningEvents = listening[origin];
 
     if (!listeningEvents.includes('close')) {
-      console.log('notifySiteDisconnected includes close');
+      log('notifySiteDisconnected includes close', 'Connection');
 
       return;
     }
@@ -104,8 +103,6 @@ const DAppController = (): IDAppController => {
         detail: { data: {}, origin, chain: 'syscoin' },
       }),
     ];
-
-    console.log('notifySiteDisconnected dispatching: ', events);
 
     _dispatchEvents(events);
   };

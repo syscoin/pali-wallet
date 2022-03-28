@@ -8,9 +8,9 @@ import {
   ellipsis,
   formatUrl,
   cancelTransaction,
-  getController,
 } from 'utils/index';
 import { encryptor } from '@pollum-io/sysweb3-utils';
+import { getController } from 'utils/browser';
 
 export const SendConfirm = () => {
   const controller = getController();
@@ -153,8 +153,6 @@ export const SendConfirm = () => {
           setConfirmed(true);
           setLoading(false);
         } catch (error: any) {
-          console.log('error', error);
-
           if (activeAccount) {
             if (error && tempTx.fee > recommendedFee) {
               alert.removeAll();

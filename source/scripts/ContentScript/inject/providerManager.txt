@@ -17,34 +17,28 @@ const injectedProvider = (asset) => {
 const ProviderManager = () => {
   let cache = {};
 
-  console.log('providerManager injected')
-
   const proxy = (type, data) => {
     return new Promise((resolve, reject) => {
       const id = Date.now() + '.' + Math.random();
-
-      console.log('id listener', id);
 
       window.addEventListener(
         id,
         (event) => {
           const response = JSON.parse(event.detail);
 
-          console.log(1, response);
-
           if (response.error) {
             reject(new Error(response.error));
-          } else {
-            resolve(response);
+
+            return;
           }
+
+          resolve(response);
         },
         {
           once: true,
           passive: true,
         }
       );
-
-      console.log('posting message', type, id, data)
 
       window.postMessage(
         {
@@ -66,15 +60,18 @@ const ProviderManager = () => {
   };
 
   const enable = () => {
-    console.log('enabling provider manager');
-
     return proxy('ENABLE_REQUEST', { asset: 'syscoin', network: 'main' });
+  };
+
+  const disable = () => {
+    return proxy('DISABLE_REQUEST', { asset: 'syscoin', network: 'main' });
   };
 
   return {
     proxy,
     getProviderFor,
     enable,
+    disable
   }
 }
 

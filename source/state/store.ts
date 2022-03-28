@@ -10,14 +10,17 @@ import { localStorage } from 'redux-persist-webextension-storage';
 
 import wallet from './wallet';
 import dapp from './dapp';
+import vault from './vault';
 import price, { IPriceState } from './price';
 import IWalletState from './wallet/types';
 import { IDAppState } from './dapp/types';
+import IVaultState from './vault/types';
 
 const reducers = combineReducers({
   wallet,
   price,
   dapp,
+  vault,
 });
 
 const persistConfig = {
@@ -32,18 +35,20 @@ const middleware = [
 ];
 
 const nodeEnv = process.env.NODE_ENV;
-if (nodeEnv !== 'production' && nodeEnv != 'test') {
+
+if (nodeEnv !== 'production' && nodeEnv !== 'test') {
   middleware.push(logger);
 }
 
 const store: Store<{
   dapp: IDAppState;
   price: IPriceState;
+  vault: IVaultState;
   wallet: IWalletState;
 }> = configureStore({
   reducer: persistedReducer,
   middleware,
-  devTools: process.env.NODE_ENV !== 'production',
+  devTools: nodeEnv !== 'production' && nodeEnv !== 'test',
 });
 
 persistStore(store);

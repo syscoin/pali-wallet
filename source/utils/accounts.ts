@@ -1,19 +1,18 @@
 import store from 'state/store';
-import {
+import IWalletState, {
   IAccountState,
   ICopyAccountState,
   ICopyWalletState,
 } from 'state/wallet/types';
 import { browser } from 'webextension-polyfill-ts';
 
-export const getConnectedAccount = (chain: string): IAccountState => {
+export const getConnectedAccount = (): IAccountState => {
   const { accounts } = store.getState().wallet;
 
   const { sender } = browser.runtime.connect(window.location.port);
 
   if (sender && sender.id) {
-    const accountId =
-      store.getState().dapp.whitelist[sender.id].accounts[chain];
+    const { accountId } = store.getState().dapp.whitelist[sender.id];
 
     return accounts.find(
       (account) => account.id === accountId
@@ -37,10 +36,8 @@ const _getOmittedSensitiveAccountState = () => {
   return accounts as ICopyAccountState[];
 };
 
-export const _getOmittedSensitiveState = () => {
+export const _getOmittedSensitiveState = (wallet: IWalletState) => {
   const accounts = _getOmittedSensitiveAccountState();
-
-  const { wallet } = store.getState();
 
   const _wallet: ICopyWalletState = {
     ...wallet,

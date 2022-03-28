@@ -9,7 +9,7 @@ const CoinGecko = require('coingecko-api');
 export const CoinGeckoClient = new CoinGecko();
 
 export interface IControllerUtils {
-  appRoute: (newRoute?: string) => string;
+  appRoute: (newRoute?: string, external?: boolean) => string;
   coinsAll: () => any;
   coinsFectchTickers: () => any;
   coinsFetch: () => any;
@@ -24,6 +24,7 @@ export interface IControllerUtils {
 
 const ControllerUtils = (): IControllerUtils => {
   let route = '/';
+  let externalRoute = '/start';
 
   const ping = async () => {
     const data = await CoinGeckoClient.ping();
@@ -67,12 +68,14 @@ const ControllerUtils = (): IControllerUtils => {
     return data;
   };
 
-  const appRoute = (newRoute?: string) => {
+  const appRoute = (newRoute?: string, external?: boolean) => {
     if (newRoute) {
+      if (external) externalRoute = newRoute;
+
       route = newRoute;
     }
 
-    return route;
+    return external ? externalRoute : route;
   };
 
   const updateFiatCurrencyForWallet = async (chosenCurrency = 'usd') => {

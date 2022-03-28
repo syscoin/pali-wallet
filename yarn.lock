@@ -2101,16 +2101,6 @@
     ts-node "^10.7.0"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3@^1.0.15":
-  version "1.0.15"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3/-/sysweb3-1.0.15.tgz#2ae5f1a713d88dadce493da597777470cd78c528"
-  integrity sha512-rL84lwFvA4Xh3aE13jhZIekGg6Tif3i3/38IC7MW9ret/T0CX3gVQ3BWhonoeiNPz3U9/ep1CPw0gGw0Cums8w==
-  dependencies:
-    "@pollum-io/sysweb3-core" "^1.0.1"
-    "@pollum-io/sysweb3-keyring" "^1.0.4"
-    "@pollum-io/sysweb3-network" "^1.0.3"
-    "@pollum-io/sysweb3-utils" "^1.0.3"
-
 "@popperjs/core@^2.9.0":
   version "2.11.2"
   resolved "https://registry.yarnpkg.com/@popperjs/core/-/core-2.11.2.tgz#830beaec4b4091a9e9398ac50f865ddea52186b9"
@@ -2266,6 +2256,14 @@
   integrity sha512-QSSVYj7pYFN49kW77o2s9xTCwZ8F2xLbjLLSEVh8D2F4JUhZtPAGOFLTD+ffqksBx/u4cE/KImFjyhqCjn/LIA==
   dependencies:
     "@types/node" "*"
+
+"@types/chrome@^0.0.114":
+  version "0.0.114"
+  resolved "https://registry.yarnpkg.com/@types/chrome/-/chrome-0.0.114.tgz#8ceb33fa261f4b9e307fa7344ba8182d8d410d4e"
+  integrity sha512-i7qRr74IrxHtbnrZSKUuP5Uvd5EOKwlwJq/yp7+yTPihOXnPhNQO4Z5bqb1XTnrjdbUKEJicaVVbhcgtRijmLA==
+  dependencies:
+    "@types/filesystem" "*"
+    "@types/har-format" "*"
 
 "@types/chrome@^0.0.177":
   version "0.0.177"
@@ -8310,6 +8308,13 @@ jest-changed-files@^27.5.0:
     "@jest/types" "^27.5.0"
     execa "^5.0.0"
     throat "^6.0.1"
+
+jest-chrome@^0.7.2:
+  version "0.7.2"
+  resolved "https://registry.yarnpkg.com/jest-chrome/-/jest-chrome-0.7.2.tgz#4643ba6010f98c8bb1398e6d5f206a6710879cd3"
+  integrity sha512-RSRDi8qNX54Q3ltSC2rW25+47nwY4DoruHOjHR0JZxijITS2PZrQ3j0jZPP3ywC0GuX0JNNwsKD3+iaKzOJEAA==
+  dependencies:
+    "@types/chrome" "^0.0.114"
 
 jest-circus@^27.5.0:
   version "27.5.0"

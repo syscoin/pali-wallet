@@ -33,7 +33,7 @@ const TrustedSitesView = () => {
 
   return (
     <Layout title="TRUSTED WEBSITES">
-      <p className="m-4 text-center text-white text-xs">
+      <p className="m-4 max-w-xs text-center text-white text-xs">
         Check all sites included on our trusted list.
       </p>
 
@@ -43,7 +43,7 @@ const TrustedSitesView = () => {
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         autoComplete="off"
-        className="flex flex-col gap-4 items-center justify-center text-center md:w-full"
+        className="flex flex-col gap-4 items-center justify-center mx-auto text-center md:w-full"
       >
         <Form.Item
           name="search"

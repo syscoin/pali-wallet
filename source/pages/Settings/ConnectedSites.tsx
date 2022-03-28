@@ -3,7 +3,8 @@ import React, { Fragment, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { browser } from 'webextension-polyfill-ts';
 import { useUtils } from 'hooks/index';
-import { formatUrl, ellipsis, getController } from 'utils/index';
+import { formatUrl, ellipsis } from 'utils/index';
+import { getController } from 'utils/browser';
 
 const ConnectedSites = (): any => {
   const { navigate } = useUtils();
@@ -26,7 +27,7 @@ const ConnectedSites = (): any => {
 
   return (
     <Layout title="CONNECTED SITES">
-      <p className="m-4 text-white text-xs md:max-w-md">
+      <p className="m-4 max-w-xs text-white text-xs md:max-w-md">
         {activeAccount?.connectedTo.length
           ? `${activeAccount.label} is connected to:`
           : `${activeAccount?.label} is not connected to any sites. To connect to a SYS platform site, find the connect button on their site.`}

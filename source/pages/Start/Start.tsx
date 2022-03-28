@@ -4,7 +4,7 @@ import { PrimaryButton } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Link } from 'react-router-dom';
-import { getController } from 'utils/index';
+import { getController } from 'utils/browser';
 
 export const Start = () => {
   const { navigate } = useUtils();
@@ -68,6 +68,7 @@ export const Start = () => {
           Unlock
         </PrimaryButton>
       </Form>
+
       <Link
         className="mt-20 hover:text-brand-graylight text-brand-royalblue text-base font-light transition-all duration-300"
         to="/import"
