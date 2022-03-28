@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useQuery, useUtils, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
@@ -40,14 +40,14 @@ export const ExternalRoute = () => {
 
   const query = useQuery();
   const route = query.get('route');
-
+  const [defaultRoute] = useState(route);
   const isUnlocked = !isLocked();
 
   useEffect(() => {
     const externalRoute = appRoute('/start', true);
 
-    if (isUnlocked && route && accounts) {
-      navigate(`/external/${route}`);
+    if (isUnlocked && accounts && defaultRoute) {
+      navigate(`/external/${defaultRoute}`);
 
       return;
     }
