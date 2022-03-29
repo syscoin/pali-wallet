@@ -59,11 +59,11 @@ const ProviderManager = () => {
   };
 
   const enable = () => {
-    return proxy('ENABLE_REQUEST', { asset: 'syscoin', network: 'main' });
+    return proxy('ENABLE_REQUEST', { asset: 'SYS', network: 'main' });
   };
 
   const disable = () => {
-    return proxy('DISABLE_REQUEST', { asset: 'syscoin', network: 'main' });
+    return proxy('DISABLE_REQUEST', { asset: 'SYS', network: 'main' });
   };
 
   return {
