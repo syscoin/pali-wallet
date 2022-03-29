@@ -116,29 +116,6 @@ const WalletController = (): IWalletController => {
       const { activeAccountId, accounts } = store.getState().wallet;
 
       if (!hd || !main) {
-        const response = await axios.get(
-          `${store.getState().wallet.currentBlockbookURL}/api/v2`
-        );
-
-        const { blockbook, backend } = response.data;
-
-        let isTestnet = false;
-
-        if (response && blockbook && backend) {
-          if (
-            blockbook.coin === 'Syscoin' ||
-            blockbook.coin === 'Syscoin Testnet'
-          ) {
-            if (backend.chain === 'main') {
-              isTestnet = false;
-            }
-
-            if (backend.chain === 'test') {
-              isTestnet = true;
-            }
-          }
-        }
-
         if (accounts.length > 1000) {
           return false;
         }
@@ -316,20 +293,10 @@ const WalletController = (): IWalletController => {
       const { blockbook, backend } = response.data;
 
       if (response && blockbook && backend) {
-        let isTestnet = false;
-
         if (
           blockbook.coin === 'Syscoin' ||
           blockbook.coin === 'Syscoin Testnet'
         ) {
-          if (backend.chain === 'main') {
-            isTestnet = false;
-          }
-
-          if (backend.chain === 'test') {
-            isTestnet = true;
-          }
-
           store.dispatch(updateSwitchNetwork(true));
 
           getAccountDataByNetwork(main);
