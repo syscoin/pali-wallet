@@ -70,19 +70,18 @@ export const formatSeedPhrase = (seed: string) => {
   const withoutDoubleSpacesRegex = /\s{2,}/g;
   const onlyLettersAndSpacesRegex = /[^a-zA-Z\s]/g;
 
-  if (!onlyLettersAndSpacesRegex.test(seed)) {
-    const lowerCaseTransform = seed.toLowerCase();
-    const seedWithNoEndAndStartSpaces = lowerCaseTransform.trim();
-    const seedWithoutDoubleSpaces = seedWithNoEndAndStartSpaces.replace(
-      withoutDoubleSpacesRegex,
-      ' '
-    );
-    const seedLength = seedWithoutDoubleSpaces.split(' ').length;
-    if (seedLength === 12) {
-      const formatedSeed = seedWithoutDoubleSpaces;
+  const onlyLettersAndSpacesSeed = seed.replace(onlyLettersAndSpacesRegex, ' ');
+  const lowerCaseTransform = onlyLettersAndSpacesSeed.toLowerCase();
 
-      return formatedSeed;
-    }
-    return seed;
+  const seedWithoutDoubleSpaces = lowerCaseTransform.replace(
+    withoutDoubleSpacesRegex,
+    ' '
+  );
+  const seedLength = seedWithoutDoubleSpaces.split(' ').length;
+  if (seedLength === 12) {
+    const formatedSeed = seedWithoutDoubleSpaces.trim();
+
+    return formatedSeed;
   }
+  return seed;
 };
