@@ -395,7 +395,7 @@ const WalletState = createSlice({
         ...action.payload,
       };
     },
-    deleteWallet() {
+    forgetWallet() {
       return initialState;
     },
     changeAccountActiveId(state: IWalletState, action: PayloadAction<number>) {
@@ -436,7 +436,7 @@ export const {
   createAccount,
   removeAccount,
   removeAccounts,
-  deleteWallet,
+  forgetWallet,
   changeAccountActiveId,
   changeActiveNetwork,
   updateAccount,

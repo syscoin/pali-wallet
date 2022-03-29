@@ -70,7 +70,7 @@ export const Start = () => {
       </Form>
 
       <Link
-        className="mt-20 hover:text-brand-graylight text-brand-royalblue text-base font-light transition-all duration-300"
+        className="mt-10 hover:text-brand-graylight text-brand-royalblue text-base font-light transition-all duration-300"
         to="/import"
         id="import-wallet-link"
       >

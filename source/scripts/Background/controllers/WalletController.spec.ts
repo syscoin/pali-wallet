@@ -8,7 +8,7 @@ import WalletController from './WalletController';
 describe('WalletController.ts tests', () => {
   const {
     setWalletPassword,
-    deleteWallet,
+    forgetWallet,
     switchWallet,
     checkPassword,
     importPhrase,
@@ -23,7 +23,7 @@ describe('WalletController.ts tests', () => {
     const password: string = FAKE_PASSWORD;
 
     setWalletPassword(password);
-    deleteWallet(password);
+    forgetWallet(password);
 
     const currentState = currentWalletState;
 

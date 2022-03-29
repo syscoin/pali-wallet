@@ -163,76 +163,70 @@ export const Send: FC<ISend> = () => {
           />
         </Form.Item>
 
-        <div className="flex items-center justify-center">
-          <Form.Item
-            name="asset"
-            className=""
-            rules={[
-              {
-                required: false,
-                message: '',
-              },
-            ]}
-          >
-            <Menu as="div" className="relative inline-block text-left">
-              <Menu.Button
-                disabled={activeAccount?.assets.length === 0}
-                className="inline-flex justify-center px-4 py-3 w-full text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
-              >
-                {selectedAsset?.symbol
-                  ? formatUrl(String(selectedAsset?.symbol), 2)
-                  : activeNetworkType === 'syscoin'
-                  ? 'SYS'
-                  : 'ETH'}
-                <ChevronDoubleDownIcon
-                  className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
-                  aria-hidden="true"
-                />
-              </Menu.Button>
+        <div className="flex items-center justify-center md:w-full md:max-w-md">
+          {hasAccountAssets && (
+            <Form.Item
+              name="asset"
+              className=""
+              rules={[
+                {
+                  required: false,
+                  message: '',
+                },
+              ]}
+            >
+              <Menu as="div" className="relative inline-block text-left">
+                <Menu.Button
+                  disabled={!hasAccountAssets}
+                  className="inline-flex justify-center py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+                >
+                  {selectedAsset?.symbol
+                    ? formatUrl(String(selectedAsset?.symbol), 2)
+                    : 'SYS'}
+                  <ChevronDoubleDownIcon
+                    className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
+                    aria-hidden="true"
+                  />
+                </Menu.Button>
 
-              <Transition
-                as={Fragment}
-                enter="transition ease-out duration-100"
-                enterFrom="transform opacity-0 scale-95"
-                enterTo="transform opacity-100 scale-100"
-                leave="transition ease-in duration-75"
-                leaveFrom="transform opacity-100 scale-100"
-                leaveTo="transform opacity-0 scale-95"
-              >
-                {activeAccount?.assets && activeAccount?.assets.length > 0 && (
-                  <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
-                    <Menu.Item>
-                      <button
-                        onClick={() => handleSelectedAsset(-1)}
-                        className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                      >
-                        <p>{activeNetworkType === 'syscoin' ? 'SYS' : 'ETH'}</p>
-
-                        <small>Native</small>
-                      </button>
-                    </Menu.Item>
-
-                    {activeAccount?.assets.map((item) => (
-                      <Menu.Item key={item.assetGuid}>
-                        <button
-                          onClick={() => handleSelectedAsset(item.assetGuid)}
-                          className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                        >
-                          <p>{item.symbol}</p>
-                          <small>{isNFT(item.assetGuid) ? 'NFT' : 'SPT'}</small>
-                        </button>
-                      </Menu.Item>
-                    ))}
-                  </Menu.Items>
-                )}
-              </Transition>
-            </Menu>
-          </Form.Item>
+                <Transition
+                  as={Fragment}
+                  enter="transition ease-out duration-100"
+                  enterFrom="transform opacity-0 scale-95"
+                  enterTo="transform opacity-100 scale-100"
+                  leave="transition ease-in duration-75"
+                  leaveFrom="transform opacity-100 scale-100"
+                  leaveTo="transform opacity-0 scale-95"
+                >
+                  {hasAccountAssets && (
+                    <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
+                      {activeAccount &&
+                        activeAccount.assets.map((item) => (
+                          <Menu.Item>
+                            <button
+                              onClick={() =>
+                                handleSelectedAsset(item.assetGuid)
+                              }
+                              className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                            >
+                              <p>{item.symbol}</p>
+                              <small>
+                                {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
+                              </small>
+                            </button>
+                          </Menu.Item>
+                        ))}
+                    </Menu.Items>
+                  )}
+                </Transition>
+              </Menu>
+            </Form.Item>
+          )}
 
           <div
             className={`${
-              hasAccountAssets ? 'w-48' : 'w-72'
-            } flex gap-x-0.5 items-center justify-center mx-2  md:w-full`}
+              hasAccountAssets ? 'w-48 ml-4' : 'w-72'
+            } flex gap-x-0.5 items-center justify-center md:w-full`}
           >
             <Form.Item
               id="verify-address-switch"
