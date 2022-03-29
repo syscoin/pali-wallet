@@ -15,7 +15,9 @@ export const SendConfirm = () => {
   const controller = getController();
   const activeAccount = controller.wallet.account.getActiveAccount();
   const { alert, navigate } = useUtils();
-  const { confirmingTransaction } = useStore();
+  const {
+    temporaryTransactionState: { executing, type },
+  } = useStore();
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -43,7 +45,7 @@ export const SendConfirm = () => {
           alert.removeAll();
           alert.error("Can't complete transaction. Try again later.");
 
-          if (confirmingTransaction) {
+          if (executing && type === 'sendAsset') {
             browser.runtime.sendMessage({
               type: 'WALLET_ERROR',
               target: 'background',
@@ -100,7 +102,7 @@ export const SendConfirm = () => {
             alert.error("Can't complete transaction. Try again later.");
           }
 
-          if (confirmingTransaction) {
+          if (executing && type === 'sendAsset') {
             browser.runtime.sendMessage({
               type: 'WALLET_ERROR',
               target: 'background',

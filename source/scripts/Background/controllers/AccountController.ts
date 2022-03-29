@@ -1518,12 +1518,7 @@ const AccountController = (actions: {
           sysjs
             .signAndSend(txData.psbt, txData.assets, TrezorSigner)
             .then(() => {
-              const confirmingAccount = store.getState().wallet
-                .confirmingTransaction
-                ? getConnectedAccount()
-                : globalAccount;
-
-              watchMemPool(confirmingAccount);
+              watchMemPool(globalAccount);
             });
 
           // ? will always call this with txid === null

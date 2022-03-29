@@ -24,7 +24,6 @@ export const initialState: IWalletState = {
   activeAccountId: 0,
   activeNetwork: 'main',
   encriptedMnemonic: null,
-  confirmingTransaction: false,
   changingNetwork: false,
   signingTransaction: false,
   signingPSBT: false,
@@ -107,17 +106,6 @@ const WalletState = createSlice({
       return {
         ...state,
         changingNetwork: action.payload,
-      };
-    },
-    // TODO: create handle for 2 types of send asset (site and extension)
-    // and remove calls for confirmingtransaction
-    updateCanConfirmTransaction(
-      state: IWalletState,
-      action: PayloadAction<boolean>
-    ) {
-      return {
-        ...state,
-        confirmingTransaction: action.payload,
       };
     },
     setTemporaryTransactionState(
@@ -389,7 +377,6 @@ export const {
   updateCanConnect,
   updateConnectionsArray,
   removeConnection,
-  updateCanConfirmTransaction,
   updateSwitchNetwork,
   clearAllTransactions,
   updateAllTokens,

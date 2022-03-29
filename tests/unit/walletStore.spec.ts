@@ -17,7 +17,6 @@ import reducer, {
   updateAccountAddress,
   updateAccountXpub,
   updateAllTokens,
-  updateCanConfirmTransaction,
   updateCanConnect,
   updateConnectionsArray,
   updateCurrentURL,
@@ -163,16 +162,17 @@ describe('Wallet store actions', () => {
     expect(newState.changingNetwork).toEqual(true);
   });
 
+  // todo: vault
   //* updateCanConfirmTransaction
-  it('should update can confirm transaction [confirmingTransaction]', () => {
-    const payload = true;
-    const newState = reducer(
-      initialState,
-      updateCanConfirmTransaction(payload)
-    );
+  // it('should update can confirm transaction [confirmingTransaction]', () => {
+  //   const payload = true;
+  //   const newState = reducer(
+  //     initialState,
+  //     updateCanConfirmTransaction(payload)
+  //   );
 
-    expect(newState.confirmingTransaction).toEqual(true);
-  });
+  //   expect(newState.confirmingTransaction).toEqual(true);
+  // });
 
   //* setTemporaryTransactionState
   it('should set [temporaryTransactionState]', () => {
@@ -332,6 +332,7 @@ describe('Wallet store actions', () => {
     expect(newState.encriptedMnemonic).toEqual(payload.toString());
   });
 
+  // todo: vault
   //* setLastLogin
   // it('should update the [status] to current datetime', () => {
   //   const startTime = Date.now();
