@@ -12,7 +12,6 @@ import {
   updateCurrentURL,
   updateConnectionsArray,
   removeConnection,
-  updateCanConfirmTransaction,
   clearAllTransactions,
   setTemporaryTransactionState,
 } from 'state/wallet';
@@ -659,7 +658,8 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       type: 'sendAsset',
     });
 
-    store.dispatch(updateCanConfirmTransaction(true));
+    // todo: vault
+    // store.dispatch(updateCanConfirmTransaction(true));
 
     const appURL = browser.runtime.getURL('app.html');
 
