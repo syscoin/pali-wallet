@@ -1,5 +1,5 @@
-// import { getController } from 'utils/browser';
 import { browser } from 'webextension-polyfill-ts';
+// import { SyscoinTransactions } from '@pollum-io/sysweb3-keyring';
 import store from 'state/store';
 import {
   getConnectedAccount,
@@ -9,6 +9,7 @@ import {
 
 export const PaliProvider = () => {
   const connectedAccount = getConnectedAccount();
+  // const txs = SyscoinTransactions();
 
   const { address, balance, xpub, assets } = connectedAccount;
 
@@ -17,49 +18,6 @@ export const PaliProvider = () => {
   const getChainId = () => store.getState().wallet.activeNetwork;
 
   const getState = () => _getOmittedSensitiveState(store.getState().wallet);
-
-  // const sendToken = async (items: any) => {
-  //   const controller = getController();
-
-  //   const handleSendToken = await controller?.connections?.handleSendToken(
-  //     items
-  //   );
-
-  //   return handleSendToken;
-  // };
-
-  // const createToken = async (items: any) => {
-  //   const controller = getController();
-
-  //   const handleCreateToken = await controller?.connections?.handleCreateToken(
-  //     items
-  //   );
-
-  //   return handleCreateToken;
-  // };
-
-  // const transferToken = async (items: any) => {
-  //   const controller = getController();
-
-  //   const handleTransferToken =
-  //     await controller?.connections?.handleTransferOwnership(items);
-
-  //   return handleTransferToken;
-  // };
-
-  // const signPSBT = (psbtToSign: any) => {
-  //   const controller = getController();
-
-  //   const handleSignPSBT = controller?.connections?.signPSBT(psbtToSign);
-
-  //   return handleSignPSBT;
-  // };
-
-  // const getSignedPSBT = (psbtToSign: any) => {
-  //   const controller = getController();
-
-  //   return controller?.connections?.signPSBT(psbtToSign);
-  // };
 
   const notifyWalletChanges = async (): Promise<void> => {
     const { wallet } = store.getState();
@@ -94,11 +52,8 @@ export const PaliProvider = () => {
     getNetwork,
     getChainId,
     getState,
-    // sendToken,
-    // createToken,
-    // transferToken,
-    // signPSBT,
-    // getSignedPSBT,
     notifyWalletChanges,
+    // we can just call from sysweb3 since we already have new methods for transactions in there
+    // ...txs
   };
 };
