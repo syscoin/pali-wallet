@@ -47,7 +47,7 @@
     "@babel/runtime": "^7.14.0",
     "@headlessui/react": "^1.4.2",
     "@heroicons/react": "^1.0.5",
-    "@pollum-io/sysweb3-utils": "^1.1.10",
+    "@pollum-io/sysweb3-utils": "^1.1.23",
     "@reduxjs/toolkit": "^1.4.0",
     "@tippyjs/react": "^4.2.6",
     "@types/chrome": "^0.0.177",
