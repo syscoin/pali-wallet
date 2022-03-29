@@ -76,8 +76,6 @@ const WalletController = (): IWalletController => {
       return;
     }
 
-    const { networks } = store.getState().wallet;
-
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
 
@@ -124,9 +122,9 @@ const WalletController = (): IWalletController => {
 
         const { blockbook, backend } = response.data;
 
-        if (response && blockbook && backend) {
-          let isTestnet = false;
+        let isTestnet = false;
 
+        if (response && blockbook && backend) {
           if (
             blockbook.coin === 'Syscoin' ||
             blockbook.coin === 'Syscoin Testnet'
