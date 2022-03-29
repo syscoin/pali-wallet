@@ -65,3 +65,23 @@ export const formatUrl = (url: string, size = 30) => {
 
   return `${url.slice(0, size)}...`;
 };
+
+export const formatSeedPhrase = (seed: string) => {
+  const withoutDoubleSpacesRegex = /\s{2,}/g;
+  const onlyLettersAndSpacesRegex = /[^a-zA-Z\s]/g;
+
+  const onlyLettersAndSpacesSeed = seed.replace(onlyLettersAndSpacesRegex, ' ');
+  const lowerCaseTransform = onlyLettersAndSpacesSeed.toLowerCase();
+
+  const seedWithoutDoubleSpaces = lowerCaseTransform.replace(
+    withoutDoubleSpacesRegex,
+    ' '
+  );
+  const seedLength = seedWithoutDoubleSpaces.split(' ').length;
+  if (seedLength === 12) {
+    const formatedSeed = seedWithoutDoubleSpaces.trim();
+
+    return formatedSeed;
+  }
+  return seed;
+};
