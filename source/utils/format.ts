@@ -65,3 +65,24 @@ export const formatUrl = (url: string, size = 30) => {
 
   return `${url.slice(0, size)}...`;
 };
+
+export const formatSeedPhrase = (seed: string) => {
+  const withoutDoubleSpacesRegex = /\s{2,}/g;
+  const onlyLettersAndSpacesRegex = /[^a-zA-Z\s]/g;
+
+  if (!seed.match(onlyLettersAndSpacesRegex)) {
+    const lowerCaseTransform = seed.toLowerCase();
+    const seedWithNoEndAndStartSpaces = lowerCaseTransform.trim();
+    const seedWithoutDoubleSpaces = seedWithNoEndAndStartSpaces.replace(
+      withoutDoubleSpacesRegex,
+      ' '
+    );
+    const seedLength = seedWithoutDoubleSpaces.split(' ').length;
+    if (seedLength === 12) {
+      const formatedSeed = seedWithoutDoubleSpaces;
+      return formatedSeed;
+    }
+    throw new Error('There are no 12 words');
+  }
+  throw new Error('There are symbols or numbers');
+};

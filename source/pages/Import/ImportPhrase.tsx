@@ -1,6 +1,7 @@
 import React, { FC, useState } from 'react';
 import { OnboardingLayout, PrimaryButton } from 'components/index';
 import { getController } from 'utils/browser';
+import { formatSeedPhrase } from 'utils/format';
 import { Form } from 'antd';
 import TextArea from 'antd/lib/input/TextArea';
 import { useForm } from 'antd/lib/form/Form';
@@ -22,6 +23,12 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
 
   const [form] = useForm();
 
+  const handleKeypress = (e) => {
+    if (e.key === 'Enter') {
+      form.submit();
+    }
+  };
+
   return (
     <OnboardingLayout title="Import wallet">
       <Form
@@ -41,6 +48,12 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
             },
             () => ({
               validator(_, value) {
+                try {
+                  value = formatSeedPhrase(value);
+                } catch (error) {
+                  setSeedIsValid(false);
+                  return Promise.reject();
+                }
                 setSeedIsValid(controller.wallet.importPhrase(value) && value);
 
                 if (controller.wallet.importPhrase(value)) {
@@ -60,6 +73,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
             } bg-fields-input-primary`}
             placeholder="Paste your wallet seed phrase"
             id="import-wallet-input"
+            onKeyPress={handleKeypress}
           />
         </Form.Item>
 
