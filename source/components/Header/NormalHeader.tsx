@@ -261,7 +261,7 @@ export const NormalHeader: React.FC = () => {
                 >
                   <Icon name="edit" className="ml-1 mr-4 text-brand-white" />
 
-                  <span className="px-3">Edit networks</span>
+                  <span className="px-3">Manage networks</span>
                 </li>
               </Menu.Item>
             </Menu.Items>

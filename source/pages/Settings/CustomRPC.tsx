@@ -5,7 +5,7 @@ import axios from 'axios';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
-import { EditNetwork } from '.';
+import { ManageNetwork } from '.';
 
 const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   const [loading, setLoading] = useState(false);
@@ -50,7 +50,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   return (
     <>
       {edit ? (
-        <EditNetwork />
+        <ManageNetwork />
       ) : (
         <Layout title="CUSTOM RPC">
           <Form
