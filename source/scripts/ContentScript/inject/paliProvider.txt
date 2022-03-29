@@ -14,6 +14,7 @@ const { SUPPORTED_WALLET_METHODS } = window;
 const REQUEST_MAP = {
   ETH: {
     chainId: SUPPORTED_WALLET_METHODS.getChainId,
+    setAccount: SUPPORTED_WALLET_METHODS.setAccount,
     accounts: SUPPORTED_WALLET_METHODS.getAccounts,
     blockNumber: SUPPORTED_WALLET_METHODS.getBlockNumber,
     estimateGas: SUPPORTED_WALLET_METHODS.estimateGas,
@@ -21,6 +22,7 @@ const REQUEST_MAP = {
     signMessage: SUPPORTED_WALLET_METHODS.signMessage,
   },
   SYS: {
+    setAccount: SUPPORTED_WALLET_METHODS.setAccount,
     chainId: SUPPORTED_WALLET_METHODS.getChainId,
     accounts: SUPPORTED_WALLET_METHODS.getAccounts,
     sendTransaction: SUPPORTED_WALLET_METHODS.sendTransaction,

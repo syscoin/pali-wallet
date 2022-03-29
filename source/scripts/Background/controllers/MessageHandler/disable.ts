@@ -15,7 +15,7 @@ export const disable = async (
   const { asset } = message.data;
 
   const provider =
-    asset === 'syscoin'
+    asset === 'SYS'
       ? masterController.paliProvider
       : masterController.ethereumProvider;
 

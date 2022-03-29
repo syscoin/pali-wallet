@@ -53,7 +53,7 @@ export const PaliProvider = () => {
     getChainId,
     getState,
     notifyWalletChanges,
-    // we can just call from sysweb3 since we already have new methods for transactions in there
+    // we can just call from sysweb3 since we already have new methods for transactions in there as soon as we get the signer issue fixed
     // ...txs
   };
 };
