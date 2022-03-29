@@ -32,6 +32,7 @@ export enum SupportedWalletMethods {
   getNetwork,
   getAddress,
   getBalance,
+  setAccount,
 }
 
 export const SUPPORTED_CHAINS = ['syscoin', 'ethereum'];
