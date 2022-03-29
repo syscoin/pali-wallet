@@ -92,7 +92,6 @@ export default interface IWalletState {
     executing: boolean;
     type: string;
   };
-  timer: number;
   trustedApps: {
     [id: string]: string;
   };

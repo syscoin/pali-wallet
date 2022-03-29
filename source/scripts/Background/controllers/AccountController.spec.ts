@@ -71,7 +71,7 @@ describe('AccountController tests', () => {
 
     setAutolockTimer(newTime);
 
-    const { timer } = store.getState().wallet;
+    const { timer } = store.getState().vault;
 
     expect(timer).toBe(newTime);
   });

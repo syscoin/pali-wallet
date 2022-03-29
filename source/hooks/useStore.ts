@@ -1,6 +1,7 @@
 import { useSelector } from 'react-redux';
 import IPriceState from 'state/price/types';
 import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 import IWalletState from 'state/wallet/types';
 
 export const useStore = () => {
@@ -14,13 +15,14 @@ export const useStore = () => {
     signingPSBT,
     walletTokens,
     tabs,
-    timer,
     networks,
     trustedApps,
     temporaryTransactionState,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
 
   const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
+
+  const { timer }: IVaultState = useSelector((state: RootState) => state.vault);
 
   const { currentSenderURL, currentURL, canConnect, connections } = tabs;
 
@@ -33,7 +35,6 @@ export const useStore = () => {
     signingTransaction,
     signingPSBT,
     walletTokens,
-    timer,
     tabs,
     currentSenderURL,
     currentURL,
@@ -43,5 +44,6 @@ export const useStore = () => {
     trustedApps,
     temporaryTransactionState,
     fiat,
+    timer,
   };
 };

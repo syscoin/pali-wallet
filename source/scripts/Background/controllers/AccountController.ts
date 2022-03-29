@@ -26,14 +26,13 @@ import {
   updateAccountXpub,
   updateSwitchNetwork,
   updateAllTokens,
-  setTimer,
   updateNetwork,
   setTemporaryTransactionState,
 } from 'state/wallet';
 import { log, logError } from 'utils/index';
 
 import { sortList, isNFT, countDecimals, base64 } from './utils';
-import { setLastLogin } from 'state/vault';
+import { setLastLogin, setTimer } from 'state/vault';
 
 const syscointx = require('syscointx-js');
 const coinSelectSyscoin = require('coinselectsyscoin');

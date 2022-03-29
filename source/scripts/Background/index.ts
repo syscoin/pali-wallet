@@ -57,7 +57,8 @@ const closePopup = () => {
 };
 
 const restartLockTimeout = () => {
-  const { temporaryTransactionState, timer } = store.getState().wallet;
+  const { temporaryTransactionState } = store.getState().wallet;
+  const { timer } = store.getState().vault;
 
   if (timeout) {
     clearTimeout(timeout);

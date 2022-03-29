@@ -34,7 +34,6 @@ export const initialState: IWalletState = {
     canConnect: false,
     connections: [],
   },
-  timer: 5,
   networks: {
     main: {
       id: 'main',
@@ -72,13 +71,6 @@ const WalletState = createSlice({
           ...state.networks,
           [action.payload.id]: action.payload,
         },
-      };
-    },
-    // In minutes
-    setTimer(state: IWalletState, action: PayloadAction<number>) {
-      return {
-        ...state,
-        timer: action.payload,
       };
     },
     // update token by accountId (if existent) or add a new one
@@ -380,7 +372,6 @@ export const {
   updateSwitchNetwork,
   clearAllTransactions,
   updateAllTokens,
-  setTimer,
   updateNetwork,
   setTemporaryTransactionState,
 } = WalletState.actions;
