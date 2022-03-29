@@ -121,9 +121,9 @@ export interface IDAppController {
   isSiteListening: (origin: string, eventName: string) => boolean;
   notifyAccountsChanged: (accountId: number) => void;
   pageConnectDApp: (origin: string, title: string) => boolean;
+  paliProvider: any;
   registerListeningSite: (origin: string, eventName: string) => void;
   setSigRequest: (req: ISigRequest) => void;
   userConnectDApp: (origin: string, dapp: IDAppInfo, accountId: number) => void;
   userDisconnectDApp: (origin: string) => void;
-  paliProvider: any;
 }
