@@ -382,7 +382,6 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
       checkToCallPrivateMethods();
 
       const {
-        status,
         accounts,
         activeAccountId,
         activeNetwork,
@@ -393,6 +392,8 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
         signingPSBT,
         walletTokens,
       } = store.getState().wallet;
+
+      const { lastLogin } = store.getState().vault;
 
       const copyAccounts: any = {};
 
@@ -426,7 +427,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
             match: new URL(store.getState().wallet.tabs.currentURL).host,
           }) > -1 && !window.controller.wallet.isLocked()
             ? {
-                status,
+                lastLogin,
                 accounts: Object.values(copyAccounts),
                 activeAccountId,
                 activeNetwork,

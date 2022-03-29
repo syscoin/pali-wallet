@@ -4,7 +4,6 @@ import {
   forgetWallet as forgetWalletState,
   changeAccountActiveId,
   changeActiveNetwork,
-  updateStatus,
   setEncriptedMnemonic,
   removeAccounts,
   removeAccount,
@@ -20,6 +19,7 @@ import { log, logError, openNotificationsPopup } from 'utils/index';
 
 import AccountController from './AccountController';
 import TrezorController from './TrezorController';
+import { setLastLogin } from 'state/vault';
 
 const sys = require('syscoinjs-lib');
 
@@ -222,7 +222,7 @@ const WalletController = (): IWalletController => {
       sjs = null;
 
       store.dispatch(forgetWalletState());
-      store.dispatch(updateStatus());
+      store.dispatch(setLastLogin());
     }
   };
 
@@ -245,7 +245,7 @@ const WalletController = (): IWalletController => {
     password = '';
     encryptedPassword = '';
     mnemonic = '';
-    store.dispatch(updateStatus());
+    store.dispatch(setLastLogin());
   };
 
   const checkAndSetNewXpub = (index: number, activeAccountId: number) => {
@@ -323,7 +323,7 @@ const WalletController = (): IWalletController => {
       for (const id of accountsToBeRemoved) {
         // store.dispatch(removeConnection({ accountId: id }));
         store.dispatch(removeAccount(Number(id)));
-        store.dispatch(updateStatus());
+        store.dispatch(setLastLogin());
 
         openNotificationsPopup(
           'Hardware Wallet removed due to network switch',

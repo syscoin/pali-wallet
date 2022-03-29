@@ -19,7 +19,6 @@ import {
 import { IAccountController } from 'types/controllers';
 import {
   createAccount,
-  updateStatus,
   updateAccount,
   updateLabel,
   updateTransactions,
@@ -34,6 +33,7 @@ import {
 import { log, logError } from 'utils/index';
 
 import { sortList, isNFT, countDecimals, base64 } from './utils';
+import { setLastLogin } from 'state/vault';
 
 const syscointx = require('syscointx-js');
 const coinSelectSyscoin = require('coinselectsyscoin');
@@ -374,7 +374,7 @@ const AccountController = (actions: {
       globalAccount = getActiveAccount();
 
       // ? is this supposed to be inside this if?
-      store.dispatch(updateStatus());
+      store.dispatch(setLastLogin());
     }
   };
 

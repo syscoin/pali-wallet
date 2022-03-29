@@ -5,7 +5,6 @@ import IWalletState from 'state/wallet/types';
 
 export const useStore = () => {
   const {
-    status,
     accounts,
     activeAccountId,
     activeNetwork,
@@ -27,7 +26,6 @@ export const useStore = () => {
   const { currentSenderURL, currentURL, canConnect, connections } = tabs;
 
   return {
-    status,
     accounts,
     activeAccountId,
     activeNetwork,

@@ -20,7 +20,6 @@ const getHost = (url: string) => {
 };
 
 export const initialState: IWalletState = {
-  status: 0,
   accounts: [],
   activeAccountId: 0,
   activeNetwork: 'main',
@@ -259,10 +258,6 @@ const WalletState = createSlice({
     ) {
       state.encriptedMnemonic = action.payload.toString();
     },
-    // TODO rename [status] to something more meaningful
-    updateStatus(state: IWalletState) {
-      state.status = Date.now();
-    },
     createAccount(state: IWalletState, action: PayloadAction<IAccountState>) {
       return {
         ...state,
@@ -377,7 +372,6 @@ const WalletState = createSlice({
 });
 
 export const {
-  updateStatus,
   createAccount,
   removeAccount,
   removeAccounts,

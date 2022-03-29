@@ -23,10 +23,10 @@ import reducer, {
   updateCurrentURL,
   updateLabel,
   updateNetwork,
-  updateStatus,
   updateSwitchNetwork,
   updateTransactions,
 } from 'state/wallet';
+// import { initialState as initialVaultState, setLastLogin } from 'state/vault';
 import IWalletState, {
   Connection,
   IAccountState,
@@ -332,14 +332,14 @@ describe('Wallet store actions', () => {
     expect(newState.encriptedMnemonic).toEqual(payload.toString());
   });
 
-  //* updateStatus
-  it('should update the [status] to current datetime', () => {
-    const startTime = Date.now();
-    const newState = reducer(initialState, updateStatus());
+  //* setLastLogin
+  // it('should update the [status] to current datetime', () => {
+  //   const startTime = Date.now();
+  //   const newState = reducer(initialVaultState, setLastLogin());
 
-    expect(newState.status).toBeGreaterThanOrEqual(startTime);
-    expect(newState.status).toBeLessThanOrEqual(Date.now());
-  });
+  //   expect(newState.lastLogin).toBeGreaterThanOrEqual(startTime);
+  //   expect(newState.lastLogin).toBeLessThanOrEqual(Date.now());
+  // });
 
   //* createAccount
   it('should create an account', () => {
