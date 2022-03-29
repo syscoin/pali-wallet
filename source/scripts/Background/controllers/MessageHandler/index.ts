@@ -31,6 +31,8 @@ export const messagesHandler = (port: Runtime.Port, masterController: any) => {
     const title = connection.sender?.tab?.title as string;
     const origin = url && new URL(url as string).origin;
 
+    console.log('master controller', masterController);
+
     // Set current page
     masterController.dapp.pageConnectDApp(origin, title);
 
@@ -58,6 +60,12 @@ export const messagesHandler = (port: Runtime.Port, masterController: any) => {
           isPendingWindow
         );
       case 'CAL_REQUEST':
+        console.log(
+          'cal request received, handling request',
+          port,
+          message,
+          origin
+        );
         return handleRequest(
           port,
           masterController,
@@ -74,6 +82,8 @@ export const messagesHandler = (port: Runtime.Port, masterController: any) => {
   const listener = async (message: Message, connection: Runtime.Port) => {
     try {
       const response = await listenerHandler(message, connection);
+
+      console.log('response listener handler', message, connection);
 
       if (response) {
         const { id, result } = response;

@@ -1,9 +1,8 @@
 const injectedProvider = (asset) => {
-  let currentAsset;
-
-  const getMethod = () => {
-     return(...args) => window.providerManager.proxy('CAL_REQUEST', {
-      asset: currentAsset,
+  const getMethod = (method) => {
+    console.log('geting method')
+     return (...args) => window.providerManager.proxy('CAL_REQUEST', {
+      asset: asset,
       method,
       args
     })

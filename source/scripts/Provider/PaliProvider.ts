@@ -83,9 +83,11 @@ export const PaliProvider = () => {
     log('could not notify wallet changes, network is not web3', 'System');
   };
 
+  const getBalance = () => balance;
+
   return {
     connectedAccount,
-    balance,
+    getBalance,
     address,
     xpub,
     assets,

@@ -125,4 +125,5 @@ export interface IDAppController {
   setSigRequest: (req: ISigRequest) => void;
   userConnectDApp: (origin: string, dapp: IDAppInfo, accountId: number) => void;
   userDisconnectDApp: (origin: string) => void;
+  paliProvider: any;
 }

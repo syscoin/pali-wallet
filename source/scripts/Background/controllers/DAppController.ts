@@ -9,6 +9,7 @@ import { IDAppInfo } from 'state/dapp/types';
 import store from 'state/store';
 import { IDAppController } from 'types/controllers';
 import { log } from 'utils/logger';
+import { PaliProvider } from 'scripts/Provider/PaliProvider';
 
 export interface ISigRequest {
   address: string;
@@ -134,6 +135,8 @@ const DAppController = (): IDAppController => {
 
   const getSigRequest = () => request;
 
+  const paliProvider = PaliProvider();
+
   return {
     getCurrent,
     pageConnectDApp,
@@ -146,6 +149,7 @@ const DAppController = (): IDAppController => {
     deregisterListeningSite,
     isSiteListening,
     isDAppConnected,
+    paliProvider,
   };
 };
 

@@ -15,16 +15,18 @@ export const handleRequest = async (
   const { method, args, asset } = message.data;
 
   const allowed = masterController.dapp.isDAppConnected(origin);
-  const walletIsLocked = !masterController.wallet.isUnlocked();
+  const walletIsLocked = masterController.wallet.isLocked();
 
   const provider =
     asset === 'SYS'
-      ? masterController.paliProvider
-      : masterController.ethereumProvider;
+      ? masterController.dapp.paliProvider
+      : masterController.dapp.ethereumProvider;
 
   let result: any;
 
   const windowId = `signMessage${uuid()}`;
+
+  console.log('asset and provider', asset, provider);
 
   const isSignMessage = async () => {
     if (isPendingWindow()) {
