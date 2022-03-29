@@ -14,9 +14,13 @@ export const getConnectedAccount = (): IAccountState => {
   if (sender && sender.id) {
     const { accountId } = store.getState().dapp.whitelist[sender.id];
 
-    return accounts.find(
+    const account = accounts.find(
       (account) => account.id === accountId
     ) as IAccountState;
+
+    console.log('connected account', account);
+
+    return account;
   }
 
   return {} as IAccountState;

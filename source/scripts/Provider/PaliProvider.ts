@@ -5,7 +5,9 @@ import {
   getConnectedAccount,
   _getOmittedSensitiveState,
   log,
+  getHost,
 } from 'utils/index';
+import { listNewDapp } from 'state/dapp';
 
 export const PaliProvider = () => {
   const connectedAccount = getConnectedAccount();
@@ -43,6 +45,28 @@ export const PaliProvider = () => {
 
   const getBalance = () => balance;
 
+  const setAccount = (accountId: number) => {
+    console.log('setting account', accountId);
+    const { accounts } = store.getState().wallet;
+
+    if (!accounts.find((account) => account.id === accountId))
+      return new Error('Account not found');
+
+    const { origin } = window.controller.dapp.getCurrent();
+
+    const id = getHost(origin);
+
+    const currentDapp = store.getState().dapp.whitelist[id];
+
+    store.dispatch(
+      listNewDapp({
+        id,
+        accountId,
+        dapp: currentDapp,
+      })
+    );
+  };
+
   return {
     connectedAccount,
     getBalance,
@@ -53,6 +77,7 @@ export const PaliProvider = () => {
     getChainId,
     getState,
     notifyWalletChanges,
+    setAccount,
     // we can just call from sysweb3 since we already have new methods for transactions in there as soon as we get the signer issue fixed
     // ...txs
   };
