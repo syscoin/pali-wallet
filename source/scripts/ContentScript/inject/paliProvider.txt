@@ -76,8 +76,8 @@ const handleRequest = async (chain, request) => {
 
   if (
     prefix &&
-    Object.prototype.hasOwnProperty.call(REQUEST_MAP, prefix) &&
-    Object.prototype.hasOwnProperty.call(REQUEST_MAP[prefix], method)
+    (Object.prototype.hasOwnProperty.call(REQUEST_MAP, prefix) &&
+    Object.prototype.hasOwnProperty.call(REQUEST_MAP[prefix], method))
   ) {
     const response = await provider.getMethod(REQUEST_MAP[prefix][method])(
       ...request.params

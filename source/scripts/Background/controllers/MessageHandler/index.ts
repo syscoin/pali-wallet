@@ -33,6 +33,11 @@ export const messagesHandler = (port: Runtime.Port, masterController: any) => {
 
     console.log('master controller', masterController);
 
+    console.log(
+      '[listener handle request] method:',
+      message,
+      masterController.dapp.paliProvider.getBalance()
+    );
     // Set current page
     masterController.dapp.pageConnectDApp(origin, title);
 

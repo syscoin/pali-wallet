@@ -129,6 +129,13 @@ export const handleRequest = async (
     return sendTransaction(data);
   };
 
+  console.log(
+    '[handle request] method:',
+    method,
+    SupportedWalletMethods[method],
+    provider.getBalance()
+  );
+
   switch (+method) {
     case SupportedWalletMethods.isConnected:
       result = { connected: !!allowed && !walletIsLocked };

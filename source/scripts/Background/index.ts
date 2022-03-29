@@ -47,6 +47,12 @@ browser.runtime.onInstalled.addListener(() => {
 
   console.emoji('🤩', 'Pali extension enabled');
 
+  console.log(
+    'getting pali provider',
+    window.controller.dapp.paliProvider,
+    window.controller.dapp.paliProvider.getBalance()
+  );
+
   window.controller.stateUpdater();
 });
 

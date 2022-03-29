@@ -43,8 +43,6 @@ export const PaliProvider = () => {
     log('could not notify wallet changes, network is not web3', 'System');
   };
 
-  const getBalance = () => balance;
-
   const setAccount = (accountId: number) => {
     console.log('setting account', accountId);
     const { accounts } = store.getState().wallet;
@@ -69,15 +67,16 @@ export const PaliProvider = () => {
 
   return {
     connectedAccount,
-    getBalance,
-    address,
-    xpub,
     assets,
     getNetwork,
     getChainId,
     getState,
     notifyWalletChanges,
     setAccount,
+    getBalance: () => balance,
+    getAccounts: () => connectedAccount,
+    getPublicKey: () => xpub,
+    getAddress: () => address,
     // we can just call from sysweb3 since we already have new methods for transactions in there as soon as we get the signer issue fixed
     // ...txs
   };
