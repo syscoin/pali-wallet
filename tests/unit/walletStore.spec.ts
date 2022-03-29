@@ -442,7 +442,6 @@ describe('Wallet store actions', () => {
     // these fields should not change when deleting the wallet
     const staticFields = {
       timer: 10,
-      currentBlockbookURL: 'https://something.url',
       networks: {
         fakenetwork: {
           id: 'fakenetwork',
@@ -481,7 +480,7 @@ describe('Wallet store actions', () => {
   });
 
   //* changeActiveNetwork
-  it('should update [activeNetwork] (and [currentBlockbookURL])', () => {
+  it('should update [activeNetwork]', () => {
     const payload: INetwork = {
       id: 'testnet',
       beUrl: 'https://blockbook-dev.elint.services/',
@@ -491,7 +490,6 @@ describe('Wallet store actions', () => {
     const newState = reducer(initialState, changeActiveNetwork(payload));
 
     expect(newState.activeNetwork).toEqual(payload.id);
-    expect(newState.currentBlockbookURL).toEqual(payload.beUrl);
   });
 
   //* updateTransactions

@@ -143,7 +143,7 @@ const WalletController = (): IWalletController => {
 
       if (!HDsigner || !sjs) {
         const response = await axios.get(
-          `${store.getState().wallet.currentBlockbookURL}/api/v2`
+          `${store.getState().vault.activeNetwork.url}/api/v2`
         );
 
         const { blockbook, backend } = response.data;
@@ -173,7 +173,7 @@ const WalletController = (): IWalletController => {
             });
             setSjs({
               SignerIn: HDsigner,
-              blockbookURL: store.getState().wallet.currentBlockbookURL,
+              blockbookURL: store.getState().vault.activeNetwork.url,
             });
           }
         }

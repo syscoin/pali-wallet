@@ -37,7 +37,6 @@ export const initialState: IWalletState = {
     connections: [],
   },
   timer: 5,
-  currentBlockbookURL: 'https://blockbook.elint.services/',
   networks: {
     main: {
       id: 'main',
@@ -351,7 +350,6 @@ const WalletState = createSlice({
     },
     changeActiveNetwork(state: IWalletState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload.id;
-      state.currentBlockbookURL = action.payload.beUrl;
     },
     updateTransactions(
       state: IWalletState,
