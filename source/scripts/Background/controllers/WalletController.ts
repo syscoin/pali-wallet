@@ -17,6 +17,7 @@ import store from 'state/store';
 import axios from 'axios';
 import { IWalletController } from 'types/controllers';
 import { log, logError, openNotificationsPopup } from 'utils/index';
+import { MainSigner } from '@pollum-io/sysweb3-utils';
 
 import AccountController from './AccountController';
 import TrezorController from './TrezorController';
@@ -27,30 +28,13 @@ const WalletController = (): IWalletController => {
   let password: any = '';
   let encryptedPassword: any = '';
   let mnemonic = '';
-  let HDsigner: any = null;
-  let sjs: any = null;
 
-  const setHDSigner = ({
-    walletMnemonic,
-    walletPassword,
-    isTestnet,
-    networks,
-    SLIP44,
-    pubTypes,
-  }: any) => {
-    HDsigner = new sys.utils.HDSigner(
-      walletMnemonic,
-      walletPassword,
-      isTestnet,
-      networks,
-      SLIP44,
-      pubTypes
-    );
-  };
-
-  const setSjs = ({ SignerIn, blockbookURL, network }: any) => {
-    sjs = new sys.SyscoinJSLib(SignerIn, blockbookURL, network);
-  };
+  let { hd, main }: any = MainSigner({
+    walletMnemonic: mnemonic,
+    isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+    network: 'main',
+    blockbookURL: store.getState().wallet.currentBlockbookURL,
+  });
 
   const setWalletPassword = (pwd: string) => {
     password = pwd;
@@ -68,7 +52,7 @@ const WalletController = (): IWalletController => {
   const account = AccountController({ checkPassword });
   const trezor = TrezorController({ account });
 
-  const isLocked = () => !encryptedPassword || !HDsigner;
+  const isLocked = () => !encryptedPassword || !hd;
 
   const retrieveEncriptedMnemonic = () => {
     // not encrypted for now but we got to retrieve
@@ -88,18 +72,11 @@ const WalletController = (): IWalletController => {
   };
 
   const createWallet = (isUpdated = false) => {
-    if (!isUpdated && sjs) {
+    if (!isUpdated && main) {
       return;
     }
 
     const { networks } = store.getState().wallet;
-
-    setHDSigner({
-      walletMnemonic: mnemonic,
-      walletPassword: null,
-      isTestnet: false,
-    });
-    setSjs({ SignerIn: HDsigner, blockbookURL: networks.main.beUrl });
 
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
@@ -113,8 +90,8 @@ const WalletController = (): IWalletController => {
 
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
 
-    account.subscribeAccount(false, sjs, undefined, true).then(() => {
-      account.getPrimaryAccount(password, sjs);
+    account.subscribeAccount(false, main, undefined, true).then(() => {
+      account.getPrimaryAccount(password, main);
       password = '';
       mnemonic = '';
 
@@ -124,8 +101,7 @@ const WalletController = (): IWalletController => {
     });
   };
 
-  const getPhrase = (pwd: string) =>
-    checkPassword(pwd) ? HDsigner.mnemonic : null;
+  const getPhrase = (pwd: string) => (checkPassword(pwd) ? hd.mnemonic : null);
 
   const unLock = async (pwd: string) => {
     try {
@@ -141,7 +117,7 @@ const WalletController = (): IWalletController => {
 
       const { activeAccountId, accounts } = store.getState().wallet;
 
-      if (!HDsigner || !sjs) {
+      if (!hd || !main) {
         const response = await axios.get(
           `${store.getState().wallet.currentBlockbookURL}/api/v2`
         );
@@ -162,19 +138,6 @@ const WalletController = (): IWalletController => {
             if (backend.chain === 'test') {
               isTestnet = true;
             }
-
-            setHDSigner({
-              walletMnemonic: decriptedMnemonic,
-              walletPassword: null,
-              isTestnet,
-              networks: sys.utils.syscoinNetworks,
-              SLIP44: 57,
-              pubTypes: sys.utils.syscoinZPubTypes,
-            });
-            setSjs({
-              SignerIn: HDsigner,
-              blockbookURL: store.getState().wallet.currentBlockbookURL,
-            });
           }
         }
 
@@ -188,22 +151,22 @@ const WalletController = (): IWalletController => {
               'Should not derive from hdsigner if the account is from the hardware wallet'
             );
           } else {
-            const child = sjs.Signer.deriveAccount(i);
-            sjs.Signer.Signer.accounts.push(
+            const child = main.Signer.deriveAccount(i);
+            main.Signer.Signer.accounts.push(
               new fromZPrv(
                 child,
-                sjs.Signer.Signer.pubTypes,
-                sjs.Signer.Signer.networks
+                main.Signer.Signer.pubTypes,
+                main.Signer.Signer.networks
               )
             );
-            sjs.Signer.setAccountIndex(activeAccountId);
+            main.Signer.setAccountIndex(activeAccountId);
           }
         }
       }
 
       encryptedPassword = CryptoJS.SHA3(pwd).toString();
 
-      account.getPrimaryAccount(pwd, sjs);
+      account.getPrimaryAccount(pwd, main);
 
       account.watchMemPool(accounts[activeAccountId]);
 
@@ -218,8 +181,8 @@ const WalletController = (): IWalletController => {
       password = '';
       encryptedPassword = '';
       mnemonic = '';
-      HDsigner = null;
-      sjs = null;
+      hd = null;
+      main = null;
 
       store.dispatch(forgetWalletState());
       store.dispatch(updateStatus());
@@ -252,23 +215,23 @@ const WalletController = (): IWalletController => {
     if (Number(index) === 0) {
       account.setNewXpub(
         Number(index),
-        sjs.Signer.Signer.accounts[Number(index)].getAccountPublicKey(),
-        sjs.Signer.Signer.accounts[Number(index)].getAccountPrivateKey(),
+        main.Signer.Signer.accounts[Number(index)].getAccountPublicKey(),
+        main.Signer.Signer.accounts[Number(index)].getAccountPrivateKey(),
         encryptedPassword
       );
 
       return;
     }
 
-    const child = sjs.Signer.deriveAccount(Number(index));
+    const child = main.Signer.deriveAccount(Number(index));
     const derived = new fromZPrv(
       child,
-      sjs.Signer.Signer.pubTypes,
-      sjs.Signer.Signer.networks
+      main.Signer.Signer.pubTypes,
+      main.Signer.Signer.networks
     );
 
-    sjs.Signer.Signer.accounts.push(derived);
-    sjs.Signer.setAccountIndex(activeAccountId);
+    main.Signer.Signer.accounts.push(derived);
+    main.Signer.setAccountIndex(activeAccountId);
 
     account.setNewXpub(
       Number(index),
@@ -369,19 +332,9 @@ const WalletController = (): IWalletController => {
             isTestnet = true;
           }
 
-          setHDSigner({
-            walletMnemonic: HDsigner.mnemonic,
-            walletPassword: null,
-            isTestnet,
-          });
-          setSjs({
-            SignerIn: HDsigner,
-            blockbookURL: networks[networkId].beUrl,
-          });
-
           store.dispatch(updateSwitchNetwork(true));
 
-          getAccountDataByNetwork(sjs);
+          getAccountDataByNetwork(main);
         }
 
         return;
@@ -401,7 +354,7 @@ const WalletController = (): IWalletController => {
 
     if (userAccount?.isTrezorWallet) {
       const res = await sys.utils.fetchBackendAccount(
-        sjs.blockbookURL,
+        main.blockbookURL,
         userAccount.xpub,
         'tokens=nonzero&details=txs',
         true
@@ -409,8 +362,8 @@ const WalletController = (): IWalletController => {
 
       const account0 = new fromZPub(
         userAccount.xpub,
-        sjs.Signer.Signer.pubTypes,
-        sjs.Signer.Signer.networks
+        main.Signer.Signer.pubTypes,
+        main.Signer.Signer.networks
       );
 
       let receivingIndex = -1;
@@ -440,7 +393,7 @@ const WalletController = (): IWalletController => {
       address = account0.getAddress(receivingIndex + 1);
     } else {
       try {
-        address = await sjs.Signer.getNewReceivingAddress(true);
+        address = await main.Signer.getNewReceivingAddress(true);
       } catch (error: any) {
         logError('Failed to get receiving address');
 
