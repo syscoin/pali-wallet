@@ -68,7 +68,6 @@ export interface INetwork {
 export default interface IWalletState {
   accounts: IAccountState[];
   activeAccountId: number;
-  changingNetwork: boolean;
   networks: { [networkId: string]: INetwork };
   walletTokens: IWalletTokenState[];
 }

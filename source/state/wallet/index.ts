@@ -13,7 +13,6 @@ import IWalletState, {
 export const initialState: IWalletState = {
   accounts: [],
   activeAccountId: 0,
-  changingNetwork: false,
   walletTokens: [],
   networks: {
     main: {

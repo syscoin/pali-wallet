@@ -45,7 +45,7 @@ describe('AccountController tests', () => {
 
   it('should return a sys address verification', () => {
     const invalidSysAddress = 'sys213ixks1mx';
-    const value = isValidSYSAddress(invalidSysAddress, 'main');
+    const value = isValidSYSAddress(invalidSysAddress, 57);
 
     expect(value).toBeFalsy();
   });

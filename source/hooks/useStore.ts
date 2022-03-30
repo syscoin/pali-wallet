@@ -5,13 +5,8 @@ import { IVaultState } from 'state/vault/types';
 import IWalletState from 'state/wallet/types';
 
 export const useStore = () => {
-  const {
-    accounts,
-    activeAccountId,
-    changingNetwork,
-    walletTokens,
-    networks,
-  }: IWalletState = useSelector((state: RootState) => state.wallet);
+  const { accounts, activeAccountId, walletTokens, networks }: IWalletState =
+    useSelector((state: RootState) => state.wallet);
 
   const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
 
@@ -21,6 +16,7 @@ export const useStore = () => {
     hasEncryptedVault,
     trustedApps,
     activeNetwork,
+    isPendingBalances,
   }: IVaultState = useSelector((state: RootState) => state.vault);
 
   return {
@@ -28,7 +24,7 @@ export const useStore = () => {
     activeAccountId,
     activeNetwork,
     hasEncryptedVault,
-    changingNetwork,
+    isPendingBalances,
     walletTokens,
     networks,
     trustedApps,

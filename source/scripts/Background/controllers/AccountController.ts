@@ -34,7 +34,7 @@ import {
   setLastLogin,
   setTimer,
   setTemporaryTransactionState,
-  setIsPendingBalances
+  setIsPendingBalances,
 } from 'state/vault';
 
 const syscointx = require('syscointx-js');
