@@ -16,7 +16,7 @@ const WalletController = (data: {
   const controller = {
     account: isSyscoinNetwork
       ? SysAccountController(data)
-      : EthAccountController(data),
+      : EthAccountController(),
   };
 
   return controller;

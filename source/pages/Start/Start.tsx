@@ -9,7 +9,7 @@ import { getController } from 'utils/browser';
 export const Start = () => {
   const { navigate } = useUtils();
   const {
-    wallet: { unLock },
+    wallet: { unlock },
   } = getController();
   const { hasEncryptedVault } = useStore();
 
@@ -29,10 +29,10 @@ export const Start = () => {
   );
 
   const onSubmit = async (data: any) => {
-    await unLock(data.password);
+    await unlock(data.password);
   };
 
-  const unlock = (
+  const unLock = (
     <>
       <Form
         className="flex flex-col gap-8 items-center justify-center w-full max-w-xs text-center md:max-w-md"
@@ -52,7 +52,7 @@ export const Start = () => {
             },
             () => ({
               async validator(_, value) {
-                if (await unLock(value)) {
+                if (await unlock(value)) {
                   return Promise.resolve();
                 }
 
@@ -90,7 +90,7 @@ export const Start = () => {
 
       <img src={LogoImage} className="my-8 w-52" alt="syscoin" />
 
-      {hasEncryptedVault ? unlock : getStarted}
+      {hasEncryptedVault ? unLock : getStarted}
     </div>
   );
 };

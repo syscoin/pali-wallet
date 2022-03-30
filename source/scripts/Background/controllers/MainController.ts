@@ -10,7 +10,6 @@ import {
   setTimer,
   createAccount as addAccountToStore,
 } from 'state/vault';
-import AccountController from './account';
 import WalletController from './account';
 
 const MainController = () => {
@@ -56,6 +55,8 @@ const MainController = () => {
   };
 
   const unlock = async (pwd: string) => {
+    console.log('calling keyring manager login');
+
     return keyringManager.login(pwd);
   };
 

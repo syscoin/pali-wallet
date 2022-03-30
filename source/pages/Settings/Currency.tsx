@@ -58,7 +58,7 @@ const CurrencyView = () => {
     : 'USD';
 
   const handleRefresh = () => {
-    controller.wallet.account.getLatestUpdate();
+    controller.wallet.account.tx.getLatestUpdate();
     controller.wallet.account.watchMemPool(accounts[activeAccountId]);
     controller.stateUpdater();
   };
