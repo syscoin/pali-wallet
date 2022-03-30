@@ -182,7 +182,6 @@ export const {
   updateAccountAddress,
   updateAccountXpub,
   updateSwitchNetwork,
-  clearAllTransactions,
   updateAllTokens,
   updateNetwork,
 } = WalletState.actions;

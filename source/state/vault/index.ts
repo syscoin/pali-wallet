@@ -36,6 +36,28 @@ const VaultState = createSlice({
   name: 'vault',
   initialState,
   reducers: {
+    // todo: remove this
+    clearAllTransactions(state: IVaultState) {
+      return {
+        ...state,
+        temporaryTransactionState: {
+          executing: false,
+          type: '',
+        },
+      };
+    },
+    setTemporaryTransactionState(
+      state: IVaultState,
+      action: PayloadAction<{ executing: boolean; type: string }>
+    ) {
+      return {
+        ...state,
+        temporaryTransactionState: {
+          executing: action.payload.executing,
+          type: action.payload.type,
+        },
+      };
+    },
     setTimer(state: IVaultState, action: PayloadAction<number>) {
       state.timer = action.payload;
     },
@@ -106,6 +128,8 @@ export const {
   setNetworks,
   setTimer,
   setEncryptedMnemonic,
+  setTemporaryTransactionState,
+  clearAllTransactions,
 } = VaultState.actions;
 
 export default VaultState.reducer;

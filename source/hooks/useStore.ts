@@ -12,14 +12,16 @@ export const useStore = () => {
     changingNetwork,
     walletTokens,
     networks,
-    temporaryTransactionState,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
 
   const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
 
-  const { timer, hasEncryptedVault, trustedApps }: IVaultState = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    temporaryTransactionState,
+    timer,
+    hasEncryptedVault,
+    trustedApps,
+  }: IVaultState = useSelector((state: RootState) => state.vault);
 
   return {
     accounts,

@@ -27,12 +27,15 @@ import {
   updateSwitchNetwork,
   updateAllTokens,
   updateNetwork,
-  setTemporaryTransactionState,
 } from 'state/wallet';
 import { log, logError } from 'utils/index';
 
 import { sortList, isNFT, countDecimals, base64 } from './utils';
-import { setLastLogin, setTimer } from 'state/vault';
+import {
+  setLastLogin,
+  setTimer,
+  setTemporaryTransactionState,
+} from 'state/vault';
 
 const syscointx = require('syscointx-js');
 const coinSelectSyscoin = require('coinselectsyscoin');
@@ -113,7 +116,7 @@ const AccountController = (actions: {
   });
 
   const updateTransactionData = (txinfo: any) => {
-    const { temporaryTransactionState } = store.getState().wallet;
+    const { temporaryTransactionState } = store.getState().vault;
     const isSendAsset = temporaryTransactionState.type === 'sendAsset';
 
     let transactions: Transaction[] = [];
@@ -1586,7 +1589,7 @@ const AccountController = (actions: {
             .signAndSend(txData.psbt, txData.assets, TrezorSigner)
             .then(() => {
               const sendAssetDeclaration =
-                store.getState().wallet.temporaryTransactionState.type ===
+                store.getState().vault.temporaryTransactionState.type ===
                 'sendAsset';
 
               const currentAccount = sendAssetDeclaration
@@ -1626,7 +1629,7 @@ const AccountController = (actions: {
     }
 
     const isSendAsset =
-      store.getState().wallet.temporaryTransactionState.type === 'sendAsset';
+      store.getState().vault.temporaryTransactionState.type === 'sendAsset';
 
     clearTemporaryTransaction('sendAsset');
 
