@@ -246,7 +246,7 @@ const AccountController = (actions: {
 
     if (isHardwareWallet) {
       response = await sys.utils.fetchBackendAccount(
-        sysjs.blockbookURL,
+        main.blockbookURL,
         xpub,
         options,
         true
@@ -772,7 +772,7 @@ const AccountController = (actions: {
   };
 
   const signTransaction = async (jsonData: any, sendPSBT: boolean) => {
-    const { hd } = MainSigner({
+    const { hd, main } = MainSigner({
       walletMnemonic: sysjs.Signer.mnemonic,
       blockbookURL: currentBlockbookURL,
       isTestnet: store.getState().wallet.activeNetwork === 'testnet',
@@ -805,13 +805,13 @@ const AccountController = (actions: {
       }
 
       if (isTrezorWallet) {
-        psbt = await sysjs.signAndSend(
+        psbt = await main.signAndSend(
           response.psbt,
           response.assets,
           TrezorSigner
         );
       } else {
-        psbt = await sysjs.signAndSend(response.psbt, response.assets);
+        psbt = await main.signAndSend(response.psbt, response.assets);
       }
 
       return sys.utils.exportPsbtToJson(psbt);
@@ -1125,7 +1125,7 @@ const AccountController = (actions: {
     hd?.setAccountIndex(connectedAccount.id);
 
     // ? 'pendingTx' could be named newAsset
-    const pendingTx = await sysjs.assetNew(
+    const pendingTx = await main.assetNew(
       assetOpts,
       txOpts,
       await hd?.getNewChangeAddress(true),
@@ -1170,7 +1170,7 @@ const AccountController = (actions: {
                   ],
                 ]);
 
-                const pendingAssetSend = await sysjs.assetSend(
+                const pendingAssetSend = await main.assetSend(
                   txOpts,
                   assetMap,
                   receiver,
@@ -1233,7 +1233,7 @@ const AccountController = (actions: {
     const feeRate = new sys.utils.BN(fee * 1e8);
     const txOpts = { rbf: true };
 
-    const { hd } = MainSigner({
+    const { hd, main } = MainSigner({
       walletMnemonic: sysjs.Signer.mnemonic,
       blockbookURL: currentBlockbookURL,
       isTestnet: store.getState().wallet.activeNetwork === 'testnet',
@@ -1267,7 +1267,7 @@ const AccountController = (actions: {
 
     let txid: string;
     if (connectedAccount.isTrezorWallet) {
-      const txData = await sysjs.assetSend(
+      const txData = await main.assetSend(
         txOpts,
         assetMap,
         await getNewChangeAddress(true),
@@ -1286,7 +1286,7 @@ const AccountController = (actions: {
       if (!TrezorSigner) setTrezorSigner();
 
       try {
-        sysjs
+        main
           .signAndSend(txData.psbt, txData.assets, TrezorSigner)
           .then((signedTxid: string) => {
             updateTransactionData(signedTxid);
@@ -1300,7 +1300,7 @@ const AccountController = (actions: {
         return;
       }
     } else {
-      const pendingTx = await sysjs.assetSend(
+      const pendingTx = await main.assetSend(
         txOpts,
         assetMap,
         await hd?.getNewChangeAddress(true),
@@ -1331,7 +1331,7 @@ const AccountController = (actions: {
     const txOpts: any = { rbf: true };
     const feeRate = new sys.utils.BN(fee * 1e8);
 
-    const { hd } = MainSigner({
+    const { hd, main } = MainSigner({
       walletMnemonic: sysjs.Signer.mnemonic,
       blockbookURL: currentBlockbookURL,
       isTestnet: store.getState().wallet.activeNetwork === 'testnet',
@@ -1345,7 +1345,7 @@ const AccountController = (actions: {
 
     const assetChangeAddress = await hd?.getNewChangeAddress(true);
 
-    const psbt = await sysjs.assetNew(
+    const psbt = await main.assetNew(
       assetOpts,
       txOpts,
       assetChangeAddress,
@@ -1381,7 +1381,7 @@ const AccountController = (actions: {
   ): Promise<{ txid: string } | undefined> => {
     const { fee, symbol, description, issuer, precision } = item;
 
-    const { hd } = MainSigner({
+    const { hd, main } = MainSigner({
       walletMnemonic: sysjs.Signer.mnemonic,
       blockbookURL: currentBlockbookURL,
       isTestnet: store.getState().wallet.activeNetwork === 'testnet',
@@ -1441,7 +1441,7 @@ const AccountController = (actions: {
             ]);
 
             try {
-              const pendingTx = await sysjs.assetSend(
+              const pendingTx = await main.assetSend(
                 txOpts,
                 assetMap,
                 null,
@@ -1504,7 +1504,7 @@ const AccountController = (actions: {
             ],
           ]);
 
-          const psbt = await sysjs.assetUpdate(
+          const psbt = await main.assetUpdate(
             assetGuid,
             assetOpt,
             txOpts,
@@ -1536,7 +1536,7 @@ const AccountController = (actions: {
   const confirmMintNFT = async (item: MintAsset) => {
     const { fee, amount, assetGuid } = item;
 
-    const { hd } = MainSigner({
+    const { hd, main } = MainSigner({
       walletMnemonic: sysjs.Signer.mnemonic,
       blockbookURL: currentBlockbookURL,
       isTestnet: store.getState().wallet.activeNetwork === 'testnet',
@@ -1568,7 +1568,7 @@ const AccountController = (actions: {
         hd?.setAccountIndex(connectedAccount.id);
       }
 
-      const pendingTx = await sysjs.assetSend(
+      const pendingTx = await main.assetSend(
         txOpts,
         assetMap,
         await hd?.getNewChangeAddress(true),
@@ -1684,7 +1684,7 @@ const AccountController = (actions: {
 
       let txid: string;
       if (globalAccount?.isTrezorWallet) {
-        const txData = await sysjs.assetAllocationSend(
+        const txData = await main.assetAllocationSend(
           txOpts,
           assetMap,
           await getNewChangeAddress(true),
@@ -1703,7 +1703,7 @@ const AccountController = (actions: {
         if (!TrezorSigner) setTrezorSigner();
 
         try {
-          sysjs
+          main
             .signAndSend(txData.psbt, txData.assets, TrezorSigner)
             .then(() => {
               const confirmingAccount = store.getState().wallet
@@ -1725,7 +1725,7 @@ const AccountController = (actions: {
           return;
         }
       } else {
-        const pendingTx = await sysjs.assetAllocationSend(
+        const pendingTx = await main.assetAllocationSend(
           txOpts,
           assetMap,
           null,
@@ -1771,7 +1771,7 @@ const AccountController = (actions: {
 
       let txid: string;
       if (globalAccount?.isTrezorWallet) {
-        const txData = await sysjs.createTransaction(
+        const txData = await main.createTransaction(
           txOpts,
           await getNewChangeAddress(true),
           outputsArray,
@@ -1789,7 +1789,7 @@ const AccountController = (actions: {
         if (!TrezorSigner) setTrezorSigner();
 
         try {
-          sysjs
+          main
             .signAndSend(txData.psbt, txData.assets, TrezorSigner)
             .then(() => {
               const sendAssetDeclaration =
@@ -1816,7 +1816,7 @@ const AccountController = (actions: {
         }
       } else {
         try {
-          const pendingTx = await sysjs.createTransaction(
+          const pendingTx = await main.createTransaction(
             txOpts,
             await hd?.getNewChangeAddress(true),
             outputsArray,
@@ -1957,7 +1957,7 @@ const AccountController = (actions: {
       hd?.setAccountIndex(connectedAccount.id);
     }
 
-    const pendingTx = await sysjs.assetUpdate(
+    const pendingTx = await main.assetUpdate(
       assetGuid,
       assetOpts,
       txOpts,
@@ -1985,7 +1985,7 @@ const AccountController = (actions: {
   const confirmAssetTransfer = async (item: TransferAsset) => {
     const { fee, assetGuid, newOwner } = item;
     const connectedAccount = getConnectedAccount();
-    const { hd } = MainSigner({
+    const { hd, main } = MainSigner({
       walletMnemonic: sysjs.Signer.mnemonic,
       blockbookURL: currentBlockbookURL,
       isTestnet: store.getState().wallet.activeNetwork === 'testnet',
@@ -2018,7 +2018,7 @@ const AccountController = (actions: {
 
     let txid: string;
     if (connectedAccount.isTrezorWallet) {
-      const txData = await sysjs.assetUpdate(
+      const txData = await main.assetUpdate(
         assetGuid,
         {},
         txOpts,
@@ -2040,11 +2040,7 @@ const AccountController = (actions: {
       try {
         // TODO: test might have same problem as them mintSPT
         // ? it seems like 'extractTransaction().getId()' is missing
-        txid = await sysjs.signAndSend(
-          txData.psbt,
-          txData.assets,
-          TrezorSigner
-        );
+        txid = await main.signAndSend(txData.psbt, txData.assets, TrezorSigner);
 
         updateTransactionData(txid);
         watchMemPool(connectedAccount);
@@ -2056,7 +2052,7 @@ const AccountController = (actions: {
       return;
     }
 
-    const pendingTx = await sysjs.assetUpdate(
+    const pendingTx = await main.assetUpdate(
       assetGuid,
       {},
       txOpts,
