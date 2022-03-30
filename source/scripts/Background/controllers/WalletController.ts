@@ -31,14 +31,11 @@ const WalletController = (): IWalletController => {
   let HDSigner: any = null;
   let mainSigner: any = null;
 
-  const setMainSigner = (
-    isTestnet: boolean = false,
-    network: string = 'main'
-  ) => {
-    let { hd, main } = MainSigner({
+  const setMainSigner = (isTestnet = false, network = 'main') => {
+    const { hd, main } = MainSigner({
       walletMnemonic: mnemonic,
-      isTestnet: isTestnet,
-      network: network,
+      isTestnet,
+      network,
       blockbookURL: isTestnet
         ? 'https://blockbook-dev.elint.services/'
         : 'https://blockbook.elint.services/',
@@ -46,8 +43,6 @@ const WalletController = (): IWalletController => {
 
     HDSigner = hd;
     mainSigner = main;
-
-    return;
   };
 
   console.log('HD SIGNER', HDSigner);
@@ -157,7 +152,7 @@ const WalletController = (): IWalletController => {
               isTestnet = true;
             }
 
-            let network = store.getState().wallet.activeNetwork;
+            const network = store.getState().wallet.activeNetwork;
 
             setMainSigner(isTestnet, network);
           }
@@ -354,7 +349,8 @@ const WalletController = (): IWalletController => {
             isTestnet = true;
           }
 
-          let network: any = blockbook.coin === 'Syscoin' ? 'main' : 'testnet';
+          const network: any =
+            blockbook.coin === 'Syscoin' ? 'main' : 'testnet';
 
           setMainSigner(isTestnet, network);
 
