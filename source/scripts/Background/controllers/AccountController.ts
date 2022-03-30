@@ -1,6 +1,10 @@
 import store from 'state/store';
-import IWalletState, { IAccountState, IMintedToken } from 'state/wallet/types';
-import { INetwork, INetworkType } from '@pollum-io/sysweb3-utils';
+import { IMintedToken } from 'state/vault/types';
+import {
+  IKeyringAccountState,
+  INetwork,
+  INetworkType,
+} from '@pollum-io/sysweb3-utils';
 import { bech32 } from 'bech32';
 import { fromZPub } from 'bip84';
 import CryptoJS from 'crypto-js';
@@ -14,15 +18,6 @@ import {
   TransferAsset,
 } from 'types/transactions';
 import { IAccountController } from 'types/controllers';
-import {
-  createAccount,
-  updateAccount,
-  updateLabel,
-  updateTransactions,
-  updateAccountAddress,
-  updateAccountXpub,
-  updateAllTokens,
-} from 'state/wallet';
 import { log, logError } from 'utils/index';
 
 import { sortList, isNFT, countDecimals, base64 } from './utils';
@@ -33,7 +28,15 @@ import {
   setIsPendingBalances,
   setNetworks,
   removeNetwork,
+  createAccount,
+  updateAccount,
+  updateLabel,
+  updateTransactions,
+  updateAccountAddress,
+  updateAccountXpub,
+  updateAllTokens,
 } from 'state/vault';
+import { IVaultState } from 'state/vault/types';
 
 const syscointx = require('syscointx-js');
 const coinSelectSyscoin = require('coinselectsyscoin');
@@ -44,7 +47,7 @@ const AccountController = (actions: {
   checkPassword: (pwd: string) => boolean;
 }): IAccountController => {
   let intervalId: any;
-  let globalAccount: IAccountState | undefined;
+  let globalAccount: IKeyringAccountState | undefined;
   let sysjs: any;
   let TrezorSigner: any;
 
@@ -104,15 +107,13 @@ const AccountController = (actions: {
     }
   };
 
-  const getActiveAccount = (): IAccountState | undefined => {
-    const { accounts, activeAccountId }: IWalletState = store.getState().wallet;
+  const getActiveAccount = (): IKeyringAccountState | undefined => {
+    const { activeAccount }: IVaultState = store.getState().vault;
 
-    return accounts.find(
-      (account: IAccountState) => account.id === activeAccountId
-    );
+    return activeAccount;
   };
 
-  const getConnectedAccount = (): IAccountState | undefined => undefined;
+  const getConnectedAccount = (): IKeyringAccountState | undefined => undefined;
 
   const createEmptyTransaction = (txid: string): Transaction => ({
     txid,
@@ -130,13 +131,13 @@ const AccountController = (actions: {
     let transactions: Transaction[] = [];
 
     if (isSendAsset && globalAccount) {
-      transactions = globalAccount.transactions;
+      transactions = [];
     }
 
     const connectedAccount = getConnectedAccount();
 
     if (!isSendAsset && connectedAccount) {
-      transactions = connectedAccount?.transactions;
+      transactions = [];
     }
 
     store.dispatch(
@@ -332,11 +333,11 @@ const AccountController = (actions: {
 
   const setAddress = (addr: string) => {
     // ? why get the accId from the store to pass it to the store?
-    const { activeAccountId }: IWalletState = store.getState().wallet;
+    const { activeAccount }: IVaultState = store.getState().vault;
 
     store.dispatch(
       updateAccountAddress({
-        id: activeAccountId,
+        id: activeAccount.id,
         address: { main: addr },
       })
     );
@@ -356,7 +357,7 @@ const AccountController = (actions: {
 
   // ? is named 'get' but does not return anything
   const getPrimaryAccount = (pwd: string, sjs: any) => {
-    const { accounts }: IWalletState = store.getState().wallet;
+    const { accounts }: IVaultState = store.getState().vault;
 
     // ? does this belong here
     if (sjs) sysjs = sjs;
@@ -427,7 +428,7 @@ const AccountController = (actions: {
   };
 
   const fetchBackendConnectedAccount = async (
-    connectedAccount: IAccountState
+    connectedAccount: IKeyringAccountState
   ) => {
     const backendAccount = await sys.utils.fetchBackendAccount(
       sysjs.blockbookURL,
@@ -471,10 +472,10 @@ const AccountController = (actions: {
   const updateTokens = async () => {
     if (!sysjs) return;
 
-    const { accounts }: IWalletState = store.getState().wallet;
+    const { accounts }: IVaultState = store.getState().vault;
 
     return Promise.all(
-      accounts.map(async (account: IAccountState) => {
+      Object.values(accounts).map(async (account: IKeyringAccountState) => {
         const { tokensAsset } = await sys.utils.fetchBackendAccount(
           sysjs.blockbookURL,
           account.xpub,
@@ -620,37 +621,37 @@ const AccountController = (actions: {
   };
 
   // ? is return type Holdings[]?
-  const getHoldings = async () => {
-    const { walletTokens }: IWalletState = store.getState().wallet;
+  // const getHoldings = async () => {
+  //   const { walletTokens }: IVaultState = store.getState().vault;
 
-    if (walletTokens) {
-      const tokenIndex = walletTokens.findIndex(
-        (token) => token.accountId === getConnectedAccount()?.id
-      );
+  //   if (walletTokens) {
+  //     const tokenIndex = walletTokens.findIndex(
+  //       (token) => token.accountId === getConnectedAccount()?.id
+  //     );
 
-      if (tokenIndex > -1) {
-        return walletTokens[tokenIndex].holdings;
-      }
-    }
+  //     if (tokenIndex > -1) {
+  //       return walletTokens[tokenIndex].holdings;
+  //     }
+  //   }
 
-    return [];
-  };
+  //   return [];
+  // };
 
-  const getMintedTokens = async () => {
-    const { walletTokens }: IWalletState = store.getState().wallet;
+  // const getMintedTokens = async () => {
+  //   const { walletTokens }: IVaultState = store.getState().vault;
 
-    if (walletTokens) {
-      const tokenIndex = walletTokens.findIndex(
-        (token) => token.accountId === getConnectedAccount()?.id
-      );
+  //   if (walletTokens) {
+  //     const tokenIndex = walletTokens.findIndex(
+  //       (token) => token.accountId === getConnectedAccount()?.id
+  //     );
 
-      if (tokenIndex > -1) {
-        return walletTokens[tokenIndex].mintedTokens;
-      }
-    }
+  //     if (tokenIndex > -1) {
+  //       return walletTokens[tokenIndex].mintedTokens;
+  //     }
+  //   }
 
-    return [];
-  };
+  //   return [];
+  // };
 
   const signTransaction = async (jsonData: any, sendPSBT: boolean) => {
     if (!base64.test(jsonData.psbt) || typeof jsonData.assets !== 'string') {
@@ -715,9 +716,9 @@ const AccountController = (actions: {
         new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
       }
 
-      const { accounts }: IWalletState = store.getState().wallet;
-      const trezorID: number = accounts.reduce(
-        (currentTrezorID: number, acc: IAccountState) => {
+      const { accounts }: IVaultState = store.getState().vault;
+      const trezorID: number = Object.values(accounts).reduce(
+        (currentTrezorID: number, acc: IKeyringAccountState) => {
           if (acc.trezorId) {
             if (currentTrezorID > acc.trezorId) return currentTrezorID;
             return acc.trezorId;
@@ -737,12 +738,18 @@ const AccountController = (actions: {
         globalAccount = {
           id: 9999 + trezorID,
           label: `Trezor ${trezorID + 1}`,
-          balance: trezorInfo.balance / 10 ** 8,
-          transactions: trezorInfo.transactions,
+          balances: {
+            ethereum: 0,
+            syscoin: trezorInfo.balance / 10 ** 8,
+          },
+          transactions: { tx1: {} },
           xpub: sjs.getAccountXpub(),
           xprv: '',
-          address: { main: trezorInfo.address },
-          assets: trezorInfo.assets,
+          address: trezorInfo.address,
+          tokens: {
+            // @ts-ignore
+            tokenid: {},
+          },
           connectedTo: [],
           isTrezorWallet: true,
           trezorId: trezorID + 1,
@@ -750,7 +757,7 @@ const AccountController = (actions: {
 
         store.dispatch(createAccount(globalAccount));
 
-        return globalAccount.xpub;
+        return String(globalAccount?.xpub);
       }
 
       return null;
@@ -782,22 +789,28 @@ const AccountController = (actions: {
     globalAccount = {
       id: signer.accountIndex,
       label: label ?? `Account ${signer.accountIndex + 1}`,
-      balance: account.balance,
-      transactions: account.transactions,
+      balances: {
+        ethereum: 0,
+        syscoin: account.balance / 10 ** 8,
+      },
+      transactions: { tx1: {} },
       xpub: sysjs.Signer.getAccountXpub(),
       xprv: CryptoJS.AES.encrypt(
         signer.accounts[signer.accountIndex].getAccountPrivateKey(),
         window.controller.wallet.encryptedPassword
       ).toString(),
-      address: { main: mainAddress },
-      assets: account.assets,
+      address: mainAddress,
+      tokens: {
+        // @ts-ignore
+        tokenid: {},
+      },
       connectedTo: [],
       isTrezorWallet: false,
     };
 
     store.dispatch(createAccount(globalAccount));
 
-    return globalAccount.xpub;
+    return String(globalAccount?.xpub);
   };
 
   const isValidSYSAddress = (
@@ -850,7 +863,7 @@ const AccountController = (actions: {
   // ? unsuggestive name
   // ? currentAccount could be currentAccountId
   // ? passing a null 'currentAccount' could default to connected account
-  const watchMemPool = (currentAccount: IAccountState | undefined) => {
+  const watchMemPool = (currentAccount: IKeyringAccountState | undefined) => {
     if (intervalId) return true;
 
     // 30 seconds
@@ -859,19 +872,9 @@ const AccountController = (actions: {
     intervalId = setInterval(() => {
       updateActiveAccount();
 
-      const { accounts }: IWalletState = store.getState().wallet;
+      const { activeAccount }: IVaultState = store.getState().vault;
 
-      const activeAccount = accounts.find(
-        (account: IAccountState) => account.id === currentAccount?.id
-      );
-
-      if (
-        !activeAccount ||
-        !activeAccount?.transactions ||
-        !activeAccount?.transactions.filter(
-          (tx: Transaction) => tx.confirmations > 0
-        ).length
-      ) {
+      if (!activeAccount || !activeAccount?.transactions) {
         clearInterval(intervalId);
 
         return false;
@@ -1039,7 +1042,7 @@ const AccountController = (actions: {
                 const txid = pendingAssetSend.extractTransaction().getId();
 
                 updateTransactionData(txid);
-                watchMemPool(connectedAccount);
+                // watchMemPool(connectedAccount);
                 clearInterval(interval);
 
                 resolve({
@@ -1133,7 +1136,7 @@ const AccountController = (actions: {
           .signAndSend(txData.psbt, txData.assets, TrezorSigner)
           .then((signedTxid: string) => {
             updateTransactionData(signedTxid);
-            watchMemPool(connectedAccount);
+            // // watchMemPool(connectedAccount);
             return { txid: signedTxid };
           });
 
@@ -1162,7 +1165,7 @@ const AccountController = (actions: {
     }
 
     updateTransactionData(txid);
-    watchMemPool(connectedAccount);
+    // watchMemPool(connectedAccount);
     return { txid };
   };
 
@@ -1515,7 +1518,7 @@ const AccountController = (actions: {
           sysjs
             .signAndSend(txData.psbt, txData.assets, TrezorSigner)
             .then(() => {
-              watchMemPool(globalAccount);
+              // watchMemPool(globalAccount);
             });
 
           // ? will always call this with txid === null
@@ -1604,7 +1607,7 @@ const AccountController = (actions: {
                 ? globalAccount
                 : getConnectedAccount();
 
-              watchMemPool(currentAccount);
+              // watchMemPool(currentAccount);
             });
 
           // ? will always call this with txid === null
@@ -1642,7 +1645,7 @@ const AccountController = (actions: {
     clearTemporaryTransaction('sendAsset');
 
     const acc = isSendAsset ? globalAccount : getConnectedAccount();
-    watchMemPool(acc);
+    // watchMemPool(acc);
   };
 
   const confirmTemporaryTransaction = ({ type, callback }) =>
@@ -1774,7 +1777,7 @@ const AccountController = (actions: {
     }
 
     updateTransactionData(txid);
-    watchMemPool(connectedAccount);
+    // watchMemPool(connectedAccount);
 
     return { txid };
   };
@@ -1838,7 +1841,7 @@ const AccountController = (actions: {
         );
 
         updateTransactionData(txid);
-        watchMemPool(connectedAccount);
+        // watchMemPool(connectedAccount);
         // ? return txid?
       } catch (error) {
         logError('Error processing transaction', 'Transaction', error, true);
@@ -1867,7 +1870,7 @@ const AccountController = (actions: {
     txid = pendingTx.extractTransaction().getId();
 
     updateTransactionData(txid);
-    watchMemPool(connectedAccount);
+    // watchMemPool(connectedAccount);
     return { txid };
   };
 
@@ -1886,10 +1889,10 @@ const AccountController = (actions: {
     getRecommendFee,
     setNewAddress: setAddress,
     setNewXpub: setXpub,
-    getUserMintedTokens: getMintedTokens,
+    getUserMintedTokens: () => [],
     getTransactionInfoByTxId: getTransaction,
     getSysExplorerSearch: getBlockbookURL,
-    getHoldingsData: getHoldings,
+    getHoldingsData: () => [],
     getDataAsset: getAsset,
     clearTemporaryTransaction,
     getActiveAccount,

@@ -1,5 +1,8 @@
-import { INetworkType, INetwork } from '@pollum-io/sysweb3-utils';
-import { IAccountState } from 'state/wallet/types';
+import {
+  INetworkType,
+  INetwork,
+  IKeyringAccountState,
+} from '@pollum-io/sysweb3-utils';
 
 import {
   MintAsset,
@@ -48,9 +51,9 @@ export interface IAccountController {
   confirmUpdateAsset: (item: UpdateAsset) => any;
   connectedAccountXpub: string | null;
   decryptAES: (encryptedString: any, key: string) => any;
-  getActiveAccount: () => IAccountState | undefined;
+  getActiveAccount: () => IKeyringAccountState | undefined;
   getChangeAddress: () => Promise<string>;
-  getConnectedAccount: () => IAccountState | undefined;
+  getConnectedAccount: () => IKeyringAccountState | undefined;
   getDataAsset: (assetGuid: any) => any;
   getHoldingsData: () => any;
   getLatestUpdate: () => void;
@@ -91,5 +94,5 @@ export interface IAccountController {
   updateTemporaryTransaction: ({ tx: any, type: string }) => any;
   updateTokensState: () => any;
   updateTxs: () => void;
-  watchMemPool: (currentAccount: IAccountState) => void;
+  watchMemPool: (currentAccount: IKeyringAccountState) => void;
 }

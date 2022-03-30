@@ -99,7 +99,7 @@ const AccountMenu: React.FC = () => {
                       <span>Create new account</span>
                     </li>
 
-                    {accounts.map((account, index) => (
+                    {Object.values(accounts).map((account, index) => (
                       <li
                         key={account.id}
                         className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
@@ -107,8 +107,7 @@ const AccountMenu: React.FC = () => {
                         id={`account-${index}`}
                       >
                         <span>
-                          {account.label} (
-                          {ellipsis(account.address.main, 4, 8)})
+                          {account.label} ({ellipsis(account.address, 4, 8)})
                         </span>
 
                         {activeAccountId === account.id && (

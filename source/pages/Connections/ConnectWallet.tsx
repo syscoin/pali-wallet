@@ -40,9 +40,9 @@ export const ConnectWallet = () => {
       <div className="flex flex-col items-center justify-center w-full">
         <h1 className="mt-4 text-sm">PALI WALLET</h1>
 
-        {accounts.length > 0 ? (
+        {accounts ? (
           <ul className="scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-64 overflow-auto">
-            {accounts.map((acc: any) => (
+            {Object.values(accounts).map((acc: any) => (
               <li
                 className={`${
                   connectedAccount && acc.id === connectedAccount.id

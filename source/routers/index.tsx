@@ -97,7 +97,7 @@ export const Router = () => {
       return;
     }
 
-    if (!isUnlocked && accounts.length > 0) {
+    if (!isUnlocked && accounts) {
       navigate('/');
       return;
     }

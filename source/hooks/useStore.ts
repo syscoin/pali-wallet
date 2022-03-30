@@ -2,13 +2,8 @@ import { useSelector } from 'react-redux';
 import IPriceState from 'state/price/types';
 import { RootState } from 'state/store';
 import { IVaultState } from 'state/vault/types';
-import IWalletState from 'state/wallet/types';
 
 export const useStore = () => {
-  const { accounts, activeAccountId, walletTokens }: IWalletState = useSelector(
-    (state: RootState) => state.wallet
-  );
-
   const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
 
   const {
@@ -19,15 +14,17 @@ export const useStore = () => {
     activeNetwork,
     isPendingBalances,
     networks,
+    activeAccount,
+    accounts,
   }: IVaultState = useSelector((state: RootState) => state.vault);
 
   return {
     accounts,
-    activeAccountId,
+    activeAccountId: activeAccount.id,
     activeNetwork,
     hasEncryptedVault,
     isPendingBalances,
-    walletTokens,
+    walletTokens: [],
     networks,
     trustedApps,
     temporaryTransactionState,

@@ -66,12 +66,12 @@ const CurrencyView = () => {
   useEffect(() => {
     if (
       !controller.wallet.isLocked() &&
-      accounts.length > 0 &&
-      accounts.find((element) => element.id === activeAccountId)
+      accounts &&
+      accounts[activeAccountId]
     ) {
       handleRefresh();
     }
-  }, [!controller.wallet.isLocked(), accounts.length > 0]);
+  }, [!controller.wallet.isLocked(), accounts]);
 
   return (
     <Layout title="FIAT CURRENCY" id="fiat-currency-title">

@@ -1,11 +1,5 @@
 import { generateMnemonic, validateMnemonic } from 'bip39';
 import { fromZPrv, fromZPub } from 'bip84';
-import {
-  changeAccountActiveId,
-  removeAccounts,
-  removeAccount,
-} from 'state/wallet';
-import { IAccountState } from 'state/wallet/types';
 import CryptoJS from 'crypto-js';
 import store from 'state/store';
 import axios from 'axios';
@@ -20,7 +14,11 @@ import {
   setEncryptedMnemonic,
   setActiveNetwork,
   setIsPendingBalances,
+  setActiveAccount,
+  removeAccounts,
+  removeAccount,
 } from 'state/vault';
+import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 
 const sys = require('syscoinjs-lib');
 
@@ -103,7 +101,7 @@ const WalletController = (): IWalletController => {
     setSjs({ SignerIn: HDsigner, blockbookURL: activeNetwork.url });
 
     if (isUpdated) {
-      const { accounts } = store.getState().wallet;
+      const { accounts } = store.getState().vault;
 
       if (accounts) {
         store.dispatch(removeAccounts());
@@ -140,7 +138,7 @@ const WalletController = (): IWalletController => {
         throw new Error('password wrong');
       }
 
-      const { activeAccountId, accounts } = store.getState().wallet;
+      const { activeAccount, accounts } = store.getState().vault;
 
       if (!HDsigner || !sjs) {
         const response = await axios.get(
@@ -179,12 +177,12 @@ const WalletController = (): IWalletController => {
           }
         }
 
-        if (accounts.length > 1000) {
+        if (accounts) {
           return false;
         }
 
-        for (let i = 1; i < accounts.length; i++) {
-          if (i > 0 && accounts[i].isTrezorWallet) {
+        for (let i = 1; i < Object.values(accounts).length; i++) {
+          if (false) {
             log(
               'Should not derive from hdsigner if the account is from the hardware wallet'
             );
@@ -197,7 +195,7 @@ const WalletController = (): IWalletController => {
                 sjs.Signer.Signer.networks
               )
             );
-            sjs.Signer.setAccountIndex(activeAccountId);
+            sjs.Signer.setAccountIndex(activeAccount.id);
           }
         }
       }
@@ -206,7 +204,7 @@ const WalletController = (): IWalletController => {
 
       account.getPrimaryAccount(pwd, sjs);
 
-      account.watchMemPool(accounts[activeAccountId]);
+      account.watchMemPool(accounts[activeAccount.id]);
 
       return true;
     } catch (error) {
@@ -239,11 +237,11 @@ const WalletController = (): IWalletController => {
 
   const switchWallet = (id: number) => {
     // todo: vault
-    // const { accounts } = store.getState().wallet;
+    const { accounts } = store.getState().vault;
 
     // const acc = accounts.find((account) => account.id === id);
 
-    store.dispatch(changeAccountActiveId(id));
+    store.dispatch(setActiveAccount(accounts[id]));
     account.getLatestUpdate();
   };
 
@@ -285,7 +283,7 @@ const WalletController = (): IWalletController => {
   };
 
   const checkAndSeparateTrezorAccounts = (
-    accounts: Array<IAccountState>,
+    accounts: Array<IKeyringAccountState>,
     index: number,
     activeAccountId: number,
     accountsToBeRemoved: number[]
@@ -304,22 +302,22 @@ const WalletController = (): IWalletController => {
     account.subscribeAccount(false, null, label, false);
 
   const getAccountDataByNetwork = (currentSysInstance: any) => {
-    const { activeAccountId, accounts } = store.getState().wallet;
+    const { activeAccount, accounts } = store.getState().vault;
 
-    if (accounts.length > 1000) {
+    if (accounts) {
       return false;
     }
 
     const accountsToBeRemoved: number[] = [];
 
     if (accounts) {
-      for (const index in accounts) {
+      for (const index in Object.values(accounts)) {
         if (!accounts[index]) return;
 
         checkAndSeparateTrezorAccounts(
           accounts,
           Number(index),
-          activeAccountId,
+          activeAccount.id,
           accountsToBeRemoved
         );
       }
@@ -328,7 +326,7 @@ const WalletController = (): IWalletController => {
     if (accountsToBeRemoved) {
       for (const id of accountsToBeRemoved) {
         // store.dispatch(removeConnection({ accountId: id }));
-        store.dispatch(removeAccount(Number(id)));
+        store.dispatch(removeAccount({ id: Number(id) }));
         store.dispatch(setLastLogin());
 
         openNotificationsPopup(
@@ -402,23 +400,20 @@ const WalletController = (): IWalletController => {
   };
 
   const getNewAddress = async () => {
-    const { activeAccountId, accounts } = store.getState().wallet;
+    const { activeAccount } = store.getState().vault;
 
-    const userAccount = accounts.find(
-      (el: IAccountState) => el.id === activeAccountId
-    );
     let address = '';
 
-    if (userAccount?.isTrezorWallet) {
+    if (activeAccount?.isTrezorWallet) {
       const res = await sys.utils.fetchBackendAccount(
         sjs.blockbookURL,
-        userAccount.xpub,
+        activeAccount.xpub,
         'tokens=nonzero&details=txs',
         true
       );
 
       const account0 = new fromZPub(
-        userAccount.xpub,
+        activeAccount.xpub,
         sjs.Signer.Signer.pubTypes,
         sjs.Signer.Signer.networks
       );

@@ -8,14 +8,11 @@ import logger from 'redux-logger';
 import { persistStore, persistReducer } from 'redux-persist';
 import { localStorage } from 'redux-persist-webextension-storage';
 
-import wallet from './wallet';
 import vault from './vault';
 import price, { IPriceState } from './price';
-import IWalletState from './wallet/types';
 import { IVaultState } from './vault/types';
 
 const reducers = combineReducers({
-  wallet,
   price,
   vault,
 });
@@ -40,7 +37,6 @@ if (nodeEnv !== 'production' && nodeEnv !== 'test') {
 const store: Store<{
   price: IPriceState;
   vault: IVaultState;
-  wallet: IWalletState;
 }> = configureStore({
   reducer: persistedReducer,
   middleware,
@@ -52,7 +48,6 @@ persistStore(store);
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
 
-export const currentWalletState = store.getState().wallet;
 export const currentPriceState = store.getState().price;
 
 export default store;
