@@ -1,5 +1,3 @@
-import store from 'state/store';
-import { updateCurrentURL } from 'state/wallet';
 import { browser } from 'webextension-polyfill-ts';
 import { logError } from 'utils/index';
 
@@ -61,8 +59,6 @@ export const createWindow = async ({
   if (tab.title === 'Pali Wallet') {
     return;
   }
-
-  store.dispatch(updateCurrentURL(String(tab.url)));
 
   const [sysWalletPopup]: any = await getTabs({ options: { url } });
 
