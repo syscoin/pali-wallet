@@ -29,7 +29,7 @@ import {
   CustomRPC,
   ForgetWallet,
   DetailsView,
-  EditNetwork,
+  ManageNetwork,
   Home,
   Import,
   MintNFT,
@@ -258,7 +258,7 @@ export const Router = () => {
           />
           <Route
             path="edit"
-            element={<ProtectedRoute element={<EditNetwork />} />}
+            element={<ProtectedRoute element={<ManageNetwork />} />}
           />
           <Route
             path="trusted-sites"

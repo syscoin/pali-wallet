@@ -6,7 +6,7 @@ export { default as CreateAccount } from './CreateAccount';
 export { default as Currency } from './Currency';
 export { default as CustomRPC } from './CustomRPC';
 export { default as ForgetWallet } from './ForgetWallet';
-export { default as EditNetwork } from './EditNetwork';
+export { default as ManageNetwork } from './ManageNetwork';
 export { default as Phrase } from './Phrase';
 export { default as PrivateKey } from './PrivateKey';
 export { default as TrustedSites } from './TrustedSites';
