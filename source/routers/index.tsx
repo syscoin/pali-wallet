@@ -57,13 +57,11 @@ export const Router = () => {
   const params = useParams();
   const location = useLocation();
   const controller = getController();
-  const { getConnectedAccount, getTemporaryTransaction } =
-    controller.wallet.account;
+  const { getTemporaryTransaction } = controller.wallet.account;
 
-  const { accounts, canConnect, temporaryTransactionState } = useStore();
+  const { accounts, temporaryTransactionState } = useStore();
   const { alert, navigate } = useUtils();
 
-  const connectedAccount = getConnectedAccount();
   const isUnlocked = !controller.wallet.isLocked();
 
   useEffect(() => {
@@ -154,22 +152,13 @@ export const Router = () => {
     }
 
     if (isUnlocked) {
-      if (canConnect) {
-        if (connectedAccount) {
-          navigate('/connected-accounts');
-          return;
-        }
-
-        navigate('/connect-wallet');
-        return;
-      }
-
       navigate('/home');
+
       return;
     }
 
     if (route !== '/') navigate(route);
-  }, [canConnect, isUnlocked]);
+  }, [isUnlocked]);
 
   useEffect(() => {
     alert.removeAll();

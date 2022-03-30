@@ -16,7 +16,6 @@
 //   updateAccountAddress,
 //   updateAccountXpub,
 //   updateAllTokens,
-//   updateCanConnect,
 //   updateConnectionsArray,
 //   updateCurrentURL,
 //   updateLabel,
@@ -291,30 +290,6 @@ describe('Wallet store actions', () => {
   //       customState.tabs.connections.length
   //     );
   //   });
-  // });
-
-  // //* updateCanConnect
-  // it('should update [tabs.canConnect]', () => {
-  //   const payload = true;
-  //   const newState = reducer(initialState, updateCanConnect(payload));
-
-  //   expect(newState.tabs.canConnect).toEqual(payload);
-  // });
-
-  // //* updateCurrentURL
-  // it('should update [tabs.currentURL]', () => {
-  //   const payload = 'url://thisisan.url';
-  //   const newState = reducer(initialState, updateCurrentURL(payload));
-
-  //   expect(newState.tabs.currentURL).toEqual(payload);
-  // });
-
-  // //* setSenderURL
-  // it('should set sender url [currentSenderURL]', () => {
-  //   const payload = 'url://thisisan.url';
-  //   const newState = reducer(initialState, setSenderURL(payload));
-
-  //   expect(newState.tabs.currentSenderURL).toEqual(payload);
   // });
 
   // //* setEncriptedMnemonic
