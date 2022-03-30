@@ -34,6 +34,7 @@ import {
   setTemporaryTransactionState,
 } from 'state/vault';
 import { log, logError } from 'utils/index';
+import { MainSigner } from '@pollum-io/sysweb3-utils';
 
 import { sortList, isNFT, countDecimals, base64 } from './utils';
 
@@ -50,6 +51,7 @@ const AccountController = (actions: {
   let globalAccount: IAccountState | undefined;
   let sysjs: any;
   let TrezorSigner: any;
+  const { currentBlockbookURL } = store.getState().wallet;
 
   const temporaryTransaction: TemporaryTransaction = {
     newAsset: null,
@@ -89,13 +91,25 @@ const AccountController = (actions: {
   //* end
 
   const setTrezorSigner = () => {
+    const { main } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
     TrezorSigner = new sys.utils.TrezorSigner();
-    new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
+    new sys.SyscoinJSLib(TrezorSigner, main.blockbookURL);
   };
 
   const setHDSigner = (accountId: number) => {
+    const { hd } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
     if (!globalAccount?.isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(accountId);
+      hd?.setAccountIndex(accountId);
     }
   };
 
@@ -157,8 +171,15 @@ const AccountController = (actions: {
     );
   };
 
-  const getTransaction = (txid): Promise<Transaction> =>
-    sys.utils.fetchBackendRawTx(sysjs.blockbookURL, txid);
+  const getTransaction = (txid): Promise<Transaction> => {
+    const { main } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
+    return sys.utils.fetchBackendRawTx(main.blockbookURL, txid);
+  };
 
   const getAsset = async (
     assetGuid: any
@@ -171,9 +192,25 @@ const AccountController = (actions: {
     symbol: string;
     totalSupply: string;
     updateCapabilityFlags: number;
-  }> => sys.utils.fetchBackendAsset(sysjs.blockbookURL, assetGuid);
+  }> => {
+    const { main } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
+    return sys.utils.fetchBackendAsset(main.blockbookURL, assetGuid);
+  };
 
-  const getBlockbookURL = () => sysjs.blockbookURL;
+  const getBlockbookURL = () => {
+    const { main } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
+    return main.blockbookURL;
+  };
 
   const updateAccountLabel = (
     id: number,
@@ -185,12 +222,25 @@ const AccountController = (actions: {
     store.dispatch(updateLabel({ id, label }));
   };
 
-  const getRecommendFee = async () =>
-    (await sys.utils.fetchEstimateFee(sysjs.blockbookURL, 1)) / 10 ** 8;
+  const getRecommendFee = async () => {
+    const { main } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
+    return (await sys.utils.fetchEstimateFee(main.blockbookURL, 1)) / 10 ** 8;
+  };
 
   const fetchAccountInfo = async (isHardwareWallet?: boolean, xpub?: any) => {
     let response: any = null;
     let address: string | null = null;
+    const { hd, main } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
 
     const options = 'tokens=nonzero&details=txs';
 
@@ -204,8 +254,8 @@ const AccountController = (actions: {
 
       const account = new fromZPub(
         xpub,
-        sysjs.Signer.Signer.pubtypes,
-        sysjs.Signer.Signer.networks
+        main.Signer.Signer.pubtypes,
+        main.Signer.Signer.networks
       );
       let receivingIndex = -1;
 
@@ -231,8 +281,8 @@ const AccountController = (actions: {
       address = account.getAddress(receivingIndex + 1);
     } else {
       response = await sys.utils.fetchBackendAccount(
-        sysjs.blockbookURL,
-        sysjs.Signer.getAccountXpub(),
+        main.blockbookURL,
+        hd?.getAccountXpub(),
         options,
         true
       );
@@ -314,6 +364,12 @@ const AccountController = (actions: {
 
   const updateActiveAccount = async () => {
     const activeAccount = getActiveAccount();
+    const { hd } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
 
     if (!activeAccount) return;
     globalAccount = activeAccount;
@@ -326,7 +382,7 @@ const AccountController = (actions: {
 
       updateAccountInfo = trezorData;
     } else {
-      sysjs.Signer.setAccountIndex(activeAccount.id);
+      hd?.setAccountIndex(activeAccount.id);
 
       const accLatestInfo = await getAccountInfo();
 
@@ -417,13 +473,20 @@ const AccountController = (actions: {
   // name could be better
   // Trezor only
   const getNewChangeAddress = async (fromConnectionsController = true) => {
+    const { main } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
+
     const account = fromConnectionsController
       ? getConnectedAccount()
       : getActiveAccount();
 
     if (account?.isTrezorWallet) {
       const response = await sys.utils.fetchBackendAccount(
-        sysjs.blockbookURL,
+        main.blockbookURL,
         account.xpub,
         'tokens=nonzero&details=txs',
         true
@@ -431,8 +494,8 @@ const AccountController = (actions: {
 
       const trezorAccount = new fromZPub(
         account.xpub,
-        sysjs.Signer.Signer.pubtypes,
-        sysjs.Signer.Signer.networks
+        main.Signer.Signer.pubtypes,
+        main.Signer.Signer.networks
       );
       let receivingIndex = -1;
       let changeIndex = -1;
@@ -467,15 +530,21 @@ const AccountController = (actions: {
   const fetchBackendConnectedAccount = async (
     connectedAccount: IAccountState
   ) => {
+    const { main } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
     const backendAccount = await sys.utils.fetchBackendAccount(
-      sysjs.blockbookURL,
+      main.blockbookURL,
       globalAccount?.xpub,
       'tokens=nonzero&details=txs',
       true
     );
 
     const paliAccount = await sys.utils.fetchBackendAccount(
-      sysjs.blockbookURL,
+      main.blockbookURL,
       connectedAccount.xpub,
       'details=txs&assetMask=non-token-transfers',
       true
@@ -487,6 +556,12 @@ const AccountController = (actions: {
   // this function is really useful but it not being used where it could
   const getChangeAddress = async () => {
     const connectedAccount: IAccountState = getConnectedAccount();
+    const { hd } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
 
     if (!sysjs) {
       logError('SYSJS not defined');
@@ -503,18 +578,24 @@ const AccountController = (actions: {
       return newAddr ?? addr;
     }
 
-    return sysjs.Signer.getNewChangeAddress(true);
+    return hd?.getNewChangeAddress(true);
   };
 
   const updateTokens = async () => {
     if (!sysjs) return;
+    const { main } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
 
     const { accounts }: IWalletState = store.getState().wallet;
 
     return Promise.all(
       accounts.map(async (account: IAccountState) => {
         const { tokensAsset } = await sys.utils.fetchBackendAccount(
-          sysjs.blockbookURL,
+          main.blockbookURL,
           account.xpub,
           'tokens=derived&details=txs',
           true
@@ -691,6 +772,12 @@ const AccountController = (actions: {
   };
 
   const signTransaction = async (jsonData: any, sendPSBT: boolean) => {
+    const { hd } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
     if (!base64.test(jsonData.psbt) || typeof jsonData.assets !== 'string') {
       throw new Error(
         'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.'
@@ -711,7 +798,7 @@ const AccountController = (actions: {
         if (isTrezorWallet) {
           psbt = await TrezorSigner.sign(response.psbt);
         } else {
-          psbt = await sysjs.Signer.sign(response.psbt);
+          psbt = await hd?.sign(response.psbt);
         }
 
         return sys.utils.exportPsbtToJson(psbt);
@@ -747,10 +834,19 @@ const AccountController = (actions: {
     label?: string,
     walletCreation?: boolean
   ): Promise<string | null> => {
+    if (sjs) sysjs = sjs;
+    const { hd, main } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
+    const signer = main.Signer.Signer;
+
     if (isHardwareWallet) {
       if (TrezorSigner === null || TrezorSigner === undefined) {
         TrezorSigner = sjs;
-        new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
+        new sys.SyscoinJSLib(TrezorSigner, main.blockbookURL);
       }
 
       const { accounts }: IWalletState = store.getState().wallet;
@@ -795,31 +891,27 @@ const AccountController = (actions: {
       return null;
     }
 
-    if (sjs) sysjs = sjs;
-
     if (!walletCreation) {
-      await sysjs.Signer.createAccount();
+      await hd?.createAccount();
     }
 
     const account = await getAccountInfo();
 
-    let mainAddress = '';
+    let mainAddress;
 
     try {
-      mainAddress = await sysjs.Signer.getNewReceivingAddress(true);
+      mainAddress = await hd?.getNewReceivingAddress(true);
 
-      log('sysjs signer', 'System', sysjs.Signer.Signer.blockbookURL, true);
-      log('sysjs signer', 'System', sysjs.Signer, true);
+      log('sysjs signer', 'System', main.blockbookURL, true);
+      log('sysjs signer', 'System', main.Signer, true);
       log(`main address: ${mainAddress}`);
     } catch (error: any) {
       logError('error getting receiving address from sys', '', error);
       throw new Error(error);
     }
 
-    const signer = sysjs.Signer.Signer;
-
     const encryptedMnemonic = CryptoJS.AES.encrypt(
-      sysjs.Signer.mnemonic,
+      main.Signer.mnemonic,
       window.controller.wallet.encryptedPassword
     );
 
@@ -833,7 +925,7 @@ const AccountController = (actions: {
       label: label ?? `Account ${signer.accountIndex + 1}`,
       balance: account.balance,
       transactions: account.transactions,
-      xpub: sysjs.Signer.getAccountXpub(),
+      xpub: `${hd?.getAccountXpub()}`,
       xprv: CryptoJS.AES.encrypt(
         signer.accounts[signer.accountIndex].getAccountPrivateKey(),
         window.controller.wallet.encryptedPassword
@@ -969,6 +1061,12 @@ const AccountController = (actions: {
       payoutAddress,
       receiver,
     } = item;
+    const { hd, main } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
 
     const newMaxSupply = maxsupply * 10 ** precision;
 
@@ -986,7 +1084,7 @@ const AccountController = (actions: {
     if (notaryAddress) {
       const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
         address: notaryAddress,
-        network: sysjs.Signer.Signer.network,
+        network: main.Signer.Signer.network,
       });
 
       assetOpts.notarydetails.endpoint = Buffer.from(
@@ -1002,7 +1100,7 @@ const AccountController = (actions: {
     if (payoutAddress) {
       const payment = sys.utils.bitcoinjs.payments.p2wpkh({
         address: payoutAddress,
-        network: sysjs.Signer.Signer.network,
+        network: main.Signer.Signer.network,
       });
 
       const auxFeeKeyID = Buffer.from(payment.hash.toString('hex'), 'hex');
@@ -1024,13 +1122,13 @@ const AccountController = (actions: {
       throw new Error("Trezor don't support burning of coins");
     }
 
-    sysjs.Signer.setAccountIndex(connectedAccount.id);
+    hd?.setAccountIndex(connectedAccount.id);
 
     // ? 'pendingTx' could be named newAsset
     const pendingTx = await sysjs.assetNew(
       assetOpts,
       txOpts,
-      await sysjs.Signer.getNewChangeAddress(true),
+      await hd?.getNewChangeAddress(true),
       receiver,
       new sys.utils.BN(fee * 1e8)
     );
@@ -1052,9 +1150,7 @@ const AccountController = (actions: {
             if (updatedTransaction.confirmations > 1) {
               log(`confirmations > 1 for ${createdAssetGuid}`);
 
-              const changeAddress = await sysjs.Signer.getNewChangeAddress(
-                true
-              );
+              const changeAddress = await hd?.getNewChangeAddress(true);
 
               try {
                 const assetMap = new Map([
@@ -1137,13 +1233,20 @@ const AccountController = (actions: {
     const feeRate = new sys.utils.BN(fee * 1e8);
     const txOpts = { rbf: true };
 
+    const { hd } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
+
     const connectedAccount = getConnectedAccount();
     if (!connectedAccount.isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(connectedAccount.id);
+      hd?.setAccountIndex(connectedAccount.id);
     }
 
     const { decimals } = await getAsset(assetGuid);
-    const receivingAddress = await sysjs.Signer.getNewReceivingAddress(true);
+    const receivingAddress = await hd?.getNewReceivingAddress(true);
 
     const assetMap = new Map([
       [
@@ -1151,7 +1254,7 @@ const AccountController = (actions: {
         {
           changeAddress: connectedAccount.isTrezorWallet
             ? await getNewChangeAddress(true)
-            : await sysjs.Signer.getNewChangeAddress(true),
+            : await hd?.getNewChangeAddress(true),
           outputs: [
             {
               value: new sys.utils.BN(amount * 10 ** decimals),
@@ -1200,7 +1303,7 @@ const AccountController = (actions: {
       const pendingTx = await sysjs.assetSend(
         txOpts,
         assetMap,
-        await sysjs.Signer.getNewChangeAddress(true),
+        await hd?.getNewChangeAddress(true),
         feeRate
       );
 
@@ -1228,12 +1331,19 @@ const AccountController = (actions: {
     const txOpts: any = { rbf: true };
     const feeRate = new sys.utils.BN(fee * 1e8);
 
+    const { hd } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
+
     const connectedAccount = getConnectedAccount();
     if (!connectedAccount.isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(connectedAccount.id);
+      hd?.setAccountIndex(connectedAccount.id);
     }
 
-    const assetChangeAddress = await sysjs.Signer.getNewChangeAddress(true);
+    const assetChangeAddress = await hd?.getNewChangeAddress(true);
 
     const psbt = await sysjs.assetNew(
       assetOpts,
@@ -1271,11 +1381,18 @@ const AccountController = (actions: {
   ): Promise<{ txid: string } | undefined> => {
     const { fee, symbol, description, issuer, precision } = item;
 
+    const { hd } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
+
     const connectedAccount = getConnectedAccount();
     if (connectedAccount.isTrezorWallet) {
       throw new Error('trezor does not support nft creation');
     } else {
-      sysjs.Signer.setAccountIndex(connectedAccount.id);
+      hd?.setAccountIndex(connectedAccount.id);
     }
 
     const assetOpts = {
@@ -1419,6 +1536,13 @@ const AccountController = (actions: {
   const confirmMintNFT = async (item: MintAsset) => {
     const { fee, amount, assetGuid } = item;
 
+    const { hd } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
+
     const { decimals } = await getAsset(assetGuid);
     const feeRate = new sys.utils.BN(fee * 1e8);
     const txOpts = { rbf: true };
@@ -1427,11 +1551,11 @@ const AccountController = (actions: {
       [
         assetGuid,
         {
-          changeAddress: await sysjs.Signer.getNewChangeAddress(true),
+          changeAddress: await hd?.getNewChangeAddress(true),
           outputs: [
             {
               value: new sys.utils.BN(amount * 10 ** decimals),
-              address: await sysjs.Signer.getNewReceivingAddress(true),
+              address: await hd?.getNewReceivingAddress(true),
             },
           ],
         },
@@ -1441,13 +1565,13 @@ const AccountController = (actions: {
     try {
       const connectedAccount = getConnectedAccount();
       if (!connectedAccount.isTrezorWallet) {
-        sysjs.Signer.setAccountIndex(connectedAccount.id);
+        hd?.setAccountIndex(connectedAccount.id);
       }
 
       const pendingTx = await sysjs.assetSend(
         txOpts,
         assetMap,
-        await sysjs.Signer.getNewChangeAddress(true),
+        await hd?.getNewChangeAddress(true),
         feeRate
       );
 
@@ -1470,17 +1594,23 @@ const AccountController = (actions: {
   // private
   const estimateSysTxFee = async (items: any) => {
     const { outputsArray, changeAddress, feeRateBN } = items;
+    const { main } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
 
     const txOpts = { rbf: false };
 
     const utxos = await sys.utils.fetchBackendUTXOS(
-      sysjs.blockbookURL,
+      main.blockbookURL,
       globalAccount?.xpub
     );
     const utxosSanitized = sys.utils.sanitizeBlockbookUTXOs(
       null,
       utxos,
-      sysjs.network
+      main.network
     );
 
     // 0 feerate to create tx, then find bytes and multiply feeRate by bytes to get estimated txfee
@@ -1504,6 +1634,13 @@ const AccountController = (actions: {
     item: SendAsset
   ): Promise<void> => {
     const { toAddress, amount, fee, token, isToken, rbf } = item;
+
+    const { hd, main } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
 
     store.dispatch(
       setTemporaryTransactionState({
@@ -1601,7 +1738,7 @@ const AccountController = (actions: {
       updateTransactionData(txid);
     } else {
       const backendAccount = await sys.utils.fetchBackendAccount(
-        sysjs.blockbookURL,
+        main.blockbookURL,
         globalAccount?.xpub,
         {},
         true
@@ -1619,7 +1756,7 @@ const AccountController = (actions: {
 
       const txFee = await estimateSysTxFee({
         outputsArray,
-        changeAddress: await sysjs.Signer.getNewChangeAddress(true),
+        changeAddress: await hd?.getNewChangeAddress(true),
         feeRateBN,
       });
 
@@ -1681,7 +1818,7 @@ const AccountController = (actions: {
         try {
           const pendingTx = await sysjs.createTransaction(
             txOpts,
-            await sysjs.Signer.getNewChangeAddress(true),
+            await hd?.getNewChangeAddress(true),
             outputsArray,
             feeRateBN
           );
@@ -1735,6 +1872,13 @@ const AccountController = (actions: {
       payoutAddress,
     } = item;
 
+    const { hd, main } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
+
     const txOpts: any = { rbf: true };
 
     let assetOpts: any = {
@@ -1763,7 +1907,7 @@ const AccountController = (actions: {
       const scalarPct = 1000;
       const payment = sys.utils.bitcoinjs.payments.p2wpkh({
         address: payoutAddress,
-        network: sysjs.Signer.Signer.network,
+        network: main.Signer.Signer.network,
       });
       const auxfeekeyid = Buffer.from(payment.hash.toString('hex'), 'hex');
 
@@ -1784,7 +1928,7 @@ const AccountController = (actions: {
     if (notaryAddress) {
       const vNotaryPayment = sys.utils.bitcoinjs.payments.p2wpkh({
         address: notaryAddress,
-        network: sysjs.Signer.Signer.network,
+        network: main.Signer.Signer.network,
       });
 
       assetOpts.notarykeyid = Buffer.from(
@@ -1797,11 +1941,11 @@ const AccountController = (actions: {
       [
         assetGuid,
         {
-          changeAddress: await sysjs.Signer.getNewChangeAddress(true),
+          changeAddress: await hd?.getNewChangeAddress(true),
           outputs: [
             {
               value: new sys.utils.BN(0),
-              address: await sysjs.Signer.getNewReceivingAddress(true),
+              address: await hd?.getNewReceivingAddress(true),
             },
           ],
         },
@@ -1810,7 +1954,7 @@ const AccountController = (actions: {
 
     const connectedAccount = getConnectedAccount();
     if (!connectedAccount.isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(connectedAccount.id);
+      hd?.setAccountIndex(connectedAccount.id);
     }
 
     const pendingTx = await sysjs.assetUpdate(
@@ -1841,9 +1985,15 @@ const AccountController = (actions: {
   const confirmAssetTransfer = async (item: TransferAsset) => {
     const { fee, assetGuid, newOwner } = item;
     const connectedAccount = getConnectedAccount();
+    const { hd } = MainSigner({
+      walletMnemonic: sysjs.Signer.mnemonic,
+      blockbookURL: currentBlockbookURL,
+      isTestnet: store.getState().wallet.activeNetwork === 'testnet',
+      network: 'main',
+    });
 
     if (!connectedAccount.isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(connectedAccount.id);
+      hd?.setAccountIndex(connectedAccount.id);
     }
 
     const feeRate = new sys.utils.BN(fee * 1e8);
@@ -1855,7 +2005,7 @@ const AccountController = (actions: {
         {
           changeAddress: connectedAccount.isTrezorWallet
             ? await getNewChangeAddress(true)
-            : await sysjs.Signer.getNewChangeAddress(true),
+            : await hd?.getNewChangeAddress(true),
           outputs: [
             {
               value: new sys.utils.BN(0),
