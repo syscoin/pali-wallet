@@ -1452,7 +1452,7 @@ const AccountController = (actions: {
   const confirmSendAssetTransaction = async (
     item: SendAsset
   ): Promise<void> => {
-    const { toAddress, amount, fee, token, isToken, rbf } = item;
+    const { toAddress, amount, fee, token, isToken } = item;
 
     store.dispatch(
       setTemporaryTransactionState({
