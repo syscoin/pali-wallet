@@ -7,40 +7,18 @@ import IWalletState, {
   IAccountUpdateAddress,
   IAccountUpdateXpub,
   IWalletTokenState,
-  INetwork,
 } from './types';
 
 export const initialState: IWalletState = {
   accounts: [],
   activeAccountId: 0,
   walletTokens: [],
-  networks: {
-    main: {
-      id: 'main',
-      label: 'Main Network',
-      beUrl: 'https://blockbook.elint.services/',
-    },
-    testnet: {
-      id: 'testnet',
-      label: 'Test Network',
-      beUrl: 'https://blockbook-dev.elint.services/',
-    },
-  },
 };
 
 const WalletState = createSlice({
   name: 'wallet',
   initialState,
   reducers: {
-    updateNetwork(state: IWalletState, action: PayloadAction<INetwork>) {
-      return {
-        ...state,
-        networks: {
-          ...state.networks,
-          [action.payload.id]: action.payload,
-        },
-      };
-    },
     // update token by accountId (if existent) or add a new one
     updateAllTokens(state, action: PayloadAction<IWalletTokenState>) {
       const tokenIndex: number = state.walletTokens.findIndex(
@@ -171,7 +149,6 @@ export const {
   updateAccountAddress,
   updateAccountXpub,
   updateAllTokens,
-  updateNetwork,
 } = WalletState.actions;
 
 export default WalletState.reducer;

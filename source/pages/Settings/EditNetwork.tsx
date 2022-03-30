@@ -9,8 +9,6 @@ const EditNetworkView = () => {
   const { networks } = useStore();
   const { navigate } = useUtils();
 
-  const defaultNetworks = ['main', 'testnet'];
-
   const [selected, setSelected] = useState('');
 
   return (
@@ -33,18 +31,16 @@ const EditNetworkView = () => {
           </p>
 
           <ul className="scrollbar-styled mb-3 mt-2 px-4 py-2 w-full h-80 text-sm overflow-auto">
-            {Object.values(networks).map((network: any) => (
+            {Object.values(networks.syscoin).map((network: any) => (
               <li
                 key={network.id}
                 className={
-                  defaultNetworks.includes(network.id)
+                  network.default
                     ? 'my-3 cursor-not-allowed border-b border-dashed bg-opacity-60 border-dashed-light flex flex-col w-full'
                     : 'my-3 w-full border-b border-dashed border-dashed-light cursor-pointer flex flex-col transition-all duration-300'
                 }
                 onClick={() =>
-                  !defaultNetworks.includes(network.id)
-                    ? setSelected(network)
-                    : undefined
+                  !network.default ? setSelected(network) : undefined
                 }
               >
                 <span>{formatUrl(network.label, 25)}</span>

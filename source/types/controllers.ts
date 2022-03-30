@@ -1,4 +1,5 @@
-import { IAccountState, INetwork } from 'state/wallet/types';
+import { INetworkType, INetwork } from '@pollum-io/sysweb3-utils';
+import { IAccountState } from 'state/wallet/types';
 
 import {
   MintAsset,
@@ -79,7 +80,14 @@ export interface IAccountController {
   ) => Promise<string | null>;
   temporaryTransaction: TemporaryTransaction;
   updateAccountLabel: (id: number, label: string) => void;
-  updateNetworkData: (network: INetwork) => void;
+  updateNetworkData: (
+    prefix: INetworkType.Syscoin | INetworkType.Ethereum,
+    network: INetwork
+  ) => void;
+  removeCustomRpc: (
+    prefix: INetworkType.Syscoin | INetworkType.Ethereum,
+    chainId: number
+  ) => void;
   updateTemporaryTransaction: ({ tx: any, type: string }) => any;
   updateTokensState: () => any;
   updateTxs: () => void;

@@ -36,6 +36,25 @@ const VaultState = createSlice({
   name: 'vault',
   initialState,
   reducers: {
+    setNetworks(
+      state: IVaultState,
+      action: PayloadAction<{ prefix: string; value: INetwork }>
+    ) {
+      const { prefix, value } = action.payload;
+
+      state.networks = {
+        ...state.networks,
+        [prefix]: value,
+      };
+    },
+    removeNetwork(
+      state: IVaultState,
+      action: PayloadAction<{ prefix: string; chainId: number }>
+    ) {
+      const { prefix, chainId } = action.payload;
+
+      delete state.networks[prefix][chainId];
+    },
     // todo: remove this
     clearAllTransactions(state: IVaultState) {
       return {
@@ -80,20 +99,6 @@ const VaultState = createSlice({
         [INetworkType.Syscoin]: 0,
       };
       state.activeToken = '';
-    },
-    setNetworks(
-      state: IVaultState,
-      action: PayloadAction<{
-        type: INetworkType.Ethereum | INetworkType.Syscoin;
-        value: INetwork;
-      }>
-    ) {
-      const { type, value } = action.payload;
-
-      state.networks = {
-        ...state.networks,
-        [type]: value,
-      };
     },
     setActiveAccountProperty(
       state: IVaultState,
@@ -143,6 +148,7 @@ export const {
   forgetWallet,
   removeAccount,
   removeAccounts,
+  removeNetwork,
 } = VaultState.actions;
 
 export default VaultState.reducer;

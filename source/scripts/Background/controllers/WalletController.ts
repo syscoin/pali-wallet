@@ -93,14 +93,14 @@ const WalletController = (): IWalletController => {
       return;
     }
 
-    const { networks } = store.getState().wallet;
+    const { activeNetwork } = store.getState().vault;
 
     setHDSigner({
       walletMnemonic: mnemonic,
       walletPassword: null,
       isTestnet: false,
     });
-    setSjs({ SignerIn: HDsigner, blockbookURL: networks.main.beUrl });
+    setSjs({ SignerIn: HDsigner, blockbookURL: activeNetwork.url });
 
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
@@ -359,7 +359,9 @@ const WalletController = (): IWalletController => {
     );
 
     try {
-      const response = await axios.get(`${networks[networkId].beUrl}/api/v2`);
+      const response = await axios.get(
+        `${networks.syscoin[networkId].url}/api/v2`
+      );
       const { blockbook, backend } = response.data;
 
       if (response && blockbook && backend) {
@@ -384,7 +386,7 @@ const WalletController = (): IWalletController => {
           });
           setSjs({
             SignerIn: HDsigner,
-            blockbookURL: networks[networkId].beUrl,
+            blockbookURL: networks.syscoin[networkId].url,
           });
 
           store.dispatch(setIsPendingBalances(true));

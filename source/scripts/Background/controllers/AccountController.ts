@@ -1,9 +1,6 @@
 import store from 'state/store';
-import IWalletState, {
-  IAccountState,
-  IMintedToken,
-  INetwork,
-} from 'state/wallet/types';
+import IWalletState, { IAccountState, IMintedToken } from 'state/wallet/types';
+import { INetwork, INetworkType } from '@pollum-io/sysweb3-utils';
 import { bech32 } from 'bech32';
 import { fromZPub } from 'bip84';
 import CryptoJS from 'crypto-js';
@@ -25,7 +22,6 @@ import {
   updateAccountAddress,
   updateAccountXpub,
   updateAllTokens,
-  updateNetwork,
 } from 'state/wallet';
 import { log, logError } from 'utils/index';
 
@@ -35,6 +31,8 @@ import {
   setTimer,
   setTemporaryTransactionState,
   setIsPendingBalances,
+  setNetworks,
+  removeNetwork,
 } from 'state/vault';
 
 const syscointx = require('syscointx-js');
@@ -69,8 +67,18 @@ const AccountController = (actions: {
     store.dispatch(setTimer(minutes));
   };
 
-  const updateNetworkData = (network: INetwork) => {
-    store.dispatch(updateNetwork(network));
+  const updateNetworkData = (
+    prefix: INetworkType.Ethereum | INetworkType.Syscoin,
+    network: INetwork
+  ) => {
+    store.dispatch(setNetworks({ prefix, value: network }));
+  };
+
+  const removeCustomRpc = (
+    prefix: INetworkType.Ethereum | INetworkType.Syscoin,
+    chainId: number
+  ) => {
+    store.dispatch(removeNetwork({ prefix, chainId }));
   };
 
   //* ----- TemporaryTransaction -----
@@ -1864,6 +1872,7 @@ const AccountController = (actions: {
   };
 
   return {
+    removeCustomRpc,
     updateNetworkData,
     subscribeAccount,
     temporaryTransaction,
