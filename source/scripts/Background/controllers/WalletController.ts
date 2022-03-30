@@ -6,7 +6,7 @@ import axios from 'axios';
 import { IWalletController } from 'types/controllers';
 import { log, logError, openNotificationsPopup } from 'utils/index';
 
-import AccountController from './AccountController';
+import AccountController from './accController';
 import TrezorController from './TrezorController';
 import {
   forgetWallet as forgetWalletState,

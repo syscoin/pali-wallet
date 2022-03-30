@@ -11,6 +11,7 @@ import {
   createAccount as addAccountToStore,
 } from 'state/vault';
 import AccountController from './account';
+import WalletController from './account';
 
 const MainController = () => {
   let encryptedPassword: string = '';
@@ -117,7 +118,7 @@ const MainController = () => {
     store.dispatch(setLastLogin());
   };
 
-  const account = AccountController({ checkPassword, hd, main });
+  const { account } = WalletController({ checkPassword, hd, main });
 
   const createAccount = (label?: string) => account.addAccount(label);
 
