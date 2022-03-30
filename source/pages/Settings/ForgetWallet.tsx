@@ -9,7 +9,7 @@ const ForgetWalletView = () => {
   const { navigate } = useUtils();
 
   const controller = getController();
-  const activeAccount = controller.wallet.account.getActiveAccount();
+  const { activeAccount } = useStore();
 
   if (!activeAccount) throw new Error('No active account');
   const hasAccountFunds = activeAccount.balances.syscoin > 0;

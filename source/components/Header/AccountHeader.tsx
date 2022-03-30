@@ -157,7 +157,7 @@ const AccountMenu: React.FC = () => {
 };
 
 export const AccountHeader: React.FC = () => {
-  const activeAccount = getController().wallet.account.getActiveAccount();
+  const { activeAccount } = useStore();
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();

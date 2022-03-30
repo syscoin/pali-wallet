@@ -57,7 +57,6 @@ export const Router = () => {
   const params = useParams();
   const location = useLocation();
   const controller = getController();
-  const { getTemporaryTransaction } = controller.wallet.account;
 
   const { accounts, temporaryTransactionState } = useStore();
   const { alert, navigate } = useUtils();
@@ -76,11 +75,16 @@ export const Router = () => {
   }, [isUnlocked, browser.runtime]);
 
   useEffect(() => {
+    console.log('controller wallet ccount', controller, controller.wallet);
     const route = controller.appRoute();
     const { executing, type } = temporaryTransactionState;
 
-    const hasSendAssetTx = getTemporaryTransaction('sendAsset') !== null;
-    const hasUpdateAssetTx = getTemporaryTransaction('updateAsset') !== null;
+    const hasSendAssetTx =
+      controller.wallet.account.tx.getTemporaryTransaction('sendAsset') !==
+      null;
+    const hasUpdateAssetTx =
+      controller.wallet.account.tx.getTemporaryTransaction('updateAsset') !==
+      null;
 
     if (
       route === '/send/confirm' &&

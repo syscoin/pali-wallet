@@ -1,4 +1,7 @@
-const SysAccountController = (data): { addAccount: () => any } => {
+import { SysTransactionController } from '../transaction';
+import SysTrezorController from '../trezor/syscoin';
+
+const SysAccountController = (data) => {
   // const getPrimaryAccount = () => { };
   // const fetchAccountInfo = async (isHardwareWallet?: boolean, xpub?: any) => {
   //   let response: any = null;
@@ -155,6 +158,8 @@ const SysAccountController = (data): { addAccount: () => any } => {
 
   return {
     addAccount,
+    trezor: SysTrezorController(data),
+    tx: SysTransactionController(data),
   };
 };
 

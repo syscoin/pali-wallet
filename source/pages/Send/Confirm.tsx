@@ -13,7 +13,7 @@ import { getController } from 'utils/browser';
 
 export const SendConfirm = () => {
   const controller = getController();
-  const activeAccount = controller.wallet.account.getActiveAccount();
+  const { activeAccount } = useStore();
   const { alert, navigate } = useUtils();
   const {
     temporaryTransactionState: { executing, type },
@@ -22,7 +22,8 @@ export const SendConfirm = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
-  const tempTx = controller.wallet.account.getTemporaryTransaction('sendAsset');
+  const tempTx =
+    controller.wallet.account.tx.getTemporaryTransaction('sendAsset');
 
   const handleConfirm = async () => {
     const recommendedFee = await controller.wallet.account.getRecommendFee();

@@ -20,6 +20,7 @@ export const useStore = () => {
 
   return {
     accounts,
+    activeAccount,
     activeAccountId: activeAccount.id,
     activeNetwork,
     hasEncryptedVault,

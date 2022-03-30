@@ -11,7 +11,7 @@ const CurrencyView = () => {
   const controller = getController();
   const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
-  const activeAccount = controller.wallet.account.getActiveAccount();
+  const { activeAccount } = useStore();
 
   if (!activeAccount) throw new Error('No account');
 

@@ -378,7 +378,7 @@ export const TxConfirmLayout: React.FC<ITxConfirmLayout> = ({
   txType,
 }) => {
   const walletCtlr = getController().wallet;
-  const { getTemporaryTransaction } = walletCtlr.account;
+  const { getTemporaryTransaction } = walletCtlr.account.tx;
 
   const transaction = getTemporaryTransaction(txType);
 

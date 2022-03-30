@@ -13,7 +13,7 @@ import { Input, Form } from 'antd';
 
 const PrivateKeyView = () => {
   const controller = getController();
-  const activeAccount = controller.wallet.account.getActiveAccount();
+  const { activeAccount } = useStore();
 
   const { navigate, useCopyClipboard } = useUtils();
 

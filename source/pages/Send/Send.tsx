@@ -15,7 +15,7 @@ interface ISend {
 export const Send: FC<ISend> = () => {
   const { getFiatAmount } = usePrice();
   const controller = getController();
-  const activeAccount = controller.wallet.account.getActiveAccount();
+  const { activeAccount } = useStore();
 
   const { alert, navigate } = useUtils();
   const { activeNetwork, fiat } = useStore();
@@ -77,7 +77,7 @@ export const Send: FC<ISend> = () => {
     const { receiver, amount, fee } = data;
 
     try {
-      controller.wallet.account.updateTemporaryTransaction({
+      controller.wallet.account.tx.updateTemporaryTransaction({
         tx: {
           fromAddress: activeAccount?.address,
           toAddress: receiver,

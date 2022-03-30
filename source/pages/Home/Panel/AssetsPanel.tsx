@@ -1,11 +1,11 @@
 import { Fullscreen } from 'components/Fullscreen';
-import { getController } from 'utils/browser';
 import React, { FC } from 'react';
 
 import { PanelList } from './components/PanelList';
+import { useStore } from 'hooks/useStore';
 
 export const AssetsPanel: FC = () => {
-  const activeAccount = getController().wallet.account.getActiveAccount();
+  const { activeAccount } = useStore();
 
   return (
     <>

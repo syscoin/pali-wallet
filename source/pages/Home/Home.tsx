@@ -11,9 +11,8 @@ export const Home = () => {
   const { getFiatAmount } = usePrice();
 
   const { navigate, handleRefresh } = useUtils();
-  const activeAccount = controller.wallet.account.getActiveAccount();
 
-  const { accounts, activeNetwork, fiat } = useStore();
+  const { accounts, activeNetwork, fiat, activeAccount } = useStore();
 
   useEffect(() => {
     if (controller.wallet.isUnlocked() && accounts && activeAccount)
