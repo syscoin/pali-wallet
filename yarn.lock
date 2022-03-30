@@ -6338,9 +6338,9 @@ eth-object@^1.0.3:
   dependencies:
     eth-util-lite "^1.0.1"
 
-"eth-object@git+https://github.com/syscoin/eth-object.git":
+"eth-object@https://github.com/syscoin/eth-object.git":
   version "1.0.3"
-  resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
+  resolved "https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
     eth-util-lite "^1.0.1"
 
