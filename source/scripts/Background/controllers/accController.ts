@@ -82,18 +82,6 @@ const accController = (actions: {
     store.dispatch(removeNetwork({ prefix, chainId }));
   };
 
-  //* ----- TemporaryTransaction -----
-  const getTemporaryTransaction = (type: string) => temporaryTransaction[type];
-
-  const clearTemporaryTransaction = (item: string) => {
-    temporaryTransaction[item] = null;
-  };
-
-  const updateTemporaryTransaction = ({ tx, type }) => {
-    temporaryTransaction[type] = { ...tx };
-  };
-  //* end
-
   const setTrezorSigner = () => {
     TrezorSigner = new sys.utils.TrezorSigner();
     new sys.SyscoinJSLib(TrezorSigner, sysjs.blockbookURL);
@@ -830,26 +818,6 @@ const accController = (actions: {
     return false;
   };
 
-  const handleTransactionExecution = async (
-    item,
-    executeTransaction,
-    condition?: boolean
-  ) => {
-    if (!sysjs) throw new Error('Error: No signed account exists');
-
-    if (!globalAccount) {
-      throw new Error("Error: Can't find active account info");
-    }
-
-    if (!item) throw new Error("Error: Can't find item info");
-
-    return new Promise((resolve, reject) => {
-      executeTransaction(item, condition)
-        .then((response) => resolve(response))
-        .catch((error) => reject(error));
-    });
-  };
-
   // ? unsuggestive name
   // ? currentAccount could be currentAccountId
   // ? passing a null 'currentAccount' could default to connected account
@@ -862,9 +830,7 @@ const accController = (actions: {
     intervalId = setInterval(() => {
       updateActiveAccount();
 
-      const { activeAccount }: IVaultState = store.getState().vault;
-
-      if (!activeAccount || !activeAccount?.transactions) {
+      if (!currentAccount || !currentAccount?.transactions) {
         clearInterval(intervalId);
 
         return false;
@@ -1515,8 +1481,6 @@ const accController = (actions: {
           // updateTransactionData(txid);
           updateTransactionData(null);
 
-          clearTemporaryTransaction('sendAsset');
-
           return;
         } catch (e) {
           return;
@@ -1597,14 +1561,12 @@ const accController = (actions: {
                 ? globalAccount
                 : getConnectedAccount();
 
-              // watchMemPool(currentAccount);
+              watchMemPool(currentAccount);
             });
 
           // ? will always call this with txid === null
           // updateTransactionData(txid);
           updateTransactionData(null);
-
-          clearTemporaryTransaction('sendAsset');
 
           return;
         } catch (error) {
@@ -1632,25 +1594,9 @@ const accController = (actions: {
     const isSendAsset =
       store.getState().vault.temporaryTransactionState.type === 'sendAsset';
 
-    clearTemporaryTransaction('sendAsset');
-
     const acc = isSendAsset ? globalAccount : getConnectedAccount();
-    // watchMemPool(acc);
+    watchMemPool(acc);
   };
-
-  const confirmTemporaryTransaction = ({ type, callback }) =>
-    new Promise((resolve, reject) => {
-      try {
-        const response = handleTransactionExecution(
-          getTemporaryTransaction(type),
-          callback
-        );
-
-        resolve(response);
-      } catch (error: any) {
-        reject(error);
-      }
-    });
 
   // 'item' is close to 'UpdateAsset' type
   const confirmUpdateAsset = async (
@@ -1873,7 +1819,6 @@ const accController = (actions: {
     updateAccountLabel,
     getLatestUpdate: updateActiveAccount,
     watchMemPool,
-    confirmTemporaryTransaction,
     isValidSYSAddress,
     updateTxs,
     getRecommendFee,
@@ -1884,7 +1829,6 @@ const accController = (actions: {
     getSysExplorerSearch: getBlockbookURL,
     getHoldingsData: () => [],
     getDataAsset: getAsset,
-    clearTemporaryTransaction,
     getActiveAccount,
     getConnectedAccount: () => undefined,
     getChangeAddress,
@@ -1894,8 +1838,6 @@ const accController = (actions: {
     importPsbt,
     decryptAES,
     setAutolockTimer,
-    updateTemporaryTransaction,
-    getTemporaryTransaction,
     confirmSendAssetTransaction,
     confirmSPTCreation,
     confirmMintSPT,

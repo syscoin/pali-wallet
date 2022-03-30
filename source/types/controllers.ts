@@ -36,17 +36,12 @@ export interface IWalletController {
 }
 
 export interface IAccountController {
-  clearTemporaryTransaction: (item: string) => void;
   confirmAssetTransfer: (item: TransferAsset) => any;
   confirmCreateNFT: (item: NewNFT) => any;
   confirmMintNFT: (item: any) => any;
   confirmMintSPT: (item: MintAsset) => any;
   confirmSPTCreation: (item: NewAsset) => any;
   confirmSendAssetTransaction: (items: SendAsset) => any;
-  confirmTemporaryTransaction: ({
-    type: string,
-    callback: any,
-  }) => Promise<any>;
   confirmUpdateAsset: (item: UpdateAsset) => any;
   connectedAccountXpub: string | null;
   decryptAES: (encryptedString: any, key: string) => any;
@@ -60,7 +55,6 @@ export interface IAccountController {
   getRawTransaction: (txid: string) => any;
   getRecommendFee: () => Promise<number>;
   getSysExplorerSearch: () => string;
-  getTemporaryTransaction: (type: string) => any;
   getTransactionInfoByTxId: (txid: any) => any;
   getUserMintedTokens: () => any;
   importPsbt: (psbt: any) => any;
@@ -90,7 +84,6 @@ export interface IAccountController {
     prefix: INetworkType.Syscoin | INetworkType.Ethereum,
     chainId: number
   ) => void;
-  updateTemporaryTransaction: ({ tx: any, type: string }) => any;
   updateTokensState: () => any;
   updateTxs: () => void;
   watchMemPool: (currentAccount: IKeyringAccountState) => void;
