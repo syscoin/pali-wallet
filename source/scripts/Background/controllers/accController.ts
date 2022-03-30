@@ -41,7 +41,7 @@ const coinSelectSyscoin = require('coinselectsyscoin');
 const { each } = require('neo-async');
 const sys = require('syscoinjs-lib');
 
-const AccountController = (actions: {
+const accController = (actions: {
   checkPassword: (pwd: string) => boolean;
 }): IAccountController => {
   let intervalId: any;
@@ -1908,4 +1908,4 @@ const AccountController = (actions: {
   };
 };
 
-export default AccountController;
+export default accController;
