@@ -18,6 +18,7 @@ import {
   removeAccounts,
   removeAccount,
 } from 'state/vault';
+import { setHdSigner, setMainSigner } from 'state/signer';
 import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 
 const sys = require('syscoinjs-lib');
@@ -29,7 +30,7 @@ const WalletController = (): IWalletController => {
   let HDsigner: any = null;
   let sjs: any = null;
 
-  const setHDSigner = ({
+  const setHDsigner = ({
     walletMnemonic,
     walletPassword,
     isTestnet,
@@ -37,7 +38,7 @@ const WalletController = (): IWalletController => {
     SLIP44,
     pubTypes,
   }: any) => {
-    HDsigner = new sys.utils.HDSigner(
+    HDsigner = new sys.utils.HDsigner(
       walletMnemonic,
       walletPassword,
       isTestnet,
@@ -45,10 +46,13 @@ const WalletController = (): IWalletController => {
       SLIP44,
       pubTypes
     );
+
+    setHdSigner(HDsigner);
   };
 
   const setSjs = ({ SignerIn, blockbookURL, network }: any) => {
     sjs = new sys.SyscoinJSLib(SignerIn, blockbookURL, network);
+    setMainSigner(sjs);
   };
 
   const setWalletPassword = (pwd: string) => {
@@ -93,7 +97,7 @@ const WalletController = (): IWalletController => {
 
     const { activeNetwork } = store.getState().vault;
 
-    setHDSigner({
+    setHDsigner({
       walletMnemonic: mnemonic,
       walletPassword: null,
       isTestnet: false,
@@ -162,7 +166,7 @@ const WalletController = (): IWalletController => {
               isTestnet = true;
             }
 
-            setHDSigner({
+            setHDsigner({
               walletMnemonic: decriptedMnemonic,
               walletPassword: null,
               isTestnet,
@@ -184,16 +188,12 @@ const WalletController = (): IWalletController => {
         for (let i = 1; i < Object.values(accounts).length; i++) {
           if (false) {
             log(
-              'Should not derive from hdsigner if the account is from the hardware wallet'
+              'Should not derive from HDsigner if the account is from the hardware wallet'
             );
           } else {
             const child = sjs.Signer.deriveAccount(i);
-            sjs.Signer.Signer.accounts.push(
-              new fromZPrv(
-                child,
-                sjs.Signer.Signer.pubTypes,
-                sjs.Signer.Signer.networks
-              )
+            HDsigner.accounts.push(
+              new fromZPrv(child, HDsigner.pubTypes, HDsigner.networks)
             );
             sjs.Signer.setAccountIndex(activeAccount.id);
           }
@@ -255,8 +255,8 @@ const WalletController = (): IWalletController => {
   const checkAndSetNewXpub = (index: number, activeAccountId: number) => {
     if (Number(index) === 0) {
       account.setNewXpub(
-        sjs.Signer.Signer.accounts[Number(index)].getAccountPublicKey(),
-        sjs.Signer.Signer.accounts[Number(index)].getAccountPrivateKey(),
+        HDsigner.accounts[Number(index)].getAccountPublicKey(),
+        HDsigner.accounts[Number(index)].getAccountPrivateKey(),
         encryptedPassword
       );
 
@@ -264,13 +264,9 @@ const WalletController = (): IWalletController => {
     }
 
     const child = sjs.Signer.deriveAccount(Number(index));
-    const derived = new fromZPrv(
-      child,
-      sjs.Signer.Signer.pubTypes,
-      sjs.Signer.Signer.networks
-    );
+    const derived = new fromZPrv(child, HDsigner.pubTypes, HDsigner.networks);
 
-    sjs.Signer.Signer.accounts.push(derived);
+    HDsigner.accounts.push(derived);
     sjs.Signer.setAccountIndex(activeAccountId);
 
     account.setNewXpub(
@@ -375,7 +371,7 @@ const WalletController = (): IWalletController => {
             isTestnet = true;
           }
 
-          setHDSigner({
+          setHDsigner({
             walletMnemonic: HDsigner.mnemonic,
             walletPassword: null,
             isTestnet,
@@ -412,8 +408,8 @@ const WalletController = (): IWalletController => {
 
       const account0 = new fromZPub(
         activeAccount.xpub,
-        sjs.Signer.Signer.pubTypes,
-        sjs.Signer.Signer.networks
+        HDsigner.pubTypes,
+        HDsigner.networks
       );
 
       let receivingIndex = -1;
