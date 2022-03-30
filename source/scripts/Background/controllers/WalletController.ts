@@ -255,7 +255,6 @@ const WalletController = (): IWalletController => {
   const checkAndSetNewXpub = (index: number, activeAccountId: number) => {
     if (Number(index) === 0) {
       account.setNewXpub(
-        Number(index),
         sjs.Signer.Signer.accounts[Number(index)].getAccountPublicKey(),
         sjs.Signer.Signer.accounts[Number(index)].getAccountPrivateKey(),
         encryptedPassword
@@ -275,7 +274,6 @@ const WalletController = (): IWalletController => {
     sjs.Signer.setAccountIndex(activeAccountId);
 
     account.setNewXpub(
-      Number(index),
       derived.getAccountPublicKey(),
       derived.getAccountPrivateKey(),
       encryptedPassword

@@ -36,6 +36,27 @@ const VaultState = createSlice({
   name: 'vault',
   initialState,
   reducers: {
+    // todo: set account tx and add to ikeyringaccountstate
+    setAccountTransactions(
+      state: IVaultState,
+      action: PayloadAction<{ txid: string; tx: any }>
+    ) {
+      const { txid, tx } = action.payload;
+
+      state.accounts[state.activeAccount.id] = {
+        ...state.accounts[state.activeAccount.id],
+        [txid]: tx,
+      };
+    },
+    createAccount(
+      state: IVaultState,
+      action: PayloadAction<IKeyringAccountState>
+    ) {
+      state.accounts = {
+        ...state.accounts,
+        [action.payload.id]: action.payload,
+      };
+    },
     setNetworks(
       state: IVaultState,
       action: PayloadAction<{ prefix: string; value: INetwork }>
@@ -130,6 +151,17 @@ const VaultState = createSlice({
     removeAccount(state: IVaultState, action: PayloadAction<{ id: number }>) {
       delete state.accounts[action.payload.id];
     },
+    setAccountLabel(
+      state: IVaultState,
+      action: PayloadAction<{ id: number; label: string }>
+    ) {
+      const { label, id } = action.payload;
+
+      state.accounts[id] = {
+        ...state.accounts[id],
+        label,
+      };
+    },
   },
 });
 
@@ -149,6 +181,9 @@ export const {
   removeAccount,
   removeAccounts,
   removeNetwork,
+  createAccount,
+  setAccountLabel,
+  setAccountTransactions,
 } = VaultState.actions;
 
 export default VaultState.reducer;

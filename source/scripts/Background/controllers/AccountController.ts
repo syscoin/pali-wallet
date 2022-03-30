@@ -20,7 +20,7 @@ import {
 import { IAccountController } from 'types/controllers';
 import { log, logError } from 'utils/index';
 
-import { sortList, isNFT, countDecimals, base64 } from './utils';
+import { isNFT, countDecimals, base64 } from './utils';
 import {
   setLastLogin,
   setTimer,
@@ -29,12 +29,10 @@ import {
   setNetworks,
   removeNetwork,
   createAccount,
-  updateAccount,
-  updateLabel,
-  updateTransactions,
-  updateAccountAddress,
-  updateAccountXpub,
-  updateAllTokens,
+  setActiveAccount,
+  setAccountLabel,
+  setAccountTransactions,
+  setActiveAccountProperty,
 } from 'state/vault';
 import { IVaultState } from 'state/vault/types';
 
@@ -47,7 +45,7 @@ const AccountController = (actions: {
   checkPassword: (pwd: string) => boolean;
 }): IAccountController => {
   let intervalId: any;
-  let globalAccount: IKeyringAccountState | undefined;
+  let globalAccount: IKeyringAccountState;
   let sysjs: any;
   let TrezorSigner: any;
 
@@ -115,37 +113,26 @@ const AccountController = (actions: {
 
   const getConnectedAccount = (): IKeyringAccountState | undefined => undefined;
 
-  const createEmptyTransaction = (txid: string): Transaction => ({
-    txid,
-    value: 0,
-    confirmations: 0,
-    fees: 0,
-    blockTime: Date.now() / 1e3,
-    tokenType: '',
-  });
-
   const updateTransactionData = (txinfo: any) => {
     const { temporaryTransactionState } = store.getState().vault;
     const isSendAsset = temporaryTransactionState.type === 'sendAsset';
 
-    let transactions: Transaction[] = [];
+    let transactions: { [txid: string]: Transaction } = {};
 
     if (isSendAsset && globalAccount) {
-      transactions = [];
+      transactions = {};
     }
 
     const connectedAccount = getConnectedAccount();
 
     if (!isSendAsset && connectedAccount) {
-      transactions = [];
+      transactions = {};
     }
 
     store.dispatch(
-      updateTransactions({
-        id: isSendAsset
-          ? Number(globalAccount?.id)
-          : Number(getConnectedAccount()?.id),
-        txs: [createEmptyTransaction(txinfo), ...transactions],
+      setAccountTransactions({
+        tx: transactions,
+        txid: txinfo,
       })
     );
   };
@@ -175,7 +162,7 @@ const AccountController = (actions: {
   ) => {
     if (isHardwareWallet) return;
 
-    store.dispatch(updateLabel({ id, label }));
+    store.dispatch(setAccountLabel({ id, label }));
   };
 
   const getRecommendFee = async () =>
@@ -317,12 +304,12 @@ const AccountController = (actions: {
       updateAccountInfo = accLatestInfo;
     }
 
-    store.dispatch(
-      updateAccount({
-        id: activeAccount.id,
-        ...updateAccountInfo,
-      })
-    );
+    const newAccount = {
+      ...updateAccountInfo,
+      ...activeAccount,
+    };
+
+    store.dispatch(setActiveAccount(newAccount));
 
     store.dispatch(setIsPendingBalances(false));
   };
@@ -332,25 +319,28 @@ const AccountController = (actions: {
   };
 
   const setAddress = (addr: string) => {
-    // ? why get the accId from the store to pass it to the store?
-    const { activeAccount }: IVaultState = store.getState().vault;
-
     store.dispatch(
-      updateAccountAddress({
-        id: activeAccount.id,
-        address: { main: addr },
+      setActiveAccountProperty({
+        property: 'address',
+        value: addr,
       })
     );
 
     return true;
   };
 
-  const setXpub = (id: number, xpub: string, xprv: string, key: string) => {
+  const setXpub = (xpub: string, xprv: string, key: string) => {
     store.dispatch(
-      updateAccountXpub({
-        id,
-        xpub,
-        xprv: CryptoJS.AES.encrypt(xprv, String(key)).toString(),
+      setActiveAccountProperty({
+        property: 'xpub',
+        value: xpub,
+      })
+    );
+
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'xprv',
+        value: CryptoJS.AES.encrypt(xprv, String(key)).toString(),
       })
     );
   };
@@ -369,7 +359,7 @@ const AccountController = (actions: {
     // ? the operation of 'globalAccount = getActiveAccount()'
     // ? is already performed at updateActiveAccount function
     if (!globalAccount && accounts) {
-      globalAccount = getActiveAccount();
+      globalAccount = getActiveAccount() as IKeyringAccountState;
 
       // ? is this supposed to be inside this if?
       store.dispatch(setLastLogin());
@@ -484,15 +474,15 @@ const AccountController = (actions: {
         );
 
         if (!tokensAsset) {
-          store.dispatch(
-            updateAllTokens({
-              accountId: account.id,
-              accountXpub: account.xpub,
-              tokens: {},
-              holdings: [],
-              mintedTokens: [],
-            })
-          );
+          // store.dispatch(
+          //   updateAllTokens({
+          //     accountId: account.id,
+          //     accountXpub: account.xpub,
+          //     tokens: {},
+          //     holdings: [],
+          //     mintedTokens: [],
+          //   })
+          // );
 
           return;
         }
@@ -602,15 +592,15 @@ const AccountController = (actions: {
             })
           );
 
-          store.dispatch(
-            updateAllTokens({
-              accountId: account.id,
-              accountXpub: account.xpub,
-              tokens: assets,
-              holdings: sortList(Object.values(assetsData)),
-              mintedTokens: sortList(Object.values(mintedTokens)),
-            })
-          );
+          // store.dispatch(
+          //   updateAllTokens({
+          //     accountId: account.id,
+          //     accountXpub: account.xpub,
+          //     tokens: assets,
+          //     holdings: sortList(Object.values(assetsData)),
+          //     mintedTokens: sortList(Object.values(mintedTokens)),
+          //   })
+          // );
 
           return;
         } catch (error) {
