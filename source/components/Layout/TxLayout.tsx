@@ -52,7 +52,8 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
     navigate(confirmRoute);
   };
 
-  const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
+  const disabledFee =
+    activeNetwork.chainId === 57 || activeNetwork.chainId === 5700;
 
   return (
     <Layout canGoBack={false} title={title.toUpperCase()}>

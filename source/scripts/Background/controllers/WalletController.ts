@@ -1,13 +1,9 @@
 import { generateMnemonic, validateMnemonic } from 'bip39';
 import { fromZPrv, fromZPub } from 'bip84';
 import {
-  forgetWallet as forgetWalletState,
   changeAccountActiveId,
-  changeActiveNetwork,
   removeAccounts,
   removeAccount,
-  updateSwitchNetwork,
-  // removeConnection,
 } from 'state/wallet';
 import { IAccountState } from 'state/wallet/types';
 import CryptoJS from 'crypto-js';
@@ -18,7 +14,13 @@ import { log, logError, openNotificationsPopup } from 'utils/index';
 
 import AccountController from './AccountController';
 import TrezorController from './TrezorController';
-import { setLastLogin, setEncryptedMnemonic } from 'state/vault';
+import {
+  forgetWallet as forgetWalletState,
+  setLastLogin,
+  setEncryptedMnemonic,
+  setActiveNetwork,
+  setIsPendingBalances,
+} from 'state/vault';
 
 const sys = require('syscoinjs-lib');
 
@@ -236,6 +238,11 @@ const WalletController = (): IWalletController => {
   };
 
   const switchWallet = (id: number) => {
+    // todo: vault
+    // const { accounts } = store.getState().wallet;
+
+    // const acc = accounts.find((account) => account.id === id);
+
     store.dispatch(changeAccountActiveId(id));
     account.getLatestUpdate();
   };
@@ -338,14 +345,16 @@ const WalletController = (): IWalletController => {
     });
   };
 
-  const switchNetwork = async (networkId: string) => {
-    const { networks } = store.getState().wallet;
+  // todo: switch network vault state
+  const switchNetwork = async (networkId: number, prefix: string) => {
+    const { networks } = store.getState().vault;
 
     store.dispatch(
-      changeActiveNetwork({
-        id: networkId,
-        beUrl: networks[networkId]?.beUrl,
-        label: '',
+      setActiveNetwork({
+        chainId: networkId,
+        label: networks[prefix].label,
+        default: networks[prefix].default,
+        url: networks[prefix].url,
       })
     );
 
@@ -378,7 +387,7 @@ const WalletController = (): IWalletController => {
             blockbookURL: networks[networkId].beUrl,
           });
 
-          store.dispatch(updateSwitchNetwork(true));
+          store.dispatch(setIsPendingBalances(true));
 
           getAccountDataByNetwork(sjs);
         }

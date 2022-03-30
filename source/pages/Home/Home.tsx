@@ -28,7 +28,7 @@ export const Home = () => {
 
           <section className="flex flex-col gap-1 items-center py-14 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
-              {activeNetwork === 'testnet' ? (
+              {activeNetwork.chainId === 5700 ? (
                 <div className="balance-account flex gap-x-0.5 items-center justify-center">
                   <p
                     className="font-rubik text-5xl font-medium"

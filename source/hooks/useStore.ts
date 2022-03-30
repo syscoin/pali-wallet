@@ -8,7 +8,6 @@ export const useStore = () => {
   const {
     accounts,
     activeAccountId,
-    activeNetwork,
     changingNetwork,
     walletTokens,
     networks,
@@ -21,6 +20,7 @@ export const useStore = () => {
     timer,
     hasEncryptedVault,
     trustedApps,
+    activeNetwork,
   }: IVaultState = useSelector((state: RootState) => state.vault);
 
   return {

@@ -15,8 +15,8 @@ export const NormalHeader: React.FC = () => {
 
   const [currentTabURL, setCurrentTabURL] = useState<string>('');
 
-  const handleChangeNetwork = (value: string) => {
-    wallet.switchNetwork(value as string);
+  const handleChangeNetwork = (value: number, prefix: string) => {
+    wallet.switchNetwork(value, prefix);
     wallet.getNewAddress();
   };
 
@@ -60,7 +60,7 @@ export const NormalHeader: React.FC = () => {
       {(menuprops) => (
         <>
           <Menu.Button className="z-0 inline-flex gap-x-2 items-center justify-start ml-2 w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
-            <span>{activeNetwork}</span>
+            <span>{activeNetwork.label}</span>
 
             <Icon
               name="select-down"
@@ -145,10 +145,13 @@ export const NormalHeader: React.FC = () => {
                       <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
                         {Object.values(networks).map((currentNetwork: any) => (
                           <li
-                            key={currentNetwork.id}
+                            key={currentNetwork.chainId}
                             className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                             onClick={() =>
-                              handleChangeNetwork(currentNetwork.id)
+                              handleChangeNetwork(
+                                currentNetwork.chainId,
+                                'syscoin'
+                              )
                             }
                           >
                             <span
@@ -158,7 +161,8 @@ export const NormalHeader: React.FC = () => {
                               {currentNetwork.label}
                             </span>
 
-                            {activeNetwork === currentNetwork.id && (
+                            {activeNetwork.chainId ===
+                              currentNetwork.chainId && (
                               <Icon
                                 name="check"
                                 className="mb-1 w-4"
@@ -202,7 +206,10 @@ export const NormalHeader: React.FC = () => {
                               key={currentNetwork.id}
                               className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                               onClick={() =>
-                                handleChangeNetwork(currentNetwork.id)
+                                handleChangeNetwork(
+                                  currentNetwork.chainId,
+                                  'ethereum'
+                                )
                               }
                             >
                               <span
@@ -212,7 +219,8 @@ export const NormalHeader: React.FC = () => {
                                 {currentNetwork.label}
                               </span>
 
-                              {activeNetwork === currentNetwork.id && (
+                              {activeNetwork.chainId ===
+                                currentNetwork.chainId && (
                                 <Icon
                                   name="check"
                                   className="mb-1 w-4"

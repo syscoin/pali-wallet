@@ -100,7 +100,8 @@ export const Send: FC<ISend> = () => {
     log(`assets: ${activeAccount?.assets}`);
   }, []);
 
-  const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
+  const disabledFee =
+    activeNetwork.chainId === 57 || activeNetwork.chainId === 5700;
 
   const SendForm = () => (
     <div className="mt-4">
@@ -141,7 +142,7 @@ export const Send: FC<ISend> = () => {
                   !value ||
                   controller.wallet.account.isValidSYSAddress(
                     value,
-                    activeNetwork,
+                    activeNetwork.chainId,
                     verifyAddress
                   )
                 ) {

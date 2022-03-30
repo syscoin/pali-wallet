@@ -115,6 +115,16 @@ const VaultState = createSlice({
     setEncryptedMnemonic(state: IVaultState, action: PayloadAction<string>) {
       state.encryptedMnemonic = action.payload;
     },
+    forgetWallet() {
+      return initialState;
+    },
+    removeAccounts(state: IVaultState) {
+      state.accounts = {};
+      state.activeAccount = initialActiveAccountState;
+    },
+    removeAccount(state: IVaultState, action: PayloadAction<{ id: number }>) {
+      delete state.accounts[action.payload.id];
+    },
   },
 });
 
@@ -130,6 +140,9 @@ export const {
   setEncryptedMnemonic,
   setTemporaryTransactionState,
   clearAllTransactions,
+  forgetWallet,
+  removeAccount,
+  removeAccounts,
 } = VaultState.actions;
 
 export default VaultState.reducer;

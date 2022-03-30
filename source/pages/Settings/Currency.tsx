@@ -139,7 +139,7 @@ const CurrencyView = () => {
         </Menu>
 
         <div className="flex flex-col items-center justify-center text-center">
-          {activeNetwork === 'testnet' ? (
+          {activeNetwork.chainId === 5700 ? (
             <div className="flex gap-x-0.5 items-center justify-center mt-8">
               <p className="font-rubik text-5xl font-medium">
                 {formatNumber(Number(activeAccount?.balance) || 0)}{' '}

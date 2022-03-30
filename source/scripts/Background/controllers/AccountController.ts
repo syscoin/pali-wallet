@@ -24,7 +24,6 @@ import {
   updateTransactions,
   updateAccountAddress,
   updateAccountXpub,
-  updateSwitchNetwork,
   updateAllTokens,
   updateNetwork,
 } from 'state/wallet';
@@ -35,6 +34,7 @@ import {
   setLastLogin,
   setTimer,
   setTemporaryTransactionState,
+  setIsPendingBalances
 } from 'state/vault';
 
 const syscointx = require('syscointx-js');
@@ -315,7 +315,7 @@ const AccountController = (actions: {
       })
     );
 
-    store.dispatch(updateSwitchNetwork(false));
+    store.dispatch(setIsPendingBalances(false));
   };
 
   const updateTxs = () => {
@@ -794,7 +794,7 @@ const AccountController = (actions: {
 
   const isValidSYSAddress = (
     address: string,
-    network: string,
+    networkId: number,
     verification = true
   ) => {
     if (!verification) return true;
@@ -805,8 +805,8 @@ const AccountController = (actions: {
         const decodedAddr = bech32.decode(address);
 
         if (
-          (network === 'main' && decodedAddr.prefix === 'sys') ||
-          (network === 'testnet' && decodedAddr.prefix === 'tsys')
+          (networkId === 57 && decodedAddr.prefix === 'sys') ||
+          (networkId === 5700 && decodedAddr.prefix === 'tsys')
         ) {
           const encode = bech32.encode(decodedAddr.prefix, decodedAddr.words);
           return encode === address.toLowerCase();

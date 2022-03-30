@@ -1,7 +1,6 @@
 // import CryptoJS from 'crypto-js';
 // import {
 //   changeAccountActiveId,
-//   changeActiveNetwork,
 //   clearAllTransactions,
 //   createAccount,
 //   forgetWallet,
@@ -19,7 +18,6 @@
 //   updateCurrentURL,
 //   updateLabel,
 //   updateNetwork,
-//   updateSwitchNetwork,
 //   updateTransactions,
 // } from 'state/wallet';
 import reducer, { initialState } from 'state/vault';
@@ -418,19 +416,6 @@ describe('Wallet store actions', () => {
   //   const newState = reducer(initialState, changeAccountActiveId(payload));
 
   //   expect(newState.activeAccountId).toEqual(payload);
-  // });
-
-  // //* changeActiveNetwork
-  // it('should update [activeNetwork]', () => {
-  //   const payload: INetwork = {
-  //     id: 'testnet',
-  //     beUrl: 'https://blockbook-dev.elint.services/',
-  //     label: 'Testnet',
-  //   };
-
-  //   const newState = reducer(initialState, changeActiveNetwork(payload));
-
-  //   expect(newState.activeNetwork).toEqual(payload.id);
   // });
 
   // //* updateTransactions

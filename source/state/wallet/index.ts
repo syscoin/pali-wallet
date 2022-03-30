@@ -13,7 +13,6 @@ import IWalletState, {
 export const initialState: IWalletState = {
   accounts: [],
   activeAccountId: 0,
-  activeNetwork: 'main',
   changingNetwork: false,
   walletTokens: [],
   networks: {
@@ -55,12 +54,6 @@ const WalletState = createSlice({
         state.walletTokens.push(action.payload);
       }
     },
-    updateSwitchNetwork(state: IWalletState, action: PayloadAction<boolean>) {
-      return {
-        ...state,
-        changingNetwork: action.payload,
-      };
-    },
     createAccount(state: IWalletState, action: PayloadAction<IAccountState>) {
       return {
         ...state,
@@ -87,6 +80,7 @@ const WalletState = createSlice({
       state.walletTokens.splice(infoIndex, 1);
       state.accounts.splice(accountIndex, 1);
     },
+    // todo: remove this for vault
     removeAccounts(state: IWalletState) {
       state.accounts = [];
       state.activeAccountId = 0;
@@ -141,9 +135,6 @@ const WalletState = createSlice({
     changeAccountActiveId(state: IWalletState, action: PayloadAction<number>) {
       state.activeAccountId = action.payload;
     },
-    changeActiveNetwork(state: IWalletState, action: PayloadAction<INetwork>) {
-      state.activeNetwork = action.payload.id;
-    },
     updateTransactions(
       state: IWalletState,
       action: PayloadAction<{ id: number; txs: Transaction[] }>
@@ -175,13 +166,11 @@ export const {
   removeAccounts,
   forgetWallet,
   changeAccountActiveId,
-  changeActiveNetwork,
   updateAccount,
   updateTransactions,
   updateLabel,
   updateAccountAddress,
   updateAccountXpub,
-  updateSwitchNetwork,
   updateAllTokens,
   updateNetwork,
 } = WalletState.actions;
