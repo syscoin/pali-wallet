@@ -9,13 +9,13 @@ interface IHeader {
 }
 
 export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
-  const { changingNetwork } = useStore();
+  const { isPendingBalances } = useStore();
 
   const headerStyle = accountHeader ? 'pb-32' : 'pb-12';
 
   return (
     <div className={headerStyle}>
-      {changingNetwork && (
+      {isPendingBalances && (
         <div className="fixed z-20 flex items-center justify-center w-full min-w-popup h-full min-h-popup bg-brand-black bg-opacity-50">
           <Icon name="loading" className="ml-2 w-4 text-brand-white" />
         </div>
