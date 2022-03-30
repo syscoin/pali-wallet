@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Icon, IconButton, Tooltip } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
-import { getHost, ellipsis } from 'utils/index';
+import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 import { Badge } from 'antd';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
@@ -12,9 +12,7 @@ export const NormalHeader: React.FC = () => {
 
   const { activeNetwork, hasEncryptedVault, networks } = useStore();
   const { handleRefresh, navigate } = useUtils();
-  const activeAccount = wallet.account.getActiveAccount();
 
-  const [isConnected, setIsConnected] = useState<boolean>(false);
   const [currentTabURL, setCurrentTabURL] = useState<string>('');
 
   const handleChangeNetwork = (value: string) => {
@@ -42,16 +40,6 @@ export const NormalHeader: React.FC = () => {
   useEffect(() => {
     updateCurrentTabUrl();
   }, [!wallet.isLocked()]);
-
-  useEffect(() => {
-    if (activeAccount && activeAccount.connectedTo.length > 0) {
-      setIsConnected(
-        activeAccount.connectedTo.findIndex(
-          (url: any) => url === getHost(currentTabURL)
-        ) > -1
-      );
-    }
-  }, [activeAccount, currentTabURL]);
 
   const ethNetworks = {
     main: {
@@ -291,7 +279,7 @@ export const NormalHeader: React.FC = () => {
 
               <Badge
                 className={`${
-                  isConnected
+                  true
                     ? 'text-warning-success bg-warning-succes'
                     : 'text-warning-error bg-warning-error'
                 } absolute -right-1 top-1 w-3 h-3 s rounded-full `}
