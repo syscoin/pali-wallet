@@ -28,13 +28,30 @@ const WalletController = (): IWalletController => {
   let password: any = '';
   let encryptedPassword: any = '';
   let mnemonic = '';
+  let HDSigner: any = null;
+  let mainSigner: any = null;
 
-  let { hd, main }: any = MainSigner({
-    walletMnemonic: mnemonic,
-    isTestnet: store.getState().wallet.activeNetwork === 'testnet',
-    network: 'main',
-    blockbookURL: store.getState().wallet.currentBlockbookURL,
-  });
+  const setMainSigner = (
+    isTestnet: boolean = false,
+    network: string = 'main'
+  ) => {
+    let { hd, main } = MainSigner({
+      walletMnemonic: mnemonic,
+      isTestnet: isTestnet,
+      network: network,
+      blockbookURL: isTestnet
+        ? 'https://blockbook-dev.elint.services/'
+        : 'https://blockbook.elint.services/',
+    });
+
+    HDSigner = hd;
+    mainSigner = main;
+
+    return;
+  };
+
+  console.log('HD SIGNER', HDSigner);
+  console.log('MAIN SIGNER', mainSigner);
 
   const setWalletPassword = (pwd: string) => {
     password = pwd;
@@ -52,7 +69,7 @@ const WalletController = (): IWalletController => {
   const account = AccountController({ checkPassword });
   const trezor = TrezorController({ account });
 
-  const isLocked = () => !encryptedPassword || !hd;
+  const isLocked = () => !encryptedPassword || !HDSigner;
 
   const retrieveEncriptedMnemonic = () => {
     // not encrypted for now but we got to retrieve
@@ -72,9 +89,11 @@ const WalletController = (): IWalletController => {
   };
 
   const createWallet = (isUpdated = false) => {
-    if (!isUpdated && main) {
+    if (!isUpdated && mainSigner) {
       return;
     }
+
+    setMainSigner(false);
 
     if (isUpdated) {
       const { accounts } = store.getState().wallet;
@@ -88,8 +107,8 @@ const WalletController = (): IWalletController => {
 
     store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
 
-    account.subscribeAccount(false, main, undefined, true).then(() => {
-      account.getPrimaryAccount(password, main);
+    account.subscribeAccount(false, mainSigner, undefined, true).then(() => {
+      account.getPrimaryAccount(password, mainSigner);
       password = '';
       mnemonic = '';
 
@@ -99,7 +118,8 @@ const WalletController = (): IWalletController => {
     });
   };
 
-  const getPhrase = (pwd: string) => (checkPassword(pwd) ? hd.mnemonic : null);
+  const getPhrase = (pwd: string) =>
+    checkPassword(pwd) ? HDSigner.mnemonic : null;
 
   const unLock = async (pwd: string) => {
     try {
@@ -115,7 +135,34 @@ const WalletController = (): IWalletController => {
 
       const { activeAccountId, accounts } = store.getState().wallet;
 
-      if (!hd || !main) {
+      if (!HDSigner || !mainSigner) {
+        const response = await axios.get(
+          `${store.getState().wallet.currentBlockbookURL}/api/v2`
+        );
+
+        const { blockbook, backend } = response.data;
+
+        if (response && blockbook && backend) {
+          if (
+            blockbook.coin === 'Syscoin' ||
+            blockbook.coin === 'Syscoin Testnet'
+          ) {
+            let isTestnet = false;
+
+            if (backend.chain === 'main') {
+              isTestnet = false;
+            }
+
+            if (backend.chain === 'test') {
+              isTestnet = true;
+            }
+
+            let network = store.getState().wallet.activeNetwork;
+
+            setMainSigner(isTestnet, network);
+          }
+        }
+
         if (accounts.length > 1000) {
           return false;
         }
@@ -126,22 +173,22 @@ const WalletController = (): IWalletController => {
               'Should not derive from hdsigner if the account is from the hardware wallet'
             );
           } else {
-            const child = main.Signer.deriveAccount(i);
-            main.Signer.Signer.accounts.push(
+            const child = mainSigner.Signer.deriveAccount(i);
+            mainSigner.Signer.Signer.accounts.push(
               new fromZPrv(
                 child,
-                main.Signer.Signer.pubTypes,
-                main.Signer.Signer.networks
+                mainSigner.Signer.Signer.pubTypes,
+                mainSigner.Signer.Signer.networks
               )
             );
-            main.Signer.setAccountIndex(activeAccountId);
+            mainSigner.Signer.setAccountIndex(activeAccountId);
           }
         }
       }
 
       encryptedPassword = CryptoJS.SHA3(pwd).toString();
 
-      account.getPrimaryAccount(pwd, main);
+      account.getPrimaryAccount(pwd, mainSigner);
 
       account.watchMemPool(accounts[activeAccountId]);
 
@@ -156,8 +203,8 @@ const WalletController = (): IWalletController => {
       password = '';
       encryptedPassword = '';
       mnemonic = '';
-      hd = null;
-      main = null;
+      HDSigner = null;
+      mainSigner = null;
 
       store.dispatch(forgetWalletState());
       store.dispatch(updateStatus());
@@ -190,23 +237,23 @@ const WalletController = (): IWalletController => {
     if (Number(index) === 0) {
       account.setNewXpub(
         Number(index),
-        main.Signer.Signer.accounts[Number(index)].getAccountPublicKey(),
-        main.Signer.Signer.accounts[Number(index)].getAccountPrivateKey(),
+        mainSigner.Signer.Signer.accounts[Number(index)].getAccountPublicKey(),
+        mainSigner.Signer.Signer.accounts[Number(index)].getAccountPrivateKey(),
         encryptedPassword
       );
 
       return;
     }
 
-    const child = main.Signer.deriveAccount(Number(index));
+    const child = mainSigner.Signer.deriveAccount(Number(index));
     const derived = new fromZPrv(
       child,
-      main.Signer.Signer.pubTypes,
-      main.Signer.Signer.networks
+      mainSigner.Signer.Signer.pubTypes,
+      mainSigner.Signer.Signer.networks
     );
 
-    main.Signer.Signer.accounts.push(derived);
-    main.Signer.setAccountIndex(activeAccountId);
+    mainSigner.Signer.Signer.accounts.push(derived);
+    mainSigner.Signer.setAccountIndex(activeAccountId);
 
     account.setNewXpub(
       Number(index),
@@ -297,9 +344,23 @@ const WalletController = (): IWalletController => {
           blockbook.coin === 'Syscoin' ||
           blockbook.coin === 'Syscoin Testnet'
         ) {
+          let isTestnet = false;
+
+          if (backend.chain === 'main') {
+            isTestnet = false;
+          }
+
+          if (backend.chain === 'test') {
+            isTestnet = true;
+          }
+
+          let network: any = blockbook.coin === 'Syscoin' ? 'main' : 'testnet';
+
+          setMainSigner(isTestnet, network);
+
           store.dispatch(updateSwitchNetwork(true));
 
-          getAccountDataByNetwork(main);
+          getAccountDataByNetwork(mainSigner);
         }
 
         return;
@@ -319,7 +380,7 @@ const WalletController = (): IWalletController => {
 
     if (userAccount?.isTrezorWallet) {
       const res = await sys.utils.fetchBackendAccount(
-        main.blockbookURL,
+        mainSigner.blockbookURL,
         userAccount.xpub,
         'tokens=nonzero&details=txs',
         true
@@ -327,8 +388,8 @@ const WalletController = (): IWalletController => {
 
       const account0 = new fromZPub(
         userAccount.xpub,
-        main.Signer.Signer.pubTypes,
-        main.Signer.Signer.networks
+        mainSigner.Signer.Signer.pubTypes,
+        mainSigner.Signer.Signer.networks
       );
 
       let receivingIndex = -1;
@@ -358,7 +419,7 @@ const WalletController = (): IWalletController => {
       address = account0.getAddress(receivingIndex + 1);
     } else {
       try {
-        address = await main.Signer.getNewReceivingAddress(true);
+        address = await mainSigner.Signer.getNewReceivingAddress(true);
       } catch (error: any) {
         logError('Failed to get receiving address');
 
@@ -373,6 +434,7 @@ const WalletController = (): IWalletController => {
     account,
     isLocked,
     setWalletPassword,
+    setMainSigner,
     generatePhrase,
     createWallet,
     checkPassword,

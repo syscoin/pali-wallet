@@ -26,6 +26,7 @@ export interface IWalletController {
   mnemonic: string;
   password: string;
   setWalletPassword: (pwd: string) => void;
+  setMainSigner: (isTestnet: boolean, network: string) => void;
   switchNetwork: (networkId: string) => void;
   switchWallet: (id: number) => void;
   trezor: Readonly<any>;
