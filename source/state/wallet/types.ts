@@ -91,8 +91,5 @@ export default interface IWalletState {
     executing: boolean;
     type: string;
   };
-  trustedApps: {
-    [id: string]: string;
-  };
   walletTokens: IWalletTokenState[];
 }

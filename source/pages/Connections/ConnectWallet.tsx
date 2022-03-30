@@ -31,7 +31,7 @@ export const ConnectWallet = () => {
   };
 
   useEffect(() => {
-    const trustedApp = trustedApps[getHost(currentSenderURL)] !== '';
+    const trustedApp = trustedApps.includes(getHost(currentSenderURL));
 
     setIsInTrustedList(trustedApp);
   });
