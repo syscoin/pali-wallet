@@ -13,19 +13,22 @@ import { getController } from 'utils/browser';
 
 export const SendConfirm = () => {
   const controller = getController();
-  const activeAccount = controller.wallet.account.getActiveAccount();
+  const { activeAccount } = useStore();
   const { alert, navigate } = useUtils();
-  const { confirmingTransaction } = useStore();
+  const {
+    temporaryTransactionState: { executing, type },
+  } = useStore();
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
-  const tempTx = controller.wallet.account.getTemporaryTransaction('sendAsset');
+  const tempTx =
+    controller.wallet.account.tx.getTemporaryTransaction('sendAsset');
 
   const handleConfirm = async () => {
     const recommendedFee = await controller.wallet.account.getRecommendFee();
 
-    if ((activeAccount ? activeAccount.balance : -1) > 0) {
+    if ((activeAccount ? activeAccount.balances.syscoin : -1) > 0) {
       setLoading(true);
 
       try {
@@ -43,7 +46,7 @@ export const SendConfirm = () => {
           alert.removeAll();
           alert.error("Can't complete transaction. Try again later.");
 
-          if (confirmingTransaction) {
+          if (executing && type === 'sendAsset') {
             browser.runtime.sendMessage({
               type: 'WALLET_ERROR',
               target: 'background',
@@ -85,7 +88,7 @@ export const SendConfirm = () => {
           }
 
           if (error && tempTx.fee <= recommendedFee) {
-            const max = (100 * tempTx.amount) / activeAccount?.balance;
+            const max = (100 * tempTx.amount) / activeAccount?.balances.syscoin;
 
             if (tempTx.amount >= (max * tempTx.amount) / 100) {
               alert.removeAll();
@@ -100,7 +103,7 @@ export const SendConfirm = () => {
             alert.error("Can't complete transaction. Try again later.");
           }
 
-          if (confirmingTransaction) {
+          if (executing && type === 'sendAsset') {
             browser.runtime.sendMessage({
               type: 'WALLET_ERROR',
               target: 'background',

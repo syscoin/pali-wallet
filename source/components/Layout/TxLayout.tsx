@@ -8,7 +8,7 @@ import {
 } from 'components/index';
 import { browser } from 'webextension-polyfill-ts';
 import { useUtils, useStore } from 'hooks/index';
-import { getHost, rejectTransaction } from 'utils/index';
+import { rejectTransaction } from 'utils/index';
 import { getController } from 'utils/browser';
 import { Form, Input } from 'antd';
 
@@ -20,10 +20,10 @@ interface ITxLayout {
 
 export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
   const accountController = getController().wallet.account;
-  const transaction = accountController.getTemporaryTransaction(txType);
+  const transaction = accountController.tx.getTemporaryTransaction(txType);
 
   const { navigate } = useUtils();
-  const { currentSenderURL, activeNetwork } = useStore();
+  const { activeNetwork } = useStore();
 
   const [loading, setLoading] = useState(false);
   const [recommend, setRecommend] = useState(0.00001);
@@ -40,7 +40,7 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
   });
 
   const updateTemporaryTransaction = ({ fee }) => {
-    accountController.updateTemporaryTransaction({
+    accountController.tx.updateTemporaryTransaction({
       tx: {
         ...transaction,
         fee,
@@ -52,16 +52,13 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
     navigate(confirmRoute);
   };
 
-  const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
+  const disabledFee =
+    activeNetwork.chainId === 57 || activeNetwork.chainId === 5700;
 
   return (
     <Layout canGoBack={false} title={title.toUpperCase()}>
       <div className="flex flex-col items-center justify-center">
         <h1 className="mt-4 text-sm">FEE</h1>
-
-        <p className="text-brand-royalblue text-sm">
-          {getHost(`${currentSenderURL}`)}
-        </p>
 
         <Form
           form={form}

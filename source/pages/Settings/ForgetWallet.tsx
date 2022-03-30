@@ -9,10 +9,10 @@ const ForgetWalletView = () => {
   const { navigate } = useUtils();
 
   const controller = getController();
-  const activeAccount = controller.wallet.account.getActiveAccount();
+  const { activeAccount } = useStore();
 
   if (!activeAccount) throw new Error('No active account');
-  const hasAccountFunds = activeAccount.balance > 0;
+  const hasAccountFunds = activeAccount.balances.syscoin > 0;
 
   // if account has no funds, no need to input the seed
   const [isSeedValid, setIsSeedValid] = useState<boolean>(!hasAccountFunds);

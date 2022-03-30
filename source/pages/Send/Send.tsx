@@ -15,7 +15,7 @@ interface ISend {
 export const Send: FC<ISend> = () => {
   const { getFiatAmount } = usePrice();
   const controller = getController();
-  const activeAccount = controller.wallet.account.getActiveAccount();
+  const { activeAccount } = useStore();
 
   const { alert, navigate } = useUtils();
   const { activeNetwork, fiat } = useStore();
@@ -42,19 +42,20 @@ export const Send: FC<ISend> = () => {
     });
   }, [form, handleGetFee]);
 
-  const hasAccountAssets = activeAccount && activeAccount.assets.length > 0;
+  const hasAccountAssets =
+    activeAccount && Object.values(activeAccount.tokens).length > 0;
 
   const handleSelectedAsset = (item: number) => {
-    if (activeAccount?.assets) {
-      const getAsset = activeAccount?.assets.find(
-        (asset: Assets) => asset.assetGuid === item
-      );
+    if (activeAccount?.tokens) {
+      // const getAsset = Object.values(activeAccount?.tokens).find(
+      //   (asset: Assets) => asset.assetGuid === item
+      // );
 
-      if (getAsset) {
-        setSelectedAsset(getAsset);
+      // if (getAsset) {
+      //   setSelectedAsset(getAsset);
 
-        return;
-      }
+      //   return;
+      // }
 
       setSelectedAsset(null);
     }
@@ -76,9 +77,9 @@ export const Send: FC<ISend> = () => {
     const { receiver, amount, fee } = data;
 
     try {
-      controller.wallet.account.updateTemporaryTransaction({
+      controller.wallet.account.tx.updateTemporaryTransaction({
         tx: {
-          fromAddress: activeAccount?.address.main,
+          fromAddress: activeAccount?.address,
           toAddress: receiver,
           amount,
           fee,
@@ -97,10 +98,11 @@ export const Send: FC<ISend> = () => {
   };
 
   useEffect(() => {
-    log(`assets: ${activeAccount?.assets}`);
+    log(`assets: ${activeAccount?.tokens}`);
   }, []);
 
-  const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
+  const disabledFee =
+    activeNetwork.chainId === 57 || activeNetwork.chainId === 5700;
 
   const SendForm = () => (
     <div className="mt-4">
@@ -141,7 +143,7 @@ export const Send: FC<ISend> = () => {
                   !value ||
                   controller.wallet.account.isValidSYSAddress(
                     value,
-                    activeNetwork,
+                    activeNetwork.chainId,
                     verifyAddress
                   )
                 ) {
@@ -198,17 +200,18 @@ export const Send: FC<ISend> = () => {
                   {hasAccountAssets && (
                     <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
                       {activeAccount &&
-                        activeAccount.assets.map((item) => (
+                        Object.values(activeAccount.tokens).map((item) => (
+                          // todo: set assetguid type to number
                           <Menu.Item>
                             <button
                               onClick={() =>
-                                handleSelectedAsset(item.assetGuid)
+                                handleSelectedAsset(Number(item.tokenId))
                               }
                               className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                             >
                               <p>{item.symbol}</p>
                               <small>
-                                {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
+                                {isNFT(Number(item.tokenId)) ? 'NFT' : 'SPT'}
                               </small>
                             </button>
                           </Menu.Item>
@@ -319,7 +322,7 @@ export const Send: FC<ISend> = () => {
               validator(_, value) {
                 const balance = selectedAsset
                   ? selectedAsset.balance / 10 ** selectedAsset.decimals
-                  : Number(activeAccount?.balance);
+                  : Number(activeAccount?.balances.syscoin);
 
                 if (value > balance) {
                   return Promise.reject();

@@ -6,6 +6,7 @@ import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
 import { ManageNetwork } from '.';
+import { INetworkType } from '@pollum-io/sysweb3-utils';
 
 const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   const [loading, setLoading] = useState(false);
@@ -23,12 +24,13 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
 
       if (response && coin) {
         if (coin === 'Syscoin' || coin === 'Syscoin Testnet') {
-          controller.wallet.account.updateNetworkData({
-            id: selectedToEdit
+          controller.wallet.account.updateNetworkData(INetworkType.Syscoin, {
+            chainId: selectedToEdit
               ? selectedToEdit.id
               : network.toString().toLowerCase(),
             label: network,
-            beUrl: blockbookURL,
+            url: blockbookURL,
+            default: false,
           });
 
           setLoading(false);

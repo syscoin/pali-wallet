@@ -2,7 +2,7 @@ import React, { FC, useEffect, useState } from 'react';
 import { Layout, SecondaryButton, Icon, Tooltip } from 'components/index';
 import { getController } from 'utils/browser';
 import { Disclosure } from '@headlessui/react';
-import store from 'state/store';
+import { useStore } from 'hooks/index';
 
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
@@ -14,10 +14,10 @@ const ConnectHardwareWalletView: FC = () => {
     await controller.wallet.trezor.connectHardware();
   };
 
-  const { activeNetwork } = store.getState().wallet;
+  const { activeNetwork } = useStore();
 
   useEffect(() => {
-    setIsTestnet(activeNetwork === 'testnet');
+    setIsTestnet(activeNetwork.chainId === 57);
   }, [activeNetwork]);
 
   return (

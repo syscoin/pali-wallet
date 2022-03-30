@@ -76,7 +76,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
 
     setLoading(true);
 
-    if ((activeAccount ? activeAccount.balance : -1) > 0) {
+    if ((activeAccount ? activeAccount.balances.syscoin : -1) > 0) {
       isPending = true;
 
       try {
@@ -378,7 +378,7 @@ export const TxConfirmLayout: React.FC<ITxConfirmLayout> = ({
   txType,
 }) => {
   const walletCtlr = getController().wallet;
-  const { getTemporaryTransaction } = walletCtlr.account;
+  const { getTemporaryTransaction } = walletCtlr.account.tx;
 
   const transaction = getTemporaryTransaction(txType);
 

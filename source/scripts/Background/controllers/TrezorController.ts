@@ -4,7 +4,7 @@ import { openNotificationsPopup } from 'utils/index';
 
 const TrezorController = ({ account }) => {
   const connectHardware = async (): Promise<void> => {
-    const isTestnet = store.getState().wallet.activeNetwork === 'testnet';
+    const isTestnet = store.getState().vault.activeNetwork.chainId === 5700;
 
     if (isTestnet) {
       return openNotificationsPopup(
