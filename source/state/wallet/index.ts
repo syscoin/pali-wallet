@@ -23,7 +23,6 @@ export const initialState: IWalletState = {
   accounts: [],
   activeAccountId: 0,
   activeNetwork: 'main',
-  encriptedMnemonic: null,
   changingNetwork: false,
   signingTransaction: false,
   signingPSBT: false,
@@ -232,12 +231,6 @@ const WalletState = createSlice({
         },
       };
     },
-    setEncriptedMnemonic(
-      state: IWalletState,
-      action: PayloadAction<CryptoJS.lib.CipherParams>
-    ) {
-      state.encriptedMnemonic = action.payload.toString();
-    },
     createAccount(state: IWalletState, action: PayloadAction<IAccountState>) {
       return {
         ...state,
@@ -361,7 +354,6 @@ export const {
   updateAccount,
   updateTransactions,
   updateLabel,
-  setEncriptedMnemonic,
   updateAccountAddress,
   updateAccountXpub,
   setSenderURL,

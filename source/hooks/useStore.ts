@@ -9,7 +9,6 @@ export const useStore = () => {
     accounts,
     activeAccountId,
     activeNetwork,
-    encriptedMnemonic,
     changingNetwork,
     signingTransaction,
     signingPSBT,
@@ -22,7 +21,9 @@ export const useStore = () => {
 
   const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
 
-  const { timer }: IVaultState = useSelector((state: RootState) => state.vault);
+  const { timer, hasEncryptedVault }: IVaultState = useSelector(
+    (state: RootState) => state.vault
+  );
 
   const { currentSenderURL, currentURL, canConnect, connections } = tabs;
 
@@ -30,7 +31,7 @@ export const useStore = () => {
     accounts,
     activeAccountId,
     activeNetwork,
-    encriptedMnemonic,
+    hasEncryptedVault,
     changingNetwork,
     signingTransaction,
     signingPSBT,

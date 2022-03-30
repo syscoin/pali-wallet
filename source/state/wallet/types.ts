@@ -82,7 +82,6 @@ export default interface IWalletState {
   activeAccountId: number;
   activeNetwork: string;
   changingNetwork: boolean;
-  encriptedMnemonic: any;
   networks: { [networkId: string]: INetwork };
   signingPSBT: boolean;
   signingTransaction: boolean;

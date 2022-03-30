@@ -10,7 +10,7 @@ import { getController } from 'utils/browser';
 const AccountMenu: React.FC = () => {
   const navigate = useNavigate();
   const { wallet } = getController();
-  const { encriptedMnemonic, accounts, activeAccountId } = useStore();
+  const { hasEncryptedVault, accounts, activeAccountId } = useStore();
 
   const switchAccount = (id: number) => {
     wallet.switchWallet(Number(id));
@@ -28,7 +28,7 @@ const AccountMenu: React.FC = () => {
       className="absolute right-3 inline-block text-right md:max-w-2xl"
     >
       <Menu.Button className="inline-flex justify-center w-full hover:text-button-primaryhover text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-        {encriptedMnemonic && <Icon name="dots" className="z-0" />}
+        {hasEncryptedVault && <Icon name="dots" className="z-0" />}
       </Menu.Button>
 
       <Transition

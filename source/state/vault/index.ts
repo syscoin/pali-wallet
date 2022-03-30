@@ -11,7 +11,7 @@ import trustedApps from './trustedApps.json';
 import { IVaultState } from './types';
 
 export const initialState: IVaultState = {
-  lastLogin: 0,
+  lastLogin: 0, //
   accounts: {},
   activeAccount: initialActiveAccountState,
   activeNetwork: {
@@ -21,14 +21,15 @@ export const initialState: IVaultState = {
     default: true,
   },
   isPendingBalances: false,
-  timer: 5,
+  timer: 5, //
   networks: initialNetworksState,
   trustedApps,
   activeToken: 'SYS',
-  temporaryTransactionState: { executing: false, type: '' },
+  temporaryTransactionState: { executing: false, type: '' }, // todo: remove temporary tx state from sysweb3
   hasEncryptedVault: false,
+  encryptedMnemonic: '',
   getState: () => initialState,
-  version: '2.0.0',
+  version: '2.0.0', // todo: remove version from sysweb3
 };
 
 const VaultState = createSlice({
@@ -89,6 +90,9 @@ const VaultState = createSlice({
     setActiveToken(state: IVaultState, action: PayloadAction<string>) {
       state.activeToken = action.payload;
     },
+    setEncryptedMnemonic(state: IVaultState, action: PayloadAction<string>) {
+      state.encryptedMnemonic = action.payload;
+    },
   },
 });
 
@@ -101,6 +105,7 @@ export const {
   setLastLogin,
   setNetworks,
   setTimer,
+  setEncryptedMnemonic,
 } = VaultState.actions;
 
 export default VaultState.reducer;

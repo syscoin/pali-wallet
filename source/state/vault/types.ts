@@ -5,4 +5,5 @@ export interface IVaultState extends IWalletState {
   isPendingBalances: boolean;
   timer: number;
   trustedApps: string[];
+  encryptedMnemonic: string;
 }

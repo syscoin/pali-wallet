@@ -4,13 +4,12 @@ import {
   forgetWallet as forgetWalletState,
   changeAccountActiveId,
   changeActiveNetwork,
-  setEncriptedMnemonic,
   removeAccounts,
   removeAccount,
   updateSwitchNetwork,
   // removeConnection,
 } from 'state/wallet';
-import IWalletState, { IAccountState } from 'state/wallet/types';
+import { IAccountState } from 'state/wallet/types';
 import CryptoJS from 'crypto-js';
 import store from 'state/store';
 import axios from 'axios';
@@ -19,7 +18,7 @@ import { log, logError, openNotificationsPopup } from 'utils/index';
 
 import AccountController from './AccountController';
 import TrezorController from './TrezorController';
-import { setLastLogin } from 'state/vault';
+import { setLastLogin, setEncryptedMnemonic } from 'state/vault';
 
 const sys = require('syscoinjs-lib');
 
@@ -72,9 +71,9 @@ const WalletController = (): IWalletController => {
 
   const retrieveEncriptedMnemonic = () => {
     // not encrypted for now but we got to retrieve
-    const { encriptedMnemonic }: IWalletState = store.getState().wallet;
+    const { encryptedMnemonic } = store.getState().vault;
 
-    return encriptedMnemonic !== '' ? encriptedMnemonic : null;
+    return encryptedMnemonic !== '' ? encryptedMnemonic : null;
   };
 
   const generatePhrase = () => {
@@ -111,7 +110,7 @@ const WalletController = (): IWalletController => {
 
     const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic, password);
 
-    store.dispatch(setEncriptedMnemonic(encryptedMnemonic));
+    store.dispatch(setEncryptedMnemonic(String(encryptedMnemonic)));
 
     account.subscribeAccount(false, sjs, undefined, true).then(() => {
       account.getPrimaryAccount(password, sjs);
@@ -129,9 +128,9 @@ const WalletController = (): IWalletController => {
 
   const unLock = async (pwd: string) => {
     try {
-      const encriptedMnemonic = retrieveEncriptedMnemonic();
+      const encryptedMnemonic = retrieveEncriptedMnemonic();
       const decriptedMnemonic = CryptoJS.AES.decrypt(
-        encriptedMnemonic,
+        String(encryptedMnemonic),
         pwd
       ).toString(CryptoJS.enc.Utf8);
 
