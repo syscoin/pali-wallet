@@ -76,7 +76,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
 
     setLoading(true);
 
-    if ((activeAccount ? activeAccount.balance : -1) > 0) {
+    if ((activeAccount ? activeAccount.balances.syscoin : -1) > 0) {
       isPending = true;
 
       try {

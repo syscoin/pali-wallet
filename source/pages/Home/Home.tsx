@@ -34,7 +34,7 @@ export const Home = () => {
                     className="font-rubik text-5xl font-medium"
                     id="home-balance"
                   >
-                    {formatNumber(activeAccount?.balance || 0)}{' '}
+                    {formatNumber(activeAccount?.balances.syscoin || 0)}{' '}
                   </p>
 
                   <p className="mt-4 font-poppins">TSYS</p>
@@ -46,7 +46,7 @@ export const Home = () => {
                       id="home-balance"
                       className="font-rubik text-5xl font-medium"
                     >
-                      {formatNumber(activeAccount?.balance || 0)}{' '}
+                      {formatNumber(activeAccount?.balances.syscoin || 0)}{' '}
                     </p>
 
                     <p className="mt-4 font-poppins">SYS</p>
@@ -54,7 +54,7 @@ export const Home = () => {
 
                   <p id="fiat-ammount">
                     {getFiatAmount(
-                      activeAccount.balance || 0,
+                      activeAccount.balances.syscoin || 0,
                       4,
                       String(fiat.current)
                     )}

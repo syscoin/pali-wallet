@@ -27,7 +27,7 @@ export const SendConfirm = () => {
   const handleConfirm = async () => {
     const recommendedFee = await controller.wallet.account.getRecommendFee();
 
-    if ((activeAccount ? activeAccount.balance : -1) > 0) {
+    if ((activeAccount ? activeAccount.balances.syscoin : -1) > 0) {
       setLoading(true);
 
       try {
@@ -87,7 +87,7 @@ export const SendConfirm = () => {
           }
 
           if (error && tempTx.fee <= recommendedFee) {
-            const max = (100 * tempTx.amount) / activeAccount?.balance;
+            const max = (100 * tempTx.amount) / activeAccount?.balances.syscoin;
 
             if (tempTx.amount >= (max * tempTx.amount) / 100) {
               alert.removeAll();

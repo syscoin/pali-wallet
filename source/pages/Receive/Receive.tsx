@@ -29,7 +29,7 @@ export const Receive = () => {
       {loaded && activeAccount ? (
         <div className="flex flex-col items-center justify-center pt-8 w-full">
           <QRCode
-            value={activeAccount.address.main}
+            value={activeAccount.address}
             bgColor="#fff"
             fgColor="#000"
             id="qr-code"
@@ -42,7 +42,7 @@ export const Receive = () => {
           />
 
           <p className="mt-4 text-base">
-            {ellipsis(activeAccount.address.main, 4, 10)}
+            {ellipsis(activeAccount.address, 4, 10)}
           </p>
 
           <div
@@ -51,7 +51,7 @@ export const Receive = () => {
           >
             <SecondaryButton
               type="button"
-              onClick={() => copyText(activeAccount.address.main)}
+              onClick={() => copyText(activeAccount.address)}
             >
               <span className="text-xs">
                 {isCopied ? 'Copied address' : 'Copy'}

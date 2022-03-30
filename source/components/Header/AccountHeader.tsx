@@ -170,7 +170,7 @@ export const AccountHeader: React.FC = () => {
       backColor: '#07152B',
       padding: 1,
     });
-  }, [activeAccount?.address.main]);
+  }, [activeAccount?.address]);
 
   useEffect(() => {
     if (!copied) return;
@@ -188,13 +188,11 @@ export const AccountHeader: React.FC = () => {
           <p className="mb-1 text-base" id="active-account-label">
             {activeAccount?.label}
           </p>
-          <p className="text-xs">
-            {ellipsis(activeAccount?.address.main, 6, 14)}
-          </p>
+          <p className="text-xs">{ellipsis(activeAccount?.address, 6, 14)}</p>
         </div>
 
         <IconButton
-          onClick={() => copy(activeAccount?.address.main ?? '')}
+          onClick={() => copy(activeAccount?.address ?? '')}
           type="primary"
           shape="circle"
           className="mt-3"

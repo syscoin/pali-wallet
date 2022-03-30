@@ -10,8 +10,8 @@ export const AssetsPanel: FC = () => {
   return (
     <>
       <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
-        {activeAccount?.assets && activeAccount?.assets.length > 0 ? (
-          <PanelList data={activeAccount?.assets} activity={false} assets />
+        {activeAccount?.tokens ? (
+          <PanelList data={[]} activity={false} assets />
         ) : (
           <p className="flex items-center justify-center text-brand-white text-sm">
             You have no tokens or NFTs.
