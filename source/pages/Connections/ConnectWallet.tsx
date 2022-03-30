@@ -6,14 +6,13 @@ import {
   Icon,
   Modal,
 } from 'components/index';
-import { useStore, useDappConnection } from 'hooks/index';
+import { useStore } from 'hooks/index';
 import { ellipsis, getHost } from 'utils/index';
 import { getController } from 'utils/browser';
 import { Dialog } from '@headlessui/react';
 
 export const ConnectWallet = () => {
-  const { confirmConnection, cancelConnection } = useDappConnection();
-  const { accounts, currentSenderURL, trustedApps } = useStore();
+  const { accounts, trustedApps } = useStore();
   const accountController = getController().wallet.account;
   const connectedAccount = accountController.getConnectedAccount();
 
@@ -31,7 +30,7 @@ export const ConnectWallet = () => {
   };
 
   useEffect(() => {
-    const trustedApp = trustedApps.includes(getHost(currentSenderURL));
+    const trustedApp = trustedApps.includes(getHost(''));
 
     setIsInTrustedList(trustedApp);
   });
@@ -40,10 +39,6 @@ export const ConnectWallet = () => {
     <Layout canGoBack={false} title="CONNECT WITH">
       <div className="flex flex-col items-center justify-center w-full">
         <h1 className="mt-4 text-sm">PALI WALLET</h1>
-
-        <p className="text-brand-royalblue text-sm">
-          {getHost(`${currentSenderURL}`)}
-        </p>
 
         {accounts.length > 0 ? (
           <ul className="scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-64 overflow-auto">
@@ -85,11 +80,7 @@ export const ConnectWallet = () => {
         </small>
 
         <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
-          <SecondaryButton
-            type="button"
-            action
-            onClick={() => cancelConnection(accountId)}
-          >
+          <SecondaryButton type="button" action onClick={() => window.close()}>
             Cancel
           </SecondaryButton>
 
@@ -98,9 +89,7 @@ export const ConnectWallet = () => {
             action
             disabled={accountId === -1}
             onClick={
-              !isInTrustedList
-                ? () => setOpenExtraConfirmation(true)
-                : () => confirmConnection(accountId)
+              !isInTrustedList ? () => setOpenExtraConfirmation(true) : () => {}
             }
           >
             {accountId > -1 ? 'Confirm' : 'Next'}
@@ -132,17 +121,12 @@ export const ConnectWallet = () => {
                 action
                 width="32"
                 type="button"
-                onClick={() => cancelConnection(accountId)}
+                onClick={() => window.close()}
               >
                 Cancel
               </SecondaryButton>
 
-              <PrimaryButton
-                action
-                width="32"
-                type="button"
-                onClick={() => confirmConnection(accountId)}
-              >
+              <PrimaryButton action width="32" type="button" onClick={() => {}}>
                 Confirm
               </PrimaryButton>
             </div>

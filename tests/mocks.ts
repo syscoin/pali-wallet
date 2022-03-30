@@ -1,9 +1,5 @@
 import { initialState } from 'state/wallet';
-import IWalletState, {
-  Connection,
-  IAccountState,
-  ITab,
-} from 'state/wallet/types';
+import IWalletState, { IAccountState } from 'state/wallet/types';
 import { Assets, Transaction } from 'types/transactions';
 
 export interface PsbtTransaction {
@@ -109,18 +105,6 @@ export const FAKE_ACCOUNT: IAccountState = {
   ],
   xprv: FAKE_XPRV,
   xpub: FAKE_XPUB,
-};
-
-export const FAKE_CONNECTION: Connection = {
-  accountId: FAKE_ACCOUNT.id,
-  url: 'sysmint.paliwallet.com',
-};
-
-export const FAKE_TAB: ITab = {
-  canConnect: false,
-  connections: [FAKE_CONNECTION],
-  currentSenderURL: 'https://sysmint.paliwallet.com/',
-  currentURL: 'https://sysmint.paliwallet.com/',
 };
 
 // state with an account

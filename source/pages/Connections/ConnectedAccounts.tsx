@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
-import { useStore, useDappConnection } from 'hooks/index';
-import { ellipsis, getHost } from 'utils/index';
+import { useStore } from 'hooks/index';
+import { ellipsis } from 'utils/index';
 import { closePopup, getController } from 'utils/browser';
 
 export const ConnectedAccounts = () => {
   const accountController = getController().wallet.account;
   const connectedAccount = accountController.getConnectedAccount();
 
-  const { changeConnectedAccount } = useDappConnection();
-  const { accounts, currentSenderURL } = useStore();
+  const { accounts } = useStore();
 
   const [accountId, setAccountId] = useState<number>(
     connectedAccount?.id || -1
@@ -27,10 +26,6 @@ export const ConnectedAccounts = () => {
     <Layout canGoBack={false} title="CONNECTED ACCOUNT">
       <div className="flex flex-col items-center justify-center w-full">
         <h1 className="mt-4 text-sm">PALI WALLET</h1>
-
-        <p className="text-brand-royalblue text-sm">
-          {getHost(`${currentSenderURL}`)}
-        </p>
 
         <ul className="scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-72 overflow-auto">
           {accounts.map((account: any) => (
@@ -67,7 +62,7 @@ export const ConnectedAccounts = () => {
             type="button"
             width="40"
             disabled={accountId === -1}
-            onClick={() => changeConnectedAccount(accountId)}
+            onClick={() => {}}
           >
             Change
           </PrimaryButton>

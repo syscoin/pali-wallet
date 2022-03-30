@@ -59,18 +59,6 @@ export interface IWalletTokenState {
   tokens: { [assetGuid: string]: Assets };
 }
 
-export interface Connection {
-  accountId: number;
-  url: string;
-}
-
-export interface ITab {
-  canConnect: boolean;
-  connections: Connection[];
-  currentSenderURL: string;
-  currentURL: string;
-}
-
 export interface INetwork {
   beUrl: string;
   id: string;
