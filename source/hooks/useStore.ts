@@ -13,7 +13,6 @@ export const useStore = () => {
     signingTransaction,
     signingPSBT,
     walletTokens,
-    tabs,
     networks,
     temporaryTransactionState,
   }: IWalletState = useSelector((state: RootState) => state.wallet);
@@ -24,8 +23,6 @@ export const useStore = () => {
     (state: RootState) => state.vault
   );
 
-  const { currentSenderURL, currentURL, canConnect, connections } = tabs;
-
   return {
     accounts,
     activeAccountId,
@@ -35,11 +32,6 @@ export const useStore = () => {
     signingTransaction,
     signingPSBT,
     walletTokens,
-    tabs,
-    currentSenderURL,
-    currentURL,
-    canConnect,
-    connections,
     networks,
     trustedApps,
     temporaryTransactionState,
