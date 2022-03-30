@@ -49,7 +49,7 @@ export interface IAccountController {
   decryptAES: (encryptedString: any, key: string) => any;
   getActiveAccount: () => IAccountState | undefined;
   getChangeAddress: () => Promise<string>;
-  getConnectedAccount: () => IAccountState;
+  getConnectedAccount: () => IAccountState | undefined;
   getDataAsset: (assetGuid: any) => any;
   getHoldingsData: () => any;
   getLatestUpdate: () => void;

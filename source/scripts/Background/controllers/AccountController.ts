@@ -101,20 +101,7 @@ const AccountController = (actions: {
     );
   };
 
-  const getConnectedAccount = (): IAccountState => {
-    const { accounts, tabs }: IWalletState = store.getState().wallet;
-    const { currentURL } = tabs;
-
-    return accounts.find((account: IAccountState) =>
-      account.connectedTo.find(
-        (url: string) => url === new URL(currentURL).host
-      )
-    ) as IAccountState;
-  };
-
-  const connectedAccountXpub = getConnectedAccount()
-    ? getConnectedAccount().xpub
-    : null;
+  const getConnectedAccount = (): IAccountState | undefined => undefined;
 
   const createEmptyTransaction = (txid: string): Transaction => ({
     txid,
@@ -138,14 +125,14 @@ const AccountController = (actions: {
     const connectedAccount = getConnectedAccount();
 
     if (!isSendAsset && connectedAccount) {
-      transactions = connectedAccount.transactions;
+      transactions = connectedAccount?.transactions;
     }
 
     store.dispatch(
       updateTransactions({
         id: isSendAsset
           ? Number(globalAccount?.id)
-          : Number(getConnectedAccount().id),
+          : Number(getConnectedAccount()?.id),
         txs: [createEmptyTransaction(txinfo), ...transactions],
       })
     );
@@ -440,17 +427,17 @@ const AccountController = (actions: {
 
     const paliAccount = await sys.utils.fetchBackendAccount(
       sysjs.blockbookURL,
-      connectedAccount.xpub,
+      connectedAccount?.xpub,
       'details=txs&assetMask=non-token-transfers',
       true
     );
 
-    return connectedAccount.isTrezorWallet ? backendAccount : paliAccount;
+    return connectedAccount?.isTrezorWallet ? backendAccount : paliAccount;
   };
 
   // this function is really useful but it not being used where it could
   const getChangeAddress = async () => {
-    const connectedAccount: IAccountState = getConnectedAccount();
+    const connectedAccount = getConnectedAccount();
 
     if (!sysjs) {
       logError('SYSJS not defined');
@@ -459,7 +446,7 @@ const AccountController = (actions: {
       return 'Error: wallet is locked, ask client to unlock it to get change address';
     }
 
-    if (connectedAccount.isTrezorWallet) {
+    if (connectedAccount?.isTrezorWallet) {
       const addr = 'Error: Failed to fetch trezor change address';
 
       const newAddr = await getNewChangeAddress(true);
@@ -627,7 +614,7 @@ const AccountController = (actions: {
 
     if (walletTokens) {
       const tokenIndex = walletTokens.findIndex(
-        (token) => token.accountId === getConnectedAccount().id
+        (token) => token.accountId === getConnectedAccount()?.id
       );
 
       if (tokenIndex > -1) {
@@ -643,7 +630,7 @@ const AccountController = (actions: {
 
     if (walletTokens) {
       const tokenIndex = walletTokens.findIndex(
-        (token) => token.accountId === getConnectedAccount().id
+        (token) => token.accountId === getConnectedAccount()?.id
       );
 
       if (tokenIndex > -1) {
@@ -666,7 +653,7 @@ const AccountController = (actions: {
 
       if (!TrezorSigner) setTrezorSigner();
 
-      const { isTrezorWallet } = getConnectedAccount();
+      const isTrezorWallet = getConnectedAccount()?.isTrezorWallet;
 
       // ? sendPSBT could have a better name
       // ? when its true, it doesnt send (??)
@@ -968,11 +955,11 @@ const AccountController = (actions: {
 
     const connectedAccount = getConnectedAccount();
 
-    if (connectedAccount.isTrezorWallet) {
+    if (connectedAccount?.isTrezorWallet) {
       throw new Error("Trezor don't support burning of coins");
     }
 
-    sysjs.Signer.setAccountIndex(connectedAccount.id);
+    sysjs.Signer.setAccountIndex(connectedAccount?.id);
 
     // ? 'pendingTx' could be named newAsset
     const pendingTx = await sysjs.assetNew(
@@ -1086,8 +1073,8 @@ const AccountController = (actions: {
     const txOpts = { rbf: true };
 
     const connectedAccount = getConnectedAccount();
-    if (!connectedAccount.isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(connectedAccount.id);
+    if (!connectedAccount?.isTrezorWallet) {
+      sysjs.Signer.setAccountIndex(connectedAccount?.id);
     }
 
     const { decimals } = await getAsset(assetGuid);
@@ -1097,7 +1084,7 @@ const AccountController = (actions: {
       [
         assetGuid,
         {
-          changeAddress: connectedAccount.isTrezorWallet
+          changeAddress: connectedAccount?.isTrezorWallet
             ? await getNewChangeAddress(true)
             : await sysjs.Signer.getNewChangeAddress(true),
           outputs: [
@@ -1111,7 +1098,7 @@ const AccountController = (actions: {
     ]);
 
     let txid: string;
-    if (connectedAccount.isTrezorWallet) {
+    if (connectedAccount?.isTrezorWallet) {
       const txData = await sysjs.assetSend(
         txOpts,
         assetMap,
@@ -1177,8 +1164,8 @@ const AccountController = (actions: {
     const feeRate = new sys.utils.BN(fee * 1e8);
 
     const connectedAccount = getConnectedAccount();
-    if (!connectedAccount.isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(connectedAccount.id);
+    if (!connectedAccount?.isTrezorWallet) {
+      sysjs.Signer.setAccountIndex(connectedAccount?.id);
     }
 
     const assetChangeAddress = await sysjs.Signer.getNewChangeAddress(true);
@@ -1220,10 +1207,10 @@ const AccountController = (actions: {
     const { fee, symbol, description, issuer, precision } = item;
 
     const connectedAccount = getConnectedAccount();
-    if (connectedAccount.isTrezorWallet) {
+    if (connectedAccount?.isTrezorWallet) {
       throw new Error('trezor does not support nft creation');
     } else {
-      sysjs.Signer.setAccountIndex(connectedAccount.id);
+      sysjs.Signer.setAccountIndex(connectedAccount?.id);
     }
 
     const assetOpts = {
@@ -1388,8 +1375,8 @@ const AccountController = (actions: {
 
     try {
       const connectedAccount = getConnectedAccount();
-      if (!connectedAccount.isTrezorWallet) {
-        sysjs.Signer.setAccountIndex(connectedAccount.id);
+      if (!connectedAccount?.isTrezorWallet) {
+        sysjs.Signer.setAccountIndex(connectedAccount?.id);
       }
 
       const pendingTx = await sysjs.assetSend(
@@ -1752,8 +1739,8 @@ const AccountController = (actions: {
     ]);
 
     const connectedAccount = getConnectedAccount();
-    if (!connectedAccount.isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(connectedAccount.id);
+    if (!connectedAccount?.isTrezorWallet) {
+      sysjs.Signer.setAccountIndex(connectedAccount?.id);
     }
 
     const pendingTx = await sysjs.assetUpdate(
@@ -1785,8 +1772,8 @@ const AccountController = (actions: {
     const { fee, assetGuid, newOwner } = item;
     const connectedAccount = getConnectedAccount();
 
-    if (!connectedAccount.isTrezorWallet) {
-      sysjs.Signer.setAccountIndex(connectedAccount.id);
+    if (!connectedAccount?.isTrezorWallet) {
+      sysjs.Signer.setAccountIndex(connectedAccount?.id);
     }
 
     const feeRate = new sys.utils.BN(fee * 1e8);
@@ -1796,7 +1783,7 @@ const AccountController = (actions: {
       [
         assetGuid,
         {
-          changeAddress: connectedAccount.isTrezorWallet
+          changeAddress: connectedAccount?.isTrezorWallet
             ? await getNewChangeAddress(true)
             : await sysjs.Signer.getNewChangeAddress(true),
           outputs: [
@@ -1810,7 +1797,7 @@ const AccountController = (actions: {
     ]);
 
     let txid: string;
-    if (connectedAccount.isTrezorWallet) {
+    if (connectedAccount?.isTrezorWallet) {
       const txData = await sysjs.assetUpdate(
         assetGuid,
         {},
@@ -1894,7 +1881,7 @@ const AccountController = (actions: {
     getDataAsset: getAsset,
     clearTemporaryTransaction,
     getActiveAccount,
-    getConnectedAccount,
+    getConnectedAccount: () => undefined,
     getChangeAddress,
     updateTokensState: updateTokens,
     getRawTransaction: getTransaction,
@@ -1912,7 +1899,7 @@ const AccountController = (actions: {
     confirmAssetTransfer,
     confirmMintNFT,
     confirmUpdateAsset,
-    connectedAccountXpub,
+    connectedAccountXpub: '',
   };
 };
 
