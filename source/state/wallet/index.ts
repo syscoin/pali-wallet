@@ -15,8 +15,6 @@ export const initialState: IWalletState = {
   activeAccountId: 0,
   activeNetwork: 'main',
   changingNetwork: false,
-  signingTransaction: false,
-  signingPSBT: false,
   walletTokens: [],
   networks: {
     main: {
@@ -29,10 +27,6 @@ export const initialState: IWalletState = {
       label: 'Test Network',
       beUrl: 'https://blockbook-dev.elint.services/',
     },
-  },
-  temporaryTransactionState: {
-    executing: false,
-    type: '',
   },
 };
 
@@ -61,31 +55,10 @@ const WalletState = createSlice({
         state.walletTokens.push(action.payload);
       }
     },
-    clearAllTransactions(state: IWalletState) {
-      return {
-        ...state,
-        temporaryTransactionState: {
-          executing: false,
-          type: '',
-        },
-      };
-    },
     updateSwitchNetwork(state: IWalletState, action: PayloadAction<boolean>) {
       return {
         ...state,
         changingNetwork: action.payload,
-      };
-    },
-    setTemporaryTransactionState(
-      state: IWalletState,
-      action: PayloadAction<{ executing: boolean; type: string }>
-    ) {
-      return {
-        ...state,
-        temporaryTransactionState: {
-          executing: action.payload.executing,
-          type: action.payload.type,
-        },
       };
     },
     createAccount(state: IWalletState, action: PayloadAction<IAccountState>) {
@@ -212,7 +185,6 @@ export const {
   clearAllTransactions,
   updateAllTokens,
   updateNetwork,
-  setTemporaryTransactionState,
 } = WalletState.actions;
 
 export default WalletState.reducer;

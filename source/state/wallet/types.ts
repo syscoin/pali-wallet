@@ -71,11 +71,5 @@ export default interface IWalletState {
   activeNetwork: string;
   changingNetwork: boolean;
   networks: { [networkId: string]: INetwork };
-  signingPSBT: boolean;
-  signingTransaction: boolean;
-  temporaryTransactionState: {
-    executing: boolean;
-    type: string;
-  };
   walletTokens: IWalletTokenState[];
 }

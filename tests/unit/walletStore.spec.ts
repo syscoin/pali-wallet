@@ -11,7 +11,6 @@
 //   removeConnection,
 //   setEncriptedMnemonic,
 //   setSenderURL,
-//   setTemporaryTransactionState,
 //   updateAccount,
 //   updateAccountAddress,
 //   updateAccountXpub,
@@ -142,16 +141,6 @@ describe('Wallet store actions', () => {
   //   });
   // });
 
-  // //* clearAllTransactions
-  // it('should clear all transactions [temporaryTransactionState]', () => {
-  //   const newState = reducer(initialState, clearAllTransactions());
-
-  //   expect(newState.temporaryTransactionState).toEqual({
-  //     executing: false,
-  //     type: '',
-  //   });
-  // });
-
   // //* updateSwitchNetwork
   // it('should update switch network [changingNetwork]', () => {
   //   const payload = true;
@@ -171,21 +160,6 @@ describe('Wallet store actions', () => {
 
   // //   expect(newState.confirmingTransaction).toEqual(true);
   // // });
-
-  // //* setTemporaryTransactionState
-  // it('should set [temporaryTransactionState]', () => {
-  //   const payload = {
-  //     executing: true,
-  //     type: '',
-  //   };
-
-  //   const newState = reducer(
-  //     initialState,
-  //     setTemporaryTransactionState(payload)
-  //   );
-
-  //   expect(newState.temporaryTransactionState).toEqual(payload);
-  // });
 
   // //* removeConnection
   // it('should remove a connection', () => {
@@ -416,20 +390,12 @@ describe('Wallet store actions', () => {
   // it('should forget the wallet', () => {
   //   // these fields should not change when deleting the wallet
   //   const staticFields = {
-  //     timer: 10,
   //     networks: {
   //       fakenetwork: {
   //         id: 'fakenetwork',
   //         label: 'Fake Network',
   //         beUrl: 'https://fake.network.com/',
   //       },
-  //     },
-  //     trustedApps: {
-  //       'website.com': 'https://website.com/route',
-  //     },
-  //     temporaryTransactionState: {
-  //       executing: true,
-  //       type: 'type',
   //     },
   //   };
 
