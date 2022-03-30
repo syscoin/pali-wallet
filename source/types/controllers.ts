@@ -63,7 +63,7 @@ export interface IAccountController {
   importPsbt: (psbt: any) => any;
   isValidSYSAddress: (
     address: string,
-    network: string,
+    networkId: number,
     verification?: boolean
   ) => boolean | undefined;
   setAutolockTimer: (minutes: number) => any;
@@ -84,28 +84,4 @@ export interface IAccountController {
   updateTokensState: () => any;
   updateTxs: () => void;
   watchMemPool: (currentAccount: IAccountState) => void;
-}
-
-export interface IConnectionsController {
-  connectWallet: () => any;
-  getChangeAddress: () => any | null;
-  getConnectedAccount: () => any | null;
-  getConnectedAccountXpub: () => any | null;
-  getDataAsset: (assetGuid: any) => any | null;
-  getHoldingsData: () => any | null;
-  getUserMintedTokens: () => Promise<any> | null;
-  getWalletState: () => any | null;
-  handleCreateNFT: (items: NewNFT) => Promise<any> | null;
-  handleCreateToken: (items: NewAsset) => Promise<any> | null;
-  handleIssueNFT: (amount: number, assetGuid: string) => Promise<any> | null;
-  handleIssueSPT: (items: MintAsset) => Promise<any> | null;
-  handleSendToken: (items: SendAsset) => Promise<any> | null;
-  handleTransferOwnership: (items: TransferAsset) => Promise<any> | null;
-  handleUpdateAsset: (items: UpdateAsset) => Promise<any> | null;
-  isLocked: () => any;
-  isNFT: (guid: number) => boolean | null;
-  isValidSYSAddress: (address: string) => any | null;
-  onWalletUpdate: (callback: any) => any;
-  signAndSend: (psbt: any) => Promise<any> | null;
-  signPSBT: (psbtToSign: any) => Promise<any> | null;
 }
