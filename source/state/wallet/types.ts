@@ -85,8 +85,6 @@ export default interface IWalletState {
   networks: { [networkId: string]: INetwork };
   signingPSBT: boolean;
   signingTransaction: boolean;
-  // ? 'tabs' should be 'tab' since is not a list
-  tabs: ITab;
   temporaryTransactionState: {
     executing: boolean;
     type: string;
