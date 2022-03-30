@@ -44,7 +44,7 @@
     "curly": "off",
     "nonblock-statement-body-position": "off",
     "semi": "off",
-    "react-hooks/rules-of-hooks": "error",
+    "no-constant-condition": "off",
     "no-use-before-define": "off",
     "import/extensions": "off",
     "react/jsx-filename-extension": "off",
