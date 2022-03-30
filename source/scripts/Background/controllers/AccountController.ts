@@ -1464,11 +1464,11 @@ const AccountController = (actions: {
     const feeRateBN = new sys.utils.BN(fee * 1e8);
 
     if (isToken && token) {
-      const { decimals } = await getAsset(token);
-      const txOpts = { rbf };
+      const { decimals } = await getAsset(token.assetGuid);
+      const txOpts = { rbf: true };
 
-      const value = new sys.utils.BN(amount * 10 ** decimals);
-      const valueDecimals = countDecimals(amount);
+      const value = new sys.utils.BN(Number(amount) * 10 ** decimals);
+      const valueDecimals = countDecimals(Number(amount));
       if (valueDecimals > decimals) {
         throw new Error(
           `This token has ${decimals} decimals and you are trying to send a value with ${valueDecimals} decimals, please check your tx`
@@ -1477,7 +1477,7 @@ const AccountController = (actions: {
 
       const map: AssetMap = [
         [
-          token,
+          token.assetGuid,
           {
             changeAddress: globalAccount?.isTrezorWallet
               ? await getNewChangeAddress(true)
@@ -1555,7 +1555,7 @@ const AccountController = (actions: {
         {},
         true
       );
-      const value = new sys.utils.BN(amount * 1e8);
+      const value = new sys.utils.BN(Number(amount) * 1e8);
 
       let outputsArray = [
         {
