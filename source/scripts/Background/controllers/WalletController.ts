@@ -71,8 +71,6 @@ const WalletController = (): IWalletController => {
   const account = AccountController({ checkPassword });
   const trezor = TrezorController({ account });
 
-  const isLocked = () => !encryptedPassword || !HDsigner;
-
   const retrieveEncriptedMnemonic = () => {
     // not encrypted for now but we got to retrieve
     const { encryptedMnemonic } = store.getState().vault;
@@ -452,7 +450,6 @@ const WalletController = (): IWalletController => {
 
   return {
     account,
-    isLocked,
     setWalletPassword,
     generatePhrase,
     createWallet,

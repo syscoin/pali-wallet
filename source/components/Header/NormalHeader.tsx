@@ -39,7 +39,7 @@ export const NormalHeader: React.FC = () => {
 
   useEffect(() => {
     updateCurrentTabUrl();
-  }, [!wallet.isLocked()]);
+  }, [wallet.isUnlocked()]);
 
   const ethNetworks = {
     main: {

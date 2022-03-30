@@ -25,7 +25,6 @@ export interface IWalletController {
   getNewAddress: () => Promise<boolean>;
   getPhrase: (pwd: string) => string | null;
   importPhrase: (phr: string) => boolean;
-  isLocked: () => boolean;
   logOut: () => void;
   mnemonic: string;
   password: string;

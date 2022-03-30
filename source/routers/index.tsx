@@ -62,7 +62,7 @@ export const Router = () => {
   const { accounts, temporaryTransactionState } = useStore();
   const { alert, navigate } = useUtils();
 
-  const isUnlocked = !controller.wallet.isLocked();
+  const isUnlocked = controller.wallet.isUnlocked();
 
   useEffect(() => {
     if (isUnlocked) {
