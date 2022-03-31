@@ -566,6 +566,11 @@ const AccountController = (actions: {
               try {
                 const { balance, type, decimals, symbol, assetGuid } = asset;
 
+                console.log(
+                  'getting asset data promise acount controller',
+                  assetGuid
+                );
+
                 const {
                   pubData,
                   contract,
@@ -575,6 +580,14 @@ const AccountController = (actions: {
                 } = await getAsset(assetGuid);
 
                 const { baseAssetID, NFTID } = sys.utils.getAssetIDs(assetGuid);
+
+                console.log(
+                  'getting asset data promise acount controller 2',
+                  pubData,
+                  contract,
+                  baseAssetID,
+                  NFTID
+                );
 
                 const assetData = {
                   contract,
@@ -594,6 +607,8 @@ const AccountController = (actions: {
                   description:
                     pubData && pubData.desc ? atob(pubData.desc) : '',
                 };
+
+                console.log('trying to set asset details', assetData);
 
                 assetsData[assetData.assetGuid] = assetData;
 

@@ -357,32 +357,27 @@ const WalletController = (): IWalletController => {
       if (response && blockbook && backend) {
         let isTestnet = false;
 
-        if (
-          blockbook.coin === 'Syscoin' ||
-          blockbook.coin === 'Syscoin Testnet'
-        ) {
-          if (backend.chain === 'main') {
-            isTestnet = false;
-          }
-
-          if (backend.chain === 'test') {
-            isTestnet = true;
-          }
-
-          setHDSigner({
-            walletMnemonic: HDsigner.mnemonic,
-            walletPassword: null,
-            isTestnet,
-          });
-          setSjs({
-            SignerIn: HDsigner,
-            blockbookURL: networks[networkId].beUrl,
-          });
-
-          store.dispatch(updateSwitchNetwork(true));
-
-          getAccountDataByNetwork(sjs);
+        if (backend.chain === 'main') {
+          isTestnet = false;
         }
+
+        if (backend.chain === 'test') {
+          isTestnet = true;
+        }
+
+        setHDSigner({
+          walletMnemonic: HDsigner.mnemonic,
+          walletPassword: null,
+          isTestnet,
+        });
+        setSjs({
+          SignerIn: HDsigner,
+          blockbookURL: networks[networkId].beUrl,
+        });
+
+        store.dispatch(updateSwitchNetwork(true));
+
+        getAccountDataByNetwork(sjs);
 
         return;
       }
