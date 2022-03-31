@@ -23,7 +23,6 @@ const extensionReloaderPlugin =
         port: 9090,
         reloadPage: true,
         entries: {
-          // TODO: reload manifest on update
           contentScript: 'contentScript',
           background: 'background',
           extensionPage: ['popup'],

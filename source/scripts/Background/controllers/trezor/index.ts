@@ -12,7 +12,7 @@ const TrezorController = () => {
   const forgetHardware = () => {};
 
   return {
-    tx: isSyscoinNetwork ? SysTrezorController : EthTrezorController,
+    tx: isSyscoinNetwork ? SysTrezorController() : EthTrezorController(),
     connectHardware,
     forgetHardware,
   };

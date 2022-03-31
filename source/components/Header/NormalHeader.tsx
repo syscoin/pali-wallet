@@ -54,7 +54,6 @@ export const NormalHeader: React.FC = () => {
     },
   };
 
-  // TODO: breakdown NetworkMenu
   const NetworkMenu = () => (
     <Menu as="div" className="absolute left-2 inline-block mr-8 text-left">
       {(menuprops) => (
@@ -267,7 +266,6 @@ export const NormalHeader: React.FC = () => {
     </Menu>
   );
 
-  // TODO: breakdown GeneralMenu
   const GeneralMenu = () => (
     <Menu
       as="div"

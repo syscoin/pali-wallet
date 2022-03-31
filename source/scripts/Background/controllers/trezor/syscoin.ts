@@ -1,8 +1,12 @@
-const SysTrezorController = (data) => {
-  const getPrimaryAccount = () => {};
+const SysTrezorController = () => {
+  const confirmTokenMint = () => {};
+  const confirmTokenSend = () => {};
+  const confirmNativeTokenSend = () => {};
 
   return {
-    getPrimaryAccount,
+    confirmNativeTokenSend,
+    confirmTokenMint,
+    confirmTokenSend,
   };
 };
 

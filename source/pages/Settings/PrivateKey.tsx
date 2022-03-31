@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useUtils } from 'hooks/index';
+import { useUtils, useStore } from 'hooks/index';
 import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 import {

@@ -3,7 +3,7 @@ import { SysTransactionController } from '../transaction';
 import SysTrezorController from '../trezor/syscoin';
 
 const SysAccountController = (data) => {
-  const trezor = SysTrezorController(data);
+  const trezor = SysTrezorController();
   const tx = SysTransactionController(data);
 
   const addAccount = () => {};

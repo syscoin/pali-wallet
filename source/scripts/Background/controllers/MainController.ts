@@ -1,6 +1,11 @@
+import cryptojs from 'crypto-js';
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 import { validateMnemonic } from 'bip39';
-import { IKeyringAccountState, MainSigner } from '@pollum-io/sysweb3-utils';
+import {
+  IKeyringAccountState,
+  MainSigner,
+  SyscoinHDSigner,
+} from '@pollum-io/sysweb3-utils';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -13,32 +18,42 @@ import {
 import WalletController from './account';
 
 const MainController = () => {
+  /** signers */
+  let hd: SyscoinHDSigner = {} as SyscoinHDSigner;
+  let main: any;
+
+  /** local keys */
   let encryptedPassword: string = '';
   let mnemonic = '';
 
   const keyringManager = KeyringManager();
 
   // todo: add is test net to network sysweb3
-  const { hd, main } = MainSigner({
-    walletMnemonic: mnemonic,
-    network: 'main',
-    blockbookURL: store.getState().vault.activeNetwork.url,
-    isTestnet: false,
-  });
+  const setMainSigner = () => {
+    const { hd: _hd, main: _main } = MainSigner({
+      walletMnemonic: mnemonic,
+      network: 'main',
+      blockbookURL: store.getState().vault.activeNetwork.url,
+      isTestnet: false,
+    });
 
-  const getSeed = (pwd: string) => (checkPassword(pwd) ? mnemonic : null);
-
-  const isUnlocked = () => {
-    return Boolean(encryptedPassword) || hd;
+    hd = _hd;
+    main = _main;
   };
 
   const checkPassword = (pwd: string) => {
-    if (encryptedPassword === CryptoJS.SHA3(pwd).toString()) {
+    if (encryptedPassword === cryptojs.SHA3(pwd).toString()) {
       return true;
     }
 
     return encryptedPassword === pwd;
   };
+
+  const { account } = WalletController({ checkPassword, hd, main });
+
+  const getSeed = (pwd: string) => (checkPassword(pwd) ? mnemonic : null);
+
+  const isUnlocked = () => Boolean(encryptedPassword) || hd;
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -54,16 +69,26 @@ const MainController = () => {
     }
   };
 
-  const unlock = async (pwd: string) => {
+  const unlock = async (pwd: string): Promise<void> => {
     console.log('calling keyring manager login');
 
-    return keyringManager.login(pwd);
+    if (!checkPassword(pwd)) return;
+
+    keyringManager.login(pwd);
+
+    store.dispatch(setLastLogin());
+
+    account.tx.getLatestUpdate();
   };
 
-  const createSeed = () => keyringManager.generatePhrase();
+  const createSeed = () => {
+    mnemonic = keyringManager.generatePhrase();
+
+    return mnemonic;
+  };
 
   const setWalletPassword = (pwd: string) => {
-    encryptedPassword = CryptoJS.SHA3(pwd).toString();
+    encryptedPassword = cryptojs.SHA3(pwd).toString();
 
     return keyringManager.setWalletPassword(pwd);
   };
@@ -72,13 +97,17 @@ const MainController = () => {
     mnemonic: string,
     encryptedPassword: string
   ): string => {
-    const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic, encryptedPassword);
+    const encryptedMnemonic = cryptojs.AES.encrypt(mnemonic, encryptedPassword);
 
     return encryptedMnemonic.toString();
   };
 
   const createWallet = async (): Promise<IKeyringAccountState> => {
     console.log('[main] creating vault', encryptedPassword);
+
+    console.log('[pali] setting signer, mnemonic:', mnemonic);
+
+    setMainSigner();
 
     const vault: IKeyringAccountState = await keyringManager.createVault({
       encryptedPassword,
@@ -118,8 +147,6 @@ const MainController = () => {
 
     store.dispatch(setLastLogin());
   };
-
-  const { account } = WalletController({ checkPassword, hd, main });
 
   const createAccount = (label?: string) => account.addAccount(label);
 
