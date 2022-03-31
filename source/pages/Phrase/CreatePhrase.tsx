@@ -7,7 +7,7 @@ export const CreatePhrase: FC = () => {
   const navigate = useNavigate();
   const controller = getController();
 
-  const phrases = controller.wallet.generatePhrase();
+  const phrases = controller.wallet.createSeed();
 
   const nextHandler = () => {
     navigate('/phrase/confirm');

@@ -28,8 +28,6 @@ export const initialState: IVaultState = {
   temporaryTransactionState: { executing: false, type: '' }, // todo: remove temporary tx state from sysweb3
   hasEncryptedVault: false, //
   encryptedMnemonic: '', //
-  getState: () => initialState, //
-  version: '2.0.0', // todo: remove version from sysweb3
 };
 
 const VaultState = createSlice({

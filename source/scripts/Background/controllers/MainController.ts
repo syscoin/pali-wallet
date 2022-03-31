@@ -3,7 +3,7 @@ import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 import { validateMnemonic } from 'bip39';
 import {
   IKeyringAccountState,
-  MainSigner,
+  SyscoinMainSigner,
   SyscoinHDSigner,
 } from '@pollum-io/sysweb3-utils';
 import store from 'state/store';
@@ -20,7 +20,7 @@ import WalletController from './account';
 const MainController = () => {
   /** signers */
   let hd: SyscoinHDSigner = {} as SyscoinHDSigner;
-  let main: any;
+  let main: SyscoinMainSigner = {} as SyscoinMainSigner;
 
   /** local keys */
   let encryptedPassword: string = '';
@@ -28,18 +28,23 @@ const MainController = () => {
 
   const keyringManager = KeyringManager();
 
-  // todo: add is test net to network sysweb3
-  const setMainSigner = () => {
-    const { hd: _hd, main: _main } = MainSigner({
-      walletMnemonic: mnemonic,
-      network: 'main',
-      blockbookURL: store.getState().vault.activeNetwork.url,
-      isTestnet: false,
-    });
+  // const setMainSigner = () => {
+  //   const { activeNetwork: { url, isTestnet } } = store.getState().vault;
+  //   console.log('setting hd signer', url, isTestnet)
 
-    hd = _hd;
-    main = _main;
-  };
+  //   const { hd: _hd, main: _main } = MainSigner({
+  //     walletMnemonic: mnemonic,
+  //     network: 'main',
+  //     blockbookURL: url,
+  //     isTestnet,
+  //   });
+
+  //   console.log('hd signer', _hd)
+  //   console.log('main signer', _main)
+
+  //   hd = _hd;
+  //   main = _main;
+  // };
 
   const checkPassword = (pwd: string) => {
     if (encryptedPassword === cryptojs.SHA3(pwd).toString()) {
@@ -51,9 +56,9 @@ const MainController = () => {
 
   const { account } = WalletController({ checkPassword, hd, main });
 
-  const getSeed = (pwd: string) => (checkPassword(pwd) ? mnemonic : null);
+  const getSeed = (pwd: string) => (checkPassword(pwd) ? hd.mnemonic : null);
 
-  const isUnlocked = () => Boolean(encryptedPassword) || hd;
+  const isUnlocked = () => encryptedPassword && mnemonic;
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -103,28 +108,31 @@ const MainController = () => {
   };
 
   const createWallet = async (): Promise<IKeyringAccountState> => {
-    console.log('[main] creating vault', encryptedPassword);
+    console.log('[main] setting signers 1', hd, main);
 
-    console.log('[pali] setting signer, mnemonic:', mnemonic);
-
-    setMainSigner();
-
-    const vault: IKeyringAccountState = await keyringManager.createVault({
+    const {
+      account,
+      hd: _hd,
+      main: _main,
+    } = await keyringManager.createVault({
       encryptedPassword,
     });
 
-    console.log('[main] storing wallet:', vault);
+    console.log('[main] setting signers 2', _hd, _main, _hd.mnemonic);
 
-    store.dispatch(addAccountToStore(vault));
+    store.dispatch(addAccountToStore(account));
     store.dispatch(
       setEncryptedMnemonic(getEncryptedMnemonic(mnemonic, encryptedPassword))
     );
-    store.dispatch(setActiveAccount(vault));
+    store.dispatch(setActiveAccount(account));
     store.dispatch(setLastLogin());
 
-    console.log('[main] getting latest update');
+    hd = _hd;
+    main = _main;
 
-    return vault;
+    console.log('[main] getting latest update', account);
+
+    return account;
   };
 
   const importSeed = (seedphrase: string) => {

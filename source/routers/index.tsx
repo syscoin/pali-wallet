@@ -77,6 +77,8 @@ export const Router = () => {
   // useEffect(() => {
   //   const route = controller.appRoute();
 
+  //   console.log('is unlocked', isUnlocked)
+
   //   if (isUnlocked && accounts) {
   //     navigate('/home');
 
