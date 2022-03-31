@@ -10,7 +10,7 @@ export const Receive = () => {
   const [isCopied, copyText] = useCopyClipboard();
 
   const controller = getController();
-  const { activeNetworkType } = useStore();
+  const { activeNetworkType, activeChainId } = useStore();
   const activeAccount = controller.wallet.account.getActiveAccount();
 
   const [loaded, setLoaded] = useState<boolean>(false);
@@ -27,7 +27,13 @@ export const Receive = () => {
 
   return (
     <Layout
-      title={activeNetworkType === 'syscoin' ? 'RECEIVE SYS' : 'RECEIVE ETH'}
+      title={
+        activeNetworkType === 'syscoin' && activeChainId === 57
+          ? 'RECEIVE SYS'
+          : activeNetworkType === 'syscoin' && activeChainId === 5700
+          ? 'RECEIVE TSYS'
+          : 'RECEIVE ETH'
+      }
       id="receiveSYS-title"
     >
       {loaded && activeAccount && activeNetworkType ? (

@@ -5,14 +5,18 @@ export const getAssetBalance = (
   selectedAsset: Assets | null,
   activeAccount
 ) => {
-  const { activeNetworkType } = useStore();
+  const { activeNetworkType, activeChainId } = useStore();
   if (selectedAsset) {
     const value = selectedAsset.balance / 10 ** selectedAsset.decimals;
     return `${value.toFixed(selectedAsset.decimals)} ${selectedAsset.symbol}`;
   }
 
   return `${activeAccount?.balance.toFixed(8)} ${
-    activeNetworkType === 'syscoin' ? 'SYS' : 'ETH'
+    activeNetworkType === 'syscoin' && activeChainId === 57
+      ? 'SYS'
+      : activeNetworkType === 'syscoin' && activeChainId === 5700
+      ? 'TSYS'
+      : 'ETH'
   }`;
 };
 

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { IconButton, Icon } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
 import { toSvg } from 'jdenticon';
@@ -163,8 +163,10 @@ const AccountMenu: React.FC = () => {
 export const AccountHeader: React.FC = () => {
   const activeAccount = getController().wallet.account.getActiveAccount();
   const { useCopyClipboard, alert } = useUtils();
-  const { activeNetworkType } = useStore();
+  const { activeNetworkType, changingNetwork } = useStore();
   const [copied, copy] = useCopyClipboard();
+  const { wallet } = getController();
+  const [loaded, setLoaded] = useState<boolean>(false);
 
   useEffect(() => {
     const placeholder = document.querySelector('.add-identicon');
@@ -183,36 +185,50 @@ export const AccountHeader: React.FC = () => {
     alert.success('Address successfully copied');
   }, [copied]);
 
+  useEffect(() => {
+    const getNewAddress = async () => {
+      if (await wallet.getNewAddress()) {
+        setLoaded(true);
+      }
+    };
+
+    getNewAddress();
+  }, [changingNetwork]);
+
   return (
     <div className="flex items-center justify-between p-1 bg-bkg-3">
       <div className="flex items-center w-full text-brand-white">
         <div className="add-identicon ml-1 mr-2 my-2" />
 
-        <div className="items-center justify-center px-1 text-brand-white">
-          <p className="mb-1 text-base" id="active-account-label">
-            {activeAccount?.label}
-          </p>
-          <p className="text-xs">
-            {activeNetworkType === 'syscoin'
-              ? ellipsis(activeAccount?.address.main, 6, 14)
-              : ellipsis(activeAccount?.web3Address, 6, 14)}
-          </p>
-        </div>
+        {loaded && activeAccount && (
+          <div className="items-center justify-center px-1 text-brand-white">
+            <p className="mb-1 text-base" id="active-account-label">
+              {activeAccount?.label}
+            </p>
+            <p className="text-xs">
+              {activeNetworkType === 'syscoin'
+                ? ellipsis(activeAccount.address.main, 6, 14)
+                : ellipsis(activeAccount.web3Address, 6, 14)}
+            </p>
+          </div>
+        )}
 
-        <IconButton
-          onClick={() =>
-            copy(
-              activeNetworkType === 'syscoin'
-                ? String(activeAccount?.address.main)
-                : String(activeAccount?.web3Address)
-            )
-          }
-          type="primary"
-          shape="circle"
-          className="mt-3"
-        >
-          <Icon name="copy" className="text-xs" id="copy-address-btn" />
-        </IconButton>
+        {loaded && activeAccount && (
+          <IconButton
+            onClick={() =>
+              copy(
+                activeNetworkType === 'syscoin'
+                  ? String(activeAccount.address.main)
+                  : String(activeAccount.web3Address)
+              )
+            }
+            type="primary"
+            shape="circle"
+            className="mt-3"
+          >
+            <Icon name="copy" className="text-xs" id="copy-address-btn" />
+          </IconButton>
+        )}
       </div>
 
       <AccountMenu />

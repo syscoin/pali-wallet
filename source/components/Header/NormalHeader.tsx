@@ -25,7 +25,6 @@ export const NormalHeader: React.FC = () => {
 
   const handleChangeNetwork = (value: number) => {
     wallet.switchNetwork(value as number);
-    wallet.getNewAddress();
   };
 
   const setCurrentTabInfo = async () => {

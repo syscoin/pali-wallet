@@ -19,8 +19,12 @@ export const SendConfirm = () => {
   } = getController();
   const activeAccount = controller.wallet.account.getActiveAccount();
   const { alert, navigate } = useUtils();
-  const { confirmingTransaction, activeNetworkType, activeNetwork } =
-    useStore();
+  const {
+    confirmingTransaction,
+    activeNetworkType,
+    activeNetwork,
+    activeChainId,
+  } = useStore();
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -201,7 +205,13 @@ export const SendConfirm = () => {
 
       return (
         <Layout
-          title={activeNetworkType === 'syscoin' ? 'SEND SYS' : 'SEND ETH'}
+          title={
+            activeNetworkType === 'syscoin' && activeChainId === 57
+              ? 'SEND SYS'
+              : activeNetworkType === 'syscoin' && activeChainId === 5700
+              ? 'SEND TSYS'
+              : 'SEND ETH'
+          }
         >
           <DefaultModal
             show={confirmed}
