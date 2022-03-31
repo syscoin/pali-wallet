@@ -8,7 +8,7 @@ const WalletController = (data: {
   hd: SyscoinHDSigner;
   main: any;
   checkPassword: (pwd: string) => boolean;
-}): { account: any } => {
+}): { account: any; addAccount: any } => {
   const { activeNetwork } = store.getState().vault;
 
   const isSyscoinNetwork = activeNetwork.chainId === 57;
@@ -19,7 +19,9 @@ const WalletController = (data: {
       : EthAccountController(),
   };
 
-  return controller;
+  const addAccount = () => {};
+
+  return { ...controller, addAccount };
 };
 
 export default WalletController;

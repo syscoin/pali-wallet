@@ -6,8 +6,6 @@ const SysAccountController = (data) => {
   const trezor = SysTrezorController();
   const tx = SysTransactionController(data);
 
-  const addAccount = () => {};
-
   const watchMemPool = (currentAccount: IKeyringAccountState | undefined) => {
     // 30 seconds
     const intervalInMs = 30 * 1000;
@@ -26,7 +24,6 @@ const SysAccountController = (data) => {
   };
 
   return {
-    addAccount,
     watchMemPool,
     trezor,
     tx,
