@@ -1,13 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Header, Icon, Button } from 'components/index';
 import { useStore, usePrice, useUtils } from 'hooks/index';
-import { formatNumber } from 'utils/index';
+import { formatNumber, getSymbolByChain } from 'utils/index';
 import { getController } from 'utils/browser';
 
 import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = getController();
+  const [symbol, setSymbol] = useState('SYS');
   const { getFiatAmount } = usePrice();
 
   const { navigate, handleRefresh } = useUtils();
@@ -15,10 +16,20 @@ export const Home = () => {
 
   const { accounts, activeNetwork, fiat } = useStore();
 
+  const setChainSymbol = async () => {
+    const sb = await getSymbolByChain(activeNetwork);
+    console.log('curr symb', sb, activeNetwork);
+    setSymbol(sb);
+  };
+
   useEffect(() => {
     if (!controller.wallet.isLocked() && accounts.length > 0 && activeAccount)
       handleRefresh();
+    setChainSymbol();
   }, [!controller.wallet.isLocked(), accounts.length > 0]);
+
+  const isTestnet = activeNetwork === 'testnet';
+  const isNotTestnet = activeNetwork === 'main' ? 'SYS' : symbol;
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
@@ -28,18 +39,7 @@ export const Home = () => {
 
           <section className="flex flex-col gap-1 items-center py-14 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
-              {activeNetwork === 'testnet' ? (
-                <div className="balance-account flex gap-x-0.5 items-center justify-center">
-                  <p
-                    className="font-rubik text-5xl font-medium"
-                    id="home-balance"
-                  >
-                    {formatNumber(activeAccount?.balance || 0)}{' '}
-                  </p>
-
-                  <p className="mt-4 font-poppins">TSYS</p>
-                </div>
-              ) : (
+              {activeNetwork && (
                 <>
                   <div className="balance-account flex gap-x-0.5 items-center justify-center">
                     <p
@@ -49,16 +49,20 @@ export const Home = () => {
                       {formatNumber(activeAccount?.balance || 0)}{' '}
                     </p>
 
-                    <p className="mt-4 font-poppins">SYS</p>
+                    <p className="mt-4 font-poppins">
+                      {isTestnet ? 'TSYS' : isNotTestnet}
+                    </p>
                   </div>
 
-                  <p id="fiat-ammount">
-                    {getFiatAmount(
-                      activeAccount.balance || 0,
-                      4,
-                      String(fiat.current)
-                    )}
-                  </p>
+                  {activeNetwork !== 'testnet' && (
+                    <p id="fiat-ammount">
+                      {getFiatAmount(
+                        activeAccount.balance || 0,
+                        4,
+                        String(fiat.current)
+                      )}
+                    </p>
+                  )}
                 </>
               )}
             </div>

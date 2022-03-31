@@ -26,10 +26,10 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
         controller.wallet.account.updateNetworkData({
           id: selectedToEdit
             ? selectedToEdit.id
-            : `${coin.toString().toLowerCase()} ${chain
-                .toString()
-                .toLowerCase()}`,
-          label: network,
+            : coin.toString().toLowerCase(),
+          label: `${network.toString().toLowerCase()} ${chain
+            .toString()
+            .toLowerCase()}`,
           beUrl: blockbookURL,
         });
 
