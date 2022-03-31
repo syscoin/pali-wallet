@@ -45,6 +45,7 @@
     "nonblock-statement-body-position": "off",
     "semi": "off",
     "no-constant-condition": "off",
+    "react-hooks/rules-of-hooks": "error",
     "no-use-before-define": "off",
     "import/extensions": "off",
     "react/jsx-filename-extension": "off",
