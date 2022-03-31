@@ -63,9 +63,12 @@ export const ExternalRoute = () => {
   return (
     <Routes>
       <Route path="start" element={<Start />} />
+      <Route path="create-password" element={<CreatePass />} />
+      <Route path="import" element={<Import />} />
+      <Route path="phrase/create" element={<CreatePhrase />} />
+      <Route path="phrase/confirm" element={<ConfirmPhrase />} />
 
       <Route path="external">
-        <Route path="create-password" element={<CreatePass />} />
         <Route path="import" element={<Import />} />
         <Route path="phrase/create" element={<CreatePhrase />} />
         <Route path="phrase/confirm" element={<ConfirmPhrase />} />

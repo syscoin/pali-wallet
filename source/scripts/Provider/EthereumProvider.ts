@@ -2,8 +2,7 @@
 import { web3Provider } from '@pollum-io/sysweb3-network';
 import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import { getController } from 'utils/browser';
-import { useSelector } from 'react-redux';
-import store, { RootState } from 'state/store';
+import store from 'state/store';
 
 export const EthereumProvider = () => {
   const getConnectedAccount = () => {
