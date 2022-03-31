@@ -26,6 +26,8 @@ export const DetailsView = () => {
           assetGuid
         );
 
+        console.log('getting asset details', assetData);
+
         const description =
           assetData.pubData && assetData.pubData.desc
             ? atob(String(assetData.pubData.desc))

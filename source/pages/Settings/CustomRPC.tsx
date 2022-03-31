@@ -20,24 +20,23 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
     try {
       const response = await axios.get(`${blockbookURL}/api/v2`);
       const { coin } = response.data.blockbook;
+      const { chain } = response.data.backend;
 
       if (response && coin) {
-        if (coin === 'Syscoin' || coin === 'Syscoin Testnet') {
-          controller.wallet.account.updateNetworkData({
-            id: selectedToEdit
-              ? selectedToEdit.id
-              : network.toString().toLowerCase(),
-            label: network,
-            beUrl: blockbookURL,
-          });
+        controller.wallet.account.updateNetworkData({
+          id: selectedToEdit
+            ? selectedToEdit.id
+            : `${coin.toString().toLowerCase()} ${chain
+                .toString()
+                .toLowerCase()}`,
+          label: network,
+          beUrl: blockbookURL,
+        });
 
-          setLoading(false);
-          setEdit(true);
+        setLoading(false);
+        setEdit(true);
 
-          return;
-        }
-
-        throw new Error('Invalid blockbook URL.');
+        return;
       }
     } catch (error) {
       alert.removeAll();
