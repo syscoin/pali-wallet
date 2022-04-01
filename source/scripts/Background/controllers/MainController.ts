@@ -40,8 +40,6 @@ const MainController = () => {
     return encryptedPassword === pwd;
   };
 
-  const { account } = WalletController({ checkPassword, hd, main });
-
   /** get seed phrase directly from hd signer,
    *  not from local keys
    */
@@ -128,6 +126,8 @@ const MainController = () => {
     return account;
   };
 
+  const { account } = WalletController({ checkPassword, hd, main });
+
   const importSeed = (seedphrase: string) => {
     if (validateMnemonic(seedphrase)) {
       mnemonic = seedphrase;
@@ -151,7 +151,7 @@ const MainController = () => {
     const { accounts } = store.getState().vault;
 
     store.dispatch(setActiveAccount(accounts[id]));
-    account.tx.getLatestUpdate();
+    account.getLatestUpdate();
   };
 
   const setActiveNetwork = async (chain: string, chainId: number) => {

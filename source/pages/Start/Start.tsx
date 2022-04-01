@@ -11,7 +11,7 @@ export const Start = () => {
   const {
     wallet: { unlock },
   } = getController();
-  const { hasEncryptedVault } = useStore();
+  const { encryptedMnemonic } = useStore();
 
   const getStarted = (
     <>
@@ -90,7 +90,7 @@ export const Start = () => {
 
       <img src={LogoImage} className="my-8 w-52" alt="syscoin" />
 
-      {hasEncryptedVault ? unLock : getStarted}
+      {encryptedMnemonic ? unLock : getStarted}
     </div>
   );
 };

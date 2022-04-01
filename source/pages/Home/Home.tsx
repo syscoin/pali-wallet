@@ -4,6 +4,7 @@ import { useStore, usePrice, useUtils } from 'hooks/index';
 import { formatNumber } from 'utils/index';
 
 import { TxsPanel } from './TxsPanel';
+import { Loading } from 'components/Loading';
 
 export const Home = () => {
   const { getFiatAmount } = usePrice();
@@ -94,9 +95,7 @@ export const Home = () => {
           <TxsPanel />
         </>
       ) : (
-        <div className="fixed z-20 flex items-center justify-center w-full min-w-popup h-full min-h-popup bg-bkg-2">
-          <Icon name="loading" className="ml-2 w-4 text-brand-white" />
-        </div>
+        <Loading />
       )}
     </div>
   );
