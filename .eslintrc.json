@@ -103,7 +103,9 @@
     "@typescript-eslint/ban-ts-comment": "off",
     "no-param-reassign": "off",
     "function-paren-newline": "off",
+    "no-shadow": "off",
     "@typescript-eslint/object-curly-spacing": "off",
+    "@typescript-eslint/naming-convention": "off",
     "object-curly-newline": "off",
     "import/order": [
       "error",

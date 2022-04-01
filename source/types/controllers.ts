@@ -63,6 +63,10 @@ export interface IAccountController {
     networkId: number,
     verification?: boolean
   ) => boolean | undefined;
+  removeCustomRpc: (
+    prefix: INetworkType.Syscoin | INetworkType.Ethereum,
+    chainId: number
+  ) => void;
   setAutolockTimer: (minutes: number) => any;
   setHDSigner: (accountId: number) => any;
   setNewAddress: (addr: string) => boolean;
@@ -79,10 +83,6 @@ export interface IAccountController {
   updateNetworkData: (
     prefix: INetworkType.Syscoin | INetworkType.Ethereum,
     network: INetwork
-  ) => void;
-  removeCustomRpc: (
-    prefix: INetworkType.Syscoin | INetworkType.Ethereum,
-    chainId: number
   ) => void;
   updateTokensState: () => any;
   updateTxs: () => void;

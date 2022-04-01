@@ -4,9 +4,9 @@ import { Layout, SecondaryButton } from 'components/index';
 import axios from 'axios';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
+import { INetworkType } from '@pollum-io/sysweb3-utils';
 
 import { EditNetwork } from '.';
-import { INetworkType } from '@pollum-io/sysweb3-utils';
 
 const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   const [loading, setLoading] = useState(false);

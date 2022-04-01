@@ -17,6 +17,7 @@ import {
   setActiveNetwork as setNetwork,
   setActiveAccountProperty,
 } from 'state/vault';
+
 import WalletController from './account';
 
 const MainController = () => {
@@ -25,7 +26,7 @@ const MainController = () => {
   let main: SyscoinMainSigner = {} as SyscoinMainSigner;
 
   /** local keys */
-  let encryptedPassword: string = '';
+  let encryptedPassword = '';
   let mnemonic = '';
 
   const keyringManager = KeyringManager();

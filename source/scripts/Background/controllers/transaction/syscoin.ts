@@ -1,9 +1,9 @@
-import { useStore } from 'hooks/useStore';
 import store from 'state/store';
 import syscoin from 'syscoinjs-lib';
 import { fromZPub } from 'bip84';
 import { setActiveAccount, setIsPendingBalances } from 'state/vault';
 import { TemporaryTransaction } from 'types/transactions';
+import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 
 export const SysTransactionController = ({ main }) => {
   const temporaryTransaction: TemporaryTransaction = {
@@ -132,7 +132,7 @@ export const SysTransactionController = ({ main }) => {
     );
 
     const tokens: any = {};
-    let transactions: any = {};
+    const transactions: any = {};
 
     // if (response.transactions) {
     //   transactions = response.transactions.slice(0, 20);
@@ -183,7 +183,7 @@ export const SysTransactionController = ({ main }) => {
   };
 
   const getLatestUpdate = async () => {
-    const { activeAccount } = useStore();
+    const { activeAccount } = store.getState().vault;
 
     if (!activeAccount) return;
 

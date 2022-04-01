@@ -2,11 +2,11 @@ import { IWalletState } from '@pollum-io/sysweb3-utils';
 
 export interface IVaultState extends IWalletState {
   activeToken: string;
+  encryptedMnemonic: string;
   isPendingBalances: boolean;
+  lastLogin: number;
   timer: number;
   trustedApps: string[];
-  encryptedMnemonic: string;
-  lastLogin: number;
 }
 
 export interface Holding {

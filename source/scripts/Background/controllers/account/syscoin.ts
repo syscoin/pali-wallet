@@ -3,6 +3,7 @@ import {
   SyscoinHDSigner,
   SyscoinMainSigner,
 } from '@pollum-io/sysweb3-utils';
+
 import { SysTransactionController } from '../transaction';
 import SysTrezorController from '../trezor/syscoin';
 

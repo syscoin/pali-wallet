@@ -38,7 +38,7 @@ const VaultState = createSlice({
     // todo: set account tx and add to ikeyringaccountstate
     setAccountTransactions(
       state: IVaultState,
-      action: PayloadAction<{ txid: string; tx: any }>
+      action: PayloadAction<{ tx: any; txid: string }>
     ) {
       const { txid, tx } = action.payload;
 
@@ -69,7 +69,7 @@ const VaultState = createSlice({
     },
     removeNetwork(
       state: IVaultState,
-      action: PayloadAction<{ prefix: string; chainId: number }>
+      action: PayloadAction<{ chainId: number; prefix: string }>
     ) {
       const { prefix, chainId } = action.payload;
 
