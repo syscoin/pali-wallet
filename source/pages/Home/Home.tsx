@@ -13,7 +13,7 @@ export const Home = () => {
   const { navigate, handleRefresh } = useUtils();
   const activeAccount = controller.wallet.account.getActiveAccount();
 
-  const { accounts, fiat, activeNetworkType } = useStore();
+  const { accounts, fiat, activeNetworkType, activeChainId } = useStore();
 
   useEffect(() => {
     if (!controller.wallet.isLocked() && accounts.length > 0 && activeAccount)
@@ -37,7 +37,14 @@ export const Home = () => {
                     {formatNumber(activeAccount?.balance || 0)}{' '}
                   </p>
 
-                  <p className="mt-4 font-poppins">TSYS</p>
+                  <p className="mt-4 font-poppins">
+                    {activeNetworkType === 'syscoin' && activeChainId === 57
+                      ? 'SYS'
+                      : activeNetworkType === 'syscoin' &&
+                        activeChainId === 5700
+                      ? 'TSYS'
+                      : ''}
+                  </p>
                 </div>
               ) : (
                 <>

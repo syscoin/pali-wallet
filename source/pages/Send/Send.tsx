@@ -18,7 +18,7 @@ export const Send: FC<ISend> = () => {
   const activeAccount = controller.wallet.account.getActiveAccount();
 
   const { alert, navigate } = useUtils();
-  const { activeNetwork, fiat, activeNetworkType } = useStore();
+  const { activeNetwork, fiat, activeNetworkType, activeChainId } = useStore();
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
@@ -242,7 +242,11 @@ export const Send: FC<ISend> = () => {
               <Tooltip
                 childrenClassName="text-brand-white h-4"
                 content={`Pali verifies your address to check if it is a valid ${
-                  activeNetworkType === 'syscoin' ? 'SYS' : 'Ethereum'
+                  activeNetworkType === 'syscoin' && activeChainId === 57
+                    ? 'SYS'
+                    : activeNetworkType === 'syscoin' && activeChainId === 5700
+                    ? 'TSYS'
+                    : 'Ethereum'
                 } address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing.`}
               >
                 <p
@@ -429,7 +433,13 @@ export const Send: FC<ISend> = () => {
   );
   return (
     <Layout
-      title={activeNetworkType === 'syscoin' ? 'SEND SYS' : 'SEND ETH'}
+      title={
+        activeNetworkType === 'syscoin' && activeChainId === 57
+          ? 'SEND SYS'
+          : activeNetworkType === 'syscoin' && activeChainId === 5700
+          ? 'SEND TSYS'
+          : 'SEND ETH'
+      }
       id="sendSYS-title"
     >
       <SendForm />
