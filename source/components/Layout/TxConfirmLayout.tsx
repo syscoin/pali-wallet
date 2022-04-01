@@ -25,6 +25,12 @@ interface ITxConfirm {
   txType: string;
 }
 
+interface ITxData {
+  advanced: boolean;
+  label: string;
+  value: any;
+}
+
 const TxConfirm: React.FC<ITxConfirm> = ({
   callback,
   transaction,
@@ -35,7 +41,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   const accountController = getController().wallet.account;
   const activeAccount = accountController.getActiveAccount();
 
-  const [data, setData] = useState([]);
+  const [data, setData] = useState<ITxData[]>([]);
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -52,21 +58,18 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   ];
 
   useEffect(() => {
-    if (transaction) {
-      const newData = {};
+    if (!transaction) return;
 
-      Object.entries(transaction).map(([key, value]) => {
-        if (!newData[key]) {
-          newData[key] = {
-            label: key,
-            value,
-            advanced: advancedOptionsArray.includes(key),
-          };
-        }
+    const txData: ITxData[] = [];
+    for (const [key, value] of Object.entries(transaction)) {
+      txData.push({
+        label: key,
+        value,
+        advanced: advancedOptionsArray.includes(key),
       });
-
-      setData(Object.values(newData));
     }
+
+    setData(txData);
   }, [transaction]);
 
   const handleConfirmSiteTransaction = async () => {
@@ -170,7 +173,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
         <div className="flex flex-col items-center justify-center w-full">
           <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
             {data.map(
-              (item: any) =>
+              (item) =>
                 !item.advanced && (
                   <li
                     key={item.label}
