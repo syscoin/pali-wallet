@@ -5,7 +5,7 @@ import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { Layout, SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
-import { Assets } from 'types/transactions';
+// import { Assets } from 'types/transactions';
 import { log, formatUrl, isNFT, getAssetBalance } from 'utils/index';
 import { getController } from 'utils/browser';
 
@@ -21,7 +21,7 @@ export const Send: FC<ISend> = () => {
   const { activeNetwork, fiat } = useStore();
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
-  const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [recommend, setRecommend] = useState(0.00001);
   const [form] = Form.useForm();
 
@@ -47,15 +47,15 @@ export const Send: FC<ISend> = () => {
 
   const handleSelectedAsset = (item: number) => {
     if (activeAccount?.tokens) {
-      // const getAsset = Object.values(activeAccount?.tokens).find(
-      //   (asset: Assets) => asset.assetGuid === item
-      // );
+      const asset = Object.values(activeAccount?.tokens).find(
+        (asset: any) => asset.tokenId === item
+      );
 
-      // if (getAsset) {
-      //   setSelectedAsset(getAsset);
+      if (asset) {
+        setSelectedAsset(asset);
 
-      //   return;
-      // }
+        return;
+      }
 
       setSelectedAsset(null);
     }

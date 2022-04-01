@@ -75,28 +75,6 @@ const VaultState = createSlice({
 
       delete state.networks[prefix][chainId];
     },
-    // todo: remove this
-    clearAllTransactions(state: IVaultState) {
-      return {
-        ...state,
-        temporaryTransactionState: {
-          executing: false,
-          type: '',
-        },
-      };
-    },
-    setTemporaryTransactionState(
-      state: IVaultState,
-      action: PayloadAction<{ executing: boolean; type: string }>
-    ) {
-      return {
-        ...state,
-        temporaryTransactionState: {
-          executing: action.payload.executing,
-          type: action.payload.type,
-        },
-      };
-    },
     setTimer(state: IVaultState, action: PayloadAction<number>) {
       state.timer = action.payload;
     },
@@ -174,8 +152,6 @@ export const {
   setNetworks,
   setTimer,
   setEncryptedMnemonic,
-  setTemporaryTransactionState,
-  clearAllTransactions,
   forgetWallet,
   removeAccount,
   removeAccounts,

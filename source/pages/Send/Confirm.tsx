@@ -2,22 +2,13 @@ import React, { useState } from 'react';
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
 import { browser } from 'webextension-polyfill-ts';
-import {
-  log,
-  logError,
-  ellipsis,
-  formatUrl,
-  cancelTransaction,
-} from 'utils/index';
+import { log, logError, ellipsis, formatUrl } from 'utils/index';
 import { getController } from 'utils/browser';
 
 export const SendConfirm = () => {
   const controller = getController();
   const { activeAccount } = useStore();
   const { alert, navigate } = useUtils();
-  const {
-    temporaryTransactionState: { executing, type },
-  } = useStore();
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -45,20 +36,6 @@ export const SendConfirm = () => {
         if (response) {
           alert.removeAll();
           alert.error("Can't complete transaction. Try again later.");
-
-          if (executing && type === 'sendAsset') {
-            browser.runtime.sendMessage({
-              type: 'WALLET_ERROR',
-              target: 'background',
-              transactionError: true,
-              invalidParams: false,
-              message: `TransactionError: ${response}`,
-            });
-
-            setTimeout(() => {
-              cancelTransaction(browser, 'tempTx');
-            }, 4000);
-          }
 
           return;
         }
@@ -101,20 +78,6 @@ export const SendConfirm = () => {
 
             alert.removeAll();
             alert.error("Can't complete transaction. Try again later.");
-          }
-
-          if (executing && type === 'sendAsset') {
-            browser.runtime.sendMessage({
-              type: 'WALLET_ERROR',
-              target: 'background',
-              transactionError: true,
-              invalidParams: false,
-              message: `TransactionError: ${error}`,
-            });
-
-            setTimeout(() => {
-              cancelTransaction(browser, tempTx);
-            }, 4000);
           }
 
           setLoading(false);
