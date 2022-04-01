@@ -10,6 +10,7 @@ export const useStore = () => {
     lastLogin,
     timer,
     hasEncryptedVault,
+    encryptedMnemonic,
     trustedApps,
     activeNetwork,
     isPendingBalances,
@@ -31,5 +32,6 @@ export const useStore = () => {
     lastLogin,
     fiat,
     timer,
+    encryptedMnemonic,
   };
 };

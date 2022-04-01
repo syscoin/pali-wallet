@@ -10,7 +10,7 @@ import { browser } from 'webextension-polyfill-ts';
 export const NormalHeader: React.FC = () => {
   const { wallet } = getController();
 
-  const { activeNetwork, hasEncryptedVault, networks } = useStore();
+  const { activeNetwork, encryptedMnemonic, networks } = useStore();
   const { handleRefresh, navigate } = useUtils();
 
   const [currentTabURL, setCurrentTabURL] = useState<string>('');
@@ -288,7 +288,7 @@ export const NormalHeader: React.FC = () => {
             id="general-settings-button"
             className="z-0 mx-1.5"
           >
-            {hasEncryptedVault && (
+            {Boolean(encryptedMnemonic) && (
               <IconButton type="primary" shape="circle">
                 <Icon
                   name="settings"
