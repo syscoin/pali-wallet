@@ -3,7 +3,6 @@ import syscoin from 'syscoinjs-lib';
 import { fromZPub } from 'bip84';
 import { setActiveAccount, setIsPendingBalances } from 'state/vault';
 import { TemporaryTransaction } from 'types/transactions';
-import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 
 export const SysTransactionController = ({ main }) => {
   const temporaryTransaction: TemporaryTransaction = {
