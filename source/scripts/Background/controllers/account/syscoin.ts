@@ -73,6 +73,7 @@ const SysAccountController = ({
       response,
     };
   };
+
   const _getAccountInfo = async (
     isHardwareWallet?: boolean,
     xpub?: any
@@ -133,7 +134,11 @@ const SysAccountController = ({
     return accountData;
   };
 
-  const _getUpdatedAccountInfo = async (activeAccount) => {
+  const _getUpdatedAccountInfo = async (
+    activeAccount: IKeyringAccountState
+  ) => {
+    console.log(hd, main);
+
     if (activeAccount.isTrezorWallet) {
       const trezorData = await _getAccountInfo(true, activeAccount?.xpub);
 
@@ -141,8 +146,6 @@ const SysAccountController = ({
 
       return trezorData;
     }
-
-    console.log(hd, main);
 
     const accLatestInfo = await _getAccountInfo();
 

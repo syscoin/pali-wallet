@@ -45,7 +45,8 @@ const MainController = () => {
    */
   const getSeed = (pwd: string) => (checkPassword(pwd) ? hd.mnemonic : null);
 
-  const isUnlocked = () => Boolean(encryptedPassword && hd.mnemonic);
+  const isUnlocked = () =>
+    Boolean((mnemonic || hd.mnemonic) && encryptedPassword);
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
