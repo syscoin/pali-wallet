@@ -300,7 +300,7 @@ export const NormalHeader: React.FC = () => {
           </Tooltip>
           <IconButton
             onClick={handleRefresh}
-            className="z-0 mx-1.5 hover:text-brand-deepPink100 text-brand-white"
+            className="z-0 mx-1.5 hover:text-brand-royalblue text-brand-white"
           >
             <Icon name="reload" />
           </IconButton>
