@@ -400,8 +400,7 @@ export const Send: FC<ISend> = () => {
 
         <p className="flex flex-col items-center justify-center p-0 max-w-xs text-center text-brand-royalblue sm:w-full md:my-4">
           <span className="text-xs">
-            {`With current network conditions we recommend a fee of
-            ${recommend} SYS`}
+            {`With current network conditions we recommend a fee of ${recommend} SYS`}
           </span>
 
           <span className="mt-0.5 text-brand-white font-rubik text-xs">
