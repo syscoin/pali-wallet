@@ -14,6 +14,8 @@ import {
   setLastLogin,
   setTimer,
   createAccount as addAccountToStore,
+  setActiveNetwork as setNetwork,
+  setActiveAccountProperty,
 } from 'state/vault';
 import WalletController from './account';
 
@@ -79,11 +81,13 @@ const MainController = () => {
 
     if (!checkPassword(pwd)) return;
 
-    keyringManager.login(pwd);
+    const vault = await keyringManager.login(pwd);
 
     store.dispatch(setLastLogin());
 
-    account.tx.getLatestUpdate();
+    // store.dispatch(setActiveAccount())
+
+    console.log('vault unlocked', vault);
   };
 
   const createSeed = () => {
@@ -165,6 +169,50 @@ const MainController = () => {
     account.tx.getLatestUpdate();
   };
 
+  const setActiveNetwork = async (chain: string, chainId: number) => {
+    const { networks, activeAccount } = store.getState().vault;
+
+    const network = networks[chain][chainId];
+
+    store.dispatch(setNetwork(network));
+
+    const { account, hd: _hd } = await keyringManager.setActiveNetworkForSigner(
+      {
+        encryptedPassword,
+        network,
+      }
+    );
+
+    /** directly set new keys for the current chain and update state if the active account is the first one */
+    if (activeAccount.id === 0) {
+      const currentSignerAccount = hd.Signer.accounts[activeAccount.id];
+
+      const xpub = currentSignerAccount.getAccountPublicKey();
+      const xprv = currentSignerAccount.getAccountPrivateKey();
+
+      store.dispatch(
+        setActiveAccountProperty({
+          property: 'xpub',
+          value: xpub,
+        })
+      );
+
+      store.dispatch(
+        setActiveAccountProperty({
+          property: 'xprv',
+          value: cryptojs.AES.encrypt(xprv, encryptedPassword).toString(),
+        })
+      );
+    }
+    /** end */
+
+    /** if the account index is > 0, we need to derive this account again from hd signer and set its index in the active account from signer */
+    keyringManager.setAccountIndexForDerivedAccount(hd, activeAccount.id);
+
+    /** account returned from updated signer according to the current network so we can update frontend easier */
+    return account;
+  };
+
   return {
     createWallet,
     isUnlocked,
@@ -180,6 +228,7 @@ const MainController = () => {
     setWalletPassword,
     setAccount,
     setAutolockTimer,
+    setActiveNetwork,
   };
 };
 
