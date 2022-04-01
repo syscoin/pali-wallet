@@ -85,3 +85,12 @@ export const formatSeedPhrase = (seed: string) => {
   }
   return seed;
 };
+
+/**
+ * Converts from `someInputText` to `Some Input Text`
+ */
+export const camelCaseToText = (input: string) => {
+  input = capitalizeFirstLetter(input);
+  // this regex splits the string without removing the delimiters
+  return input.split(/(?=[A-Z])/).join(' ');
+};
