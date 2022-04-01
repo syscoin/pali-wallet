@@ -1,7 +1,7 @@
+import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import store from 'state/store';
 import { utils as SysUtils } from 'syscoinjs-lib';
 import { openNotificationsPopup } from 'utils/notifications';
-import EthTrezorController from './ethereum';
 import SysTrezorController from './syscoin';
 
 const TrezorController = () => {
@@ -38,7 +38,7 @@ const TrezorController = () => {
   const forgetHardware = () => {};
 
   return {
-    tx: isSyscoinNetwork ? SysTrezorController() : EthTrezorController(),
+    tx: isSyscoinNetwork ? SysTrezorController() : Web3Accounts(),
     connectHardware,
     forgetHardware,
   };

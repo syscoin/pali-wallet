@@ -9,14 +9,12 @@ import { persistStore, persistReducer } from 'redux-persist';
 import { localStorage } from 'redux-persist-webextension-storage';
 
 import vault from './vault';
-import signer, { ISignerState } from './signer';
 import price, { IPriceState } from './price';
 import { IVaultState } from './vault/types';
 
 const reducers = combineReducers({
   price,
   vault,
-  signer,
 });
 
 const persistConfig = {
@@ -38,7 +36,6 @@ if (nodeEnv !== 'production' && nodeEnv !== 'test') {
 
 const store: Store<{
   price: IPriceState;
-  signer: ISignerState;
   vault: IVaultState;
 }> = configureStore({
   reducer: persistedReducer,
