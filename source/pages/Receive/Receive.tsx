@@ -10,18 +10,21 @@ export const Receive = () => {
   const [isCopied, copyText] = useCopyClipboard();
 
   const controller = getController();
-  const { activeAccount } = useStore();
+  const { activeAccount, activeNetwork } = useStore();
 
   const [loaded, setLoaded] = useState<boolean>(false);
 
   useEffect(() => {
-    const getNewAddress = async () => {
-      if (await controller.wallet.getNewAddress()) {
+    const setNewAddress = async () => {
+      if (
+        (activeNetwork.chainId === 57 || activeNetwork.chainId === 5700) &&
+        (await controller.wallet.account.setAddress())
+      ) {
         setLoaded(true);
       }
     };
 
-    getNewAddress();
+    setNewAddress();
   }, []);
 
   return (

@@ -15,9 +15,10 @@ export const NormalHeader: React.FC = () => {
 
   const [currentTabURL, setCurrentTabURL] = useState<string>('');
 
-  const handleChangeNetwork = (value: number, prefix: string) => {
-    wallet.switchNetwork(value, prefix);
-    wallet.getNewAddress();
+  const handleChangeNetwork = (chain: string, chainId: number) => {
+    wallet.setActiveNetwork(chain, chainId);
+
+    if (chain === 'syscoin') wallet.account.setAddress();
   };
 
   const updateCurrentTabUrl = async () => {
@@ -40,19 +41,6 @@ export const NormalHeader: React.FC = () => {
   useEffect(() => {
     updateCurrentTabUrl();
   }, [wallet.isUnlocked()]);
-
-  const ethNetworks = {
-    main: {
-      id: 'eth main',
-      label: 'Main Network',
-      beUrl: 'https://blockbook.elint.services/',
-    },
-    localhost: {
-      id: 'localhost',
-      label: 'Localhost 8545',
-      beUrl: 'https://blockbook-dev.elint.services/',
-    },
-  };
 
   const NetworkMenu = () => (
     <Menu as="div" className="absolute left-2 inline-block mr-8 text-left">
@@ -142,34 +130,33 @@ export const NormalHeader: React.FC = () => {
                       </Disclosure.Button>
 
                       <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
-                        {Object.values(networks).map((currentNetwork: any) => (
-                          <li
-                            key={currentNetwork.chainId}
-                            className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                            onClick={() =>
-                              handleChangeNetwork(
-                                currentNetwork.chainId,
-                                'syscoin'
-                              )
-                            }
-                          >
-                            <span
-                              className="text-left"
-                              style={{ marginLeft: '3.2rem' }}
+                        {Object.values(networks.syscoin).map(
+                          (currentNetwork: any) => (
+                            <li
+                              key={currentNetwork.chainId}
+                              className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                              onClick={() =>
+                                handleChangeNetwork(
+                                  'syscoin',
+                                  currentNetwork.chainId
+                                )
+                              }
                             >
-                              {currentNetwork.label}
-                            </span>
+                              <span className="ml-8 text-left">
+                                {currentNetwork.label}
+                              </span>
 
-                            {activeNetwork.chainId ===
-                              currentNetwork.chainId && (
-                              <Icon
-                                name="check"
-                                className="mb-1 w-4"
-                                wrapperClassname="w-6 absolute right-20"
-                              />
-                            )}
-                          </li>
-                        ))}
+                              {activeNetwork.chainId ===
+                                currentNetwork.chainId && (
+                                <Icon
+                                  name="check"
+                                  className="mb-1 w-4"
+                                  wrapperClassname="w-6 absolute right-20"
+                                />
+                              )}
+                            </li>
+                          )
+                        )}
                       </Disclosure.Panel>
                     </>
                   )}
@@ -199,22 +186,19 @@ export const NormalHeader: React.FC = () => {
                       </Disclosure.Button>
 
                       <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
-                        {Object.values(ethNetworks).map(
+                        {Object.values(networks.ethereum).map(
                           (currentNetwork: any) => (
                             <li
                               key={currentNetwork.id}
                               className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                               onClick={() =>
                                 handleChangeNetwork(
-                                  currentNetwork.chainId,
-                                  'ethereum'
+                                  'ethereum',
+                                  currentNetwork.chainId
                                 )
                               }
                             >
-                              <span
-                                className="text-left"
-                                style={{ marginLeft: '3.2rem' }}
-                              >
+                              <span className="ml-8 text-left">
                                 {currentNetwork.label}
                               </span>
 

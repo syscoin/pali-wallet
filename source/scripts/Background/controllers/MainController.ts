@@ -31,24 +31,6 @@ const MainController = () => {
   const keyringManager = KeyringManager();
   const Web3Wallet = Web3Accounts();
 
-  // const setMainSigner = () => {
-  //   const { activeNetwork: { url, isTestnet } } = store.getState().vault;
-  //   console.log('setting hd signer', url, isTestnet)
-
-  //   const { hd: _hd, main: _main } = MainSigner({
-  //     walletMnemonic: mnemonic,
-  //     network: 'main',
-  //     blockbookURL: url,
-  //     isTestnet,
-  //   });
-
-  //   console.log('hd signer', _hd)
-  //   console.log('main signer', _main)
-
-  //   hd = _hd;
-  //   main = _main;
-  // };
-
   const checkPassword = (pwd: string) => {
     if (encryptedPassword === cryptojs.AES.encrypt(pwd, mnemonic).toString()) {
       return true;
@@ -59,6 +41,9 @@ const MainController = () => {
 
   const { account } = WalletController({ checkPassword, hd, main });
 
+  /** get seed phrase directly from hd signer,
+   *  not from local keys
+   */
   const getSeed = (pwd: string) => (checkPassword(pwd) ? hd.mnemonic : null);
 
   const isUnlocked = () => Boolean(encryptedPassword && hd.mnemonic);
@@ -67,6 +52,10 @@ const MainController = () => {
     store.dispatch(setTimer(minutes));
   };
 
+  /** forget your wallet created with pali and associated with your seed phrase,
+   *  but don't delete seed phrase so it is possible to create a new
+   *  account using the same seed
+   */
   const forgetWallet = (pwd: string) => {
     if (checkPassword(pwd)) {
       encryptedPassword = '';
@@ -129,6 +118,7 @@ const MainController = () => {
     store.dispatch(setActiveAccount(account));
     store.dispatch(setLastLogin());
 
+    /** set signers for syscoin when creating a new wallet */
     hd = _hd;
     main = _main;
 
@@ -138,12 +128,8 @@ const MainController = () => {
   };
 
   const importSeed = (seedphrase: string) => {
-    console.log('[main] validating mnemonic:', seedphrase);
-
     if (validateMnemonic(seedphrase)) {
       mnemonic = seedphrase;
-
-      console.log('[main] validation passed:', seedphrase);
 
       return true;
     }
@@ -172,14 +158,14 @@ const MainController = () => {
 
     const network = networks[chain][chainId];
 
+    /** set local active network */
     store.dispatch(setNetwork(network));
 
-    const { account, hd: _hd } = await keyringManager.setActiveNetworkForSigner(
-      {
-        encryptedPassword,
-        network,
-      }
-    );
+    /** this method sets new signers for syscoin when changing networks */
+    const { account } = await keyringManager.setActiveNetworkForSigner({
+      encryptedPassword,
+      network,
+    });
 
     /** directly set new keys for the current chain and update state if the active account is the first one */
     if (activeAccount.id === 0) {
@@ -209,6 +195,7 @@ const MainController = () => {
 
     const balance = await Web3Wallet.getBalance(account.address);
 
+    /** set active network with web3 account data for evm networks */
     store.dispatch(
       setActiveAccount({
         ...account,
@@ -242,7 +229,7 @@ const MainController = () => {
     unlock,
     lock,
     createAccount,
-    account, // trezor, tx inside account
+    account,
     setWalletPassword,
     setAccount,
     setAutolockTimer,
