@@ -15,6 +15,7 @@ import {
   capitalizeFirstLetter,
   rejectTransaction,
   cancelTransaction,
+  camelCaseToText,
 } from 'utils/index';
 import { closePopup, getController } from 'utils/browser';
 
@@ -179,7 +180,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
                     key={item.label}
                     className="flex items-center justify-between my-2 p-2 w-full text-xs border-b border-dashed border-brand-royalblue"
                   >
-                    <p>{item.label}</p>
+                    <p>{camelCaseToText(item.label)}</p>
                     <p>
                       {typeof item.value === 'string' && item.value.length > 10
                         ? ellipsis(item.value)
