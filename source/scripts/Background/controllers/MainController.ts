@@ -1,5 +1,5 @@
 import cryptojs from 'crypto-js';
-import { KeyringManager } from '@pollum-io/sysweb3-keyring';
+import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import { validateMnemonic } from 'bip39';
 import {
   IKeyringAccountState,
@@ -29,6 +29,7 @@ const MainController = () => {
   let mnemonic = '';
 
   const keyringManager = KeyringManager();
+  const Web3Wallet = Web3Accounts();
 
   // const setMainSigner = () => {
   //   const { activeNetwork: { url, isTestnet } } = store.getState().vault;
@@ -49,7 +50,7 @@ const MainController = () => {
   // };
 
   const checkPassword = (pwd: string) => {
-    if (encryptedPassword === cryptojs.SHA3(pwd).toString()) {
+    if (encryptedPassword === cryptojs.AES.encrypt(pwd, mnemonic).toString()) {
       return true;
     }
 
@@ -60,7 +61,7 @@ const MainController = () => {
 
   const getSeed = (pwd: string) => (checkPassword(pwd) ? hd.mnemonic : null);
 
-  const isUnlocked = () => encryptedPassword && mnemonic;
+  const isUnlocked = () => Boolean(encryptedPassword && hd.mnemonic);
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -97,16 +98,13 @@ const MainController = () => {
   };
 
   const setWalletPassword = (pwd: string) => {
-    encryptedPassword = cryptojs.SHA3(pwd).toString();
+    encryptedPassword = cryptojs.AES.encrypt(pwd, mnemonic).toString();
 
     return keyringManager.setWalletPassword(pwd);
   };
 
-  const getEncryptedMnemonic = (
-    mnemonic: string,
-    encryptedPassword: string
-  ): string => {
-    const encryptedMnemonic = cryptojs.AES.encrypt(mnemonic, encryptedPassword);
+  const getEncryptedMnemonic = (mnemonic: string, password: string): string => {
+    const encryptedMnemonic = cryptojs.AES.encrypt(mnemonic, password);
 
     return encryptedMnemonic.toString();
   };
@@ -208,6 +206,26 @@ const MainController = () => {
 
     /** if the account index is > 0, we need to derive this account again from hd signer and set its index in the active account from signer */
     keyringManager.setAccountIndexForDerivedAccount(hd, activeAccount.id);
+
+    const balance = await Web3Wallet.getBalance(account.address);
+
+    store.dispatch(
+      setActiveAccount({
+        ...account,
+        tokens: {},
+        id: hd.Signer.accountIndex,
+        isTrezorWallet: false,
+        label: `Account ${hd.Signer.accountIndex}`,
+        transactions: {},
+        trezorId: -1,
+        xprv: '',
+        balances: {
+          ethereum: balance,
+          syscoin: 0,
+        },
+        xpub: '',
+      })
+    );
 
     /** account returned from updated signer according to the current network so we can update frontend easier */
     return account;

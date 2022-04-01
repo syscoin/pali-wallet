@@ -6,6 +6,7 @@ export interface IVaultState extends IWalletState {
   timer: number;
   trustedApps: string[];
   encryptedMnemonic: string;
+  lastLogin: number;
 }
 
 export interface Holding {

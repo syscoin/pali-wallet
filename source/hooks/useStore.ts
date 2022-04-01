@@ -7,7 +7,7 @@ export const useStore = () => {
   const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
 
   const {
-    temporaryTransactionState,
+    lastLogin,
     timer,
     hasEncryptedVault,
     trustedApps,
@@ -28,7 +28,7 @@ export const useStore = () => {
     walletTokens: [],
     networks,
     trustedApps,
-    temporaryTransactionState,
+    lastLogin,
     fiat,
     timer,
   };

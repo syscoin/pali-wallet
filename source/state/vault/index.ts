@@ -11,23 +11,24 @@ import trustedApps from './trustedApps.json';
 import { IVaultState } from './types';
 
 export const initialState: IVaultState = {
-  lastLogin: 0, //
+  lastLogin: 0,
   accounts: {},
-  activeAccount: initialActiveAccountState, //
+  activeAccount: initialActiveAccountState,
   activeNetwork: {
     chainId: 57,
     url: 'https://blockbook.elint.services/',
     label: 'Syscoin Mainnet',
     default: true,
+    isTestnet: false,
+    currency: 'SYS',
   },
-  isPendingBalances: false, //
-  timer: 5, //
+  isPendingBalances: false,
+  timer: 5,
   networks: initialNetworksState,
-  trustedApps, //
+  trustedApps,
   activeToken: 'SYS',
-  temporaryTransactionState: { executing: false, type: '' }, // todo: remove temporary tx state from sysweb3
-  hasEncryptedVault: false, //
-  encryptedMnemonic: '', //
+  hasEncryptedVault: false,
+  encryptedMnemonic: '',
 };
 
 const VaultState = createSlice({

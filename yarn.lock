@@ -2035,21 +2035,28 @@
     node-gyp "^8.2.0"
     read-package-json-fast "^2.0.1"
 
-"@pollum-io/sysweb3-core@^1.0.1", "@pollum-io/sysweb3-core@^1.0.5":
+"@pollum-io/sysweb3-core@^1.0.1":
   version "1.0.5"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.5.tgz#02c8bf48dbeff4f5c01dc3cba1c27b0955842dd7"
   integrity sha512-eGeLZ5MBGck5s0dr9s7X5tw2AuXPxrI/i31w/vAXK0o/4EaxcrQrgJeG1eqBoCydH1hdt5PrHEFq/LizdH/g7A==
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.28":
-  version "1.0.28"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.28.tgz#981e1891b116f50af4cea14198c281c5dfcc7e9e"
-  integrity sha512-zDNHcaVT2+iFLrMxzxlnEhXqV10y/8LOd0+W+QssC77GfOPnxTf8B7nlui9M+3ilV9XOizPNj7n7qMD0v3pL4w==
+"@pollum-io/sysweb3-core@^1.0.6":
+  version "1.0.6"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.6.tgz#f10ed20940f68d012bed942896fb479427df7cec"
+  integrity sha512-BymcPCs5zBS0tMGT4g0esDAQZ+GtWaNxBcLhaO053wKGiT+kwL3PlIdOxVHdp9/CZmVCAFngUS1kSiW/ah3AgQ==
+  dependencies:
+    rimraf "^3.0.2"
+
+"@pollum-io/sysweb3-keyring@^1.0.33":
+  version "1.0.33"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.33.tgz#3f77b667edfd980402cf43c3c87f807b16eb9469"
+  integrity sha512-2ws1JnnfoK9bozJ2/nIg0qy+l7y+M2o3RCQDYbKMPtuFhWIIz7O4+Y9R2pniunFIWQjJTMr5qnIUzJXp/aDALg==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
-    "@pollum-io/sysweb3-utils" "^1.1.38"
+    "@pollum-io/sysweb3-utils" "^1.1.45"
     "@types/crypto-js" "^4.1.1"
     axios "^0.26.1"
     bip39 "^3.0.4"
@@ -2097,6 +2104,11 @@
     tslib "^2.3.1"
     web3 "^1.7.1"
 
+"@pollum-io/sysweb3-network@^1.0.5":
+  version "1.0.5"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.5.tgz#29b1442b9a747d6241602c6623d8937964a7a84e"
+  integrity sha512-/GWhm9x7uK95gVvbo4MxBMA6ctv2TXOObOdD69GpJ8aW1qilorWqElHHCXkadtKzy4iaRsvtNSm3zJG6nkMz3g==
+
 "@pollum-io/sysweb3-utils@^1.0.3", "@pollum-io/sysweb3-utils@^1.1.31":
   version "1.1.31"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.31.tgz#b822beb08a73c4a8b755ab34edf028d9b5ece535"
@@ -2106,19 +2118,10 @@
     syscoinjs-lib "^1.0.209"
     syscointx-js "^1.0.101"
 
-"@pollum-io/sysweb3-utils@^1.1.38":
-  version "1.1.38"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.38.tgz#e495842c97a7a25cf77545b40cc2a42bc38bce93"
-  integrity sha512-tL8C6I+2jFIZy9WR0famVEuIBiBJKrTFIkoDjo61PMKib0elLMvLbfkKltR4itFmr3qSRkRPp+txO5Q6yCBt5g==
-  dependencies:
-    "@pollum-io/sysweb3-network" "^1.0.4"
-    syscoinjs-lib "^1.0.209"
-    syscointx-js "^1.0.101"
-
-"@pollum-io/sysweb3-utils@^1.1.39":
-  version "1.1.39"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.39.tgz#3a3b0fb9a24ea96b8f574c95a79b5407fee723ae"
-  integrity sha512-jMbpvJKpJSwTGa3XyNW4qDglMtJXPYMZ6a89dT4JmmKGHFPAxXbvSg3R9r46vILF58CDE3VGA4/eERm9XOlWpw==
+"@pollum-io/sysweb3-utils@^1.1.45":
+  version "1.1.45"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.45.tgz#1fbbe8f6226c1fa48856852c136b90a69b571fb9"
+  integrity sha512-9rgMTqETO8qbSsfJRsBHWOwxSbImaRni44eqEDgjPvaSeAirmjyt/R/J8c+0BIo6a8DBySMiXXvexsd/GT6yIw==
   dependencies:
     "@pollum-io/sysweb3-network" "^1.0.4"
     syscoinjs-lib "^1.0.209"
@@ -14051,7 +14054,7 @@ web3-core@1.7.0:
     web3-core-requestmanager "1.7.0"
     web3-utils "1.7.0"
 
-web3-core@1.7.1:
+web3-core@1.7.1, web3-core@^1.7.1:
   version "1.7.1"
   resolved "https://registry.yarnpkg.com/web3-core/-/web3-core-1.7.1.tgz#ef9b7f03909387b9ab783f34cdc5ebcb50248368"
   integrity sha512-HOyDPj+4cNyeNPwgSeUkhtS0F+Pxc2obcm4oRYPW5ku6jnTO34pjaij0us+zoY3QEusR8FfAKVK1kFPZnS7Dzw==

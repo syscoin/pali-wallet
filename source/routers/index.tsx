@@ -74,19 +74,19 @@ export const Router = () => {
     }
   }, [isUnlocked, browser.runtime]);
 
-  // useEffect(() => {
-  //   const route = controller.appRoute();
+  useEffect(() => {
+    const route = controller.appRoute();
 
-  //   console.log('is unlocked', isUnlocked)
+    console.log('is unlocked', isUnlocked);
 
-  //   if (isUnlocked && accounts) {
-  //     navigate('/home');
+    if (isUnlocked && accounts) {
+      navigate('/home');
 
-  //     return;
-  //   }
+      return;
+    }
 
-  //   if (route !== '/') navigate(route);
-  // }, [isUnlocked]);
+    if (route !== '/') navigate(route);
+  }, [isUnlocked]);
 
   useEffect(() => {
     alert.removeAll();
