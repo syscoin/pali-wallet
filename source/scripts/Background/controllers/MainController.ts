@@ -25,28 +25,8 @@ const MainController = () => {
   let hd: SyscoinHDSigner = {} as SyscoinHDSigner;
   let main: SyscoinMainSigner = {} as SyscoinMainSigner;
 
-  /** local keys */
-  let encryptedPassword = '';
-  let mnemonic = '';
-
   const keyringManager = KeyringManager();
   const Web3Wallet = Web3Accounts();
-
-  const checkPassword = (pwd: string) => {
-    if (encryptedPassword === cryptojs.AES.encrypt(pwd, mnemonic).toString()) {
-      return true;
-    }
-
-    return encryptedPassword === pwd;
-  };
-
-  /** get seed phrase directly from hd signer,
-   *  not from local keys
-   */
-  const getSeed = (pwd: string) => (checkPassword(pwd) ? hd.mnemonic : null);
-
-  const isUnlocked = () =>
-    Boolean((mnemonic || hd.mnemonic) && encryptedPassword);
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -58,8 +38,7 @@ const MainController = () => {
    */
   const forgetWallet = (pwd: string) => {
     if (checkPassword(pwd)) {
-      encryptedPassword = '';
-      mnemonic = '';
+      keyringManager.forgetWallet();
 
       store.dispatch(forgetWalletState());
       store.dispatch(setLastLogin());
@@ -80,24 +59,6 @@ const MainController = () => {
     console.log('vault unlocked', vault);
   };
 
-  const createSeed = () => {
-    mnemonic = keyringManager.generatePhrase();
-
-    return mnemonic;
-  };
-
-  const setWalletPassword = (pwd: string) => {
-    encryptedPassword = cryptojs.AES.encrypt(pwd, mnemonic).toString();
-
-    return keyringManager.setWalletPassword(pwd);
-  };
-
-  const getEncryptedMnemonic = (mnemonic: string, password: string): string => {
-    const encryptedMnemonic = cryptojs.AES.encrypt(mnemonic, password);
-
-    return encryptedMnemonic.toString();
-  };
-
   const createWallet = async (): Promise<IKeyringAccountState> => {
     console.log('[main] setting signers 1', hd, main);
 
@@ -105,16 +66,12 @@ const MainController = () => {
       account,
       hd: _hd,
       main: _main,
-    } = await keyringManager.createVault({
-      encryptedPassword,
-    });
+    } = await keyringManager.createVault();
 
     console.log('[main] setting signers 2', _hd, _main, _hd.mnemonic);
 
     store.dispatch(addAccountToStore(account));
-    store.dispatch(
-      setEncryptedMnemonic(getEncryptedMnemonic(mnemonic, encryptedPassword))
-    );
+    store.dispatch(setEncryptedMnemonic(keyringManager.getEncryptedMnemonic()));
     store.dispatch(setActiveAccount(account));
     store.dispatch(setLastLogin());
 
@@ -127,21 +84,14 @@ const MainController = () => {
     return account;
   };
 
-  const { account } = WalletController({ checkPassword, hd, main });
-
-  const importSeed = (seedphrase: string) => {
-    if (validateMnemonic(seedphrase)) {
-      mnemonic = seedphrase;
-
-      return true;
-    }
-
-    return false;
-  };
+  const { account } = WalletController({
+    checkPassword: keyringManager.checkPassword,
+    hd,
+    main,
+  });
 
   const lock = () => {
-    encryptedPassword = '';
-    mnemonic = '';
+    keyringManager.logout();
 
     store.dispatch(setLastLogin());
   };
@@ -165,7 +115,6 @@ const MainController = () => {
 
     /** this method sets new signers for syscoin when changing networks */
     const { account } = await keyringManager.setActiveNetworkForSigner({
-      encryptedPassword,
       network,
     });
 
@@ -186,7 +135,7 @@ const MainController = () => {
       store.dispatch(
         setActiveAccountProperty({
           property: 'xprv',
-          value: cryptojs.AES.encrypt(xprv, encryptedPassword).toString(),
+          value: keyringManager.getEncryptedXprv(),
         })
       );
     }
@@ -195,26 +144,8 @@ const MainController = () => {
     /** if the account index is > 0, we need to derive this account again from hd signer and set its index in the active account from signer */
     keyringManager.setAccountIndexForDerivedAccount(hd, activeAccount.id);
 
-    const balance = await Web3Wallet.getBalance(account.address);
-
     /** set active network with web3 account data for evm networks */
-    store.dispatch(
-      setActiveAccount({
-        ...account,
-        tokens: {},
-        id: hd.Signer.accountIndex,
-        isTrezorWallet: false,
-        label: `Account ${hd.Signer.accountIndex}`,
-        transactions: {},
-        trezorId: -1,
-        xprv: '',
-        balances: {
-          ethereum: balance,
-          syscoin: 0,
-        },
-        xpub: '',
-      })
-    );
+    store.dispatch(setActiveAccount(account));
 
     /** account returned from updated signer according to the current network so we can update frontend easier */
     return account;
@@ -222,17 +153,17 @@ const MainController = () => {
 
   return {
     createWallet,
-    isUnlocked,
-    createSeed,
-    checkPassword,
-    getSeed,
+    isUnlocked: keyringManager.isUnlocked,
+    createSeed: keyringManager.createSeed,
+    checkPassword: keyringManager.checkPassword,
+    getSeed: keyringManager.getSeed,
     forgetWallet,
-    importSeed,
+    importSeed: keyringManager.validateSeed,
     unlock,
     lock,
     createAccount,
     account,
-    setWalletPassword,
+    setWalletPassword: keyringManager.setWalletPassword,
     setAccount,
     setAutolockTimer,
     setActiveNetwork,
