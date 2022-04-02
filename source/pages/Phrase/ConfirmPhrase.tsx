@@ -45,6 +45,8 @@ export const ConfirmPhrase = () => {
   };
 
   const handleConfirm = () => {
+    console.log('sent phrase, creating wallet');
+
     controller.wallet.createWallet();
 
     navigate('/');

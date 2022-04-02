@@ -12,7 +12,7 @@ const CreatePass = () => {
 
   const onSubmit = (data: any) => {
     controller.wallet.setWalletPassword(data.password);
-    controller.wallet.createWallet(true);
+    controller.wallet.createWallet();
 
     next();
   };
