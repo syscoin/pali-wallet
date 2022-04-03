@@ -1,6 +1,4 @@
-import cryptojs from 'crypto-js';
-import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
-import { validateMnemonic } from 'bip39';
+import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 import {
   IKeyringAccountState,
   SyscoinMainSigner,
@@ -26,7 +24,6 @@ const MainController = () => {
   let main: SyscoinMainSigner = {} as SyscoinMainSigner;
 
   const keyringManager = KeyringManager();
-  const Web3Wallet = Web3Accounts();
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -37,7 +34,7 @@ const MainController = () => {
    *  account using the same seed
    */
   const forgetWallet = (pwd: string) => {
-    if (checkPassword(pwd)) {
+    if (keyringManager.checkPassword(pwd)) {
       keyringManager.forgetWallet();
 
       store.dispatch(forgetWalletState());
@@ -48,7 +45,7 @@ const MainController = () => {
   const unlock = async (pwd: string): Promise<void> => {
     console.log('calling keyring manager login');
 
-    if (!checkPassword(pwd)) return;
+    if (!keyringManager.checkPassword(pwd)) return;
 
     const vault = await keyringManager.login(pwd);
 
@@ -60,24 +57,14 @@ const MainController = () => {
   };
 
   const createWallet = async (): Promise<IKeyringAccountState> => {
-    console.log('[main] setting signers 1', hd, main);
+    const account = await keyringManager.createVault();
 
-    const {
-      account,
-      hd: _hd,
-      main: _main,
-    } = await keyringManager.createVault();
-
-    console.log('[main] setting signers 2', _hd, _main, _hd.mnemonic);
+    console.log('[main] setting account 2', account);
 
     store.dispatch(addAccountToStore(account));
     store.dispatch(setEncryptedMnemonic(keyringManager.getEncryptedMnemonic()));
     store.dispatch(setActiveAccount(account));
     store.dispatch(setLastLogin());
-
-    /** set signers for syscoin when creating a new wallet */
-    hd = _hd;
-    main = _main;
 
     console.log('[main] getting latest update', account);
 
@@ -114,7 +101,7 @@ const MainController = () => {
     store.dispatch(setNetwork(network));
 
     /** this method sets new signers for syscoin when changing networks */
-    const { account } = await keyringManager.setActiveNetworkForSigner({
+    const account = await keyringManager.setActiveNetworkForSigner({
       network,
     });
 
@@ -123,7 +110,6 @@ const MainController = () => {
       const currentSignerAccount = hd.Signer.accounts[activeAccount.id];
 
       const xpub = currentSignerAccount.getAccountPublicKey();
-      const xprv = currentSignerAccount.getAccountPrivateKey();
 
       store.dispatch(
         setActiveAccountProperty({
@@ -142,7 +128,7 @@ const MainController = () => {
     /** end */
 
     /** if the account index is > 0, we need to derive this account again from hd signer and set its index in the active account from signer */
-    keyringManager.setAccountIndexForDerivedAccount(hd, activeAccount.id);
+    keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
 
     /** set active network with web3 account data for evm networks */
     store.dispatch(setActiveAccount(account));
@@ -153,20 +139,15 @@ const MainController = () => {
 
   return {
     createWallet,
-    isUnlocked: keyringManager.isUnlocked,
-    createSeed: keyringManager.createSeed,
-    checkPassword: keyringManager.checkPassword,
-    getSeed: keyringManager.getSeed,
     forgetWallet,
-    importSeed: keyringManager.validateSeed,
     unlock,
     lock,
     createAccount,
     account,
-    setWalletPassword: keyringManager.setWalletPassword,
     setAccount,
     setAutolockTimer,
     setActiveNetwork,
+    ...keyringManager,
   };
 };
 

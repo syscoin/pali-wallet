@@ -2049,15 +2049,15 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.34":
-  version "1.0.34"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.34.tgz#90d5d598b619cf10403440d94b84fe8d39a341ed"
-  integrity sha512-dWLdjaeGWTWNfRdg8reNL9bbdtfJX7WvAnF5lOGFEZatTGmhGDFxg90BXy1B08yk3AyARFOh7EH5LKaLplgImw==
+"@pollum-io/sysweb3-keyring@^1.0.35":
+  version "1.0.37"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.37.tgz#e2c507bda7d5bc6e9bfe2478672da80814036332"
+  integrity sha512-XXLWQ1cmEi9gfh8EyIVlXgYZPMd61I/8imAiuYhrx2WojyryTOm8x/hA3q0AKn7AEouQsk7H3ZP/XW3nm2oikQ==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "^1.0.6"
-    "@pollum-io/sysweb3-utils" "^1.1.45"
+    "@pollum-io/sysweb3-utils" "^1.1.46"
     "@types/crypto-js" "^4.1.1"
     axios "^0.26.1"
     bip39 "^3.0.4"
@@ -2079,6 +2079,28 @@
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-utils" "^1.1.31"
+    "@types/crypto-js" "^4.1.1"
+    axios "^0.26.1"
+    bip39 "^3.0.4"
+    crypto-js "^4.1.1"
+    ethereumjs-wallet "^1.0.2"
+    ethers "^5.6.0"
+    json-cycle "^1.3.0"
+    lodash "^4.17.21"
+    syscoinjs-lib "^1.0.209"
+    syscointx-js "^1.0.101"
+    web3 "^1.7.1"
+    web3-utils "^1.7.1"
+
+"@pollum-io/sysweb3-keyring@^1.0.40":
+  version "1.0.40"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.40.tgz#7064992d55f289b7410f18905e8cd6cf87f294d1"
+  integrity sha512-jmMFXyhgQrzpx/z8E00slMHoWgFt1TPTobLr/emyJXWI9+gEHy2/HsaJoGCPA+duk0WdUmn6/eMvhfaLucXdjw==
+  dependencies:
+    "@metamask/obs-store" "^7.0.0"
+    "@metamask/safe-event-emitter" "^2.0.0"
+    "@pollum-io/sysweb3-core" "^1.0.6"
+    "@pollum-io/sysweb3-utils" "^1.1.46"
     "@types/crypto-js" "^4.1.1"
     axios "^0.26.1"
     bip39 "^3.0.4"
@@ -2119,11 +2141,12 @@
     syscoinjs-lib "^1.0.209"
     syscointx-js "^1.0.101"
 
-"@pollum-io/sysweb3-utils@^1.1.45":
-  version "1.1.45"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.45.tgz#1fbbe8f6226c1fa48856852c136b90a69b571fb9"
-  integrity sha512-9rgMTqETO8qbSsfJRsBHWOwxSbImaRni44eqEDgjPvaSeAirmjyt/R/J8c+0BIo6a8DBySMiXXvexsd/GT6yIw==
+"@pollum-io/sysweb3-utils@^1.1.46":
+  version "1.1.46"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.46.tgz#ad4879b92c41ad2f21ece09aacb38b395f388352"
+  integrity sha512-Pd7WE+HjIxTzQ5GKOcVpx5xHwq7puhWKnBixhZlLtBbOmDRfO5Jj8rWcQLJHvYQwlcfxsd755C6kUGtb/5ciJw==
   dependencies:
+    "@pollum-io/sysweb3-keyring" "^1.0.35"
     "@pollum-io/sysweb3-network" "^1.0.4"
     syscoinjs-lib "^1.0.209"
     syscointx-js "^1.0.101"
