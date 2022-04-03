@@ -73,8 +73,6 @@ const MainController = () => {
 
   const { account } = WalletController({
     checkPassword: keyringManager.checkPassword,
-    hd,
-    main,
   });
 
   const lock = () => {

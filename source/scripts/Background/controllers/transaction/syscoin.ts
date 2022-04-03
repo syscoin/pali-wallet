@@ -1,8 +1,10 @@
+import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 import store from 'state/store';
-import { TemporaryTransaction } from 'types/transactions';
 
 export const SysTransactionController = ({ main }) => {
-  const temporaryTransaction: TemporaryTransaction = {
+  const { txs } = KeyringManager();
+
+  const temporaryTransaction = {
     newAsset: null,
     mintAsset: null,
     newNFT: null,
@@ -67,5 +69,6 @@ export const SysTransactionController = ({ main }) => {
     clearTemporaryTransaction,
     updateTemporaryTransaction,
     confirmTemporaryTransaction,
+    ...txs,
   };
 };
