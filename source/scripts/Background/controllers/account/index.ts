@@ -6,15 +6,13 @@ import SysAccountController from './syscoin';
 
 const WalletController = (data: {
   checkPassword: (pwd: string) => boolean;
-  hd: SyscoinHDSigner;
-  main: any;
 }): { account: any; addAccount: any } => {
   const { activeNetwork } = store.getState().vault;
 
   const isSyscoinNetwork = activeNetwork.chainId === 57;
 
   const controller = {
-    account: isSyscoinNetwork ? SysAccountController(data) : Web3Accounts(),
+    account: isSyscoinNetwork ? SysAccountController() : Web3Accounts(),
   };
 
   const addAccount = () => {};
