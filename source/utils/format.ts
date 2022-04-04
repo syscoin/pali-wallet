@@ -72,16 +72,16 @@ export const formatSeedPhrase = (seed: string) => {
 
   const onlyLettersAndSpacesSeed = seed.replace(onlyLettersAndSpacesRegex, ' ');
   const lowerCaseTransform = onlyLettersAndSpacesSeed.toLowerCase();
-
   const seedWithoutDoubleSpaces = lowerCaseTransform.replace(
     withoutDoubleSpacesRegex,
     ' '
   );
-  const seedLength = seedWithoutDoubleSpaces.split(' ').length;
-  if (seedLength === 12) {
-    const formatedSeed = seedWithoutDoubleSpaces.trim();
 
-    return formatedSeed;
+  const formattedSeed = seedWithoutDoubleSpaces.trim();
+  const seedLength = formattedSeed.split(' ').length;
+
+  if (seedLength === 12) {
+    return formattedSeed;
   }
   return seed;
 };
