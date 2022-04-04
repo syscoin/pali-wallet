@@ -61,9 +61,7 @@ const MainController = () => {
     return account;
   };
 
-  const { account } = WalletController({
-    checkPassword: keyringManager.checkPassword,
-  });
+  const { account } = WalletController();
 
   const lock = () => {
     keyringManager.logout();

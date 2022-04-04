@@ -1,12 +1,9 @@
 import store from 'state/store';
-import { SyscoinHDSigner } from '@pollum-io/sysweb3-utils';
 import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
 
 import SysAccountController from './syscoin';
 
-const WalletController = (data: {
-  checkPassword: (pwd: string) => boolean;
-}): { account: any; addAccount: any } => {
+const WalletController = (): { account: any; addAccount: any } => {
   const { activeNetwork } = store.getState().vault;
 
   const isSyscoinNetwork = activeNetwork.chainId === 57;
