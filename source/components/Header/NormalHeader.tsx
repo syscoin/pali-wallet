@@ -399,7 +399,11 @@ export const NormalHeader: React.FC = () => {
                   onClick={() => navigate('/settings/forget-wallet')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
-                  <Icon name="delete" className="ml-1 mr-4 text-brand-white" />
+                  <Icon
+                    name="forget"
+                    className="ml-1 mr-4 w-5 h-5 text-brand-white"
+                    id="forget-wallet-btn"
+                  />
 
                   <span className="px-3">Forget wallet</span>
                 </li>
