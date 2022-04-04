@@ -10,6 +10,8 @@ export const CreatePhrase: FC = () => {
   const phrases = controller.wallet.createSeed();
 
   const nextHandler = () => {
+    console.log('[create phrase] creating seed', phrases);
+
     navigate('/phrase/confirm');
   };
 

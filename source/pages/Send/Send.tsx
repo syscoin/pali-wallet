@@ -43,11 +43,11 @@ export const Send: FC<ISend> = () => {
   }, [form, handleGetFee]);
 
   const hasAccountAssets =
-    activeAccount && Object.values(activeAccount.tokens).length > 0;
+    activeAccount && Object.values(activeAccount.assets).length > 0;
 
   const handleSelectedAsset = (item: number) => {
-    if (activeAccount?.tokens) {
-      const asset = Object.values(activeAccount?.tokens).find(
+    if (activeAccount?.assets) {
+      const asset = Object.values(activeAccount?.assets).find(
         (asset: any) => asset.tokenId === item
       );
 
@@ -98,7 +98,7 @@ export const Send: FC<ISend> = () => {
   };
 
   useEffect(() => {
-    log(`assets: ${activeAccount?.tokens}`);
+    log(`assets: ${activeAccount?.assets}`);
   }, []);
 
   const disabledFee =
@@ -200,7 +200,7 @@ export const Send: FC<ISend> = () => {
                   {hasAccountAssets && (
                     <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
                       {activeAccount &&
-                        Object.values(activeAccount.tokens).map((item) => (
+                        Object.values(activeAccount.assets).map((item: any) => (
                           // todo: set assetguid type to number
                           <Menu.Item>
                             <button

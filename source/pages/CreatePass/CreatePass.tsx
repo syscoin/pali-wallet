@@ -11,6 +11,7 @@ export const CreatePass = () => {
   const onSubmit = (data: any) => {
     try {
       controller.wallet.setWalletPassword(data.password);
+      console.log('[create pass] creating wallets');
 
       navigate('/phrase/create');
     } catch (error) {

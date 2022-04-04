@@ -1,9 +1,5 @@
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
-import {
-  IKeyringAccountState,
-  SyscoinMainSigner,
-  SyscoinHDSigner,
-} from '@pollum-io/sysweb3-utils';
+import { SyscoinHDSigner } from '@pollum-io/sysweb3-utils';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -15,13 +11,13 @@ import {
   setActiveNetwork as setNetwork,
   setActiveAccountProperty,
 } from 'state/vault';
+import { IKeyringAccount } from 'state/vault/types';
 
 import WalletController from './account';
 
 const MainController = () => {
   /** signers */
   let hd: SyscoinHDSigner = {} as SyscoinHDSigner;
-  let main: SyscoinMainSigner = {} as SyscoinMainSigner;
 
   const keyringManager = KeyringManager();
 
@@ -43,30 +39,24 @@ const MainController = () => {
   };
 
   const unlock = async (pwd: string): Promise<void> => {
-    console.log('calling keyring manager login');
-
-    if (!keyringManager.checkPassword(pwd)) return;
-
-    const vault = await keyringManager.login(pwd);
+    const vault = (await keyringManager.login(pwd)) as IKeyringAccount;
 
     store.dispatch(setLastLogin());
 
-    // store.dispatch(setActiveAccount())
+    store.dispatch(setActiveAccount(vault));
 
     console.log('vault unlocked', vault);
   };
 
-  const createWallet = async (): Promise<IKeyringAccountState> => {
-    const account = await keyringManager.createVault();
-
-    console.log('[main] setting account 2', account);
+  const createWallet = async (): Promise<IKeyringAccount> => {
+    console.log('[main controller] calling keyring manager create vault');
+    const account =
+      (await keyringManager.createKeyringVault()) as IKeyringAccount;
 
     store.dispatch(addAccountToStore(account));
     store.dispatch(setEncryptedMnemonic(keyringManager.getEncryptedMnemonic()));
     store.dispatch(setActiveAccount(account));
     store.dispatch(setLastLogin());
-
-    console.log('[main] getting latest update', account);
 
     return account;
   };
@@ -99,9 +89,9 @@ const MainController = () => {
     store.dispatch(setNetwork(network));
 
     /** this method sets new signers for syscoin when changing networks */
-    const account = await keyringManager.setActiveNetworkForSigner({
+    const account = (await keyringManager.setActiveNetworkForSigner({
       network,
-    });
+    })) as IKeyringAccount;
 
     /** directly set new keys for the current chain and update state if the active account is the first one */
     if (activeAccount.id === 0) {

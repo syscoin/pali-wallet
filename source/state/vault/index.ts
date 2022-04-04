@@ -1,14 +1,28 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import {
-  IKeyringAccountState,
   INetwork,
   INetworkType,
-  initialActiveAccountState,
   initialNetworksState,
 } from '@pollum-io/sysweb3-utils';
 
 import trustedApps from './trustedApps.json';
-import { IVaultState } from './types';
+import { IKeyringAccount, IVaultState } from './types';
+
+export const initialActiveAccountState = {
+  address: '',
+  balances: {
+    ethereum: 0,
+    syscoin: 0,
+  },
+  id: 0,
+  isTrezorWallet: false,
+  label: 'Account 1',
+  trezorId: -1,
+  xprv: '',
+  xpub: '',
+  assets: {},
+  transactions: {},
+};
 
 export const initialState: IVaultState = {
   lastLogin: 0,
@@ -27,7 +41,6 @@ export const initialState: IVaultState = {
   networks: initialNetworksState,
   trustedApps,
   activeToken: 'SYS',
-  hasEncryptedVault: false,
   encryptedMnemonic: '',
 };
 
@@ -47,10 +60,7 @@ const VaultState = createSlice({
         [txid]: tx,
       };
     },
-    createAccount(
-      state: IVaultState,
-      action: PayloadAction<IKeyringAccountState>
-    ) {
+    createAccount(state: IVaultState, action: PayloadAction<IKeyringAccount>) {
       state.accounts = {
         ...state.accounts,
         [action.payload.id]: action.payload,
@@ -83,7 +93,7 @@ const VaultState = createSlice({
     },
     setActiveAccount(
       state: IVaultState,
-      action: PayloadAction<IKeyringAccountState>
+      action: PayloadAction<IKeyringAccount>
     ) {
       state.activeAccount = action.payload;
     },

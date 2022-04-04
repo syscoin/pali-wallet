@@ -1,7 +1,7 @@
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 import store from 'state/store';
 
-export const SysTransactionController = ({ main }) => {
+export const SysTransactionController = () => {
   const { txs } = KeyringManager();
 
   const temporaryTransaction = {
@@ -34,8 +34,6 @@ export const SysTransactionController = ({ main }) => {
     condition?: boolean
   ) => {
     const { activeAccount } = store.getState().vault;
-
-    if (!main) throw new Error('Error: No signed account exists');
 
     if (!activeAccount) {
       throw new Error("Error: Can't find active account info");
