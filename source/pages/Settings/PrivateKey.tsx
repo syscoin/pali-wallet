@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useUtils } from 'hooks/index';
 import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
@@ -15,10 +15,17 @@ const PrivateKeyView = () => {
   const controller = getController();
   const activeAccount = controller.wallet.account.getActiveAccount();
 
-  const { navigate, useCopyClipboard } = useUtils();
+  const { navigate, useCopyClipboard, alert } = useUtils();
 
   const [copied, copyText] = useCopyClipboard();
   const [valid, setValid] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!copied) return;
+
+    alert.removeAll();
+    alert.success('Successfully copied');
+  }, [copied]);
 
   const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
@@ -106,7 +113,7 @@ const PrivateKeyView = () => {
 
       <div className="absolute bottom-8 md:static">
         <SecondaryButton type="button" onClick={() => navigate('/home')}>
-          {copied ? 'Copied' : 'Close'}
+          Close
         </SecondaryButton>
       </div>
     </Layout>
