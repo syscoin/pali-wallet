@@ -2092,15 +2092,15 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
-"@pollum-io/sysweb3-keyring@^1.0.47":
-  version "1.0.47"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.47.tgz#7984888d96d6ddaece543d64433f27acabdf658d"
-  integrity sha512-xVHv6LoNRMPBdUmQIT6fgNbaPvw6MfBUnRkyfs4YOYE8n2+HGsvUhOHTI0sQZKraak1+WXBwcKIDEnU1EEqw0w==
+"@pollum-io/sysweb3-keyring@^1.0.56":
+  version "1.0.56"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.56.tgz#9374d5220b09ae8e5554dfb73ad180dd810a04ac"
+  integrity sha512-sU9y7fOFaosZJNIkKO0xrmpLZSvS31Y5HpF7eGdnvuuIR3OLhZ5VBS8NscJhMqNtmfJY+x+jee9YYClgG7SdgA==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "^1.0.6"
-    "@pollum-io/sysweb3-utils" "^1.1.49"
+    "@pollum-io/sysweb3-utils" "^1.1.50"
     "@types/crypto-js" "^4.1.1"
     axios "^0.26.1"
     bip39 "^3.0.4"
@@ -2151,13 +2151,14 @@
     syscoinjs-lib "^1.0.209"
     syscointx-js "^1.0.101"
 
-"@pollum-io/sysweb3-utils@^1.1.49":
-  version "1.1.49"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.49.tgz#9bd75598002ac52d073957cd50a2fdb1e0039ef9"
-  integrity sha512-GMEs+P3Jbaws4jrzIChEDMwHUM9shYINAmr3tZnwimJnUE1LBI1Fk0BR0swXXGGCwP6qPgMYFF6BXa81/vWuTw==
+"@pollum-io/sysweb3-utils@^1.1.50":
+  version "1.1.50"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.50.tgz#8f04cdfe852b962cafb2c0d469b1c3f022594d9b"
+  integrity sha512-j8tP0JplZzRKDsSuEPL1kTT0G6JmCBgA/ytcsJqjM9bl/FQBGpovBzfQ/1bbhdPx5mbLvWLCENEwvrGtiB3pfg==
   dependencies:
     "@pollum-io/sysweb3-keyring" "^1.0.45"
     "@pollum-io/sysweb3-network" "^1.0.4"
+    ethers "^5.6.2"
     syscoinjs-lib "^1.0.209"
     syscointx-js "^1.0.101"
 
@@ -6460,7 +6461,7 @@ ethereumjs-wallet@^1.0.2:
     utf8 "^3.0.0"
     uuid "^8.3.2"
 
-ethers@^5.6.0:
+ethers@^5.6.0, ethers@^5.6.2:
   version "5.6.2"
   resolved "https://registry.yarnpkg.com/ethers/-/ethers-5.6.2.tgz#e75bac7f038c5e0fdde667dba62fc223924143a2"
   integrity sha512-EzGCbns24/Yluu7+ToWnMca3SXJ1Jk1BvWB7CCmVNxyOeM4LLvw2OLuIHhlkhQk1dtOcj9UMsdkxUh8RiG1dxQ==

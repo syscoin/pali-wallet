@@ -13,9 +13,9 @@ export const Home = () => {
 
   const { activeNetwork, fiat, activeAccount, lastLogin } = useStore();
 
-  useEffect(() => {
-    if (activeAccount) handleRefresh();
-  }, [activeAccount]);
+  // useEffect(() => {
+  //   if (activeAccount) handleRefresh();
+  // }, [activeAccount]);
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">

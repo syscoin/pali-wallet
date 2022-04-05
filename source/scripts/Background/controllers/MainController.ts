@@ -1,5 +1,4 @@
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
-import { SyscoinHDSigner } from '@pollum-io/sysweb3-utils';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -16,9 +15,6 @@ import { IKeyringAccount } from 'state/vault/types';
 import WalletController from './account';
 
 const MainController = () => {
-  /** signers */
-  let hd: SyscoinHDSigner = {} as SyscoinHDSigner;
-
   const keyringManager = KeyringManager();
 
   const setAutolockTimer = (minutes: number) => {
@@ -31,7 +27,7 @@ const MainController = () => {
    */
   const forgetWallet = (pwd: string) => {
     if (keyringManager.checkPassword(pwd)) {
-      keyringManager.forgetWallet();
+      keyringManager.forgetMainWallet();
 
       store.dispatch(forgetWalletState());
       store.dispatch(setLastLogin());
@@ -92,25 +88,19 @@ const MainController = () => {
     })) as IKeyringAccount;
 
     /** directly set new keys for the current chain and update state if the active account is the first one */
-    if (activeAccount.id === 0) {
-      const currentSignerAccount = hd.Signer.accounts[activeAccount.id];
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'xpub',
+        value: keyringManager.getAccountXpub(),
+      })
+    );
 
-      const xpub = currentSignerAccount.getAccountPublicKey();
-
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'xpub',
-          value: xpub,
-        })
-      );
-
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'xprv',
-          value: keyringManager.getEncryptedXprv(),
-        })
-      );
-    }
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'xprv',
+        value: keyringManager.getEncryptedXprv(),
+      })
+    );
     /** end */
 
     /** if the account index is > 0, we need to derive this account again from hd signer and set its index in the active account from signer */

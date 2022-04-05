@@ -13,14 +13,12 @@ import { Input, Form } from 'antd';
 
 const PrivateKeyView = () => {
   const controller = getController();
-  const { activeAccount } = useStore();
+  const { activeAccount, activeNetwork } = useStore();
 
   const { navigate, useCopyClipboard } = useUtils();
 
   const [copied, copyText] = useCopyClipboard();
   const [valid, setValid] = useState<boolean>(false);
-
-  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   return (
     <Layout title="YOUR KEYS">
@@ -96,7 +94,7 @@ const PrivateKeyView = () => {
         <div
           className="flex gap-2 items-center justify-center mt-4 hover:text-brand-royalblue text-xs cursor-pointer"
           onClick={() =>
-            window.open(`${sysExplorer}/xpub/${activeAccount?.xpub}`)
+            window.open(`${activeNetwork.url}/xpub/${activeAccount?.xpub}`)
           }
         >
           <p>View account on explorer</p>

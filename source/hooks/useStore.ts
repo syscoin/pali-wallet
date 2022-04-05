@@ -9,7 +9,6 @@ export const useStore = () => {
   const {
     lastLogin,
     timer,
-    hasEncryptedVault,
     encryptedMnemonic,
     trustedApps,
     activeNetwork,
@@ -24,7 +23,6 @@ export const useStore = () => {
     activeAccount,
     activeAccountId: activeAccount.id,
     activeNetwork,
-    hasEncryptedVault,
     isPendingBalances,
     walletTokens: [],
     networks,
