@@ -6,7 +6,7 @@ import QRCode from 'qrcode.react';
 import { Layout, SecondaryButton, Icon } from 'components/index';
 
 export const Receive = () => {
-  const { useCopyClipboard } = useUtils();
+  const { useCopyClipboard, alert } = useUtils();
   const [isCopied, copyText] = useCopyClipboard();
 
   const controller = getController();
@@ -23,6 +23,13 @@ export const Receive = () => {
 
     getNewAddress();
   }, []);
+
+  useEffect(() => {
+    if (!isCopied) return;
+
+    alert.removeAll();
+    alert.success('Address successfully copied');
+  }, [isCopied]);
 
   return (
     <Layout title="RECEIVE SYS" id="receiveSYS-title">
@@ -53,9 +60,7 @@ export const Receive = () => {
               type="button"
               onClick={() => copyText(activeAccount.address.main)}
             >
-              <span className="text-xs">
-                {isCopied ? 'Copied address' : 'Copy'}
-              </span>
+              <span className="text-xs">Copy</span>
             </SecondaryButton>
           </div>
         </div>
