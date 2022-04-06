@@ -12,14 +12,10 @@ export const Home = () => {
   const [symbol, setSymbol] = useState('SYS');
   const { getFiatAmount } = usePrice();
 
-  const { navigate, handleRefresh } = useUtils();
+  const { navigate } = useUtils();
 
-  const { networks, activeNetwork, fiat, activeAccount, lastLogin, accounts } =
+  const { networks, activeNetwork, fiat, activeAccount, lastLogin } =
     useStore();
-
-  // useEffect(() => {
-  //   if (activeAccount) handleRefresh();
-  // }, [activeAccount]);
 
   const setChainSymbol = async () => {
     const chain = networks.syscoin[activeNetwork.chainId]
@@ -31,11 +27,8 @@ export const Home = () => {
   };
 
   useEffect(() => {
-    if (!controller.wallet.isLocked() && accounts && activeAccount)
-      handleRefresh();
-
     setChainSymbol();
-  }, [!controller.wallet.isLocked(), accounts]);
+  }, [controller.wallet.isUnlocked()]);
 
   const isTestnet = activeNetwork.chainId === 5700;
   const isNotTestnet = activeNetwork.chainId === 57 ? 'SYS' : symbol;

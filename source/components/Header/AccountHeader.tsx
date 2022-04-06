@@ -3,21 +3,25 @@ import { IconButton, Icon } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
 import { toSvg } from 'jdenticon';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
-import { useNavigate } from 'react-router-dom';
 import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 
 const AccountMenu: React.FC = () => {
-  const navigate = useNavigate();
+  const { navigate, handleRefresh } = useUtils();
   const { wallet } = getController();
-  const { encryptedMnemonic, accounts, activeAccountId } = useStore();
+  const { encryptedMnemonic, accounts, activeAccount } = useStore();
 
   const switchAccount = (id: number) => {
     wallet.switchWallet(Number(id));
     wallet.account.watchMemPool(accounts[Number(id)]);
   };
 
-  // get latest update
+  const controller = getController();
+
+  useEffect(() => {
+    if (controller.wallet.isUnlocked() && accounts && activeAccount)
+      handleRefresh();
+  }, [controller.wallet.isUnlocked()]);
 
   const handleLogout = () => {
     wallet.logout();
@@ -113,7 +117,7 @@ const AccountMenu: React.FC = () => {
                           {account.label} ({ellipsis(account.address, 4, 8)})
                         </span>
 
-                        {activeAccountId === account.id && (
+                        {activeAccount.id === account.id && (
                           <Icon
                             name="check"
                             className="mb-1 w-4"
