@@ -1,14 +1,28 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import {
-  IKeyringAccountState,
   INetwork,
   INetworkType,
-  initialActiveAccountState,
   initialNetworksState,
 } from '@pollum-io/sysweb3-utils';
 
 import trustedApps from './trustedApps.json';
-import { IVaultState } from './types';
+import { IKeyringAccount, IVaultState } from './types';
+
+export const initialActiveAccountState = {
+  address: '',
+  balances: {
+    ethereum: 0,
+    syscoin: 0,
+  },
+  id: 0,
+  isTrezorWallet: false,
+  label: 'Account 1',
+  trezorId: -1,
+  xprv: '',
+  xpub: '',
+  assets: {},
+  transactions: {},
+};
 
 export const initialState: IVaultState = {
   lastLogin: 0,
@@ -19,6 +33,8 @@ export const initialState: IVaultState = {
     url: 'https://blockbook.elint.services/',
     label: 'Syscoin Mainnet',
     default: true,
+    isTestnet: false,
+    currency: 'SYS',
   },
   isPendingBalances: false,
   timer: 5,
@@ -26,7 +42,6 @@ export const initialState: IVaultState = {
   trustedApps,
   activeToken: 'SYS',
   encryptedMnemonic: '',
-  getState: () => initialState,
 };
 
 const VaultState = createSlice({
@@ -36,7 +51,7 @@ const VaultState = createSlice({
     // todo: set account tx and add to ikeyringaccountstate
     setAccountTransactions(
       state: IVaultState,
-      action: PayloadAction<{ txid: string; tx: any }>
+      action: PayloadAction<{ tx: any; txid: string }>
     ) {
       const { txid, tx } = action.payload;
 
@@ -45,10 +60,7 @@ const VaultState = createSlice({
         [txid]: tx,
       };
     },
-    createAccount(
-      state: IVaultState,
-      action: PayloadAction<IKeyringAccountState>
-    ) {
+    createAccount(state: IVaultState, action: PayloadAction<IKeyringAccount>) {
       state.accounts = {
         ...state.accounts,
         [action.payload.id]: action.payload,
@@ -67,33 +79,11 @@ const VaultState = createSlice({
     },
     removeNetwork(
       state: IVaultState,
-      action: PayloadAction<{ prefix: string; chainId: number }>
+      action: PayloadAction<{ chainId: number; prefix: string }>
     ) {
       const { prefix, chainId } = action.payload;
 
       delete state.networks[prefix][chainId];
-    },
-    // todo: remove this
-    clearAllTransactions(state: IVaultState) {
-      return {
-        ...state,
-        temporaryTransactionState: {
-          executing: false,
-          type: '',
-        },
-      };
-    },
-    setTemporaryTransactionState(
-      state: IVaultState,
-      action: PayloadAction<{ executing: boolean; type: string }>
-    ) {
-      return {
-        ...state,
-        temporaryTransactionState: {
-          executing: action.payload.executing,
-          type: action.payload.type,
-        },
-      };
     },
     setTimer(state: IVaultState, action: PayloadAction<number>) {
       state.timer = action.payload;
@@ -103,7 +93,7 @@ const VaultState = createSlice({
     },
     setActiveAccount(
       state: IVaultState,
-      action: PayloadAction<IKeyringAccountState>
+      action: PayloadAction<IKeyringAccount>
     ) {
       state.activeAccount = action.payload;
     },
@@ -172,8 +162,6 @@ export const {
   setNetworks,
   setTimer,
   setEncryptedMnemonic,
-  setTemporaryTransactionState,
-  clearAllTransactions,
   forgetWallet,
   removeAccount,
   removeAccounts,
