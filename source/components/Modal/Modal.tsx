@@ -113,7 +113,7 @@ export const ErrorModal = ({
   title = '',
 }: IErrorModal) => (
   <Modal className="max-w-2xl" show={show} onClose={onClose}>
-    <div className="inline-block align-middle my-8 p-6 w-full max-w-2xl text-center font-poppins bg-bkg-3 border border-red-500 rounded-2xl shadow-xl overflow-hidden transform transition-all">
+    <div className="inline-block align-middle my-8 p-6 w-full max-w-2xl text-center font-poppins bg-bkg-3 border border-bkg-3 rounded-2xl shadow-xl overflow-hidden transform transition-all">
       <Dialog.Title
         as="h3"
         className="text-brand-white text-lg font-medium leading-6"
@@ -125,15 +125,15 @@ export const ErrorModal = ({
         <p className="text-gray-300 text-sm">{description}</p>
       </div>
 
-      <p className="my-4 text-red-500 text-sm">
+      <p className="my-4 text-button-primary text-sm">
         Error description:
         {log}
       </p>
 
-      <div className="flex items-center justify-between mt-8">
+      <div className="flex gap-x-8 items-center justify-between mt-8">
         <button
           type="button"
-          className="inline-flex justify-center px-12 py-2 text-red-500 text-sm font-medium bg-blue-100 border border-red-500 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
+          className="inline-flex justify-center py-2 w-40 text-brand-white text-sm font-medium bg-button-secondary border border-button-secondary rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
           onClick={onClose}
         >
           {buttonText}
@@ -141,7 +141,7 @@ export const ErrorModal = ({
 
         <button
           type="button"
-          className="inline-flex justify-center px-12 py-2 text-brand-white text-sm font-medium bg-red-500 hover:bg-opacity-70 border border-transparent rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
+          className="inline-flex justify-center py-2 w-40 text-brand-white text-sm font-medium bg-button-primary hover:bg-opacity-70 border border-button-primary rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
           onClick={() =>
             window.open(
               `mailto:pali@pollum.io?subject="Pali Error Report: Token creation"&body=${log}`
