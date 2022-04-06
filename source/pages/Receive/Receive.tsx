@@ -10,7 +10,7 @@ export const Receive = () => {
   const [isCopied, copyText] = useCopyClipboard();
 
   const controller = getController();
-  const { activeAccount, activeNetwork } = useStore();
+  const { activeAccount, activeNetwork, networks } = useStore();
 
   const [loaded, setLoaded] = useState<boolean>(false);
 
@@ -20,8 +20,17 @@ export const Receive = () => {
         (activeNetwork.chainId === 57 || activeNetwork.chainId === 5700) &&
         (await controller.wallet.account.setAddress())
       ) {
+        console.log(
+          'get receiving address',
+          await controller.wallet.account.setAddress()
+        );
         setLoaded(true);
+
+        return;
       }
+
+      if (activeAccount.address && networks.ethereum[activeNetwork.chainId])
+        setLoaded(true);
     };
 
     setNewAddress();

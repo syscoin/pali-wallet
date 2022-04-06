@@ -1,7 +1,11 @@
 import { SysTransactionController } from '../transaction';
 import SysTrezorController from '../trezor/syscoin';
 import store from 'state/store';
-import { setActiveAccount, setIsPendingBalances } from 'state/vault';
+import {
+  setActiveAccount,
+  setActiveAccountProperty,
+  setIsPendingBalances,
+} from 'state/vault';
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 import { IKeyringAccount } from 'state/vault/types';
 
@@ -47,7 +51,18 @@ const SysAccountController = () => {
     return true;
   };
 
-  const setAddress = () => keyringManager.address.getValidAddress();
+  const setAddress = async (): Promise<string> => {
+    const receivingAddress = await keyringManager.address.getValidAddress();
+
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'address',
+        value: String(receivingAddress),
+      })
+    );
+
+    return receivingAddress;
+  };
 
   const trezor = SysTrezorController();
   const tx = SysTransactionController();

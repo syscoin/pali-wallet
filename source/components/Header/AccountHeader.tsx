@@ -17,8 +17,11 @@ const AccountMenu: React.FC = () => {
     wallet.account.watchMemPool(accounts[Number(id)]);
   };
 
+  // get latest update
+
   const handleLogout = () => {
-    wallet.logOut();
+    wallet.logout();
+
     navigate('/');
   };
 

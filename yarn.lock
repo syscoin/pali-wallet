@@ -2092,10 +2092,10 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
-"@pollum-io/sysweb3-keyring@^1.0.56":
-  version "1.0.56"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.56.tgz#9374d5220b09ae8e5554dfb73ad180dd810a04ac"
-  integrity sha512-sU9y7fOFaosZJNIkKO0xrmpLZSvS31Y5HpF7eGdnvuuIR3OLhZ5VBS8NscJhMqNtmfJY+x+jee9YYClgG7SdgA==
+"@pollum-io/sysweb3-keyring@^1.0.74":
+  version "1.0.74"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.74.tgz#47ab30e22c5092917f1b7d0f7ff5f0dd33ea5bc1"
+  integrity sha512-YhA3JUOzG588Tuen3nTOBbk0dcqK71gHEcZHGUAcPjGYE7P48ebcjkPjnL14SK16skvaQhwA05XcyGCjPeDwtg==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
@@ -2105,6 +2105,8 @@
     axios "^0.26.1"
     bip39 "^3.0.4"
     crypto-js "^4.1.1"
+    eth-sig-util "^3.0.1"
+    ethereumjs-util "^7.1.4"
     ethereumjs-wallet "^1.0.2"
     ethers "^5.6.0"
     json-cycle "^1.3.0"
@@ -2162,10 +2164,21 @@
     syscoinjs-lib "^1.0.209"
     syscointx-js "^1.0.101"
 
-"@pollum-io/sysweb3@^1.0.27":
-  version "1.0.27"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3/-/sysweb3-1.0.27.tgz#1b918d8d6d25639dcf7708e3ae56215ff871e5e5"
-  integrity sha512-/BYM1HgrzShAK4eIIzLKzCNmaTV2/7BFDP0TRrfMJWn8pQAqwfs63JfsWKUAXfVN8d9PtDMRgL46D/jAD9VO0Q==
+"@pollum-io/sysweb3-utils@^1.1.55":
+  version "1.1.55"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.55.tgz#842a2c1898a26119063e3c031686959c6267f5a8"
+  integrity sha512-9lHo8F+pKWG9/sZkDkj4xduU9osDS9wz0HtAU1E63wzzD7nt5YmNrh+oLiE1wc6gTMAAC+YNwKUxDx9yzRShAA==
+  dependencies:
+    "@pollum-io/sysweb3-keyring" "^1.0.45"
+    "@pollum-io/sysweb3-network" "^1.0.4"
+    ethers "^5.6.2"
+    syscoinjs-lib "^1.0.209"
+    syscointx-js "^1.0.101"
+
+"@pollum-io/sysweb3@^1.0.31":
+  version "1.0.31"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3/-/sysweb3-1.0.31.tgz#7b7f35a4315f5d072ca4fab535a09fb17f0f21d8"
+  integrity sha512-YOm5JvC1jtMbjUTrG9QQkg3/K1Eo9b9Zumwpq5dmOPlA3xQGYVrSmzzjyatuspwCMhkWoc++kaRmWAJ/BkcDYg==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.1"
     "@pollum-io/sysweb3-keyring" "^1.0.4"
@@ -2304,7 +2317,7 @@
   dependencies:
     "@babel/types" "^7.3.0"
 
-"@types/bn.js@^4.11.5":
+"@types/bn.js@^4.11.3", "@types/bn.js@^4.11.5":
   version "4.11.6"
   resolved "https://registry.yarnpkg.com/@types/bn.js/-/bn.js-4.11.6.tgz#c306c70d9358aaea33cd4eda092a742b9505967c"
   integrity sha512-pqr857jrp2kPuO9uRjZ3PwnJTjoQy+fcdxvBTvHm6dkmEL9q+hDD/2j/0ELOBPtPnS8LjCX0gI9nbl8lVkadpg==
@@ -6385,6 +6398,16 @@ eth-proof@^2.1.6:
     merkle-patricia-tree "github:zmitton/merkle-patricia-tree#build"
     promisfy "^1.2.0"
 
+eth-sig-util@^3.0.1:
+  version "3.0.1"
+  resolved "https://registry.yarnpkg.com/eth-sig-util/-/eth-sig-util-3.0.1.tgz#8753297c83a3f58346bd13547b59c4b2cd110c96"
+  integrity sha512-0Us50HiGGvZgjtWTyAI/+qTzYPMLy5Q451D0Xy68bxq1QMWdoOddDwGvsqcFT27uohKgalM9z/yxplyt+mY2iQ==
+  dependencies:
+    ethereumjs-abi "^0.6.8"
+    ethereumjs-util "^5.1.1"
+    tweetnacl "^1.0.3"
+    tweetnacl-util "^0.15.0"
+
 eth-util-lite@^1.0.1:
   version "1.0.1"
   resolved "https://registry.yarnpkg.com/eth-util-lite/-/eth-util-lite-1.0.1.tgz#e0eef3dd317375f22548cda4ca483807a63fa71a"
@@ -6423,7 +6446,15 @@ ethereum-cryptography@^0.1.3:
     secp256k1 "^4.0.1"
     setimmediate "^1.0.5"
 
-ethereumjs-util@^5.2.0:
+ethereumjs-abi@^0.6.8:
+  version "0.6.8"
+  resolved "https://registry.yarnpkg.com/ethereumjs-abi/-/ethereumjs-abi-0.6.8.tgz#71bc152db099f70e62f108b7cdfca1b362c6fcae"
+  integrity sha512-Tx0r/iXI6r+lRsdvkFDlut0N08jWMnKRZ6Gkq+Nmw75lZe4e6o3EkSnkaBP5NF6+m5PTGAr9JP43N3LyeoglsA==
+  dependencies:
+    bn.js "^4.11.8"
+    ethereumjs-util "^6.0.0"
+
+ethereumjs-util@^5.1.1, ethereumjs-util@^5.2.0:
   version "5.2.1"
   resolved "https://registry.yarnpkg.com/ethereumjs-util/-/ethereumjs-util-5.2.1.tgz#a833f0e5fca7e5b361384dc76301a721f537bf65"
   integrity sha512-v3kT+7zdyCm1HIqWlLNrHGqHGLpGYIhjeHxQjnDXjLT2FyGJDsd3LWMYUo7pAFRrk86CR3nUJfhC81CCoJNNGQ==
@@ -6435,6 +6466,19 @@ ethereumjs-util@^5.2.0:
     ethjs-util "^0.1.3"
     rlp "^2.0.0"
     safe-buffer "^5.1.1"
+
+ethereumjs-util@^6.0.0:
+  version "6.2.1"
+  resolved "https://registry.yarnpkg.com/ethereumjs-util/-/ethereumjs-util-6.2.1.tgz#fcb4e4dd5ceacb9d2305426ab1a5cd93e3163b69"
+  integrity sha512-W2Ktez4L01Vexijrm5EB6w7dg4n/TgpoYU4avuT5T3Vmnw/eCRtiBrJfQYS/DCSvDIOLn2k57GcHdeBcgVxAqw==
+  dependencies:
+    "@types/bn.js" "^4.11.3"
+    bn.js "^4.11.0"
+    create-hash "^1.1.2"
+    elliptic "^6.5.2"
+    ethereum-cryptography "^0.1.3"
+    ethjs-util "0.1.6"
+    rlp "^2.2.3"
 
 ethereumjs-util@^7.0.10, ethereumjs-util@^7.1.0, ethereumjs-util@^7.1.2, ethereumjs-util@^7.1.4:
   version "7.1.4"
@@ -6505,7 +6549,7 @@ ethjs-unit@0.1.6:
     bn.js "4.11.6"
     number-to-bn "1.7.0"
 
-ethjs-util@^0.1.3:
+ethjs-util@0.1.6, ethjs-util@^0.1.3:
   version "0.1.6"
   resolved "https://registry.yarnpkg.com/ethjs-util/-/ethjs-util-0.1.6.tgz#f308b62f185f9fe6237132fb2a9818866a5cd536"
   integrity sha512-CUnVOQq7gSpDHZVVrQW8ExxUETWrnrvXYvYz55wOU8Uj4VCgw56XC2B/fVqQN+f7gmrnRHSLVnFAwsCuNwji8w==
@@ -13514,10 +13558,20 @@ tunnel-agent@^0.6.0:
   dependencies:
     safe-buffer "^5.0.1"
 
+tweetnacl-util@^0.15.0:
+  version "0.15.1"
+  resolved "https://registry.yarnpkg.com/tweetnacl-util/-/tweetnacl-util-0.15.1.tgz#b80fcdb5c97bcc508be18c44a4be50f022eea00b"
+  integrity sha512-RKJBIj8lySrShN4w6i/BonWp2Z/uxwC3h4y7xsRrpP59ZboCd0GpEVsOnMDYLMmKBpYhb5TgHzZXy7wTfYFBRw==
+
 tweetnacl@^0.14.3, tweetnacl@~0.14.0:
   version "0.14.5"
   resolved "https://registry.yarnpkg.com/tweetnacl/-/tweetnacl-0.14.5.tgz#5ae68177f192d4456269d108afa93ff8743f4f64"
   integrity sha1-WuaBd/GS1EViadEIr6k/+HQ/T2Q=
+
+tweetnacl@^1.0.3:
+  version "1.0.3"
+  resolved "https://registry.yarnpkg.com/tweetnacl/-/tweetnacl-1.0.3.tgz#ac0af71680458d8a6378d0d0d050ab1407d35596"
+  integrity sha512-6rt+RN7aOi1nGMyC4Xa5DdYiukl2UWCbcJft7YhxReBGQD7OAM8Pbxw6YMo4r2diNEA8FEmu32YOn9rhaiE5yw==
 
 type-check@^0.4.0, type-check@~0.4.0:
   version "0.4.0"
