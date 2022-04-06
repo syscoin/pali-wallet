@@ -48,8 +48,6 @@ const CurrencyView = () => {
   };
 
   const handleConfirmCurrencyChange = () => {
-    controller.utils.updateFiat(selectedCoin, 'syscoin');
-
     setConfirmed(true);
   };
 
@@ -61,6 +59,13 @@ const CurrencyView = () => {
     controller.wallet.account.getLatestUpdate();
     controller.wallet.account.watchMemPool(accounts[activeAccountId]);
     controller.stateUpdater();
+  };
+
+  const updateCurrency = () => {
+    getSymbolFromCurrency(
+      selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency
+    );
+    controller.utils.updateFiat(selectedCoin, 'syscoin');
   };
 
   useEffect(() => {
@@ -94,9 +99,7 @@ const CurrencyView = () => {
             disabled={!fiat || !fiat.availableCoins}
             className="inline-flex justify-center py-2 w-80 text-white text-sm font-medium bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
           >
-            {getSymbolFromCurrency(
-              selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency
-            )}
+            {updateCurrency()}
 
             <p className="ml-2">
               {selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency}
