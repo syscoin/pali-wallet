@@ -66,6 +66,11 @@ export const formatUrl = (url: string, size = 30) => {
   return `${url.slice(0, size)}...`;
 };
 
+/**
+ * remove double spaces, numbers and symbols
+ *
+ * transform in lowerCase
+ */
 export const formatSeedPhrase = (seed: string) => {
   const withoutDoubleSpacesRegex = /\s{2,}/g;
   const onlyLettersAndSpacesRegex = /[^a-zA-Z\s]/g;

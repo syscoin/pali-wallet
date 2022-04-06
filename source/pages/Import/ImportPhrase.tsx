@@ -47,13 +47,8 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
             },
             () => ({
               validator(_, value) {
-                try {
-                  form.setFieldsValue({ phrase: formatSeedPhrase(value) });
-                } catch (error) {
-                  setSeedIsValid(false);
-
-                  return Promise.reject();
-                }
+                value = formatSeedPhrase(value);
+                form.setFieldsValue({ phrase: value });
                 setSeedIsValid(controller.wallet.importPhrase(value) && value);
 
                 if (controller.wallet.importPhrase(value)) {

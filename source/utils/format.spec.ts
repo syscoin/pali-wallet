@@ -66,8 +66,6 @@ describe('Format', () => {
     const output = formatSeedPhrase(input);
     const outputLenght = output.split(' ').length;
 
-    console.log(output);
-
     expect(output).toBe(
       'peace uncle grit essence stuff angle cruise annual fury letter snack globe'
     );
