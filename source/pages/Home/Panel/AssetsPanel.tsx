@@ -10,7 +10,7 @@ export const AssetsPanel: FC = () => {
   return (
     <>
       <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
-        {activeAccount?.tokens ? (
+        {Object.values(activeAccount.assets) ? (
           <PanelList data={[]} activity={false} assets />
         ) : (
           <p className="flex items-center justify-center text-brand-white text-sm">
