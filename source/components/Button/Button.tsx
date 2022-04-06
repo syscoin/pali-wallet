@@ -9,6 +9,7 @@ interface IPrimaryButton {
   id?: string;
   loading?: boolean;
   onClick?: () => any;
+  ref?: (any) => void;
   type: 'button' | 'submit' | 'reset' | undefined;
   width?: string;
 }
@@ -58,6 +59,7 @@ export const PrimaryButton: React.FC<IPrimaryButton> = ({
   loading = false,
   onClick,
   type = 'submit',
+  ref,
   width = '36',
 }) => {
   const enabledStyle = action
@@ -82,6 +84,7 @@ export const PrimaryButton: React.FC<IPrimaryButton> = ({
       onClick={onClick}
       type={type}
       id={id}
+      ref={ref}
     >
       {loading ? (
         loadingIcon

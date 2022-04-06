@@ -1,6 +1,8 @@
 import React, { FC } from 'react';
 import * as AntIcons from '@ant-design/icons';
 
+import { ForgetWalletIcon } from './ForgetWalletIcon';
+
 const icons = {
   appstoreadd: AntIcons.AppstoreAddOutlined,
   'arrow-down': AntIcons.ArrowDownOutlined,
@@ -20,6 +22,7 @@ const icons = {
   edit: AntIcons.EditOutlined,
   export: AntIcons.ExportOutlined,
   'file-protect': AntIcons.FileProtectOutlined,
+  forget: ForgetWalletIcon,
   globe: AntIcons.GlobalOutlined,
   home: AntIcons.HomeOutlined,
   key: AntIcons.KeyOutlined,

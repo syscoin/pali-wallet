@@ -4,9 +4,8 @@ import { Layout, SecondaryButton } from 'components/index';
 import axios from 'axios';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
-import { INetworkType } from '@pollum-io/sysweb3-utils';
 
-import { EditNetwork } from '.';
+import { ManageNetwork } from '.';
 
 const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   const [loading, setLoading] = useState(false);
@@ -21,25 +20,23 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
     try {
       const response = await axios.get(`${blockbookURL}/api/v2`);
       const { coin } = response.data.blockbook;
+      const { chain } = response.data.backend;
 
       if (response && coin) {
-        if (coin === 'Syscoin' || coin === 'Syscoin Testnet') {
-          controller.wallet.account.updateNetworkData(INetworkType.Syscoin, {
-            chainId: selectedToEdit
-              ? selectedToEdit.id
-              : network.toString().toLowerCase(),
-            label: network,
-            url: blockbookURL,
-            default: false,
-          });
+        controller.wallet.account.updateNetworkData({
+          id: selectedToEdit
+            ? selectedToEdit.id
+            : coin.toString().toLowerCase(),
+          label: `${network.toString().toLowerCase()} ${chain
+            .toString()
+            .toLowerCase()}`,
+          beUrl: blockbookURL,
+        });
 
-          setLoading(false);
-          setEdit(true);
+        setLoading(false);
+        setEdit(true);
 
-          return;
-        }
-
-        throw new Error('Invalid blockbook URL.');
+        return;
       }
     } catch (error) {
       alert.removeAll();
@@ -52,7 +49,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   return (
     <>
       {edit ? (
-        <EditNetwork />
+        <ManageNetwork />
       ) : (
         <Layout title="CUSTOM RPC">
           <Form

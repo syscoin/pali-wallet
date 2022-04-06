@@ -1,21 +1,44 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Header, Icon, Button } from 'components/index';
 import { useStore, usePrice, useUtils } from 'hooks/index';
-import { formatNumber } from 'utils/index';
+import { formatNumber, getSymbolByChain } from 'utils/index';
+import { getController } from 'utils/browser';
 
 import { TxsPanel } from './TxsPanel';
 import { Loading } from 'components/Loading';
 
 export const Home = () => {
+  const controller = getController();
+  const [symbol, setSymbol] = useState('SYS');
   const { getFiatAmount } = usePrice();
 
   const { navigate, handleRefresh } = useUtils();
 
-  const { activeNetwork, fiat, activeAccount, lastLogin } = useStore();
+  const { networks, activeNetwork, fiat, activeAccount, lastLogin, accounts } =
+    useStore();
 
   // useEffect(() => {
   //   if (activeAccount) handleRefresh();
   // }, [activeAccount]);
+
+  const setChainSymbol = async () => {
+    const chain = networks.syscoin[activeNetwork.chainId]
+      ? 'syscoin'
+      : 'ethereum';
+    const symbol = await getSymbolByChain(chain);
+
+    setSymbol(symbol);
+  };
+
+  useEffect(() => {
+    if (!controller.wallet.isLocked() && accounts && activeAccount)
+      handleRefresh();
+
+    setChainSymbol();
+  }, [!controller.wallet.isLocked(), accounts]);
+
+  const isTestnet = activeNetwork.chainId === 5700;
+  const isNotTestnet = activeNetwork.chainId === 57 ? 'SYS' : symbol;
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
@@ -46,7 +69,9 @@ export const Home = () => {
                       {formatNumber(activeAccount?.balances.syscoin || 0)}{' '}
                     </p>
 
-                    <p className="mt-4 font-poppins">SYS</p>
+                    <p className="mt-4 font-poppins">
+                      {isTestnet ? 'TSYS' : isNotTestnet}
+                    </p>
                   </div>
 
                   <p id="fiat-ammount">
