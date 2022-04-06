@@ -20,10 +20,6 @@ export const Receive = () => {
         (activeNetwork.chainId === 57 || activeNetwork.chainId === 5700) &&
         (await controller.wallet.account.setAddress())
       ) {
-        console.log(
-          'get receiving address',
-          await controller.wallet.account.setAddress()
-        );
         setLoaded(true);
 
         return;
