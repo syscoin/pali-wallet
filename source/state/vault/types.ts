@@ -1,11 +1,34 @@
-import { IWalletState } from '@pollum-io/sysweb3-utils';
+import {
+  IKeyringAccountState,
+  INetwork,
+  INetworkType,
+} from '@pollum-io/sysweb3-utils';
 
-export interface IVaultState extends IWalletState {
+export interface IVaultState {
   activeToken: string;
+  encryptedMnemonic: string;
   isPendingBalances: boolean;
+  lastLogin: number;
   timer: number;
   trustedApps: string[];
-  encryptedMnemonic: string;
+  accounts: {
+    [id: number]: IKeyringAccount;
+  };
+  activeAccount: IKeyringAccount;
+  networks: {
+    [INetworkType.Ethereum]: {
+      [chainId: number]: INetwork;
+    };
+    [INetworkType.Syscoin]: {
+      [chainId: number]: INetwork;
+    };
+  };
+  activeNetwork: INetwork;
+}
+
+export interface IKeyringAccount extends IKeyringAccountState {
+  assets: any;
+  transactions: any;
 }
 
 export interface Holding {
@@ -25,18 +48,4 @@ export interface IMintedToken {
   maxSupply: number;
   symbol: string;
   totalSupply: number;
-}
-
-export interface IWalletTokenState {
-  accountId: number;
-  accountXpub: string;
-  holdings: any[]; // ? Holding[]
-  mintedTokens: IMintedToken[];
-  tokens: any;
-}
-
-export interface INetwork {
-  beUrl: string;
-  id: string;
-  label: string;
 }
