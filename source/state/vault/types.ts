@@ -5,16 +5,15 @@ import {
 } from '@pollum-io/sysweb3-utils';
 
 export interface IVaultState {
-  activeToken: string;
-  encryptedMnemonic: string;
-  isPendingBalances: boolean;
-  lastLogin: number;
-  timer: number;
-  trustedApps: string[];
   accounts: {
     [id: number]: IKeyringAccount;
   };
   activeAccount: IKeyringAccount;
+  activeNetwork: INetwork;
+  activeToken: string;
+  encryptedMnemonic: string;
+  isPendingBalances: boolean;
+  lastLogin: number;
   networks: {
     [INetworkType.Ethereum]: {
       [chainId: number]: INetwork;
@@ -23,7 +22,8 @@ export interface IVaultState {
       [chainId: number]: INetwork;
     };
   };
-  activeNetwork: INetwork;
+  timer: number;
+  trustedApps: string[];
 }
 
 export interface IKeyringAccount extends IKeyringAccountState {

@@ -1,5 +1,3 @@
-import { SysTransactionController } from '../transaction';
-import SysTrezorController from '../trezor/syscoin';
 import store from 'state/store';
 import {
   setActiveAccount,
@@ -8,6 +6,9 @@ import {
 } from 'state/vault';
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 import { IKeyringAccount } from 'state/vault/types';
+
+import SysTrezorController from '../trezor/syscoin';
+import { SysTransactionController } from '../transaction';
 
 const SysAccountController = () => {
   const keyringManager = KeyringManager();

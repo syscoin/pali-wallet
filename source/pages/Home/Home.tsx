@@ -3,9 +3,9 @@ import { Header, Icon, Button } from 'components/index';
 import { useStore, usePrice, useUtils } from 'hooks/index';
 import { formatNumber, getSymbolByChain } from 'utils/index';
 import { getController } from 'utils/browser';
+import { Loading } from 'components/Loading';
 
 import { TxsPanel } from './TxsPanel';
-import { Loading } from 'components/Loading';
 
 export const Home = () => {
   const controller = getController();
