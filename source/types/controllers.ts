@@ -28,7 +28,6 @@ export interface IWalletController {
   logOut: () => void;
   mnemonic: string;
   password: string;
-  setWalletPassword: (pwd: string) => void;
   setMainSigner: (isTestnet: boolean, network: string) => void;
   switchNetwork: (networkId: number, prefix: string) => void;
   switchWallet: (id: number) => void;
