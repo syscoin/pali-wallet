@@ -1,35 +1,78 @@
-import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 import { SysTransactionController } from '../transaction';
 import SysTrezorController from '../trezor/syscoin';
+import store from 'state/store';
+import {
+  setActiveAccount,
+  setActiveAccountProperty,
+  setIsPendingBalances,
+} from 'state/vault';
+import { KeyringManager } from '@pollum-io/sysweb3-keyring';
+import { IKeyringAccount } from 'state/vault/types';
 
-const SysAccountController = (data) => {
-  const trezor = SysTrezorController(data);
-  const tx = SysTransactionController(data);
+const SysAccountController = () => {
+  const keyringManager = KeyringManager();
 
-  const addAccount = () => {};
+  const getLatestUpdate = async () => {
+    const { activeAccount } = store.getState().vault;
 
-  const watchMemPool = (currentAccount: IKeyringAccountState | undefined) => {
-    // 30 seconds
-    const intervalInMs = 30 * 1000;
+    if (!activeAccount) return;
+
+    const updatedAccountInfo = await keyringManager.getLatestUpdateForAccount(
+      activeAccount
+    );
+
+    store.dispatch(
+      setActiveAccount({
+        ...activeAccount,
+        ...updatedAccountInfo,
+      })
+    );
+
+    store.dispatch(setIsPendingBalances(false));
+  };
+
+  /** check if there is no pending transaction in mempool
+   *  and get the latest update for account
+   */
+  const watchMemPool = (currentAccount: IKeyringAccount | undefined) => {
+    // 30 seconds - 3000 milliseconds
+    const interval = 30 * 1000;
 
     const intervalId = setInterval(() => {
-      tx.getLatestUpdate();
+      getLatestUpdate();
 
       if (!currentAccount || !currentAccount?.transactions) {
         clearInterval(intervalId);
 
         return false;
       }
-    }, intervalInMs);
+    }, interval);
 
     return true;
   };
 
+  const setAddress = async (): Promise<string> => {
+    const receivingAddress = await keyringManager.address.getValidAddress();
+
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'address',
+        value: String(receivingAddress),
+      })
+    );
+
+    return receivingAddress;
+  };
+
+  const trezor = SysTrezorController();
+  const tx = SysTransactionController();
+
   return {
-    addAccount,
     watchMemPool,
     trezor,
     tx,
+    setAddress,
+    getLatestUpdate,
   };
 };
 

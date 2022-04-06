@@ -10,14 +10,15 @@ import { browser } from 'webextension-polyfill-ts';
 export const NormalHeader: React.FC = () => {
   const { wallet } = getController();
 
-  const { activeNetwork, hasEncryptedVault, networks } = useStore();
+  const { activeNetwork, encryptedMnemonic, networks } = useStore();
   const { handleRefresh, navigate } = useUtils();
 
   const [currentTabURL, setCurrentTabURL] = useState<string>('');
 
-  const handleChangeNetwork = (value: number, prefix: string) => {
-    wallet.switchNetwork(value, prefix);
-    wallet.getNewAddress();
+  const handleChangeNetwork = (chain: string, chainId: number) => {
+    wallet.setActiveNetwork(chain, chainId);
+
+    if (chain === 'syscoin') wallet.account.setAddress();
   };
 
   const updateCurrentTabUrl = async () => {
@@ -41,20 +42,6 @@ export const NormalHeader: React.FC = () => {
     updateCurrentTabUrl();
   }, [wallet.isUnlocked()]);
 
-  const ethNetworks = {
-    main: {
-      id: 'eth main',
-      label: 'Main Network',
-      beUrl: 'https://blockbook.elint.services/',
-    },
-    localhost: {
-      id: 'localhost',
-      label: 'Localhost 8545',
-      beUrl: 'https://blockbook-dev.elint.services/',
-    },
-  };
-
-  // TODO: breakdown NetworkMenu
   const NetworkMenu = () => (
     <Menu as="div" className="absolute left-2 inline-block mr-8 text-left">
       {(menuprops) => (
@@ -85,7 +72,7 @@ export const NormalHeader: React.FC = () => {
 
             <Menu.Items
               as="div"
-              className="scrollbar-styled absolute z-50 left-0 pb-6 w-72 h-menu text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
+              className="absolute z-50 left-0 pb-6 w-72 h-menu text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-hidden origin-top-right ring-1 ring-black ring-opacity-5"
             >
               <h2
                 className="mb-6 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light"
@@ -93,173 +80,174 @@ export const NormalHeader: React.FC = () => {
               >
                 NETWORK SETTINGS
               </h2>
+              <div className="scrollbar-styled h-80 overflow-auto">
+                <Menu.Item>
+                  <li
+                    onClick={() =>
+                      navigate('/settings/networks/connected-sites')
+                    }
+                    className="flex items-center justify-start mb-2 mx-3 px-2 py-1 text-base bg-warning-success hover:bg-opacity-70 border border-solid border-transparent hover:border-warning-success rounded-full cursor-pointer transition-all duration-200"
+                  >
+                    <Icon
+                      name="globe"
+                      className="mb-1 ml-1 mr-4 text-brand-white"
+                    />
 
-              <Menu.Item>
-                <li
-                  onClick={() => navigate('/settings/networks/connected-sites')}
-                  className="flex items-center justify-start mb-2 mx-3 px-2 py-1 text-base bg-warning-success hover:bg-opacity-70 border border-solid border-transparent hover:border-warning-success rounded-full cursor-pointer transition-all duration-200"
-                >
-                  <Icon
-                    name="globe"
-                    className="mb-1 ml-1 mr-4 text-brand-white"
-                  />
+                    <span className="px-3">Connected sites</span>
+                  </li>
+                </Menu.Item>
 
-                  <span className="px-3">Connected sites</span>
-                </li>
-              </Menu.Item>
+                <Menu.Item>
+                  <li
+                    onClick={() => navigate('/settings/networks/trusted-sites')}
+                    className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base bg-brand-royalblue hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
+                  >
+                    <Icon
+                      name="warning"
+                      className="mb-1 ml-1 mr-4 text-brand-white"
+                    />
 
-              <Menu.Item>
-                <li
-                  onClick={() => navigate('/settings/networks/trusted-sites')}
-                  className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base bg-brand-royalblue hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
-                >
-                  <Icon
-                    name="warning"
-                    className="mb-1 ml-1 mr-4 text-brand-white"
-                  />
+                    <span className="px-3">Trusted sites</span>
+                  </li>
+                </Menu.Item>
 
-                  <span className="px-3">Trusted sites</span>
-                </li>
-              </Menu.Item>
+                <Menu.Item>
+                  <Disclosure>
+                    {({ open }) => (
+                      <>
+                        <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
+                          <Icon
+                            name="dolar"
+                            className="ml-1 mr-4 text-brand-white"
+                          />
 
-              <Menu.Item>
-                <Disclosure>
-                  {({ open }) => (
-                    <>
-                      <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
-                        <Icon
-                          name="dolar"
-                          className="ml-1 mr-4 text-brand-white"
-                        />
+                          <span className="px-3 text-base">
+                            Syscoin networks
+                          </span>
 
-                        <span className="px-3 text-base">Syscoin networks</span>
+                          <Icon
+                            name="select-down"
+                            className={`${
+                              open ? 'transform rotate-180' : ''
+                            } text-brand-white mb-1`}
+                          />
+                        </Disclosure.Button>
 
-                        <Icon
-                          name="select-down"
-                          className={`${
-                            open ? 'transform rotate-180' : ''
-                          } text-brand-white mb-1`}
-                        />
-                      </Disclosure.Button>
-
-                      <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
-                        {Object.values(networks).map((currentNetwork: any) => (
-                          <li
-                            key={currentNetwork.chainId}
-                            className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                            onClick={() =>
-                              handleChangeNetwork(
-                                currentNetwork.chainId,
-                                'syscoin'
-                              )
-                            }
-                          >
-                            <span
-                              className="text-left"
-                              style={{ marginLeft: '3.2rem' }}
-                            >
-                              {currentNetwork.label}
-                            </span>
-
-                            {activeNetwork.chainId ===
-                              currentNetwork.chainId && (
-                              <Icon
-                                name="check"
-                                className="mb-1 w-4"
-                                wrapperClassname="w-6 absolute right-20"
-                              />
-                            )}
-                          </li>
-                        ))}
-                      </Disclosure.Panel>
-                    </>
-                  )}
-                </Disclosure>
-              </Menu.Item>
-
-              <Menu.Item>
-                <Disclosure>
-                  {({ open }) => (
-                    <>
-                      <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
-                        <Icon
-                          name="dolar"
-                          className="ml-1 mr-4 text-brand-white"
-                        />
-
-                        <span className="px-3 text-base">
-                          Ethereum networks
-                        </span>
-
-                        <Icon
-                          name="select-down"
-                          className={`${
-                            open ? 'transform rotate-180' : ''
-                          } mb-1 text-brand-white`}
-                        />
-                      </Disclosure.Button>
-
-                      <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
-                        {Object.values(ethNetworks).map(
-                          (currentNetwork: any) => (
-                            <li
-                              key={currentNetwork.id}
-                              className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                              onClick={() =>
-                                handleChangeNetwork(
-                                  currentNetwork.chainId,
-                                  'ethereum'
-                                )
-                              }
-                            >
-                              <span
-                                className="text-left"
-                                style={{ marginLeft: '3.2rem' }}
+                        <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
+                          {Object.values(networks.syscoin).map(
+                            (currentNetwork: any) => (
+                              <li
+                                key={currentNetwork.chainId}
+                                className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                                onClick={() =>
+                                  handleChangeNetwork(
+                                    'syscoin',
+                                    currentNetwork.chainId
+                                  )
+                                }
                               >
-                                {currentNetwork.label}
-                              </span>
+                                <span className="ml-8 text-left">
+                                  {currentNetwork.label}
+                                </span>
 
-                              {activeNetwork.chainId ===
-                                currentNetwork.chainId && (
-                                <Icon
-                                  name="check"
-                                  className="mb-1 w-4"
-                                  wrapperClassname="w-6 absolute right-20"
-                                />
-                              )}
-                            </li>
-                          )
-                        )}
-                      </Disclosure.Panel>
-                    </>
-                  )}
-                </Disclosure>
-              </Menu.Item>
+                                {activeNetwork.chainId ===
+                                  currentNetwork.chainId && (
+                                  <Icon
+                                    name="check"
+                                    className="mb-1 w-4"
+                                    wrapperClassname="w-6 absolute right-20"
+                                  />
+                                )}
+                              </li>
+                            )
+                          )}
+                        </Disclosure.Panel>
+                      </>
+                    )}
+                  </Disclosure>
+                </Menu.Item>
 
-              <Menu.Item>
-                <li
-                  onClick={() => navigate('/settings/networks/custom-rpc')}
-                  className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
-                >
-                  <Icon
-                    name="appstoreadd"
-                    className="ml-1 mr-4 text-brand-white"
-                  />
+                <Menu.Item>
+                  <Disclosure>
+                    {({ open }) => (
+                      <>
+                        <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
+                          <Icon
+                            name="dolar"
+                            className="ml-1 mr-4 text-brand-white"
+                          />
 
-                  <span className="px-3">Custom RPC</span>
-                </li>
-              </Menu.Item>
+                          <span className="px-3 text-base">
+                            Ethereum networks
+                          </span>
 
-              <Menu.Item>
-                <li
-                  onClick={() => navigate('/settings/networks/edit')}
-                  className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
-                >
-                  <Icon name="edit" className="ml-1 mr-4 text-brand-white" />
+                          <Icon
+                            name="select-down"
+                            className={`${
+                              open ? 'transform rotate-180' : ''
+                            } mb-1 text-brand-white`}
+                          />
+                        </Disclosure.Button>
 
-                  <span className="px-3">Manage networks</span>
-                </li>
-              </Menu.Item>
+                        <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
+                          {Object.values(networks.ethereum).map(
+                            (currentNetwork: any) => (
+                              <li
+                                key={currentNetwork.id}
+                                className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                                onClick={() =>
+                                  handleChangeNetwork(
+                                    'ethereum',
+                                    currentNetwork.chainId
+                                  )
+                                }
+                              >
+                                <span className="ml-8 text-left">
+                                  {currentNetwork.label}
+                                </span>
+
+                                {activeNetwork.chainId ===
+                                  currentNetwork.chainId && (
+                                  <Icon
+                                    name="check"
+                                    className="mb-1 w-4"
+                                    wrapperClassname="w-6 absolute right-20"
+                                  />
+                                )}
+                              </li>
+                            )
+                          )}
+                        </Disclosure.Panel>
+                      </>
+                    )}
+                  </Disclosure>
+                </Menu.Item>
+
+                <Menu.Item>
+                  <li
+                    onClick={() => navigate('/settings/networks/custom-rpc')}
+                    className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+                  >
+                    <Icon
+                      name="appstoreadd"
+                      className="ml-1 mr-4 text-brand-white"
+                    />
+
+                    <span className="px-3">Custom RPC</span>
+                  </li>
+                </Menu.Item>
+
+                <Menu.Item>
+                  <li
+                    onClick={() => navigate('/settings/networks/edit')}
+                    className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+                  >
+                    <Icon name="edit" className="ml-1 mr-4 text-brand-white" />
+
+                    <span className="px-3">Manage networks</span>
+                  </li>
+                </Menu.Item>
+              </div>
             </Menu.Items>
           </Transition>
         </>
@@ -267,7 +255,6 @@ export const NormalHeader: React.FC = () => {
     </Menu>
   );
 
-  // TODO: breakdown GeneralMenu
   const GeneralMenu = () => (
     <Menu
       as="div"
@@ -296,7 +283,7 @@ export const NormalHeader: React.FC = () => {
           </Tooltip>
           <IconButton
             onClick={handleRefresh}
-            className="z-0 mx-1.5 hover:text-brand-deepPink100 text-brand-white"
+            className="z-0 mx-1.5 hover:text-brand-royalblue text-brand-white"
           >
             <Icon name="reload" />
           </IconButton>
@@ -306,7 +293,7 @@ export const NormalHeader: React.FC = () => {
             id="general-settings-button"
             className="z-0 mx-1.5"
           >
-            {hasEncryptedVault && (
+            {Boolean(encryptedMnemonic) && (
               <IconButton type="primary" shape="circle">
                 <Icon
                   name="settings"
@@ -395,7 +382,11 @@ export const NormalHeader: React.FC = () => {
                   onClick={() => navigate('/settings/forget-wallet')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
-                  <Icon name="delete" className="ml-1 mr-4 text-brand-white" />
+                  <Icon
+                    name="forget"
+                    className="ml-1 mr-4 w-5 h-5 text-brand-white"
+                    id="forget-wallet-btn"
+                  />
 
                   <span className="px-3">Forget wallet</span>
                 </li>

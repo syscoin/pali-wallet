@@ -3,22 +3,29 @@ import { IconButton, Icon } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
 import { toSvg } from 'jdenticon';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
-import { useNavigate } from 'react-router-dom';
 import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 
 const AccountMenu: React.FC = () => {
-  const navigate = useNavigate();
+  const { navigate, handleRefresh } = useUtils();
   const { wallet } = getController();
-  const { hasEncryptedVault, accounts, activeAccountId } = useStore();
+  const { encryptedMnemonic, accounts, activeAccount } = useStore();
 
   const switchAccount = (id: number) => {
     wallet.switchWallet(Number(id));
     wallet.account.watchMemPool(accounts[Number(id)]);
   };
 
+  const controller = getController();
+
+  useEffect(() => {
+    if (controller.wallet.isUnlocked() && accounts && activeAccount)
+      handleRefresh();
+  }, [controller.wallet.isUnlocked()]);
+
   const handleLogout = () => {
-    wallet.logOut();
+    wallet.logout();
+
     navigate('/');
   };
 
@@ -28,7 +35,7 @@ const AccountMenu: React.FC = () => {
       className="absolute right-3 inline-block text-right md:max-w-2xl"
     >
       <Menu.Button className="inline-flex justify-center w-full hover:text-button-primaryhover text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-        {hasEncryptedVault && <Icon name="dots" className="z-0" />}
+        {encryptedMnemonic && <Icon name="dots" className="z-0" />}
       </Menu.Button>
 
       <Transition
@@ -110,7 +117,7 @@ const AccountMenu: React.FC = () => {
                           {account.label} ({ellipsis(account.address, 4, 8)})
                         </span>
 
-                        {activeAccountId === account.id && (
+                        {activeAccount.id === account.id && (
                           <Icon
                             name="check"
                             className="mb-1 w-4"

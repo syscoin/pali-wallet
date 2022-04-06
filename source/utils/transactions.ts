@@ -1,9 +1,4 @@
-import { Assets } from 'types/transactions';
-
-export const getAssetBalance = (
-  selectedAsset: Assets | null,
-  activeAccount
-) => {
+export const getAssetBalance = (selectedAsset: any, activeAccount) => {
   if (selectedAsset) {
     const value = selectedAsset.balance / 10 ** selectedAsset.decimals;
     return `${value.toFixed(selectedAsset.decimals)} ${selectedAsset.symbol}`;

@@ -1,8 +1,8 @@
 import { Fullscreen } from 'components/Fullscreen';
 import React, { FC } from 'react';
+import { useStore } from 'hooks/useStore';
 
 import { PanelList } from './components/PanelList';
-import { useStore } from 'hooks/useStore';
 
 export const ActivityPanel: FC = () => {
   const { activeAccount } = useStore();

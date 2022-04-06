@@ -5,15 +5,17 @@ import { formatNumber, getSymbolByChain } from 'utils/index';
 import { getController } from 'utils/browser';
 
 import { TxsPanel } from './TxsPanel';
+import { Loading } from 'components/Loading';
 
 export const Home = () => {
   const controller = getController();
   const [symbol, setSymbol] = useState('SYS');
   const { getFiatAmount } = usePrice();
 
-  const { navigate, handleRefresh } = useUtils();
+  const { navigate } = useUtils();
 
-  const { accounts, networks, activeNetwork, fiat, activeAccount } = useStore();
+  const { networks, activeNetwork, fiat, activeAccount, lastLogin } =
+    useStore();
 
   const setChainSymbol = async () => {
     const chain = networks.syscoin[activeNetwork.chainId]
@@ -25,18 +27,15 @@ export const Home = () => {
   };
 
   useEffect(() => {
-    if (controller.wallet.isUnlocked() && accounts && activeAccount)
-      handleRefresh();
-
     setChainSymbol();
-  }, [controller.wallet.isUnlocked(), accounts]);
+  }, [controller.wallet.isUnlocked()]);
 
   const isTestnet = activeNetwork.chainId === 5700;
   const isNotTestnet = activeNetwork.chainId === 57 ? 'SYS' : symbol;
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
-      {activeAccount ? (
+      {activeAccount && lastLogin ? (
         <>
           <Header accountHeader />
 
@@ -114,9 +113,7 @@ export const Home = () => {
           <TxsPanel />
         </>
       ) : (
-        <div className="fixed z-20 flex items-center justify-center w-full min-w-popup h-full min-h-popup bg-bkg-2">
-          <Icon name="loading" className="ml-2 w-4 text-brand-white" />
-        </div>
+        <Loading />
       )}
     </div>
   );

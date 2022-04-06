@@ -77,6 +77,8 @@ export const Router = () => {
   useEffect(() => {
     const route = controller.appRoute();
 
+    console.log('is unlocked', isUnlocked);
+
     if (isUnlocked && accounts) {
       navigate('/home');
 
@@ -105,7 +107,6 @@ export const Router = () => {
       />
       <Route path="home" element={<ProtectedRoute element={<Home />} />} />
       <Route
-        // ? maybe this route should belong to transaction scope
         path="home/tx-details"
         element={<ProtectedRoute element={<DetailsView />} />}
       />

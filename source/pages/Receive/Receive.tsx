@@ -6,23 +6,38 @@ import QRCode from 'qrcode.react';
 import { Layout, SecondaryButton, Icon } from 'components/index';
 
 export const Receive = () => {
-  const { useCopyClipboard } = useUtils();
+  const { useCopyClipboard, alert } = useUtils();
   const [isCopied, copyText] = useCopyClipboard();
 
   const controller = getController();
-  const { activeAccount } = useStore();
+  const { activeAccount, activeNetwork, networks } = useStore();
 
   const [loaded, setLoaded] = useState<boolean>(false);
 
   useEffect(() => {
-    const getNewAddress = async () => {
-      if (await controller.wallet.getNewAddress()) {
+    const setNewAddress = async () => {
+      if (
+        (activeNetwork.chainId === 57 || activeNetwork.chainId === 5700) &&
+        (await controller.wallet.account.setAddress())
+      ) {
         setLoaded(true);
+
+        return;
       }
+
+      if (activeAccount.address && networks.ethereum[activeNetwork.chainId])
+        setLoaded(true);
     };
 
-    getNewAddress();
+    setNewAddress();
   }, []);
+
+  useEffect(() => {
+    if (!isCopied) return;
+
+    alert.removeAll();
+    alert.success('Address successfully copied');
+  }, [isCopied]);
 
   return (
     <Layout title="RECEIVE SYS" id="receiveSYS-title">
@@ -53,9 +68,7 @@ export const Receive = () => {
               type="button"
               onClick={() => copyText(activeAccount.address)}
             >
-              <span className="text-xs">
-                {isCopied ? 'Copied address' : 'Copy'}
-              </span>
+              <span className="text-xs">Copy</span>
             </SecondaryButton>
           </div>
         </div>

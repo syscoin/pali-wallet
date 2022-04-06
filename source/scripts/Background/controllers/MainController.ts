@@ -1,10 +1,4 @@
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
-import { validateMnemonic } from 'bip39';
-import {
-  IKeyringAccountState,
-  MainSigner,
-  SyscoinHDSigner,
-} from '@pollum-io/sysweb3-utils';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -13,147 +7,63 @@ import {
   setLastLogin,
   setTimer,
   createAccount as addAccountToStore,
-  setActiveNetwork as setCurrentNetwork,
+  setActiveNetwork as setNetwork,
+  setActiveAccountProperty,
 } from 'state/vault';
+import { IKeyringAccount } from 'state/vault/types';
+
 import WalletController from './account';
 
 const MainController = () => {
-  /** signers */
-  let hd: SyscoinHDSigner = {} as SyscoinHDSigner;
-  let main: any;
-
-  /** local keys */
-  let encryptedPassword: string = '';
-  let mnemonic = '';
-
   const keyringManager = KeyringManager();
-
-  // todo: add is test net to network sysweb3 vault
-  const setMainSigner = (
-    isTestnet: boolean = false,
-    network: string = 'main'
-  ) => {
-    let { hd: _hd, main: _main } = MainSigner({
-      walletMnemonic: mnemonic,
-      isTestnet,
-      network,
-      blockbookURL: isTestnet
-        ? 'https://blockbook-dev.elint.services/'
-        : 'https://blockbook.elint.services/',
-    });
-
-    hd = _hd;
-    main = _main;
-
-    return;
-  };
-
-  const getSeed = (pwd: string) => (checkPassword(pwd) ? mnemonic : null);
-
-  const isUnlocked = () => {
-    return Boolean(encryptedPassword) || hd;
-  };
-
-  const checkPassword = (pwd: string) => {
-    if (encryptedPassword === CryptoJS.SHA3(pwd).toString()) {
-      return true;
-    }
-
-    return encryptedPassword === pwd;
-  };
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
   };
 
+  /** forget your wallet created with pali and associated with your seed phrase,
+   *  but don't delete seed phrase so it is possible to create a new
+   *  account using the same seed
+   */
   const forgetWallet = (pwd: string) => {
-    if (checkPassword(pwd)) {
-      encryptedPassword = '';
-      mnemonic = '';
+    if (keyringManager.checkPassword(pwd)) {
+      keyringManager.forgetMainWallet();
 
       store.dispatch(forgetWalletState());
       store.dispatch(setLastLogin());
     }
   };
 
-  const unlock = async (pwd: string) => {
-    console.log('calling keyring manager login');
+  const unlock = async (pwd: string): Promise<void> => {
+    const vault = (await keyringManager.login(pwd)) as IKeyringAccount;
 
-    const { activeNetwork } = store.getState().vault;
-
-    const isTestnet =
-      activeNetwork.url === 'https://blockbook-dev.elint.services/';
-
-    setMainSigner(
-      activeNetwork.chainId === 5700,
-      isTestnet ? 'testnet' : 'main'
-    );
-
-    return keyringManager.login(pwd);
-  };
-
-  const createSeed = () => keyringManager.generatePhrase();
-
-  const setWalletPassword = (pwd: string) => {
-    encryptedPassword = CryptoJS.SHA3(pwd).toString();
-
-    return keyringManager.setWalletPassword(pwd);
-  };
-
-  const getEncryptedMnemonic = (
-    mnemonic: string,
-    encryptedPassword: string
-  ): string => {
-    const encryptedMnemonic = CryptoJS.AES.encrypt(mnemonic, encryptedPassword);
-
-    return encryptedMnemonic.toString();
-  };
-
-  const createWallet = async (): Promise<IKeyringAccountState> => {
-    console.log('[main] creating vault', encryptedPassword);
-
-    setMainSigner();
-
-    const vault: IKeyringAccountState = await keyringManager.createVault({
-      encryptedPassword,
-    });
-
-    console.log('[main] storing wallet:', vault);
-
-    store.dispatch(addAccountToStore(vault));
-    store.dispatch(
-      setEncryptedMnemonic(getEncryptedMnemonic(mnemonic, encryptedPassword))
-    );
-    store.dispatch(setActiveAccount(vault));
     store.dispatch(setLastLogin());
 
-    console.log('[main] getting latest update');
+    store.dispatch(setActiveAccount(vault));
 
-    return vault;
+    console.log('vault unlocked', vault);
   };
 
-  const importSeed = (seedphrase: string) => {
-    console.log('[main] validating mnemonic:', seedphrase);
+  const createWallet = async (): Promise<IKeyringAccount> => {
+    console.log('[main controller] calling keyring manager create vault');
+    const account =
+      (await keyringManager.createKeyringVault()) as IKeyringAccount;
 
-    if (validateMnemonic(seedphrase)) {
-      mnemonic = seedphrase;
+    store.dispatch(addAccountToStore(account));
+    store.dispatch(setEncryptedMnemonic(keyringManager.getEncryptedMnemonic()));
+    store.dispatch(setActiveAccount(account));
+    store.dispatch(setLastLogin());
 
-      console.log('[main] validation passed:', seedphrase);
-
-      return true;
-    }
-
-    return false;
+    return account;
   };
+
+  const { account } = WalletController();
 
   const lock = () => {
-    encryptedPassword = '';
-    mnemonic = '';
+    keyringManager.logout();
 
     store.dispatch(setLastLogin());
   };
-
-  const { account } = WalletController({ checkPassword, hd, main });
 
   const createAccount = (label?: string) => account.addAccount(label);
 
@@ -161,39 +71,59 @@ const MainController = () => {
     const { accounts } = store.getState().vault;
 
     store.dispatch(setActiveAccount(accounts[id]));
-    account.tx.getLatestUpdate();
+    account.getLatestUpdate();
   };
 
-  const setActiveNetwork = (chainId: number) => {
-    const { activeNetwork, networks } = store.getState().vault;
+  const setActiveNetwork = async (chain: string, chainId: number) => {
+    const { networks, activeAccount } = store.getState().vault;
 
-    const isTestnet =
-      activeNetwork.url === 'https://blockbook-dev.elint.services/';
+    const network = networks[chain][chainId];
 
-    setMainSigner(
-      activeNetwork.chainId === 5700,
-      isTestnet ? 'testnet' : 'main'
+    /** set local active network */
+    store.dispatch(setNetwork(network));
+
+    /** this method sets new signers for syscoin when changing networks */
+    const account = (await keyringManager.setActiveNetworkForSigner({
+      network,
+    })) as IKeyringAccount;
+
+    /** directly set new keys for the current chain and update state if the active account is the first one */
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'xpub',
+        value: keyringManager.getAccountXpub(),
+      })
     );
 
-    store.dispatch(setCurrentNetwork(networks[chainId]));
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'xprv',
+        value: keyringManager.getEncryptedXprv(),
+      })
+    );
+    /** end */
+
+    /** if the account index is > 0, we need to derive this account again from hd signer and set its index in the active account from signer */
+    keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
+
+    /** set active network with web3 account data for evm networks */
+    store.dispatch(setActiveAccount(account));
+
+    /** account returned from updated signer according to the current network so we can update frontend easier */
+    return account;
   };
 
   return {
     createWallet,
-    isUnlocked,
-    createSeed,
-    checkPassword,
-    getSeed,
     forgetWallet,
-    importSeed,
     unlock,
     lock,
     createAccount,
     account,
-    setWalletPassword,
     setAccount,
     setAutolockTimer,
     setActiveNetwork,
+    ...keyringManager,
   };
 };
 

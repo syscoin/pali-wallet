@@ -2,6 +2,7 @@ import { useAlert } from 'react-alert';
 import { useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
 import { getController } from 'utils/browser';
+
 import { useStore } from '.';
 
 export const useUtils = () => {
@@ -11,7 +12,7 @@ export const useUtils = () => {
   const { activeAccount } = useStore();
 
   const handleRefresh = (): void => {
-    controller.wallet.account.tx.getLatestUpdate();
+    controller.wallet.account.getLatestUpdate();
     if (activeAccount) controller.wallet.account.watchMemPool(activeAccount);
     controller.stateUpdater();
   };

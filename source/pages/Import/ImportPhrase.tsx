@@ -56,7 +56,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
                 }
                 setSeedIsValid(controller.wallet.importPhrase(value) && value);
 
-                if (controller.wallet.importPhrase(value)) {
+                if (controller.wallet.validateSeed(value)) {
                   return Promise.resolve();
                 }
 

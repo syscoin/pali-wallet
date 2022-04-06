@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useUtils } from 'hooks/index';
+import React, { useState, useEffect } from 'react';
+import { useUtils, useStore } from 'hooks/index';
 import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 import {
@@ -13,14 +13,19 @@ import { Input, Form } from 'antd';
 
 const PrivateKeyView = () => {
   const controller = getController();
-  const { activeAccount } = useStore();
+  const { activeAccount, activeNetwork } = useStore();
 
-  const { navigate, useCopyClipboard } = useUtils();
+  const { navigate, useCopyClipboard, alert } = useUtils();
 
   const [copied, copyText] = useCopyClipboard();
   const [valid, setValid] = useState<boolean>(false);
 
-  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
+  useEffect(() => {
+    if (!copied) return;
+
+    alert.removeAll();
+    alert.success('Successfully copied');
+  }, [copied]);
 
   return (
     <Layout title="YOUR KEYS">
@@ -96,7 +101,7 @@ const PrivateKeyView = () => {
         <div
           className="flex gap-2 items-center justify-center mt-4 hover:text-brand-royalblue text-xs cursor-pointer"
           onClick={() =>
-            window.open(`${sysExplorer}/xpub/${activeAccount?.xpub}`)
+            window.open(`${activeNetwork.url}/xpub/${activeAccount?.xpub}`)
           }
         >
           <p>View account on explorer</p>
@@ -106,7 +111,7 @@ const PrivateKeyView = () => {
 
       <div className="absolute bottom-8 md:static">
         <SecondaryButton type="button" onClick={() => navigate('/home')}>
-          {copied ? 'Copied' : 'Close'}
+          Close
         </SecondaryButton>
       </div>
     </Layout>

@@ -5,7 +5,7 @@ import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { Layout, SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
-import { Assets } from 'types/transactions';
+// import { Assets } from 'types/transactions';
 import { log, formatUrl, isNFT, getAssetBalance } from 'utils/index';
 import { getController } from 'utils/browser';
 
@@ -21,7 +21,7 @@ export const Send: FC<ISend> = () => {
   const { activeNetwork, fiat } = useStore();
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
-  const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [recommend, setRecommend] = useState(0.00001);
   const [form] = Form.useForm();
 
@@ -43,19 +43,19 @@ export const Send: FC<ISend> = () => {
   }, [form, handleGetFee]);
 
   const hasAccountAssets =
-    activeAccount && Object.values(activeAccount.tokens).length > 0;
+    activeAccount && Object.values(activeAccount.assets).length > 0;
 
   const handleSelectedAsset = (item: number) => {
-    if (activeAccount?.tokens) {
-      // const getAsset = Object.values(activeAccount?.tokens).find(
-      //   (asset: Assets) => asset.assetGuid === item
-      // );
+    if (activeAccount?.assets) {
+      const asset = Object.values(activeAccount?.assets).find(
+        (asset: any) => asset.tokenId === item
+      );
 
-      // if (getAsset) {
-      //   setSelectedAsset(getAsset);
+      if (asset) {
+        setSelectedAsset(asset);
 
-      //   return;
-      // }
+        return;
+      }
 
       setSelectedAsset(null);
     }
@@ -98,7 +98,7 @@ export const Send: FC<ISend> = () => {
   };
 
   useEffect(() => {
-    log(`assets: ${activeAccount?.tokens}`);
+    log(`assets: ${activeAccount?.assets}`);
   }, []);
 
   const disabledFee =
@@ -200,7 +200,7 @@ export const Send: FC<ISend> = () => {
                   {hasAccountAssets && (
                     <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
                       {activeAccount &&
-                        Object.values(activeAccount.tokens).map((item) => (
+                        Object.values(activeAccount.assets).map((item: any) => (
                           // todo: set assetguid type to number
                           <Menu.Item>
                             <button
@@ -403,8 +403,7 @@ export const Send: FC<ISend> = () => {
 
         <p className="flex flex-col items-center justify-center p-0 max-w-xs text-center text-brand-royalblue sm:w-full md:my-4">
           <span className="text-xs">
-            {`With current network conditions we recommend a fee of
-            ${recommend} SYS`}
+            {`With current network conditions we recommend a fee of ${recommend} SYS`}
           </span>
 
           <span className="mt-0.5 text-brand-white font-rubik text-xs">

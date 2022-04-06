@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Form, Input } from 'antd';
 import { useUtils } from 'hooks/index';
 import { Layout, SecondaryButton, Card, CopyCard } from 'components/index';
@@ -9,13 +9,20 @@ const PhraseView = () => {
     '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****'
   );
 
-  const { useCopyClipboard, navigate } = useUtils();
+  const { useCopyClipboard, navigate, alert } = useUtils();
   const controller = getController();
   const [copied, copyText] = useCopyClipboard();
 
   const handleCopySeed = () => {
     copyText(phrase);
   };
+
+  useEffect(() => {
+    if (!copied) return;
+
+    alert.removeAll();
+    alert.success('Seed phrase successfully copied');
+  }, [copied]);
 
   return (
     <Layout title="WALLET SEED PHRASE" id="seed-phrase-title">
@@ -87,7 +94,7 @@ const PhraseView = () => {
 
         <div className="absolute bottom-12 md:static md:mt-10">
           <SecondaryButton type="button" onClick={() => navigate('/home')}>
-            {copied ? 'Copied' : 'Close'}
+            Close
           </SecondaryButton>
         </div>
       </div>
