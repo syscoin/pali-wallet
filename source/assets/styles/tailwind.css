@@ -67,6 +67,10 @@ input[type='number']::-webkit-inner-spin-button {
   @apply relative;
 }
 
+.ant-input {
+  @apply bg-bkg-2;
+}
+
 .ant-form-item-control-input-content {
   @apply w-full;
 }

@@ -17,11 +17,9 @@ export const SendSys: FC = () => {
   const [recommend, setRecommend] = useState(0.00001);
 
   const { alert, navigate } = useUtils();
-  const { activeNetwork, fiat } = useStore();
+  const { activeNetwork, fiat, activeAccount } = useStore();
   const [form] = Form.useForm();
   const { getFiatAmount } = usePrice();
-
-  const activeAccount = controller.wallet.account.getActiveAccount();
 
   const handleGetFee = useCallback(async () => {
     const recommendFee = await controller.wallet.account.getRecommendFee();
@@ -40,11 +38,11 @@ export const SendSys: FC = () => {
     });
   }, [form, handleGetFee]);
 
-  const hasAccountAssets = activeAccount && activeAccount.assets.length > 0;
+  const hasAccountAssets = activeAccount && activeAccount.assets;
 
   const handleSelectedAsset = (item: number) => {
     if (activeAccount?.assets) {
-      const getAsset = activeAccount?.assets.find(
+      const getAsset = Object.values(activeAccount?.assets).find(
         (asset: any) => asset.assetGuid === item
       );
 
@@ -71,21 +69,21 @@ export const SendSys: FC = () => {
   };
 
   const nextStep = (data: any) => {
-    const { receiver, amount, fee } = data;
+    // const { receiver, amount, fee } = data;
 
     try {
-      controller.wallet.account.updateTemporaryTransaction({
-        tx: {
-          fromAddress: activeAccount?.address.main,
-          toAddress: receiver,
-          amount,
-          fee,
-          token: selectedAsset || null,
-          isToken: !!selectedAsset,
-          rbf: !ZDAG,
-        },
-        type: 'sendAsset',
-      });
+      // controller.wallet.account.updateTemporaryTransaction({
+      //   tx: {
+      //     fromAddress: activeAccount?.address,
+      //     toAddress: receiver,
+      //     amount,
+      //     fee,
+      //     token: selectedAsset || null,
+      //     isToken: !!selectedAsset,
+      //     rbf: !ZDAG,
+      //   },
+      //   type: 'sendAsset',
+      // });
 
       navigate('/send/confirm');
     } catch (error) {
@@ -311,7 +309,7 @@ export const SendSys: FC = () => {
               validator(_, value) {
                 const balance = selectedAsset
                   ? selectedAsset.balance / 10 ** selectedAsset.decimals
-                  : Number(activeAccount?.balance);
+                  : Number(activeAccount?.balances.syscoin);
 
                 if (value > balance) {
                   return Promise.reject();

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, FC } from 'react';
 import { useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
-import { SecondaryButton } from 'components/index';
+import { SecondaryButton, Layout } from 'components/index';
 import { formatUrl } from 'utils/index';
 import { getController } from 'utils/browser';
 import { CoingeckoCoins } from 'scripts/Background/controllers/ControllerUtils';
@@ -39,7 +39,7 @@ export const ImportToken: FC = () => {
   };
 
   return (
-    <>
+    <Layout title="IMPORT TOKEN">
       <Form
         form={form}
         id="send-form"
@@ -90,6 +90,6 @@ export const ImportToken: FC = () => {
           </SecondaryButton>
         </div>
       </div>
-    </>
+    </Layout>
   );
 };

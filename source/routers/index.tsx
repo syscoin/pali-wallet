@@ -46,6 +46,7 @@ import {
 } from '../pages';
 
 import { ProtectedRoute } from './ProtectedRoute';
+import { CustomToken, ImportToken } from 'pages/Tokens';
 
 export const Router = () => {
   const location = useLocation();
@@ -114,6 +115,14 @@ export const Router = () => {
       <Route
         path="send/confirm"
         element={<ProtectedRoute element={<SendConfirm />} />}
+      />
+      <Route
+        path="import-token"
+        element={<ProtectedRoute element={<ImportToken />} />}
+      />
+      <Route
+        path="custom-token"
+        element={<ProtectedRoute element={<CustomToken />} />}
       />
       {/* /settings */}
       <Route path="settings">

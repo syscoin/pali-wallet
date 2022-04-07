@@ -12,17 +12,32 @@ export const AssetsPanel: FC = () => {
   return (
     <>
       <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
-        {Object.values(activeAccount.assets) ? (
+        {Object.values(activeAccount.assets).length > 0 ? (
           <PanelList data={[]} activity={false} assets />
         ) : (
-          <p
-            onClick={() => navigate('/import-token')}
-            className={`${
-              isSyscoinChain ? 'text-brand-white' : 'text-brand-royalblue'
-            } flex items-center justify-center text-sm`}
-          >
-            {isSyscoinChain ? 'You have no tokens or NFTs.' : 'Import token'}
-          </p>
+          <div className="flex items-center justify-center text-brand-white text-sm">
+            {isSyscoinChain ? (
+              'You have no tokens or NFTs.'
+            ) : (
+              <>
+                <p
+                  className="hover:text-brand-royalbluemedium cursor-pointer"
+                  onClick={() => navigate('/import-token')}
+                >
+                  Import token
+                </p>
+
+                <p className="mx-1"> or </p>
+
+                <p
+                  className="hover:text-brand-royalbluemedium cursor-pointer"
+                  onClick={() => navigate('/custom-token')}
+                >
+                  add a custom token
+                </p>
+              </>
+            )}
+          </div>
         )}
       </ul>
 

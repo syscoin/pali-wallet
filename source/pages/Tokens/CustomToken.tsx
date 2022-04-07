@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, FC } from 'react';
 import { useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
-import { SecondaryButton, DefaultModal } from 'components/index';
+import { SecondaryButton, DefaultModal, Layout } from 'components/index';
 import { getController } from 'utils/browser';
 
 export const CustomToken: FC = () => {
@@ -28,7 +28,7 @@ export const CustomToken: FC = () => {
   };
 
   return (
-    <>
+    <Layout title="CUSTOM TOKEN">
       <Form
         form={form}
         id="send-form"
@@ -107,10 +107,10 @@ export const CustomToken: FC = () => {
       <div className="flex flex-col items-center justify-center w-full">
         <div className="absolute bottom-12 md:static">
           <SecondaryButton type="button" onClick={() => navigate('/home')}>
-            Close
+            Next
           </SecondaryButton>
         </div>
       </div>
-    </>
+    </Layout>
   );
 };

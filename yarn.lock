@@ -1852,10 +1852,10 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
-"@pollum-io/sysweb3-keyring@^1.0.90":
-  version "1.0.90"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.90.tgz#6ef8f3ac3877e9e6810eb156bd55d0767da801ad"
-  integrity sha512-TgoHQ2vgXkwDuaqLm6A+2J18f8eamEcz+XRF7MtMjqX3hcgdZhKtZ4B9cBuITJfMTh0NNC4hwThpz1op9FdLQw==
+"@pollum-io/sysweb3-keyring@^1.0.94":
+  version "1.0.94"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.94.tgz#29f59611fff73b00cccc1b097779b1bfdc49e025"
+  integrity sha512-EPSixIM+g+IKCvQVYHl1qBRhzQjgCAIL/PmVdvDNATw9RNbIdSvLPgKGQhud51gyanMLZzK/FsBsKsP4PMR+PQ==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
@@ -6058,15 +6058,8 @@ eth-lib@^0.1.26:
     ws "^3.0.0"
     xhr-request-promise "^0.1.2"
 
-eth-object@^1.0.3:
+eth-object@^1.0.3, "eth-object@https://github.com/syscoin/eth-object.git":
   version "1.0.3"
-  resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
-  dependencies:
-    eth-util-lite "^1.0.1"
-
-"eth-object@https://github.com/syscoin/eth-object.git":
-  version "1.0.3"
-  uid b5ff300f57c136138b31d6e570c816a147e0f1c9
   resolved "https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
     eth-util-lite "^1.0.1"

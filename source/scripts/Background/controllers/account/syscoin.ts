@@ -24,6 +24,7 @@ const SysAccountController = () => {
       setActiveAccount({
         ...activeAccount,
         ...updatedAccountInfo,
+        assets: updatedAccountInfo.tokens,
       })
     );
 
