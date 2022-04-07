@@ -1852,10 +1852,10 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
-"@pollum-io/sysweb3-keyring@^1.0.94":
-  version "1.0.94"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.94.tgz#29f59611fff73b00cccc1b097779b1bfdc49e025"
-  integrity sha512-EPSixIM+g+IKCvQVYHl1qBRhzQjgCAIL/PmVdvDNATw9RNbIdSvLPgKGQhud51gyanMLZzK/FsBsKsP4PMR+PQ==
+"@pollum-io/sysweb3-keyring@^1.0.96":
+  version "1.0.96"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.96.tgz#5f2571422b334161ccd4f7f1322bfd3be1327cb9"
+  integrity sha512-Xqojvftf0xI4LVmlJbOc5fyTdHApnL/ZSb3nCWx/j2ScjG24Fkl3jl/k0SJ2q45Po8FSp5yrfwXVBciPXD7ycw==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"

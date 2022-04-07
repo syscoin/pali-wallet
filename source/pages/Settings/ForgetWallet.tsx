@@ -18,12 +18,10 @@ const ForgetWalletView = () => {
   const [isSeedValid, setIsSeedValid] = useState<boolean>(!hasAccountFunds);
   const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
 
-  const onSubmit = (data: any) => {
-    if (controller.wallet.checkPassword(data.password)) {
-      controller.wallet.forgetWallet(data.password);
+  const onSubmit = ({ password }: { password: string }) => {
+    controller.wallet.forgetWallet(password);
 
-      navigate('/');
-    }
+    navigate('/');
   };
 
   const [form] = Form.useForm();
@@ -61,7 +59,7 @@ const ForgetWalletView = () => {
               },
               () => ({
                 validator(_, value) {
-                  const seed = controller.wallet.getPhrase(value);
+                  const seed = controller.wallet.getSeed(value);
 
                   if (seed) {
                     setIsPasswordValid(true);
@@ -98,7 +96,7 @@ const ForgetWalletView = () => {
                   },
                   ({ getFieldValue }) => ({
                     validator(_, value) {
-                      const seed = controller.wallet.getPhrase(
+                      const seed = controller.wallet.getSeed(
                         getFieldValue('password')
                       );
 

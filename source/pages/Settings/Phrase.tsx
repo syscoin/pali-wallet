@@ -49,7 +49,7 @@ const PhraseView = () => {
               },
               () => ({
                 validator(_, value) {
-                  const seed = controller.wallet.getPhrase(value);
+                  const seed = controller.wallet.getSeed(value);
 
                   if (seed) {
                     setPhrase(seed);

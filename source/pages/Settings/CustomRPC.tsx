@@ -60,7 +60,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             initialValues={{
               blockbookURL: selectedToEdit ? selectedToEdit.beUrl : '',
               network: selectedToEdit ? selectedToEdit.label : '',
-              chainID: selectedToEdit ? selectedToEdit.chainID : '',
+              chainID: selectedToEdit ? selectedToEdit.chainID : -1,
             }}
             onFinish={onSubmit}
             autoComplete="off"
@@ -128,19 +128,15 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               hasFeedback
               rules={[
                 {
-                  required: false,
+                  required: true,
                   message: '',
                 },
               ]}
             >
               <Input
-                disabled
                 type="text"
                 placeholder="Chain ID"
-                className={`${
-                  true &&
-                  'opacity-50 rounded-full py-2 pl-4 w-72 md:w-full bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus md:max-w-md'
-                }`}
+                className="pl-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
               />
             </Form.Item>
 

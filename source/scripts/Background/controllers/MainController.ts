@@ -26,16 +26,17 @@ const MainController = () => {
    *  account using the same seed
    */
   const forgetWallet = (pwd: string) => {
-    if (keyringManager.checkPassword(pwd)) {
-      keyringManager.forgetMainWallet();
+    // @ts-ignore
+    keyringManager.forgetMainWallet(pwd);
 
-      store.dispatch(forgetWalletState());
-      store.dispatch(setLastLogin());
-    }
+    store.dispatch(forgetWalletState());
+    store.dispatch(setLastLogin());
   };
 
   const unlock = async (pwd: string): Promise<void> => {
+    console.log('trying unlock', pwd);
     const vault = (await keyringManager.login(pwd)) as IKeyringAccount;
+    console.log('trying unlock vault', vault);
 
     store.dispatch(setLastLogin());
 

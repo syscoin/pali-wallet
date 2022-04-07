@@ -69,7 +69,7 @@ const PrivateKeyView = () => {
               },
               () => ({
                 validator(_, value) {
-                  if (controller.wallet.getPhrase(value)) {
+                  if (controller.wallet.getSeed(value)) {
                     setValid(true);
 
                     return Promise.resolve();
