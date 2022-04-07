@@ -1,11 +1,13 @@
 import { Fullscreen } from 'components/Fullscreen';
 import React, { FC } from 'react';
-import { useStore } from 'hooks/useStore';
+import { useStore, useUtils } from 'hooks/index';
 
 import { PanelList } from './components/PanelList';
 
 export const AssetsPanel: FC = () => {
-  const { activeAccount } = useStore();
+  const { navigate } = useUtils();
+  const { activeNetwork, networks, activeAccount } = useStore();
+  const isSyscoinChain = networks.syscoin[activeNetwork.chainId];
 
   return (
     <>
@@ -13,8 +15,13 @@ export const AssetsPanel: FC = () => {
         {Object.values(activeAccount.assets) ? (
           <PanelList data={[]} activity={false} assets />
         ) : (
-          <p className="flex items-center justify-center text-brand-white text-sm">
-            You have no tokens or NFTs.
+          <p
+            onClick={() => navigate('/import-token')}
+            className={`${
+              isSyscoinChain ? 'text-brand-white' : 'text-brand-royalblue'
+            } flex items-center justify-center text-sm`}
+          >
+            {isSyscoinChain ? 'You have no tokens or NFTs.' : 'Import token'}
           </p>
         )}
       </ul>

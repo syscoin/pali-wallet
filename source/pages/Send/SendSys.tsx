@@ -5,7 +5,6 @@ import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
-import { Assets } from 'types/transactions';
 import { formatUrl, isNFT, getAssetBalance } from 'utils/index';
 import { getController } from 'utils/browser';
 
@@ -14,7 +13,7 @@ export const SendSys: FC = () => {
 
   const [ZDAG, setZDAG] = useState<boolean>(false);
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
-  const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [recommend, setRecommend] = useState(0.00001);
 
   const { alert, navigate } = useUtils();
@@ -46,7 +45,7 @@ export const SendSys: FC = () => {
   const handleSelectedAsset = (item: number) => {
     if (activeAccount?.assets) {
       const getAsset = activeAccount?.assets.find(
-        (asset: Assets) => asset.assetGuid === item
+        (asset: any) => asset.assetGuid === item
       );
 
       if (getAsset) {
@@ -94,8 +93,6 @@ export const SendSys: FC = () => {
       alert.error('An internal error has occurred.');
     }
   };
-
-  const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
 
   return (
     <>
@@ -371,11 +368,8 @@ export const SendSys: FC = () => {
           >
             <Tooltip content="Fee network">
               <Input
-                disabled={disabledFee}
-                className={`${
-                  disabledFee &&
-                  'opacity-50 cursor-not-allowed text-button-disabled'
-                } border border-fields-input-border bg-fields-input-primary rounded-r-full md:w-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
+                disabled
+                className="pl-4 pr-8 py-3 w-60 text-button-disabled text-sm bg-fields-input-primary border border-fields-input-border rounded-r-full outline-none opacity-50 cursor-not-allowed md:w-full"
                 id="fee-input"
                 type="number"
                 placeholder="Fee network"

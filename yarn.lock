@@ -1828,7 +1828,7 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.4", "@pollum-io/sysweb3-keyring@^1.0.45", "@pollum-io/sysweb3-keyring@^1.0.87":
+"@pollum-io/sysweb3-keyring@^1.0.4", "@pollum-io/sysweb3-keyring@^1.0.45":
   version "1.0.87"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.87.tgz#6402d93f84bdf96b6ded4a9a5fc2dfb4c6950e44"
   integrity sha512-qWrrt84Opu9jHuBRkBZHyYTiy9EvkMUq/CPmN5ZO6quo83U8TIHg8rGYSF9G055jlDGStgV+lej/o0JB2xPIqQ==
@@ -1852,15 +1852,50 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
+"@pollum-io/sysweb3-keyring@^1.0.90":
+  version "1.0.90"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.90.tgz#6ef8f3ac3877e9e6810eb156bd55d0767da801ad"
+  integrity sha512-TgoHQ2vgXkwDuaqLm6A+2J18f8eamEcz+XRF7MtMjqX3hcgdZhKtZ4B9cBuITJfMTh0NNC4hwThpz1op9FdLQw==
+  dependencies:
+    "@metamask/obs-store" "^7.0.0"
+    "@metamask/safe-event-emitter" "^2.0.0"
+    "@pollum-io/sysweb3-core" "^1.0.6"
+    "@pollum-io/sysweb3-utils" "^1.1.56"
+    "@types/crypto-js" "^4.1.1"
+    axios "^0.26.1"
+    bip39 "^3.0.4"
+    crypto-js "^4.1.1"
+    eth-sig-util "^3.0.1"
+    ethereumjs-util "^7.1.4"
+    ethereumjs-wallet "^1.0.2"
+    ethers "^5.6.0"
+    json-cycle "^1.3.0"
+    lodash "^4.17.21"
+    syscoinjs-lib "^1.0.209"
+    syscointx-js "^1.0.101"
+    web3 "^1.7.1"
+    web3-utils "^1.7.1"
+
 "@pollum-io/sysweb3-network@^1.0.3", "@pollum-io/sysweb3-network@^1.0.4", "@pollum-io/sysweb3-network@^1.0.5":
   version "1.0.5"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.5.tgz#29b1442b9a747d6241602c6623d8937964a7a84e"
   integrity sha512-/GWhm9x7uK95gVvbo4MxBMA6ctv2TXOObOdD69GpJ8aW1qilorWqElHHCXkadtKzy4iaRsvtNSm3zJG6nkMz3g==
 
-"@pollum-io/sysweb3-utils@^1.0.3", "@pollum-io/sysweb3-utils@^1.1.50", "@pollum-io/sysweb3-utils@^1.1.55":
+"@pollum-io/sysweb3-utils@^1.0.3", "@pollum-io/sysweb3-utils@^1.1.50":
   version "1.1.55"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.55.tgz#842a2c1898a26119063e3c031686959c6267f5a8"
   integrity sha512-9lHo8F+pKWG9/sZkDkj4xduU9osDS9wz0HtAU1E63wzzD7nt5YmNrh+oLiE1wc6gTMAAC+YNwKUxDx9yzRShAA==
+  dependencies:
+    "@pollum-io/sysweb3-keyring" "^1.0.45"
+    "@pollum-io/sysweb3-network" "^1.0.4"
+    ethers "^5.6.2"
+    syscoinjs-lib "^1.0.209"
+    syscointx-js "^1.0.101"
+
+"@pollum-io/sysweb3-utils@^1.1.56":
+  version "1.1.56"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.56.tgz#3a8ce94a3ea56e2d3140b40d11d0f55d313a5898"
+  integrity sha512-d2XgrJdCBpChwxRcgJ6EzN/LG6qCAhMdNg9Hwfy8dKbmR4DhZ8edqnFpC6fjJjDkBq27p5bs4aW/iQ7Cb8rDbA==
   dependencies:
     "@pollum-io/sysweb3-keyring" "^1.0.45"
     "@pollum-io/sysweb3-network" "^1.0.4"
@@ -3722,9 +3757,9 @@ bitcoinjs-lib@^5.0.3, bitcoinjs-lib@^5.2.0:
   dependencies:
     nanoassert "^1.0.0"
 
-"blake2b@git+https://github.com/BitGo/blake2b.git#6268e6dd678661e0acc4359e9171b97eb1ebf8ac":
+"blake2b@https://github.com/BitGo/blake2b#6268e6dd678661e0acc4359e9171b97eb1ebf8ac":
   version "2.1.3"
-  resolved "git+https://github.com/BitGo/blake2b.git#6268e6dd678661e0acc4359e9171b97eb1ebf8ac"
+  resolved "https://github.com/BitGo/blake2b#6268e6dd678661e0acc4359e9171b97eb1ebf8ac"
   dependencies:
     blake2b-wasm "https://github.com/BitGo/blake2b-wasm#193cdb71656c1a6c7f89b05d0327bb9b758d071b"
     nanoassert "^1.0.0"
@@ -6023,9 +6058,16 @@ eth-lib@^0.1.26:
     ws "^3.0.0"
     xhr-request-promise "^0.1.2"
 
-eth-object@^1.0.3, "eth-object@git+https://github.com/syscoin/eth-object.git":
+eth-object@^1.0.3:
   version "1.0.3"
   resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
+  dependencies:
+    eth-util-lite "^1.0.1"
+
+"eth-object@https://github.com/syscoin/eth-object.git":
+  version "1.0.3"
+  uid b5ff300f57c136138b31d6e570c816a147e0f1c9
+  resolved "https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
     eth-util-lite "^1.0.1"
 
