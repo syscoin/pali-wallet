@@ -338,11 +338,7 @@ export const SendSys: FC = () => {
               },
             ]}
           >
-            <Tooltip
-              content={
-                'Use recommended fee. Disabled for SYS networks because the fee used in transactions is always the recommended for current SYS network conditions.'
-              }
-            >
+            <Tooltip content="Use recommended fee. Disabled for SYS networks because the fee used in transactions is always the recommended for current SYS network conditions.">
               <div onClick={handleGetFee}>
                 <Icon
                   wrapperClassname="w-6 ml-3 mb-1"

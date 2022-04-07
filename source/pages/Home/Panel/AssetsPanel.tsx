@@ -12,7 +12,8 @@ export const AssetsPanel: FC = () => {
   return (
     <>
       <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
-        {Object.values(activeAccount.assets).length > 0 ? (
+        {activeAccount.assets &&
+        Object.values(activeAccount.assets).length > 0 ? (
           <PanelList data={[]} activity={false} assets />
         ) : (
           <div className="flex items-center justify-center text-brand-white text-sm">

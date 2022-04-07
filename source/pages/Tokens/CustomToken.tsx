@@ -19,8 +19,8 @@ export const CustomToken: FC = () => {
     decimal,
   }: {
     contract: string;
-    symbol: string;
     decimal: number;
+    symbol: string;
   }) => {
     controller.wallet.account.addTokenToAccount({ contract, symbol, decimal });
 

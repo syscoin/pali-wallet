@@ -3,6 +3,7 @@ import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { useStore, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { browser } from 'webextension-polyfill-ts';
+import { CustomToken, ImportToken } from 'pages/Tokens';
 
 import {
   About,
@@ -46,7 +47,6 @@ import {
 } from '../pages';
 
 import { ProtectedRoute } from './ProtectedRoute';
-import { CustomToken, ImportToken } from 'pages/Tokens';
 
 export const Router = () => {
   const location = useLocation();

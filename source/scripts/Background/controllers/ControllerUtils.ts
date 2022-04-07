@@ -12,29 +12,29 @@ export const CoinGeckoClient = new CoinGecko();
 
 export type CoingeckoCoins = {
   id: string;
+  large: string;
+  market_cap_rank: number;
   name: string;
   symbol: string;
-  market_cap_rank: number;
   thumb: string;
-  large: string;
 };
 
 export interface IControllerUtils {
   appRoute: (newRoute?: string) => string;
-  updateFiat: (currency?: string, assetId?: string) => Promise<void>;
-  updateFiatCurrencyForWallet: (chosenCurrency: string) => any;
   getSearch: (query: string) => Promise<
     AxiosResponse<
       {
-        nfts: any[];
         categories: any[];
-        icos: any[];
-        exchanges: any[];
         coins: CoingeckoCoins[];
+        exchanges: any[];
+        icos: any[];
+        nfts: any[];
       },
       any
     >
   >;
+  updateFiat: (currency?: string, assetId?: string) => Promise<void>;
+  updateFiatCurrencyForWallet: (chosenCurrency: string) => any;
 }
 
 const ControllerUtils = (): IControllerUtils => {
@@ -87,9 +87,7 @@ const ControllerUtils = (): IControllerUtils => {
     }
   };
 
-  const getSearch = async (query: string) => {
-    return await getCoingeckoSearch(query);
-  };
+  const getSearch = async (query: string) => getCoingeckoSearch(query);
 
   return {
     appRoute,

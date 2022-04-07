@@ -158,7 +158,7 @@ export const SendEth: FC = () => {
                   {hasAccountAssets && (
                     <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
                       {activeAccount &&
-                        activeAccount.assets.map((item) => (
+                        Object.values(activeAccount.assets).map((item: any) => (
                           <Menu.Item>
                             <button
                               onClick={() =>
