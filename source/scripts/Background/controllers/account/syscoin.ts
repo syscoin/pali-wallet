@@ -18,9 +18,7 @@ const SysAccountController = () => {
 
     if (!activeAccount) return;
 
-    const updatedAccountInfo = await keyringManager.getLatestUpdateForAccount(
-      activeAccount
-    );
+    const updatedAccountInfo = await keyringManager.getLatestUpdateForAccount();
 
     store.dispatch(
       setActiveAccount({
@@ -53,7 +51,8 @@ const SysAccountController = () => {
   };
 
   const setAddress = async (): Promise<string> => {
-    const receivingAddress = await keyringManager.address.getValidAddress();
+    const { receivingAddress } =
+      await keyringManager.getLatestUpdateForAccount();
 
     store.dispatch(
       setActiveAccountProperty({

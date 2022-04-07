@@ -83,9 +83,9 @@ const MainController = () => {
     store.dispatch(setNetwork(network));
 
     /** this method sets new signers for syscoin when changing networks */
-    const account = (await keyringManager.setActiveNetworkForSigner({
-      network,
-    })) as IKeyringAccount;
+    const account = (await keyringManager.setActiveNetworkForSigner(
+      network
+    )) as IKeyringAccount;
 
     /** directly set new keys for the current chain and update state if the active account is the first one */
     store.dispatch(
@@ -104,7 +104,8 @@ const MainController = () => {
     /** end */
 
     /** if the account index is > 0, we need to derive this account again from hd signer and set its index in the active account from signer */
-    keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
+    if (account.id === 0)
+      keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
 
     /** set active network with web3 account data for evm networks */
     store.dispatch(setActiveAccount(account));
