@@ -68,7 +68,7 @@ export const SendSys: FC = () => {
     form.setFieldsValue({ ZDAG: value });
   };
 
-  const nextStep = (data: any) => {
+  const nextStep = () => {
     // const { receiver, amount, fee } = data;
 
     try {

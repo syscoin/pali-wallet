@@ -23,9 +23,7 @@ export interface IControllerUtils {
   appRoute: (newRoute?: string) => string;
   updateFiat: (currency?: string, assetId?: string) => Promise<void>;
   updateFiatCurrencyForWallet: (chosenCurrency: string) => any;
-  getSearch: (
-    query: string
-  ) => Promise<
+  getSearch: (query: string) => Promise<
     AxiosResponse<
       {
         nfts: any[];
