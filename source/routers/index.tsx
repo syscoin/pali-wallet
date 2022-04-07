@@ -1,11 +1,5 @@
 import React, { useEffect } from 'react';
-import {
-  Routes,
-  Route,
-  useLocation,
-  useParams,
-  Navigate,
-} from 'react-router-dom';
+import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { useStore, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { browser } from 'webextension-polyfill-ts';
@@ -54,7 +48,6 @@ import {
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const Router = () => {
-  const params = useParams();
   const location = useLocation();
   const controller = getController();
 
@@ -121,12 +114,6 @@ export const Router = () => {
       <Route
         path="send/confirm"
         element={<ProtectedRoute element={<SendConfirm />} />}
-      />
-      <Route
-        path="send/:address"
-        element={
-          <ProtectedRoute element={<Send initAddress={params.address} />} />
-        }
       />
       {/* /settings */}
       <Route path="settings">
