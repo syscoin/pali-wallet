@@ -8,8 +8,8 @@ export const AssetDetails = ({
   assetType,
   assetData,
 }: {
-  assetType?: string;
   assetData: any;
+  assetType?: string;
 }) => {
   const [imageLink, setImageLink] = useState('');
   const [loadingImage, setLoadingImage] = useState(false);

@@ -44,14 +44,14 @@ export const SendConfirm = () => {
           const value = new sys.utils.BN(tempTx.amount * 1e8);
           const feeRate = new sys.utils.BN(tempTx.fee * 1e8);
 
-          let outputs = [
+          const outputs = [
             {
               address: tempTx.receiver,
               value,
             },
           ];
 
-          return await controller.wallet.account.trezor.confirmNativeTokenSend({
+          return controller.wallet.account.trezor.confirmNativeTokenSend({
             txOptions: { rbf: true },
             outputs,
             feeRate,

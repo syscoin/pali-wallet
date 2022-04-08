@@ -38,13 +38,13 @@ export interface IControllerUtils {
       any
     >
   >;
-  updateFiat: (currency?: string, assetId?: string) => Promise<void>;
+  isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
   isValidSYSAddress: (
     address: string,
     activeNetwork: INetwork,
     verification?: boolean
   ) => boolean;
-  isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
+  updateFiat: (currency?: string, assetId?: string) => Promise<void>;
   updateFiatCurrencyForWallet: (chosenCurrency: string) => any;
 }
 

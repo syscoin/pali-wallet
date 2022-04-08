@@ -6,10 +6,10 @@ import {
 } from 'state/vault';
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 import { IKeyringAccount } from 'state/vault/types';
+import { validateToken } from '@pollum-io/sysweb3-utils';
 
 import SysTrezorController from '../trezor/syscoin';
 import { SysTransactionController } from '../transaction';
-import { validateToken } from '@pollum-io/sysweb3-utils';
 
 const SysAccountController = () => {
   const keyringManager = KeyringManager();
@@ -25,7 +25,7 @@ const SysAccountController = () => {
       setActiveAccount({
         ...activeAccount,
         ...updatedAccountInfo,
-        //@ts-ignore
+        // @ts-ignore
         assets: updatedAccountInfo.assets,
       })
     );
@@ -54,7 +54,7 @@ const SysAccountController = () => {
   };
 
   const setAddress = async (): Promise<string> => {
-    //@ts-ignore
+    // @ts-ignore
     const { receivingAddress } =
       await keyringManager.getLatestUpdateForAccount();
 
