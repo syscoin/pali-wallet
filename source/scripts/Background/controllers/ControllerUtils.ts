@@ -44,7 +44,7 @@ export interface IControllerUtils {
     activeNetwork: INetwork,
     verification?: boolean
   ) => boolean;
-  isValidEthereumAddress: (address: string) => boolean;
+  isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
   updateFiatCurrencyForWallet: (chosenCurrency: string) => any;
 }
 

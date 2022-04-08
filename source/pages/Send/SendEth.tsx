@@ -7,6 +7,7 @@ import { SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { formatUrl, isNFT, getAssetBalance } from 'utils/index';
 import { getController } from 'utils/browser';
+import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
 export const SendEth: FC = () => {
   const controller = getController();
@@ -15,7 +16,7 @@ export const SendEth: FC = () => {
   const [recommend, setRecommend] = useState(0.00001);
 
   const { alert, navigate } = useUtils();
-  const { activeNetwork, fiat, activeAccount } = useStore();
+  const { fiat, activeAccount } = useStore();
   const [form] = Form.useForm();
   const { getFiatAmount } = usePrice();
 
@@ -36,7 +37,8 @@ export const SendEth: FC = () => {
     });
   }, [form, handleGetGasFee]);
 
-  const hasAccountAssets = activeAccount && activeAccount.assets;
+  const hasAccountAssets =
+    activeAccount && Object.values(activeAccount.assets).length > 0;
 
   const handleSelectedAsset = (item: number) => {
     if (activeAccount?.assets) {
@@ -56,15 +58,15 @@ export const SendEth: FC = () => {
 
   const nextStep = async ({ receiver, fee, amount }) => {
     try {
-      const tx = await controller.wallet.account.sendTransaction(
-        activeAccount.address,
-        activeAccount.xprv,
-        receiver,
-        amount,
-        String(fee)
-      );
-
-      navigate('/send/confirm', { state: { tx } });
+      navigate('/send/confirm', {
+        state: {
+          from: activeAccount.address,
+          xprv: activeAccount.xprv,
+          receivingAddress: receiver,
+          amount,
+          fee: String(fee),
+        },
+      });
     } catch (error) {
       alert.removeAll();
       alert.error('An internal error has occurred.');
@@ -106,13 +108,7 @@ export const SendEth: FC = () => {
             },
             () => ({
               validator(_, value) {
-                if (
-                  !value ||
-                  controller.wallet.utils.isValidEthereumAddress(
-                    value,
-                    activeNetwork
-                  )
-                ) {
+                if (!value || isValidEthereumAddress(value)) {
                   return Promise.resolve();
                 }
 

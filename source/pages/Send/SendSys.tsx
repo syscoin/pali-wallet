@@ -7,6 +7,7 @@ import { SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { formatUrl, isNFT, getAssetBalance } from 'utils/index';
 import { getController } from 'utils/browser';
+import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
 export const SendSys: FC = () => {
   const controller = getController();
@@ -128,11 +129,7 @@ export const SendSys: FC = () => {
               validator(_, value) {
                 if (
                   !value ||
-                  controller.wallet.utils.isValidSYSAddress(
-                    value,
-                    activeNetwork,
-                    verifyAddress
-                  )
+                  isValidSYSAddress(value, activeNetwork, verifyAddress)
                 ) {
                   return Promise.resolve();
                 }

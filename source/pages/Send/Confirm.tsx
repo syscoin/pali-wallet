@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
-import { log, logError, ellipsis } from 'utils/index';
+import { formatUrl, logError, ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 import { useLocation } from 'react-router-dom';
 import sys from 'syscoinjs-lib';
@@ -11,19 +11,21 @@ export const SendConfirm = () => {
   const { activeAccount, networks, activeNetwork } = useStore();
   const { alert, navigate } = useUtils();
 
-  const { state } = useLocation();
+  const {
+    state: { tx },
+  }: { state: any } = useLocation();
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
-  const tempTx = state.tx;
+  const tempTx = tx;
+
+  const isSyscoinChain = networks.syscoin[activeNetwork.chainId];
 
   const handleConfirm = async () => {
-    console.log('tx by location', state, state.tx);
+    console.log('tx by location', tx);
     const recommendedFee =
       await controller.wallet.account.tx.getRecommendedFee();
-
-    const isSyscoinChain = networks.syscoin[activeNetwork.chainId];
 
     console.log('recommended fee', recommendedFee);
 
@@ -37,74 +39,78 @@ export const SendConfirm = () => {
     setLoading(true);
 
     try {
-      if (activeAccount.isTrezorWallet) {
-        const value = new sys.utils.BN(state.tx.amount * 1e8);
-        const feeRate = new sys.utils.BN(state.tx.fee * 1e8);
+      if (isSyscoinChain) {
+        if (activeAccount.isTrezorWallet) {
+          const value = new sys.utils.BN(tempTx.amount * 1e8);
+          const feeRate = new sys.utils.BN(tempTx.fee * 1e8);
 
-        let outputs = [
-          {
-            address: state.tx.receiver,
-            value,
-          },
-        ];
+          let outputs = [
+            {
+              address: tempTx.receiver,
+              value,
+            },
+          ];
 
-        return await controller.wallet.account.trezor.confirmNativeTokenSend({
-          txOptions: { rbf: true },
-          outputs,
-          feeRate,
-        });
+          return await controller.wallet.account.trezor.confirmNativeTokenSend({
+            txOptions: { rbf: true },
+            outputs,
+            feeRate,
+          });
+        }
+
+        console.log('calling send tempTx', tempTx);
+
+        const response = await controller.wallet.account.tx.sendTransaction(tx);
+
+        return response;
       }
 
-      console.log('calling send tx', state.tx);
+      console.log('calling send tx eth');
 
-      const response = await controller.wallet.account.tx.sendTransaction(
-        state.tx
+      const ethTx = await controller.wallet.account.sendTransaction(
+        tempTx.sender,
+        activeAccount.xprv,
+        tempTx.receivingAddress,
+        tempTx.amount,
+        String(tempTx.fee)
       );
 
-      console.log('response tx', response);
+      console.log('response tx', ethTx);
 
-      //     if (response) {
-      //       alert.removeAll();
-      //       alert.error("Can't complete transaction. Try again later.");
-
-      //       return;
-      //     }
-
-      //     browser.runtime.sendMessage({
-      //       type: 'WALLET_ERROR',
-      //       target: 'background',
-      //       transactionError: false,
-      //       invalidParams: false,
-      //       message: 'Everything is fine, transaction completed.',
-      //     });
-
-      //     setConfirmed(true);
-      //     setLoading(false);
+      setConfirmed(true);
+      setLoading(false);
     } catch (error: any) {
-      //     logError('error', 'Transaction', error);
-      //     if (activeAccount) {
-      //       if (error && tempTx.fee > recommendedFee) {
-      //         alert.removeAll();
-      //         alert.error(
-      //           `${formatUrl(
-      //             String(error.message),
-      //             166
-      //           )} Please, reduce fees to send transaction.`
-      //         );
-      //       }
-      //       if (error && tempTx.fee <= recommendedFee) {
-      //         const max = (100 * tempTx.amount) / activeAccount?.balances.syscoin;
-      //         if (tempTx.amount >= (max * tempTx.amount) / 100) {
-      //           alert.removeAll();
-      //           alert.error(error.message);
-      //           setLoading(false);
-      //           return;
-      //         }
-      //         alert.removeAll();
-      //         alert.error("Can't complete transaction. Try again later.");
-      //       }
-      //       setLoading(false);
-      //     }
+      logError('error', 'Transaction', error);
+
+      if (activeAccount) {
+        if (error && tempTx.fee > recommendedFee) {
+          alert.removeAll();
+          alert.error(
+            `${formatUrl(
+              String(error.message),
+              166
+            )} Please, reduce fees to send transaction.`
+          );
+        }
+
+        if (isSyscoinChain && error && tempTx.fee <= recommendedFee) {
+          const max = (100 * tempTx.amount) / activeAccount?.balances.syscoin;
+
+          if (tempTx.amount >= (max * tempTx.amount) / 100) {
+            alert.removeAll();
+            alert.error(error.message);
+
+            setLoading(false);
+
+            return;
+          }
+        }
+
+        alert.removeAll();
+        alert.error("Can't complete transaction. Try again later.");
+
+        setLoading(false);
+      }
     }
     // }
   };
@@ -117,7 +123,6 @@ export const SendConfirm = () => {
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => navigate('/home')}
       />
-
       {tempTx && (
         <div className="flex flex-col items-center justify-center mt-4 w-full">
           <p className="flex flex-col items-center justify-center text-center font-rubik">
@@ -125,7 +130,9 @@ export const SendConfirm = () => {
               Send
             </span>
             {tempTx.amount}
-            {tempTx.token ? tempTx.token.symbol : 'SYS'}
+            {tempTx.token
+              ? tempTx.token.symbol
+              : activeNetwork.currency?.toUpperCase()}
           </p>
 
           <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
