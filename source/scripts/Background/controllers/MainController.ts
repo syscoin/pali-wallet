@@ -9,6 +9,7 @@ import {
   createAccount as addAccountToStore,
   setActiveNetwork as setNetwork,
   setActiveAccountProperty,
+  setIsPendingBalances,
 } from 'state/vault';
 import { IKeyringAccount } from 'state/vault/types';
 
@@ -71,6 +72,8 @@ const MainController = () => {
   };
 
   const setActiveNetwork = async (chain: string, chainId: number) => {
+    store.dispatch(setIsPendingBalances(true));
+
     const { networks, activeAccount } = store.getState().vault;
 
     const network = networks[chain][chainId];
@@ -105,6 +108,7 @@ const MainController = () => {
 
     /** set active network with web3 account data for evm networks */
     store.dispatch(setActiveAccount(account));
+    store.dispatch(setIsPendingBalances(false));
 
     /** account returned from updated signer according to the current network so we can update frontend easier */
     return account;

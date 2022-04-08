@@ -24,6 +24,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
       <div className="fixed z-10 w-full md:max-w-2xl">
         <>
           <NormalHeader />
+
           {accountHeader && <AccountHeader />}
         </>
       </div>

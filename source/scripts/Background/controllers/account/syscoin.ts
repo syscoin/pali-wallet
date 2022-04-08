@@ -15,6 +15,8 @@ const SysAccountController = () => {
   const keyringManager = KeyringManager();
 
   const getLatestUpdate = async () => {
+    store.dispatch(setIsPendingBalances(true));
+
     const { activeAccount } = store.getState().vault;
 
     if (!activeAccount) return;
