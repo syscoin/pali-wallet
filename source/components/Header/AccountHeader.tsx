@@ -19,8 +19,8 @@ const AccountMenu: React.FC = () => {
   const controller = getController();
 
   useEffect(() => {
-    if (controller.wallet.isUnlocked() && accounts && activeAccount)
-      handleRefresh();
+    // if (controller.wallet.isUnlocked() && accounts && activeAccount)
+    //   handleRefresh();
   }, [controller.wallet.isUnlocked()]);
 
   const handleLogout = () => {

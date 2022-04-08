@@ -85,7 +85,7 @@ export const Router = () => {
   useEffect(() => {
     alert.removeAll();
     controller.appRoute(location.pathname);
-  }, [location]);
+  }, [location, isUnlocked]);
 
   return (
     <Routes>
