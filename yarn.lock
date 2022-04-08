@@ -1828,15 +1828,15 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.4", "@pollum-io/sysweb3-keyring@^1.0.45":
-  version "1.0.87"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.87.tgz#6402d93f84bdf96b6ded4a9a5fc2dfb4c6950e44"
-  integrity sha512-qWrrt84Opu9jHuBRkBZHyYTiy9EvkMUq/CPmN5ZO6quo83U8TIHg8rGYSF9G055jlDGStgV+lej/o0JB2xPIqQ==
+"@pollum-io/sysweb3-keyring@^1.0.102":
+  version "1.0.102"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.102.tgz#b01f49a1ca36266ab555be26f9fdf491bcf011ae"
+  integrity sha512-DcLr47zk82z4ckg1Ic2VADv9kaCSKje8Hun3shWkZh+CswF1kqy71PWRGOv9tDr/xutkXPcTUXkGZtOgdcSTnA==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "^1.0.6"
-    "@pollum-io/sysweb3-utils" "^1.1.50"
+    "@pollum-io/sysweb3-utils" "^1.1.58"
     "@types/crypto-js" "^4.1.1"
     axios "^0.26.1"
     bip39 "^3.0.4"
@@ -1852,15 +1852,15 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
-"@pollum-io/sysweb3-keyring@^1.0.97":
-  version "1.0.97"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.97.tgz#7324bf935ec26dc99e3c3a239b404d6cbcf4411b"
-  integrity sha512-xN8RmylTbGh/WN3vhVN1B8CTKj6ec+LHRBPji2/wSGX+BKvf698uNzARJIkGnQlbdVwA/xdg0WO53px4HNENhw==
+"@pollum-io/sysweb3-keyring@^1.0.4", "@pollum-io/sysweb3-keyring@^1.0.45":
+  version "1.0.87"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.87.tgz#6402d93f84bdf96b6ded4a9a5fc2dfb4c6950e44"
+  integrity sha512-qWrrt84Opu9jHuBRkBZHyYTiy9EvkMUq/CPmN5ZO6quo83U8TIHg8rGYSF9G055jlDGStgV+lej/o0JB2xPIqQ==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "^1.0.6"
-    "@pollum-io/sysweb3-utils" "^1.1.58"
+    "@pollum-io/sysweb3-utils" "^1.1.50"
     "@types/crypto-js" "^4.1.1"
     axios "^0.26.1"
     bip39 "^3.0.4"

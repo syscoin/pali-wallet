@@ -13,7 +13,7 @@ export const CustomToken: FC = () => {
 
   const [added, setAdded] = useState(false);
 
-  const nextStep = ({
+  const nextStep = async ({
     contract,
     symbol,
     decimal,
@@ -22,7 +22,11 @@ export const CustomToken: FC = () => {
     decimal: number;
     symbol: string;
   }) => {
-    controller.wallet.account.addTokenToAccount({ contract, symbol, decimal });
+    await controller.wallet.account.saveTokenInfo({
+      contract,
+      symbol,
+      decimal,
+    });
 
     setAdded(true);
   };
@@ -91,6 +95,12 @@ export const CustomToken: FC = () => {
             className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
           />
         </Form.Item>
+
+        <div className="flex flex-col items-center justify-center w-full">
+          <div className="absolute bottom-12 md:static">
+            <SecondaryButton type="submit">Next</SecondaryButton>
+          </div>
+        </div>
       </Form>
 
       {added && (
@@ -103,14 +113,6 @@ export const CustomToken: FC = () => {
           onClose={() => navigate('/home')}
         />
       )}
-
-      <div className="flex flex-col items-center justify-center w-full">
-        <div className="absolute bottom-12 md:static">
-          <SecondaryButton type="button" onClick={() => navigate('/home')}>
-            Next
-          </SecondaryButton>
-        </div>
-      </div>
     </Layout>
   );
 };
