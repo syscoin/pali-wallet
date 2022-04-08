@@ -7,7 +7,7 @@ import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 
 const AccountMenu: React.FC = () => {
-  const { navigate, handleRefresh } = useUtils();
+  const { navigate } = useUtils();
   const { wallet } = getController();
   const { encryptedMnemonic, accounts, activeAccount } = useStore();
 

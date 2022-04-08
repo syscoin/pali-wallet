@@ -62,6 +62,8 @@ export const SendConfirm = () => {
 
         const response = await controller.wallet.account.tx.sendTransaction(tx);
 
+        console.log('calling send response', response);
+
         return response;
       }
 
