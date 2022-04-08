@@ -22,7 +22,7 @@ export const SendSys: FC = () => {
   const { getFiatAmount } = usePrice();
 
   const handleGetFee = useCallback(async () => {
-    const recommendFee = await controller.wallet.account.getRecommendFee();
+    const recommendFee = await controller.wallet.account.tx.getRecommendedFee();
 
     setRecommend(recommendFee);
 
@@ -68,24 +68,23 @@ export const SendSys: FC = () => {
     form.setFieldsValue({ ZDAG: value });
   };
 
-  const nextStep = () => {
-    // const { receiver, amount, fee } = data;
+  const nextStep = async (data: any) => {
+    const { receiver, amount, fee } = data;
 
     try {
-      // controller.wallet.account.updateTemporaryTransaction({
-      //   tx: {
-      //     fromAddress: activeAccount?.address,
-      //     toAddress: receiver,
-      //     amount,
-      //     fee,
-      //     token: selectedAsset || null,
-      //     isToken: !!selectedAsset,
-      //     rbf: !ZDAG,
-      //   },
-      //   type: 'sendAsset',
-      // });
-
-      navigate('/send/confirm');
+      navigate('/send/confirm', {
+        state: {
+          tx: {
+            amount,
+            fee,
+            isToken: !!selectedAsset,
+            rbf: !ZDAG,
+            receivingAddress: receiver,
+            sender: activeAccount?.address,
+            token: selectedAsset || null,
+          },
+        },
+      });
     } catch (error) {
       alert.removeAll();
       alert.error('An internal error has occurred.');
@@ -129,7 +128,7 @@ export const SendSys: FC = () => {
               validator(_, value) {
                 if (
                   !value ||
-                  controller.wallet.account.isValidSYSAddress(
+                  controller.wallet.utils.isValidSYSAddress(
                     value,
                     activeNetwork,
                     verifyAddress

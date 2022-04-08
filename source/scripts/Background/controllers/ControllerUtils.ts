@@ -3,7 +3,12 @@ import { ASSET_PRICE_API, PRICE_SYS_ID } from 'constants/index';
 import store from 'state/store';
 import { updateFiatPrice } from 'state/price';
 import { logError } from 'utils/index';
-import { getSearch as getCoingeckoSearch } from '@pollum-io/sysweb3-utils';
+import {
+  getSearch as getCoingeckoSearch,
+  INetwork,
+  isValidEthereumAddress,
+  isValidSYSAddress,
+} from '@pollum-io/sysweb3-utils';
 import { AxiosResponse } from 'axios';
 
 const CoinGecko = require('coingecko-api');
@@ -34,6 +39,12 @@ export interface IControllerUtils {
     >
   >;
   updateFiat: (currency?: string, assetId?: string) => Promise<void>;
+  isValidSYSAddress: (
+    address: string,
+    activeNetwork: INetwork,
+    verification?: boolean
+  ) => boolean;
+  isValidEthereumAddress: (address: string) => boolean;
   updateFiatCurrencyForWallet: (chosenCurrency: string) => any;
 }
 
@@ -94,6 +105,8 @@ const ControllerUtils = (): IControllerUtils => {
     updateFiat,
     updateFiatCurrencyForWallet,
     getSearch,
+    isValidEthereumAddress,
+    isValidSYSAddress,
   };
 };
 

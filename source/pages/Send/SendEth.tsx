@@ -20,7 +20,7 @@ export const SendEth: FC = () => {
   const { getFiatAmount } = usePrice();
 
   const handleGetGasFee = useCallback(async () => {
-    const recommendFee = await controller.wallet.account.getRecommendFee();
+    const recommendFee = await controller.wallet.account.tx.getRecommendedFee();
 
     setRecommend(recommendFee);
 
@@ -54,9 +54,17 @@ export const SendEth: FC = () => {
     }
   };
 
-  const nextStep = () => {
+  const nextStep = async ({ receiver, fee, amount }) => {
     try {
-      navigate('/send/confirm');
+      const tx = await controller.wallet.account.sendTransaction(
+        activeAccount.address,
+        activeAccount.xprv,
+        receiver,
+        amount,
+        String(fee)
+      );
+
+      navigate('/send/confirm', { state: { tx } });
     } catch (error) {
       alert.removeAll();
       alert.error('An internal error has occurred.');

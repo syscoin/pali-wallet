@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Icon, IconButton, Tooltip } from 'components/index';
+import { Icon, Tooltip } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
 import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
@@ -263,9 +263,9 @@ export const NormalHeader: React.FC = () => {
       {() => (
         <>
           <Tooltip content={ellipsis(currentTabURL, 25, 0)}>
-            <IconButton
+            <div
               onClick={() => navigate('/settings/networks/connected-sites')}
-              className="relative z-0 mx-1.5 text-brand-white"
+              className="relative z-0 mx-1.5 text-brand-white cursor-pointer"
             >
               <Icon
                 name="globe"
@@ -279,14 +279,15 @@ export const NormalHeader: React.FC = () => {
                     : 'text-warning-error bg-warning-error'
                 } absolute -right-1 top-1 w-3 h-3 s rounded-full `}
               />
-            </IconButton>
+            </div>
           </Tooltip>
-          <IconButton
+
+          <div
             onClick={handleRefresh}
             className="z-0 mx-1.5 hover:text-brand-royalblue text-brand-white"
           >
             <Icon name="reload" />
-          </IconButton>
+          </div>
 
           <Menu.Button
             as="button"
@@ -294,12 +295,12 @@ export const NormalHeader: React.FC = () => {
             className="z-0 mx-1.5"
           >
             {Boolean(encryptedMnemonic) && (
-              <IconButton type="primary" shape="circle">
+              <div>
                 <Icon
                   name="settings"
                   className="hover:text-brand-royalblue text-brand-white"
                 />
-              </IconButton>
+              </div>
             )}
           </Menu.Button>
 

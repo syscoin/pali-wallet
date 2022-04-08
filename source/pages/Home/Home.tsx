@@ -17,10 +17,11 @@ export const Home = () => {
   const { networks, activeNetwork, fiat, activeAccount, lastLogin } =
     useStore();
 
+  const chain = networks.syscoin[activeNetwork.chainId]
+    ? 'syscoin'
+    : 'ethereum';
+
   const setChainSymbol = async () => {
-    const chain = networks.syscoin[activeNetwork.chainId]
-      ? 'syscoin'
-      : 'ethereum';
     const symbol = await getSymbolByChain(chain);
 
     setSymbol(symbol);
@@ -30,8 +31,13 @@ export const Home = () => {
     setChainSymbol();
   }, [controller.wallet.isUnlocked()]);
 
-  const isTestnet = activeNetwork.chainId === 5700;
-  const isNotTestnet = activeNetwork.chainId === 57 ? 'SYS' : symbol;
+  const isSysTestnet = chain === 'syscoin' && activeNetwork.chainId === 5700;
+  const symbolByChain = isSysTestnet ? 'tsys' : symbol;
+
+  const balanceByChain =
+    chain === 'syscoin'
+      ? activeAccount?.balances.syscoin
+      : activeAccount?.balances.ethereum;
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
@@ -41,41 +47,24 @@ export const Home = () => {
 
           <section className="flex flex-col gap-1 items-center py-14 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
-              {activeNetwork.chainId === 5700 ? (
-                <div className="balance-account flex gap-x-0.5 items-center justify-center">
-                  <p
-                    className="font-rubik text-5xl font-medium"
-                    id="home-balance"
-                  >
-                    {formatNumber(activeAccount?.balances.syscoin || 0)}{' '}
-                  </p>
+              <div className="balance-account flex gap-x-0.5 items-center justify-center">
+                <p
+                  id="home-balance"
+                  className="font-rubik text-5xl font-medium"
+                >
+                  {formatNumber(balanceByChain || 0)}{' '}
+                </p>
 
-                  <p className="mt-4 font-poppins">TSYS</p>
-                </div>
-              ) : (
-                <>
-                  <div className="balance-account flex gap-x-0.5 items-center justify-center">
-                    <p
-                      id="home-balance"
-                      className="font-rubik text-5xl font-medium"
-                    >
-                      {formatNumber(activeAccount?.balances.syscoin || 0)}{' '}
-                    </p>
+                <p className="mt-4 font-poppins">
+                  {symbolByChain.toUpperCase()}
+                </p>
+              </div>
 
-                    <p className="mt-4 font-poppins">
-                      {isTestnet ? 'TSYS' : isNotTestnet}
-                    </p>
-                  </div>
-
-                  <p id="fiat-ammount">
-                    {getFiatAmount(
-                      activeAccount.balances.syscoin || 0,
-                      4,
-                      String(fiat.current)
-                    )}
-                  </p>
-                </>
-              )}
+              <p id="fiat-ammount">
+                {!isSysTestnet
+                  ? getFiatAmount(balanceByChain || 0, 4, String(fiat.current))
+                  : null}
+              </p>
             </div>
 
             <div className="flex gap-x-0.5 items-center justify-center pt-8 w-3/4 max-w-md">

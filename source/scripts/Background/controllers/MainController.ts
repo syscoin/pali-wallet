@@ -34,15 +34,10 @@ const MainController = () => {
   };
 
   const unlock = async (pwd: string): Promise<void> => {
-    console.log('trying unlock', pwd);
     const vault = (await keyringManager.login(pwd)) as IKeyringAccount;
-    console.log('trying unlock vault', vault);
 
     store.dispatch(setLastLogin());
-
     store.dispatch(setActiveAccount(vault));
-
-    console.log('vault unlocked', vault);
   };
 
   const createWallet = async (): Promise<IKeyringAccount> => {

@@ -1,11 +1,10 @@
-import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
+import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import store from 'state/store';
 import { utils as SysUtils } from 'syscoinjs-lib';
 import { openNotificationsPopup } from 'utils/notifications';
 
-import SysTrezorController from './syscoin';
-
 const TrezorController = () => {
+  const { trezor } = KeyringManager();
   const { activeNetwork } = store.getState().vault;
 
   const isSyscoinNetwork = activeNetwork.chainId === 57;
@@ -39,7 +38,7 @@ const TrezorController = () => {
   const forgetHardware = () => {};
 
   return {
-    tx: isSyscoinNetwork ? SysTrezorController() : Web3Accounts(),
+    tx: isSyscoinNetwork ? trezor.tx : Web3Accounts(),
     connectHardware,
     forgetHardware,
   };

@@ -74,7 +74,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   }, [transaction]);
 
   const handleConfirmSiteTransaction = async () => {
-    const recommendedFee = await accountController.getRecommendFee();
+    const recommendedFee = await accountController.tx.getRecommendedFee();
 
     let isPending = false;
 
@@ -90,7 +90,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
           setSubmitted(true);
         }
 
-        const response = await accountController.confirmTemporaryTransaction({
+        const response = await accountController.tx.sendTransaction({
           type: txType,
           callback,
         });
