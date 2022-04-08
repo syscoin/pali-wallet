@@ -1828,10 +1828,10 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.102":
-  version "1.0.102"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.102.tgz#b01f49a1ca36266ab555be26f9fdf491bcf011ae"
-  integrity sha512-DcLr47zk82z4ckg1Ic2VADv9kaCSKje8Hun3shWkZh+CswF1kqy71PWRGOv9tDr/xutkXPcTUXkGZtOgdcSTnA==
+"@pollum-io/sysweb3-keyring@^1.0.103":
+  version "1.0.103"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.103.tgz#8977651679c52ee8222088cc5b06366fb247d943"
+  integrity sha512-EEwJ4cXiUqGrUcqY4PVvDlrOUl+ElflThv+i1dZSPISz7VOXgDgy7eqbNXcmrBPVlZPjx5pCA6eZWGt2K5JDpg==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
@@ -1896,6 +1896,18 @@
   version "1.1.58"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.58.tgz#20efda911fc3206eed86a41d010a060866ebd02a"
   integrity sha512-sSR/IbzUtTOa255Gxgmb1o4UcywtbYDG0zH8hrSRTYucsXSmvTSY51vOSLUOCX4HN3hVOoEivga9az0QgAcdYA==
+  dependencies:
+    "@pollum-io/sysweb3-keyring" "^1.0.45"
+    "@pollum-io/sysweb3-network" "^1.0.4"
+    bech32 "^2.0.0"
+    ethers "^5.6.2"
+    syscoinjs-lib "^1.0.209"
+    syscointx-js "^1.0.101"
+
+"@pollum-io/sysweb3-utils@^1.1.64":
+  version "1.1.64"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.64.tgz#d5c66308eb70d38a0f5603a761bb3001c1a6aecd"
+  integrity sha512-+P75uoQmmj47gCtVYcbW+WU6mc8jfds4zZK4EqxWK19GwTu2Yykayq6aASZp5CLDDKCsOB0/i/PqTPhdSYXFVg==
   dependencies:
     "@pollum-io/sysweb3-keyring" "^1.0.45"
     "@pollum-io/sysweb3-network" "^1.0.4"

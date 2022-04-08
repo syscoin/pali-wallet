@@ -9,7 +9,7 @@ import { IKeyringAccount } from 'state/vault/types';
 
 import SysTrezorController from '../trezor/syscoin';
 import { SysTransactionController } from '../transaction';
-import { validateToken } from '@pollum-io/sysweb3-utils';
+import { importWeb3Token } from '@pollum-io/sysweb3-utils';
 
 const SysAccountController = () => {
   const keyringManager = KeyringManager();
@@ -25,7 +25,7 @@ const SysAccountController = () => {
       setActiveAccount({
         ...activeAccount,
         ...updatedAccountInfo,
-        assets: updatedAccountInfo.tokens,
+        assets: updatedAccountInfo.assets,
       })
     );
 

@@ -4,7 +4,13 @@ import { Tooltip, Icon } from 'components/index';
 import { formatUrl } from 'utils/index';
 import axios from 'axios';
 
-export const AssetDetails = ({ assetType, assetData }) => {
+export const AssetDetails = ({
+  assetType,
+  assetData,
+}: {
+  assetType?: string;
+  assetData: any;
+}) => {
   const [imageLink, setImageLink] = useState('');
   const [loadingImage, setLoadingImage] = useState(false);
 

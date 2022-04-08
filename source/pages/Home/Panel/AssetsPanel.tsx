@@ -7,14 +7,19 @@ import { PanelList } from './components/PanelList';
 export const AssetsPanel: FC = () => {
   const { navigate } = useUtils();
   const { activeNetwork, networks, activeAccount } = useStore();
-  const isSyscoinChain = networks.syscoin[activeNetwork.chainId];
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
   return (
     <>
       <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
         {activeAccount.assets &&
         Object.values(activeAccount.assets).length > 0 ? (
-          <PanelList data={[]} activity={false} assets />
+          <PanelList
+            isSyscoinChain={isSyscoinChain}
+            data={activeAccount.assets}
+            activity={false}
+            assets
+          />
         ) : (
           <div className="flex items-center justify-center text-brand-white text-sm">
             {isSyscoinChain ? (
