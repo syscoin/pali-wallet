@@ -14,8 +14,8 @@ import { SysTransactionController } from '../transaction';
 const SysAccountController = () => {
   const keyringManager = KeyringManager();
 
-  const getLatestUpdate = async () => {
-    store.dispatch(setIsPendingBalances(true));
+  const getLatestUpdate = async (silent?: boolean) => {
+    if (!silent) store.dispatch(setIsPendingBalances(true));
 
     const { activeAccount } = store.getState().vault;
 

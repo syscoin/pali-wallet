@@ -20,7 +20,7 @@ const AccountMenu: React.FC = () => {
 
   useEffect(() => {
     if (controller.wallet.isUnlocked() && accounts && activeAccount)
-      handleRefresh();
+      handleRefresh(true);
   }, [controller.wallet.isUnlocked()]);
 
   const handleLogout = () => {

@@ -9,7 +9,7 @@ import getSymbolFromCurrency from 'currency-symbol-map';
 
 const CurrencyView = () => {
   const controller = getController();
-  const { navigate } = useUtils();
+  const { navigate, handleRefresh } = useUtils();
   const { getFiatAmount } = usePrice();
   const { activeAccount } = useStore();
 
@@ -56,12 +56,6 @@ const CurrencyView = () => {
   const useFiatCurrency = fiat.current
     ? String(fiat.current).toUpperCase()
     : 'USD';
-
-  const handleRefresh = () => {
-    controller.wallet.account.getLatestUpdate();
-    controller.wallet.account.watchMemPool(accounts[activeAccountId]);
-    controller.stateUpdater();
-  };
 
   useEffect(() => {
     if (
