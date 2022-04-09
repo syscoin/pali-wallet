@@ -1,9 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import {
-  INetwork,
-  INetworkType,
-  initialNetworksState,
-} from '@pollum-io/sysweb3-utils';
+import { INetwork, initialNetworksState } from '@pollum-io/sysweb3-utils';
 
 import trustedApps from './trustedApps.json';
 import { IKeyringAccount, IVaultState } from './types';
@@ -102,10 +98,6 @@ const VaultState = createSlice({
     },
     setIsPendingBalances(state: IVaultState, action: PayloadAction<boolean>) {
       state.isPendingBalances = action.payload;
-      state.activeAccount.balances = {
-        [INetworkType.Ethereum]: 0,
-        [INetworkType.Syscoin]: 0,
-      };
       state.activeToken = '';
     },
     setActiveAccountProperty(

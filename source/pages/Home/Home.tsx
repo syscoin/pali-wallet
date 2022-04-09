@@ -9,7 +9,9 @@ import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = getController();
+
   const [symbol, setSymbol] = useState('SYS');
+
   const { getFiatAmount } = usePrice();
 
   const { navigate } = useUtils();
@@ -17,11 +19,10 @@ export const Home = () => {
   const { networks, activeNetwork, fiat, activeAccount, lastLogin } =
     useStore();
 
-  const chain = networks.syscoin[activeNetwork.chainId]
-    ? 'syscoin'
-    : 'ethereum';
-
   const setChainSymbol = async () => {
+    const chain = networks.syscoin[activeNetwork.chainId]
+      ? 'syscoin'
+      : 'ethereum';
     const symbol = await getSymbolByChain(chain);
 
     setSymbol(symbol);
@@ -31,13 +32,8 @@ export const Home = () => {
     setChainSymbol();
   }, [controller.wallet.isUnlocked()]);
 
-  const isSysTestnet = chain === 'syscoin' && activeNetwork.chainId === 5700;
+  const isSysTestnet = activeNetwork.chainId === 5700;
   const symbolByChain = isSysTestnet ? 'tsys' : symbol;
-
-  const balanceByChain =
-    chain === 'syscoin'
-      ? activeAccount?.balances.syscoin
-      : activeAccount?.balances.ethereum;
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
@@ -52,17 +48,29 @@ export const Home = () => {
                   id="home-balance"
                   className="font-rubik text-5xl font-medium"
                 >
-                  {formatNumber(balanceByChain || 0)}{' '}
+                  {formatNumber(
+                    (Boolean(networks.syscoin[activeNetwork.chainId])
+                      ? activeAccount.balances.syscoin
+                      : activeAccount.balances.ethereum) || 0
+                  )}{' '}
                 </p>
 
                 <p className="mt-4 font-poppins">
-                  {symbolByChain.toUpperCase()}
+                  {activeNetwork.currency
+                    ? activeNetwork.currency.toUpperCase()
+                    : symbolByChain.toUpperCase()}
                 </p>
               </div>
 
               <p id="fiat-ammount">
                 {!isSysTestnet
-                  ? getFiatAmount(balanceByChain || 0, 4, String(fiat.current))
+                  ? getFiatAmount(
+                      (Boolean(networks.syscoin[activeNetwork.chainId])
+                        ? Number(activeAccount?.balances.syscoin)
+                        : Number(activeAccount?.balances.ethereum)) || 0,
+                      4,
+                      String(fiat.current)
+                    )
                   : null}
               </p>
             </div>
