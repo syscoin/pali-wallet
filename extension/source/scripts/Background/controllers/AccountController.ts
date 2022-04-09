@@ -312,11 +312,14 @@ const AccountController = (actions: {
 
   const getChangeAddress = async () => {
     const connectedAccount: IAccountState = getConnectedAccount();
+
     if (!sysjs) {
       console.log('SYSJS not defined');
 
       return await 'Error: wallet is locked, ask client to unlock it to get change address';
     }
+
+    setHDSigner(connectedAccount.id);
 
     if (connectedAccount && connectedAccount.isTrezorWallet) {
       let addr: string = 'Error: Failed to fetch trezor change address';
@@ -837,7 +840,7 @@ const AccountController = (actions: {
         (trezorID: number, account: IAccountState) =>
           account.trezorId
             ? (trezorID =
-                trezorID > account.trezorId ? trezorID : account.trezorId)
+              trezorID > account.trezorId ? trezorID : account.trezorId)
             : trezorID,
         0
       );
@@ -1788,10 +1791,10 @@ const AccountController = (actions: {
       if (valueDecimals > decimals) {
         throw new Error(
           'This token has ' +
-            decimals +
-            ' decimals and you are trying to send a value with ' +
-            valueDecimals +
-            ' decimals, please check your tx'
+          decimals +
+          ' decimals and you are trying to send a value with ' +
+          valueDecimals +
+          ' decimals, please check your tx'
         );
       }
 
