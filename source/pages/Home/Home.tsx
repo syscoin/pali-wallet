@@ -49,7 +49,7 @@ export const Home = () => {
                   className="font-rubik text-5xl font-medium"
                 >
                   {formatNumber(
-                    (Boolean(networks.syscoin[activeNetwork.chainId])
+                    (networks.syscoin[activeNetwork.chainId]
                       ? activeAccount.balances.syscoin
                       : activeAccount.balances.ethereum) || 0
                   )}{' '}
@@ -65,7 +65,7 @@ export const Home = () => {
               <p id="fiat-ammount">
                 {!isSysTestnet
                   ? getFiatAmount(
-                      (Boolean(networks.syscoin[activeNetwork.chainId])
+                      (networks.syscoin[activeNetwork.chainId]
                         ? Number(activeAccount?.balances.syscoin)
                         : Number(activeAccount?.balances.ethereum)) || 0,
                       4,

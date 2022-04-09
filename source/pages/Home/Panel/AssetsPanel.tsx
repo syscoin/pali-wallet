@@ -16,7 +16,7 @@ export const AssetsPanel: FC = () => {
         Object.values(activeAccount.assets).length > 0 ? (
           <PanelList
             isSyscoinChain={isSyscoinChain}
-            data={activeAccount.assets}
+            data={Object.values(activeAccount.assets)}
             activity={false}
             assets
           />
