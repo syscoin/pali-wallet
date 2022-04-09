@@ -108,10 +108,7 @@ if (shouldInjectProvider()) {
 
   window.dispatchEvent(new CustomEvent('SyscoinStatus', { detail: { SyscoinInstalled: true, ConnectionsController: false } }));
 
-  console.log('injecting inpage')
-
   injectScriptFile('js/inpage.bundle.js');
-  console.log('injecting inpage after')
 
   browser.runtime.sendMessage({
     type: 'RELOAD_DATA',

@@ -54,7 +54,8 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   const [expanded, setExpanded] = useState<boolean>(false);
   const [loadingConfirm, setLoadingConfirm] = useState<boolean>(false);
   const [dataToRender, setDataToRender] = useState<any[]>([]);
-  const [advancedOptions, setAdvancedOptions] = useState<any[]>([]); const [recommendedFee, setRecommendedFee] = useState(0.00001);
+  const [advancedOptions, setAdvancedOptions] = useState<any[]>([]);
+  const [recommendedFee, setRecommendedFee] = useState(0.00001);
   const [assetData, setAssetData] = useState<any>({});
 
   const advancedOptionsArray = [
@@ -69,12 +70,11 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
   useEffect(() => {
     controller.wallet.account.getRecommendFee().then((response: any) => {
       setRecommendedFee(response);
-    })
+    });
   }, []);
 
   useEffect(() => {
     if (data) {
-      console.log('data', data)
       let newData: any = {};
       let newAdvancedOptions: any = {};
 
@@ -90,12 +90,12 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
           newAdvancedOptions[key] = {
             label: key,
             value,
-          };;
+          };
         }
       });
 
-      setDataToRender(Object.values(newData))
-      setAdvancedOptions(Object.values(newAdvancedOptions))
+      setDataToRender(Object.values(newData));
+      setAdvancedOptions(Object.values(newAdvancedOptions));
     }
 
     setConnectedAccountId(
@@ -109,12 +109,18 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
 
   useEffect(() => {
     dataToRender.map((data) => {
-      if (data.label === 'assetGuid' && itemStringToClearData !== 'newSPT' && itemStringToClearData !== 'mintNFT') {
-        controller.wallet.account.getDataAsset(data.value).then((response: any) => {
-          setAssetData(response);
-        })
+      if (
+        data.label === 'assetGuid' &&
+        itemStringToClearData !== 'newSPT' &&
+        itemStringToClearData !== 'mintNFT'
+      ) {
+        controller.wallet.account
+          .getDataAsset(data.value)
+          .then((response: any) => {
+            setAssetData(response);
+          });
       }
-    })
+    });
   }, [dataToRender]);
 
   const handleRejectTransaction = () => {
@@ -125,7 +131,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
       target: 'background',
       transactionError: true,
       invalidParams: false,
-      message: "Transaction rejected.",
+      message: 'Transaction rejected.',
     });
 
     browser.runtime.sendMessage({
@@ -138,7 +144,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
       type: 'CLOSE_POPUP',
       target: 'background',
     });
-  }
+  };
 
   const handleClosePopup = () => {
     browser.runtime.sendMessage({
@@ -187,7 +193,12 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
         .catch((error: any) => {
           if (error && transactionItemData.fee > recommendedFee) {
             alert.removeAll();
-            alert.error(`${formatURL(String(error.message), 166)} Please, reduce fees to send transaction.`);
+            alert.error(
+              `${formatURL(
+                String(error.message),
+                166
+              )} Please, reduce fees to send transaction.`
+            );
           }
 
           if (error && transactionItemData < recommendedFee) {
@@ -200,7 +211,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
             target: 'background',
             transactionError: true,
             invalidParams: false,
-            message: errorMessage
+            message: errorMessage,
           });
 
           alert.removeAll();
@@ -214,12 +225,15 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
       setTimeout(() => {
         if (isPending && !confirmed) {
           alert.removeAll();
-          
+
           if (itemStringToClearData === 'mintNFT') {
-            alert.show('Waiting for confirmation to create and issue your NFT. You can check this transaction in your history.', {
-              timeout: 5000,
-              type: 'success'
-            });
+            alert.show(
+              'Waiting for confirmation to create and issue your NFT. You can check this transaction in your history.',
+              {
+                timeout: 5000,
+                type: 'success',
+              }
+            );
 
             setTimeout(() => {
               handleCancelTransactionOnSite();
@@ -259,7 +273,7 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
           return;
         }
 
-        if (label === "assetGuid") {
+        if (label === 'assetGuid') {
           return;
         }
 
@@ -392,18 +406,28 @@ const ConfirmTransaction: FC<IConfirmTransaction> = ({
                     <section className={styles.data}>
                       {renderData()}
 
-                      {assetData && itemStringToClearData !== 'newSPT' && itemStringToClearData !== 'mintNFT' && (
-                        <div>
-                          <div key="symbol" className={styles.flex}>
-                            <p>symbol</p>
-                            <p>{assetData && assetData.symbol ? atob(String(assetData.symbol)) : 'Not found'}</p>
+                      {assetData &&
+                        itemStringToClearData !== 'newSPT' &&
+                        itemStringToClearData !== 'mintNFT' && (
+                          <div>
+                            <div key="symbol" className={styles.flex}>
+                              <p>symbol</p>
+                              <p>
+                                {assetData && assetData.symbol
+                                  ? atob(String(assetData.symbol))
+                                  : 'Not found'}
+                              </p>
+                            </div>
+                            <div key="assetGuid" className={styles.flex}>
+                              <p>assetGuid</p>
+                              <p>
+                                {assetData && assetData.assetGuid
+                                  ? String(assetData.assetGuid)
+                                  : 'Not found'}
+                              </p>
+                            </div>
                           </div>
-                          <div key="assetGuid" className={styles.flex}>
-                            <p>assetGuid</p>
-                            <p>{assetData && assetData.assetGuid ? String(assetData.assetGuid) : 'Not found'}</p>
-                          </div>
-                        </div>
-                      )}
+                        )}
 
                       <div className={styles.flex}>
                         <p>Site</p>

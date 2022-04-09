@@ -104,14 +104,12 @@ const WalletController = (): IWalletController => {
 
     account
       .subscribeAccount(encriptedPassword, false, sjs, undefined, true)
-      .then(() => {
+      .then(async () => {
         account.getPrimaryAccount(password, sjs);
         password = '';
         mnemonic = '';
 
-        account.updateTokensState().then(() => {
-          console.log('update tokens state after create wallet');
-        });
+        await account.updateTokensState();
       });
   };
 
@@ -207,7 +205,7 @@ const WalletController = (): IWalletController => {
 
         for (let i = 1; i < accounts.length; i++) {
           if (i > 0 && accounts[i].isTrezorWallet) {
-            console.log(
+            console.error(
               'Should not derive from hdsigner if the account is from the hardware wallet'
             );
           } else {
@@ -328,7 +326,7 @@ const WalletController = (): IWalletController => {
     );
   };
 
-  const _getAccountDataByNetwork = (sjs: any) => {
+  const _getAccountDataByNetwork = async (sjs: any) => {
     const { activeAccountId, accounts } = store.getState().wallet;
 
     if (accounts.length > 1000) {
@@ -363,9 +361,7 @@ const WalletController = (): IWalletController => {
 
     account.getPrimaryAccount(encriptedPassword, sjs);
 
-    account.updateTokensState().then(() => {
-      console.log('tokens state updated after remove trezor');
-    });
+    await account.updateTokensState();
   };
 
   const switchNetwork = async (networkId: string) => {
@@ -394,7 +390,7 @@ const WalletController = (): IWalletController => {
 
     store.dispatch(updateSwitchNetwork(true));
 
-    _getAccountDataByNetwork(sjs);
+    await _getAccountDataByNetwork(sjs);
   };
 
   const getNewAddress = async () => {
@@ -404,8 +400,6 @@ const WalletController = (): IWalletController => {
       (el: IAccountState) => el.id === activeAccountId
     );
     let address = '';
-
-    console.log('user account is trezor', userAccount);
 
     if (userAccount?.isTrezorWallet) {
       const res = await sys.utils.fetchBackendAccount(
@@ -433,8 +427,6 @@ const WalletController = (): IWalletController => {
               const index = parseInt(splitPath[5], 10);
 
               if (change === 1) {
-                console.log("Can't update it's change index");
-
                 return;
               }
 
@@ -451,8 +443,6 @@ const WalletController = (): IWalletController => {
       try {
         address = await sjs.Signer.getNewReceivingAddress(true);
       } catch (error: any) {
-        console.log('error getting receiving address from sysjs', error);
-
         throw new Error(error);
       }
     }

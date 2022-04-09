@@ -7,8 +7,6 @@ const ConnectionsController = () => {
         throw new Error(message);
       }
 
-      console.log(message);
-
       return;
     }
   };
@@ -243,8 +241,6 @@ const ConnectionsController = () => {
     const connectedAccount: any = await getConnectedAccount();
 
     if (connectedAccount && connectedAccount.isTrezorWallet) {
-      console.log("Trezor don't support burning of coins.");
-
       throw new Error("Trezor don't support burning of coins.");
     }
 
@@ -701,8 +697,6 @@ const ConnectionsController = () => {
   };
 
   const disconnectWallet = () => {
-    console.log('sending message to wallet');
-
     window.postMessage(
       {
         type: 'RESET_CONNECTION_INFO',

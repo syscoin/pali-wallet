@@ -48,7 +48,7 @@ const ConnectedAccounts = () => {
     });
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     try {
       browser.runtime.sendMessage({
         type: 'CHANGE_CONNECTED_ACCOUNT',
@@ -62,9 +62,7 @@ const ConnectedAccounts = () => {
         target: 'background',
       });
 
-      controller.wallet.account.updateTokensState().then(() => {
-        console.log('tokens state updated after change connected account');
-      });
+      await controller.wallet.account.updateTokensState();
     } catch (error) {
       alert.removeAll();
       alert.error('Error changing account. Try again.');

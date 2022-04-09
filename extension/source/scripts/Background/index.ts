@@ -81,7 +81,7 @@ const restartLockTimeout = () => {
       return;
     }
 
-    console.log("can't lock automatically - wallet is under transaction");
+    console.error("can't lock automatically - wallet is under transaction, it doesn't affect the usage");
   }, timer * 60 * 1000);
 };
 
@@ -153,7 +153,7 @@ const observeStore = async (store: any) => {
                 },
               });
             } catch (error) {
-              console.log('error', error);
+              console.error('error', error);
             }
           }
         }
@@ -184,7 +184,7 @@ const closePopup = () => {
       });
     })
     .catch((error) => {
-      console.log('error removing window', error);
+      console.error('error removing window, it doesn\'t affect the usage', error);
     });
 
   return;
@@ -203,11 +203,7 @@ const createPopup = async (url: string) => {
     url: browser.runtime.getURL('app.html'),
   });
 
-  console.log('sysWalletpopup exists', sysWalletPopup);
-
   if (sysWalletPopup) {
-    console.log('sys wallet popup active update window', sysWalletPopup);
-
     await updateActiveWindow({
       windowId: Number(sysWalletPopup.windowId),
       options: {
@@ -233,8 +229,6 @@ const createPopup = async (url: string) => {
 
 browser.windows.onRemoved.addListener((windowId: any) => {
   if (windowId > -1 && windowId === window.syspopup) {
-    console.log('clearing all transactions');
-
     store.dispatch(clearAllTransactions());
   }
 });
@@ -293,11 +287,6 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
               request.response.txid
             );
 
-          console.log(
-            'updating tokens state using txid: ',
-            request.response.txid
-          );
-
           if (data.confirmations > 0) {
             window.controller.wallet.account.updateTokensState().then(() => {
               window.controller.wallet.account.setHDSigner(
@@ -346,7 +335,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
                     console.log('wallet updated');
                   })
                   .catch(() => {
-                    console.log(
+                    console.error(
                       'extension context invalidated in other tabs with the same url, you need to refresh the tab'
                     );
                   })
@@ -355,7 +344,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
           }
         })
         .catch((error) => {
-          console.log('error getting tabs', error);
+          console.error('error getting tabs', error);
         });
 
       return;
@@ -399,7 +388,7 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
               console.log('wallet connection confirmed');
             })
             .catch((error) => {
-              console.log('error confirming connection', error);
+              console.error('error confirming connection, it doesn\'t affect the usage', error);
             });
         }
       }
@@ -474,22 +463,22 @@ browser.runtime.onMessage.addListener(async (request, sender) => {
             match: new URL(store.getState().wallet.tabs.currentURL).host,
           }) > -1 && !window.controller.wallet.isLocked()
             ? {
-                status,
-                accounts: Object.values(copyAccounts),
-                activeAccountId,
-                activeNetwork,
-                confirmingTransaction,
-                creatingAsset,
-                issuingAsset,
-                issuingNFT,
-                mintNFT,
-                updatingAsset,
-                transferringOwnership,
-                changingNetwork,
-                signingTransaction,
-                signingPSBT,
-                walletTokens,
-              }
+              status,
+              accounts: Object.values(copyAccounts),
+              activeAccountId,
+              activeNetwork,
+              confirmingTransaction,
+              creatingAsset,
+              issuingAsset,
+              issuingNFT,
+              mintNFT,
+              updatingAsset,
+              transferringOwnership,
+              changingNetwork,
+              signingTransaction,
+              signingPSBT,
+              walletTokens,
+            }
             : null,
       });
     }
@@ -1020,10 +1009,6 @@ const bowser = Bowser.getParser(window.navigator.userAgent);
 
 browser.tabs.onUpdated.addListener((tabId, _, tab) => {
   if (bowser.getBrowserName() === 'Firefox') {
-    console.log('browser is firefox, do nothing', tab, tab.title, tabId);
-
-    // fix issue between sysmint & bridge
-
     return;
   }
 

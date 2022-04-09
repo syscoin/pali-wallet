@@ -314,9 +314,7 @@ const AccountController = (actions: {
     const connectedAccount: IAccountState = getConnectedAccount();
 
     if (!sysjs) {
-      console.log('SYSJS not defined');
-
-      return await 'Error: wallet is locked, ask client to unlock it to get change address';
+      return new Error('Error: wallet is locked, ask client to unlock it to get change address');
     }
 
     setHDSigner(connectedAccount.id);
@@ -428,7 +426,7 @@ const AccountController = (actions: {
                           };
                         });
                       } catch (error) {
-                        console.log(error);
+                        console.error(error);
                       }
                     }
                   }
@@ -471,7 +469,7 @@ const AccountController = (actions: {
 
                 return;
               } catch (error) {
-                console.log('error minted tokens', error);
+                console.error('error minted tokens', error);
               }
             })
           );
@@ -488,7 +486,7 @@ const AccountController = (actions: {
 
           return;
         } catch (error) {
-          console.log(error);
+          console.error(error);
         }
 
         return;
@@ -887,14 +885,7 @@ const AccountController = (actions: {
 
     try {
       mainAddress = await sysjs.Signer.getNewReceivingAddress(true);
-
-      console.log('sysjs signer', sysjs.Signer.Signer.blockbookURL);
-      console.log('sysjs signer', sysjs.Signer);
-
-      console.log('main address get new receiving address', mainAddress);
     } catch (error: any) {
-      console.log('error getting receiving address from sys', error);
-
       throw new Error(error);
     }
 
@@ -1250,7 +1241,6 @@ const AccountController = (actions: {
             const sptCreated = await getTransactionInfoByTxId(txInfoNew);
 
             if (sptCreated?.confirmations > 1) {
-              console.log('confirmations > 1', createdAsset);
               const changeaddress = await sysjs.Signer.getNewChangeAddress(
                 true
               );
@@ -1281,10 +1271,6 @@ const AccountController = (actions: {
                 );
 
                 if (!pendingTx) {
-                  console.log(
-                    'Could not create transaction, not enough funds?'
-                  );
-
                   return;
                 }
 
@@ -1311,8 +1297,6 @@ const AccountController = (actions: {
           }, 16000);
         });
       } catch (error) {
-        console.log(error);
-
         return error;
       }
     }
@@ -1386,8 +1370,6 @@ const AccountController = (actions: {
       );
 
       if (!txData) {
-        console.log('Could not create transaction, not enough funds?');
-        //TODO: add error and show on the UI for user
         return;
       }
 
@@ -1419,8 +1401,6 @@ const AccountController = (actions: {
 
         return;
       } catch (error) {
-        console.log(`error processing tx: ${error}`);
-
         return;
       }
     } else {
@@ -1432,8 +1412,6 @@ const AccountController = (actions: {
       );
 
       if (!pendingTx) {
-        console.log('Could not create transaction, not enough funds?');
-
         return;
       }
 
@@ -1482,7 +1460,7 @@ const AccountController = (actions: {
     );
 
     if (!psbt) {
-      console.log('Could not create transaction, not enough funds?');
+      console.error('Could not create transaction, not enough funds?');
 
       return;
     }
@@ -1524,8 +1502,6 @@ const AccountController = (actions: {
 
     const newParentAsset = await createParentAsset(assetOpts, fee);
 
-    console.log('current parent asset', newParentAsset);
-
     if (newParentAsset?.asset_guid) {
       let theNFTTx: any = null;
       let parentConfirmed = false;
@@ -1544,8 +1520,6 @@ const AccountController = (actions: {
 
             if (newParentTx.confirmations > 1 && !parentConfirmed) {
               parentConfirmed = true;
-
-              console.log('confirmations parent tx > 1', newParentAsset);
 
               const assetMap = new Map([
                 [
@@ -1571,7 +1545,7 @@ const AccountController = (actions: {
                 );
 
                 if (!pendingTx) {
-                  console.log(
+                  console.error(
                     'Could not create transaction, not enough funds?'
                   );
 
@@ -1596,7 +1570,7 @@ const AccountController = (actions: {
               try {
                 theNFTTx = await getTransactionInfoByTxId(txInfo);
               } catch (error) {
-                console.log(
+                console.error(
                   'Transaction still not indexed by explorer:',
                   error
                 );
@@ -1634,10 +1608,8 @@ const AccountController = (actions: {
                   feeRate
                 );
 
-                console.log('after update psbt', psbt);
-
                 if (!psbt) {
-                  console.log(
+                  console.error(
                     'Could not create transaction, not enough funds?'
                   );
                 }
@@ -1654,7 +1626,7 @@ const AccountController = (actions: {
           }, 16000);
         });
       } catch (error) {
-        console.log('error sending child nft to creator', error);
+        console.error('error sending child nft to creator', error);
       }
     }
   };
@@ -1708,7 +1680,7 @@ const AccountController = (actions: {
       );
 
       if (!pendingTx) {
-        console.log('Could not create transaction, not enough funds?');
+        console.error('Could not create transaction, not enough funds?');
       }
 
       const txInfo = pendingTx.extractTransaction().getId();
@@ -1827,7 +1799,7 @@ const AccountController = (actions: {
         );
 
         if (!txData) {
-          console.log('Could not create transaction, not enough funds?');
+          console.error('Could not create transaction, not enough funds?');
         }
         if (TrezorSigner === null || TrezorSigner === undefined) {
           TrezorSigner = new sys.utils.TrezorSigner();
@@ -1908,7 +1880,7 @@ const AccountController = (actions: {
         );
 
         if (!txData) {
-          console.log('Could not create transaction, not enough funds?');
+          console.error('Could not create transaction, not enough funds?');
         }
 
         if (TrezorSigner === null || TrezorSigner === undefined) {
@@ -1930,7 +1902,8 @@ const AccountController = (actions: {
 
           return;
         } catch (e) {
-          console.log('Error processing tx: ' + e);
+          console.error('Error processing tx: ' + e);
+
           return;
         }
       } else {
@@ -2058,8 +2031,6 @@ const AccountController = (actions: {
       };
     }
 
-    console.log('asset opts update asset', assetOpts, assetGuid);
-
     const thisAssetMap = new Map([
       [
         assetGuid,
@@ -2091,7 +2062,7 @@ const AccountController = (actions: {
     const txInfo = pendingTx.extractTransaction().getId();
 
     if (!pendingTx || !txInfo) {
-      console.log('Could not create transaction, not enough funds?');
+      console.error('Could not create transaction, not enough funds?');
 
       return;
     }
@@ -2167,7 +2138,7 @@ const AccountController = (actions: {
       );
 
       if (!txData) {
-        console.log('Could not create transaction, not enough funds?');
+        console.error('Could not create transaction, not enough funds?');
       }
       if (TrezorSigner === null || TrezorSigner === undefined) {
         TrezorSigner = new sys.utils.TrezorSigner();
@@ -2185,7 +2156,7 @@ const AccountController = (actions: {
 
         watchMemPool(getConnectedAccount());
       } catch (e) {
-        console.log('Error processing tx: ' + e);
+        console.error('Error processing tx: ' + e);
         return;
       }
       return;
@@ -2201,7 +2172,7 @@ const AccountController = (actions: {
     );
 
     if (!pendingTx) {
-      console.log('Could not create transaction, not enough funds?');
+      console.error('Could not create transaction, not enough funds?');
     }
 
     txInfo = pendingTx.extractTransaction().getId();

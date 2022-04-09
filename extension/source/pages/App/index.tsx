@@ -15,12 +15,7 @@ const app = document.getElementById('app-root');
 const store = new Store({ portName: STORE_PORT });
 
 const w = watch(appStore.getState, 'wallet.status');
-store.subscribe(
-  w(() => {
-    console.log('watching webext store');
-    // location.reload();
-  })
-);
+store.subscribe(w(() => {}));
 
 const options = {
   position: positions.BOTTOM_CENTER,
