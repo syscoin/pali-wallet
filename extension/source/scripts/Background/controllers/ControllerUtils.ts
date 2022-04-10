@@ -36,7 +36,7 @@ const ControllerUtils = (): IControllerUtils => {
         );
       }
     } catch (error) {
-      console.log('<!> Fetching asset price error: ', error);
+      console.error('<!> Fetching asset price error: ', error);
     }
   };
 
