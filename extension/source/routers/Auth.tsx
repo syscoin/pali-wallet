@@ -66,7 +66,6 @@ const Auth = () => {
   const { currentURL, canConnect } = tabs;
 
   useEffect(() => {
-    console.log('current url', currentURL);
     if (isUnlocked) {
       window.addEventListener('mousemove', () => {
         browser.runtime.sendMessage({
