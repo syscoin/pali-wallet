@@ -11,8 +11,8 @@ const AccountMenu: React.FC = () => {
   const { wallet } = getController();
   const { encryptedMnemonic, accounts, activeAccount } = useStore();
 
-  const switchAccount = (id: number) => {
-    wallet.switchWallet(Number(id));
+  const setActiveAccount = (id: number) => {
+    wallet.setAccount(Number(id));
     wallet.account.watchMemPool(accounts[Number(id)]);
   };
 
@@ -110,7 +110,7 @@ const AccountMenu: React.FC = () => {
                       <li
                         key={account.id}
                         className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                        onClick={() => switchAccount(account.id)}
+                        onClick={() => setActiveAccount(account.id)}
                         id={`account-${index}`}
                       >
                         <span>
