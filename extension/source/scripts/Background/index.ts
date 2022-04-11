@@ -1007,7 +1007,9 @@ browser.runtime.onConnect.addListener((port) => {
 
 const bowser = Bowser.getParser(window.navigator.userAgent);
 
-browser.tabs.onUpdated.addListener((_, tab) => {
+browser.tabs.onUpdated.addListener((tabId, _, tab) => {
+  console.log('[on updated] current tab:', tabId);
+
   if (bowser.getBrowserName() === 'Firefox') {
     return;
   }

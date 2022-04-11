@@ -65,18 +65,9 @@ const Auth = () => {
   }: IWalletState = useSelector((state: RootState) => state.wallet);
   const { currentURL, canConnect } = tabs;
 
-  const connectedAccounts = accounts.filter((account) => {
-    return (
-      account.connectedTo.findIndex((url: any) => {
-        return url == getHost(currentURL);
-      }) > -1
-    );
-  });
-
   useEffect(() => {
-    if (
-      isUnlocked
-    ) {
+    console.log('current url', currentURL);
+    if (isUnlocked) {
       window.addEventListener('mousemove', () => {
         browser.runtime.sendMessage({
           type: 'SET_MOUSE_MOVE',
@@ -84,9 +75,16 @@ const Auth = () => {
         });
       });
     }
-  }, [
-    isUnlocked,
-  ]);
+  }, [isUnlocked]);
+
+  const connectedAccounts = accounts.filter((account) => {
+    if (!account.connectedTo) return;
+
+    return (
+      account.connectedTo.findIndex((url: any) => url == getHost(currentURL)) >
+      -1
+    );
+  });
 
   useEffect(() => {
     const redirectRoute = controller.appRoute();
@@ -253,9 +251,7 @@ const Auth = () => {
             {isUnlocked && (
               <Route path="/send/confirm" component={SendConfirm} exact />
             )}
-            {isUnlocked && (
-              <Route path="/sign" component={SignAndSend} exact />
-            )}
+            {isUnlocked && <Route path="/sign" component={SignAndSend} exact />}
             {isUnlocked && (
               <Route path="/signPsbt" component={SignPSBT} exact />
             )}
@@ -277,15 +273,9 @@ const Auth = () => {
                 exact
               />
             )}
+            {isUnlocked && <Route path="/mintNFT" component={MintNFT} exact />}
             {isUnlocked && (
-              <Route path="/mintNFT" component={MintNFT} exact />
-            )}
-            {isUnlocked && (
-              <Route
-                path="/mintNFT/confirm"
-                component={MintNFTConfirm}
-                exact
-              />
+              <Route path="/mintNFT/confirm" component={MintNFTConfirm} exact />
             )}
             {isUnlocked && (
               <Route path="/issueNFT" component={IssueNFT} exact />
