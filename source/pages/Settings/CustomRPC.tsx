@@ -4,7 +4,6 @@ import { Layout, SecondaryButton } from 'components/index';
 import axios from 'axios';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
-import { validateEthRpc } from '@pollum-io/sysweb3-network';
 
 import { ManageNetwork } from '.';
 
@@ -15,34 +14,33 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   const { alert } = useUtils();
   const controller = getController();
 
-  const onSubmit = async ({ chainId, blockbookURL }: any) => {
+  const onSubmit = async ({ rpcUrl, network }: any) => {
     setLoading(true);
 
     try {
-      validateEthRpc(blockbookURL, chainId);
-      // const response = await axios.get(`${blockbookURL}/api/v2`);
-      // const { coin } = response.data.blockbook;
-      // const { chain } = response.data.backend;
+      const response = await axios.get(`${rpcUrl}/api/v2`);
+      const { coin } = response.data.blockbook;
+      const { chain } = response.data.backend;
 
-      // if (response && coin) {
-      //   controller.wallet.account.updateNetworkData({
-      //     id: selectedToEdit
-      //       ? selectedToEdit.id
-      //       : coin.toString().toLowerCase(),
-      //     label: `${network.toString().toLowerCase()} ${chain
-      //       .toString()
-      //       .toLowerCase()}`,
-      //     beUrl: blockbookURL,
-      //   });
+      if (response && coin) {
+        controller.wallet.account.updateNetworkData({
+          id: selectedToEdit
+            ? selectedToEdit.id
+            : coin.toString().toLowerCase(),
+          label: `${network.toString().toLowerCase()} ${chain
+            .toString()
+            .toLowerCase()}`,
+          beUrl: rpcUrl,
+        });
 
-      //   setLoading(false);
-      //   setEdit(true);
+        setLoading(false);
+        setEdit(true);
 
-      //   return;
-      // }
+        return;
+      }
     } catch (error) {
       alert.removeAll();
-      alert.error('Invalid blockbook URL.');
+      alert.error('Invalid RPC URL.');
 
       setLoading(false);
     }
@@ -87,7 +85,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             </Form.Item>
 
             <Form.Item
-              name="blockbookURL"
+              name="rpcUrl"
               className="md:w-full"
               hasFeedback
               rules={[
@@ -119,7 +117,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             >
               <Input
                 type="text"
-                placeholder="Blockbook URL"
+                placeholder="RPC URL"
                 className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
               />
             </Form.Item>

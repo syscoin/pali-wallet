@@ -1876,10 +1876,15 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
-"@pollum-io/sysweb3-network@^1.0.3", "@pollum-io/sysweb3-network@^1.0.4", "@pollum-io/sysweb3-network@^1.0.5":
+"@pollum-io/sysweb3-network@^1.0.3", "@pollum-io/sysweb3-network@^1.0.4":
   version "1.0.5"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.5.tgz#29b1442b9a747d6241602c6623d8937964a7a84e"
   integrity sha512-/GWhm9x7uK95gVvbo4MxBMA6ctv2TXOObOdD69GpJ8aW1qilorWqElHHCXkadtKzy4iaRsvtNSm3zJG6nkMz3g==
+
+"@pollum-io/sysweb3-network@^1.0.6":
+  version "1.0.6"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.6.tgz#aa0cf6f75ae203afcdcf64690d4cdc2017b01fbc"
+  integrity sha512-PeKF43uhmaOObgE8in+02kbYIeqY5W4lZ4/VO+BOUgszmSynUCJO5MlW6K+5SQuYX9np6oWGaQccMzn6FkL8uA==
 
 "@pollum-io/sysweb3-utils@^1.0.3", "@pollum-io/sysweb3-utils@^1.1.50":
   version "1.1.55"
@@ -1904,10 +1909,10 @@
     syscoinjs-lib "^1.0.209"
     syscointx-js "^1.0.101"
 
-"@pollum-io/sysweb3-utils@^1.1.64":
-  version "1.1.64"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.64.tgz#d5c66308eb70d38a0f5603a761bb3001c1a6aecd"
-  integrity sha512-+P75uoQmmj47gCtVYcbW+WU6mc8jfds4zZK4EqxWK19GwTu2Yykayq6aASZp5CLDDKCsOB0/i/PqTPhdSYXFVg==
+"@pollum-io/sysweb3-utils@^1.1.70":
+  version "1.1.70"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.70.tgz#4f041bd01b4fc206d947c4aa345d8432049655d6"
+  integrity sha512-L2Jfg6bRJniHgoAmuwogZi3FR8uPU37GlsExijeToMoT5xBbwyKrsuFmTYF17+vkDRndbXAk2Zh7ZorH+YANKw==
   dependencies:
     "@pollum-io/sysweb3-keyring" "^1.0.45"
     "@pollum-io/sysweb3-network" "^1.0.4"
