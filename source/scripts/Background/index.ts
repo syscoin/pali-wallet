@@ -58,22 +58,18 @@ const closePopup = () => {
 };
 
 const restartLockTimeout = () => {
-  const { temporaryTransactionState, timer } = store.getState().wallet;
+  const { timer } = store.getState().wallet;
 
   if (timeout) {
     clearTimeout(timeout);
   }
 
   timeout = setTimeout(() => {
-    if (!checkIsLocked() && temporaryTransactionState.executing) {
+    if (!checkIsLocked()) {
       window.controller.wallet.logOut();
 
       setTimeout(() => closePopup(), 2000);
-
-      return;
     }
-
-    log('unable to lock - wallet is under transaction', 'autolock');
   }, timer * 60 * 1000);
 };
 
