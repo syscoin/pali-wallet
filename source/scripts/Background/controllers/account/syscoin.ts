@@ -84,7 +84,7 @@ const SysAccountController = () => {
           property: 'assets',
           value: {
             ...activeAccount.assets,
-            [String(validToken.symbol)]: validToken,
+            [String(validToken.name)]: validToken,
           },
         })
       );

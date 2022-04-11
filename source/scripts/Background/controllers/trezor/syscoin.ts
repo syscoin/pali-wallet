@@ -1,12 +1,12 @@
+import { KeyringManager } from '@pollum-io/sysweb3-keyring';
+
 const SysTrezorController = () => {
-  const confirmTokenMint = () => {};
-  const confirmTokenSend = () => {};
-  const confirmNativeTokenSend = () => {};
+  const { trezor } = KeyringManager();
+
+  const createAccount = () => trezor.createWallet();
 
   return {
-    confirmNativeTokenSend,
-    confirmTokenMint,
-    confirmTokenSend,
+    createAccount,
   };
 };
 

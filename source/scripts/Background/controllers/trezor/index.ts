@@ -1,17 +1,19 @@
 import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
+import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 import store from 'state/store';
 import { utils as SysUtils } from 'syscoinjs-lib';
 import { openNotificationsPopup } from 'utils/notifications';
+import SysTrezorController from './syscoin';
 
 const TrezorController = () => {
   const { trezor } = KeyringManager();
-  const { activeNetwork } = store.getState().vault;
+  const { activeNetwork, networks } = store.getState().vault;
 
-  const isSyscoinNetwork = activeNetwork.chainId === 57;
+  const isSyscoinNetwork = Boolean(networks.syscoin[activeNetwork.chainId]);
 
-  const { account } = window.controller.wallet;
+  const account = SysTrezorController();
 
-  const connectHardware = async (): Promise<void> => {
+  const connectHardware = async (): Promise<IKeyringAccountState | void> => {
     const isTestnet = store.getState().vault.activeNetwork.chainId === 5700;
 
     if (isTestnet) {
@@ -30,9 +32,9 @@ const TrezorController = () => {
       'Trezor Wallet account created'
     );
 
-    await account.subscribeAccount(true, trezorSigner, undefined, false);
+    if (!isSyscoinNetwork) return;
 
-    await account.updateTokensState();
+    return account.createAccount();
   };
 
   const forgetHardware = () => {};
