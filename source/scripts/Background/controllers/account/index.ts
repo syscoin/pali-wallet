@@ -14,9 +14,8 @@ const WalletController = (): { account: any; addAccount: any } => {
     account: isSyscoinNetwork ? SysAccountController() : Web3Accounts(),
   };
 
-  const addAccount = async (label: string) => {
-    return await keyringManager.addNewAccount(label);
-  };
+  const addAccount = async (label: string) =>
+    keyringManager.addNewAccount(label);
 
   return { ...controller, addAccount };
 };

@@ -47,26 +47,17 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
             },
             () => ({
               validator(_, value) {
-                try {
-                  form.setFieldsValue({ phrase: formatSeedPhrase(value) });
+                value = formatSeedPhrase(value);
 
-                  console.log('validating seed', value);
+                form.setFieldsValue({ phrase: value });
 
-                  setSeedIsValid(
-                    controller.wallet.validateSeed(value) && value
-                  );
+                setSeedIsValid(controller.wallet.importPhrase(value) && value);
 
-                  if (controller.wallet.validateSeed(value)) {
-                    return Promise.resolve();
-                  }
-
-                  return Promise.reject();
-                } catch (error) {
-                  console.log('error', error);
-                  setSeedIsValid(false);
-
-                  return Promise.reject();
+                if (controller.wallet.importPhrase(value)) {
+                  return Promise.resolve();
                 }
+
+                return Promise.reject();
               },
             }),
           ]}

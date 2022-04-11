@@ -121,7 +121,15 @@ module.exports = {
         exclude: /node_modules/,
       },
       {
-        test: /\.(jpg|png|svg)x?$/,
+        test: /\.(jpg|png)x?$/,
+        loader: 'file-loader',
+        exclude: /node_modules/,
+        options: {
+          name: '/source/assets/images/[name].[ext]',
+        },
+      },
+      {
+        test: /\.(svg)x?$/,
         loader: 'file-loader',
         exclude: /node_modules/,
       },

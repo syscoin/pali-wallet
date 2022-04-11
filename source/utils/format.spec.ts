@@ -3,6 +3,7 @@ import {
   ellipsis,
   formatCurrency,
   formatDate,
+  formatSeedPhrase,
   formatUrl,
 } from './format';
 
@@ -54,5 +55,20 @@ describe('Format', () => {
 
     expect(input.length).toBeGreaterThanOrEqual(output.length);
     expect(output.endsWith('...')).toBe(true);
+  });
+
+  //* formatSeedPhrase
+  // remove double spaces, numbers and symbols
+  // transform in lowerCase
+  it('should format a Seed Phrase', () => {
+    const input =
+      ' peace? uncle! Grit   essence3 stuff angle Cruise annual fury letter snack globe ';
+    const output = formatSeedPhrase(input);
+    const outputLenght = output.split(' ').length;
+
+    expect(output).toBe(
+      'peace uncle grit essence stuff angle cruise annual fury letter snack globe'
+    );
+    expect(outputLenght).toBe(12);
   });
 });
