@@ -108,6 +108,7 @@
     "@typescript-eslint/object-curly-spacing": "off",
     "@typescript-eslint/naming-convention": "off",
     "object-curly-newline": "off",
+    "no-return-await": "off",
     "import/order": [
       "error",
       {
