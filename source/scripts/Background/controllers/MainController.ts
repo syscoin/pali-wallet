@@ -54,7 +54,7 @@ const MainController = () => {
     return account;
   };
 
-  const { account } = WalletController();
+  const { account, addAccount } = WalletController();
 
   const lock = () => {
     keyringManager.logout();
@@ -62,7 +62,15 @@ const MainController = () => {
     store.dispatch(setLastLogin());
   };
 
-  const createAccount = (label?: string) => account.addAccount(label);
+  const createAccount = async (label?: string) => {
+    const newAccount = await addAccount(label);
+
+    console.log('adding account to store', newAccount);
+
+    store.dispatch(addAccountToStore(newAccount));
+
+    return newAccount;
+  };
 
   const setAccount = (id: number) => {
     const { accounts } = store.getState().vault;

@@ -33,7 +33,7 @@ export const Modal = ({
       onClose={onClose ?? (() => {})}
     >
       <div
-        onClick={() => console.log('inside onClick')}
+        onClick={onClose}
         className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out"
       />
 

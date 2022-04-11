@@ -12,17 +12,13 @@ const CreateAccount = () => {
   const controller = getController();
   const navigate = useNavigate();
 
-  const onSubmit = async (data: any) => {
+  const onSubmit = async ({ label }: { label?: string }) => {
     setLoading(true);
 
-    const response = await controller.wallet.addNewAccount(data.label);
+    const response = await controller.wallet.createAccount(label);
 
-    if (response) {
-      setAddress(response);
-      setLoading(false);
-
-      await controller.wallet.account.updateTokensState();
-    }
+    setAddress(response.address);
+    setLoading(false);
   };
 
   return (
