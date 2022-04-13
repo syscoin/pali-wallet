@@ -23,12 +23,12 @@ const SysAccountController = () => {
 
     const updatedAccountInfo = await keyringManager.getLatestUpdateForAccount();
 
+    console.log('updated account in pali going to store', updatedAccountInfo);
+
     store.dispatch(
       setActiveAccount({
         ...activeAccount,
         ...updatedAccountInfo,
-        // @ts-ignore
-        assets: updatedAccountInfo.assets,
       })
     );
 

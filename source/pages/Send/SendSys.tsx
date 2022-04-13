@@ -69,9 +69,7 @@ export const SendSys: FC = () => {
     form.setFieldsValue({ ZDAG: value });
   };
 
-  const nextStep = async (data: any) => {
-    const { receiver, amount, fee } = data;
-
+  const nextStep = async ({ receiver, amount, fee }: any) => {
     try {
       navigate('/send/confirm', {
         state: {

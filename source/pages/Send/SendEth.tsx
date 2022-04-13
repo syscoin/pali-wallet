@@ -30,11 +30,6 @@ export const SendEth: FC = () => {
 
   useEffect(() => {
     handleGetGasFee();
-
-    form.setFieldsValue({
-      verify: true,
-      ZDAG: false,
-    });
   }, [form, handleGetGasFee]);
 
   const hasAccountAssets =
@@ -89,8 +84,6 @@ export const SendEth: FC = () => {
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         initialValues={{
-          verify: true,
-          ZDAG: false,
           fee: recommend,
         }}
         onFinish={nextStep}

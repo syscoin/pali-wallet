@@ -9,15 +9,17 @@ import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = getController();
-
+  const { networks, activeNetwork, fiat, activeAccount, lastLogin } =
+    useStore();
   const [symbol, setSymbol] = useState('SYS');
 
   const { getFiatAmount } = usePrice();
 
-  const { navigate } = useUtils();
+  const { navigate, handleRefresh } = useUtils();
 
-  const { networks, activeNetwork, fiat, activeAccount, lastLogin } =
-    useStore();
+  const balance = networks.syscoin[activeNetwork.chainId]
+    ? activeAccount.balances.syscoin
+    : activeAccount.balances.ethereum;
 
   const setChainSymbol = async () => {
     const chain = networks.syscoin[activeNetwork.chainId]
@@ -28,9 +30,15 @@ export const Home = () => {
     setSymbol(symbol);
   };
 
+  const isUnlocked = controller.wallet.isUnlocked();
+
+  useEffect(() => {
+    if (activeAccount) handleRefresh();
+  }, [isUnlocked]);
+
   useEffect(() => {
     setChainSymbol();
-  }, [controller.wallet.isUnlocked()]);
+  }, [isUnlocked]);
 
   const isSysTestnet = activeNetwork.chainId === 5700;
   const symbolByChain = isSysTestnet ? 'tsys' : symbol;
@@ -48,11 +56,7 @@ export const Home = () => {
                   id="home-balance"
                   className="font-rubik text-5xl font-medium"
                 >
-                  {formatNumber(
-                    (networks.syscoin[activeNetwork.chainId]
-                      ? activeAccount.balances.syscoin
-                      : activeAccount.balances.ethereum) || 0
-                  )}{' '}
+                  {formatNumber(balance || 0)}{' '}
                 </p>
 
                 <p className="mt-4 font-poppins">
@@ -64,13 +68,7 @@ export const Home = () => {
 
               <p id="fiat-ammount">
                 {!isSysTestnet
-                  ? getFiatAmount(
-                      (networks.syscoin[activeNetwork.chainId]
-                        ? Number(activeAccount?.balances.syscoin)
-                        : Number(activeAccount?.balances.ethereum)) || 0,
-                      4,
-                      String(fiat.current)
-                    )
+                  ? getFiatAmount(balance || 0, 4, String(fiat.current))
                   : null}
               </p>
             </div>
