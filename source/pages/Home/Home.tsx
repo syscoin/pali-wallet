@@ -15,7 +15,7 @@ export const Home = () => {
 
   const { getFiatAmount } = usePrice();
 
-  const { navigate, handleRefresh } = useUtils();
+  const { navigate } = useUtils();
 
   const balance = networks.syscoin[activeNetwork.chainId]
     ? activeAccount.balances.syscoin
@@ -31,10 +31,6 @@ export const Home = () => {
   };
 
   const isUnlocked = controller.wallet.isUnlocked();
-
-  useEffect(() => {
-    if (activeAccount) handleRefresh();
-  }, [isUnlocked]);
 
   useEffect(() => {
     setChainSymbol();

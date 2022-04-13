@@ -43,7 +43,7 @@ const SysAccountController = () => {
     const interval = 30 * 1000;
 
     const intervalId = setInterval(() => {
-      getLatestUpdate();
+      getLatestUpdate(true);
 
       if (!currentAccount || !currentAccount?.transactions) {
         clearInterval(intervalId);

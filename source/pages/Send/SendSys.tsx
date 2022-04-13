@@ -74,7 +74,7 @@ export const SendSys: FC = () => {
       navigate('/send/confirm', {
         state: {
           tx: {
-            amount,
+            amount: Number(amount),
             fee,
             isToken: !!selectedAsset,
             rbf: !ZDAG,
