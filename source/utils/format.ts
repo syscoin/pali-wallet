@@ -23,7 +23,7 @@ const getYesterday = () => {
   return date;
 };
 
-export const formatDate = (timestamp: string) => {
+export const formatDate = (timestamp: string | number) => {
   const formatStyle = 'M-d-yyyy';
   const formatedDate = format(new Date(timestamp), formatStyle);
 

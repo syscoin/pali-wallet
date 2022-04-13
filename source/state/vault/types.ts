@@ -28,6 +28,7 @@ export interface IVaultState {
 
 export interface IKeyringAccount extends IKeyringAccountState {
   assets: any;
+  ethTransactions: any;
   transactions: any;
 }
 

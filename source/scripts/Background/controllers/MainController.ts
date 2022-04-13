@@ -1,4 +1,4 @@
-import { KeyringManager } from '@pollum-io/sysweb3-keyring';
+import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -10,6 +10,7 @@ import {
   setActiveNetwork as setNetwork,
   setActiveAccountProperty,
   setIsPendingBalances,
+  setEthereumTransactions,
 } from 'state/vault';
 import { IKeyringAccount } from 'state/vault/types';
 
@@ -85,6 +86,7 @@ const MainController = () => {
     const { networks, activeAccount } = store.getState().vault;
 
     const network = networks[chain][chainId];
+    const { getUserTransactions } = Web3Accounts();
 
     /** set local active network */
     store.dispatch(setNetwork(network));
@@ -117,6 +119,16 @@ const MainController = () => {
     /** set active network with web3 account data for evm networks */
     store.dispatch(setActiveAccount(account));
     store.dispatch(setIsPendingBalances(false));
+    if (chainId === 1 || chainId === 4) {
+      store.dispatch(
+        setEthereumTransactions(
+          await getUserTransactions(
+            account.address,
+            chainId === 1 ? 'homestead' : 'rinkeby'
+          ).then((r) => r)
+        )
+      );
+    }
 
     /** account returned from updated signer according to the current network so we can update frontend easier */
     return account;

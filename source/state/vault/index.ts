@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { INetwork, initialNetworksState } from '@pollum-io/sysweb3-utils';
+import { TransactionResponse } from '@ethersproject/abstract-provider';
 
 import trustedApps from './trustedApps.json';
 import { IKeyringAccount, IVaultState } from './types';
@@ -18,6 +19,7 @@ export const initialActiveAccountState = {
   xpub: '',
   assets: {},
   transactions: {},
+  ethTransactions: [],
 };
 
 export const initialState: IVaultState = {
@@ -71,6 +73,15 @@ const VaultState = createSlice({
       state.networks = {
         ...state.networks,
         [prefix]: value,
+      };
+    },
+    setEthereumTransactions(
+      state: IVaultState,
+      action: PayloadAction<TransactionResponse[] | any>
+    ) {
+      state.accounts[state.activeAccount.id] = {
+        ...state.accounts[state.activeAccount.id],
+        ethTransactions: action.payload,
       };
     },
     removeNetwork(
@@ -147,6 +158,7 @@ const VaultState = createSlice({
 export const {
   setActiveAccount,
   setActiveAccountProperty,
+  setEthereumTransactions,
   setActiveNetwork,
   setActiveToken,
   setIsPendingBalances,
