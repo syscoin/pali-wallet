@@ -51,9 +51,9 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
 
                 form.setFieldsValue({ phrase: value });
 
-                setSeedIsValid(controller.wallet.importPhrase(value) && value);
+                setSeedIsValid(controller.wallet.validateSeed(value) && value);
 
-                if (controller.wallet.importPhrase(value)) {
+                if (controller.wallet.validateSeed(value)) {
                   return Promise.resolve();
                 }
 
