@@ -80,8 +80,8 @@
     "@typescript-eslint/indent": "off",
     "@typescript-eslint/no-var-requires": "off",
     "no-await-in-loop": "off",
-    "no-shadow":"off",
-    "camelcase":"off",
+    "no-shadow": "off",
+    "camelcase": "off",
     "prettier/prettier": [
       "error",
       {

@@ -72,20 +72,19 @@ export const SendSys = () => {
     const { receiver, amount, fee } = data;
 
     try {
-      controller.wallet.account.updateTemporaryTransaction({
-        tx: {
-          fromAddress: activeAccount?.address.main,
-          toAddress: receiver,
-          amount,
-          fee,
-          token: selectedAsset || null,
-          isToken: !!selectedAsset,
-          rbf: !ZDAG,
+      navigate('/send/confirm', {
+        state: {
+          tx: {
+            fromAddress: activeAccount?.address,
+            toAddress: receiver,
+            amount,
+            fee,
+            token: selectedAsset || null,
+            isToken: !!selectedAsset,
+            rbf: !ZDAG,
+          },
         },
-        type: 'sendAsset',
       });
-
-      navigate('/send/confirm');
     } catch (error) {
       alert.removeAll();
       alert.error('An internal error has occurred.');
@@ -309,7 +308,7 @@ export const SendSys = () => {
               validator(_, value) {
                 const balance = selectedAsset
                   ? selectedAsset.balance / 10 ** selectedAsset.decimals
-                  : Number(activeAccount?.balance);
+                  : Number(activeAccount?.balances.syscoin);
 
                 if (value > balance) {
                   return Promise.reject();
