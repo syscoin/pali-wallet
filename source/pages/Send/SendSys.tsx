@@ -17,7 +17,7 @@ export const SendSys = () => {
   const { activeNetwork, fiat, activeAccount } = useStore();
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
-  const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [recommend, setRecommend] = useState(0.00001);
   const [form] = Form.useForm();
 
@@ -46,7 +46,7 @@ export const SendSys = () => {
 
   const handleSelectedAsset = (item: number) => {
     if (assets) {
-      const getAsset = assets.find((asset: Assets) => asset.assetGuid === item);
+      const getAsset = assets.find((asset: any) => asset.assetGuid === item);
 
       if (getAsset) {
         setSelectedAsset(getAsset);
