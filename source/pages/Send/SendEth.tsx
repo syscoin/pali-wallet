@@ -8,6 +8,7 @@ import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Assets } from 'types/transactions';
 import { formatUrl, isNFT, getAssetBalance } from 'utils/index';
 import { getController } from 'utils/browser';
+import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
 export const SendEth = () => {
   const { getFiatAmount } = usePrice();
@@ -20,7 +21,7 @@ export const SendEth = () => {
   const [form] = Form.useForm();
 
   const handleGetFee = useCallback(async () => {
-    const recommendFee = await controller.wallet.account.getRecommendFee();
+    const recommendFee = await controller.wallet.account.tx.getRecommendedFee();
 
     setRecommend(recommendFee);
 
@@ -29,12 +30,7 @@ export const SendEth = () => {
 
   useEffect(() => {
     handleGetFee();
-
-    form.setFieldsValue({
-      verify: true,
-      ZDAG: false,
-    });
-  }, [form, handleGetFee]);
+  }, [handleGetFee]);
 
   const hasAccountAssets = activeAccount && activeAccount.assets.length > 0;
 
@@ -72,7 +68,9 @@ export const SendEth = () => {
           Balance
         </span>
 
-        {getAssetBalance(selectedAsset, activeAccount)}
+        {selectedAsset
+          ? getAssetBalance(selectedAsset, activeAccount)
+          : activeAccount.balances.ethereum}
       </p>
 
       <Form
@@ -81,8 +79,6 @@ export const SendEth = () => {
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         initialValues={{
-          verify: true,
-          ZDAG: false,
           fee: recommend,
         }}
         onFinish={nextStep}
@@ -98,18 +94,15 @@ export const SendEth = () => {
               required: true,
               message: '',
             },
-            // () => ({
-            //   validator (_, value) {
-            //     if (
-            //       !value ||
-            //       isValidEthereumAddress(value)
-            //     ) {
-            //       return Promise.resolve();
-            //     }
+            () => ({
+              validator(_, value) {
+                if (!value || isValidEthereumAddress(value)) {
+                  return Promise.resolve();
+                }
 
-            //     return Promise.reject();
-            //   },
-            // }),
+                return Promise.reject();
+              },
+            }),
           ]}
         >
           <Input
@@ -119,7 +112,7 @@ export const SendEth = () => {
           />
         </Form.Item>
 
-        <div className="flex items-center justify-center md:w-full md:max-w-md">
+        {/* <div className="flex items-center justify-center md:w-full md:max-w-md">
           <Form.Item
             name="asset"
             className=""
@@ -174,6 +167,107 @@ export const SendEth = () => {
               </Transition>
             </Menu>
           </Form.Item>
+        </div> */}
+
+        <div className="flex items-center justify-center md:w-full md:max-w-md">
+          {hasAccountAssets && (
+            <Form.Item
+              name="asset"
+              className=""
+              rules={[
+                {
+                  required: false,
+                  message: '',
+                },
+              ]}
+            >
+              <Menu as="div" className="relative inline-block text-left">
+                <Menu.Button
+                  disabled={!hasAccountAssets}
+                  className="inline-flex justify-center py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+                >
+                  {selectedAsset?.symbol
+                    ? formatUrl(String(selectedAsset?.symbol), 2)
+                    : 'SYS'}
+                  <ChevronDoubleDownIcon
+                    className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
+                    aria-hidden="true"
+                  />
+                </Menu.Button>
+
+                <Transition
+                  as={Fragment}
+                  enter="transition ease-out duration-100"
+                  enterFrom="transform opacity-0 scale-95"
+                  enterTo="transform opacity-100 scale-100"
+                  leave="transition ease-in duration-75"
+                  leaveFrom="transform opacity-100 scale-100"
+                  leaveTo="transform opacity-0 scale-95"
+                >
+                  {hasAccountAssets && (
+                    <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
+                      {activeAccount &&
+                        Object.values(activeAccount.assets).map((item: any) => (
+                          <Menu.Item>
+                            <button
+                              onClick={() =>
+                                handleSelectedAsset(item.assetGuid)
+                              }
+                              className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                            >
+                              <p>{item.symbol}</p>
+                              <small>
+                                {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
+                              </small>
+                            </button>
+                          </Menu.Item>
+                        ))}
+                    </Menu.Items>
+                  )}
+                </Transition>
+              </Menu>
+            </Form.Item>
+          )}
+
+          <div
+            className={`${
+              hasAccountAssets ? 'w-48 ml-4' : 'w-72'
+            } flex gap-x-0.5 items-center justify-center md:w-full`}
+          >
+            <Form.Item
+              name="gas-price"
+              className="flex-1 w-32 text-center bg-fields-input-primary rounded-l-full md:w-full"
+              rules={[
+                {
+                  required: false,
+                  message: '',
+                },
+              ]}
+            >
+              <Input
+                type="text"
+                placeholder="Gas Price (GWEI)"
+                className="p-3 w-full text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full outline-none md:w-full"
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="gas-limit"
+              className="flex-1 w-32 text-center bg-fields-input-primary rounded-r-full"
+              rules={[
+                {
+                  required: false,
+                  message: '',
+                },
+              ]}
+            >
+              <Input
+                type="text"
+                placeholder="Gas Limit"
+                className="p-3 w-full text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full outline-none md:w-full"
+              />
+            </Form.Item>
+          </div>
         </div>
 
         <Form.Item

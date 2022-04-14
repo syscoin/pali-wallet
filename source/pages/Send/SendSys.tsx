@@ -22,7 +22,7 @@ export const SendSys = () => {
   const [form] = Form.useForm();
 
   const handleGetFee = useCallback(async () => {
-    const recommendFee = await controller.wallet.account.getRecommendFee();
+    const recommendFee = await controller.wallet.account.tx.getRecommendedFee();
 
     setRecommend(recommendFee);
 
@@ -329,7 +329,7 @@ export const SendSys = () => {
         <div className="flex gap-x-0.5 items-center justify-center mx-2 md:w-full md:max-w-md">
           <Form.Item
             name="recommend"
-            className="py-1.5 w-12 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full"
+            className="py-1.5 w-12 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full opacity-50"
             rules={[
               {
                 required: false,
@@ -337,7 +337,7 @@ export const SendSys = () => {
               },
             ]}
           >
-            <Tooltip content="Click to edit fee">
+            <Tooltip content="Use recommended fee. Disabled for SYS networks because the fee used in transactions is already the recommended with current network conditions.">
               <div>
                 <Icon
                   wrapperClassname="w-6 ml-3 mb-1"

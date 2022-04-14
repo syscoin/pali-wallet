@@ -14,7 +14,10 @@ export const Send: React.FC<ISend> = () => {
   const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
   return (
-    <Layout title="SEND SYS" id="sendSYS-title">
+    <Layout
+      title={`SEND ${activeNetwork.currency?.toUpperCase()}`}
+      id="sendSYS-title"
+    >
       {isSyscoinChain ? <SendSys /> : <SendEth />}
     </Layout>
   );
