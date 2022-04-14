@@ -5,7 +5,6 @@ import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
-import { Assets } from 'types/transactions';
 import { formatUrl, isNFT, getAssetBalance } from 'utils/index';
 import { getController } from 'utils/browser';
 
