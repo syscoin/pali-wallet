@@ -22,7 +22,8 @@ input[type='number'] {
 .remove-scrollbar {
   -ms-overflow-style: none;
   /* IE and Edge */
-  scrollbar-width: none; /* Firefox */
+  scrollbar-width: none;
+  /* Firefox */
 }
 
 input[type='number']::-webkit-outer-spin-button,
@@ -31,12 +32,12 @@ input[type='number']::-webkit-inner-spin-button {
   margin: 0;
 }
 
-.ant-form-item-control-input-content > textarea {
+.ant-form-item-control-input-content>textarea {
   @apply p-2 pl-4 w-full h-20 text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none;
 }
 
-.ant-input-affix-wrapper.ant-input-password > input,
-.ant-input-affix-wrapper.ant-input > input {
+.ant-input-affix-wrapper.ant-input-password>input,
+.ant-input-affix-wrapper.ant-input>input {
   @apply p-2 pl-4 w-full text-brand-graylight text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full;
 }
 
@@ -71,11 +72,11 @@ input[type='number']::-webkit-inner-spin-button {
   @apply w-full;
 }
 
-.ant-form-item-control-input-content > textarea {
+.ant-form-item-control-input-content>textarea {
   @apply p-2 pl-4 w-full h-20 text-brand-graylight text-sm border rounded-lg outline-none resize-none;
 }
 
-.ant-input-affix-wrapper.ant-input-password > input {
+.ant-input-affix-wrapper.ant-input-password>input {
   @apply p-2 pl-4 w-full text-brand-graylight text-sm bg-fields-input-primary border border-fields-input-border rounded-full;
 }
 
@@ -123,4 +124,14 @@ div[role='alert'] {
 
 .ant-tooltip-hidden {
   @apply hidden;
+}
+
+/* ant progress bar */
+
+.ant-progress-outer {
+  @apply bg-brand-graylight w-20 rounded-full;
+}
+
+.ant-progress-bg {
+  @apply rounded-full;
 }

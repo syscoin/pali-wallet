@@ -27,6 +27,7 @@ import {
   CreateTokenConfirm,
   Currency,
   CustomRPC,
+  EditGasFee,
   ForgetWallet,
   DetailsView,
   ManageNetwork,
@@ -268,6 +269,10 @@ export const Router = () => {
       </Route>
       {/* /tx */}
       <Route path="tx">
+        <Route
+          path="edit-fee"
+          element={<ProtectedRoute element={<EditGasFee />} />}
+        />
         <Route
           path="create"
           element={<ProtectedRoute element={<Create />} />}
