@@ -3,22 +3,29 @@ import { IconButton, Icon } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
 import { toSvg } from 'jdenticon';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
-import { useNavigate } from 'react-router-dom';
 import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 
 const AccountMenu: React.FC = () => {
-  const navigate = useNavigate();
+  const { navigate, handleRefresh } = useUtils();
   const { wallet } = getController();
-  const { encriptedMnemonic, accounts, activeAccountId } = useStore();
+  const { encryptedMnemonic, accounts, activeAccount } = useStore();
 
-  const switchAccount = (id: number) => {
-    wallet.switchWallet(Number(id));
+  const setActiveAccount = (id: number) => {
+    wallet.setAccount(Number(id));
     wallet.account.watchMemPool(accounts[Number(id)]);
   };
 
+  const controller = getController();
+
+  useEffect(() => {
+    if (controller.wallet.isUnlocked() && accounts && activeAccount)
+      handleRefresh(true);
+  }, [controller.wallet.isUnlocked()]);
+
   const handleLogout = () => {
-    wallet.logOut();
+    wallet.logout();
+
     navigate('/');
   };
 
@@ -27,8 +34,8 @@ const AccountMenu: React.FC = () => {
       as="div"
       className="absolute right-3 inline-block text-right md:max-w-2xl"
     >
-      <Menu.Button className="inline-flex justify-center w-full hover:text-brand-royalblue text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-        {encriptedMnemonic && <Icon name="dots" className="z-0" />}
+      <Menu.Button className="inline-flex justify-center w-full hover:text-button-primaryhover text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+        {encryptedMnemonic && <Icon name="dots" className="z-0" />}
       </Menu.Button>
 
       <Transition
@@ -99,19 +106,18 @@ const AccountMenu: React.FC = () => {
                       <span>Create new account</span>
                     </li>
 
-                    {accounts.map((account, index) => (
+                    {Object.values(accounts).map((account, index) => (
                       <li
                         key={account.id}
                         className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                        onClick={() => switchAccount(account.id)}
+                        onClick={() => setActiveAccount(account.id)}
                         id={`account-${index}`}
                       >
                         <span>
-                          {account.label} (
-                          {ellipsis(account.address.main, 4, 8)})
+                          {account.label} ({ellipsis(account.address, 4, 8)})
                         </span>
 
-                        {activeAccountId === account.id && (
+                        {activeAccount.id === account.id && (
                           <Icon
                             name="check"
                             className="mb-1 w-4"
@@ -158,7 +164,7 @@ const AccountMenu: React.FC = () => {
 };
 
 export const AccountHeader: React.FC = () => {
-  const activeAccount = getController().wallet.account.getActiveAccount();
+  const { activeAccount } = useStore();
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();
@@ -171,7 +177,7 @@ export const AccountHeader: React.FC = () => {
       backColor: '#07152B',
       padding: 1,
     });
-  }, [activeAccount?.address.main]);
+  }, [activeAccount?.address]);
 
   useEffect(() => {
     if (!copied) return;
@@ -189,13 +195,11 @@ export const AccountHeader: React.FC = () => {
           <p className="mb-1 text-base" id="active-account-label">
             {activeAccount?.label}
           </p>
-          <p className="text-xs">
-            {ellipsis(activeAccount?.address.main, 6, 14)}
-          </p>
+          <p className="text-xs">{ellipsis(activeAccount?.address, 6, 14)}</p>
         </div>
 
         <IconButton
-          onClick={() => copy(activeAccount?.address.main ?? '')}
+          onClick={() => copy(activeAccount?.address ?? '')}
           type="primary"
           shape="circle"
           className="mt-3"

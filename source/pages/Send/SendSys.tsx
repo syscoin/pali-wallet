@@ -12,10 +12,9 @@ import { getController } from 'utils/browser';
 export const SendSys = () => {
   const { getFiatAmount } = usePrice();
   const controller = getController();
-  const activeAccount = controller.wallet.account.getActiveAccount();
 
   const { alert, navigate } = useUtils();
-  const { activeNetwork, fiat } = useStore();
+  const { activeNetwork, fiat, activeAccount } = useStore();
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
@@ -92,12 +91,6 @@ export const SendSys = () => {
       alert.error('An internal error has occurred.');
     }
   };
-
-  useEffect(() => {
-    log(`assets: ${activeAccount?.assets}`);
-  }, []);
-
-  const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
 
   return (
     <div className="mt-4">
@@ -337,9 +330,7 @@ export const SendSys = () => {
         <div className="flex gap-x-0.5 items-center justify-center mx-2 md:w-full md:max-w-md">
           <Form.Item
             name="recommend"
-            className={`${
-              disabledFee && 'opacity-50 cursor-not-allowed'
-            } bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus w-12 py-1.5 rounded-l-full text-center`}
+            className="py-1.5 w-12 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full"
             rules={[
               {
                 required: false,
@@ -347,22 +338,12 @@ export const SendSys = () => {
               },
             ]}
           >
-            <Tooltip
-              content={`${
-                disabledFee
-                  ? 'Use recommended fee. Disabled for SYS networks because the fee used in transactions is always the recommended for current SYS network conditions.'
-                  : 'Click to use the recommended fee'
-              }`}
-            >
+            <Tooltip content="Click to edit fee">
               <div onClick={handleGetFee}>
                 <Icon
                   wrapperClassname="w-6 ml-3 mb-1"
                   name="verified"
-                  className={`${
-                    disabledFee
-                      ? 'cursor-not-allowed text-button-disabled'
-                      : 'text-warning-success'
-                  }`}
+                  className="text-brand-royalblue opacity-70"
                 />
               </div>
             </Tooltip>
@@ -379,13 +360,10 @@ export const SendSys = () => {
               },
             ]}
           >
-            <Tooltip content={disabledFee ? 'Fee network' : ''}>
+            <Tooltip content="Network fee">
               <Input
-                disabled={disabledFee}
-                className={`${
-                  disabledFee &&
-                  'opacity-50 cursor-not-allowed text-button-disabled'
-                } border border-fields-input-border bg-fields-input-primary rounded-r-full md:w-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
+                disabled
+                className="pl-4 pr-8 py-3 w-60 text-brand-white text-sm bg-fields-input-primary border border-fields-input-border rounded-r-full outline-none opacity-50 cursor-not-allowed md:w-full"
                 id="fee-input"
                 type="number"
                 placeholder="Fee network"

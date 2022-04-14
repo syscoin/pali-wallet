@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Layout, Icon, Button } from 'components/index';
 import { useLocation } from 'react-router-dom';
 import { getController } from 'utils/browser';
+import { useStore } from 'hooks/index';
 
 import { AssetDetails } from './AssetDetails';
 import { TransactionDetails } from './TransactionDetails';
@@ -9,13 +10,13 @@ import { TransactionDetails } from './TransactionDetails';
 export const DetailsView = () => {
   const controller = getController();
 
+  const { activeNetwork } = useStore();
+
   const {
     state: { assetGuid, tx, assetType, type },
   }: any = useLocation();
 
   const [transactionDetails, setTransactionDetails] = useState<any>(null);
-
-  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   const isAsset = assetGuid && !tx;
 
@@ -76,7 +77,7 @@ export const DetailsView = () => {
               type="button"
               onClick={() =>
                 window.open(
-                  `${sysExplorer}/${isAsset ? 'asset' : 'tx'}/${
+                  `${activeNetwork.url}/${isAsset ? 'asset' : 'tx'}/${
                     isAsset
                       ? transactionDetails.assetGuid
                       : transactionDetails.txid

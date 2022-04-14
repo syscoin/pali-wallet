@@ -271,7 +271,7 @@ const WalletState = createSlice({
       };
     },
     removeAccount(state: IWalletState, action: PayloadAction<number>) {
-      if (state.accounts.length <= 1) {
+      if (Object.values(state.accounts).length <= 1) {
         return;
       }
 

@@ -2,30 +2,31 @@ import React, { FC, useCallback, Fragment } from 'react';
 import { IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { ellipsis, formatCurrency, formatDate } from 'utils/index';
-import { Assets, Transaction } from 'types/transactions';
 
 interface IPanelList {
   activity: boolean;
   assets: boolean;
   data: any;
+  isSyscoinChain?: boolean;
 }
 
 export const PanelList: FC<IPanelList> = ({
   data,
   assets = false,
   activity = false,
+  isSyscoinChain = true,
 }) => {
   const { navigate } = useUtils();
 
   const isShowedGroupBar = useCallback(
-    (tx: Transaction, idx: number) =>
+    (tx: any, idx: number) =>
       idx === 0 ||
       new Date(tx.blockTime * 1e3).toDateString() !==
         new Date(data[idx - 1].blockTime * 1e3).toDateString(),
     [data]
   );
 
-  const getTxType = (tx: Transaction) => {
+  const getTxType = (tx: any) => {
     if (tx.tokenType === 'SPTAssetActivate') {
       return 'SPT creation';
     }
@@ -45,7 +46,7 @@ export const PanelList: FC<IPanelList> = ({
     <>
       {activity && (
         <ul className="pb-24 md:pb-8">
-          {data.map((tx: Transaction, idx: number) => {
+          {data.map((tx: any, idx: number) => {
             const isConfirmed = tx.confirmations > 0;
             const timestamp = new Date(tx.blockTime * 1000).toLocaleTimeString(
               navigator.language,
@@ -112,44 +113,65 @@ export const PanelList: FC<IPanelList> = ({
 
       {assets && (
         <ul className="pb-24 md:pb-4">
-          {data.map((asset: Assets) => {
-            if (asset.assetGuid && asset.balance > 0) {
-              return (
-                <li
-                  key={asset.assetGuid}
-                  className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark"
-                >
-                  <p className="font-rubik">
-                    {formatCurrency(
-                      String(asset.balance / 10 ** asset.decimals),
-                      asset.decimals
-                    )}
-
-                    <span className="text-button-secondary font-poppins">
-                      {`  ${asset.symbol}`}
-                    </span>
-                  </p>
-
-                  <IconButton
-                    onClick={() =>
-                      navigate('/home/tx-details', {
-                        state: {
-                          tx: null,
-                          type: null,
-                          assetGuid: asset.assetGuid,
-                          assetType: asset.type,
-                        },
-                      })
-                    }
+          {isSyscoinChain &&
+            data.map((asset: any) => {
+              if (asset.assetGuid && asset.balance > 0) {
+                return (
+                  <li
+                    key={asset.assetGuid}
+                    className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark"
                   >
-                    <Icon name="select" className="w-4 text-brand-white" />
-                  </IconButton>
-                </li>
-              );
-            }
+                    <p className="font-rubik">
+                      {formatCurrency(
+                        String(asset.balance / 10 ** asset.decimals),
+                        asset.decimals
+                      )}
 
-            return null;
-          })}
+                      <span className="text-button-secondary font-poppins">
+                        {`  ${asset.symbol}`}
+                      </span>
+                    </p>
+
+                    <IconButton
+                      onClick={() =>
+                        navigate('/home/tx-details', {
+                          state: {
+                            tx: null,
+                            type: null,
+                            assetGuid: asset.assetGuid,
+                            assetType: asset.type,
+                          },
+                        })
+                      }
+                    >
+                      <Icon name="select" className="w-4 text-brand-white" />
+                    </IconButton>
+                  </li>
+                );
+              }
+
+              return null;
+            })}
+
+          {!isSyscoinChain && (
+            <>
+              {data.map((asset: any) => {
+                if (asset.symbol) {
+                  return (
+                    <li
+                      key={asset.symbol}
+                      className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark"
+                    >
+                      <span className="text-button-secondary font-poppins">
+                        {`  ${asset.symbol}`}
+                      </span>
+                    </li>
+                  );
+                }
+                return null;
+              })}
+            </>
+          )}
         </ul>
       )}
     </>

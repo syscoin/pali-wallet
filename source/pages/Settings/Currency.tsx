@@ -9,9 +9,9 @@ import getSymbolFromCurrency from 'currency-symbol-map';
 
 const CurrencyView = () => {
   const controller = getController();
-  const { navigate } = useUtils();
+  const { navigate, handleRefresh } = useUtils();
   const { getFiatAmount } = usePrice();
-  const activeAccount = controller.wallet.account.getActiveAccount();
+  const { activeAccount } = useStore();
 
   if (!activeAccount) throw new Error('No account');
 
@@ -29,8 +29,8 @@ const CurrencyView = () => {
     value / availableCoins[fromCoin];
 
   const [conversorValues, setConversorValues] = useState({
-    sys: activeAccount.balance,
-    fiat: convertCurrency(activeAccount.balance, checkValueCoin),
+    sys: activeAccount.balances.syscoin,
+    fiat: convertCurrency(activeAccount.balances.syscoin, checkValueCoin),
   });
 
   const handleConvert = (value: number, toCoin: string) => {
@@ -55,12 +55,6 @@ const CurrencyView = () => {
     ? String(fiat.current).toUpperCase()
     : 'USD';
 
-  const handleRefresh = () => {
-    controller.wallet.account.getLatestUpdate();
-    controller.wallet.account.watchMemPool(accounts[activeAccountId]);
-    controller.stateUpdater();
-  };
-
   const updateCurrency = () => {
     getSymbolFromCurrency(
       selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency
@@ -70,13 +64,13 @@ const CurrencyView = () => {
 
   useEffect(() => {
     if (
-      !controller.wallet.isLocked() &&
-      accounts.length > 0 &&
-      accounts.find((element) => element.id === activeAccountId)
+      controller.wallet.isUnlocked() &&
+      accounts &&
+      accounts[activeAccountId]
     ) {
-      handleRefresh();
+      handleRefresh(true);
     }
-  }, [!controller.wallet.isLocked(), accounts.length > 0]);
+  }, [controller.wallet.isUnlocked(), accounts]);
 
   return (
     <Layout title="FIAT CURRENCY" id="fiat-currency-title">
@@ -142,10 +136,10 @@ const CurrencyView = () => {
         </Menu>
 
         <div className="flex flex-col items-center justify-center text-center">
-          {activeNetwork === 'testnet' ? (
+          {activeNetwork.chainId === 5700 ? (
             <div className="flex gap-x-0.5 items-center justify-center mt-8">
               <p className="font-rubik text-5xl font-medium">
-                {formatNumber(Number(activeAccount?.balance) || 0)}{' '}
+                {formatNumber(Number(activeAccount?.balances.syscoin) || 0)}{' '}
               </p>
 
               <p className="font-poppins md:mt-4">TSYS</p>
@@ -154,7 +148,7 @@ const CurrencyView = () => {
             <>
               <div className="flex gap-x-0.5 items-center justify-center mt-8">
                 <p className="font-rubik text-5xl font-medium">
-                  {formatNumber(activeAccount?.balance || 0)}{' '}
+                  {formatNumber(activeAccount?.balances.syscoin || 0)}{' '}
                 </p>
 
                 <p className="font-poppins md:mt-4">SYS</p>
@@ -162,7 +156,7 @@ const CurrencyView = () => {
 
               <p>
                 {getFiatAmount(
-                  activeAccount?.balance || 0,
+                  activeAccount?.balances.syscoin || 0,
                   4,
                   String(selectedCoin || (fiat.current ? fiat.current : 'USD'))
                 )}
@@ -198,7 +192,10 @@ const CurrencyView = () => {
             <p
               className="cursor-pointer"
               onClick={() =>
-                handleConvert(Number(activeAccount.balance), checkValueCoin)
+                handleConvert(
+                  Number(activeAccount.balances.syscoin),
+                  checkValueCoin
+                )
               }
             >
               MAX

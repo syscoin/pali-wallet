@@ -3,69 +3,53 @@ import { ASSET_PRICE_API, PRICE_SYS_ID } from 'constants/index';
 import store from 'state/store';
 import { updateFiatPrice } from 'state/price';
 import { logError } from 'utils/index';
+import {
+  getSearch as getCoingeckoSearch,
+  INetwork,
+  isValidEthereumAddress,
+  isValidSYSAddress,
+} from '@pollum-io/sysweb3-utils';
+import { AxiosResponse } from 'axios';
 
 const CoinGecko = require('coingecko-api');
 
 export const CoinGeckoClient = new CoinGecko();
 
+export type CoingeckoCoins = {
+  id: string;
+  large: string;
+  market_cap_rank: number;
+  name: string;
+  symbol: string;
+  thumb: string;
+};
+
 export interface IControllerUtils {
   appRoute: (newRoute?: string) => string;
-  coinsAll: () => any;
-  coinsFectchTickers: () => any;
-  coinsFetch: () => any;
-  coinsList: () => any;
-  coinsMarkets: () => any;
-  globalData: () => any;
-  ping: () => any;
+  getSearch: (query: string) => Promise<
+    AxiosResponse<
+      {
+        categories: any[];
+        coins: CoingeckoCoins[];
+        exchanges: any[];
+        icos: any[];
+        nfts: any[];
+      },
+      any
+    >
+  >;
+  isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
+  isValidSYSAddress: (
+    address: string,
+    activeNetwork: INetwork,
+    verification?: boolean
+  ) => boolean;
   updateFiat: (currency?: string, assetId?: string) => Promise<void>;
   updateFiatCurrencyForWallet: (chosenCurrency: string) => any;
-  updateFiatTest: (currency?: string, asset?: string) => string;
 }
 
 const ControllerUtils = (): IControllerUtils => {
   let route = '/';
-
-  const ping = async () => {
-    const data = await CoinGeckoClient.ping();
-
-    return data;
-  };
-
-  const globalData = async () => {
-    const data = await CoinGeckoClient.global();
-
-    return data;
-  };
-
-  const coinsAll = async () => {
-    const data = await CoinGeckoClient.coins.all();
-
-    return data;
-  };
-
-  const coinsList = async () => {
-    const data = await CoinGeckoClient.coins.list();
-
-    return data;
-  };
-
-  const coinsMarkets = async () => {
-    const data = await CoinGeckoClient.coins.markets();
-
-    return data;
-  };
-
-  const coinsFetch = async () => {
-    const data = await CoinGeckoClient.coins.fetch('bitcoin', {});
-
-    return data;
-  };
-
-  const coinsFectchTickers = async () => {
-    const data = await CoinGeckoClient.coins.fetchTickers('bitcoin');
-
-    return data;
-  };
 
   const appRoute = (newRoute?: string) => {
     if (newRoute) {
@@ -114,20 +98,16 @@ const ControllerUtils = (): IControllerUtils => {
     }
   };
 
-  const updateFiatTest = (currency, asset) => `${currency} ${asset}`;
+  const getSearch = async (query: string): Promise<any> =>
+    getCoingeckoSearch(query);
 
   return {
     appRoute,
     updateFiat,
-    updateFiatTest,
-    ping,
-    globalData,
-    coinsAll,
-    coinsList,
-    coinsFetch,
-    coinsMarkets,
-    coinsFectchTickers,
     updateFiatCurrencyForWallet,
+    getSearch,
+    isValidEthereumAddress,
+    isValidSYSAddress,
   };
 };
 

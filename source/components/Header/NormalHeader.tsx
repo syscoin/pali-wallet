@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Icon, IconButton, Tooltip } from 'components/index';
+import { Icon, Tooltip } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
-import { getHost, ellipsis } from 'utils/index';
+import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 import { Badge } from 'antd';
 import { Disclosure, Menu, Transition } from '@headlessui/react';
@@ -10,16 +10,15 @@ import { browser } from 'webextension-polyfill-ts';
 export const NormalHeader: React.FC = () => {
   const { wallet } = getController();
 
-  const { activeNetwork, encriptedMnemonic, networks } = useStore();
+  const { activeNetwork, encryptedMnemonic, networks } = useStore();
   const { handleRefresh, navigate } = useUtils();
-  const activeAccount = wallet.account.getActiveAccount();
 
-  const [isConnected, setIsConnected] = useState<boolean>(false);
   const [currentTabURL, setCurrentTabURL] = useState<string>('');
 
-  const handleChangeNetwork = (value: string) => {
-    wallet.switchNetwork(value as string);
-    wallet.getNewAddress();
+  const handleChangeNetwork = (chain: string, chainId: number) => {
+    wallet.setActiveNetwork(chain, chainId);
+
+    if (chain === 'syscoin') wallet.account.setAddress();
   };
 
   const updateCurrentTabUrl = async () => {
@@ -41,38 +40,14 @@ export const NormalHeader: React.FC = () => {
 
   useEffect(() => {
     updateCurrentTabUrl();
-  }, [!wallet.isLocked()]);
+  }, [wallet.isUnlocked()]);
 
-  useEffect(() => {
-    if (activeAccount && activeAccount.connectedTo.length > 0) {
-      setIsConnected(
-        activeAccount.connectedTo.findIndex(
-          (url: any) => url === getHost(currentTabURL)
-        ) > -1
-      );
-    }
-  }, [activeAccount, currentTabURL]);
-
-  const ethNetworks = {
-    main: {
-      id: 'eth main',
-      label: 'Main Network',
-      beUrl: 'https://blockbook.elint.services/',
-    },
-    localhost: {
-      id: 'localhost',
-      label: 'Localhost 8545',
-      beUrl: 'https://blockbook-dev.elint.services/',
-    },
-  };
-
-  // TODO: breakdown NetworkMenu
   const NetworkMenu = () => (
     <Menu as="div" className="absolute left-2 inline-block mr-8 text-left">
       {(menuprops) => (
         <>
           <Menu.Button className="z-0 inline-flex gap-x-2 items-center justify-start ml-2 w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
-            <span>{activeNetwork}</span>
+            <span>{activeNetwork.label}</span>
 
             <Icon
               name="select-down"
@@ -158,24 +133,25 @@ export const NormalHeader: React.FC = () => {
                           />
                         </Disclosure.Button>
 
-                        <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
-                          {Object.values(networks).map(
+                        <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
+                          {Object.values(networks.syscoin).map(
                             (currentNetwork: any) => (
                               <li
-                                key={currentNetwork.id}
+                                key={currentNetwork.chainId}
                                 className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                                 onClick={() =>
-                                  handleChangeNetwork(currentNetwork.id)
+                                  handleChangeNetwork(
+                                    'syscoin',
+                                    currentNetwork.chainId
+                                  )
                                 }
                               >
-                                <span
-                                  className="text-left"
-                                  style={{ marginLeft: '3.2rem' }}
-                                >
+                                <span className="ml-8 text-left">
                                   {currentNetwork.label}
                                 </span>
 
-                                {activeNetwork === currentNetwork.id && (
+                                {activeNetwork.chainId ===
+                                  currentNetwork.chainId && (
                                   <Icon
                                     name="check"
                                     className="mb-1 w-4"
@@ -213,24 +189,25 @@ export const NormalHeader: React.FC = () => {
                           />
                         </Disclosure.Button>
 
-                        <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
-                          {Object.values(ethNetworks).map(
+                        <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
+                          {Object.values(networks.ethereum).map(
                             (currentNetwork: any) => (
                               <li
                                 key={currentNetwork.id}
                                 className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                                 onClick={() =>
-                                  handleChangeNetwork(currentNetwork.id)
+                                  handleChangeNetwork(
+                                    'ethereum',
+                                    currentNetwork.chainId
+                                  )
                                 }
                               >
-                                <span
-                                  className="text-left"
-                                  style={{ marginLeft: '3.2rem' }}
-                                >
+                                <span className="ml-8 text-left">
                                   {currentNetwork.label}
                                 </span>
 
-                                {activeNetwork === currentNetwork.id && (
+                                {activeNetwork.chainId ===
+                                  currentNetwork.chainId && (
                                   <Icon
                                     name="check"
                                     className="mb-1 w-4"
@@ -278,7 +255,6 @@ export const NormalHeader: React.FC = () => {
     </Menu>
   );
 
-  // TODO: breakdown GeneralMenu
   const GeneralMenu = () => (
     <Menu
       as="div"
@@ -287,9 +263,9 @@ export const NormalHeader: React.FC = () => {
       {() => (
         <>
           <Tooltip content={ellipsis(currentTabURL, 25, 0)}>
-            <IconButton
+            <div
               onClick={() => navigate('/settings/networks/connected-sites')}
-              className="relative z-0 mx-1.5 text-brand-white"
+              className="relative z-0 mx-1.5 text-brand-white cursor-pointer"
             >
               <Icon
                 name="globe"
@@ -298,32 +274,33 @@ export const NormalHeader: React.FC = () => {
 
               <Badge
                 className={`${
-                  isConnected
+                  true
                     ? 'text-warning-success bg-warning-succes'
                     : 'text-warning-error bg-warning-error'
                 } absolute -right-1 top-1 w-3 h-3 s rounded-full `}
               />
-            </IconButton>
+            </div>
           </Tooltip>
-          <IconButton
-            onClick={handleRefresh}
-            className="z-0 mx-1.5 hover:text-brand-royalblue text-brand-white"
+
+          <div
+            onClick={() => handleRefresh(false)}
+            className="z-0 mx-1.5 hover:text-brand-royalblue text-brand-white cursor-pointer"
           >
             <Icon name="reload" />
-          </IconButton>
+          </div>
 
           <Menu.Button
             as="button"
             id="general-settings-button"
             className="z-0 mx-1.5"
           >
-            {encriptedMnemonic && (
-              <IconButton type="primary" shape="circle">
+            {Boolean(encryptedMnemonic) && (
+              <div>
                 <Icon
                   name="settings"
                   className="hover:text-brand-royalblue text-brand-white"
                 />
-              </IconButton>
+              </div>
             )}
           </Menu.Button>
 

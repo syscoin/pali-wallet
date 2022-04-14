@@ -3,9 +3,9 @@ import { Navigate } from 'react-router-dom';
 import { getController } from 'utils/browser';
 
 export function ProtectedRoute({ element }: { element: JSX.Element }) {
-  const { isLocked } = getController().wallet;
+  const { isUnlocked } = getController().wallet;
 
-  if (isLocked()) {
+  if (!isUnlocked()) {
     return <Navigate to={{ pathname: '/' }} />;
   }
 

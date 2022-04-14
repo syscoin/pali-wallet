@@ -12,10 +12,9 @@ import { getController } from 'utils/browser';
 export const SendEth = () => {
   const { getFiatAmount } = usePrice();
   const controller = getController();
-  const activeAccount = controller.wallet.account.getActiveAccount();
 
   const { alert, navigate } = useUtils();
-  const { activeNetwork, fiat } = useStore();
+  const { activeNetwork, fiat, activeAccount } = useStore();
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
   const [recommend, setRecommend] = useState(0.00001);
   const [form] = Form.useForm();
@@ -65,8 +64,6 @@ export const SendEth = () => {
       alert.error('An internal error has occurred.');
     }
   };
-
-  const disabledFee = activeNetwork === 'main' || activeNetwork === 'testnet';
 
   return (
     <div className="mt-4">
@@ -246,9 +243,7 @@ export const SendEth = () => {
             <Tooltip content="Network fee">
               <Input
                 disabled
-                className={`${
-                  disabledFee && 'opacity-50 cursor-not-allowed'
-                } border border-fields-input-border text-brand-white bg-fields-input-primary rounded-r-full md:w-full w-60 outline-none py-3 pr-8 pl-4 text-sm`}
+                className="pl-4 pr-8 py-3 w-60 text-brand-white text-brand-white text-sm bg-fields-input-primary border border-fields-input-border rounded-r-full outline-none opacity-50 cursor-not-allowed md:w-full"
                 id="fee-input"
                 type="number"
                 placeholder="Fee network"

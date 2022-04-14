@@ -12,24 +12,29 @@ export const Home = () => {
   const { getFiatAmount } = usePrice();
 
   const { navigate, handleRefresh } = useUtils();
-  const activeAccount = controller.wallet.account.getActiveAccount();
 
-  const { accounts, activeNetwork, fiat } = useStore();
+  const { accounts, activeNetwork, fiat, networks, activeAccount } = useStore();
 
   const setChainSymbol = async () => {
-    const sb = await getSymbolByChain(activeNetwork);
-    console.log('curr symb', sb, activeNetwork);
-    setSymbol(sb);
+    const chain = networks.syscoin[activeNetwork.chainId]
+      ? 'syscoin'
+      : 'ethereum';
+    const symbolByChain = await getSymbolByChain(chain);
+
+    setSymbol(symbolByChain);
   };
 
   useEffect(() => {
-    if (!controller.wallet.isLocked() && accounts.length > 0 && activeAccount)
+    if (
+      controller.wallet.isUnlocked() &&
+      Object.values(accounts).length > 0 &&
+      activeAccount
+    )
       handleRefresh();
     setChainSymbol();
-  }, [!controller.wallet.isLocked(), accounts.length > 0]);
+  }, [controller.wallet.isUnlocked(), Object.values(accounts).length > 0]);
 
-  const isTestnet = activeNetwork === 'testnet';
-  const isNotTestnet = activeNetwork === 'main' ? 'SYS' : symbol;
+  const { isTestnet } = activeNetwork;
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
@@ -50,11 +55,11 @@ export const Home = () => {
                     </p>
 
                     <p className="mt-4 font-poppins">
-                      {isTestnet ? 'TSYS' : isNotTestnet}
+                      {activeNetwork.currency}
                     </p>
                   </div>
 
-                  {activeNetwork !== 'testnet' && (
+                  {!isTestnet && (
                     <p id="fiat-ammount">
                       {getFiatAmount(
                         activeAccount.balance || 0,

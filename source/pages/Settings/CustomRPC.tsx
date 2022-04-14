@@ -14,11 +14,11 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   const { alert } = useUtils();
   const controller = getController();
 
-  const onSubmit = async ({ network, blockbookURL }: any) => {
+  const onSubmit = async ({ rpcUrl, network }: any) => {
     setLoading(true);
 
     try {
-      const response = await axios.get(`${blockbookURL}/api/v2`);
+      const response = await axios.get(`${rpcUrl}/api/v2`);
       const { coin } = response.data.blockbook;
       const { chain } = response.data.backend;
 
@@ -30,7 +30,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
           label: `${network.toString().toLowerCase()} ${chain
             .toString()
             .toLowerCase()}`,
-          beUrl: blockbookURL,
+          beUrl: rpcUrl,
         });
 
         setLoading(false);
@@ -40,7 +40,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
       }
     } catch (error) {
       alert.removeAll();
-      alert.error('Invalid blockbook URL.');
+      alert.error('Invalid RPC URL.');
 
       setLoading(false);
     }
@@ -60,7 +60,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             initialValues={{
               blockbookURL: selectedToEdit ? selectedToEdit.beUrl : '',
               network: selectedToEdit ? selectedToEdit.label : '',
-              chainID: selectedToEdit ? selectedToEdit.chainID : '',
+              chainID: selectedToEdit ? selectedToEdit.chainID : -1,
             }}
             onFinish={onSubmit}
             autoComplete="off"
@@ -85,7 +85,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             </Form.Item>
 
             <Form.Item
-              name="blockbookURL"
+              name="rpcUrl"
               className="md:w-full"
               hasFeedback
               rules={[
@@ -117,7 +117,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             >
               <Input
                 type="text"
-                placeholder="Blockbook URL"
+                placeholder="RPC URL"
                 className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
               />
             </Form.Item>
@@ -128,19 +128,15 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               hasFeedback
               rules={[
                 {
-                  required: false,
+                  required: true,
                   message: '',
                 },
               ]}
             >
               <Input
-                disabled
                 type="text"
                 placeholder="Chain ID"
-                className={`${
-                  true &&
-                  'opacity-50 rounded-full py-2 pl-4 w-72 md:w-full bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus md:max-w-md'
-                }`}
+                className="pl-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
               />
             </Form.Item>
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, PrimaryButton, Card } from 'components/index';
 import { Form, Input } from 'antd';
-import { useUtils } from 'hooks/index';
+import { useUtils, useStore } from 'hooks/index';
 import TextArea from 'antd/lib/input/TextArea';
 import { getController } from 'utils/browser';
 
@@ -9,21 +9,19 @@ const ForgetWalletView = () => {
   const { navigate } = useUtils();
 
   const controller = getController();
-  const activeAccount = controller.wallet.account.getActiveAccount();
+  const { activeAccount } = useStore();
 
   if (!activeAccount) throw new Error('No active account');
-  const hasAccountFunds = activeAccount.balance > 0;
+  const hasAccountFunds = activeAccount.balances.syscoin > 0;
 
   // if account has no funds, no need to input the seed
   const [isSeedValid, setIsSeedValid] = useState<boolean>(!hasAccountFunds);
   const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
 
-  const onSubmit = (data: any) => {
-    if (controller.wallet.checkPassword(data.password)) {
-      controller.wallet.forgetWallet(data.password);
+  const onSubmit = ({ password }: { password: string }) => {
+    controller.wallet.forgetWallet(password);
 
-      navigate('/');
-    }
+    navigate('/');
   };
 
   const [form] = Form.useForm();
@@ -61,7 +59,7 @@ const ForgetWalletView = () => {
               },
               () => ({
                 validator(_, value) {
-                  const seed = controller.wallet.getPhrase(value);
+                  const seed = controller.wallet.getSeed(value);
 
                   if (seed) {
                     setIsPasswordValid(true);
@@ -98,7 +96,7 @@ const ForgetWalletView = () => {
                   },
                   ({ getFieldValue }) => ({
                     validator(_, value) {
-                      const seed = controller.wallet.getPhrase(
+                      const seed = controller.wallet.getSeed(
                         getFieldValue('password')
                       );
 
