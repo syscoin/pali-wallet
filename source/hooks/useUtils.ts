@@ -39,7 +39,6 @@ export const useUtils = () => {
           clearTimeout(hide);
         };
       }
-      return undefined;
     }, [isCopied, setIsCopied, timeout]);
 
     return [isCopied, staticCopy];

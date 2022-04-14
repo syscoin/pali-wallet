@@ -68,7 +68,7 @@ const CurrencyView = () => {
       accounts &&
       accounts[activeAccountId]
     ) {
-      handleRefresh();
+      handleRefresh(true);
     }
   }, [controller.wallet.isUnlocked(), accounts]);
 
