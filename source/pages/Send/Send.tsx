@@ -1,18 +1,21 @@
 import * as React from 'react';
 import { Layout } from 'components/index';
+import { useStore } from 'hooks/index';
 
-// import { SendSys } from './SendSys';
+import { SendSys } from './SendSys';
 import { SendEth } from './SendEth';
 
 interface ISend {
   initAddress?: string;
 }
-export const Send: React.FC<ISend> = () => (
-  <Layout title="SEND SYS" id="sendSYS-title">
-    {/* only the style in this branch, the implementation is being finished on fix/send-tx */}
+export const Send: React.FC<ISend> = () => {
+  const { networks, activeNetwork } = useStore();
 
-    {/* {isSyscoinChain ? <SendSys /> : <SendEth />} */}
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
-    <SendEth />
-  </Layout>
-);
+  return (
+    <Layout title="SEND SYS" id="sendSYS-title">
+      {isSyscoinChain ? <SendSys /> : <SendEth />}
+    </Layout>
+  );
+};
