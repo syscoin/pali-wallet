@@ -1,12 +1,12 @@
 import * as React from 'react';
-import { useState, useEffect, Fragment, FC, useCallback } from 'react';
+import { useState, useEffect, Fragment, useCallback } from 'react';
 import { usePrice, useStore, useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Assets } from 'types/transactions';
-import { log, formatUrl, isNFT, getAssetBalance } from 'utils/index';
+import { formatUrl, isNFT, getAssetBalance } from 'utils/index';
 import { getController } from 'utils/browser';
 
 export const SendSys = () => {
@@ -338,11 +338,11 @@ export const SendSys = () => {
             ]}
           >
             <Tooltip content="Click to edit fee">
-              <div onClick={handleGetFee}>
+              <div>
                 <Icon
                   wrapperClassname="w-6 ml-3 mb-1"
                   name="verified"
-                  className="text-brand-royalblue opacity-70"
+                  className="text-warning-success opacity-50 cursor-not-allowed"
                 />
               </div>
             </Tooltip>

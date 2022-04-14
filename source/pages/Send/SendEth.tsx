@@ -14,7 +14,7 @@ export const SendEth = () => {
   const controller = getController();
 
   const { alert, navigate } = useUtils();
-  const { activeNetwork, fiat, activeAccount } = useStore();
+  const { fiat, activeAccount } = useStore();
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
   const [recommend, setRecommend] = useState(0.00001);
   const [form] = Form.useForm();
@@ -223,7 +223,7 @@ export const SendEth = () => {
                 <Icon
                   wrapperClassname="w-6 ml-3 mb-1.5"
                   name="edit"
-                  className="text-brand-royalbluemedium"
+                  className="text-brand-royalbluemedium cursor-pointer"
                 />
               </div>
             </Tooltip>
@@ -243,7 +243,7 @@ export const SendEth = () => {
             <Tooltip content="Network fee">
               <Input
                 disabled
-                className="pl-4 pr-8 py-3 w-60 text-brand-white text-brand-white text-sm bg-fields-input-primary border border-fields-input-border rounded-r-full outline-none opacity-50 cursor-not-allowed md:w-full"
+                className="pl-4 pr-8 py-3 w-60 text-brand-white text-sm bg-fields-input-primary border border-fields-input-border rounded-r-full outline-none opacity-50 cursor-not-allowed md:w-full"
                 id="fee-input"
                 type="number"
                 placeholder="Fee network"
