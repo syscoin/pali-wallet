@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Header, Icon, Button } from 'components/index';
+import { Header, Icon, Button, Loading } from 'components/index';
 import { useStore, usePrice, useUtils } from 'hooks/index';
 import { formatNumber, getSymbolByChain } from 'utils/index';
 import { getController } from 'utils/browser';
@@ -8,68 +8,64 @@ import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = getController();
+  const { networks, activeNetwork, fiat, activeAccount, lastLogin } =
+    useStore();
   const [symbol, setSymbol] = useState('SYS');
+
   const { getFiatAmount } = usePrice();
 
-  const { navigate, handleRefresh } = useUtils();
+  const { navigate } = useUtils();
 
-  const { accounts, activeNetwork, fiat, networks, activeAccount } = useStore();
+  const balance = networks.syscoin[activeNetwork.chainId]
+    ? activeAccount.balances.syscoin
+    : activeAccount.balances.ethereum;
 
   const setChainSymbol = async () => {
     const chain = networks.syscoin[activeNetwork.chainId]
       ? 'syscoin'
       : 'ethereum';
-    const symbolByChain = await getSymbolByChain(chain);
+    const symbol = await getSymbolByChain(chain);
 
-    setSymbol(symbolByChain);
+    setSymbol(symbol);
   };
 
-  useEffect(() => {
-    if (
-      controller.wallet.isUnlocked() &&
-      Object.values(accounts).length > 0 &&
-      activeAccount
-    )
-      handleRefresh();
-    setChainSymbol();
-  }, [controller.wallet.isUnlocked(), Object.values(accounts).length > 0]);
+  const isUnlocked = controller.wallet.isUnlocked();
 
-  const { isTestnet } = activeNetwork;
+  useEffect(() => {
+    setChainSymbol();
+  }, [isUnlocked]);
+
+  const isSysTestnet = activeNetwork.chainId === 5700;
+  const symbolByChain = isSysTestnet ? 'tsys' : symbol;
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
-      {activeAccount ? (
+      {activeAccount && lastLogin ? (
         <>
           <Header accountHeader />
 
           <section className="flex flex-col gap-1 items-center py-14 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
-              {activeNetwork && (
-                <>
-                  <div className="balance-account flex gap-x-0.5 items-center justify-center">
-                    <p
-                      id="home-balance"
-                      className="font-rubik text-5xl font-medium"
-                    >
-                      {formatNumber(activeAccount?.balance || 0)}{' '}
-                    </p>
+              <div className="balance-account flex gap-x-0.5 items-center justify-center">
+                <p
+                  id="home-balance"
+                  className="font-rubik text-5xl font-medium"
+                >
+                  {formatNumber(balance || 0)}{' '}
+                </p>
 
-                    <p className="mt-4 font-poppins">
-                      {activeNetwork.currency}
-                    </p>
-                  </div>
+                <p className="mt-4 font-poppins">
+                  {activeNetwork.currency
+                    ? activeNetwork.currency.toUpperCase()
+                    : symbolByChain.toUpperCase()}
+                </p>
+              </div>
 
-                  {!isTestnet && (
-                    <p id="fiat-ammount">
-                      {getFiatAmount(
-                        activeAccount.balance || 0,
-                        4,
-                        String(fiat.current)
-                      )}
-                    </p>
-                  )}
-                </>
-              )}
+              <p id="fiat-ammount">
+                {!isSysTestnet
+                  ? getFiatAmount(balance || 0, 4, String(fiat.current))
+                  : null}
+              </p>
             </div>
 
             <div className="flex gap-x-0.5 items-center justify-center pt-8 w-3/4 max-w-md">
@@ -107,9 +103,7 @@ export const Home = () => {
           <TxsPanel />
         </>
       ) : (
-        <div className="fixed z-20 flex items-center justify-center w-full min-w-popup h-full min-h-popup bg-bkg-2">
-          <Icon name="loading" className="ml-2 w-4 text-brand-white" />
-        </div>
+        <Loading />
       )}
     </div>
   );
