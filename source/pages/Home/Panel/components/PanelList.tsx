@@ -2,6 +2,7 @@ import React, { FC, useCallback, Fragment } from 'react';
 import { IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { ellipsis, formatCurrency, formatDate } from 'utils/index';
+import { TransactionResponse } from '@ethersproject/abstract-provider';
 
 interface IPanelList {
   activity: boolean;
@@ -26,6 +27,14 @@ export const PanelList: FC<IPanelList> = ({
     [data]
   );
 
+  const isShowedGroupBarEth = useCallback(
+    (tx: TransactionResponse, idx: number) =>
+      idx === 0 ||
+      (tx.timestamp && new Date(tx.timestamp * 1e3).toDateString()) !==
+        new Date(data[idx - 1].timestamp * 1e3).toDateString(),
+    [data]
+  );
+
   const getTxType = (tx: any) => {
     if (tx.tokenType === 'SPTAssetActivate') {
       return 'SPT creation';
@@ -46,68 +55,123 @@ export const PanelList: FC<IPanelList> = ({
     <>
       {activity && (
         <ul className="pb-24 md:pb-8">
-          {data.map((tx: any, idx: number) => {
-            const isConfirmed = tx.confirmations > 0;
-            const timestamp = new Date(tx.blockTime * 1000).toLocaleTimeString(
-              navigator.language,
-              {
+          {isSyscoinChain &&
+            data.map((tx: any, idx: number) => {
+              const isConfirmed = tx.confirmations > 0;
+              const timestamp = new Date(
+                tx.blockTime * 1000
+              ).toLocaleTimeString(navigator.language, {
                 hour: '2-digit',
                 minute: '2-digit',
-              }
-            );
+              });
 
-            return (
-              <Fragment key={tx.txid}>
-                {isShowedGroupBar(tx, idx) && (
-                  <li className="my-3 text-center text-sm bg-bkg-1">
-                    {formatDate(new Date(tx.blockTime * 1000).toDateString())}
-                  </li>
-                )}
+              return (
+                <Fragment key={tx.txid}>
+                  {isShowedGroupBar(tx, idx) && (
+                    <li className="my-3 text-center text-sm bg-bkg-1">
+                      {formatDate(new Date(tx.blockTime * 1000).toDateString())}
+                    </li>
+                  )}
 
-                <li className="py-2 border-b border-dashed border-dashed-dark">
-                  <div className="relative flex grid grid-cols-2 text-xs">
-                    <div>
-                      <p>{ellipsis(String(tx.txid), 4, 14)}</p>
+                  <li className="py-2 border-b border-dashed border-dashed-dark">
+                    <div className="relative flex grid grid-cols-2 text-xs">
+                      <div>
+                        <p>{ellipsis(String(tx.txid), 4, 14)}</p>
 
-                      <p
-                        className={
-                          isConfirmed
-                            ? 'text-warning-success'
-                            : 'text-yellow-300'
-                        }
-                      >
-                        {isConfirmed ? 'Confirmed' : 'Pending'}
-                      </p>
-                    </div>
-
-                    <div className="flex justify-between pl-4 pr-2 md:pl-8">
-                      <div className="text-left">
-                        <p className="text-blue-300">{timestamp}</p>
-
-                        <p>{getTxType(tx)}</p>
+                        <p
+                          className={
+                            isConfirmed
+                              ? 'text-warning-success'
+                              : 'text-yellow-300'
+                          }
+                        >
+                          {isConfirmed ? 'Confirmed' : 'Pending'}
+                        </p>
                       </div>
 
-                      <IconButton
-                        className="w-5"
-                        onClick={() =>
-                          navigate('/home/tx-details/', {
-                            state: {
-                              tx,
-                              type: getTxType(tx),
-                              assetGuid: null,
-                              assetType: null,
-                            },
-                          })
-                        }
-                      >
-                        <Icon name="select" className="text-base" />
-                      </IconButton>
+                      <div className="flex justify-between pl-4 pr-2 md:pl-8">
+                        <div className="text-left">
+                          <p className="text-blue-300">{timestamp}</p>
+
+                          <p>{getTxType(tx)}</p>
+                        </div>
+
+                        <IconButton
+                          className="w-5"
+                          onClick={() =>
+                            navigate('/home/tx-details/', {
+                              state: {
+                                tx,
+                                type: getTxType(tx),
+                                assetGuid: null,
+                                assetType: null,
+                              },
+                            })
+                          }
+                        >
+                          <Icon name="select" className="text-base" />
+                        </IconButton>
+                      </div>
                     </div>
-                  </div>
-                </li>
-              </Fragment>
-            );
-          })}
+                  </li>
+                </Fragment>
+              );
+            })}
+          {!isSyscoinChain &&
+            data !== [] &&
+            data &&
+            data.map((tx: TransactionResponse, idx: number) => {
+              const isConfirmed = tx.confirmations > 0;
+              const timestamp =
+                tx.timestamp &&
+                new Date(tx.timestamp * 1000).toLocaleTimeString(
+                  navigator.language,
+                  {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }
+                );
+
+              return (
+                <Fragment key={tx.nonce}>
+                  {isShowedGroupBarEth(tx, idx) && (
+                    <li className="my-3 text-center text-sm bg-bkg-1">
+                      {tx.timestamp && formatDate(tx.timestamp * 1000)}
+                    </li>
+                  )}
+
+                  <li className="py-2 border-b border-dashed border-dashed-dark">
+                    <div className="relative flex grid grid-cols-2 text-xs">
+                      <div>
+                        <p>{ellipsis(String(tx.hash), 4, 14)}</p>
+
+                        <p
+                          className={
+                            isConfirmed
+                              ? 'text-warning-success'
+                              : 'text-yellow-300'
+                          }
+                        >
+                          {isConfirmed ? 'Confirmed' : 'Pending'}
+                        </p>
+                      </div>
+
+                      <div className="flex justify-between pl-4 pr-2 md:pl-8">
+                        <div className="text-left">
+                          <p className="text-blue-300">{timestamp}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                </Fragment>
+              );
+            })}
+
+          {!isSyscoinChain && data === [] && data && (
+            <p className="flex items-center justify-center text-brand-white text-sm">
+              You have no transaction history.
+            </p>
+          )}
         </ul>
       )}
 
