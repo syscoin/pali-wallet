@@ -38,13 +38,15 @@ export const SendSys = () => {
     });
   }, [form, handleGetFee]);
 
-  const hasAccountAssets = activeAccount && activeAccount.assets.length > 0;
+  const assets = activeAccount.assets
+    ? Object.values(activeAccount.assets)
+    : [];
+
+  const hasAccountAssets = assets && assets.length > 0;
 
   const handleSelectedAsset = (item: number) => {
-    if (activeAccount?.assets) {
-      const getAsset = activeAccount?.assets.find(
-        (asset: Assets) => asset.assetGuid === item
-      );
+    if (assets) {
+      const getAsset = assets.find((asset: Assets) => asset.assetGuid === item);
 
       if (getAsset) {
         setSelectedAsset(getAsset);
@@ -98,7 +100,9 @@ export const SendSys = () => {
           Balance
         </span>
 
-        {getAssetBalance(selectedAsset, activeAccount)}
+        {selectedAsset
+          ? getAssetBalance(selectedAsset, activeAccount)
+          : activeAccount.balances.syscoin}
       </p>
 
       <Form

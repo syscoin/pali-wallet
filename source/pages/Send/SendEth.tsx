@@ -304,7 +304,7 @@ export const SendEth = () => {
         <div className="flex gap-x-0.5 items-center justify-center mx-2 md:w-full md:max-w-md">
           <Form.Item
             name="recommend"
-            className="py-1.5 w-12 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full opacity-70 cursor-pointer"
+            className="w-12 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full opacity-70 cursor-pointer"
             rules={[
               {
                 required: false,
@@ -315,7 +315,7 @@ export const SendEth = () => {
             <Tooltip content="Click to edit fee">
               <div onClick={() => navigate('/tx/edit-fee')}>
                 <Icon
-                  wrapperClassname="w-6 ml-3 mb-1.5"
+                  wrapperClassname="w-6 ml-3 mt-1 h-10"
                   name="edit"
                   className="text-brand-royalbluemedium cursor-pointer"
                 />
