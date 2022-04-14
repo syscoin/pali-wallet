@@ -77,7 +77,7 @@ const MainController = () => {
     const { accounts } = store.getState().vault;
 
     store.dispatch(setActiveAccount(accounts[id]));
-    account.getLatestUpdate();
+    account.getLatestUpdate(false);
   };
 
   const setActiveNetwork = async (chain: string, chainId: number) => {

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
 import { useStore } from 'hooks/index';
 import { ellipsis } from 'utils/index';
-import { closePopup, getController } from 'utils/browser';
+import { getController } from 'utils/browser';
 
 export const ConnectedAccounts = () => {
   const accountController = getController().wallet.account;
@@ -54,7 +54,7 @@ export const ConnectedAccounts = () => {
         </ul>
 
         <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
-          <SecondaryButton type="button" onClick={closePopup} action>
+          <SecondaryButton type="button" onClick={() => window.close()} action>
             Cancel
           </SecondaryButton>
 

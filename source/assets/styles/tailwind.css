@@ -22,7 +22,8 @@ input[type='number'] {
 .remove-scrollbar {
   -ms-overflow-style: none;
   /* IE and Edge */
-  scrollbar-width: none; /* Firefox */
+  scrollbar-width: none;
+  /* Firefox */
 }
 
 input[type='number']::-webkit-outer-spin-button,
@@ -127,4 +128,14 @@ div[role='alert'] {
 
 .ant-tooltip-hidden {
   @apply hidden;
+}
+
+/* ant progress bar */
+
+.ant-progress-outer {
+  @apply w-20 bg-brand-graylight rounded-full;
+}
+
+.ant-progress-bg {
+  @apply rounded-full;
 }

@@ -1,7 +1,1 @@
-export const useDappConnection = () => {
-  const confirmConnection = async () => {};
-
-  return {
-    confirmConnection,
-  };
-};
+export const useDappConnection = () => ({});

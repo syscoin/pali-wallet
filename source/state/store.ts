@@ -40,7 +40,7 @@ const store: Store<{
 }> = configureStore({
   reducer: persistedReducer,
   middleware,
-  devTools: process.env.NODE_ENV !== 'production',
+  devTools: nodeEnv !== 'production' && nodeEnv !== 'test',
 });
 
 persistStore(store);

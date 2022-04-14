@@ -98,7 +98,8 @@ const ControllerUtils = (): IControllerUtils => {
     }
   };
 
-  const getSearch = async (query: string) => getCoingeckoSearch(query);
+  const getSearch = async (query: string): Promise<any> =>
+    getCoingeckoSearch(query);
 
   return {
     appRoute,

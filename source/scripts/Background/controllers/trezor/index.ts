@@ -15,7 +15,7 @@ const TrezorController = () => {
   const account = SysTrezorController();
 
   const connectHardware = async (): Promise<IKeyringAccountState | void> => {
-    const isTestnet = store.getState().vault.activeNetwork.chainId === 5700;
+    const { isTestnet } = store.getState().vault.activeNetwork;
 
     if (isTestnet) {
       return openNotificationsPopup(

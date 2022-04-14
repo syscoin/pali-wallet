@@ -2,16 +2,23 @@ import { Layout } from 'components/Layout';
 import { useStore } from 'hooks/useStore';
 import * as React from 'react';
 
-import { SendEth } from './SendEth';
 import { SendSys } from './SendSys';
+import { SendEth } from './SendEth';
 
-export const Send: React.FC = () => {
-  const { activeNetwork, networks } = useStore();
-  const isSyscoinChain = networks.syscoin[activeNetwork.chainId];
+interface ISend {
+  initAddress?: string;
+}
+export const Send: React.FC<ISend> = () => {
+  const { networks, activeNetwork } = useStore();
+
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
   return (
-    <Layout title="SEND SYS" id="sendSYS-title">
-      <div className="mt-4">{isSyscoinChain ? <SendSys /> : <SendEth />}</div>
+    <Layout
+      title={`SEND ${activeNetwork.currency?.toUpperCase()}`}
+      id="sendSYS-title"
+    >
+      {isSyscoinChain ? <SendSys /> : <SendEth />}
     </Layout>
   );
 };
