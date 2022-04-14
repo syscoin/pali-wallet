@@ -7,6 +7,7 @@ import { SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { formatUrl, isNFT, getAssetBalance } from 'utils/index';
 import { getController } from 'utils/browser';
+import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
 export const SendSys = () => {
   const { getFiatAmount } = usePrice();
@@ -69,16 +70,14 @@ export const SendSys = () => {
     form.setFieldsValue({ ZDAG: value });
   };
 
-  const nextStep = (data: any) => {
-    const { receiver, amount, fee } = data;
-
+  const nextStep = ({ receiver, amount, fee }: any) => {
     try {
       navigate('/send/confirm', {
         state: {
           tx: {
-            fromAddress: activeAccount?.address,
-            toAddress: receiver,
-            amount,
+            sender: activeAccount.address,
+            receivingAddress: receiver,
+            amount: Number(amount),
             fee,
             token: selectedAsset || null,
             isToken: !!selectedAsset,
@@ -131,11 +130,7 @@ export const SendSys = () => {
               validator(_, value) {
                 if (
                   !value ||
-                  controller.wallet.account.isValidSYSAddress(
-                    value,
-                    activeNetwork,
-                    verifyAddress
-                  )
+                  isValidSYSAddress(value, activeNetwork, verifyAddress)
                 ) {
                   return Promise.resolve();
                 }
@@ -190,7 +185,7 @@ export const SendSys = () => {
                   {hasAccountAssets && (
                     <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
                       {activeAccount &&
-                        activeAccount.assets.map((item) => (
+                        Object.values(activeAccount.assets).map((item: any) => (
                           <Menu.Item>
                             <button
                               onClick={() =>
