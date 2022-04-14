@@ -5,19 +5,20 @@ import { useStore } from 'hooks/useStore';
 import { PanelList } from './components/PanelList';
 
 export const ActivityPanel: FC = () => {
-  const { activeAccount, activeNetwork, accounts } = useStore();
+  const { activeAccount, activeNetwork, networks, accounts } = useStore();
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
   return (
     <>
       <div className="p-4 w-full h-full text-white text-base bg-bkg-3">
-        {activeNetwork.chainId === 1 || activeNetwork.chainId === 4 ? (
-          accounts[0].ethTransactions === [] ? (
+        {!isSyscoinChain ? (
+          activeAccount.transactions === [] ? (
             <p className="flex items-center justify-center text-brand-white text-sm">
               You have no transaction history.
             </p>
           ) : (
             <PanelList
-              data={accounts[0].ethTransactions}
+              data={accounts[activeAccount.id].transactions}
               activity
               isSyscoinChain={false}
               assets={false}

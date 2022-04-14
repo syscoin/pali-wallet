@@ -18,8 +18,7 @@ export const initialActiveAccountState = {
   xprv: '',
   xpub: '',
   assets: {},
-  transactions: {},
-  ethTransactions: [],
+  transactions: [],
 };
 
 export const initialState: IVaultState = {
@@ -81,7 +80,11 @@ const VaultState = createSlice({
     ) {
       state.accounts[state.activeAccount.id] = {
         ...state.accounts[state.activeAccount.id],
-        ethTransactions: action.payload,
+        transactions: action.payload,
+      };
+      state.activeAccount = {
+        ...state.activeAccount,
+        transactions: action.payload,
       };
     },
     removeNetwork(

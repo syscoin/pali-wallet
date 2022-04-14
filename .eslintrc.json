@@ -52,7 +52,7 @@
     "react/jsx-one-expression-per-line": "off",
     "react/jsx-curly-newline": "off",
     "import/no-extraneous-dependencies": "off",
-    "@typescript-eslint/return-await":"off",
+    "@typescript-eslint/return-await": "off",
     "no-nested-ternary": "off",
     "react/jsx-indent": "off",
     "react/no-array-index-key": "off",
