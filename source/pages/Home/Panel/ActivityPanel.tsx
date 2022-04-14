@@ -5,7 +5,7 @@ import { useStore } from 'hooks/useStore';
 import { PanelList } from './components/PanelList';
 
 export const ActivityPanel: FC = () => {
-  const { activeAccount, activeNetwork, networks, accounts } = useStore();
+  const { activeAccount, activeNetwork, networks } = useStore();
   const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
   return (
@@ -18,7 +18,7 @@ export const ActivityPanel: FC = () => {
             </p>
           ) : (
             <PanelList
-              data={accounts[activeAccount.id].transactions}
+              data={activeAccount.transactions}
               activity
               isSyscoinChain={false}
               assets={false}
