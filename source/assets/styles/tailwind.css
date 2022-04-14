@@ -22,7 +22,8 @@ input[type='number'] {
 .remove-scrollbar {
   -ms-overflow-style: none;
   /* IE and Edge */
-  scrollbar-width: none; /* Firefox */
+  scrollbar-width: none;
+  /* Firefox */
 }
 
 input[type='number']::-webkit-outer-spin-button,
@@ -65,10 +66,6 @@ input[type='number']::-webkit-inner-spin-button {
 /* unauth/create/pass inputs */
 .ant-input-affix-wrapper.ant-input-password {
   @apply relative;
-}
-
-.ant-input {
-  @apply bg-bkg-2;
 }
 
 .ant-form-item-control-input-content {
@@ -127,4 +124,14 @@ div[role='alert'] {
 
 .ant-tooltip-hidden {
   @apply hidden;
+}
+
+/* ant progress bar */
+
+.ant-progress-outer {
+  @apply w-20 bg-brand-graylight rounded-full;
+}
+
+.ant-progress-bg {
+  @apply rounded-full;
 }

@@ -1,6 +1,7 @@
 export const getAssetBalance = (selectedAsset: any, activeAccount) => {
   if (selectedAsset) {
     const value = selectedAsset.balance / 10 ** selectedAsset.decimals;
+
     return `${value.toFixed(selectedAsset.decimals)} ${selectedAsset.symbol}`;
   }
 

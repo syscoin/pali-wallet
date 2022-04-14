@@ -40,7 +40,6 @@ const ConnectedSites = (): any => {
             >
               <li className="flex items-center justify-between my-2 py-3 w-full text-xs border-b border-dashed border-gray-500">
                 <p>{formatUrl(url, 25)}</p>
-
                 <IconButton onClick={() => setSelected(url)}>
                   <Icon name="edit" wrapperClassname="w-4" />
                 </IconButton>

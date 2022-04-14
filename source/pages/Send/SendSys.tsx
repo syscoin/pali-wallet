@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useEffect, Fragment, FC, useCallback } from 'react';
+import { useState, useEffect, Fragment, useCallback } from 'react';
 import { usePrice, useStore, useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Switch, Menu, Transition } from '@headlessui/react';
@@ -9,18 +9,17 @@ import { formatUrl, isNFT, getAssetBalance } from 'utils/index';
 import { getController } from 'utils/browser';
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
-export const SendSys: FC = () => {
+export const SendSys = () => {
+  const { getFiatAmount } = usePrice();
   const controller = getController();
-
-  const [ZDAG, setZDAG] = useState<boolean>(false);
-  const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
-  const [selectedAsset, setSelectedAsset] = useState<any>(null);
-  const [recommend, setRecommend] = useState(0.00001);
 
   const { alert, navigate } = useUtils();
   const { activeNetwork, fiat, activeAccount } = useStore();
+  const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
+  const [ZDAG, setZDAG] = useState<boolean>(false);
+  const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
+  const [recommend, setRecommend] = useState(0.00001);
   const [form] = Form.useForm();
-  const { getFiatAmount } = usePrice();
 
   const handleGetFee = useCallback(async () => {
     const recommendFee = await controller.wallet.account.tx.getRecommendedFee();
@@ -39,13 +38,15 @@ export const SendSys: FC = () => {
     });
   }, [form, handleGetFee]);
 
-  const hasAccountAssets = activeAccount && activeAccount.assets;
+  const assets = activeAccount.assets
+    ? Object.values(activeAccount.assets)
+    : [];
+
+  const hasAccountAssets = assets && assets.length > 0;
 
   const handleSelectedAsset = (item: number) => {
-    if (activeAccount?.assets) {
-      const getAsset = Object.values(activeAccount?.assets).find(
-        (asset: any) => asset.assetGuid === item
-      );
+    if (assets) {
+      const getAsset = assets.find((asset: any) => asset.assetGuid === item);
 
       if (getAsset) {
         setSelectedAsset(getAsset);
@@ -69,20 +70,18 @@ export const SendSys: FC = () => {
     form.setFieldsValue({ ZDAG: value });
   };
 
-  const nextStep = async (data: any) => {
-    const { receiver, amount, fee } = data;
-
+  const nextStep = ({ receiver, amount, fee }: any) => {
     try {
       navigate('/send/confirm', {
         state: {
           tx: {
-            amount,
+            sender: activeAccount.address,
+            receivingAddress: receiver,
+            amount: Number(amount),
             fee,
+            token: selectedAsset || null,
             isToken: !!selectedAsset,
             rbf: !ZDAG,
-            receivingAddress: receiver,
-            sender: activeAccount?.address,
-            token: selectedAsset || null,
           },
         },
       });
@@ -93,13 +92,15 @@ export const SendSys: FC = () => {
   };
 
   return (
-    <>
+    <div className="mt-4">
       <p className="flex flex-col items-center justify-center text-center font-rubik">
         <span className="text-brand-royalblue font-poppins font-thin">
           Balance
         </span>
 
-        {getAssetBalance(selectedAsset, activeAccount)}
+        {selectedAsset
+          ? getAssetBalance(selectedAsset, activeAccount)
+          : activeAccount.balances.syscoin}
       </p>
 
       <Form
@@ -184,7 +185,6 @@ export const SendSys: FC = () => {
                   {hasAccountAssets && (
                     <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
                       {activeAccount &&
-                        activeAccount.assets &&
                         Object.values(activeAccount.assets).map((item: any) => (
                           <Menu.Item>
                             <button
@@ -327,7 +327,7 @@ export const SendSys: FC = () => {
         <div className="flex gap-x-0.5 items-center justify-center mx-2 md:w-full md:max-w-md">
           <Form.Item
             name="recommend"
-            className="py-1.5 w-12 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full opacity-50 cursor-not-allowed"
+            className="py-1.5 w-12 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full opacity-50"
             rules={[
               {
                 required: false,
@@ -335,12 +335,12 @@ export const SendSys: FC = () => {
               },
             ]}
           >
-            <Tooltip content="Use recommended fee. Disabled for SYS networks because the fee used in transactions is always the recommended for current SYS network conditions.">
-              <div onClick={handleGetFee}>
+            <Tooltip content="Use recommended fee. Disabled for SYS networks because the fee used in transactions is already the recommended with current network conditions.">
+              <div>
                 <Icon
                   wrapperClassname="w-6 ml-3 mb-1"
                   name="verified"
-                  className="text-button-disabled cursor-not-allowed"
+                  className="text-warning-success opacity-50 cursor-not-allowed"
                 />
               </div>
             </Tooltip>
@@ -357,10 +357,10 @@ export const SendSys: FC = () => {
               },
             ]}
           >
-            <Tooltip content="Fee network">
+            <Tooltip content="Network fee">
               <Input
                 disabled
-                className="pl-4 pr-8 py-3 w-60 text-button-disabled text-sm bg-fields-input-primary border border-fields-input-border rounded-r-full outline-none opacity-50 cursor-not-allowed md:w-full"
+                className="pl-4 pr-8 py-3 w-60 text-brand-white text-sm bg-fields-input-primary border border-fields-input-border rounded-r-full outline-none opacity-50 cursor-not-allowed md:w-full"
                 id="fee-input"
                 type="number"
                 placeholder="Fee network"
@@ -391,6 +391,6 @@ export const SendSys: FC = () => {
           Next
         </SecondaryButton>
       </Form>
-    </>
+    </div>
   );
 };
