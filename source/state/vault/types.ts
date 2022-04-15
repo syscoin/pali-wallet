@@ -6,9 +6,9 @@ import {
 
 export interface IVaultState {
   accounts: {
-    [id: number]: IKeyringAccount;
+    [id: number]: IKeyringAccountState;
   };
-  activeAccount: IKeyringAccount;
+  activeAccount: IKeyringAccountState;
   activeNetwork: INetwork;
   activeToken: string;
   encryptedMnemonic: string;
@@ -24,11 +24,6 @@ export interface IVaultState {
   };
   timer: number;
   trustedApps: string[];
-}
-
-export interface IKeyringAccount extends IKeyringAccountState {
-  assets: any;
-  transactions: any;
 }
 
 export interface Holding {

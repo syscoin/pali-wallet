@@ -23,98 +23,80 @@ export const SendConfirm = () => {
   const isSyscoinChain = networks.syscoin[activeNetwork.chainId];
 
   const handleConfirm = async () => {
-    console.log('tx by location', tx);
     const recommendedFee =
-      await controller.wallet.account.tx.getRecommendedFee();
+      await controller.wallet.account.sys.tx.getRecommendedFee();
 
-    console.log('recommended fee', recommendedFee);
+    const balance = isSyscoinChain
+      ? activeAccount.balances.syscoin
+      : activeAccount.balances.ethereum;
 
-    // if (
-    //   (activeAccount
-    //     ? isSyscoinChain
-    //       ? activeAccount.balances.syscoin
-    //       : activeAccount.balances.ethereum
-    //     : -1) > 0
-    // ) {
-    setLoading(true);
+    if (activeAccount && balance > 0) {
+      setLoading(true);
 
-    try {
-      if (isSyscoinChain) {
-        if (activeAccount.isTrezorWallet) {
-          const value = new sys.utils.BN(tempTx.amount * 1e8);
-          const feeRate = new sys.utils.BN(tempTx.fee * 1e8);
+      try {
+        if (isSyscoinChain) {
+          if (activeAccount.isTrezorWallet) {
+            const value = new sys.utils.BN(tempTx.amount * 1e8);
+            const feeRate = new sys.utils.BN(tempTx.fee * 1e8);
 
-          const outputs = [
-            {
-              address: tempTx.receiver,
-              value,
-            },
-          ];
+            const outputs = [
+              {
+                address: tempTx.receiver,
+                value,
+              },
+            ];
 
-          return controller.wallet.account.trezor.confirmNativeTokenSend({
-            txOptions: { rbf: true },
-            outputs,
-            feeRate,
-          });
-        }
-
-        console.log('calling send tempTx', tempTx);
-
-        const response = await controller.wallet.account.tx.sendTransaction(tx);
-
-        console.log('calling send response', response);
-
-        return response;
-      }
-
-      console.log('calling send tx eth');
-
-      const ethTx = await controller.wallet.account.sendTransaction(
-        tempTx.sender,
-        activeAccount.xprv,
-        tempTx.receivingAddress,
-        tempTx.amount,
-        String(tempTx.fee)
-      );
-
-      console.log('response tx', ethTx);
-
-      setConfirmed(true);
-      setLoading(false);
-    } catch (error: any) {
-      logError('error', 'Transaction', error);
-
-      if (activeAccount) {
-        if (error && tempTx.fee > recommendedFee) {
-          alert.removeAll();
-          alert.error(
-            `${formatUrl(
-              String(error.message),
-              166
-            )} Please, reduce fees to send transaction.`
-          );
-        }
-
-        if (isSyscoinChain && error && tempTx.fee <= recommendedFee) {
-          const max = (100 * tempTx.amount) / activeAccount?.balances.syscoin;
-
-          if (tempTx.amount >= (max * tempTx.amount) / 100) {
-            alert.removeAll();
-            alert.error(error.message);
-
-            setLoading(false);
-
-            return;
+            return controller.wallet.account.sys.trezor.confirmNativeTokenSend({
+              txOptions: { rbf: true },
+              outputs,
+              feeRate,
+            });
           }
+
+          const response =
+            await controller.wallet.account.sys.tx.sendTransaction(tx);
+
+          return response;
         }
 
-        alert.removeAll();
-        alert.error("Can't complete transaction. Try again later.");
+        await controller.wallet.account.eth.tx.sendTransaction(tx);
 
+        setConfirmed(true);
         setLoading(false);
+      } catch (error: any) {
+        logError('error', 'Transaction', error);
+
+        if (activeAccount) {
+          if (error && tempTx.fee > recommendedFee) {
+            alert.removeAll();
+            alert.error(
+              `${formatUrl(
+                String(error.message),
+                166
+              )} Please, reduce fees to send transaction.`
+            );
+          }
+
+          if (isSyscoinChain && error && tempTx.fee <= recommendedFee) {
+            const max = (100 * tempTx.amount) / activeAccount?.balances.syscoin;
+
+            if (tempTx.amount >= (max * tempTx.amount) / 100) {
+              alert.removeAll();
+              alert.error(error.message);
+
+              setLoading(false);
+
+              return;
+            }
+          }
+
+          alert.removeAll();
+          alert.error("Can't complete transaction. Try again later.");
+
+          setLoading(false);
+        }
       }
     }
-    // }
   };
 
   return (

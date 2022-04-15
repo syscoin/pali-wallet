@@ -22,7 +22,8 @@ export const SendSys = () => {
   const [form] = Form.useForm();
 
   const handleGetFee = useCallback(async () => {
-    const recommendFee = await controller.wallet.account.tx.getRecommendedFee();
+    const recommendFee =
+      await controller.wallet.account.sys.tx.getRecommendedFee();
 
     setRecommend(recommendFee);
 
