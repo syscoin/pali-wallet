@@ -1,4 +1,4 @@
-import React, { FC, useCallback, Fragment } from 'react';
+import React, { FC, useCallback, Fragment, useEffect } from 'react';
 import { IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { ellipsis, formatCurrency, formatDate } from 'utils/index';
@@ -18,37 +18,45 @@ export const PanelList: FC<IPanelList> = ({
 }) => {
   const { navigate } = useUtils();
 
+  const getTxType = (tx: any) => {
+    if (isSyscoinChain) {
+      if (tx.tokenType === 'SPTAssetActivate') {
+        return 'SPT creation';
+      }
+
+      if (tx.tokenType === 'SPTAssetSend') {
+        return 'SPT mint';
+      }
+
+      if (tx.tokenType === 'SPTAssetUpdate') {
+        return 'SPT update';
+      }
+
+      return 'Transaction';
+    }
+
+    return `Type: ${tx.type}`;
+  };
+
+  const txid = isSyscoinChain ? 'txid' : 'hash';
+  const blocktime = isSyscoinChain ? 'blockTime' : 'timestamp';
+  const transactions = isSyscoinChain ? data : data.slice(0).reverse();
+
   const isShowedGroupBar = useCallback(
     (tx: any, idx: number) =>
       idx === 0 ||
-      new Date(tx.blockTime * 1e3).toDateString() !==
-        new Date(data[idx - 1].blockTime * 1e3).toDateString(),
-    [data]
+      new Date(tx[blocktime] * 1e3).toDateString() !==
+        new Date(transactions[idx - 1][blocktime] * 1e3).toDateString(),
+    [transactions]
   );
-
-  const getTxType = (tx: any) => {
-    if (tx.tokenType === 'SPTAssetActivate') {
-      return 'SPT creation';
-    }
-
-    if (tx.tokenType === 'SPTAssetSend') {
-      return 'SPT mint';
-    }
-
-    if (tx.tokenType === 'SPTAssetUpdate') {
-      return 'SPT update';
-    }
-
-    return 'Transaction';
-  };
 
   return (
     <>
       {activity && (
         <ul className="pb-24 md:pb-8">
-          {data.map((tx: any, idx: number) => {
+          {transactions.map((tx: any, idx: number) => {
             const isConfirmed = tx.confirmations > 0;
-            const timestamp = new Date(tx.blockTime * 1000).toLocaleTimeString(
+            const timestamp = new Date(tx[blocktime] * 1000).toLocaleTimeString(
               navigator.language,
               {
                 hour: '2-digit',
@@ -57,17 +65,17 @@ export const PanelList: FC<IPanelList> = ({
             );
 
             return (
-              <Fragment key={tx.txid}>
+              <Fragment key={tx[txid]}>
                 {isShowedGroupBar(tx, idx) && (
                   <li className="my-3 text-center text-sm bg-bkg-1">
-                    {formatDate(new Date(tx.blockTime * 1000).toDateString())}
+                    {formatDate(new Date(tx[blocktime] * 1000).toDateString())}
                   </li>
                 )}
 
                 <li className="py-2 border-b border-dashed border-dashed-dark">
-                  <div className="relative flex grid grid-cols-2 text-xs">
+                  <div className="relative grid grid-cols-2 text-xs">
                     <div>
-                      <p>{ellipsis(String(tx.txid), 4, 14)}</p>
+                      <p>{ellipsis(tx[txid], 4, 14)}</p>
 
                       <p
                         className={

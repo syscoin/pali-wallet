@@ -12,14 +12,18 @@ import { IVaultState } from './types';
 export const initialState: IVaultState = {
   lastLogin: 0,
   accounts: {},
-  activeAccount: initialActiveAccountState,
+  activeAccount: {
+    ...initialActiveAccountState,
+    transactions: [],
+    assets: [],
+  },
   activeNetwork: {
     chainId: 57,
     url: 'https://blockbook.elint.services/',
     label: 'Syscoin Mainnet',
     default: true,
     isTestnet: false,
-    currency: 'SYS',
+    currency: 'sys',
   },
   isPendingBalances: false,
   timer: 5,
