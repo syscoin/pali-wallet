@@ -24,7 +24,7 @@ const AccountMenu: React.FC = () => {
   }, [controller.wallet.isUnlocked()]);
 
   const handleLogout = () => {
-    wallet.logout();
+    wallet.lock();
 
     navigate('/');
   };
