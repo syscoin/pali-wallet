@@ -8,13 +8,14 @@ import {
   INetwork,
   isValidEthereumAddress,
   isValidSYSAddress,
+  getTokenJson,
+  importWeb3Token,
 } from '@pollum-io/sysweb3-utils';
 import { AxiosResponse } from 'axios';
 
 const CoinGecko = require('coingecko-api');
 
 export const CoinGeckoClient = new CoinGecko();
-
 export type CoingeckoCoins = {
   id: string;
   large: string;
@@ -23,6 +24,14 @@ export type CoingeckoCoins = {
   symbol: string;
   thumb: string;
 };
+export interface EthTokenDetails {
+  contract: string;
+  decimals: number;
+  description: string;
+  id: string;
+  name: string;
+  symbol: string;
+}
 
 export interface IControllerUtils {
   appRoute: (newRoute?: string) => string;
@@ -38,6 +47,15 @@ export interface IControllerUtils {
       any
     >
   >;
+  getTokenJson: () => {
+    address: string;
+    chainId: number;
+    decimals: number;
+    logoURI: string;
+    name: string;
+    symbol: string;
+  }[];
+  importToken: (contractAddress: string) => Promise<EthTokenDetails>;
   isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
   isValidSYSAddress: (
     address: string,
@@ -98,6 +116,9 @@ const ControllerUtils = (): IControllerUtils => {
     }
   };
 
+  const importToken = async (contractAddress: string) =>
+    await importWeb3Token(contractAddress);
+
   const getSearch = async (query: string): Promise<any> =>
     getCoingeckoSearch(query);
 
@@ -105,9 +126,11 @@ const ControllerUtils = (): IControllerUtils => {
     appRoute,
     updateFiat,
     updateFiatCurrencyForWallet,
+    importToken,
     getSearch,
     isValidEthereumAddress,
     isValidSYSAddress,
+    getTokenJson,
   };
 };
 

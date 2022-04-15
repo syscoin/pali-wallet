@@ -1,4 +1,5 @@
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
+import { IToken } from 'pages/Tokens';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -10,6 +11,7 @@ import {
   setActiveNetwork as setNetwork,
   setActiveAccountProperty,
   setIsPendingBalances,
+  setWeb3Assets,
 } from 'state/vault';
 import { IKeyringAccount } from 'state/vault/types';
 
@@ -61,7 +63,9 @@ const MainController = () => {
 
     store.dispatch(setLastLogin());
   };
-
+  const importWeb3Tokens = (filterArr: IToken[], index: number) => {
+    store.dispatch(setWeb3Assets(filterArr[index]));
+  };
   const createAccount = async (label?: string) => {
     const newAccount = await addAccount(label);
 
@@ -124,6 +128,7 @@ const MainController = () => {
 
   return {
     createWallet,
+    importWeb3Tokens,
     forgetWallet,
     unlock,
     lock,

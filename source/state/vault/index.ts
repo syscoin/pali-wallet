@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { INetwork, initialNetworksState } from '@pollum-io/sysweb3-utils';
+import { IToken } from 'pages/Tokens';
 
 import trustedApps from './trustedApps.json';
 import { IKeyringAccount, IVaultState } from './types';
@@ -87,6 +88,12 @@ const VaultState = createSlice({
     setLastLogin(state: IVaultState) {
       state.lastLogin = Date.now();
     },
+    setWeb3Assets(state: IVaultState, action: PayloadAction<IToken>) {
+      state.activeAccount = {
+        ...state.activeAccount,
+        assets: [...state.activeAccount.assets, action.payload],
+      };
+    },
     setActiveAccount(
       state: IVaultState,
       action: PayloadAction<IKeyringAccount>
@@ -153,6 +160,7 @@ export const {
   setLastLogin,
   setNetworks,
   setTimer,
+  setWeb3Assets,
   setEncryptedMnemonic,
   forgetWallet,
   removeAccount,
