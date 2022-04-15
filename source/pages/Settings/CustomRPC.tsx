@@ -23,7 +23,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
       const { chain } = response.data.backend;
 
       if (response && coin) {
-        controller.wallet.account.updateNetworkData({
+        controller.wallet.account.sys.updateNetworkData({
           id: selectedToEdit
             ? selectedToEdit.id
             : coin.toString().toLowerCase(),

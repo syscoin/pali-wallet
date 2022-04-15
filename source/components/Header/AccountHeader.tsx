@@ -13,7 +13,7 @@ const AccountMenu: React.FC = () => {
 
   const setActiveAccount = (id: number) => {
     wallet.setAccount(Number(id));
-    wallet.account.watchMemPool(accounts[Number(id)]);
+    wallet.account.sys.watchMemPool(accounts[Number(id)]);
   };
 
   const controller = getController();

@@ -1,4 +1,5 @@
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
+import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -11,7 +12,6 @@ import {
   setActiveAccountProperty,
   setIsPendingBalances,
 } from 'state/vault';
-import { IKeyringAccount } from 'state/vault/types';
 
 import WalletController from './account';
 
@@ -35,16 +35,16 @@ const MainController = () => {
   };
 
   const unlock = async (pwd: string): Promise<void> => {
-    const vault = (await keyringManager.login(pwd)) as IKeyringAccount;
+    const vault = (await keyringManager.login(pwd)) as IKeyringAccountState;
 
     store.dispatch(setLastLogin());
     store.dispatch(setActiveAccount(vault));
   };
 
-  const createWallet = async (): Promise<IKeyringAccount> => {
+  const createWallet = async (): Promise<IKeyringAccountState> => {
     console.log('[main controller] calling keyring manager create vault');
     const account =
-      (await keyringManager.createKeyringVault()) as IKeyringAccount;
+      (await keyringManager.createKeyringVault()) as IKeyringAccountState;
 
     store.dispatch(addAccountToStore(account));
     store.dispatch(setEncryptedMnemonic(keyringManager.getEncryptedMnemonic()));
@@ -92,7 +92,7 @@ const MainController = () => {
     /** this method sets new signers for syscoin when changing networks */
     const account = (await keyringManager.setActiveNetworkForSigner(
       network
-    )) as IKeyringAccount;
+    )) as IKeyringAccountState;
 
     /** directly set new keys for the current chain and update state if the active account is the first one */
     store.dispatch(

@@ -41,7 +41,7 @@ const TrezorController = () => {
   const forgetHardware = () => {};
 
   return {
-    tx: isSyscoinNetwork ? trezor.tx : Web3Accounts(),
+    tx: isSyscoinNetwork ? trezor : Web3Accounts(),
     connectHardware,
     forgetHardware,
   };

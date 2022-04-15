@@ -17,20 +17,25 @@ export const SendEth = () => {
   const { alert, navigate } = useUtils();
   const { fiat, activeAccount } = useStore();
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
-  const [recommend, setRecommend] = useState(0.00001);
+  const [recommendedGasPrice, setRecommendedGasPrice] = useState(0);
+  const [recommendedGasLimit, setRecommendedGasLimit] = useState(0);
   const [form] = Form.useForm();
 
-  const handleGetFee = useCallback(async () => {
-    const recommendFee = await controller.wallet.account.tx.getRecommendedFee();
+  const getRecomendedFees = useCallback(async () => {
+    console.log('txs', controller.wallet);
+    const gasPrice =
+      await controller.wallet.account.eth.tx.getRecommendedGasPrice(false);
+    const gasLimit = await controller.wallet.account.eth.tx.getGasLimit();
 
-    setRecommend(recommendFee);
+    setRecommendedGasPrice(gasPrice);
+    setRecommendedGasLimit(gasLimit);
 
-    form.setFieldsValue({ fee: recommendFee });
+    form.setFieldsValue({ baseFee: recommendedGasPrice, gasLimit, gasPrice });
   }, [controller.wallet.account, form]);
 
   useEffect(() => {
-    handleGetFee();
-  }, [handleGetFee]);
+    getRecomendedFees();
+  }, [getRecomendedFees]);
 
   const hasAccountAssets = activeAccount && activeAccount.assets.length > 0;
 
@@ -50,11 +55,21 @@ export const SendEth = () => {
     }
   };
 
-  const nextStep = () => {
+  const nextStep = ({ receiver, amount, gasPrice, gasLimit }: any) => {
     try {
-      // todo: use temp tx
-
-      navigate('/send/confirm');
+      navigate('/send/confirm', {
+        state: {
+          tx: {
+            sender: activeAccount.address,
+            senderXprv: activeAccount.xprv,
+            receivingAddress: receiver,
+            amount,
+            gasPrice,
+            gasLimit,
+            // tokenContract
+          },
+        },
+      });
     } catch (error) {
       alert.removeAll();
       alert.error('An internal error has occurred.');
@@ -79,7 +94,9 @@ export const SendEth = () => {
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         initialValues={{
-          fee: recommend,
+          baseFee: recommendedGasPrice,
+          gasLimit: recommendedGasLimit,
+          gasPrice: recommendedGasPrice,
         }}
         onFinish={nextStep}
         autoComplete="off"
@@ -112,63 +129,6 @@ export const SendEth = () => {
           />
         </Form.Item>
 
-        {/* <div className="flex items-center justify-center md:w-full md:max-w-md">
-          <Form.Item
-            name="asset"
-            className=""
-            rules={[
-              {
-                required: false,
-                message: '',
-              },
-            ]}
-          >
-            <Menu as="div" className="relative inline-block text-left">
-              <Menu.Button
-                disabled={!hasAccountAssets}
-                className="inline-flex justify-start p-3 w-72 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
-              >
-                {selectedAsset?.symbol
-                  ? formatUrl(String(selectedAsset?.symbol), 2)
-                  : 'SYS'}
-                <ChevronDoubleDownIcon
-                  className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
-                  aria-hidden="true"
-                />
-              </Menu.Button>
-
-              <Transition
-                as={Fragment}
-                enter="transition ease-out duration-100"
-                enterFrom="transform opacity-0 scale-95"
-                enterTo="transform opacity-100 scale-100"
-                leave="transition ease-in duration-75"
-                leaveFrom="transform opacity-100 scale-100"
-                leaveTo="transform opacity-0 scale-95"
-              >
-                {hasAccountAssets && (
-                  <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
-                    {activeAccount &&
-                      activeAccount.assets.map((item) => (
-                        <Menu.Item>
-                          <button
-                            onClick={() => handleSelectedAsset(item.assetGuid)}
-                            className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                          >
-                            <p>{item.symbol}</p>
-                            <small>
-                              {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
-                            </small>
-                          </button>
-                        </Menu.Item>
-                      ))}
-                  </Menu.Items>
-                )}
-              </Transition>
-            </Menu>
-          </Form.Item>
-        </div> */}
-
         <div className="flex items-center justify-center md:w-full md:max-w-md">
           {hasAccountAssets && (
             <Form.Item
@@ -188,7 +148,7 @@ export const SendEth = () => {
                 >
                   {selectedAsset?.symbol
                     ? formatUrl(String(selectedAsset?.symbol), 2)
-                    : 'SYS'}
+                    : 'eth'}
                   <ChevronDoubleDownIcon
                     className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
                     aria-hidden="true"
@@ -235,7 +195,7 @@ export const SendEth = () => {
             } flex gap-x-0.5 items-center justify-center md:w-full`}
           >
             <Form.Item
-              name="gas-price"
+              name="gasPrice"
               className="flex-1 w-32 text-center bg-fields-input-primary rounded-l-full md:w-full"
               rules={[
                 {
@@ -252,7 +212,7 @@ export const SendEth = () => {
             </Form.Item>
 
             <Form.Item
-              name="gas-limit"
+              name="gasLimit"
               className="flex-1 w-32 text-center bg-fields-input-primary rounded-r-full"
               rules={[
                 {
@@ -303,7 +263,7 @@ export const SendEth = () => {
 
         <div className="flex gap-x-0.5 items-center justify-center mx-2 md:w-full md:max-w-md">
           <Form.Item
-            name="recommend"
+            name="edit"
             className="w-12 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full opacity-70 cursor-pointer"
             rules={[
               {
@@ -324,7 +284,7 @@ export const SendEth = () => {
           </Form.Item>
 
           <Form.Item
-            name="fee"
+            name="baseFee"
             className="md:w-full"
             hasFeedback
             rules={[
@@ -334,14 +294,14 @@ export const SendEth = () => {
               },
             ]}
           >
-            <Tooltip content="Network fee">
+            <Tooltip content="Recommended network base fee">
               <Input
                 disabled
                 className="pl-4 pr-8 py-3 w-60 text-brand-white text-sm bg-fields-input-primary border border-fields-input-border rounded-r-full outline-none opacity-50 cursor-not-allowed md:w-full"
-                id="fee-input"
+                id="baseFee-input"
                 type="number"
-                placeholder="Fee network"
-                value={recommend}
+                placeholder="Base fee"
+                value={recommendedGasPrice}
               />
             </Tooltip>
           </Form.Item>
@@ -352,13 +312,6 @@ export const SendEth = () => {
 
           <span className="mt-0.5 text-brand-white font-rubik text-xs">
             {'≈ '}
-            {selectedAsset
-              ? getFiatAmount(
-                  Number(recommend) + Number(recommend),
-                  6,
-                  String(fiat.current)
-                )
-              : getFiatAmount(Number(recommend), 6, String(fiat.current))}
           </span>
         </p>
 
