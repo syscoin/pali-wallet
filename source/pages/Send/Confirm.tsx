@@ -25,7 +25,7 @@ export const SendConfirm = () => {
   const handleConfirm = async () => {
     console.log('tx by location', tx);
     const recommendedFee =
-      await controller.wallet.account.tx.getRecommendedFee();
+      await controller.wallet.account.sys.tx.getRecommendedFee();
 
     console.log('recommended fee', recommendedFee);
 
@@ -51,7 +51,7 @@ export const SendConfirm = () => {
             },
           ];
 
-          return controller.wallet.account.trezor.confirmNativeTokenSend({
+          return controller.wallet.account.sys.trezor.confirmNativeTokenSend({
             txOptions: { rbf: true },
             outputs,
             feeRate,
@@ -60,7 +60,11 @@ export const SendConfirm = () => {
 
         console.log('calling send tempTx', tempTx);
 
-        const response = await controller.wallet.account.tx.sendTransaction(tx);
+        // fromAddress, fromPrivateKey, toAddress, value, gasPrice, gasLimit
+
+        const response = await controller.wallet.account.eth.tx.sendTransaction(
+          tx
+        );
 
         console.log('calling send response', response);
 
@@ -69,7 +73,7 @@ export const SendConfirm = () => {
 
       console.log('calling send tx eth');
 
-      const ethTx = await controller.wallet.account.sendTransaction(
+      const ethTx = await controller.wallet.account.sys.tx.sendTransaction(
         tempTx.sender,
         activeAccount.xprv,
         tempTx.receivingAddress,

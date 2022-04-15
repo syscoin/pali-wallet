@@ -5,8 +5,7 @@ import {
   setIsPendingBalances,
 } from 'state/vault';
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
-import { IKeyringAccount } from 'state/vault/types';
-import { validateToken } from '@pollum-io/sysweb3-utils';
+import { validateToken, IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 
 import SysTrezorController from '../trezor/syscoin';
 import { SysTransactionController } from '../transaction';
@@ -38,7 +37,7 @@ const SysAccountController = () => {
   /** check if there is no pending transaction in mempool
    *  and get the latest update for account
    */
-  const watchMemPool = (currentAccount: IKeyringAccount | undefined) => {
+  const watchMemPool = (currentAccount: IKeyringAccountState | undefined) => {
     // 30 seconds - 3000 milliseconds
     const interval = 30 * 1000;
 
