@@ -24,7 +24,6 @@ export const SendEth = () => {
   const [form] = Form.useForm();
 
   const getRecomendedFees = useCallback(async () => {
-    console.log('txs', controller.wallet);
     const gasPrice =
       await controller.wallet.account.eth.tx.getRecommendedGasPrice(false);
     const gasLimit = await controller.wallet.account.eth.tx.getGasLimit();
@@ -57,7 +56,7 @@ export const SendEth = () => {
     }
   };
 
-  const nextStep = ({ receiver, amount, gasPrice, gasLimit }: any) => {
+  const nextStep = ({ receiver, amount, gasPrice, gasLimit, baseFee }: any) => {
     try {
       navigate('/send/confirm', {
         state: {
@@ -68,6 +67,7 @@ export const SendEth = () => {
             amount,
             gasPrice,
             gasLimit,
+            fee: baseFee,
             // tokenContract
           },
         },
@@ -81,7 +81,11 @@ export const SendEth = () => {
   return (
     <>
       {editGas ? (
-        <EditGasFee setGasFee={setRecommendedGasPrice} setEdit={setEditGas} />
+        <EditGasFee
+          setGasFee={setRecommendedGasPrice}
+          setEdit={setEditGas}
+          form={form}
+        />
       ) : (
         <div className="mt-4">
           <p className="flex flex-col items-center justify-center text-center font-rubik">

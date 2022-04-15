@@ -4,9 +4,10 @@ import low from 'assets/images/low.png';
 import high from 'assets/images/high.png';
 import { getController } from 'utils/browser';
 
-export const EditGasFee: FC<{ setEdit: any; setGasFee: any }> = ({
+export const EditGasFee: FC<{ form: any; setEdit: any; setGasFee: any }> = ({
   setGasFee,
   setEdit,
+  form,
 }) => {
   const controller = getController();
 
@@ -24,7 +25,12 @@ export const EditGasFee: FC<{ setEdit: any; setGasFee: any }> = ({
     setFastGasPrice(FastGasPrice);
     setSafeGasPrice(SafeGasPrice);
     setProposedGasPrice(ProposeGasPrice);
-    setGasFee(await controller.wallet.account.eth.tx.getFeeByType(feeType));
+
+    const gasFee = await controller.wallet.account.eth.tx.getFeeByType(feeType);
+
+    setGasFee(gasFee);
+
+    form.setFieldsValue({ gasPrice: gasFee });
   }, [controller.wallet.account, feeType]);
 
   useEffect(() => {
