@@ -35,10 +35,13 @@ const MainController = () => {
   };
 
   const unlock = async (pwd: string): Promise<void> => {
-    const vault = (await keyringManager.login(pwd)) as IKeyringAccount;
+    const seedByPassword = await keyringManager.getSeed(pwd);
 
-    store.dispatch(setLastLogin());
-    store.dispatch(setActiveAccount(vault));
+    if (seedByPassword) {
+      const account = (await keyringManager.login(pwd)) as IKeyringAccount;
+      store.dispatch(setLastLogin());
+      store.dispatch(setActiveAccount(account));
+    }
   };
 
   const createWallet = async (): Promise<IKeyringAccount> => {
