@@ -59,9 +59,7 @@ export const SendConfirm = () => {
           return response;
         }
 
-        const ethTx = await controller.wallet.account.eth.tx.sendTransaction(
-          tx
-        );
+        await controller.wallet.account.eth.tx.sendTransaction(tx);
 
         setConfirmed(true);
         setLoading(false);
