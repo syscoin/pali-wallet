@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect, Fragment, useCallback } from 'react';
-import { usePrice, useStore, useUtils } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { Menu, Transition } from '@headlessui/react';
 import { SecondaryButton, Tooltip, Icon } from 'components/index';
@@ -11,11 +11,11 @@ import { getController } from 'utils/browser';
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
 export const SendEth = () => {
-  const { getFiatAmount } = usePrice();
+  // const { getFiatAmount } = usePrice();
   const controller = getController();
 
   const { alert, navigate } = useUtils();
-  const { fiat, activeAccount } = useStore();
+  const { activeAccount } = useStore();
   const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
   const [recommendedGasPrice, setRecommendedGasPrice] = useState(0);
   const [recommendedGasLimit, setRecommendedGasLimit] = useState(0);
