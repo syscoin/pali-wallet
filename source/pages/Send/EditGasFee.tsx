@@ -1,5 +1,5 @@
 import React, { FC, useCallback, useState, useEffect } from 'react';
-import { Layout, SecondaryButton, Tooltip, Icon } from 'components/index';
+import { SecondaryButton, Tooltip, Icon } from 'components/index';
 import low from 'assets/images/low.png';
 import high from 'assets/images/high.png';
 import { getController } from 'utils/browser';

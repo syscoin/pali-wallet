@@ -197,7 +197,7 @@ export const SendEth = () => {
                 </Form.Item>
               )}
 
-              <div className="flex w-full w-full">
+              <div className="flex w-full">
                 <label className="flex-1 mr-6 text-xs" htmlFor="gasPrice">
                   Gas Price (GWEI)
                 </label>
