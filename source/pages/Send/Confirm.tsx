@@ -18,14 +18,9 @@ export const SendConfirm = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
-  const tempTx = tx;
-
   const isSyscoinChain = networks.syscoin[activeNetwork.chainId];
 
   const handleConfirm = async () => {
-    const recommendedFee =
-      await controller.wallet.account.sys.tx.getRecommendedFee();
-
     const balance = isSyscoinChain
       ? activeAccount.balances.syscoin
       : activeAccount.balances.ethereum;
@@ -36,12 +31,12 @@ export const SendConfirm = () => {
       try {
         if (isSyscoinChain) {
           if (activeAccount.isTrezorWallet) {
-            const value = new sys.utils.BN(tempTx.amount * 1e8);
-            const feeRate = new sys.utils.BN(tempTx.fee * 1e8);
+            const value = new sys.utils.BN(tx.amount * 1e8);
+            const feeRate = new sys.utils.BN(tx.fee * 1e8);
 
             const outputs = [
               {
-                address: tempTx.receiver,
+                address: tx.receiver,
                 value,
               },
             ];
@@ -53,8 +48,13 @@ export const SendConfirm = () => {
             });
           }
 
+          console.log('sys tx', tx);
+
           const response =
             await controller.wallet.account.sys.tx.sendTransaction(tx);
+
+          setConfirmed(true);
+          setLoading(false);
 
           return response;
         }
@@ -67,7 +67,7 @@ export const SendConfirm = () => {
         logError('error', 'Transaction', error);
 
         if (activeAccount) {
-          if (error && tempTx.fee > recommendedFee) {
+          if (error && tx.fee > 0.00001) {
             alert.removeAll();
             alert.error(
               `${formatUrl(
@@ -77,10 +77,10 @@ export const SendConfirm = () => {
             );
           }
 
-          if (isSyscoinChain && error && tempTx.fee <= recommendedFee) {
-            const max = (100 * tempTx.amount) / activeAccount?.balances.syscoin;
+          if (isSyscoinChain && error && tx.fee <= 0.00001) {
+            const max = (100 * tx.amount) / activeAccount?.balances.syscoin;
 
-            if (tempTx.amount >= (max * tempTx.amount) / 100) {
+            if (tx.amount >= (max * tx.amount) / 100) {
               alert.removeAll();
               alert.error(error.message);
 
@@ -107,42 +107,40 @@ export const SendConfirm = () => {
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => navigate('/home')}
       />
-      {tempTx && (
+      {tx && (
         <div className="flex flex-col items-center justify-center mt-4 w-full">
           <p className="flex flex-col items-center justify-center text-center font-rubik">
             <span className="text-brand-royalblue font-poppins font-thin">
               Send
             </span>
-            {tempTx.amount}
-            {tempTx.token
-              ? tempTx.token.symbol
-              : activeNetwork.currency?.toUpperCase()}
+            {tx.amount}
+            {tx.token ? tx.token.symbol : activeNetwork.currency?.toUpperCase()}
           </p>
 
           <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
             <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               From
               <span className="text-brand-white">
-                {ellipsis(tempTx.sender, 7, 15)}
+                {ellipsis(tx.sender, 7, 15)}
               </span>
             </p>
 
             <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               To
               <span className="text-brand-white">
-                {ellipsis(tempTx.receivingAddress, 7, 15)}
+                {ellipsis(tx.receivingAddress, 7, 15)}
               </span>
             </p>
 
             <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               Fee
-              <span className="text-brand-white">{tempTx.fee}</span>
+              <span className="text-brand-white">{tx.fee}</span>
             </p>
 
             <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               Max total
               <span className="text-brand-white">
-                {Number(tempTx.fee) + Number(tempTx.amount)}
+                {Number(tx.fee) + Number(tx.amount)}
                 SYS
               </span>
             </p>
