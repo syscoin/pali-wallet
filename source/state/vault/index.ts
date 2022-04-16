@@ -1,6 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { INetwork, initialNetworksState } from '@pollum-io/sysweb3-utils';
-import { IToken } from 'pages/Tokens';
+import { IToken } from 'types/transactions';
 
 import trustedApps from './trustedApps.json';
 import { IKeyringAccount, IVaultState } from './types';

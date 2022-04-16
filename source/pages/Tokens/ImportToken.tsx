@@ -19,7 +19,6 @@ export const ImportToken: FC = () => {
   const [copied, copy] = useCopyClipboard();
   const [filteredSearch, setFilteredSearch] = useState<IToken[]>([]);
   const [selected, setSelected] = useState<IToken | any>(null);
-  const [edited, setEdited] = useState<boolean>(false);
   const { activeNetwork } = useStore();
 
   const handleSearch = async (query: string) => {
