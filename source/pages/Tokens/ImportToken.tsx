@@ -11,9 +11,6 @@ import {
 } from 'components/index';
 import { formatUrl, ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
-import placeholder from 'assets/images/placeholder.png';
-// import { CoingeckoCoins } from 'scripts/Background/controllers/ControllerUtils';
-import { useStore } from 'hooks/useStore';
 import { IToken } from 'types/transactions';
 import { CoingeckoCoins } from 'scripts/Background/controllers/ControllerUtils';
 

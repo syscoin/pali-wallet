@@ -7,7 +7,6 @@ import {
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 import { IKeyringAccount } from 'state/vault/types';
 import { validateToken } from '@pollum-io/sysweb3-utils';
-import { IToken } from 'types/transactions';
 
 import SysTrezorController from '../trezor/syscoin';
 import { SysTransactionController } from '../transaction';
@@ -78,7 +77,7 @@ const SysAccountController = () => {
     console.log('saving token info', token);
 
     try {
-      const validToken = await validateToken(token.contract_address);
+      const validToken = await validateToken(String(token.contract_address));
 
       console.log('token is valid', validToken);
 
