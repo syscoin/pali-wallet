@@ -1,36 +1,32 @@
 import * as React from 'react';
-import { useState, FC } from 'react';
+import { useState, FC, useEffect } from 'react';
 import { useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
-import { SecondaryButton, Layout } from 'components/index';
-import { formatUrl } from 'utils/index';
+import { SecondaryButton, Layout, Icon } from 'components/index';
+import { formatUrl, ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
+import placeholder from 'assets/images/placeholder.png';
 // import { CoingeckoCoins } from 'scripts/Background/controllers/ControllerUtils';
 import { useStore } from 'hooks/useStore';
-
-export interface IToken {
-  address: string;
-  chainId: number;
-  decimals: number;
-  logoURI: string;
-  name: string;
-  symbol: string;
-}
+import { IToken } from 'types/transactions';
 
 export const ImportToken: FC = () => {
   const controller = getController();
 
   const [form] = Form.useForm();
-  const { navigate } = useUtils();
+  const { navigate, alert, useCopyClipboard } = useUtils();
 
+  const [copied, copy] = useCopyClipboard();
   const [filteredSearch, setFilteredSearch] = useState<IToken[]>([]);
-  const [selected, setSelected] = useState<any>('');
-  // const [isSelected, setIsSelected] = useState<boolean>(false);
-  const [input, setInput] = useState<string>('');
+  const [selected, setSelected] = useState<IToken | any>(null);
+  const [edited, setEdited] = useState<boolean>(false);
   const { activeNetwork } = useStore();
 
   const handleSearch = async (query: string) => {
+    setSelected(null);
+
     const coins = await controller.utils.getTokenJson();
+
     let newList: any[] = [];
 
     if (query) {
@@ -38,7 +34,9 @@ export const ImportToken: FC = () => {
         const name = item.symbol.toLowerCase();
         const chain = item.chainId === activeNetwork.chainId;
         const typedValue = query.toLowerCase();
+
         const validate = !!(name.includes(typedValue) && chain);
+
         return validate;
       });
 
@@ -48,14 +46,22 @@ export const ImportToken: FC = () => {
     }
 
     setFilteredSearch(coins);
-    console.log(filteredSearch);
   };
 
-  const addTokens = (filterArr: IToken[], index: number) => {
-    controller.wallet.importWeb3Tokens(filterArr, index);
-    console.log(filteredSearch[index]);
-    navigate('/home');
+  const addToken = (token: IToken) => {
+    controller.wallet.account.saveTokenInfo(token);
+
+    alert.removeAll();
+    alert.success(`${token.symbol} successfully added to your assets list.`);
   };
+
+  useEffect(() => {
+    if (!copied) return;
+
+    alert.removeAll();
+    alert.success('Token address successfully copied');
+  }, [copied]);
+
   return (
     <Layout title="IMPORT TOKEN">
       <Form
@@ -63,7 +69,6 @@ export const ImportToken: FC = () => {
         id="send-form"
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
-        onFinish={() => handleSearch(input)}
         autoComplete="off"
         className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
       >
@@ -82,7 +87,7 @@ export const ImportToken: FC = () => {
             type="text"
             placeholder="Search by symbol"
             className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(event) => handleSearch(event.target.value)}
           />
         </Form.Item>
       </Form>
@@ -90,29 +95,61 @@ export const ImportToken: FC = () => {
       <div className="flex flex-col items-center justify-center w-full">
         <ul className="scrollbar-styled my-1 p-4 w-full h-72 overflow-auto">
           {filteredSearch &&
+            !selected &&
             filteredSearch.map((token: any, index) => (
               <li
-                onClick={() => {
-                  setSelected(token.symbol);
-                  const element = document.getElementsByTagName('li');
-                  handleSearch(input);
-                  if (element) {
-                    element[index].className += ' text-brand-royalblue';
-                  }
-                  console.log(selected);
-                  addTokens(filteredSearch, index);
-                }}
+                onClick={() => setSelected(token)}
                 key={index}
-                className="my-2 py-2 w-full text-xs border-b border-dashed cursor-pointer"
+                className={`${
+                  selected && selected.address === token.address
+                    ? 'text-brand-royalblue'
+                    : 'text-brand-white'
+                } p-2 hover:text-brand-royalblue text-xs border-b border-dashed cursor-pointer`}
               >
                 <p>{formatUrl(token.symbol, 40)}</p>
               </li>
             ))}
+
+          {selected && (
+            <div className="flex flex-col gap-y-4 my-6 p-4 pr-28 max-w-sm text-sm bg-bkg-3 border border-brand-royalblue rounded-lg">
+              <div className="flex gap-y-4 items-center justify-start w-full">
+                <img
+                  className="w-8 h-8 rounded-md"
+                  src={selected.logoURI ? selected.logoURI : placeholder}
+                  alt="Token logo"
+                />
+
+                <p className="mx-2 font-rubik text-2xl font-bold">
+                  {selected.symbol}
+                </p>
+              </div>
+
+              <div
+                onClick={() => copy(selected.address)}
+                className="flex gap-x-0.5 items-center justify-center hover:text-brand-royalblue text-brand-white"
+              >
+                <p className="cursor-pointer">
+                  Address: {ellipsis(selected.address)}
+                </p>
+
+                <Icon name="copy" className="mb-1.5" />
+              </div>
+
+              <p>Name: {formatUrl(selected.name)}</p>
+
+              <p>Chain ID: {selected.chainId}</p>
+            </div>
+          )}
         </ul>
 
         <div className="absolute bottom-12 md:static">
-          <SecondaryButton type="button" onClick={() => handleSearch(input)}>
-            Search
+          <SecondaryButton
+            type="button"
+            onClick={
+              selected ? () => addToken(selected) : () => navigate('/home')
+            }
+          >
+            {selected ? 'Import' : 'Done'}
           </SecondaryButton>
         </div>
       </div>
