@@ -1,4 +1,4 @@
-import React, { FC, useCallback, Fragment, useEffect } from 'react';
+import React, { FC, useCallback, Fragment } from 'react';
 import { IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { ellipsis, formatCurrency, formatDate } from 'utils/index';
