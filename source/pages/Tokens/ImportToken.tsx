@@ -2,13 +2,20 @@ import * as React from 'react';
 import { useState, FC, useEffect } from 'react';
 import { useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
-import { SecondaryButton, Layout, Icon } from 'components/index';
+import {
+  SecondaryButton,
+  Layout,
+  Icon,
+  Loading,
+  Tooltip,
+} from 'components/index';
 import { formatUrl, ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 import placeholder from 'assets/images/placeholder.png';
 // import { CoingeckoCoins } from 'scripts/Background/controllers/ControllerUtils';
 import { useStore } from 'hooks/useStore';
 import { IToken } from 'types/transactions';
+import { CoingeckoCoins } from 'scripts/Background/controllers/ControllerUtils';
 
 export const ImportToken: FC = () => {
   const controller = getController();
@@ -17,41 +24,53 @@ export const ImportToken: FC = () => {
   const { navigate, alert, useCopyClipboard } = useUtils();
 
   const [copied, copy] = useCopyClipboard();
-  const [filteredSearch, setFilteredSearch] = useState<IToken[]>([]);
-  const [selected, setSelected] = useState<IToken | any>(null);
-  const { activeNetwork } = useStore();
+  const [filteredSearch, setFilteredSearch] = useState<CoingeckoCoins[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [selected, setSelected] = useState<CoingeckoCoins | any>(null);
 
   const handleSearch = async (query: string) => {
     setSelected(null);
 
-    const coins = await controller.utils.getTokenJson();
+    const {
+      data: { coins },
+    } = await controller.utils.getSearch(query);
 
-    let newList: any[] = [];
+    let newList: CoingeckoCoins[] = [];
 
     if (query) {
-      newList = coins.filter((item) => {
+      newList = coins.filter(async (item) => {
         const name = item.symbol.toLowerCase();
-        const chain = item.chainId === activeNetwork.chainId;
         const typedValue = query.toLowerCase();
 
-        const validate = !!(name.includes(typedValue) && chain);
+        const { data } = await controller.utils.getDataForToken(item.id);
+
+        const validate = !!name.includes(typedValue) && data.contract_address;
 
         return validate;
       });
+
+      console.log('validate', newList);
 
       setFilteredSearch(newList);
 
       return;
     }
 
+    console.log('selected', selected);
+
     setFilteredSearch(coins);
   };
 
   const addToken = (token: IToken) => {
-    controller.wallet.account.saveTokenInfo(token);
+    try {
+      controller.wallet.account.saveTokenInfo(token);
 
-    alert.removeAll();
-    alert.success(`${token.symbol} successfully added to your assets list.`);
+      alert.removeAll();
+      alert.success(`${token.symbol} successfully added to your assets list.`);
+    } catch (error) {
+      alert.removeAll();
+      alert.error(`Can't add ${token.symbol} to your wallet. Try again later.`);
+    }
   };
 
   useEffect(() => {
@@ -60,6 +79,20 @@ export const ImportToken: FC = () => {
     alert.removeAll();
     alert.success('Token address successfully copied');
   }, [copied]);
+
+  const handleSelectToken = async (token: CoingeckoCoins) => {
+    setIsLoading(true);
+
+    const { data } = await controller.utils.getDataForToken(token.id);
+
+    setSelected({
+      ...token,
+      contract_address: data.contract_address,
+      description: data.description ? data.description.en : '',
+    });
+
+    setIsLoading(false);
+  };
 
   return (
     <Layout title="IMPORT TOKEN">
@@ -93,65 +126,83 @@ export const ImportToken: FC = () => {
 
       <div className="flex flex-col items-center justify-center w-full">
         <ul className="scrollbar-styled my-1 p-4 w-full h-72 overflow-auto">
-          {filteredSearch &&
+          {filteredSearch ? (
             !selected &&
-            filteredSearch.map((token: any, index) => (
+            filteredSearch.map((token) => (
               <li
-                onClick={() => setSelected(token)}
-                key={index}
+                onClick={() => handleSelectToken(token)}
+                key={token.id}
                 className={`${
-                  selected && selected.address === token.address
+                  selected && selected.id === token.id
                     ? 'text-brand-royalblue'
                     : 'text-brand-white'
                 } p-2 hover:text-brand-royalblue text-xs border-b border-dashed cursor-pointer`}
               >
                 <p>{formatUrl(token.symbol, 40)}</p>
               </li>
-            ))}
+            ))
+          ) : (
+            <li className="p-2 text-brand-royalblue hover:text-brand-royalblue text-xs border-b border-dashed cursor-pointer">
+              <p>{formatUrl(selected.symbol, 40)}</p>
+            </li>
+          )}
 
           {selected && (
-            <div className="flex flex-col gap-y-4 my-6 p-4 pr-28 max-w-sm text-sm bg-bkg-3 border border-brand-royalblue rounded-lg">
-              <div className="flex gap-y-4 items-center justify-start w-full">
-                <img
-                  className="w-8 h-8 rounded-md"
-                  src={selected.logoURI ? selected.logoURI : placeholder}
-                  alt="Token logo"
-                />
+            <div className="flex flex-col gap-y-4 items-start justify-start mx-auto my-6 p-4 max-w-xs text-left text-sm bg-bkg-3 border border-brand-royalblue rounded-lg">
+              <div className="flex gap-x-2 justify-start w-full">
+                <img src={selected.thumb} alt="token thumb" />
 
-                <p className="mx-2 font-rubik text-2xl font-bold">
-                  {selected.symbol}
+                <p className="font-rubik text-2xl font-bold">
+                  {formatUrl(selected.symbol)}
                 </p>
               </div>
 
-              <div
-                onClick={() => copy(selected.address)}
-                className="flex gap-x-0.5 items-center justify-center hover:text-brand-royalblue text-brand-white"
-              >
-                <p className="cursor-pointer">
-                  Address: {ellipsis(selected.address)}
-                </p>
+              {selected.contract_address && (
+                <div
+                  onClick={() => copy(selected.contract_address)}
+                  className="flex gap-x-0.5 items-center justify-center hover:text-brand-royalblue text-brand-white"
+                >
+                  <p className="cursor-pointer">
+                    Address: {ellipsis(selected.contract_address)}
+                  </p>
 
-                <Icon name="copy" className="mb-1.5" />
-              </div>
+                  <Icon name="copy" className="mb-1.5" />
+                </div>
+              )}
 
               <p>Name: {formatUrl(selected.name)}</p>
 
-              <p>Chain ID: {selected.chainId}</p>
+              <p>Market cap rank: {selected.market_cap_rank}</p>
+
+              <p className="max-w-xs break-all text-xs">
+                {formatUrl(selected.description, 140)}
+              </p>
             </div>
           )}
         </ul>
 
         <div className="absolute bottom-12 md:static">
-          <SecondaryButton
-            type="button"
-            onClick={
-              selected ? () => addToken(selected) : () => navigate('/home')
-            }
+          <Tooltip
+            content={`${
+              selected && selected.contract_address
+                ? ''
+                : 'Pali could not find the contract address for this token'
+            }`}
           >
-            {selected ? 'Import' : 'Done'}
-          </SecondaryButton>
+            <SecondaryButton
+              type="button"
+              disabled={selected && !selected.contract_address}
+              onClick={
+                selected ? () => addToken(selected) : () => navigate('/home')
+              }
+            >
+              {selected ? 'Import' : 'Done'}
+            </SecondaryButton>
+          </Tooltip>
         </div>
       </div>
+
+      {isLoading && <Loading opacity={60} />}
     </Layout>
   );
 };

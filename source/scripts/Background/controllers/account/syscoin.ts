@@ -11,6 +11,7 @@ import { IToken } from 'types/transactions';
 
 import SysTrezorController from '../trezor/syscoin';
 import { SysTransactionController } from '../transaction';
+import { CoingeckoCoins } from '../ControllerUtils';
 
 const SysAccountController = () => {
   const keyringManager = KeyringManager();
@@ -71,13 +72,13 @@ const SysAccountController = () => {
     return receivingAddress;
   };
 
-  const saveTokenInfo = async (token: IToken) => {
+  const saveTokenInfo = async (token: CoingeckoCoins) => {
     const { activeAccount } = store.getState().vault;
 
     console.log('saving token info', token);
 
     try {
-      const validToken = await validateToken(token.address);
+      const validToken = await validateToken(token.contract_address);
 
       console.log('token is valid', validToken);
 

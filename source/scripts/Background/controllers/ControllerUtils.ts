@@ -11,12 +11,13 @@ import {
   getTokenJson,
   importWeb3Token,
 } from '@pollum-io/sysweb3-utils';
-import { AxiosResponse } from 'axios';
-
-const CoinGecko = require('coingecko-api');
+import axios, { AxiosResponse } from 'axios';
+import CoinGecko from 'coingecko-api';
 
 export const CoinGeckoClient = new CoinGecko();
+
 export type CoingeckoCoins = {
+  contract_address?: string;
   id: string;
   large: string;
   market_cap_rank: number;
@@ -24,6 +25,7 @@ export type CoingeckoCoins = {
   symbol: string;
   thumb: string;
 };
+
 export interface EthTokenDetails {
   contract: string;
   decimals: number;
@@ -66,7 +68,7 @@ export interface IControllerUtils {
   updateFiatCurrencyForWallet: (chosenCurrency: string) => any;
 }
 
-const ControllerUtils = (): IControllerUtils => {
+const ControllerUtils = () => {
   let route = '/';
 
   const appRoute = (newRoute?: string) => {
@@ -122,6 +124,18 @@ const ControllerUtils = (): IControllerUtils => {
   const getSearch = async (query: string): Promise<any> =>
     getCoingeckoSearch(query);
 
+  const getDataForToken = async (tokenId: string) => {
+    const response = await CoinGeckoClient.coins.fetch(tokenId);
+
+    return response;
+  };
+
+  const getTokenList = async () => {
+    const response = await CoinGeckoClient.coins.list();
+
+    return response;
+  };
+
   return {
     appRoute,
     updateFiat,
@@ -131,6 +145,8 @@ const ControllerUtils = (): IControllerUtils => {
     isValidEthereumAddress,
     isValidSYSAddress,
     getTokenJson,
+    getDataForToken,
+    getTokenList,
   };
 };
 
