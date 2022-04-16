@@ -95,6 +95,8 @@ const VaultState = createSlice({
     setIsPendingBalances(state: IVaultState, action: PayloadAction<boolean>) {
       state.isPendingBalances = action.payload;
       state.activeToken = '';
+      state.activeAccount.transactions = [];
+      state.activeAccount.assets = [];
     },
     setActiveAccountProperty(
       state: IVaultState,
