@@ -117,9 +117,10 @@ const MainController = () => {
     if (account.id === 0)
       keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
 
+    store.dispatch(setIsPendingBalances(false));
+
     /** set active network with web3 account data for evm networks */
     store.dispatch(setActiveAccount(account));
-    store.dispatch(setIsPendingBalances(false));
 
     /** account returned from updated signer according to the current network so we can update frontend easier */
     return account;

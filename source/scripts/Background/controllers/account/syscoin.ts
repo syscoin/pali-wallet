@@ -22,6 +22,8 @@ const SysAccountController = () => {
 
     const updatedAccountInfo = await keyringManager.getLatestUpdateForAccount();
 
+    store.dispatch(setIsPendingBalances(false));
+
     console.log('updated account in pali going to store', updatedAccountInfo);
 
     store.dispatch(
@@ -30,8 +32,6 @@ const SysAccountController = () => {
         ...updatedAccountInfo,
       })
     );
-
-    store.dispatch(setIsPendingBalances(false));
   };
 
   /** check if there is no pending transaction in mempool
