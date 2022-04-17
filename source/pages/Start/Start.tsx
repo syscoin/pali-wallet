@@ -28,8 +28,8 @@ export const Start = () => {
     </>
   );
 
-  const onSubmit = async (data: any) => {
-    await unlock(data.password);
+  const onSubmit = async ({ password }: { password: string }) => {
+    await unlock(password);
   };
 
   const unLock = (

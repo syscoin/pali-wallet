@@ -27,7 +27,6 @@ const MainController = () => {
    *  account using the same seed
    */
   const forgetWallet = (pwd: string) => {
-    // @ts-ignore
     keyringManager.forgetMainWallet(pwd);
 
     store.dispatch(forgetWalletState());
@@ -39,6 +38,7 @@ const MainController = () => {
 
     if (seedByPassword) {
       const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
+
       store.dispatch(setLastLogin());
       store.dispatch(setActiveAccount(account));
     }
