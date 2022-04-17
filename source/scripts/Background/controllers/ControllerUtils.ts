@@ -8,14 +8,16 @@ import {
   INetwork,
   isValidEthereumAddress,
   isValidSYSAddress,
+  getTokenJson,
+  importWeb3Token,
 } from '@pollum-io/sysweb3-utils';
 import { AxiosResponse } from 'axios';
-
-const CoinGecko = require('coingecko-api');
+import CoinGecko from 'coingecko-api';
 
 export const CoinGeckoClient = new CoinGecko();
 
 export type CoingeckoCoins = {
+  contract_address?: string;
   id: string;
   large: string;
   market_cap_rank: number;
@@ -24,8 +26,18 @@ export type CoingeckoCoins = {
   thumb: string;
 };
 
+export interface EthTokenDetails {
+  contract: string;
+  decimals: number;
+  description: string;
+  id: string;
+  name: string;
+  symbol: string;
+}
+
 export interface IControllerUtils {
   appRoute: (newRoute?: string) => string;
+  getDataForToken: (tokenId: string) => any;
   getSearch: (query: string) => Promise<
     AxiosResponse<
       {
@@ -38,6 +50,15 @@ export interface IControllerUtils {
       any
     >
   >;
+  getTokenJson: () => {
+    address: string;
+    chainId: number;
+    decimals: number;
+    logoURI: string;
+    name: string;
+    symbol: string;
+  }[];
+  importToken: (contractAddress: string) => Promise<EthTokenDetails>;
   isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
   isValidSYSAddress: (
     address: string,
@@ -48,7 +69,7 @@ export interface IControllerUtils {
   updateFiatCurrencyForWallet: (chosenCurrency: string) => any;
 }
 
-const ControllerUtils = (): IControllerUtils => {
+const ControllerUtils = () => {
   let route = '/';
 
   const appRoute = (newRoute?: string) => {
@@ -98,16 +119,28 @@ const ControllerUtils = (): IControllerUtils => {
     }
   };
 
+  const importToken = async (contractAddress: string) =>
+    await importWeb3Token(contractAddress);
+
   const getSearch = async (query: string): Promise<any> =>
     getCoingeckoSearch(query);
+
+  const getDataForToken = async (tokenId: string) => {
+    const response = await CoinGeckoClient.coins.fetch(tokenId);
+
+    return response;
+  };
 
   return {
     appRoute,
     updateFiat,
     updateFiatCurrencyForWallet,
+    importToken,
     getSearch,
     isValidEthereumAddress,
     isValidSYSAddress,
+    getTokenJson,
+    getDataForToken,
   };
 };
 

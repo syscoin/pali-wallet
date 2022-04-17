@@ -32,15 +32,6 @@ export const AssetsPanel: FC = () => {
                 >
                   Import token
                 </p>
-
-                <p className="mx-1"> or </p>
-
-                <p
-                  className="hover:text-brand-royalbluemedium cursor-pointer"
-                  onClick={() => navigate('/custom-token')}
-                >
-                  add a custom token
-                </p>
               </>
             )}
           </div>

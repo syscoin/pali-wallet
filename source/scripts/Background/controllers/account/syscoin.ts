@@ -9,6 +9,7 @@ import { validateToken, IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 
 import SysTrezorController from '../trezor/syscoin';
 import { SysTransactionController } from '../transaction';
+import { CoingeckoCoins } from '../ControllerUtils';
 
 const SysAccountController = () => {
   const keyringManager = KeyringManager();
@@ -69,13 +70,14 @@ const SysAccountController = () => {
     return receivingAddress;
   };
 
-  const saveTokenInfo = async (token) => {
+  const saveTokenInfo = async (token: CoingeckoCoins) => {
     const { activeAccount } = store.getState().vault;
 
     console.log('saving token info', token);
 
     try {
-      const validToken = await validateToken(token.contract);
+      const validToken = await validateToken(String(token.contract_address));
+
       console.log('token is valid', validToken);
 
       store.dispatch(
