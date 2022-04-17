@@ -13,7 +13,7 @@ const AccountMenu: React.FC = () => {
 
   const setActiveAccount = (id: number) => {
     wallet.setAccount(Number(id));
-    wallet.account.watchMemPool(accounts[Number(id)]);
+    wallet.account.sys.watchMemPool(accounts[Number(id)]);
   };
 
   const controller = getController();
@@ -24,7 +24,7 @@ const AccountMenu: React.FC = () => {
   }, [controller.wallet.isUnlocked()]);
 
   const handleLogout = () => {
-    wallet.logout();
+    wallet.lock();
 
     navigate('/');
   };

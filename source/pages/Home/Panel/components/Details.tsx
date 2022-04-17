@@ -23,7 +23,7 @@ export const DetailsView = () => {
   useEffect(() => {
     const getTransactionData = async () => {
       if (assetGuid) {
-        const assetData = await controller.wallet.account.getDataAsset(
+        const assetData = await controller.wallet.account.sys.getDataAsset(
           assetGuid
         );
 
@@ -39,9 +39,8 @@ export const DetailsView = () => {
         return;
       }
 
-      const txData = await controller.wallet.account.getTransactionInfoByTxId(
-        tx.txid
-      );
+      const txData =
+        await controller.wallet.account.sys.getTransactionInfoByTxId(tx.txid);
 
       setTransactionDetails(txData);
     };

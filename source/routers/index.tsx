@@ -44,7 +44,6 @@ import {
   TrustedSites,
   UpdateAsset,
   UpdateAssetConfirm,
-  EditGasFee,
 } from '../pages';
 
 import { ProtectedRoute } from './ProtectedRoute';
@@ -181,10 +180,6 @@ export const Router = () => {
       </Route>
       {/* /tx */}
       <Route path="tx">
-        <Route
-          path="edit-fee"
-          element={<ProtectedRoute element={<EditGasFee />} />}
-        />
         <Route
           path="create"
           element={<ProtectedRoute element={<Create />} />}

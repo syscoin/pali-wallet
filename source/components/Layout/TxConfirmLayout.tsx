@@ -40,7 +40,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
 }) => {
   const navigate = useNavigate();
   const accountController = getController().wallet.account;
-  const { activeAccount } = useStore();
+  const { activeAccount, activeNetwork } = useStore();
 
   const [data, setData] = useState<ITxData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -74,7 +74,9 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   }, [transaction]);
 
   const handleConfirmSiteTransaction = async () => {
-    const recommendedFee = await accountController.tx.getRecommendedFee();
+    const recommendedFee = await accountController.tx.getRecommendedFee(
+      activeNetwork.url
+    );
 
     let isPending = false;
 

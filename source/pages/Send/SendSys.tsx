@@ -22,7 +22,12 @@ export const SendSys = () => {
   const [form] = Form.useForm();
 
   const handleGetFee = useCallback(async () => {
-    const recommendFee = await controller.wallet.account.tx.getRecommendedFee();
+    const recommendFee =
+      await controller.wallet.account.sys.tx.getRecommendedFee(
+        activeNetwork.url
+      );
+
+    console.log('recommended feee', recommendFee);
 
     setRecommend(recommendFee);
 
@@ -35,6 +40,7 @@ export const SendSys = () => {
     form.setFieldsValue({
       verify: true,
       ZDAG: false,
+      fee: recommend,
     });
   }, [form, handleGetFee]);
 

@@ -30,7 +30,9 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
   const [form] = Form.useForm();
 
   const getFee = async () => {
-    const recommendFee = await accountController.tx.getRecommendedFee();
+    const recommendFee = await accountController.tx.getRecommendedFee(
+      activeNetwork.url
+    );
     setRecommend(recommendFee);
     form.setFieldsValue({ fee: recommendFee });
   };

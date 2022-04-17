@@ -18,7 +18,7 @@ export const Receive = () => {
     const setNewAddress = async () => {
       if (
         (activeNetwork.chainId === 57 || activeNetwork.chainId === 5700) &&
-        (await controller.wallet.account.setAddress())
+        (await controller.wallet.account.sys.setAddress())
       ) {
         setLoaded(true);
 
