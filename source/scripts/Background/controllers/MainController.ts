@@ -2,8 +2,8 @@ import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 import {
   IKeyringAccountState,
   INetwork,
-  validateSysRpc,
-  validateEthRpc,
+  // validateSysRpc,
+  // validateEthRpc,
 } from '@pollum-io/sysweb3-utils';
 import store from 'state/store';
 import {
@@ -152,9 +152,12 @@ const MainController = () => {
     const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
     const chain = isSyscoinChain ? 'syscoin' : 'ethereum';
 
-    const isValid = isSyscoinChain
-      ? await validateSysRpc(url)
-      : await validateEthRpc(chainId, url);
+    const isValid = !!isSyscoinChain;
+
+    // need to put these methods in sysweb3-utils so we can replace !!isSyscoinChain by them
+    // const isValid = isSyscoinChain
+    //   ? await validateSysRpc(url)
+    //   : await validateEthRpc(chainId, url);
 
     if (!isValid) return new Error(`Invalid ${chain} RPC`);
 

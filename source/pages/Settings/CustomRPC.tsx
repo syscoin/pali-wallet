@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Form, Input } from 'antd';
 import { Layout, SecondaryButton } from 'components/index';
-import axios from 'axios';
+// import axios from 'axios';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
@@ -28,11 +28,16 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
 
     const networksList = await controller.utils.getNetworksList();
 
-    const response = controller.wallet.addCustomRpc(network);
+    try {
+      await controller.wallet.addCustomRpc(network);
 
-    console.log('response add custom rpc', response);
+      console.log('networks list test', networksList);
 
-    console.log('networks list', networksList);
+      setEdit(true);
+    } catch (error) {
+      alert.removeAll();
+      alert.error("Can't add a custom RPC now. Try again later.");
+    }
   };
 
   return (
