@@ -14,36 +14,25 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   const { alert } = useUtils();
   const controller = getController();
 
-  const onSubmit = async ({ rpcUrl, network }: any) => {
+  const onSubmit = async ({ rpcUrl, label, currency, chainId, name }: any) => {
     setLoading(true);
 
-    try {
-      const response = await axios.get(`${rpcUrl}/api/v2`);
-      const { coin } = response.data.blockbook;
-      const { chain } = response.data.backend;
+    const network = {
+      chainId,
+      url: rpcUrl,
+      label,
+      default: false,
+      currency,
+      isTestnet: true,
+    };
 
-      if (response && coin) {
-        controller.wallet.account.sys.updateNetworkData({
-          id: selectedToEdit
-            ? selectedToEdit.id
-            : coin.toString().toLowerCase(),
-          label: `${network.toString().toLowerCase()} ${chain
-            .toString()
-            .toLowerCase()}`,
-          beUrl: rpcUrl,
-        });
+    const networksList = await controller.utils.getNetworksList();
 
-        setLoading(false);
-        setEdit(true);
+    const response = controller.wallet.addCustomRpc(network);
 
-        return;
-      }
-    } catch (error) {
-      alert.removeAll();
-      alert.error('Invalid RPC URL.');
+    console.log('response add custom rpc', response);
 
-      setLoading(false);
-    }
+    console.log('networks list', networksList);
   };
 
   return (
@@ -60,14 +49,14 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             initialValues={{
               blockbookURL: selectedToEdit ? selectedToEdit.beUrl : '',
               network: selectedToEdit ? selectedToEdit.label : '',
-              chainID: selectedToEdit ? selectedToEdit.chainID : -1,
+              chainID: selectedToEdit ? selectedToEdit.chainID : null,
             }}
             onFinish={onSubmit}
             autoComplete="off"
             className="flex flex-col gap-4 items-center justify-center mt-8 text-center"
           >
             <Form.Item
-              name="network"
+              name="name"
               className="md:w-full"
               hasFeedback
               rules={[
@@ -79,7 +68,25 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             >
               <Input
                 type="text"
-                placeholder="Network name"
+                placeholder="Name"
+                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="label"
+              className="md:w-full"
+              hasFeedback
+              rules={[
+                {
+                  required: false,
+                  message: '',
+                },
+              ]}
+            >
+              <Input
+                type="text"
+                placeholder="Label (optional)"
                 className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
               />
             </Form.Item>
@@ -93,26 +100,6 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
                   required: true,
                   message: '',
                 },
-                () => ({
-                  async validator(_, value) {
-                    try {
-                      const response = await axios.get(`${value}/api/v2`);
-                      const { coin } = response.data.blockbook;
-
-                      if (response && coin) {
-                        if (
-                          coin === 'Syscoin' ||
-                          coin === 'Syscoin Testnet' ||
-                          !value
-                        ) {
-                          return await Promise.resolve();
-                        }
-                      }
-                    } catch (error) {
-                      return Promise.reject();
-                    }
-                  },
-                }),
               ]}
             >
               <Input
@@ -123,7 +110,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             </Form.Item>
 
             <Form.Item
-              name="chainID"
+              name="chainId"
               className="md:w-full"
               hasFeedback
               rules={[

@@ -38,6 +38,7 @@ export interface EthTokenDetails {
 export interface IControllerUtils {
   appRoute: (newRoute?: string) => string;
   getDataForToken: (tokenId: string) => any;
+  getNetworksList: () => any;
   getSearch: (query: string) => Promise<
     AxiosResponse<
       {
@@ -131,6 +132,12 @@ const ControllerUtils = () => {
     return response;
   };
 
+  const getNetworksList = async () => {
+    const response = await CoinGeckoClient.asset_platforms();
+
+    return response;
+  };
+
   return {
     appRoute,
     updateFiat,
@@ -141,6 +148,7 @@ const ControllerUtils = () => {
     isValidSYSAddress,
     getTokenJson,
     getDataForToken,
+    getNetworksList,
   };
 };
 

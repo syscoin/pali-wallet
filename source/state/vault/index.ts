@@ -60,13 +60,16 @@ const VaultState = createSlice({
     },
     setNetworks(
       state: IVaultState,
-      action: PayloadAction<{ prefix: string; value: INetwork }>
+      action: PayloadAction<{ chain: string; network: INetwork }>
     ) {
-      const { prefix, value } = action.payload;
+      const { chain, network } = action.payload;
 
       state.networks = {
         ...state.networks,
-        [prefix]: value,
+        [chain]: {
+          ...state.networks[chain],
+          [network.chainId]: network,
+        },
       };
     },
     removeNetwork(
