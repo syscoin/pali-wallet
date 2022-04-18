@@ -52,10 +52,11 @@ export const Router = () => {
   const location = useLocation();
   const controller = getController();
 
-  const { accounts } = useStore();
+  const { accounts, activeAccount } = useStore();
   const { alert, navigate } = useUtils();
 
-  const isUnlocked = controller.wallet.isUnlocked();
+  const isUnlocked =
+    controller.wallet.isUnlocked() && activeAccount.address !== '';
 
   useEffect(() => {
     if (isUnlocked) {
