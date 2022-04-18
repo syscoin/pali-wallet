@@ -18,11 +18,12 @@ import {
   setIsPendingBalances,
   setNetworks,
 } from 'state/vault';
+import { MainController as IMainController } from 'types/controllers';
 
 import WalletController from './account';
 import { validateEthRpc, validateSysRpc } from './utils';
 
-const MainController = () => {
+const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
 
   const setAutolockTimer = (minutes: number) => {
@@ -52,7 +53,6 @@ const MainController = () => {
   };
 
   const createWallet = async (): Promise<IKeyringAccountState> => {
-    console.log('[main controller] calling keyring manager create vault');
     const account =
       (await keyringManager.createKeyringVault()) as IKeyringAccountState;
 
@@ -72,17 +72,17 @@ const MainController = () => {
     store.dispatch(setLastLogin());
   };
 
-  const createAccount = async (label?: string) => {
+  const createAccount = async (
+    label?: string
+  ): Promise<IKeyringAccountState> => {
     const newAccount = await addAccount(label);
-
-    console.log('adding account to store', newAccount);
 
     store.dispatch(addAccountToStore(newAccount));
 
     return newAccount;
   };
 
-  const setAccount = (id: number) => {
+  const setAccount = (id: number): void => {
     const { accounts } = store.getState().vault;
 
     store.dispatch(setActiveAccount(accounts[id]));
