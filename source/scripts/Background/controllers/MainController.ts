@@ -20,6 +20,7 @@ import {
 } from 'state/vault';
 
 import WalletController from './account';
+import { validateEthRpc, validateSysRpc } from './utils';
 
 const MainController = () => {
   const keyringManager = KeyringManager();
@@ -136,7 +137,7 @@ const MainController = () => {
   const chainIdRegEx = /^0x[1-9a-f]+[0-9a-f]*$/iu;
 
   const addCustomRpc = async (network: INetwork): Promise<INetwork | Error> => {
-    const { chainId } = network;
+    const { chainId, url } = network;
 
     const isRpcWithInvalidChainId =
       typeof chainId === 'string' &&
@@ -152,12 +153,9 @@ const MainController = () => {
     const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
     const chain = isSyscoinChain ? 'syscoin' : 'ethereum';
 
-    const isValid = !!isSyscoinChain;
-
-    // need to put these methods in sysweb3-utils so we can replace !!isSyscoinChain by them
-    // const isValid = isSyscoinChain
-    //   ? await validateSysRpc(url)
-    //   : await validateEthRpc(chainId, url);
+    const isValid = isSyscoinChain
+      ? await validateSysRpc(url)
+      : await validateEthRpc(chainId, url);
 
     if (!isValid) return new Error(`Invalid ${chain} RPC`);
 

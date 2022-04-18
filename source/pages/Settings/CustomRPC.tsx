@@ -26,12 +26,12 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
       isTestnet: true,
     };
 
-    const networksList = await controller.utils.getNetworksList();
+    // const networksList = await controller.utils.getNetworksList();
 
     try {
       await controller.wallet.addCustomRpc(network);
 
-      console.log('networks list test', networksList);
+      // console.log('networks list test', networksList);
 
       setEdit(true);
     } catch (error) {
@@ -52,9 +52,9 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             labelCol={{ span: 8 }}
             wrapperCol={{ span: 8 }}
             initialValues={{
-              blockbookURL: selectedToEdit ? selectedToEdit.beUrl : '',
+              blockbookURL: selectedToEdit ? selectedToEdit.url : '',
               network: selectedToEdit ? selectedToEdit.label : '',
-              chainID: selectedToEdit ? selectedToEdit.chainID : null,
+              chainID: selectedToEdit ? selectedToEdit.chainId : null,
             }}
             onFinish={onSubmit}
             autoComplete="off"
@@ -110,6 +110,24 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               <Input
                 type="text"
                 placeholder="RPC URL"
+                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="currency"
+              className="md:w-full"
+              hasFeedback
+              rules={[
+                {
+                  required: true,
+                  message: '',
+                },
+              ]}
+            >
+              <Input
+                type="text"
+                placeholder="Label (optional)"
                 className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
               />
             </Form.Item>

@@ -18,7 +18,7 @@ const ManageNetworkView = () => {
           selectedToEdit={
             selected || {
               id: -1,
-              lael: '',
+              label: '',
               berl: '',
               chinID: -1,
             }
@@ -47,7 +47,7 @@ const ManageNetworkView = () => {
 
                 <small className="flex gap-x-3 items-center justify-start">
                   <span>Blockbook URL:</span>
-                  <span> {formatUrl(String(network.beUrl), 25)}</span>
+                  <span> {formatUrl(String(network.url), 25)}</span>
                 </small>
               </li>
             ))}
