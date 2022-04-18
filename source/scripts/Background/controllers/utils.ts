@@ -62,7 +62,11 @@ const fetchWithTimeout = getFetchWithTimeout(1000 * 30);
  * @returns {Promise<unknown|undefined>} Returns the result of the RPC method call,
  * or throws an error in case of failure.
  */
-export const jsonRpcRequest = async (rpcUrl, rpcMethod, rpcParams = []) => {
+export const jsonRpcRequest = async (
+  rpcUrl: string,
+  rpcMethod: string,
+  rpcParams: any[] = []
+) => {
   let fetchUrl = rpcUrl;
 
   const headers: { Authorization?: string; 'Content-Type': string } = {
@@ -109,10 +113,10 @@ export const jsonRpcRequest = async (rpcUrl, rpcMethod, rpcParams = []) => {
   return result;
 };
 
-const isValidChainIdForEthNetworks = (chainId) =>
+const isValidChainIdForEthNetworks = (chainId: number | string) =>
   Number.isSafeInteger(chainId) && chainId > 0 && chainId <= 4503599627370476;
 
-export const validateSysRpc = async (rpcUrl) => {
+export const validateSysRpc = async (rpcUrl: string) => {
   const response = await axios.get(`${rpcUrl}/api/v2`);
 
   const {
@@ -123,7 +127,10 @@ export const validateSysRpc = async (rpcUrl) => {
   return Boolean(response && coin && chain);
 };
 
-export const validateEthRpc = async (chainId, rpcUrl) => {
+export const validateEthRpc = async (
+  chainId: number | string,
+  rpcUrl: string
+) => {
   if (!isValidChainIdForEthNetworks)
     return new Error('Invalid chain ID for ethereum networks.');
 
