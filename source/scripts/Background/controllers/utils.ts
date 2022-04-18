@@ -1,16 +1,17 @@
 import axios from 'axios';
 import { memoize } from 'lodash';
-// import fetch from 'node-fetch';
 
 const getFetchWithTimeout = memoize((timeout) => {
   if (!Number.isInteger(timeout) || timeout < 1) {
     throw new Error('Must specify positive integer timeout.');
   }
 
-  return async function fetch(url, opts) {
+  return async (url: string, opts: any) => {
     const abortController = new window.AbortController();
+
     const { signal } = abortController;
-    const f = window.fetch(url, {
+
+    const windowFetch = window.fetch(url, {
       ...opts,
       signal,
     });
@@ -18,12 +19,15 @@ const getFetchWithTimeout = memoize((timeout) => {
     const timer = setTimeout(() => abortController.abort(), timeout);
 
     try {
-      const res = await f;
+      const response = await windowFetch;
+
       clearTimeout(timer);
-      return res;
-    } catch (e) {
+
+      return response;
+    } catch (error) {
       clearTimeout(timer);
-      throw e;
+
+      throw error;
     }
   };
 });

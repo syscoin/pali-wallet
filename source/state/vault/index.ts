@@ -37,7 +37,6 @@ const VaultState = createSlice({
   name: 'vault',
   initialState,
   reducers: {
-    // todo: set account tx and add to ikeyringaccountstate
     setAccountTransactions(
       state: IVaultState,
       action: PayloadAction<{ tx: any; txid: string }>

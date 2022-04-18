@@ -10,9 +10,6 @@ import MasterController, { IMasterController } from './controllers';
 declare global {
   interface Window {
     controller: Readonly<IMasterController>;
-    gatewayNetwork: string;
-    senderURL: string;
-    syspopup: any;
   }
 }
 
