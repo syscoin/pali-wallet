@@ -96,6 +96,7 @@
     "lint-staged": "^12.1.7",
     "lodash": "^4.17.20",
     "neo-async": "^2.6.2",
+    "node-fetch": "^3.2.3",
     "npm-check-updates": "^12.1.0",
     "postcss": "^8.4.5",
     "prettier-eslint": "^13.0.0",

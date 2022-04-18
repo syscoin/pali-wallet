@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Form, Input } from 'antd';
 import { Layout, SecondaryButton } from 'components/index';
-import axios from 'axios';
+// import axios from 'axios';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
@@ -14,35 +14,29 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   const { alert } = useUtils();
   const controller = getController();
 
-  const onSubmit = async ({ rpcUrl, network }: any) => {
+  const onSubmit = async ({ rpcUrl, label, currency, chainId }: any) => {
     setLoading(true);
 
+    const network = {
+      chainId,
+      url: rpcUrl,
+      label,
+      default: false,
+      currency,
+      isTestnet: true,
+    };
+
+    // const networksList = await controller.utils.getNetworksList();
+
     try {
-      const response = await axios.get(`${rpcUrl}/api/v2`);
-      const { coin } = response.data.blockbook;
-      const { chain } = response.data.backend;
+      await controller.wallet.addCustomRpc(network);
 
-      if (response && coin) {
-        controller.wallet.account.sys.updateNetworkData({
-          id: selectedToEdit
-            ? selectedToEdit.id
-            : coin.toString().toLowerCase(),
-          label: `${network.toString().toLowerCase()} ${chain
-            .toString()
-            .toLowerCase()}`,
-          beUrl: rpcUrl,
-        });
+      // console.log('networks list test', networksList);
 
-        setLoading(false);
-        setEdit(true);
-
-        return;
-      }
+      setEdit(true);
     } catch (error) {
       alert.removeAll();
-      alert.error('Invalid RPC URL.');
-
-      setLoading(false);
+      alert.error("Can't add a custom RPC now. Try again later.");
     }
   };
 
@@ -58,16 +52,16 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             labelCol={{ span: 8 }}
             wrapperCol={{ span: 8 }}
             initialValues={{
-              blockbookURL: selectedToEdit ? selectedToEdit.beUrl : '',
+              blockbookURL: selectedToEdit ? selectedToEdit.url : '',
               network: selectedToEdit ? selectedToEdit.label : '',
-              chainID: selectedToEdit ? selectedToEdit.chainID : -1,
+              chainID: selectedToEdit ? selectedToEdit.chainId : null,
             }}
             onFinish={onSubmit}
             autoComplete="off"
             className="flex flex-col gap-4 items-center justify-center mt-8 text-center"
           >
             <Form.Item
-              name="network"
+              name="name"
               className="md:w-full"
               hasFeedback
               rules={[
@@ -79,7 +73,25 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             >
               <Input
                 type="text"
-                placeholder="Network name"
+                placeholder="Name"
+                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="label"
+              className="md:w-full"
+              hasFeedback
+              rules={[
+                {
+                  required: false,
+                  message: '',
+                },
+              ]}
+            >
+              <Input
+                type="text"
+                placeholder="Label (optional)"
                 className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
               />
             </Form.Item>
@@ -93,26 +105,6 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
                   required: true,
                   message: '',
                 },
-                () => ({
-                  async validator(_, value) {
-                    try {
-                      const response = await axios.get(`${value}/api/v2`);
-                      const { coin } = response.data.blockbook;
-
-                      if (response && coin) {
-                        if (
-                          coin === 'Syscoin' ||
-                          coin === 'Syscoin Testnet' ||
-                          !value
-                        ) {
-                          return await Promise.resolve();
-                        }
-                      }
-                    } catch (error) {
-                      return Promise.reject();
-                    }
-                  },
-                }),
               ]}
             >
               <Input
@@ -123,7 +115,25 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             </Form.Item>
 
             <Form.Item
-              name="chainID"
+              name="currency"
+              className="md:w-full"
+              hasFeedback
+              rules={[
+                {
+                  required: true,
+                  message: '',
+                },
+              ]}
+            >
+              <Input
+                type="text"
+                placeholder="Label (optional)"
+                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="chainId"
               className="md:w-full"
               hasFeedback
               rules={[

@@ -1,5 +1,10 @@
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
-import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
+import {
+  IKeyringAccountState,
+  INetwork,
+  // validateSysRpc,
+  // validateEthRpc,
+} from '@pollum-io/sysweb3-utils';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -11,9 +16,11 @@ import {
   setActiveNetwork as setNetwork,
   setActiveAccountProperty,
   setIsPendingBalances,
+  setNetworks,
 } from 'state/vault';
 
 import WalletController from './account';
+import { validateEthRpc, validateSysRpc } from './utils';
 
 const MainController = () => {
   const keyringManager = KeyringManager();
@@ -126,6 +133,37 @@ const MainController = () => {
     return account;
   };
 
+  const hexRegEx = /^0x[0-9a-f]+$/iu;
+  const chainIdRegEx = /^0x[1-9a-f]+[0-9a-f]*$/iu;
+
+  const addCustomRpc = async (network: INetwork): Promise<INetwork | Error> => {
+    const { chainId, url } = network;
+
+    const isRpcWithInvalidChainId =
+      typeof chainId === 'string' &&
+      !chainIdRegEx.test(chainId) &&
+      hexRegEx.test(chainId);
+
+    if (isRpcWithInvalidChainId) {
+      return new Error('RPC has an invalid chain ID');
+    }
+
+    const { activeNetwork, networks } = store.getState().vault;
+
+    const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+    const chain = isSyscoinChain ? 'syscoin' : 'ethereum';
+
+    const isValid = isSyscoinChain
+      ? await validateSysRpc(url)
+      : await validateEthRpc(chainId, url);
+
+    if (!isValid) return new Error(`Invalid ${chain} RPC`);
+
+    store.dispatch(setNetworks({ chain, network }));
+
+    return network;
+  };
+
   return {
     createWallet,
     forgetWallet,
@@ -136,6 +174,7 @@ const MainController = () => {
     setAccount,
     setAutolockTimer,
     setActiveNetwork,
+    addCustomRpc,
     ...keyringManager,
   };
 };
