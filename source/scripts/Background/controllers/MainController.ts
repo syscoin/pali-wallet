@@ -136,7 +136,7 @@ const MainController = () => {
   const chainIdRegEx = /^0x[1-9a-f]+[0-9a-f]*$/iu;
 
   const addCustomRpc = async (network: INetwork): Promise<INetwork | Error> => {
-    const { chainId, url } = network;
+    const { chainId } = network;
 
     const isRpcWithInvalidChainId =
       typeof chainId === 'string' &&

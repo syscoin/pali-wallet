@@ -14,7 +14,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   const { alert } = useUtils();
   const controller = getController();
 
-  const onSubmit = async ({ rpcUrl, label, currency, chainId, name }: any) => {
+  const onSubmit = async ({ rpcUrl, label, currency, chainId }: any) => {
     setLoading(true);
 
     const network = {
