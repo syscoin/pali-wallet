@@ -23,7 +23,6 @@ export const initialState: IVaultState = {
     label: 'Syscoin Mainnet',
     default: true,
     currency: 'sys',
-    isTestnet: false,
   },
   isPendingBalances: false,
   timer: 5,
@@ -76,6 +75,8 @@ const VaultState = createSlice({
       action: PayloadAction<{ chainId: number; prefix: string }>
     ) {
       const { prefix, chainId } = action.payload;
+
+      console.log('removing network store', state.networks[prefix][chainId]);
 
       delete state.networks[prefix][chainId];
     },

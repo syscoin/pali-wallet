@@ -1,9 +1,5 @@
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
-import {
-  IKeyringAccountState,
-  // validateSysRpc,
-  // validateEthRpc,
-} from '@pollum-io/sysweb3-utils';
+import { IKeyringAccountState, INetwork } from '@pollum-io/sysweb3-utils';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -16,6 +12,7 @@ import {
   setActiveAccountProperty,
   setIsPendingBalances,
   setNetworks,
+  removeNetwork as removeNetworkFromStore,
 } from 'state/vault';
 import { CustomRpcParams } from 'types/transactions';
 // import { MainController as IMainController } from 'types/controllers';
@@ -138,7 +135,7 @@ const MainController = () => {
     return account;
   };
 
-  const addCustomRpc = async (data: CustomRpcParams): Promise<any> => {
+  const addCustomRpc = async (data: CustomRpcParams): Promise<INetwork> => {
     const { chainId, rpcUrl, token_contract_address, isSyscoinRpc, label } =
       data;
 
@@ -152,7 +149,7 @@ const MainController = () => {
       ? await validateSysRpc(rpcUrl)
       : await validateEthRpc(chainId, rpcUrl, token_contract_address);
 
-    if (!valid) return new Error(`Invalid ${chain} RPC`);
+    if (!valid) throw new Error(`Invalid ${chain} RPC`);
 
     const network = {
       ..._data,
@@ -162,6 +159,12 @@ const MainController = () => {
     store.dispatch(setNetworks({ chain, network }));
 
     return network;
+  };
+
+  const removeNetwork = (chain: string, chainId: number) => {
+    keyringManager.removeNetwork(chain, chainId);
+
+    store.dispatch(removeNetworkFromStore({ prefix: chain, chainId }));
   };
 
   return {
@@ -175,6 +178,7 @@ const MainController = () => {
     setAutolockTimer,
     setActiveNetwork,
     addCustomRpc,
+    removeNetwork,
     ...keyringManager,
   };
 };
