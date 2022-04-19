@@ -23,6 +23,7 @@ export const initialState: IVaultState = {
     label: 'Syscoin Mainnet',
     default: true,
     currency: 'sys',
+    isTestnet: false,
   },
   isPendingBalances: false,
   timer: 5,
