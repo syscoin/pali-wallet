@@ -160,6 +160,7 @@ export const validateSysRpc = async (
 };
 
 const utils = ControllerUtils();
+
 export const validateEthRpc = async (
   chainId: number,
   rpcUrl: string,
