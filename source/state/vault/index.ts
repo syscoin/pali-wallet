@@ -22,7 +22,6 @@ export const initialState: IVaultState = {
     url: 'https://blockbook.elint.services/',
     label: 'Syscoin Mainnet',
     default: true,
-    isTestnet: false,
     currency: 'sys',
   },
   isPendingBalances: false,

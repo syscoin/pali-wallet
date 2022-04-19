@@ -16,6 +16,7 @@ export const NormalHeader: React.FC = () => {
   const [currentTabURL, setCurrentTabURL] = useState<string>('');
 
   const handleChangeNetwork = (chain: string, chainId: number) => {
+    console.log('current network changing', chain, chainId);
     wallet.setActiveNetwork(chain, chainId);
 
     if (chain === 'syscoin') wallet.account.sys.setAddress();

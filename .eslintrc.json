@@ -50,6 +50,7 @@
     "react/no-array-index-key": "off",
     "no-return-await": "off",
     "@typescript-eslint/return-await": "off",
+    "@typescript-eslint/naming-convention": "off",
     "no-nested-ternary": "off",
     "react/jsx-filename-extension": "off",
     "no-confusing-arrow": "off",

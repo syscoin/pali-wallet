@@ -15,9 +15,9 @@ const TrezorController = () => {
   const account = SysTrezorController();
 
   const connectHardware = async (): Promise<IKeyringAccountState | any> => {
-    const { isTestnet } = store.getState().vault.activeNetwork;
+    const { chainId } = store.getState().vault.activeNetwork;
 
-    if (isTestnet) {
+    if (!(chainId === 57 || chainId === 1)) {
       return openNotificationsPopup(
         "Can't create hardware wallet on testnet",
         "Trezor doesn't support SYS testnet"
