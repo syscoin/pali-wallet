@@ -161,7 +161,7 @@ const MainController = () => {
     return network;
   };
 
-  const removeNetwork = (chain: string, chainId: number) => {
+  const removeKeyringNetwork = (chain: string, chainId: number) => {
     keyringManager.removeNetwork(chain, chainId);
 
     store.dispatch(removeNetworkFromStore({ prefix: chain, chainId }));
@@ -178,7 +178,7 @@ const MainController = () => {
     setAutolockTimer,
     setActiveNetwork,
     addCustomRpc,
-    removeNetwork,
+    removeKeyringNetwork,
     ...keyringManager,
   };
 };

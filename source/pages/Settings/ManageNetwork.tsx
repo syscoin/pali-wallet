@@ -16,7 +16,7 @@ const ManageNetworkView = () => {
   const removeNetwork = (chainId: number) => {
     const chain = networks.syscoin[chainId] ? 'syscoin' : 'ethereum';
 
-    wallet.removeNetwork(chain, chainId);
+    wallet.removeKeyringNetwork(chain, chainId);
   };
 
   return (
