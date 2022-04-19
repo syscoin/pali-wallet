@@ -38,7 +38,6 @@ export interface EthTokenDetails {
 export interface IControllerUtils {
   appRoute: (newRoute?: string) => string;
   getDataForToken: (tokenId: string) => any;
-  getNetworksList: () => any;
   getSearch: (query: string) => Promise<
     AxiosResponse<
       {
