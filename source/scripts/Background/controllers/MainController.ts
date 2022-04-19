@@ -22,7 +22,6 @@ import { CustomRpcParams } from 'types/transactions';
 
 import WalletController from './account';
 import { validateEthRpc, validateSysRpc } from './utils';
-import ControllerUtils from './ControllerUtils';
 
 const MainController = () => {
   const keyringManager = KeyringManager();

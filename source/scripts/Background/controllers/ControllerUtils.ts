@@ -13,7 +13,6 @@ import {
 } from '@pollum-io/sysweb3-utils';
 import { AxiosResponse } from 'axios';
 import CoinGecko from 'coingecko-api';
-import { CustomRpcParams } from 'types/transactions';
 
 export const CoinGeckoClient = new CoinGecko();
 
@@ -52,6 +51,7 @@ export interface IControllerUtils {
       any
     >
   >;
+  getTokenDataByContractAddress: (address: string, platform: string) => any;
   getTokenJson: () => {
     address: string;
     chainId: number;
@@ -139,7 +139,7 @@ const ControllerUtils = () => {
     return response;
   };
 
-  const validateTokenContractAddress = async (
+  const getTokenDataByContractAddress = async (
     address: string,
     platform: string
   ) => {
@@ -150,10 +150,11 @@ const ControllerUtils = () => {
 
     if (!success || data.error) return new Error(data.error);
 
-    return data;
+    return {
+      data,
+      success,
+    };
   };
-
-  const formatNetwork = async (data: CustomRpcParams) => data;
 
   return {
     appRoute,
@@ -166,8 +167,7 @@ const ControllerUtils = () => {
     getTokenJson,
     getDataForToken,
     getCoinsList,
-    formatNetwork,
-    validateTokenContractAddress,
+    getTokenDataByContractAddress,
   };
 };
 
