@@ -44,12 +44,10 @@ export const ConfirmPhrase = () => {
     setNewList([...tempList]);
   };
 
-  const handleConfirm = () => {
-    console.log('sent phrase, creating wallet');
+  const handleConfirm = async () => {
+    await controller.wallet.createWallet();
 
-    controller.wallet.createWallet();
-
-    navigate('/');
+    navigate('/home');
 
     setPassed(true);
   };
