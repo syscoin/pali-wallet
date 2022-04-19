@@ -1,4 +1,4 @@
-import React, { FC, useCallback, Fragment, useEffect } from 'react';
+import React, { FC, useCallback, Fragment } from 'react';
 import { IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { ellipsis, formatCurrency, formatDate } from 'utils/index';
@@ -50,10 +50,6 @@ export const PanelList: FC<IPanelList> = ({
     [transactions]
   );
 
-  useEffect(() => {
-    console.log('txsss', data);
-  }, [data]);
-
   return (
     <>
       {activity && (
@@ -68,7 +64,7 @@ export const PanelList: FC<IPanelList> = ({
               }
             );
 
-            return (
+            return tx[blocktime] !== undefined ? (
               <Fragment key={tx[txid]}>
                 {isShowedGroupBar(tx, idx) && (
                   <li className="my-3 text-center text-sm bg-bkg-1">
@@ -118,6 +114,8 @@ export const PanelList: FC<IPanelList> = ({
                   </div>
                 </li>
               </Fragment>
+            ) : (
+              console.error('Please, change the current network.')
             );
           })}
         </ul>
