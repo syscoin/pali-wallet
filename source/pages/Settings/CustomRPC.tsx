@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Form, Input } from 'antd';
 import { Layout, SecondaryButton } from 'components/index';
 import { Switch } from '@headlessui/react';
-import { useUtils } from 'hooks/index';
+import { useUtils, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
 
 import { ManageNetwork } from '.';
@@ -13,6 +13,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   const [isSyscoinRpc, setIsSyscoinRpc] = useState(true);
 
   const { alert } = useUtils();
+  const { networks } = useStore();
   const controller = getController();
 
   const onSubmit = async (data: {
@@ -22,6 +23,28 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
     token_contract_address: string;
   }) => {
     setLoading(true);
+
+    const chain = isSyscoinRpc ? 'syscoin' : 'ethereum';
+
+    if (networks[chain][data.chainId]) {
+      alert.removeAll();
+      alert.error('Network already exists.');
+
+      setLoading(false);
+
+      return;
+    }
+
+    for (const network of Object.values(networks[chain])) {
+      if (data.rpcUrl === network.url) {
+        alert.removeAll();
+        alert.error('Network already exists.');
+
+        setLoading(false);
+
+        return;
+      }
+    }
 
     try {
       await controller.wallet.addCustomRpc({

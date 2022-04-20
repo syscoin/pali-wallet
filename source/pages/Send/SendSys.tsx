@@ -27,8 +27,6 @@ export const SendSys = () => {
         activeNetwork.url
       );
 
-    console.log('recommended feee', recommendFee);
-
     setRecommend(recommendFee);
 
     form.setFieldsValue({ fee: recommendFee });

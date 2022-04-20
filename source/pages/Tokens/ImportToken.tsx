@@ -46,14 +46,10 @@ export const ImportToken: FC = () => {
         return validate;
       });
 
-      console.log('validate', newList);
-
       setFilteredSearch(newList);
 
       return;
     }
-
-    console.log('selected', selected);
 
     setFilteredSearch(coins);
   };

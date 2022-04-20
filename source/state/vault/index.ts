@@ -76,8 +76,6 @@ const VaultState = createSlice({
     ) {
       const { prefix, chainId } = action.payload;
 
-      console.log('removing network store', state.networks[prefix][chainId]);
-
       delete state.networks[prefix][chainId];
     },
     setTimer(state: IVaultState, action: PayloadAction<number>) {

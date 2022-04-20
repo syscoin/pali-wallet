@@ -48,8 +48,6 @@ export const SendConfirm = () => {
             });
           }
 
-          console.log('sys tx', tx);
-
           const response =
             await controller.wallet.account.sys.tx.sendTransaction(tx);
 
