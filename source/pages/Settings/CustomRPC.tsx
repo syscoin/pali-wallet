@@ -7,14 +7,27 @@ import { getController } from 'utils/browser';
 
 import { ManageNetwork } from '.';
 
-const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
+const CustomRPCView = ({
+  selectedToEdit,
+  isSyscoinToEdit,
+}: {
+  isSyscoinToEdit?: boolean;
+  selectedToEdit?: any;
+}) => {
   const [loading, setLoading] = useState(false);
   const [edit, setEdit] = useState(false);
-  const [isSyscoinRpc, setIsSyscoinRpc] = useState(true);
+  const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinToEdit));
 
   const { alert } = useUtils();
   const { networks } = useStore();
   const controller = getController();
+
+  const networkAlreadyExistsAlert = () => {
+    alert.removeAll();
+    alert.error('Network already exists.');
+
+    setLoading(false);
+  };
 
   const onSubmit = async (data: {
     chainId: number;
@@ -36,11 +49,8 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
     }
 
     for (const network of Object.values(networks[chain])) {
-      if (data.rpcUrl === network.url) {
-        alert.removeAll();
-        alert.error('Network already exists.');
-
-        setLoading(false);
+      if (data.rpcUrl === network.url || data.chainId === network.chainId) {
+        networkAlreadyExistsAlert();
 
         return;
       }
@@ -74,11 +84,13 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             name="rpc"
             labelCol={{ span: 8 }}
             wrapperCol={{ span: 8 }}
-            initialValues={{
-              blockbookURL: selectedToEdit ? selectedToEdit.url : '',
-              network: selectedToEdit ? selectedToEdit.label : '',
-              chainID: selectedToEdit ? selectedToEdit.chainId : null,
-            }}
+            initialValues={
+              selectedToEdit && {
+                label: selectedToEdit.label ?? '',
+                rpcUrl: selectedToEdit.url ?? '',
+                chainId: selectedToEdit.chainId ?? '',
+              }
+            }
             onFinish={onSubmit}
             autoComplete="off"
             className="flex flex-col gap-2 items-center justify-center text-center"
