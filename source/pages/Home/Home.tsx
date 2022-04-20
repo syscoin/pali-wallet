@@ -29,7 +29,8 @@ export const Home = () => {
     setSymbol(symbol);
   };
 
-  const isUnlocked = controller.wallet.isUnlocked();
+  const isUnlocked =
+    controller.wallet.isUnlocked() && activeAccount.address !== '';
 
   useEffect(() => {
     setChainSymbol();
@@ -40,7 +41,7 @@ export const Home = () => {
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
-      {activeAccount && lastLogin ? (
+      {activeAccount && lastLogin && isUnlocked ? (
         <>
           <Header accountHeader />
 

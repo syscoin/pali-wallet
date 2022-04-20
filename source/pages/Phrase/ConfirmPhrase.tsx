@@ -49,7 +49,7 @@ export const ConfirmPhrase = () => {
 
     controller.wallet.createWallet();
 
-    navigate('/');
+    navigate('/home');
 
     setPassed(true);
   };
