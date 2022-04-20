@@ -23,15 +23,10 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
       label,
       default: false,
       currency,
-      isTestnet: true,
     };
-
-    // const networksList = await controller.utils.getNetworksList();
 
     try {
       await controller.wallet.addCustomRpc(network);
-
-      // console.log('networks list test', networksList);
 
       setEdit(true);
     } catch (error) {
