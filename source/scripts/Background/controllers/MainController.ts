@@ -102,8 +102,9 @@ const MainController = () => {
     store.dispatch(setNetwork(network));
 
     /** this method sets new signers for syscoin when changing networks */
-    const account = (await keyringManager.setActiveNetworkForSigner(
-      network
+    const account = (await keyringManager.setSignerNetwork(
+      network,
+      chain
     )) as IKeyringAccountState;
 
     /** directly set new keys for the current chain and update state if the active account is the first one */

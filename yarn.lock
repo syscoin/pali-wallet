@@ -2042,16 +2042,16 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.168":
-  version "1.0.168"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.168.tgz#9e449bad6da952b4f235ac2078e18feebe57060e"
-  integrity sha512-CaSDqxzxlxPxrmnZMFn/HOLO7kLZq7wLVZWW0pr1f1CY/aCxGZc6bkmeP4EexPXzzbSGbtNzgX8Yv0An+mhj9A==
+"@pollum-io/sysweb3-keyring@^1.0.169":
+  version "1.0.169"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.169.tgz#9601d521d76fa33015ecc4ac5f65ce5ad3455ccb"
+  integrity sha512-zSHXoPjyd8ZWesDFY7iRDSWkRnDocmN/7BmV1pfrT+Stt4DrA+uDJSNBvWBUooJXLO6cAQXiDEvm8q2iT5F9bw==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "^1.0.6"
     "@pollum-io/sysweb3-network" "^1.0.7"
-    "@pollum-io/sysweb3-utils" "^1.1.91"
+    "@pollum-io/sysweb3-utils" "^1.1.92"
     "@types/crypto-js" "^4.1.1"
     axios "^0.26.1"
     bip39 "^3.0.4"
@@ -2129,10 +2129,10 @@
     syscoinjs-lib "^1.0.209"
     syscointx-js "^1.0.101"
 
-"@pollum-io/sysweb3-utils@^1.1.91":
-  version "1.1.91"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.91.tgz#237845a862f318ed3997074eee76bf2900603365"
-  integrity sha512-c3ld2uBfYud9X/XhRtyynwK8jU+kJehcZ8uwlDihY5XJXIhpwhLQgLbUwSJey2IGKU9afciQ4CpD+wknX9o7cA==
+"@pollum-io/sysweb3-utils@^1.1.92":
+  version "1.1.92"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.92.tgz#9fb1bb3b189db91d6ffb88c800e9bf2bfc45e3f6"
+  integrity sha512-9h6fiD1+fnac/5f4/7Exmw52G+uyj55QI33beXrSEAXB5dNoAHdCjj5jULi7LLeU+IaXbEaS5fmVM7z+YsZRbA==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.6"
     "@pollum-io/sysweb3-keyring" "^1.0.45"
