@@ -38,7 +38,6 @@ export interface EthTokenDetails {
 export interface IControllerUtils {
   appRoute: (newRoute?: string) => string;
   getDataForToken: (tokenId: string) => any;
-  getNetworksList: () => any;
   getSearch: (query: string) => Promise<
     AxiosResponse<
       {
@@ -51,6 +50,7 @@ export interface IControllerUtils {
       any
     >
   >;
+  getTokenDataByContractAddress: (address: string, platform: string) => any;
   getTokenJson: () => {
     address: string;
     chainId: number;
@@ -70,7 +70,7 @@ export interface IControllerUtils {
   updateFiatCurrencyForWallet: (chosenCurrency: string) => any;
 }
 
-const ControllerUtils = () => {
+const ControllerUtils = (): IControllerUtils => {
   let route = '/';
 
   const appRoute = (newRoute?: string) => {
@@ -132,10 +132,21 @@ const ControllerUtils = () => {
     return response;
   };
 
-  const getNetworksList = async () => {
-    const response = await CoinGeckoClient.asset_platforms();
+  const getTokenDataByContractAddress = async (
+    address: string,
+    platform: string
+  ) => {
+    const { data, success } = await CoinGeckoClient.coins.fetchCoinContractInfo(
+      address,
+      platform
+    );
 
-    return response;
+    if (!success || data.error) return new Error(data.error);
+
+    return {
+      data,
+      success,
+    };
   };
 
   return {
@@ -148,7 +159,7 @@ const ControllerUtils = () => {
     isValidSYSAddress,
     getTokenJson,
     getDataForToken,
-    getNetworksList,
+    getTokenDataByContractAddress,
   };
 };
 

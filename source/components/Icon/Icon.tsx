@@ -43,6 +43,7 @@ const icons = {
   'vertical-align': AntIcons.VerticalAlignTopOutlined,
   wallet: AntIcons.WalletOutlined,
   warning: AntIcons.WarningOutlined,
+  trash: AntIcons.DeleteOutlined,
 };
 
 interface IIcon {

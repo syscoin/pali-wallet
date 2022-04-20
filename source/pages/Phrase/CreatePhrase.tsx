@@ -9,12 +9,6 @@ export const CreatePhrase: FC = () => {
 
   const phrases = controller.wallet.createSeed();
 
-  const nextHandler = () => {
-    console.log('[create phrase] creating seed', phrases);
-
-    navigate('/phrase/confirm');
-  };
-
   return (
     <OnboardingLayout
       title="Recovery phrase"
@@ -39,7 +33,12 @@ export const CreatePhrase: FC = () => {
         )}
 
         <div className="absolute bottom-12 md:bottom-32">
-          <PrimaryButton type="button" width="56 px-6" onClick={nextHandler}>
+          <PrimaryButton
+            disabled={!phrases}
+            type="button"
+            width="56 px-6"
+            onClick={() => navigate('/phrase/confirm')}
+          >
             I've written it down
           </PrimaryButton>
         </div>

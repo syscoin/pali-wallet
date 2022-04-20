@@ -44,10 +44,8 @@ export const ConfirmPhrase = () => {
     setNewList([...tempList]);
   };
 
-  const handleConfirm = () => {
-    console.log('sent phrase, creating wallet');
-
-    controller.wallet.createWallet();
+  const handleConfirm = async () => {
+    await controller.wallet.createWallet();
 
     navigate('/home');
 

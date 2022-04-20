@@ -1,16 +1,20 @@
 import axios from 'axios';
 import { memoize } from 'lodash';
-// import fetch from 'node-fetch';
+import bip44Constants from 'bip44-constants';
+
+import ControllerUtils from './ControllerUtils';
 
 const getFetchWithTimeout = memoize((timeout) => {
   if (!Number.isInteger(timeout) || timeout < 1) {
     throw new Error('Must specify positive integer timeout.');
   }
 
-  return async function fetch(url, opts) {
+  return async (url: string, opts: any) => {
     const abortController = new window.AbortController();
+
     const { signal } = abortController;
-    const f = window.fetch(url, {
+
+    const windowFetch = window.fetch(url, {
       ...opts,
       signal,
     });
@@ -18,12 +22,15 @@ const getFetchWithTimeout = memoize((timeout) => {
     const timer = setTimeout(() => abortController.abort(), timeout);
 
     try {
-      const res = await f;
+      const response = await windowFetch;
+
       clearTimeout(timer);
-      return res;
-    } catch (e) {
+
+      return response;
+    } catch (error) {
       clearTimeout(timer);
-      throw e;
+
+      throw error;
     }
   };
 });
@@ -116,7 +123,9 @@ export const jsonRpcRequest = async (
 const isValidChainIdForEthNetworks = (chainId: number | string) =>
   Number.isSafeInteger(chainId) && chainId > 0 && chainId <= 4503599627370476;
 
-export const validateSysRpc = async (rpcUrl: string) => {
+export const validateSysRpc = async (
+  rpcUrl: string
+): Promise<{ data: any; valid: boolean }> => {
   const response = await axios.get(`${rpcUrl}/api/v2`);
 
   const {
@@ -124,19 +133,78 @@ export const validateSysRpc = async (rpcUrl: string) => {
     backend: { chain },
   } = response.data;
 
-  return Boolean(response && coin && chain);
+  const valid = Boolean(response && coin && chain);
+
+  if (!valid) throw new Error('Invalid RPC URL');
+
+  const bip44Coin = bip44Constants.find(
+    (item: [number, string, string]) => item[2] === coin
+  );
+
+  const coinTypeInDecimal = bip44Coin[0];
+  const symbol = bip44Coin[1];
+
+  const coinTypeInHex = Number(coinTypeInDecimal).toString(16);
+
+  const data = {
+    chainId: coinTypeInHex,
+    url: rpcUrl,
+    default: false,
+    currency: symbol.toString().toLowerCase(),
+  };
+
+  return {
+    valid,
+    data,
+  };
 };
 
+const utils = ControllerUtils();
+
 export const validateEthRpc = async (
-  chainId: number | string,
-  rpcUrl: string
-) => {
+  chainId: number,
+  rpcUrl: string,
+  token_contract_address: string
+): Promise<{ data: any; valid: boolean }> => {
+  const hexRegEx = /^0x[0-9a-f]+$/iu;
+  const chainIdRegEx = /^0x[1-9a-f]+[0-9a-f]*$/iu;
+
   if (!isValidChainIdForEthNetworks)
-    return new Error('Invalid chain ID for ethereum networks.');
+    throw new Error('Invalid chain ID for ethereum networks.');
+
+  const tokenData: any = await utils.getTokenDataByContractAddress(
+    token_contract_address,
+    'ethereum'
+  );
+
+  console.log('contract address is valid', tokenData);
+
+  const hexChainId = `0x${chainId.toString(16)}`;
+
+  const isRpcWithInvalidChainId =
+    typeof hexChainId === 'string' &&
+    !chainIdRegEx.test(hexChainId) &&
+    hexRegEx.test(hexChainId);
+
+  if (isRpcWithInvalidChainId) {
+    throw new Error('RPC has an invalid chain ID');
+  }
+
+  const { symbol } = tokenData;
+
+  const data = {
+    chainId,
+    url: rpcUrl,
+    default: false,
+    currency: symbol.toString().toLowerCase(),
+  };
 
   const response = await jsonRpcRequest(rpcUrl, 'eth_chainId');
 
-  console.log('[validate eth rpc]', chainId, rpcUrl, response);
+  console.log('[validate eth rpc]', chainId, hexChainId, rpcUrl, response);
 
-  return !!response;
+  return {
+    valid: !!response,
+    data,
+  };
 };

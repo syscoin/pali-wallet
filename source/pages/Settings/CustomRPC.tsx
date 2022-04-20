@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Form, Input } from 'antd';
 import { Layout, SecondaryButton } from 'components/index';
-// import axios from 'axios';
+import { Switch } from '@headlessui/react';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
@@ -10,29 +10,34 @@ import { ManageNetwork } from '.';
 const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
   const [loading, setLoading] = useState(false);
   const [edit, setEdit] = useState(false);
+  const [isSyscoinRpc, setIsSyscoinRpc] = useState(true);
 
   const { alert } = useUtils();
   const controller = getController();
 
-  const onSubmit = async ({ rpcUrl, label, currency, chainId }: any) => {
+  const onSubmit = async (data: {
+    chainId: number;
+    label: string;
+    rpcUrl: string;
+    token_contract_address: string;
+  }) => {
     setLoading(true);
 
-    const network = {
-      chainId,
-      url: rpcUrl,
-      label,
-      default: false,
-      currency,
-    };
-
     try {
-      await controller.wallet.addCustomRpc(network);
+      await controller.wallet.addCustomRpc({
+        ...data,
+        isSyscoinRpc,
+      });
 
       setEdit(true);
     } catch (error) {
+      console.log('error custom rpc', error);
+
       alert.removeAll();
       alert.error("Can't add a custom RPC now. Try again later.");
     }
+
+    setLoading(false);
   };
 
   return (
@@ -53,10 +58,42 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             }}
             onFinish={onSubmit}
             autoComplete="off"
-            className="flex flex-col gap-4 items-center justify-center mt-8 text-center"
+            className="flex flex-col gap-2 items-center justify-center text-center"
           >
             <Form.Item
-              name="name"
+              id="network-switch"
+              name="network-switch"
+              rules={[
+                {
+                  required: false,
+                  message: '',
+                },
+              ]}
+            >
+              <div className="flex gap-x-2 my-4 text-xs">
+                <p>Ethereum</p>
+
+                <Switch
+                  checked={isSyscoinRpc}
+                  onChange={() => setIsSyscoinRpc(!isSyscoinRpc)}
+                  className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
+                >
+                  <span className="sr-only">Syscoin Network</span>
+                  <span
+                    className={`${
+                      isSyscoinRpc
+                        ? 'translate-x-6 bg-brand-royalblue'
+                        : 'translate-x-1 bg-brand-deepPink100'
+                    } inline-block w-2 h-2 transform rounded-full`}
+                  />
+                </Switch>
+
+                <p>Syscoin</p>
+              </div>
+            </Form.Item>
+
+            <Form.Item
+              name="label"
               className="md:w-full"
               hasFeedback
               rules={[
@@ -68,26 +105,8 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             >
               <Input
                 type="text"
-                placeholder="Name"
-                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
-              />
-            </Form.Item>
-
-            <Form.Item
-              name="label"
-              className="md:w-full"
-              hasFeedback
-              rules={[
-                {
-                  required: false,
-                  message: '',
-                },
-              ]}
-            >
-              <Input
-                type="text"
-                placeholder="Label (optional)"
-                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
+                placeholder="Label"
+                className="px-4 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
               />
             </Form.Item>
 
@@ -104,36 +123,18 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             >
               <Input
                 type="text"
-                placeholder="RPC URL"
-                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
-              />
-            </Form.Item>
-
-            <Form.Item
-              name="currency"
-              className="md:w-full"
-              hasFeedback
-              rules={[
-                {
-                  required: true,
-                  message: '',
-                },
-              ]}
-            >
-              <Input
-                type="text"
-                placeholder="Label (optional)"
-                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
+                placeholder={`${
+                  isSyscoinRpc ? 'Trezor Block Explorer' : 'RPC URL'
+                }`}
+                className="px-4 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
               />
             </Form.Item>
 
             <Form.Item
               name="chainId"
-              className="md:w-full"
-              hasFeedback
               rules={[
                 {
-                  required: true,
+                  required: !isSyscoinRpc,
                   message: '',
                 },
               ]}
@@ -141,7 +142,27 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               <Input
                 type="text"
                 placeholder="Chain ID"
-                className="pl-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
+                className={`${
+                  isSyscoinRpc ? 'hidden' : 'block'
+                } px-4 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md`}
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="token_contract_address"
+              rules={[
+                {
+                  required: !isSyscoinRpc,
+                  message: '',
+                },
+              ]}
+            >
+              <Input
+                type="text"
+                placeholder="Token Contract Address"
+                className={`${
+                  isSyscoinRpc ? 'hidden' : 'block'
+                } px-4 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md`}
               />
             </Form.Item>
 

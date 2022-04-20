@@ -56,13 +56,15 @@ export const PanelList: FC<IPanelList> = ({
         <ul className="pb-24 md:pb-8">
           {transactions.map((tx: any, idx: number) => {
             const isConfirmed = tx.confirmations > 0;
-            const timestamp = new Date(tx[blocktime] * 1000).toLocaleTimeString(
-              navigator.language,
-              {
-                hour: '2-digit',
-                minute: '2-digit',
-              }
-            );
+            const timestamp =
+              blocktime &&
+              new Date(tx[blocktime] * 1000).toLocaleTimeString(
+                navigator.language,
+                {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }
+              );
 
             return tx[blocktime] !== undefined ? (
               <Fragment key={tx[txid]}>
