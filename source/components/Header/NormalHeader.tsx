@@ -272,13 +272,7 @@ export const NormalHeader: React.FC = () => {
                 className="hover:text-brand-royalblue text-white"
               />
 
-              <Badge
-                className={`${
-                  true
-                    ? 'text-warning-success bg-warning-succes'
-                    : 'text-warning-error bg-warning-error'
-                } absolute -right-1 top-1 w-3 h-3 s rounded-full `}
-              />
+              <Badge className="s absolute -right-1 top-1 w-3 h-3 text-warning-error bg-warning-error rounded-full" />
             </div>
           </Tooltip>
 
