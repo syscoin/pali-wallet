@@ -67,7 +67,7 @@ const ManageNetworkView = () => {
                 <small className="flex items-center justify-between">
                   <div className="flex gap-x-3 items-center justify-start">
                     <span>Blockbook URL:</span>
-                    <span>{formatUrl(String(network.url), 40)}</span>
+                    <span>{formatUrl(String(network.url), 30)}</span>
                   </div>
 
                   {!network.default && (
@@ -113,7 +113,7 @@ const ManageNetworkView = () => {
                 <small className="flex items-center justify-between">
                   <div className="flex gap-x-3 items-center justify-start">
                     <span>RPC URL:</span>
-                    <span>{formatUrl(String(network.url), 40)}</span>
+                    <span>{formatUrl(String(network.url), 30)}</span>
                   </div>
 
                   {!network.default && (
