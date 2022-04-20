@@ -161,23 +161,27 @@ export const validateSysRpc = async (
 
 const utils = ControllerUtils();
 
+const getTokenData = async (address?: string) => {
+  if (!address) return null;
+
+  const tokenData: any = await utils.getTokenDataByContractAddress(
+    address,
+    'ethereum'
+  );
+
+  return tokenData;
+};
+
 export const validateEthRpc = async (
   chainId: number,
   rpcUrl: string,
-  token_contract_address: string
+  token_contract_address?: string
 ): Promise<{ data: any; valid: boolean }> => {
   const hexRegEx = /^0x[0-9a-f]+$/iu;
   const chainIdRegEx = /^0x[1-9a-f]+[0-9a-f]*$/iu;
 
   if (!isValidChainIdForEthNetworks)
     throw new Error('Invalid chain ID for ethereum networks.');
-
-  const tokenData: any = await utils.getTokenDataByContractAddress(
-    token_contract_address,
-    'ethereum'
-  );
-
-  console.log('contract address is valid', tokenData);
 
   const hexChainId = `0x${chainId.toString(16)}`;
 
@@ -190,7 +194,9 @@ export const validateEthRpc = async (
     throw new Error('RPC has an invalid chain ID');
   }
 
-  const { symbol } = tokenData;
+  const tokenData: any = getTokenData(token_contract_address);
+
+  const symbol = tokenData && tokenData.symbol ? tokenData.symbol : 'eth';
 
   const data = {
     chainId,

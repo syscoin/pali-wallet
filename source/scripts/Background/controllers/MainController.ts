@@ -91,12 +91,7 @@ const MainController = () => {
 
     const { networks, activeAccount } = store.getState().vault;
 
-    console.log('setActiveNetwork', networks);
-    console.log('chain', chain, chainId);
-
     const network = networks[chain][chainId];
-
-    console.log('setActiveNetwork network', network);
 
     /** set local active network */
     store.dispatch(setNetwork(network));

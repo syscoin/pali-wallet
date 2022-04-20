@@ -151,5 +151,5 @@ export interface CustomRpcParams {
   isSyscoinRpc?: boolean;
   label: string;
   rpcUrl: string;
-  token_contract_address: string;
+  token_contract_address?: string;
 }
