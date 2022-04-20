@@ -11,12 +11,12 @@ const CustomRPCView = ({
   selectedToEdit,
   isSyscoinToEdit,
 }: {
-  isSyscoinToEdit: boolean;
+  isSyscoinToEdit?: boolean;
   selectedToEdit?: any;
 }) => {
   const [loading, setLoading] = useState(false);
   const [edit, setEdit] = useState(false);
-  const [isSyscoinRpc, setIsSyscoinRpc] = useState(isSyscoinToEdit);
+  const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinToEdit));
 
   const { alert } = useUtils();
   const { networks } = useStore();
