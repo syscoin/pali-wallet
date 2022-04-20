@@ -36,7 +36,6 @@ const VaultState = createSlice({
   name: 'vault',
   initialState,
   reducers: {
-    // todo: set account tx and add to ikeyringaccountstate
     setAccountTransactions(
       state: IVaultState,
       action: PayloadAction<{ tx: any; txid: string }>
@@ -76,6 +75,8 @@ const VaultState = createSlice({
       action: PayloadAction<{ chainId: number; prefix: string }>
     ) {
       const { prefix, chainId } = action.payload;
+
+      console.log('removing network store', state.networks[prefix][chainId]);
 
       delete state.networks[prefix][chainId];
     },
