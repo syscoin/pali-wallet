@@ -1,15 +1,23 @@
 import React, { useState } from 'react';
 import { useStore, useUtils } from 'hooks/index';
-import { Layout, SecondaryButton } from 'components/index';
+import { IconButton, Layout, SecondaryButton, Icon } from 'components/index';
 import { formatUrl } from 'utils/index';
+import { getController } from 'utils/browser';
 
 import { CustomRPC } from '..';
 
 const ManageNetworkView = () => {
   const { networks } = useStore();
   const { navigate } = useUtils();
+  const { wallet } = getController();
 
   const [selected, setSelected] = useState('');
+
+  const removeNetwork = (chainId: number) => {
+    const chain = networks.syscoin[chainId] ? 'syscoin' : 'ethereum';
+
+    wallet.removeKeyringNetwork(chain, chainId);
+  };
 
   return (
     <>
@@ -33,21 +41,43 @@ const ManageNetworkView = () => {
           <ul className="scrollbar-styled mb-3 mt-2 px-4 py-2 w-full h-80 text-sm overflow-auto">
             {Object.values(networks.syscoin).map((network: any) => (
               <li
-                key={network.id}
+                key={network.chainId}
                 className={
                   network.default
                     ? 'my-3 cursor-not-allowed border-b border-dashed bg-opacity-60 border-dashed-light flex flex-col w-full'
                     : 'my-3 w-full border-b border-dashed border-dashed-light cursor-pointer flex flex-col transition-all duration-300'
                 }
-                onClick={() =>
-                  !network.default ? setSelected(network) : undefined
-                }
               >
-                <span>{formatUrl(network.label, 25)}</span>
+                <span
+                  onClick={() =>
+                    !network.default ? setSelected(network) : undefined
+                  }
+                  className={`${
+                    !network.default &&
+                    'hover:text-brand-royalblue cursor-pointer'
+                  }`}
+                >
+                  {formatUrl(network.label, 25)}
+                </span>
 
-                <small className="flex gap-x-3 items-center justify-start">
-                  <span>Blockbook URL:</span>
-                  <span> {formatUrl(String(network.url), 25)}</span>
+                <small className="flex items-center justify-between">
+                  <div className="flex gap-x-3 items-center justify-start">
+                    <span>Blockbook URL:</span>
+                    <span>{formatUrl(String(network.url), 25)}</span>
+                  </div>
+
+                  {!network.default && (
+                    <IconButton
+                      onClick={() => removeNetwork(network.chainId)}
+                      type="primary"
+                      shape="circle"
+                    >
+                      <Icon
+                        name="trash"
+                        className="hover:text-brand-royalblue text-xl"
+                      />
+                    </IconButton>
+                  )}
                 </small>
               </li>
             ))}

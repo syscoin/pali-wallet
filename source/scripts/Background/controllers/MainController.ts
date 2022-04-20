@@ -1,10 +1,5 @@
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
-import {
-  IKeyringAccountState,
-  INetwork,
-  // validateSysRpc,
-  // validateEthRpc,
-} from '@pollum-io/sysweb3-utils';
+import { IKeyringAccountState, INetwork } from '@pollum-io/sysweb3-utils';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -17,7 +12,10 @@ import {
   setActiveAccountProperty,
   setIsPendingBalances,
   setNetworks,
+  removeNetwork as removeNetworkFromStore,
 } from 'state/vault';
+import { CustomRpcParams } from 'types/transactions';
+// import { MainController as IMainController } from 'types/controllers';
 
 import WalletController from './account';
 import { validateEthRpc, validateSysRpc } from './utils';
@@ -52,7 +50,6 @@ const MainController = () => {
   };
 
   const createWallet = async (): Promise<IKeyringAccountState> => {
-    console.log('[main controller] calling keyring manager create vault');
     const account =
       (await keyringManager.createKeyringVault()) as IKeyringAccountState;
 
@@ -72,17 +69,17 @@ const MainController = () => {
     store.dispatch(setLastLogin());
   };
 
-  const createAccount = async (label?: string) => {
+  const createAccount = async (
+    label?: string
+  ): Promise<IKeyringAccountState> => {
     const newAccount = await addAccount(label);
-
-    console.log('adding account to store', newAccount);
 
     store.dispatch(addAccountToStore(newAccount));
 
     return newAccount;
   };
 
-  const setAccount = (id: number) => {
+  const setAccount = (id: number): void => {
     const { accounts } = store.getState().vault;
 
     store.dispatch(setActiveAccount(accounts[id]));
@@ -94,7 +91,12 @@ const MainController = () => {
 
     const { networks, activeAccount } = store.getState().vault;
 
+    console.log('setActiveNetwork', networks);
+    console.log('chain', chain, chainId);
+
     const network = networks[chain][chainId];
+
+    console.log('setActiveNetwork network', network);
 
     /** set local active network */
     store.dispatch(setNetwork(network));
@@ -134,35 +136,36 @@ const MainController = () => {
     return account;
   };
 
-  const hexRegEx = /^0x[0-9a-f]+$/iu;
-  const chainIdRegEx = /^0x[1-9a-f]+[0-9a-f]*$/iu;
+  const addCustomRpc = async (data: CustomRpcParams): Promise<INetwork> => {
+    const { chainId, rpcUrl, token_contract_address, isSyscoinRpc, label } =
+      data;
 
-  const addCustomRpc = async (network: INetwork): Promise<INetwork | Error> => {
-    const { chainId, url } = network;
+    const chain = isSyscoinRpc ? 'syscoin' : 'ethereum';
 
-    const isRpcWithInvalidChainId =
-      typeof chainId === 'string' &&
-      !chainIdRegEx.test(chainId) &&
-      hexRegEx.test(chainId);
+    const { networks } = store.getState().vault;
 
-    if (isRpcWithInvalidChainId) {
-      return new Error('RPC has an invalid chain ID');
-    }
+    if (networks[chainId]) throw new Error('Network already exists');
 
-    const { activeNetwork, networks } = store.getState().vault;
+    const { valid, data: _data } = isSyscoinRpc
+      ? await validateSysRpc(rpcUrl)
+      : await validateEthRpc(chainId, rpcUrl, token_contract_address);
 
-    const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
-    const chain = isSyscoinChain ? 'syscoin' : 'ethereum';
+    if (!valid) throw new Error(`Invalid ${chain} RPC`);
 
-    const isValid = isSyscoinChain
-      ? await validateSysRpc(url)
-      : await validateEthRpc(chainId, url);
-
-    if (!isValid) return new Error(`Invalid ${chain} RPC`);
+    const network = {
+      ..._data,
+      label,
+    };
 
     store.dispatch(setNetworks({ chain, network }));
 
     return network;
+  };
+
+  const removeKeyringNetwork = (chain: string, chainId: number) => {
+    keyringManager.removeNetwork(chain, chainId);
+
+    store.dispatch(removeNetworkFromStore({ prefix: chain, chainId }));
   };
 
   return {
@@ -176,6 +179,7 @@ const MainController = () => {
     setAutolockTimer,
     setActiveNetwork,
     addCustomRpc,
+    removeKeyringNetwork,
     ...keyringManager,
   };
 };

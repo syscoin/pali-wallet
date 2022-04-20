@@ -2116,7 +2116,20 @@
     syscoinjs-lib "^1.0.209"
     syscointx-js "^1.0.101"
 
-"@pollum-io/sysweb3-utils@^1.1.86", "@pollum-io/sysweb3-utils@^1.1.92":
+"@pollum-io/sysweb3-utils@^1.1.86":
+  version "1.1.86"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.86.tgz#7be2fc82fd15c6f653614b2b30a13a6300d736a5"
+  integrity sha512-J6adRYOroumbKI6AQqjR1V2sJ779jN32EeclGdG+uozOm44D0QaUaTc7CIE15hDPqQYdS4KRQ2q6GqAUtHwBKA==
+  dependencies:
+    "@pollum-io/sysweb3-core" "^1.0.6"
+    "@pollum-io/sysweb3-keyring" "^1.0.45"
+    "@pollum-io/sysweb3-network" "^1.0.4"
+    bech32 "^2.0.0"
+    ethers "^5.6.2"
+    syscoinjs-lib "^1.0.209"
+    syscointx-js "^1.0.101"
+
+"@pollum-io/sysweb3-utils@^1.1.92":
   version "1.1.92"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.92.tgz#9fb1bb3b189db91d6ffb88c800e9bf2bfc45e3f6"
   integrity sha512-9h6fiD1+fnac/5f4/7Exmw52G+uyj55QI33beXrSEAXB5dNoAHdCjj5jULi7LLeU+IaXbEaS5fmVM7z+YsZRbA==

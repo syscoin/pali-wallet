@@ -145,3 +145,11 @@ export type TemporaryTransaction = {
   transferAsset: TransferAsset | null;
   updateAsset: UpdateAsset | null;
 };
+
+export interface CustomRpcParams {
+  chainId: number;
+  isSyscoinRpc?: boolean;
+  label: string;
+  rpcUrl: string;
+  token_contract_address: string;
+}
