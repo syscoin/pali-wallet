@@ -3,6 +3,7 @@ import { useStore, useUtils } from 'hooks/index';
 import { IconButton, Layout, SecondaryButton, Icon } from 'components/index';
 import { formatUrl } from 'utils/index';
 import { getController } from 'utils/browser';
+import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import { CustomRPC } from '..';
 
@@ -11,7 +12,13 @@ const ManageNetworkView = () => {
   const { navigate } = useUtils();
   const { wallet } = getController();
 
-  const [selected, setSelected] = useState('');
+  const [selected, setSelected] = useState<INetwork>({
+    chainId: -1,
+    label: '',
+    url: '',
+    default: false,
+    currency: 'sys',
+  });
 
   const removeNetwork = (chainId: number) => {
     const chain = networks.syscoin[chainId] ? 'syscoin' : 'ethereum';
@@ -21,16 +28,10 @@ const ManageNetworkView = () => {
 
   return (
     <>
-      {selected ? (
+      {selected.chainId > -1 ? (
         <CustomRPC
-          selectedToEdit={
-            selected || {
-              chainId: -1,
-              label: '',
-              url: '',
-              token_contract_address: '',
-            }
-          }
+          selectedToEdit={selected}
+          isSyscoinToEdit={Boolean(networks.syscoin[selected.chainId])}
         />
       ) : (
         <Layout title="MANAGE NETWORK">
@@ -42,7 +43,7 @@ const ManageNetworkView = () => {
             <p className="py-1 text-brand-royalbluemedium text-xs font-bold bg-bkg-1">
               Syscoin Networks
             </p>
-            {Object.values(networks.syscoin).map((network: any) => (
+            {Object.values(networks.syscoin).map((network: INetwork) => (
               <li
                 key={network.chainId}
                 className={
