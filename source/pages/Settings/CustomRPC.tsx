@@ -20,7 +20,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
     chainId: number;
     label: string;
     rpcUrl: string;
-    token_contract_address: string;
+    token_contract_address?: string;
   }) => {
     setLoading(true);
 
@@ -175,7 +175,7 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               name="token_contract_address"
               rules={[
                 {
-                  required: !isSyscoinRpc,
+                  required: false,
                   message: '',
                 },
               ]}
