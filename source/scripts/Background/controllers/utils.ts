@@ -37,6 +37,7 @@ const getFetchWithTimeout = memoize((timeout) => {
 
 export const countDecimals = (x: number) => {
   if (Math.floor(x) === x) return 0;
+
   return x.toString().split('.')[1].length || 0;
 };
 
@@ -60,15 +61,6 @@ export const base64 =
 
 const fetchWithTimeout = getFetchWithTimeout(1000 * 30);
 
-/**
- * Makes a JSON RPC request to the given URL, with the given RPC method and params.
- *
- * @param {string} rpcUrl - The RPC endpoint URL to target.
- * @param {string} rpcMethod - The RPC method to request.
- * @param {Array<unknown>} [rpcParams] - The RPC method params.
- * @returns {Promise<unknown|undefined>} Returns the result of the RPC method call,
- * or throws an error in case of failure.
- */
 export const jsonRpcRequest = async (
   rpcUrl: string,
   rpcMethod: string,
