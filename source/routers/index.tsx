@@ -72,8 +72,6 @@ export const Router = () => {
   useEffect(() => {
     const route = controller.appRoute();
 
-    console.log('is unlocked', isUnlocked);
-
     if (isUnlocked && accounts && activeAccount.address) {
       navigate('/home');
 
@@ -81,7 +79,7 @@ export const Router = () => {
     }
 
     if (route !== '/') navigate(route);
-  }, [isUnlocked, accounts, activeAccount.address]);
+  }, [isUnlocked]);
 
   useEffect(() => {
     alert.removeAll();
