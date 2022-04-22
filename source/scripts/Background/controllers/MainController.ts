@@ -74,6 +74,8 @@ const MainController = () => {
   ): Promise<IKeyringAccountState> => {
     const newAccount = await addAccount(label);
 
+    console.log('[derived account]', newAccount);
+
     store.dispatch(addAccountToStore(newAccount));
 
     return newAccount;
