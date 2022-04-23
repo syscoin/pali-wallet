@@ -15,6 +15,7 @@ import {
   removeNetwork as removeNetworkFromStore,
 } from 'state/vault';
 import { CustomRpcParams } from 'types/transactions';
+
 // import { MainController as IMainController } from 'types/controllers';
 
 import WalletController from './account';
@@ -39,14 +40,14 @@ const MainController = () => {
   };
 
   const unlock = async (pwd: string): Promise<void> => {
-    const seedByPassword = await keyringManager.getSeed(pwd);
+    if (!keyringManager.checkPassword(pwd)) throw new Error('Invalid password');
 
-    if (seedByPassword) {
-      const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
+    const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
 
-      store.dispatch(setLastLogin());
-      store.dispatch(setActiveAccount(account));
-    }
+    console.log('unlock account', account);
+
+    store.dispatch(setLastLogin());
+    store.dispatch(setActiveAccount(account));
   };
 
   const createWallet = async (): Promise<IKeyringAccountState> => {

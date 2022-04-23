@@ -74,8 +74,6 @@ export const Router = () => {
 
     if (isUnlocked && accounts && activeAccount.address) {
       navigate('/home');
-
-      return;
     }
 
     if (route !== '/') navigate(route);
