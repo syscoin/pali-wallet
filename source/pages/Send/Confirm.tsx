@@ -111,8 +111,14 @@ export const SendConfirm = () => {
             <span className="text-brand-royalblue font-poppins font-thin">
               Send
             </span>
-            {tx.amount}
-            {tx.token ? tx.token.symbol : activeNetwork.currency?.toUpperCase()}
+
+            <span>
+              {`${tx.amount} ${' '} ${
+                tx.token
+                  ? tx.token.symbol
+                  : activeNetwork.currency?.toUpperCase()
+              }`}
+            </span>
           </p>
 
           <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">

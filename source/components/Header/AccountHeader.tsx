@@ -7,7 +7,7 @@ import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 
 const AccountMenu: React.FC = () => {
-  const { navigate, handleRefresh } = useUtils();
+  const { navigate } = useUtils();
   const { wallet } = getController();
   const { encryptedMnemonic, accounts, activeAccount } = useStore();
 
@@ -15,13 +15,6 @@ const AccountMenu: React.FC = () => {
     wallet.setAccount(Number(id));
     wallet.account.sys.watchMemPool(accounts[Number(id)]);
   };
-
-  const controller = getController();
-
-  useEffect(() => {
-    if (controller.wallet.isUnlocked() && accounts && activeAccount)
-      handleRefresh(true);
-  }, [controller.wallet.isUnlocked()]);
 
   const handleLogout = () => {
     wallet.lock();

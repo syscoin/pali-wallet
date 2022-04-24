@@ -9,7 +9,7 @@ import { getController } from 'utils/browser';
 export const Start = () => {
   const { navigate } = useUtils();
   const {
-    wallet: { unlock },
+    wallet: { unlock, checkPassword },
   } = getController();
   const { encryptedMnemonic } = useStore();
 
@@ -30,6 +30,8 @@ export const Start = () => {
 
   const onSubmit = async ({ password }: { password: string }) => {
     await unlock(password);
+
+    navigate('/home');
   };
 
   const unLock = (
@@ -52,7 +54,7 @@ export const Start = () => {
             },
             () => ({
               async validator(_, value) {
-                if (await unlock(value)) {
+                if (await checkPassword(value)) {
                   return Promise.resolve();
                 }
 

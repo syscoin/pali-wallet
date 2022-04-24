@@ -49,6 +49,7 @@ export const SendSys = () => {
   const hasAccountAssets = assets && assets.length > 0;
 
   const handleSelectedAsset = (item: number) => {
+    console.log('selected item', item);
     if (assets) {
       const getAsset = assets.find((asset: any) => asset.assetGuid === item);
 
@@ -83,7 +84,7 @@ export const SendSys = () => {
             receivingAddress: receiver,
             amount: Number(amount),
             fee,
-            token: selectedAsset || null,
+            token: selectedAsset ? selectedAsset.assetGuid : null,
             isToken: !!selectedAsset,
             rbf: !ZDAG,
           },
