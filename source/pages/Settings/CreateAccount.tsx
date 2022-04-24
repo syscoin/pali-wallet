@@ -15,9 +15,9 @@ const CreateAccount = () => {
   const onSubmit = async ({ label }: { label?: string }) => {
     setLoading(true);
 
-    const response = await controller.wallet.createAccount(label);
+    const { address } = await controller.wallet.createAccount(label);
 
-    setAddress(response.address);
+    setAddress(address);
     setLoading(false);
   };
 
