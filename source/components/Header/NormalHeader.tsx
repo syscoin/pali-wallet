@@ -121,9 +121,7 @@ export const NormalHeader: React.FC = () => {
                             className="ml-1 mr-4 text-brand-white"
                           />
 
-                          <span className="px-3 text-base">
-                            Syscoin networks
-                          </span>
+                          <span className="px-3 text-base">Syscoin core</span>
 
                           <Icon
                             name="select-down"
@@ -177,9 +175,7 @@ export const NormalHeader: React.FC = () => {
                             className="ml-1 mr-4 text-brand-white"
                           />
 
-                          <span className="px-3 text-base">
-                            Ethereum networks
-                          </span>
+                          <span className="px-3 text-base">Web3 networks</span>
 
                           <Icon
                             name="select-down"

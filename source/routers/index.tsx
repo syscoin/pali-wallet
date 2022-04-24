@@ -53,7 +53,7 @@ export const Router = () => {
   const controller = getController();
 
   const { accounts, activeAccount } = useStore();
-  const { alert, navigate } = useUtils();
+  const { alert, navigate, handleRefresh } = useUtils();
 
   const isUnlocked =
     controller.wallet.isUnlocked() && activeAccount.address !== '';
@@ -77,6 +77,18 @@ export const Router = () => {
     }
 
     if (route !== '/') navigate(route);
+  }, [isUnlocked]);
+
+  useEffect(() => {
+    if (isUnlocked) {
+      handleRefresh(true);
+      console.log(
+        'refreshing',
+        controller.wallet.isUnlocked(),
+        accounts,
+        activeAccount
+      );
+    }
   }, [isUnlocked]);
 
   useEffect(() => {
