@@ -1,5 +1,9 @@
 import store from 'state/store';
-import { setActiveAccountProperty } from 'state/vault';
+import {
+  setActiveAccount,
+  setActiveAccountProperty,
+  setIsPendingBalances,
+} from 'state/vault';
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 import { validateToken, IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 
@@ -7,11 +11,29 @@ import SysTrezorController from '../trezor/syscoin';
 import { SysTransactionController } from '../transaction';
 import { CoingeckoCoins } from '../ControllerUtils';
 
-import WalletController from '.';
-
 const SysAccountController = () => {
   const keyringManager = KeyringManager();
-  const { getLatestUpdate } = WalletController();
+
+  const getLatestUpdate = async (silent?: boolean) => {
+    if (!silent) store.dispatch(setIsPendingBalances(true));
+
+    const { activeAccount } = store.getState().vault;
+
+    if (!activeAccount) return;
+
+    const updatedAccountInfo = await keyringManager.getLatestUpdateForAccount();
+
+    store.dispatch(setIsPendingBalances(false));
+
+    console.log('updated account in pali going to store', updatedAccountInfo);
+
+    store.dispatch(
+      setActiveAccount({
+        ...activeAccount,
+        ...updatedAccountInfo,
+      })
+    );
+  };
 
   /** check if there is no pending transaction in mempool
    *  and get the latest update for account

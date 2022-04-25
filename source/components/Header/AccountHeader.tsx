@@ -9,10 +9,11 @@ import { getController } from 'utils/browser';
 const AccountMenu: React.FC = () => {
   const { navigate, handleRefresh } = useUtils();
   const { wallet } = getController();
-  const { encryptedMnemonic, accounts, activeAccount } = useStore();
+  const { encryptedMnemonic, accounts, activeAccount, activeNetwork } =
+    useStore();
 
-  const setActiveAccount = (id: number) => {
-    wallet.setAccount(Number(id));
+  const setActiveAccount = async (id: number) => {
+    await wallet.setAccount(Number(id));
     wallet.account.sys.watchMemPool(accounts[Number(id)]);
   };
 
@@ -20,7 +21,7 @@ const AccountMenu: React.FC = () => {
     handleRefresh(true);
 
     console.log('active account acc header', activeAccount);
-  }, [activeAccount.address]);
+  }, [activeAccount.address, activeNetwork.chainId]);
 
   const handleLogout = () => {
     wallet.lock();
