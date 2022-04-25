@@ -10,6 +10,9 @@ import {
   isValidSYSAddress,
   getTokenJson,
   importWeb3Token,
+  getAsset,
+  txUtils,
+  ITokenMap,
 } from '@pollum-io/sysweb3-utils';
 import { AxiosResponse } from 'axios';
 import CoinGecko from 'coingecko-api';
@@ -37,6 +40,19 @@ export interface EthTokenDetails {
 
 export interface IControllerUtils {
   appRoute: (newRoute?: string) => string;
+  getAsset: (
+    explorerUrl: string,
+    assetGuid: string
+  ) => Promise<{
+    assetGuid: string;
+    contract: string;
+    decimals: number;
+    maxSupply: string;
+    pubData: any;
+    symbol: string;
+    totalSupply: string;
+    updateCapabilityFlags: number;
+  }>;
   getDataForToken: (tokenId: string) => any;
   getSearch: (query: string) => Promise<
     AxiosResponse<
@@ -66,6 +82,26 @@ export interface IControllerUtils {
     activeNetwork: INetwork,
     verification?: boolean
   ) => boolean;
+  txUtils: () => {
+    getFeeRate: (fee: number) => BigInt;
+    getGasUsedInTransaction: (transactionHash: string) => Promise<{
+      effectiveGasPrice: number;
+      gasUsed: number;
+    }>;
+    getPsbtFromJson: (psbt: JSON) => string;
+    getRawTransaction: (explorerUrl: string, txid: string) => any;
+    getTokenMap: ({
+      guid,
+      changeAddress,
+      amount,
+      receivingAddress,
+    }: {
+      amount: number;
+      changeAddress: string;
+      guid: number | string;
+      receivingAddress: string;
+    }) => ITokenMap;
+  };
   updateFiat: (currency?: string, assetId?: string) => Promise<void>;
   updateFiatCurrencyForWallet: (chosenCurrency: string) => any;
 }
@@ -155,6 +191,8 @@ const ControllerUtils = (): IControllerUtils => {
     updateFiatCurrencyForWallet,
     importToken,
     getSearch,
+    getAsset,
+    txUtils,
     isValidEthereumAddress,
     isValidSYSAddress,
     getTokenJson,
