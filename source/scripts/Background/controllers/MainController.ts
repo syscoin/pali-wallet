@@ -62,7 +62,7 @@ const MainController = () => {
     return account;
   };
 
-  const { account, addAccount } = WalletController();
+  const { account, addAccount, getLatestUpdate } = WalletController();
 
   const lock = () => {
     keyringManager.logout();
@@ -86,7 +86,10 @@ const MainController = () => {
     const { accounts } = store.getState().vault;
 
     store.dispatch(setActiveAccount(accounts[id]));
-    account.getLatestUpdate(false);
+
+    console.log('account set account', account);
+
+    getLatestUpdate(false);
   };
 
   const setActiveNetwork = async (chain: string, chainId: number) => {

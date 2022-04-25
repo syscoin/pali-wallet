@@ -18,6 +18,8 @@ const AccountMenu: React.FC = () => {
 
   useEffect(() => {
     handleRefresh(true);
+
+    console.log('active account acc header', activeAccount);
   }, [activeAccount.address]);
 
   const handleLogout = () => {
