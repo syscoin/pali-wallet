@@ -26,7 +26,7 @@ export const Layout: FC<ILayout> = ({
 
       <div className="relative flex items-center justify-center pt-6 w-full text-brand-white bg-bkg-3">
         {url && canGoBack && (
-          <Tooltip content="Go to fullscreen">
+          <Tooltip content="Fullscreen mode">
             <IconButton onClick={() => window.open(url)}>
               <Icon
                 className="absolute bottom-1 left-5 text-brand-white sm:hidden"
