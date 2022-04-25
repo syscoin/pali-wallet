@@ -23,7 +23,8 @@ export const DetailsView = () => {
   useEffect(() => {
     const getTransactionData = async () => {
       if (assetGuid) {
-        const assetData = await controller.wallet.account.sys.getDataAsset(
+        const assetData = await controller.utils.getAsset(
+          activeNetwork.url,
           assetGuid
         );
 
@@ -39,8 +40,9 @@ export const DetailsView = () => {
         return;
       }
 
-      const txData =
-        await controller.wallet.account.sys.getTransactionInfoByTxId(tx.txid);
+      const txData = await controller.utils
+        .txUtils()
+        .getRawTransaction(activeNetwork.url, tx.txid);
 
       setTransactionDetails(txData);
     };
