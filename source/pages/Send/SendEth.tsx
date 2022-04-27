@@ -5,8 +5,7 @@ import { Form, Input } from 'antd';
 import { Menu, Transition } from '@headlessui/react';
 import { SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
-import { Assets } from 'types/transactions';
-import { formatUrl, isNFT, getAssetBalance } from 'utils/index';
+import { formatUrl, getAssetBalance } from 'utils/index';
 import { getController } from 'utils/browser';
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
@@ -17,7 +16,7 @@ export const SendEth = () => {
 
   const { alert, navigate } = useUtils();
   const { activeAccount } = useStore();
-  const [selectedAsset, setSelectedAsset] = useState<Assets | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [recommendedGasPrice, setRecommendedGasPrice] = useState(0);
   const [recommendedGasLimit, setRecommendedGasLimit] = useState(0);
   const [editGas, setEditGas] = useState(false);
@@ -43,7 +42,7 @@ export const SendEth = () => {
   const handleSelectedAsset = (item: number) => {
     if (activeAccount?.assets) {
       const getAsset = activeAccount?.assets.find(
-        (asset: Assets) => asset.assetGuid === item
+        (asset: any) => asset.contractAddress === item
       );
 
       if (getAsset) {
@@ -68,7 +67,11 @@ export const SendEth = () => {
             gasPrice,
             gasLimit,
             fee: baseFee,
-            // tokenContract
+            token: null,
+            // token: {
+            //   decimals: 18,
+            //   contractAddress: '0x6B175474E89094C44Da98b954EedeAC495271d0F',
+            // },
           },
         },
       });
@@ -182,14 +185,11 @@ export const SendEth = () => {
                                 <Menu.Item>
                                   <button
                                     onClick={() =>
-                                      handleSelectedAsset(item.assetGuid)
+                                      handleSelectedAsset(item.contractAddress)
                                     }
                                     className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                                   >
                                     <p>{item.symbol}</p>
-                                    <small>
-                                      {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
-                                    </small>
                                   </button>
                                 </Menu.Item>
                               )

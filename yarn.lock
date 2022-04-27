@@ -2042,22 +2042,30 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.195":
-  version "1.0.195"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.195.tgz#b4f264e85f93c7ce9e179ebfed358d1277bfaafa"
-  integrity sha512-xU3MCMZ47acAHX0fnx90Gieqj40rDGAb+eQws49JlTTkX5Vx64j7n2BrEl5/XO3Wn4vFY4GTD33OXPpYGv5mrg==
+"@pollum-io/sysweb3-keyring@^1.0.199":
+  version "1.0.199"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.199.tgz#a4e2d394755c3fc07a1ff749e7715310a1e37d71"
+  integrity sha512-6LbQPQWvwGvG/qv8Ppl+bA9xEtQTenYZJv7uCQVq9UiWrU03J4YJoVPbS5BKJc2CaoineGGzdVhaYx+37wEeSQ==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "^1.0.10"
-    "@pollum-io/sysweb3-network" "^1.0.17"
-    "@pollum-io/sysweb3-utils" "^1.1.104"
+    "@pollum-io/sysweb3-network" "^1.0.18"
+    "@pollum-io/sysweb3-utils" "^1.1.107"
     syscointx-js "^1.0.101"
 
-"@pollum-io/sysweb3-network@^1.0.16", "@pollum-io/sysweb3-network@^1.0.17":
+"@pollum-io/sysweb3-network@^1.0.16":
   version "1.0.17"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.17.tgz#582cb2934b1f1a7b56fb3faf69fe8524d1e802ec"
   integrity sha512-XQC44e65dUCYn1w0p7enOTDqiGvpEyrRlK/Q1IxA2K/tXO3UjvgxCWLYZNxc7wf8L6LsOMU4rLqZkmFNGUGzVg==
+  dependencies:
+    "@pollum-io/sysweb3-core" "^1.0.12"
+    "@pollum-io/sysweb3-utils" "^1.1.101"
+
+"@pollum-io/sysweb3-network@^1.0.18":
+  version "1.0.18"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.18.tgz#0703cb5d06798009147920271ecbcc8553ca1346"
+  integrity sha512-L4DGx8+ck9L0hctaulnpiKKNK+/STfK1rep34gcvMGDVGT50EER7IOjU21d1DgTnli4DZzM7WCNrNn8eO/ZueQ==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.12"
     "@pollum-io/sysweb3-utils" "^1.1.101"
@@ -2070,10 +2078,10 @@
     "@pollum-io/sysweb3-core" "^1.0.12"
     "@pollum-io/sysweb3-network" "^1.0.16"
 
-"@pollum-io/sysweb3-utils@^1.1.104":
-  version "1.1.104"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.104.tgz#ce24d2c78515b9d0a9db1f56fc3c23c2d04e209b"
-  integrity sha512-tYt7stzNvtz9fsXrlsubSib9BhFZABuFYSZQkL+kE7lOkQqzInAxHZdXN4Kg/tatbSyg7j8iRA9Wg9A/7CUjWQ==
+"@pollum-io/sysweb3-utils@^1.1.107":
+  version "1.1.107"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.107.tgz#96386915f544e9aea59b7ce084156e12ce23601c"
+  integrity sha512-A0mBVH+FXFx61MMIVVjN9GUrnzni+XOs/VlEL5wdNORLXE1gu0bJM0HKNG+Lznpp4oagDun6FYmwYwuBeJtW/A==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.12"
     "@pollum-io/sysweb3-network" "^1.0.16"
@@ -10997,7 +11005,7 @@ prompts@^2.0.1, prompts@^2.4.2:
     kleur "^3.0.3"
     sisteransi "^1.0.5"
 
-prop-types@^15.6.0, prop-types@^15.6.2, prop-types@^15.7.2:
+prop-types@^15.6.2, prop-types@^15.7.2:
   version "15.8.1"
   resolved "https://registry.yarnpkg.com/prop-types/-/prop-types-15.8.1.tgz#67d87bf1a694f48435cf332c24af10214a3140b5"
   integrity sha512-oj87CgZICdulUohogVAR7AjlC0327U4el4L6eAvOqCeudMDVU0NThNaV+b9Df4dXgSP1gXMTnPdhfe/2qDH5cg==
@@ -11110,19 +11118,10 @@ pushdata-bitcoin@^1.0.1:
   dependencies:
     bitcoin-ops "^1.3.0"
 
-qr.js@0.0.0:
-  version "0.0.0"
-  resolved "https://registry.yarnpkg.com/qr.js/-/qr.js-0.0.0.tgz#cace86386f59a0db8050fa90d9b6b0e88a1e364f"
-  integrity sha1-ys6GOG9ZoNuAUPqQ2baw6IoeNk8=
-
-qrcode.react@^1.0.1:
-  version "1.0.1"
-  resolved "https://registry.yarnpkg.com/qrcode.react/-/qrcode.react-1.0.1.tgz#2834bb50e5e275ffe5af6906eff15391fe9e38a5"
-  integrity sha512-8d3Tackk8IRLXTo67Y+c1rpaiXjoz/Dd2HpcMdW//62/x8J1Nbho14Kh8x974t9prsLHN6XqVgcnRiBGFptQmg==
-  dependencies:
-    loose-envify "^1.4.0"
-    prop-types "^15.6.0"
-    qr.js "0.0.0"
+qrcode.react@^3.0.1:
+  version "3.0.1"
+  resolved "https://registry.yarnpkg.com/qrcode.react/-/qrcode.react-3.0.1.tgz#0cb1d7cfdf3955737fbd3509c193985795ca0612"
+  integrity sha512-uCNm16ClMCrdM2R20c/zqmdwHcbMQf3K7ey39EiK/UgEKbqWeM0iH2QxW3iDVFzjQKFzH23ICgOyG4gNsJ0/gw==
 
 qs@6.9.6:
   version "6.9.6"
