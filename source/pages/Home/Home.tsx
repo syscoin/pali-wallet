@@ -11,6 +11,7 @@ export const Home = () => {
   const { networks, activeNetwork, fiat, activeAccount, lastLogin } =
     useStore();
   const [symbol, setSymbol] = useState('SYS');
+  const [value, setValue] = useState('');
 
   const { getFiatAmount } = usePrice();
 
@@ -29,12 +30,24 @@ export const Home = () => {
     setSymbol(symbol);
   };
 
+  const getFiatPrice = async () => {
+    const value = await getFiatAmount(
+      balance || 0,
+      4,
+      String(fiat.current),
+      activeNetwork.currency === 'sys' ? '' : symbol
+    );
+
+    setValue(value);
+  };
+
   const isUnlocked =
     controller.wallet.isUnlocked() && activeAccount.address !== '';
 
   useEffect(() => {
     setChainSymbol();
-  }, [isUnlocked]);
+    getFiatPrice();
+  }, [isUnlocked, activeNetwork]);
 
   const isSysTestnet = activeNetwork.chainId === 5700;
   const symbolByChain = isSysTestnet ? 'tsys' : symbol;
@@ -62,11 +75,7 @@ export const Home = () => {
                 </p>
               </div>
 
-              <p id="fiat-ammount">
-                {!isSysTestnet
-                  ? getFiatAmount(balance || 0, 4, String(fiat.current))
-                  : null}
-              </p>
+              <p id="fiat-ammount">{!isSysTestnet ? value : null}</p>
             </div>
 
             <div className="flex gap-x-0.5 items-center justify-center pt-8 w-3/4 max-w-md">
