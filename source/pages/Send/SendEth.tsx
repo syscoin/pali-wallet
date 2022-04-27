@@ -8,6 +8,7 @@ import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { formatUrl, getAssetBalance } from 'utils/index';
 import { getController } from 'utils/browser';
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
+import { web3Provider } from '@pollum-io/sysweb3-network';
 
 import { EditGasFee } from './EditGasFee';
 
@@ -19,6 +20,7 @@ export const SendEth = () => {
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [recommendedGasPrice, setRecommendedGasPrice] = useState(0);
   const [recommendedGasLimit, setRecommendedGasLimit] = useState(0);
+  const [feeValue, setFeeValue] = useState(0);
   const [editGas, setEditGas] = useState(false);
   const [form] = Form.useForm();
 
@@ -29,6 +31,7 @@ export const SendEth = () => {
 
     setRecommendedGasPrice(gasPrice);
     setRecommendedGasLimit(gasLimit);
+    setFeeValue(gasPrice);
 
     form.setFieldsValue({ baseFee: recommendedGasPrice, gasLimit, gasPrice });
   }, [controller.wallet.account]);
@@ -55,7 +58,7 @@ export const SendEth = () => {
     }
   };
 
-  const nextStep = ({ receiver, amount, gasPrice, gasLimit, baseFee }: any) => {
+  const nextStep = ({ receiver, amount, gasPrice, gasLimit }: any) => {
     try {
       navigate('/send/confirm', {
         state: {
@@ -66,7 +69,7 @@ export const SendEth = () => {
             amount,
             gasPrice,
             gasLimit,
-            fee: baseFee,
+            fee: Number(web3Provider.utils.fromWei(String(feeValue), 'ether')),
             token: null,
             // token: {
             //   decimals: 18,
@@ -88,6 +91,7 @@ export const SendEth = () => {
           setGasFee={setRecommendedGasPrice}
           setEdit={setEditGas}
           form={form}
+          setFee={setFeeValue}
         />
       ) : (
         <div className="mt-4">
