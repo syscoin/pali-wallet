@@ -20,6 +20,7 @@ const CurrencyView = () => {
   const [selectedCoin, setSelectedCoin] = useState(String(fiat.current));
   const [checkValueCoin, setCheckValueCoin] = useState('usd');
   const [confirmed, setConfirmed] = useState(false);
+  const [fiatAmountValue, setFiatAmountValue] = useState('');
 
   const { availableCoins } = fiat;
   const convertCurrency = (value: number, toCoin: string) =>
@@ -62,6 +63,16 @@ const CurrencyView = () => {
     controller.utils.updateFiat(selectedCoin, 'syscoin');
   };
 
+  const getFiatAmountValue = async () => {
+    const value = await getFiatAmount(
+      activeAccount?.balances.syscoin || 0,
+      4,
+      String(selectedCoin || (fiat.current ? fiat.current : 'USD'))
+    );
+
+    setFiatAmountValue(value);
+  };
+
   useEffect(() => {
     if (
       controller.wallet.isUnlocked() &&
@@ -71,6 +82,10 @@ const CurrencyView = () => {
       handleRefresh(true);
     }
   }, [controller.wallet.isUnlocked(), accounts]);
+
+  useEffect(() => {
+    getFiatAmountValue();
+  }, []);
 
   return (
     <Layout title="FIAT CURRENCY" id="fiat-currency-title">
@@ -154,13 +169,7 @@ const CurrencyView = () => {
                 <p className="font-poppins md:mt-4">SYS</p>
               </div>
 
-              <p>
-                {getFiatAmount(
-                  activeAccount?.balances.syscoin || 0,
-                  4,
-                  String(selectedCoin || (fiat.current ? fiat.current : 'USD'))
-                )}
-              </p>
+              <p>{fiatAmountValue}</p>
             </>
           )}
         </div>
