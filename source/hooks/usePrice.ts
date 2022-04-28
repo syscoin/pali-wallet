@@ -17,7 +17,7 @@ export const usePrice = () => {
     currency = 'usd',
     token?: any
   ): Promise<string> => {
-    let web3FiatPrice: number = 0;
+    let web3FiatPrice = 0;
 
     if (network !== 'sys' && token) {
       const { price } = await getFiatValueByToken(token, fiat.current);

@@ -29,6 +29,9 @@ const CurrencyView = () => {
   const convertToSys = (value: number, fromCoin: string) =>
     value / availableCoins[fromCoin];
 
+  const isUnlocked =
+    controller.wallet.isUnlocked() && activeAccount.address !== '';
+
   const [conversorValues, setConversorValues] = useState({
     sys: activeAccount.balances.syscoin,
     fiat: convertCurrency(activeAccount.balances.syscoin, checkValueCoin),
@@ -56,17 +59,17 @@ const CurrencyView = () => {
     ? String(fiat.current).toUpperCase()
     : 'USD';
 
-  // const updateCurrency = () => {
-  //   getSymbolFromCurrency(
-  //     selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency
-  //   );
-  //   controller.utils.updateFiat(selectedCoin, 'syscoin');
-  // };
+  const updateCurrency = () => {
+    getSymbolFromCurrency(
+      selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency
+    );
+    controller.utils.updateFiat(selectedCoin, 'syscoin');
+  };
 
   const getFiatAmountValue = async () => {
     const value = await getFiatAmount(
       activeAccount?.balances.syscoin || 0,
-      4,
+      6,
       String(selectedCoin || (fiat.current ? fiat.current : 'USD'))
     );
 
@@ -74,20 +77,17 @@ const CurrencyView = () => {
   };
 
   useEffect(() => {
-    if (
-      controller.wallet.isUnlocked() &&
-      accounts &&
-      accounts[activeAccountId]
-    ) {
+    if (isUnlocked && accounts && accounts[activeAccountId]) {
       handleRefresh(true);
     }
-  }, [controller.wallet.isUnlocked(), accounts]);
+  }, [isUnlocked, activeAccountId]);
 
   useEffect(() => {
-    if (activeNetwork.chainId !== 5700) {
+    if (isUnlocked && selectedCoin) {
+      updateCurrency();
       getFiatAmountValue();
     }
-  }, [activeNetwork]);
+  }, [isUnlocked, selectedCoin]);
 
   return (
     <Layout title="FIAT CURRENCY" id="fiat-currency-title">
@@ -110,8 +110,6 @@ const CurrencyView = () => {
             disabled={!fiat || !fiat.availableCoins}
             className="inline-flex justify-center py-2 w-80 text-white text-sm font-medium bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
           >
-            {/* {updateCurrency()} */}
-
             <p className="ml-2">
               {selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency}
             </p>
