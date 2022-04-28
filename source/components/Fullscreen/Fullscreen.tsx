@@ -14,7 +14,7 @@ export const Fullscreen: React.FC = () => {
     >
       <Icon name="desktop" className="mb-1 text-brand-white" />
 
-      <p>Go to fullscreen</p>
+      <p>Fullscreen mode</p>
     </div>
   );
 };

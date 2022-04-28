@@ -7,8 +7,7 @@ import { SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { formatUrl, getAssetBalance } from 'utils/index';
 import { getController } from 'utils/browser';
-import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
-import { web3Provider } from '@pollum-io/sysweb3-network';
+import { isValidEthereumAddress, feeUtils } from '@pollum-io/sysweb3-utils';
 
 import { EditGasFee } from './EditGasFee';
 
@@ -23,6 +22,8 @@ export const SendEth = () => {
   const [feeValue, setFeeValue] = useState(0);
   const [editGas, setEditGas] = useState(false);
   const [form] = Form.useForm();
+
+  const { convertGasFee } = feeUtils();
 
   const getRecomendedFees = useCallback(async () => {
     const gasPrice =
@@ -69,7 +70,7 @@ export const SendEth = () => {
             amount,
             gasPrice,
             gasLimit,
-            fee: Number(web3Provider.utils.fromWei(String(feeValue), 'ether')),
+            fee: Number(convertGasFee(String(feeValue))),
             token: null,
             // token: {
             //   decimals: 18,
@@ -158,49 +159,53 @@ export const SendEth = () => {
                     },
                   ]}
                 >
-                  <Menu as="div" className="relative inline-block text-left">
-                    <Menu.Button
-                      disabled={!hasAccountAssets}
-                      className="inline-flex justify-center py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
-                    >
-                      {selectedAsset?.symbol
-                        ? formatUrl(String(selectedAsset?.symbol), 2)
-                        : 'eth'}
-                      <ChevronDoubleDownIcon
-                        className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
-                        aria-hidden="true"
-                      />
-                    </Menu.Button>
+                  <Menu>
+                    <div className="relative inline-block text-left">
+                      <Menu.Button
+                        disabled={!hasAccountAssets}
+                        className="inline-flex justify-center py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+                      >
+                        {selectedAsset?.symbol
+                          ? formatUrl(String(selectedAsset?.symbol), 2)
+                          : 'eth'}
+                        <ChevronDoubleDownIcon
+                          className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
+                          aria-hidden="true"
+                        />
+                      </Menu.Button>
 
-                    <Transition
-                      as={Fragment}
-                      enter="transition ease-out duration-100"
-                      enterFrom="transform opacity-0 scale-95"
-                      enterTo="transform opacity-100 scale-100"
-                      leave="transition ease-in duration-75"
-                      leaveFrom="transform opacity-100 scale-100"
-                      leaveTo="transform opacity-0 scale-95"
-                    >
-                      {hasAccountAssets && (
-                        <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
-                          {activeAccount &&
-                            Object.values(activeAccount.assets).map(
-                              (item: any) => (
-                                <Menu.Item>
-                                  <button
-                                    onClick={() =>
-                                      handleSelectedAsset(item.contractAddress)
-                                    }
-                                    className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                                  >
-                                    <p>{item.symbol}</p>
-                                  </button>
-                                </Menu.Item>
-                              )
-                            )}
-                        </Menu.Items>
-                      )}
-                    </Transition>
+                      <Transition
+                        as={Fragment}
+                        enter="transition ease-out duration-100"
+                        enterFrom="transform opacity-0 scale-95"
+                        enterTo="transform opacity-100 scale-100"
+                        leave="transition ease-in duration-75"
+                        leaveFrom="transform opacity-100 scale-100"
+                        leaveTo="transform opacity-0 scale-95"
+                      >
+                        {hasAccountAssets && (
+                          <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
+                            {activeAccount &&
+                              Object.values(activeAccount.assets).map(
+                                (item: any) => (
+                                  <Menu.Item>
+                                    <button
+                                      onClick={() =>
+                                        handleSelectedAsset(
+                                          item.contractAddress
+                                        )
+                                      }
+                                      className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                                    >
+                                      <p>{item.symbol}</p>
+                                    </button>
+                                  </Menu.Item>
+                                )
+                              )}
+                          </Menu.Items>
+                        )}
+                      </Transition>
+                    </div>
                   </Menu>
                 </Form.Item>
               )}
