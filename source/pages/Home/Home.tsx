@@ -11,7 +11,7 @@ export const Home = () => {
   const { networks, activeNetwork, fiat, activeAccount, lastLogin } =
     useStore();
   const [symbol, setSymbol] = useState('SYS');
-  const [value, setValue] = useState('');
+  const [fiatPriceValue, setFiatPriceValue] = useState('');
 
   const { getFiatAmount } = usePrice();
 
@@ -38,7 +38,7 @@ export const Home = () => {
       activeNetwork.currency === 'sys' ? '' : symbol
     );
 
-    setValue(value);
+    setFiatPriceValue(value);
   };
 
   const isUnlocked =
@@ -78,7 +78,7 @@ export const Home = () => {
                 </p>
               </div>
 
-              <p id="fiat-ammount">{!isSysTestnet ? value : null}</p>
+              <p id="fiat-ammount">{!isSysTestnet ? fiatPriceValue : null}</p>
             </div>
 
             <div className="flex gap-x-0.5 items-center justify-center pt-8 w-3/4 max-w-md">
