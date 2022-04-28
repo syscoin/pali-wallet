@@ -1835,17 +1835,17 @@
     node-gyp "^9.0.0"
     read-package-json-fast "^2.0.3"
 
-"@pollum-io/sysweb3-core@^1.0.15":
+"@pollum-io/sysweb3-core@^1.0.14", "@pollum-io/sysweb3-core@^1.0.15":
   version "1.0.15"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.15.tgz#96845bf1f7635fe409afa5f5f151539044168bc7"
   integrity sha512-H+YXHlPaeDDXyVcrPeoLZJvYCRSTy/D4X+oU7O6CEhN8Hc4mOaNmf2TmsP5Ji2Dko3S8MwAL2VELqJ/46SCwOg==
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.227":
-  version "1.0.227"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.227.tgz#0709e91d872800b30953d3a6252a9753a8ee7b7f"
-  integrity sha512-j+tsejBISsX3SnlE8Wnalkulz1NTmwS4ia1ZTcaIoxnfv6iNAL3Jnlwg4jXer80RNsqnzOJvdBCLcCeQ3g9cqg==
+"@pollum-io/sysweb3-keyring@^1.0.231":
+  version "1.0.231"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.231.tgz#9263f7f8f084247526a826dc836218a14bf7e0b9"
+  integrity sha512-LbZcwkgIwhKvxlnQNKWZe1EAzd+s9kaWRRbHLdyVLaVAb3S+Gm6tCccBvUztrsHYmV9njNGgbRYDPB2VEhxPyA==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
@@ -1862,7 +1862,6 @@
     ethers "^5.6.4"
     graphql "^16.3.0"
     graphql-request "^4.1.0"
-    localforage "^1.10.0"
     lodash "^4.17.21"
     syscoinjs-lib "^1.0.212"
     syscointx-js "^1.0.101"
@@ -1886,6 +1885,25 @@
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.15"
     "@pollum-io/sysweb3-network" "^1.0.21"
+    axios "^0.26.1"
+    bech32 "^2.0.0"
+    bip44-constants "^114.0.0"
+    bip84 "^0.2.7"
+    bitcoinjs-lib "^6.0.1"
+    coinselectsyscoin "^1.0.77"
+    crypto-js "^4.1.1"
+    ethers "^5.6.4"
+    syscoinjs-lib "^1.0.212"
+    syscointx-js "^1.0.101"
+    web3 "^1.7.1"
+
+"@pollum-io/sysweb3-utils@^1.1.117":
+  version "1.1.117"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.117.tgz#5d5b69fe3644717f8895f7dfa5f607a6645b76d2"
+  integrity sha512-6rCOH6Lgd0aJH4RwHmQPgc4R4v2DEWq6vF3T9CvOOAqskr2opDI6D/OgvjJpXMZn8XROpvdnIYRk7l6LdK7ZnA==
+  dependencies:
+    "@pollum-io/sysweb3-core" "^1.0.14"
+    "@pollum-io/sysweb3-network" "^1.0.20"
     axios "^0.26.1"
     bech32 "^2.0.0"
     bip44-constants "^114.0.0"
@@ -6064,15 +6082,8 @@ eth-lib@^0.1.26:
     ws "^3.0.0"
     xhr-request-promise "^0.1.2"
 
-eth-object@^1.0.3:
+eth-object@^1.0.3, "eth-object@https://github.com/syscoin/eth-object.git":
   version "1.0.3"
-  resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
-  dependencies:
-    eth-util-lite "^1.0.1"
-
-"eth-object@https://github.com/syscoin/eth-object.git":
-  version "1.0.3"
-  uid b5ff300f57c136138b31d6e570c816a147e0f1c9
   resolved "https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
     eth-util-lite "^1.0.1"
@@ -8790,13 +8801,6 @@ libnpmconfig@^1.2.1:
     find-up "^3.0.0"
     ini "^1.3.5"
 
-lie@3.1.1:
-  version "3.1.1"
-  resolved "https://registry.yarnpkg.com/lie/-/lie-3.1.1.tgz#9a436b2cc7746ca59de7a41fa469b3efb76bd87e"
-  integrity sha1-mkNrLMd0bKWd56QfpGmz77dr2H4=
-  dependencies:
-    immediate "~3.0.5"
-
 lie@~3.3.0:
   version "3.3.0"
   resolved "https://registry.yarnpkg.com/lie/-/lie-3.3.0.tgz#dcf82dee545f46074daf200c7c1c5a08e0f40f6a"
@@ -8880,13 +8884,6 @@ loader-utils@^2.0.0:
     big.js "^5.2.2"
     emojis-list "^3.0.0"
     json5 "^2.1.2"
-
-localforage@^1.10.0:
-  version "1.10.0"
-  resolved "https://registry.yarnpkg.com/localforage/-/localforage-1.10.0.tgz#5c465dc5f62b2807c3a84c0c6a1b1b3212781dd4"
-  integrity sha512-14/H1aX7hzBBmmh7sGPd+AOMkkIrHM3Z1PAyGgZigA1H1p5O5ANnMyWzvpAETtG68/dC4pC0ncy3+PPGzXZHPg==
-  dependencies:
-    lie "3.1.1"
 
 locate-path@^2.0.0:
   version "2.0.0"

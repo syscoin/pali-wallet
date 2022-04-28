@@ -46,8 +46,11 @@ export const Home = () => {
 
   useEffect(() => {
     setChainSymbol();
+  }, [isUnlocked]);
+
+  useEffect(() => {
     getFiatPrice();
-  }, [isUnlocked, activeNetwork]);
+  }, [activeNetwork]);
 
   const isSysTestnet = activeNetwork.chainId === 5700;
   const symbolByChain = isSysTestnet ? 'tsys' : symbol;

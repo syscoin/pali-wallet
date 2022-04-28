@@ -56,12 +56,12 @@ const CurrencyView = () => {
     ? String(fiat.current).toUpperCase()
     : 'USD';
 
-  const updateCurrency = () => {
-    getSymbolFromCurrency(
-      selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency
-    );
-    controller.utils.updateFiat(selectedCoin, 'syscoin');
-  };
+  // const updateCurrency = () => {
+  //   getSymbolFromCurrency(
+  //     selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency
+  //   );
+  //   controller.utils.updateFiat(selectedCoin, 'syscoin');
+  // };
 
   const getFiatAmountValue = async () => {
     const value = await getFiatAmount(
@@ -84,8 +84,10 @@ const CurrencyView = () => {
   }, [controller.wallet.isUnlocked(), accounts]);
 
   useEffect(() => {
-    getFiatAmountValue();
-  }, []);
+    if (activeNetwork.chainId !== 5700) {
+      getFiatAmountValue();
+    }
+  }, [activeNetwork]);
 
   return (
     <Layout title="FIAT CURRENCY" id="fiat-currency-title">
@@ -108,7 +110,7 @@ const CurrencyView = () => {
             disabled={!fiat || !fiat.availableCoins}
             className="inline-flex justify-center py-2 w-80 text-white text-sm font-medium bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
           >
-            {updateCurrency()}
+            {/* {updateCurrency()} */}
 
             <p className="ml-2">
               {selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency}
