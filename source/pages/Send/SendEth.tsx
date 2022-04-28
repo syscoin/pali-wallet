@@ -159,7 +159,7 @@ export const SendEth = () => {
                     },
                   ]}
                 >
-                  <Menu className="relative inline-block text-left">
+                  <Menu as="div" className="relative inline-block text-left">
                     <Menu.Button
                       disabled={!hasAccountAssets}
                       className="inline-flex justify-center py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
