@@ -83,10 +83,12 @@ const MainController = () => {
     return newAccount;
   };
 
-  const setAccount = (id: number): void => {
+  const setAccount = async (id: number): Promise<void> => {
     const { accounts } = store.getState().vault;
 
+    await keyringManager.setActiveAccount(id);
     store.dispatch(setActiveAccount(accounts[id]));
+
     account.getLatestUpdate(false);
   };
 
