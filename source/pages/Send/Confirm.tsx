@@ -9,7 +9,7 @@ import sys from 'syscoinjs-lib';
 export const SendConfirm = () => {
   const controller = getController();
   const { activeAccount, networks, activeNetwork } = useStore();
-  const { alert, navigate } = useUtils();
+  const { alert, navigate, handleRefresh } = useUtils();
 
   const {
     state: { tx },
@@ -98,12 +98,15 @@ export const SendConfirm = () => {
   };
 
   return (
-    <Layout title="SEND SYS">
+    <Layout title={`SEND ${activeNetwork.currency?.toUpperCase()}`}>
       <DefaultModal
         show={confirmed}
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
-        onClose={() => navigate('/home')}
+        onClose={() => {
+          navigate('/home');
+          handleRefresh(false);
+        }}
       />
       {tx && (
         <div className="flex flex-col items-center justify-center mt-4 w-full">
@@ -138,14 +141,16 @@ export const SendConfirm = () => {
 
             <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               Fee
-              <span className="text-brand-white">{tx.fee}</span>
+              <span className="text-brand-white">
+                {!isSyscoinChain ? tx.fee * 10 ** 9 : tx.fee}
+              </span>
             </p>
 
             <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               Max total
               <span className="text-brand-white">
                 {Number(tx.fee) + Number(tx.amount)}
-                SYS
+                {`${activeNetwork.currency?.toUpperCase()}`}
               </span>
             </p>
           </div>
