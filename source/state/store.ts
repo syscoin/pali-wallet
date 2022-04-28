@@ -31,7 +31,7 @@ const middleware = [
 const nodeEnv = process.env.NODE_ENV;
 
 if (nodeEnv !== 'production' && nodeEnv !== 'test') {
-  middleware.push(logger);
+  middleware.push(logger as never);
 }
 
 const store: Store<{
