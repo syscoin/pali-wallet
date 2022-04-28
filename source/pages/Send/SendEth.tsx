@@ -7,8 +7,7 @@ import { SecondaryButton, Tooltip, Icon } from 'components/index';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { formatUrl, getAssetBalance } from 'utils/index';
 import { getController } from 'utils/browser';
-import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
-import { web3Provider } from '@pollum-io/sysweb3-network';
+import { isValidEthereumAddress, feeUtils } from '@pollum-io/sysweb3-utils';
 
 import { EditGasFee } from './EditGasFee';
 
@@ -23,6 +22,8 @@ export const SendEth = () => {
   const [feeValue, setFeeValue] = useState(0);
   const [editGas, setEditGas] = useState(false);
   const [form] = Form.useForm();
+
+  const { convertGasFee } = feeUtils();
 
   const getRecomendedFees = useCallback(async () => {
     const gasPrice =
@@ -69,7 +70,7 @@ export const SendEth = () => {
             amount,
             gasPrice,
             gasLimit,
-            fee: Number(web3Provider.utils.fromWei(String(feeValue), 'ether')),
+            fee: Number(convertGasFee(String(feeValue))),
             token: null,
             // token: {
             //   decimals: 18,
@@ -158,7 +159,7 @@ export const SendEth = () => {
                     },
                   ]}
                 >
-                  <Menu as="div" className="relative inline-block text-left">
+                  <Menu className="relative inline-block text-left">
                     <Menu.Button
                       disabled={!hasAccountAssets}
                       className="inline-flex justify-center py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"

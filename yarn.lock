@@ -1885,17 +1885,17 @@
     axios "^0.26.1"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-network@^1.0.21":
-  version "1.0.21"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.21.tgz#ae5165f3a0308cc83a52ea11b5c4b70bb3e6035f"
-  integrity sha512-JGc6VhezSEfnR4k7RlxDRPjWe5yjM9RDOjRmJYLNX4dd+darwINyyFcq31vNjJ8CO3YYdeyULQBWelmyeVdXxg==
+"@pollum-io/sysweb3-network@^1.0.23":
+  version "1.0.25"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.25.tgz#3a1b9349e126fa10d448c2941077c81bf26a6166"
+  integrity sha512-zNzGbSILZwtFDsMDURyLTMom1q+uTZ4/5yiAo2RVD3ZZU/W6JkPrZp1+TJsuMG03Ontyb1sqBxM4ldPnzBzf9Q==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.15"
-    "@pollum-io/sysweb3-utils" "^1.1.113"
+    "@pollum-io/sysweb3-utils" "^1.1.119"
     axios "^0.26.1"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.109", "@pollum-io/sysweb3-utils@^1.1.110", "@pollum-io/sysweb3-utils@^1.1.113":
+"@pollum-io/sysweb3-utils@^1.1.109", "@pollum-io/sysweb3-utils@^1.1.110":
   version "1.1.113"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.113.tgz#510504d77cd1d472215326fa4599e510bb719dbe"
   integrity sha512-UjnvGwcbiBQ9hJxyGHNcMYFvVtWK8T6OoQqfDbhcNI5HGzwbo24PS8BEAbNe+AwIX6/wU//YcKes1qSbMNaKXw==
@@ -1914,13 +1914,13 @@
     syscointx-js "^1.0.101"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.114":
-  version "1.1.114"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.114.tgz#c1773795c114e6d8d4e5c2a7efb4b0b23ee8abea"
-  integrity sha512-0L3vEAbdG2ln9vYOwb76lVJ5qfPeq64e/29yl+TLzWq5ZumBl2MCo4LkAJm3YXcJqW6TdYrloQJuyM5//xIQgw==
+"@pollum-io/sysweb3-utils@^1.1.119", "@pollum-io/sysweb3-utils@^1.1.120":
+  version "1.1.120"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.120.tgz#97d09682dba95ba7fcb1103716f23127ceb468fe"
+  integrity sha512-XBBKywImRuHTr5bxyRO7M8fY14RJSsrpacPKlGtn2vCrY8j9r37k+WXnLF4MQZGO7q22x4tnC4L1jSjjmROuAw==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.15"
-    "@pollum-io/sysweb3-network" "^1.0.21"
+    "@pollum-io/sysweb3-network" "^1.0.23"
     axios "^0.26.1"
     bech32 "^2.0.0"
     bip44-constants "^114.0.0"
