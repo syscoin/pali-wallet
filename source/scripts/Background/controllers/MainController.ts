@@ -78,6 +78,7 @@ const MainController = () => {
     console.log('[derived account]', newAccount);
 
     store.dispatch(addAccountToStore(newAccount));
+    store.dispatch(setActiveAccount(newAccount));
 
     return newAccount;
   };
