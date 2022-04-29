@@ -27,7 +27,7 @@ export const Home = () => {
       : 'ethereum';
     const symbol = await getSymbolByChain(chain);
 
-    setSymbol(symbol);
+    return symbol;
   };
 
   const getFiatPrice = async () => {
@@ -38,18 +38,38 @@ export const Home = () => {
       activeNetwork.currency === 'sys' ? '' : symbol
     );
 
-    setFiatPriceValue(value);
+    return value;
   };
 
   const isUnlocked =
     controller.wallet.isUnlocked() && activeAccount.address !== '';
 
   useEffect(() => {
-    setChainSymbol();
+    let isMounted = true;
+
+    setChainSymbol().then((response: any) => {
+      if (isMounted) {
+        setSymbol(response);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
   }, [isUnlocked]);
 
   useEffect(() => {
-    getFiatPrice();
+    let isMounted = true;
+
+    getFiatPrice().then((response: any) => {
+      if (isMounted) {
+        setFiatPriceValue(response);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
   }, [activeNetwork]);
 
   const isSysTestnet = activeNetwork.chainId === 5700;
