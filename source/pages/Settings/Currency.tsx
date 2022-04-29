@@ -69,7 +69,7 @@ const CurrencyView = () => {
   const getFiatAmountValue = async () => {
     const value = await getFiatAmount(
       activeAccount?.balances.syscoin || 0,
-      6,
+      4,
       String(selectedCoin || (fiat.current ? fiat.current : 'USD'))
     );
 
