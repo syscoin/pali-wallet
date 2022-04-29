@@ -24,7 +24,7 @@ const persistConfig = {
 
 const persistedReducer = persistReducer(persistConfig, reducers);
 
-const middleware = [
+const middleware: any = [
   ...getDefaultMiddleware({ thunk: false, serializableCheck: false }),
 ];
 

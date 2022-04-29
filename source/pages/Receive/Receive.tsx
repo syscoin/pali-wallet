@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useUtils, useStore } from 'hooks/index';
 import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
-import QRCode from 'qrcode.react';
+import { QRCodeSVG } from 'qrcode.react';
 import { Layout, SecondaryButton, Icon } from 'components/index';
 
 export const Receive = () => {
@@ -43,11 +43,10 @@ export const Receive = () => {
     <Layout title="RECEIVE SYS" id="receiveSYS-title">
       {loaded && activeAccount ? (
         <div className="flex flex-col items-center justify-center pt-8 w-full">
-          <QRCode
+          <QRCodeSVG
             value={activeAccount.address}
             bgColor="#fff"
             fgColor="#000"
-            id="qr-code"
             style={{
               height: '240px',
               width: '225px',
