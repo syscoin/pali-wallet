@@ -16,8 +16,8 @@ export const EditGasFee: FC<{
   const [proposedGasPrice, setProposedGasPrice] = useState('0');
   const [fastGasPrice, setFastGasPrice] = useState('0');
   const [safeGasPrice, setSafeGasPrice] = useState('0');
-  const [feeType, setFeeType] = useState('low');
   const [isSelected, setIsSelected] = useState(false);
+  const [feeType, setFeeType] = useState('low');
 
   const getFees = useCallback(async () => {
     const { suggestBaseFee, ProposeGasPrice } =

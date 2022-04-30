@@ -16,8 +16,6 @@ import {
 } from 'state/vault';
 import { CustomRpcParams } from 'types/transactions';
 
-// import { MainController as IMainController } from 'types/controllers';
-
 import WalletController from './account';
 import { validateEthRpc, validateSysRpc } from './utils';
 
@@ -43,8 +41,6 @@ const MainController = () => {
     if (!keyringManager.checkPassword(pwd)) throw new Error('Invalid password');
 
     const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
-
-    console.log('unlock account', account);
 
     store.dispatch(setLastLogin());
     store.dispatch(setActiveAccount(account));
@@ -85,7 +81,6 @@ const MainController = () => {
     const { accounts } = store.getState().vault;
 
     keyringManager.setActiveAccount(id);
-
     store.dispatch(setActiveAccount(accounts[id]));
 
     account.sys.getLatestUpdate(false);
