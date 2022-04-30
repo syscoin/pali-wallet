@@ -16,8 +16,6 @@ import {
 } from 'state/vault';
 import { CustomRpcParams } from 'types/transactions';
 
-// import { MainController as IMainController } from 'types/controllers';
-
 import WalletController from './account';
 import { validateEthRpc, validateSysRpc } from './utils';
 
@@ -43,8 +41,6 @@ const MainController = () => {
     if (!keyringManager.checkPassword(pwd)) throw new Error('Invalid password');
 
     const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
-
-    console.log('unlock account', account);
 
     store.dispatch(setLastLogin());
     store.dispatch(setActiveAccount(account));
@@ -75,9 +71,8 @@ const MainController = () => {
   ): Promise<IKeyringAccountState> => {
     const newAccount = await addAccount(label);
 
-    console.log('[derived account]', newAccount);
-
     store.dispatch(addAccountToStore(newAccount));
+    store.dispatch(setActiveAccount(newAccount));
 
     return newAccount;
   };
@@ -85,8 +80,10 @@ const MainController = () => {
   const setAccount = (id: number): void => {
     const { accounts } = store.getState().vault;
 
+    keyringManager.setActiveAccount(id);
     store.dispatch(setActiveAccount(accounts[id]));
-    account.getLatestUpdate(false);
+
+    account.sys.getLatestUpdate(false);
   };
 
   const setActiveNetwork = async (chain: string, chainId: number) => {
@@ -96,16 +93,13 @@ const MainController = () => {
 
     const network = networks[chain][chainId];
 
-    /** set local active network */
     store.dispatch(setNetwork(network));
 
-    /** this method sets new signers for syscoin when changing networks */
     const account = (await keyringManager.setSignerNetwork(
       network,
       chain
     )) as IKeyringAccountState;
 
-    /** directly set new keys for the current chain and update state if the active account is the first one */
     store.dispatch(
       setActiveAccountProperty({
         property: 'xpub',
@@ -119,18 +113,13 @@ const MainController = () => {
         value: keyringManager.getEncryptedXprv(),
       })
     );
-    /** end */
 
-    /** if the account index is > 0, we need to derive this account again from hd signer and set its index in the active account from signer */
     if (account.id === 0)
       keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
 
     store.dispatch(setIsPendingBalances(false));
-
-    /** set active network with web3 account data for evm networks */
     store.dispatch(setActiveAccount(account));
 
-    /** account returned from updated signer according to the current network so we can update frontend easier */
     return account;
   };
 

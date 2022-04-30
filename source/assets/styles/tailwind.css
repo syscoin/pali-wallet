@@ -15,30 +15,9 @@ input[type='number'] {
   -moz-appearance: textfield;
 }
 
+/* scrollbar */
 .remove-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-
-.remove-scrollbar {
-  -ms-overflow-style: none;
-  /* IE and Edge */
-  scrollbar-width: none;
-  /* Firefox */
-}
-
-input[type='number']::-webkit-outer-spin-button,
-input[type='number']::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.ant-form-item-control-input-content > textarea {
-  @apply p-2 pl-4 w-full h-20 text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none;
-}
-
-.ant-input-affix-wrapper.ant-input-password > input,
-.ant-input-affix-wrapper.ant-input > input {
-  @apply p-2 pl-4 w-full text-brand-graylight text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full;
+  @apply hidden;
 }
 
 .scrollbar-styled::-webkit-scrollbar {
@@ -63,6 +42,26 @@ input[type='number']::-webkit-inner-spin-button {
   scrollbar-width: thin;
 }
 
+.remove-scrollbar {
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
+}
+
+/* end */
+
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.ant-input-affix-wrapper.ant-input-password>input,
+.ant-input-affix-wrapper.ant-input>input {
+  @apply p-2 pl-4 w-full text-brand-graylight text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full;
+}
+
 /* unauth/create/pass inputs */
 .ant-input-affix-wrapper.ant-input-password {
   @apply relative;
@@ -72,11 +71,11 @@ input[type='number']::-webkit-inner-spin-button {
   @apply w-full;
 }
 
-.ant-form-item-control-input-content > textarea {
+.ant-form-item-control-input-content>textarea {
   @apply p-2 pl-4 w-full h-20 text-brand-graylight text-sm border rounded-lg outline-none resize-none;
 }
 
-.ant-input-affix-wrapper.ant-input-password > input {
+.ant-input-affix-wrapper.ant-input-password>input {
   @apply p-2 pl-4 w-full text-brand-graylight text-sm bg-fields-input-primary border border-fields-input-border rounded-full;
 }
 
