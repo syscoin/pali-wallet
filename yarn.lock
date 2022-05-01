@@ -1842,16 +1842,23 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.264":
-  version "1.0.272"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.272.tgz#a24657fe1200313524604111ca1ba43a9e22863a"
-  integrity sha512-S0UgvuuGo3Esva2jhIP7B4t6ivjuC8itYtblsaEnrrwTUapx/fq04Aa2oTiizeElWXeAjmmQ9AZ7VwSvRVRMdw==
+"@pollum-io/sysweb3-core@^1.0.16":
+  version "1.0.16"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.16.tgz#6c9e3208ef1faa4252fd472ee66b4612695cbce3"
+  integrity sha512-UWqgqGZnCFJrsc1rrb0ypi9nv2jCsqRAO4NLKxPEgyfJN2LBAHkMHFzOwHTQEdw3eDXvoOyEE9lgbesWEtxftA==
+  dependencies:
+    rimraf "^3.0.2"
+
+"@pollum-io/sysweb3-keyring@^1.0.273":
+  version "1.0.273"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.273.tgz#5d296d3f599bca2d81ef02d9d43cae92ded1ff3c"
+  integrity sha512-BXgrufU+vU1+fmqgqrSoVvCo7QJy7RVGlCiHV9KMMxasuTKSB5yMkyPQrUOyscuCNBVkRtB8IJZu4BttiqLy4A==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
-    "@pollum-io/sysweb3-core" "^1.0.15"
-    "@pollum-io/sysweb3-network" "^1.0.29"
-    "@pollum-io/sysweb3-utils" "^1.1.125"
+    "@pollum-io/sysweb3-core" "^1.0.16"
+    "@pollum-io/sysweb3-network" "^1.0.30"
+    "@pollum-io/sysweb3-utils" "^1.1.126"
     axios "^0.26.1"
     bip39 "^3.0.4"
     coinselectsyscoin "^1.0.77"
@@ -1868,7 +1875,7 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
-"@pollum-io/sysweb3-network@^1.0.23", "@pollum-io/sysweb3-network@^1.0.29":
+"@pollum-io/sysweb3-network@^1.0.23":
   version "1.0.29"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.29.tgz#a9ec8fd0765584dfb9e2690a23196619c0994bdf"
   integrity sha512-Y1vbnXBjqdtI65yGvPTSr1r5SQZ3nGqIo7uk3OEHBfDXeaOEJWXngCsxEnINTiWW88AOF1E4L1tbIkNUO4HyJg==
@@ -1878,13 +1885,42 @@
     axios "^0.26.1"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.120", "@pollum-io/sysweb3-utils@^1.1.125":
+"@pollum-io/sysweb3-network@^1.0.30":
+  version "1.0.30"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.30.tgz#cdf19fe4d3e2c52c2eedb4bf0b5a567f05ee5fd6"
+  integrity sha512-NZW6IPX63VE467zyRnnmYyzwpDShMf50BTsrBvCFFrlVEoBkoE/DkGLw4VW5jGv7wYHVdRfvezGFl8OgA+P0ZA==
+  dependencies:
+    "@pollum-io/sysweb3-core" "^1.0.16"
+    "@pollum-io/sysweb3-utils" "^1.1.125"
+    axios "^0.26.1"
+    web3 "^1.7.1"
+
+"@pollum-io/sysweb3-utils@^1.1.125":
   version "1.1.125"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.125.tgz#f7cf85df2a53fa20da330ad2b8a7f044202ead9d"
   integrity sha512-0b1SfXNfwT7s38115XChUlT8kcqrwTyEgd2xPSbtdXSOjNA9AhqSbTnaG0tTPJ8HwGVPUBjRzLhh6G0N9OSpNQ==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.15"
     "@pollum-io/sysweb3-network" "^1.0.23"
+    axios "^0.26.1"
+    bech32 "^2.0.0"
+    bip44-constants "^114.0.0"
+    bip84 "^0.2.7"
+    bitcoinjs-lib "^6.0.1"
+    coinselectsyscoin "^1.0.77"
+    crypto-js "^4.1.1"
+    ethers "^5.6.4"
+    syscoinjs-lib "^1.0.212"
+    syscointx-js "^1.0.101"
+    web3 "^1.7.1"
+
+"@pollum-io/sysweb3-utils@^1.1.126":
+  version "1.1.126"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.126.tgz#fca5709eb7151103560fd37d7bba010046b320a4"
+  integrity sha512-7OwDlYFFTe93TGx4xlmbFb45iAyX4UUkuSGvEHWrHepX4jo4hvzCy6DHvWfgkzlbR0U+leEH3QFecyrBhkQ8hw==
+  dependencies:
+    "@pollum-io/sysweb3-core" "^1.0.16"
+    "@pollum-io/sysweb3-network" "^1.0.30"
     axios "^0.26.1"
     bech32 "^2.0.0"
     bip44-constants "^114.0.0"
@@ -3770,9 +3806,9 @@ bitcoinjs-lib@^6.0.1:
   dependencies:
     nanoassert "^1.0.0"
 
-"blake2b@git+https://github.com/BitGo/blake2b.git#6268e6dd678661e0acc4359e9171b97eb1ebf8ac":
+"blake2b@https://github.com/BitGo/blake2b#6268e6dd678661e0acc4359e9171b97eb1ebf8ac":
   version "2.1.3"
-  resolved "git+https://github.com/BitGo/blake2b.git#6268e6dd678661e0acc4359e9171b97eb1ebf8ac"
+  resolved "https://github.com/BitGo/blake2b#6268e6dd678661e0acc4359e9171b97eb1ebf8ac"
   dependencies:
     blake2b-wasm "https://github.com/BitGo/blake2b-wasm#193cdb71656c1a6c7f89b05d0327bb9b758d071b"
     nanoassert "^1.0.0"
@@ -6063,9 +6099,9 @@ eth-lib@^0.1.26:
     ws "^3.0.0"
     xhr-request-promise "^0.1.2"
 
-eth-object@^1.0.3, "eth-object@git+https://github.com/syscoin/eth-object.git":
+eth-object@^1.0.3, "eth-object@https://github.com/syscoin/eth-object.git":
   version "1.0.3"
-  resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
+  resolved "https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
     eth-util-lite "^1.0.1"
 
