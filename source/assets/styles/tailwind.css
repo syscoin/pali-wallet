@@ -65,7 +65,7 @@ input[type='number']::-webkit-inner-spin-button {
 /* end */
 
 /* password inputs */
-.password>.ant-input {
+.password > .ant-input {
   @apply p-2 pl-4 w-full text-brand-graylight text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full;
 }
 
@@ -77,19 +77,19 @@ input[type='number']::-webkit-inner-spin-button {
 
 /* inputs */
 .ant-input {
-  @apply bg-fields-input-primary w-full;
+  @apply w-full bg-fields-input-primary;
 }
 
-.small>.ant-input {
+.small > .ant-input {
   @apply block px-4 py-2 w-72 text-sm border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-96;
 }
 
-.large>.ant-input {
-  @apply block pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full
+.large > .ant-input {
+  @apply block pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full;
 }
 
-.large>.ant-input>.ant-input-suffix {
-  @apply absolute right-2 text-bkg-4 top-2.5;
+.large > .ant-input > .ant-input-suffix {
+  @apply absolute right-2 top-2.5 text-bkg-4;
 }
 
 .ant-form-item-control-input-content {
@@ -97,7 +97,7 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 .ant-input-suffix {
-  @apply absolute right-2 text-bkg-4 top-0.5;
+  @apply absolute right-2 top-0.5 text-bkg-4;
 }
 
 .ant-form-item-control-input {
