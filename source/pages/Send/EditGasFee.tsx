@@ -50,6 +50,7 @@ export const EditGasFee: FC<{
         description="Your gas fee has been successfully selected."
         onClose={() => setEdit(false)}
       />
+
       <div className="flex gap-2 items-center justify-between w-full">
         <div
           onClick={() => {

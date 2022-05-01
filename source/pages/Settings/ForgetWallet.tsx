@@ -73,6 +73,7 @@ const ForgetWalletView = () => {
             ]}
           >
             <Input.Password
+              className="password"
               placeholder="Enter your password"
               id="forget_password"
             />

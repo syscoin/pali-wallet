@@ -11,9 +11,8 @@ const AccountMenu: React.FC = () => {
   const { wallet } = getController();
   const { encryptedMnemonic, accounts, activeAccount } = useStore();
 
-  const setActiveAccount = (id: number) => {
-    wallet.setAccount(Number(id));
-    console.log('setting active account');
+  const setActiveAccount = async (id: number) => {
+    await wallet.setAccount(Number(id));
     wallet.account.sys.watchMemPool(accounts[Number(id)]);
   };
 

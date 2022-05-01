@@ -63,7 +63,7 @@ const PhraseView = () => {
             ]}
           >
             <Input.Password
-              className="seed-phrase-password-input"
+              className="password"
               placeholder="Enter your password"
               id="phraseview_password"
             />

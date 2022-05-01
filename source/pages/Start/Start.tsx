@@ -63,7 +63,10 @@ export const Start = () => {
             }),
           ]}
         >
-          <Input.Password placeholder="Enter your password" />
+          <Input.Password
+            className="password"
+            placeholder="Enter your password"
+          />
         </Form.Item>
 
         <PrimaryButton type="submit" id="unlock-btn">
