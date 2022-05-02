@@ -32,27 +32,29 @@ const SysAccountController = () => {
 
     const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
-    const defaultAsset = {
-      name: 'ethereum',
-      symbol: 'ETH',
-      decimals: 18,
-    };
-
     const { assets } = updatedAccountInfo;
 
-    console.log('assets update', [
-      ...assets,
-      ...activeAccount.assets,
-      defaultAsset,
-    ]);
+    const isAssetStored =
+      assets.findIndex((asset: any) =>
+        activeAccount.assets.find(
+          (activeAccountAsset: any) => activeAccountAsset.id === asset.id
+        )
+      ) > -1;
+
+    console.log('isAssetStored', isAssetStored);
+    console.log(
+      assets.find((asset: any) =>
+        activeAccount.assets.find(
+          (activeAccountAsset: any) => activeAccountAsset.id === asset.id
+        )
+      )
+    );
 
     store.dispatch(
       setActiveAccount({
         ...activeAccount,
         ...updatedAccountInfo,
-        assets: isSyscoinChain
-          ? assets
-          : [...assets, ...activeAccount.assets, defaultAsset],
+        assets,
       })
     );
   };
@@ -97,6 +99,8 @@ const SysAccountController = () => {
 
     try {
       const validToken = await importWeb3Token(String(token.contract_address));
+
+      console.log('saveTokenInfo info token', validToken);
 
       store.dispatch(
         setActiveAccountProperty({

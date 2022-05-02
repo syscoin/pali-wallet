@@ -59,10 +59,11 @@ export const ImportToken: FC = () => {
     setFilteredSearch(coins);
   };
 
-  const addToken = (token: IToken) => {
+  const addToken = async (token: IToken) => {
     try {
-      controller.wallet.account.sys.saveTokenInfo(token);
+      await controller.wallet.account.sys.saveTokenInfo(token);
 
+      console.log('adding tokenassvv');
       alert.removeAll();
       alert.success(`${token.symbol} successfully added to your assets list.`);
     } catch (error) {
