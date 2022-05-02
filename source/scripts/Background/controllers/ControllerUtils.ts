@@ -1,6 +1,7 @@
 import store from 'state/store';
 import { updatePrices } from 'state/price';
 import { logError } from 'utils/index';
+import { ASSET_PRICE_API } from 'constants/index';
 import {
   getSearch as getCoingeckoSearch,
   isValidEthereumAddress,
@@ -57,6 +58,10 @@ const ControllerUtils = (): IControllerUtils => {
 
       // todo: get list for coins and conversion page
 
+      const coinList = await (
+        await fetch(`${ASSET_PRICE_API}?currency=`)
+      ).json();
+
       if (success && data) {
         store.dispatch(
           updatePrices({
@@ -64,6 +69,7 @@ const ControllerUtils = (): IControllerUtils => {
               asset: currency,
               price: data[chain][currency],
             },
+            coins: coinList?.rates,
           })
         );
       }

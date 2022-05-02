@@ -62,7 +62,7 @@ const CurrencyView = () => {
     getSymbolFromCurrency(
       selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency
     );
-    controller.utils.updateFiat(selectedCoin, 'syscoin');
+    controller.utils.updateFiat(selectedCoin);
   };
 
   const getFiatAmountValue = async () => {
@@ -85,6 +85,10 @@ const CurrencyView = () => {
     if (isUnlocked && selectedCoin) {
       updateCurrency();
       getFiatAmountValue();
+
+      console.log('selectedCoin', selectedCoin);
+      console.log('asset selected', asset);
+      console.log('coins', coins);
     }
   }, [isUnlocked, selectedCoin]);
 

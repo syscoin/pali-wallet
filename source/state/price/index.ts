@@ -18,11 +18,13 @@ const PriceState = createSlice({
       state: IPriceState,
       action: PayloadAction<{
         fiat: AssetPrice;
+        coins: any;
       }>
     ) {
-      const { fiat } = action.payload;
+      const { fiat, coins } = action.payload;
 
       state.fiat = fiat;
+      state.coins = coins;
     },
   },
 });

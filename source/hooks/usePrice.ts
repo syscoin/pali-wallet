@@ -23,6 +23,11 @@ export const usePrice = () => {
 
     const value = amount * Number(price);
 
+    console.log('CHAIN', chain);
+    console.log('price', price);
+    console.log('total value', value);
+    console.log('fiat.asset', fiat.asset);
+
     currency = currency.toUpperCase();
 
     const currencySymbol = getSymbolFromCurrency(currency);
