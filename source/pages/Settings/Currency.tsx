@@ -15,19 +15,20 @@ const CurrencyView = () => {
 
   if (!activeAccount) throw new Error('No account');
 
-  const { accounts, activeAccountId, fiat, activeNetwork } = useStore();
+  const { accounts, activeAccountId, coins, fiat, activeNetwork } = useStore();
 
-  const [selectedCoin, setSelectedCoin] = useState(String(fiat.current));
+  const { asset } = fiat;
+
+  const [selectedCoin, setSelectedCoin] = useState(String(asset));
   const [checkValueCoin, setCheckValueCoin] = useState('usd');
   const [confirmed, setConfirmed] = useState(false);
   const [fiatAmountValue, setFiatAmountValue] = useState('');
 
-  const { availableCoins } = fiat;
   const convertCurrency = (value: number, toCoin: string) =>
-    value * availableCoins[toCoin];
+    value * coins[toCoin];
 
   const convertToSys = (value: number, fromCoin: string) =>
-    value / availableCoins[fromCoin];
+    value / coins[fromCoin];
 
   const isUnlocked =
     controller.wallet.isUnlocked() && activeAccount.address !== '';
@@ -55,9 +56,7 @@ const CurrencyView = () => {
     setConfirmed(true);
   };
 
-  const useFiatCurrency = fiat.current
-    ? String(fiat.current).toUpperCase()
-    : 'USD';
+  const useFiatCurrency = asset ? String(asset).toUpperCase() : 'USD';
 
   const updateCurrency = () => {
     getSymbolFromCurrency(
@@ -69,8 +68,9 @@ const CurrencyView = () => {
   const getFiatAmountValue = async () => {
     const value = await getFiatAmount(
       activeAccount?.balances.syscoin || 0,
+      '',
       4,
-      String(selectedCoin || (fiat.current ? fiat.current : 'USD'))
+      String(selectedCoin || asset || 'USD')
     );
 
     setFiatAmountValue(value);
@@ -107,7 +107,7 @@ const CurrencyView = () => {
       <div className="flex flex-col items-center justify-center">
         <Menu as="div" className="relative inline-block text-left">
           <Menu.Button
-            disabled={!fiat || !fiat.availableCoins}
+            disabled={!fiat || !coins}
             className="inline-flex justify-center py-2 w-80 text-white text-sm font-medium bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
           >
             <p className="ml-2">
@@ -130,9 +130,9 @@ const CurrencyView = () => {
             leaveFrom="transform opacity-100 scale-100"
             leaveTo="transform opacity-0 scale-95"
           >
-            {fiat && fiat.availableCoins && (
+            {fiat && coins && (
               <Menu.Items className="scrollbar-styled absolute z-10 mt-2 py-3 w-full h-44 text-brand-white font-poppins bg-bkg-4 border border-fields-input-border rounded-xl shadow-2xl overflow-auto origin-top-right">
-                {Object.entries(fiat.availableCoins).map(([key]) => (
+                {Object.entries(coins).map(([key]) => (
                   <Menu.Item key={key}>
                     <button
                       key={key}
@@ -235,7 +235,7 @@ const CurrencyView = () => {
           <div className="absolute bottom-2 right-2 flex gap-x-3 items-center justify-center">
             <Menu as="div" className="relative inline-block text-left">
               <Menu.Button
-                disabled={!fiat || !fiat.availableCoins}
+                disabled={!fiat || !coins}
                 className="flex gap-x-1 justify-center mr-5 text-brand-royalblue text-sm font-medium bg-fields-input-primary rounded-full"
               >
                 {getSymbolFromCurrency(checkValueCoin.toUpperCase())}
@@ -257,9 +257,9 @@ const CurrencyView = () => {
                 leaveFrom="transform opacity-100 scale-100"
                 leaveTo="transform opacity-0 scale-95"
               >
-                {fiat && fiat.availableCoins && (
+                {fiat && coins && (
                   <Menu.Items className="scrollbar-styled absolute z-10 bottom-10 right-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-bkg-4 border border-fields-input-border rounded-xl shadow-2xl overflow-auto origin-bottom-right">
-                    {Object.entries(fiat.availableCoins).map(([key]) => (
+                    {Object.entries(coins).map(([key]) => (
                       <Menu.Item key={key}>
                         <button
                           key={key}

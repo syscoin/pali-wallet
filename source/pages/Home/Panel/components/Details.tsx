@@ -40,9 +40,10 @@ export const DetailsView = () => {
         return;
       }
 
-      const txData = await controller.utils
-        .txUtils()
-        .getRawTransaction(activeNetwork.url, tx.txid);
+      const txData = await controller.utils.getRawTransaction(
+        activeNetwork.url,
+        tx.txid
+      );
 
       setTransactionDetails(txData);
     };

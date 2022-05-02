@@ -8,8 +8,14 @@ import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = getController();
-  const { networks, activeNetwork, fiat, activeAccount, lastLogin } =
-    useStore();
+  const {
+    networks,
+    activeNetwork,
+    fiat,
+    activeAccount,
+    activeToken,
+    lastLogin,
+  } = useStore();
   const [symbol, setSymbol] = useState('SYS');
   const [fiatPriceValue, setFiatPriceValue] = useState('');
 
@@ -17,14 +23,14 @@ export const Home = () => {
 
   const { navigate } = useUtils();
 
-  const balance = networks.syscoin[activeNetwork.chainId]
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+
+  const balance = isSyscoinChain
     ? activeAccount.balances.syscoin
     : activeAccount.balances.ethereum;
 
   const setChainSymbol = async () => {
-    const chain = networks.syscoin[activeNetwork.chainId]
-      ? 'syscoin'
-      : 'ethereum';
+    const chain = isSyscoinChain ? 'syscoin' : 'ethereum';
     const symbol = await getSymbolByChain(chain);
 
     return symbol;
@@ -33,9 +39,9 @@ export const Home = () => {
   const getFiatPrice = async () => {
     const value = await getFiatAmount(
       balance || 0,
+      isSyscoinChain ? '' : activeToken,
       4,
-      String(fiat.current),
-      activeNetwork.currency === 'sys' ? '' : symbol
+      String(fiat.asset)
     );
 
     return value;

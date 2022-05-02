@@ -1,33 +1,29 @@
-import { PRICE_SYS_ID } from 'constants/index';
-
 import { useSelector } from 'react-redux';
 import { RootState } from 'state/store';
 import getSymbolFromCurrency from 'currency-symbol-map';
 import { getFiatValueByToken } from '@pollum-io/sysweb3-utils';
 
 export const usePrice = () => {
-  const fiat = useSelector((state: RootState) => state.price.fiat);
-  const network = useSelector(
-    (state: RootState) => state.vault.activeNetwork.currency
+  const { fiat } = useSelector((state: RootState) => state.price);
+
+  const { networks, activeNetwork } = useSelector(
+    (state: RootState) => state.vault
   );
 
   const getFiatAmount = async (
     amount: number,
+    token: string,
     precision = 4,
-    currency = 'usd',
-    token?: any
+    currency = 'usd'
   ): Promise<string> => {
-    let web3FiatPrice = 0;
+    const isSyscoinNetwork = Boolean(networks.syscoin[activeNetwork.chainId]);
 
-    if (network !== 'sys' && token) {
-      const { price } = await getFiatValueByToken(token, fiat.current);
+    const fiatToUse =
+      isSyscoinNetwork && !token
+        ? fiat.price
+        : await getFiatValueByToken(token, fiat.asset);
 
-      web3FiatPrice = price;
-    }
-
-    const fiatToUse = network === 'sys' ? fiat[PRICE_SYS_ID] : web3FiatPrice;
-
-    const value = amount * fiatToUse;
+    const value = amount * Number(fiatToUse);
 
     currency = currency.toUpperCase();
     const currencySymbol = getSymbolFromCurrency(currency);

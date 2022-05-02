@@ -9,8 +9,9 @@ import { persistStore, persistReducer } from 'redux-persist';
 import { localStorage } from 'redux-persist-webextension-storage';
 
 import vault from './vault';
-import price, { IPriceState } from './price';
+import price from './price';
 import { IVaultState } from './vault/types';
+import { IPriceState } from './price/types';
 
 const reducers = combineReducers({
   price,

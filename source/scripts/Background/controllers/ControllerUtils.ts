@@ -1,7 +1,5 @@
-import { ASSET_PRICE_API, PRICE_SYS_ID } from 'constants/index';
-
 import store from 'state/store';
-import { updateFiatPrice } from 'state/price';
+import { updatePrices } from 'state/price';
 import { logError } from 'utils/index';
 import {
   getSearch as getCoingeckoSearch,
@@ -54,6 +52,13 @@ export interface IControllerUtils {
     updateCapabilityFlags: number;
   }>;
   getDataForToken: (tokenId: string) => any;
+  getFeeRate: (fee: number) => BigInt;
+  getGasUsedInTransaction: (transactionHash: string) => Promise<{
+    effectiveGasPrice: number;
+    gasUsed: number;
+  }>;
+  getPsbtFromJson: (psbt: JSON) => string;
+  getRawTransaction: (explorerUrl: string, txid: string) => any;
   getSearch: (query: string) => Promise<
     AxiosResponse<
       {
@@ -75,6 +80,17 @@ export interface IControllerUtils {
     name: string;
     symbol: string;
   }[];
+  getTokenMap: ({
+    guid,
+    changeAddress,
+    amount,
+    receivingAddress,
+  }: {
+    amount: number;
+    changeAddress: string;
+    guid: number | string;
+    receivingAddress: string;
+  }) => ITokenMap;
   importToken: (contractAddress: string) => Promise<EthTokenDetails>;
   isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
   isValidSYSAddress: (
@@ -82,28 +98,14 @@ export interface IControllerUtils {
     activeNetwork: INetwork,
     verification?: boolean
   ) => boolean;
-  txUtils: () => {
-    getFeeRate: (fee: number) => BigInt;
-    getGasUsedInTransaction: (transactionHash: string) => Promise<{
-      effectiveGasPrice: number;
-      gasUsed: number;
-    }>;
-    getPsbtFromJson: (psbt: JSON) => string;
-    getRawTransaction: (explorerUrl: string, txid: string) => any;
-    getTokenMap: ({
-      guid,
-      changeAddress,
-      amount,
-      receivingAddress,
-    }: {
-      amount: number;
-      changeAddress: string;
-      guid: number | string;
-      receivingAddress: string;
-    }) => ITokenMap;
-  };
   updateFiat: (currency?: string, assetId?: string) => Promise<void>;
-  updateFiatCurrencyForWallet: (chosenCurrency: string) => any;
+  updateFiatCurrencyForWallet: ({
+    base,
+    currency,
+  }: {
+    base: string;
+    currency: string;
+  }) => any;
 }
 
 const ControllerUtils = (): IControllerUtils => {
@@ -117,37 +119,44 @@ const ControllerUtils = (): IControllerUtils => {
     return route;
   };
 
-  const updateFiatCurrencyForWallet = async (chosenCurrency = 'usd') => {
+  // const getCoinsList = async () => {
+  //   const response = await CoinGeckoClient.coins.list();
+
+  //   return response;
+  // };
+
+  const updateFiatCurrencyForWallet = async ({ base, currency }) => {
     const data = await CoinGeckoClient.simple.price({
-      ids: ['syscoin'],
-      vs_currencies: [chosenCurrency],
+      ids: [base],
+      vs_currencies: [currency],
     });
 
     return data;
   };
 
-  const updateFiat = async (
-    currency = store.getState().price.fiat.current,
-    assetId = PRICE_SYS_ID
-  ) => {
+  // updates fiat price for the current chain
+  const updateFiat = async (currency = 'usd') => {
     try {
-      const availableCoins = await (
-        await fetch(`${ASSET_PRICE_API}?currency=`)
-      ).json();
+      const { activeNetwork, networks } = store.getState().vault;
 
-      const data = await (
-        await fetch(`${ASSET_PRICE_API}?currency=${currency || 'usd'}`)
-      ).json();
+      const chain = networks.syscoin[activeNetwork.chainId]
+        ? 'syscoin'
+        : 'ethereum';
 
-      if (data) {
+      const { success, data } = await updateFiatCurrencyForWallet({
+        base: chain,
+        currency,
+      });
+
+      // todo: get list for coins and conversion page
+
+      if (success && data) {
         store.dispatch(
-          updateFiatPrice({
-            assetId,
-            price: data.rates[currency],
-            availableCoins: availableCoins.rates || {
-              currency: data.rates[currency],
+          updatePrices({
+            fiat: {
+              asset: currency,
+              price: data[chain][currency],
             },
-            current: currency,
           })
         );
       }
@@ -185,6 +194,8 @@ const ControllerUtils = (): IControllerUtils => {
     };
   };
 
+  const txs = txUtils();
+
   return {
     appRoute,
     updateFiat,
@@ -192,12 +203,12 @@ const ControllerUtils = (): IControllerUtils => {
     importToken,
     getSearch,
     getAsset,
-    txUtils,
     isValidEthereumAddress,
     isValidSYSAddress,
     getTokenJson,
     getDataForToken,
     getTokenDataByContractAddress,
+    ...txs,
   };
 };
 

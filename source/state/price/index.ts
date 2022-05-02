@@ -1,58 +1,32 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
-export interface IFiatState {
-  [assetId: string]: number;
-  availableCoins: any;
-  // @ts-ignore
-  current: string | 'usd';
-  price: number;
-}
+import { AssetPrice, IPriceState } from './types';
 
-export interface IPriceState {
-  fiat: IFiatState;
-}
-
-export const initialState: {
+export const initialState: IPriceState = {
   fiat: {
-    [assetId: string]: number;
-    availableCoins: any;
-    // @ts-ignore
-    current: string | 'usd';
-    price: number;
-  };
-} = {
-  // @ts-ignore
-  fiat: {
-    syscoin: 0,
-    price: 0, // ? unused?
-    availableCoins: {},
-    current: 'usd',
+    asset: 'usd',
+    price: 0,
   },
+  coins: {},
 };
 
 const PriceState = createSlice({
   name: 'price',
   initialState,
   reducers: {
-    updateFiatPrice(
+    updatePrices(
       state: IPriceState,
       action: PayloadAction<{
-        assetId: string;
-        availableCoins: any;
-        current: string | 'usd';
-        price: number;
+        fiat: AssetPrice;
       }>
     ) {
-      state.fiat = {
-        ...state.fiat,
-        [action.payload.assetId]: action.payload.price,
-        availableCoins: action.payload.availableCoins,
-        current: action.payload.current || 'usd',
-      };
+      const { fiat } = action.payload;
+
+      state.fiat = fiat;
     },
   },
 });
 
-export const { updateFiatPrice } = PriceState.actions;
+export const { updatePrices } = PriceState.actions;
 
 export default PriceState.reducer;
