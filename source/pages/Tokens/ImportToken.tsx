@@ -49,6 +49,8 @@ export const ImportToken: FC = () => {
         return validate;
       });
 
+      console.log('new list coins', newList);
+
       setFilteredSearch(newList);
 
       return;

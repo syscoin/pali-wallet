@@ -40,6 +40,12 @@ const SysAccountController = () => {
 
     const { assets } = updatedAccountInfo;
 
+    console.log('assets update', [
+      ...assets,
+      ...activeAccount.assets,
+      defaultAsset,
+    ]);
+
     store.dispatch(
       setActiveAccount({
         ...activeAccount,
