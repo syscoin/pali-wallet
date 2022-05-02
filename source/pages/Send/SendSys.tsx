@@ -101,7 +101,6 @@ export const SendSys = () => {
     if (!selectedAsset) {
       const value = await getFiatAmount(
         Number(recommend),
-        '',
         6,
         String(fiat.asset)
       );
@@ -110,7 +109,6 @@ export const SendSys = () => {
     }
     const value = await getFiatAmount(
       Number(recommend) + Number(recommend),
-      '',
       6,
       String(fiat.asset)
     );

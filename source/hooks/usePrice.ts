@@ -12,20 +12,19 @@ export const usePrice = () => {
 
   const getFiatAmount = async (
     amount: number,
-    token: string,
     precision = 4,
     currency = 'usd'
   ): Promise<string> => {
-    const isSyscoinNetwork = Boolean(networks.syscoin[activeNetwork.chainId]);
+    const chain = networks.syscoin[activeNetwork.chainId]
+      ? 'syscoin'
+      : 'ethereum';
 
-    const fiatToUse =
-      isSyscoinNetwork && !token
-        ? fiat.price
-        : await getFiatValueByToken(token, fiat.asset);
+    const { price } = await getFiatValueByToken(chain, fiat.asset);
 
-    const value = amount * Number(fiatToUse);
+    const value = amount * Number(price);
 
     currency = currency.toUpperCase();
+
     const currencySymbol = getSymbolFromCurrency(currency);
 
     const formattedValue = value.toLocaleString(navigator.language, {
