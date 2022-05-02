@@ -156,16 +156,18 @@ const MainController = () => {
   };
 
   const setAccountDefaultAssets = () => {
+    const { activeAccount } = store.getState().vault;
+
+    const defaultAsset = {
+      name: 'ethereum',
+      symbol: 'ETH',
+      decimals: 18,
+    };
+
     store.dispatch(
-      setActiveAccountProperty({
-        property: 'assets',
-        value: [
-          {
-            name: 'ethereum',
-            symbol: 'ETH',
-            decimals: 18,
-          },
-        ],
+      setActiveAccount({
+        ...activeAccount,
+        assets: [...activeAccount.assets, defaultAsset],
       })
     );
   };

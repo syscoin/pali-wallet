@@ -14,21 +14,12 @@ export const AssetsPanel: FC = () => {
       <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
         {activeAccount.assets &&
         Object.values(activeAccount.assets).length > 0 ? (
-          <>
-            <PanelList
-              isSyscoinChain={isSyscoinChain}
-              data={Object.values(activeAccount.assets)}
-              activity={false}
-              assets
-            />
-
-            <p
-              className="hover:text-brand-royalbluemedium cursor-pointer"
-              onClick={() => navigate('/import-token')}
-            >
-              Import token
-            </p>
-          </>
+          <PanelList
+            isSyscoinChain={isSyscoinChain}
+            data={Object.values(activeAccount.assets)}
+            activity={false}
+            assets
+          />
         ) : (
           <div className="flex items-center justify-center text-brand-white text-sm">
             {isSyscoinChain ? (

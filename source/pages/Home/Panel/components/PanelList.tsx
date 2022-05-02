@@ -174,14 +174,41 @@ export const PanelList: FC<IPanelList> = ({
                       key={asset.symbol}
                       className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark"
                     >
-                      <span className="text-button-secondary font-poppins">
-                        {`  ${asset.symbol}`}
-                      </span>
+                      <p className="font-rubik">
+                        {formatCurrency(String(12 / 10 ** 8), 8)}
+
+                        <span className="text-button-secondary font-poppins">
+                          {`  ${asset.symbol}`}
+                        </span>
+                      </p>
+
+                      <IconButton
+                        onClick={() =>
+                          navigate('/home/tx-details', {
+                            state: {
+                              tx: null,
+                              type: null,
+                              assetGuid: asset.symbol,
+                              assetType: asset.type,
+                            },
+                          })
+                        }
+                      >
+                        <Icon name="select" className="w-4 text-brand-white" />
+                      </IconButton>
                     </li>
                   );
                 }
+
                 return null;
               })}
+
+              <p
+                className="hover:text-brand-royalbluemedium cursor-pointer"
+                onClick={() => navigate('/import-token')}
+              >
+                Import token
+              </p>
             </>
           )}
         </ul>
