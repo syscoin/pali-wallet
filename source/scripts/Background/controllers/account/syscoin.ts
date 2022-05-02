@@ -44,7 +44,9 @@ const SysAccountController = () => {
       setActiveAccount({
         ...activeAccount,
         ...updatedAccountInfo,
-        assets: isSyscoinChain ? assets : [...assets, defaultAsset],
+        assets: isSyscoinChain
+          ? assets
+          : [...assets, ...activeAccount.assets, defaultAsset],
       })
     );
   };
