@@ -1842,6 +1842,13 @@
   dependencies:
     rimraf "^3.0.2"
 
+"@pollum-io/sysweb3-core@^1.0.16":
+  version "1.0.16"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.16.tgz#6c9e3208ef1faa4252fd472ee66b4612695cbce3"
+  integrity sha512-UWqgqGZnCFJrsc1rrb0ypi9nv2jCsqRAO4NLKxPEgyfJN2LBAHkMHFzOwHTQEdw3eDXvoOyEE9lgbesWEtxftA==
+  dependencies:
+    rimraf "^3.0.2"
+
 "@pollum-io/sysweb3-keyring@^1.0.272":
   version "1.0.272"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.272.tgz#a24657fe1200313524604111ca1ba43a9e22863a"
@@ -1878,6 +1885,16 @@
     axios "^0.26.1"
     web3 "^1.7.1"
 
+"@pollum-io/sysweb3-network@^1.0.30":
+  version "1.0.30"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.30.tgz#cdf19fe4d3e2c52c2eedb4bf0b5a567f05ee5fd6"
+  integrity sha512-NZW6IPX63VE467zyRnnmYyzwpDShMf50BTsrBvCFFrlVEoBkoE/DkGLw4VW5jGv7wYHVdRfvezGFl8OgA+P0ZA==
+  dependencies:
+    "@pollum-io/sysweb3-core" "^1.0.16"
+    "@pollum-io/sysweb3-utils" "^1.1.125"
+    axios "^0.26.1"
+    web3 "^1.7.1"
+
 "@pollum-io/sysweb3-utils@^1.1.125":
   version "1.1.125"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.125.tgz#f7cf85df2a53fa20da330ad2b8a7f044202ead9d"
@@ -1885,6 +1902,25 @@
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.15"
     "@pollum-io/sysweb3-network" "^1.0.23"
+    axios "^0.26.1"
+    bech32 "^2.0.0"
+    bip44-constants "^114.0.0"
+    bip84 "^0.2.7"
+    bitcoinjs-lib "^6.0.1"
+    coinselectsyscoin "^1.0.77"
+    crypto-js "^4.1.1"
+    ethers "^5.6.4"
+    syscoinjs-lib "^1.0.212"
+    syscointx-js "^1.0.101"
+    web3 "^1.7.1"
+
+"@pollum-io/sysweb3-utils@^1.1.127":
+  version "1.1.127"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.127.tgz#d88c474682770305eb36048d7b749e7ed0623581"
+  integrity sha512-9XahArOxwsdlFVo9OTrOP9DC7v85hGixZgu7hq0RFl4yZ1AWB3qfGgBUPEjEzjsya1KdZVt/+3qKh0Uk/ARjsg==
+  dependencies:
+    "@pollum-io/sysweb3-core" "^1.0.16"
+    "@pollum-io/sysweb3-network" "^1.0.30"
     axios "^0.26.1"
     bech32 "^2.0.0"
     bip44-constants "^114.0.0"
@@ -9665,15 +9701,9 @@ node-localstorage@^2.1.6:
     write-file-atomic "^1.1.4"
 
 node-releases@^2.0.3:
-<<<<<<< HEAD
-  version "2.0.4"
-  resolved "https://registry.yarnpkg.com/node-releases/-/node-releases-2.0.4.tgz#f38252370c43854dc48aa431c766c6c398f40476"
-  integrity sha512-gbMzqQtTtDz/00jQzZ21PQzdI9PyLYqUSvD0p3naOhX4odFji0ZxYdnVwPTxmSwkmxhcFImpozceidSG+AgoPQ==
-=======
   version "2.0.3"
   resolved "https://registry.yarnpkg.com/node-releases/-/node-releases-2.0.3.tgz#225ee7488e4a5e636da8da52854844f9d716ca96"
   integrity sha512-maHFz6OLqYxz+VQyCAtA3PTX4UP/53pa05fyDNc9CwjvJ0yEh6+xBwKsgCxMNhS8taUKBFYxfuiaD9U/55iFaw==
->>>>>>> 553f156028dda4a40aca4177bebfc4084b115e43
 
 nopt@^5.0.0:
   version "5.0.0"

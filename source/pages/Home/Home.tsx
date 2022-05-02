@@ -17,60 +17,40 @@ export const Home = () => {
 
   const { navigate } = useUtils();
 
-  const balance = networks.syscoin[activeNetwork.chainId]
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+  const chain = isSyscoinChain ? 'syscoin' : 'ethereum';
+
+  const balance = isSyscoinChain
     ? activeAccount.balances.syscoin
     : activeAccount.balances.ethereum;
 
   const setChainSymbol = async () => {
-    const chain = networks.syscoin[activeNetwork.chainId]
-      ? 'syscoin'
-      : 'ethereum';
     const symbol = await getSymbolByChain(chain);
+
+    setSymbol(symbol);
 
     return symbol;
   };
 
   const getFiatPrice = async () => {
-    const value = await getFiatAmount(
+    const amount = await getFiatAmount(
       balance || 0,
       4,
-      String(fiat.current),
-      activeNetwork.currency === 'sys' ? '' : symbol
+      String(fiat.asset).toUpperCase()
     );
 
-    return value;
+    setFiatPriceValue(String(amount));
+
+    return amount;
   };
 
   const isUnlocked =
     controller.wallet.isUnlocked() && activeAccount.address !== '';
 
   useEffect(() => {
-    let isMounted = true;
-
-    setChainSymbol().then((response: any) => {
-      if (isMounted) {
-        setSymbol(response);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [isUnlocked]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    getFiatPrice().then((response: any) => {
-      if (isMounted) {
-        setFiatPriceValue(response);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [activeNetwork]);
+    setChainSymbol();
+    getFiatPrice();
+  }, [isUnlocked, activeNetwork]);
 
   const isSysTestnet = activeNetwork.chainId === 5700;
   const symbolByChain = isSysTestnet ? 'tsys' : symbol;
