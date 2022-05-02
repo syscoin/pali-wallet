@@ -204,7 +204,7 @@ export const PanelList: FC<IPanelList> = ({
               })}
 
               <p
-                className="hover:text-brand-royalbluemedium cursor-pointer"
+                className="my-4 text-center hover:text-brand-royalbluemedium cursor-pointer"
                 onClick={() => navigate('/import-token')}
               >
                 Import token

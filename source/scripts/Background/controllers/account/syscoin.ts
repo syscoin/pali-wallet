@@ -17,7 +17,7 @@ const SysAccountController = () => {
   const getLatestUpdate = async (silent?: boolean) => {
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
-    const { activeAccount } = store.getState().vault;
+    const { activeAccount, activeNetwork, networks } = store.getState().vault;
 
     if (!activeAccount) return;
 
@@ -27,10 +27,21 @@ const SysAccountController = () => {
 
     console.log('updated account in pali going to store', updatedAccountInfo);
 
+    const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+
+    const defaultAsset = {
+      name: 'ethereum',
+      symbol: 'ETH',
+      decimals: 18,
+    };
+
+    const { assets } = updatedAccountInfo;
+
     store.dispatch(
       setActiveAccount({
         ...activeAccount,
         ...updatedAccountInfo,
+        assets: isSyscoinChain ? assets : [...assets, defaultAsset],
       })
     );
   };

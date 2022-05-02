@@ -37,14 +37,6 @@ export const Home = () => {
     setChainSymbol();
   }, [isUnlocked]);
 
-  useEffect(() => {
-    const chain = networks.syscoin[activeNetwork.chainId]
-      ? 'syscoin'
-      : 'ethereum';
-
-    if (chain === 'ethereum') controller.wallet.setAccountDefaultAssets();
-  }, [activeNetwork.chainId]);
-
   const isSysTestnet = activeNetwork.chainId === 5700;
   const symbolByChain = isSysTestnet ? 'tsys' : symbol;
 

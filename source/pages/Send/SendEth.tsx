@@ -147,7 +147,7 @@ export const SendEth = () => {
               />
             </Form.Item>
 
-            <div className="flex flex-col items-center justify-center md:w-full md:max-w-md">
+            <div className="flex items-center justify-center md:w-full md:max-w-md">
               {hasAccountAssets && (
                 <Form.Item
                   name="asset"
@@ -210,53 +210,55 @@ export const SendEth = () => {
                 </Form.Item>
               )}
 
-              <div className="flex w-full">
-                <label className="flex-1 mr-6 text-xs" htmlFor="gasPrice">
-                  Gas Price (GWEI)
-                </label>
-                <label className="flex-1 mr-6 text-xs" htmlFor="gasLimit">
-                  Gas Limit (Units)
-                </label>
-              </div>
+              <div className="flex flex-col">
+                {/* <div className="flex w-full">
+                  <label className="flex-1 mr-6 text-xs" htmlFor="gasPrice">
+                    Gas Price (GWEI)
+                  </label>
+                  <label className="flex-1 mr-6 text-xs" htmlFor="gasLimit">
+                    Gas Limit (Units)
+                  </label>
+                </div> */}
 
-              <div
-                className={`${
-                  hasAccountAssets ? 'w-48 ml-4' : 'w-72'
-                } flex gap-x-0.5 items-center justify-center md:w-full`}
-              >
-                <Form.Item
-                  name="gasPrice"
-                  className="flex-1 w-32 text-center bg-fields-input-primary rounded-l-full md:w-full"
-                  rules={[
-                    {
-                      required: false,
-                      message: '',
-                    },
-                  ]}
+                <div
+                  className={`${
+                    hasAccountAssets ? 'w-48 ml-4' : 'w-72'
+                  } flex gap-x-0.5 items-center justify-center md:w-full`}
                 >
-                  <Input
-                    type="text"
-                    placeholder="Gas Price (GWEI)"
-                    className="p-3 w-full text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full outline-none md:w-full"
-                  />
-                </Form.Item>
+                  <Form.Item
+                    name="gasPrice"
+                    className="flex-1 w-32 text-center bg-fields-input-primary rounded-l-full md:w-full"
+                    rules={[
+                      {
+                        required: false,
+                        message: '',
+                      },
+                    ]}
+                  >
+                    <Input
+                      type="text"
+                      placeholder="Gas Price (GWEI)"
+                      className="p-3 w-full text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full outline-none md:w-full"
+                    />
+                  </Form.Item>
 
-                <Form.Item
-                  name="gasLimit"
-                  className="flex-1 w-32 text-center bg-fields-input-primary rounded-r-full"
-                  rules={[
-                    {
-                      required: false,
-                      message: '',
-                    },
-                  ]}
-                >
-                  <Input
-                    type="text"
-                    placeholder="Gas Limit"
-                    className="p-3 w-full text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full outline-none md:w-full"
-                  />
-                </Form.Item>
+                  <Form.Item
+                    name="gasLimit"
+                    className="flex-1 w-32 text-center bg-fields-input-primary rounded-r-full"
+                    rules={[
+                      {
+                        required: false,
+                        message: '',
+                      },
+                    ]}
+                  >
+                    <Input
+                      type="text"
+                      placeholder="Gas Limit"
+                      className="p-3 w-full text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full outline-none md:w-full"
+                    />
+                  </Form.Item>
+                </div>
               </div>
             </div>
 
