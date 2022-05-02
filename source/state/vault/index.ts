@@ -103,7 +103,7 @@ const VaultState = createSlice({
       state: IVaultState,
       action: PayloadAction<{
         property: string;
-        value: number | string | boolean;
+        value: number | string | boolean | any[];
       }>
     ) {
       const { property, value } = action.payload;

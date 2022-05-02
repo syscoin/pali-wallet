@@ -155,6 +155,21 @@ const MainController = () => {
     store.dispatch(removeNetworkFromStore({ prefix: chain, chainId }));
   };
 
+  const setAccountDefaultAssets = () => {
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'assets',
+        value: [
+          {
+            name: 'ethereum',
+            symbol: 'ETH',
+            decimals: 18,
+          },
+        ],
+      })
+    );
+  };
+
   return {
     createWallet,
     forgetWallet,
@@ -167,6 +182,7 @@ const MainController = () => {
     setActiveNetwork,
     addCustomRpc,
     removeKeyringNetwork,
+    setAccountDefaultAssets,
     ...keyringManager,
   };
 };
