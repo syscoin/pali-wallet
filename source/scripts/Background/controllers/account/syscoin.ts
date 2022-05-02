@@ -5,7 +5,10 @@ import {
   setIsPendingBalances,
 } from 'state/vault';
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
-import { validateToken, IKeyringAccountState } from '@pollum-io/sysweb3-utils';
+import {
+  IKeyringAccountState,
+  importWeb3Token,
+} from '@pollum-io/sysweb3-utils';
 
 import SysTrezorController from '../trezor/syscoin';
 import { SysTransactionController } from '../transaction';
@@ -84,24 +87,17 @@ const SysAccountController = () => {
   const saveTokenInfo = async (token: CoingeckoCoins) => {
     const { activeAccount } = store.getState().vault;
 
-    console.log('saving token info', token);
-
     try {
-      const validToken = await validateToken(String(token.contract_address));
-
-      console.log('token is valid', validToken);
+      const validToken = await importWeb3Token(String(token.contract_address));
 
       store.dispatch(
         setActiveAccountProperty({
           property: 'assets',
-          value: {
-            ...activeAccount.assets,
-            [String(validToken.name)]: validToken,
-          },
+          value: [...activeAccount.assets, validToken],
         })
       );
     } catch (error) {
-      console.log('validate errror', error);
+      throw new Error('Could not save token data. Try again later.');
     }
   };
 

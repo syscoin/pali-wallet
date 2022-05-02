@@ -59,7 +59,7 @@ export const ImportToken: FC = () => {
 
   const addToken = (token: IToken) => {
     try {
-      controller.wallet.account.saveTokenInfo(token);
+      controller.wallet.account.sys.saveTokenInfo(token);
 
       alert.removeAll();
       alert.success(`${token.symbol} successfully added to your assets list.`);
@@ -114,7 +114,7 @@ export const ImportToken: FC = () => {
           <Input
             type="text"
             placeholder="Search by symbol"
-            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
+            className="large"
             onChange={(event) => handleSearch(event.target.value)}
           />
         </Form.Item>
