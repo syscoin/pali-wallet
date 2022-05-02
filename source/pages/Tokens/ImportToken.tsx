@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, FC, useEffect } from 'react';
-import { useUtils } from 'hooks/index';
+import { useUtils, useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
 import {
   SecondaryButton,
@@ -19,9 +19,12 @@ export const ImportToken: FC = () => {
 
   const [form] = Form.useForm();
   const { navigate, alert, useCopyClipboard } = useUtils();
+  const { activeAccount } = useStore();
 
   const [copied, copy] = useCopyClipboard();
-  const [filteredSearch, setFilteredSearch] = useState<CoingeckoCoins[]>([]);
+  const [filteredSearch, setFilteredSearch] = useState<CoingeckoCoins[]>(
+    activeAccount.assets
+  );
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selected, setSelected] = useState<CoingeckoCoins | any>(null);
 
