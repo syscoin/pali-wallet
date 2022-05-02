@@ -140,11 +140,7 @@ export const SendEth = () => {
                 }),
               ]}
             >
-              <Input
-                type="text"
-                placeholder="Receiver"
-                className="block pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
-              />
+              <Input type="text" placeholder="Receiver" className="large" />
             </Form.Item>
 
             <div className="flex items-center justify-center md:w-full md:max-w-md">
@@ -163,7 +159,7 @@ export const SendEth = () => {
                     <div className="relative inline-block text-left">
                       <Menu.Button
                         disabled={!hasAccountAssets}
-                        className="inline-flex justify-center py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+                        className="inline-flex justify-center mt-3 py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
                       >
                         {selectedAsset?.symbol
                           ? formatUrl(String(selectedAsset?.symbol), 2)
@@ -211,14 +207,14 @@ export const SendEth = () => {
               )}
 
               <div className="flex flex-col">
-                {/* <div className="flex w-full">
-                  <label className="flex-1 mr-6 text-xs" htmlFor="gasPrice">
-                    Gas Price (GWEI)
+                <div className="flex w-full">
+                  <label className="flex-1 mr-4 text-xs" htmlFor="gasPrice">
+                    Gas Price
                   </label>
                   <label className="flex-1 mr-6 text-xs" htmlFor="gasLimit">
-                    Gas Limit (Units)
+                    Gas Limit
                   </label>
-                </div> */}
+                </div>
 
                 <div
                   className={`${
@@ -286,11 +282,7 @@ export const SendEth = () => {
                 }),
               ]}
             >
-              <Input
-                className="block pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
-                type="number"
-                placeholder="Amount"
-              />
+              <Input className="large" type="number" placeholder="Amount" />
             </Form.Item>
 
             <div className="flex gap-x-0.5 items-center justify-center mx-2 md:w-full md:max-w-md">

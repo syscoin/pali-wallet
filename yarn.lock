@@ -1835,13 +1835,6 @@
     node-gyp "^9.0.0"
     read-package-json-fast "^2.0.3"
 
-"@pollum-io/sysweb3-core@^1.0.15":
-  version "1.0.15"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.15.tgz#96845bf1f7635fe409afa5f5f151539044168bc7"
-  integrity sha512-H+YXHlPaeDDXyVcrPeoLZJvYCRSTy/D4X+oU7O6CEhN8Hc4mOaNmf2TmsP5Ji2Dko3S8MwAL2VELqJ/46SCwOg==
-  dependencies:
-    rimraf "^3.0.2"
-
 "@pollum-io/sysweb3-core@^1.0.16":
   version "1.0.16"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.16.tgz#6c9e3208ef1faa4252fd472ee66b4612695cbce3"
@@ -1875,16 +1868,6 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
-"@pollum-io/sysweb3-network@^1.0.23":
-  version "1.0.29"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.29.tgz#a9ec8fd0765584dfb9e2690a23196619c0994bdf"
-  integrity sha512-Y1vbnXBjqdtI65yGvPTSr1r5SQZ3nGqIo7uk3OEHBfDXeaOEJWXngCsxEnINTiWW88AOF1E4L1tbIkNUO4HyJg==
-  dependencies:
-    "@pollum-io/sysweb3-core" "^1.0.15"
-    "@pollum-io/sysweb3-utils" "^1.1.125"
-    axios "^0.26.1"
-    web3 "^1.7.1"
-
 "@pollum-io/sysweb3-network@^1.0.30":
   version "1.0.30"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.30.tgz#cdf19fe4d3e2c52c2eedb4bf0b5a567f05ee5fd6"
@@ -1895,13 +1878,13 @@
     axios "^0.26.1"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.125":
-  version "1.1.125"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.125.tgz#f7cf85df2a53fa20da330ad2b8a7f044202ead9d"
-  integrity sha512-0b1SfXNfwT7s38115XChUlT8kcqrwTyEgd2xPSbtdXSOjNA9AhqSbTnaG0tTPJ8HwGVPUBjRzLhh6G0N9OSpNQ==
+"@pollum-io/sysweb3-utils@1.1.126":
+  version "1.1.126"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.126.tgz#fca5709eb7151103560fd37d7bba010046b320a4"
+  integrity sha512-7OwDlYFFTe93TGx4xlmbFb45iAyX4UUkuSGvEHWrHepX4jo4hvzCy6DHvWfgkzlbR0U+leEH3QFecyrBhkQ8hw==
   dependencies:
-    "@pollum-io/sysweb3-core" "^1.0.15"
-    "@pollum-io/sysweb3-network" "^1.0.23"
+    "@pollum-io/sysweb3-core" "^1.0.16"
+    "@pollum-io/sysweb3-network" "^1.0.30"
     axios "^0.26.1"
     bech32 "^2.0.0"
     bip44-constants "^114.0.0"
@@ -1914,10 +1897,10 @@
     syscointx-js "^1.0.101"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.126":
-  version "1.1.126"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.126.tgz#fca5709eb7151103560fd37d7bba010046b320a4"
-  integrity sha512-7OwDlYFFTe93TGx4xlmbFb45iAyX4UUkuSGvEHWrHepX4jo4hvzCy6DHvWfgkzlbR0U+leEH3QFecyrBhkQ8hw==
+"@pollum-io/sysweb3-utils@^1.1.125", "@pollum-io/sysweb3-utils@^1.1.126":
+  version "1.1.127"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.127.tgz#d88c474682770305eb36048d7b749e7ed0623581"
+  integrity sha512-9XahArOxwsdlFVo9OTrOP9DC7v85hGixZgu7hq0RFl4yZ1AWB3qfGgBUPEjEzjsya1KdZVt/+3qKh0Uk/ARjsg==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.16"
     "@pollum-io/sysweb3-network" "^1.0.30"
@@ -2219,9 +2202,9 @@
   integrity sha512-Klz949h02Gz2uZCMGwDUSDS1YBlTdDDgbWHi+81l29tQALUtvz4rAYi5uoVhE5Lagoq6DeqAUlbrHvW/mXDgdQ==
 
 "@types/node@*", "@types/node@^17.0.11":
-  version "17.0.30"
-  resolved "https://registry.yarnpkg.com/@types/node/-/node-17.0.30.tgz#2c6e8512acac70815e8176aa30c38025067880ef"
-  integrity sha512-oNBIZjIqyHYP8VCNAV9uEytXVeXG2oR0w9lgAXro20eugRQfY002qr3CUl6BAe+Yf/z3CRjPdz27Pu6WWtuSRw==
+  version "17.0.31"
+  resolved "https://registry.yarnpkg.com/@types/node/-/node-17.0.31.tgz#a5bb84ecfa27eec5e1c802c6bbf8139bdb163a5d"
+  integrity sha512-AR0x5HbXGqkEx9CadRH3EBYx/VkiUgZIhP4wvPn/+5KIsgpNoyFaRlVe0Zlx9gRtg8fA06a9tskE2MSN7TcG4Q==
 
 "@types/node@10.12.18":
   version "10.12.18"
@@ -4272,9 +4255,9 @@ caniuse-api@^3.0.0:
     lodash.uniq "^4.5.0"
 
 caniuse-lite@^1.0.0, caniuse-lite@^1.0.30001109, caniuse-lite@^1.0.30001332:
-  version "1.0.30001334"
-  resolved "https://registry.yarnpkg.com/caniuse-lite/-/caniuse-lite-1.0.30001334.tgz#892e9965b35285033fc2b8a8eff499fe02f13d8b"
-  integrity sha512-kbaCEBRRVSoeNs74sCuq92MJyGrMtjWVfhltoHUCW4t4pXFvGjUBrfo47weBRViHkiV3eBYyIsfl956NtHGazw==
+  version "1.0.30001335"
+  resolved "https://registry.yarnpkg.com/caniuse-lite/-/caniuse-lite-1.0.30001335.tgz#899254a0b70579e5a957c32dced79f0727c61f2a"
+  integrity sha512-ddP1Tgm7z2iIxu6QTtbZUv6HJxSaV/PZeSrWFZtbY4JZ69tOeNhBCl3HyRQgeNZKE5AOn1kpV7fhljigy0Ty3w==
 
 canvas-renderer@~2.2.0:
   version "2.2.0"
@@ -9757,9 +9740,9 @@ npm-bundled@^1.1.1, npm-bundled@^1.1.2:
     npm-normalize-package-bin "^1.0.1"
 
 npm-check-updates@^12.1.0:
-  version "12.5.10"
-  resolved "https://registry.yarnpkg.com/npm-check-updates/-/npm-check-updates-12.5.10.tgz#779d201c17c4c0e690cc4fb7eceeed1d00f3f878"
-  integrity sha512-GKBmgC6ZDZwshsOSuse+JYDFVQcaKj9NWNWXW9oWX0TdrKJx26/iR6d4t6LG+iNm5jX+voBoGcEIaGF8CRzWpw==
+  version "12.5.11"
+  resolved "https://registry.yarnpkg.com/npm-check-updates/-/npm-check-updates-12.5.11.tgz#c594902b21af8c251a5ebf12686143b0d2f06356"
+  integrity sha512-uS3yYYK/F1VvZlJRymuCkq+MY2R7v/WlORo5WPUTYx+1OwkqeDMC/CEEGfCN7ATwT2M+JxVVKk9Gq/TGiZjJOw==
   dependencies:
     chalk "^4.1.2"
     cint "^8.2.1"
@@ -14299,9 +14282,9 @@ ws@7.4.6:
   integrity sha512-YmhHDO4MzaDLB+M9ym/mDA5z0naX8j7SIlT8f8z+I0VtzsRbekxEutHSme7NPS2qE8StCYQNUnfWdXta/Yu85A==
 
 ws@>=7.4.6:
-  version "8.5.0"
-  resolved "https://registry.yarnpkg.com/ws/-/ws-8.5.0.tgz#bfb4be96600757fe5382de12c670dab984a1ed4f"
-  integrity sha512-BWX0SWVgLPzYwF8lTzEy1egjhS4S4OEAHfsO8o65WOVsrnSRGaSiUaa9e0ggGlkMTtBlmOpEXiie9RUcBO86qg==
+  version "8.6.0"
+  resolved "https://registry.yarnpkg.com/ws/-/ws-8.6.0.tgz#e5e9f1d9e7ff88083d0c0dd8281ea662a42c9c23"
+  integrity sha512-AzmM3aH3gk0aX7/rZLYvjdvZooofDu3fFOzGqcSnQ1tOcTWwhM/o+q++E8mAyVVIyUdajrkzWUGftaVSDLn1bw==
 
 ws@^3.0.0:
   version "3.3.3"
