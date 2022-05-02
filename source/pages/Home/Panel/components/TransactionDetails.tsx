@@ -45,8 +45,8 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
               return;
             }
 
-            controller.wallet.account
-              .getTransactionInfoByTxId(item.txid)
+            controller.utils
+              .getRawTransaction(activeNetwork.url, item.txid)
               .then((response: any) => {
                 for (const responseVout of response.vout) {
                   if (responseVout.n === item.vout) {

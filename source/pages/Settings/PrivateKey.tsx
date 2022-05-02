@@ -80,7 +80,10 @@ const PrivateKeyView = () => {
               }),
             ]}
           >
-            <Input.Password placeholder="Enter your password" />
+            <Input.Password
+              className="password"
+              placeholder="Enter your password"
+            />
           </Form.Item>
         </Form>
 

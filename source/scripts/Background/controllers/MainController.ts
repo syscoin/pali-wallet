@@ -91,6 +91,23 @@ const MainController = () => {
     account.sys.getLatestUpdate(false);
   };
 
+  const setAccountDefaultAssets = () => {
+    const { activeAccount } = store.getState().vault;
+
+    const defaultAsset = {
+      name: 'ethereum',
+      symbol: 'ETH',
+      decimals: 18,
+    };
+
+    store.dispatch(
+      setActiveAccount({
+        ...activeAccount,
+        assets: [...activeAccount.assets, defaultAsset],
+      })
+    );
+  };
+
   const setActiveNetwork = async (chain: string, chainId: number) => {
     store.dispatch(setIsPendingBalances(true));
 
@@ -100,13 +117,11 @@ const MainController = () => {
 
     store.dispatch(setNetwork(network));
 
-    /** this method sets new signers for syscoin when changing networks */
     const account = (await keyringManager.setSignerNetwork(
       network,
       chain
     )) as IKeyringAccountState;
 
-    /** directly set new keys for the current chain and update state if the active account is the first one */
     store.dispatch(
       setActiveAccountProperty({
         property: 'xpub',
@@ -120,13 +135,14 @@ const MainController = () => {
         value: keyringManager.getEncryptedXprv(),
       })
     );
-    /** end */
 
     if (account.id === 0)
       keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
 
     store.dispatch(setIsPendingBalances(false));
     store.dispatch(setActiveAccount(account));
+
+    if (chain === 'ethereum') setAccountDefaultAssets();
 
     return account;
   };

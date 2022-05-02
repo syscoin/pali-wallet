@@ -138,11 +138,7 @@ const CustomRPCView = ({
                 },
               ]}
             >
-              <Input
-                type="text"
-                placeholder="Label"
-                className="px-4 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
-              />
+              <Input type="text" placeholder="Label" className="large" />
             </Form.Item>
 
             <Form.Item
@@ -161,12 +157,13 @@ const CustomRPCView = ({
                 placeholder={`${
                   isSyscoinRpc ? 'Trezor Block Explorer' : 'RPC URL'
                 }`}
-                className="px-4 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
+                className="large"
               />
             </Form.Item>
 
             <Form.Item
               name="chainId"
+              hasFeedback
               rules={[
                 {
                   required: !isSyscoinRpc,
@@ -177,13 +174,12 @@ const CustomRPCView = ({
               <Input
                 type="text"
                 placeholder="Chain ID"
-                className={`${
-                  isSyscoinRpc ? 'hidden' : 'block'
-                } px-4 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md`}
+                className={`${isSyscoinRpc ? 'hidden' : 'block'} large`}
               />
             </Form.Item>
 
             <Form.Item
+              hasFeedback
               name="token_contract_address"
               rules={[
                 {
@@ -195,9 +191,7 @@ const CustomRPCView = ({
               <Input
                 type="text"
                 placeholder="Token Contract Address"
-                className={`${
-                  isSyscoinRpc ? 'hidden' : 'block'
-                } px-4 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md`}
+                className={`${isSyscoinRpc ? 'hidden' : 'block'} large`}
               />
             </Form.Item>
 

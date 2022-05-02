@@ -168,11 +168,7 @@ export const SendSys = () => {
             }),
           ]}
         >
-          <Input
-            type="text"
-            placeholder="Receiver"
-            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
-          />
+          <Input type="text" placeholder="Receiver" className="large" />
         </Form.Item>
 
         <div className="flex items-center justify-center md:w-full md:max-w-md">
@@ -349,11 +345,7 @@ export const SendSys = () => {
             }),
           ]}
         >
-          <Input
-            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
-            type="number"
-            placeholder="Amount"
-          />
+          <Input className="large" type="number" placeholder="Amount" />
         </Form.Item>
 
         <div className="flex gap-x-0.5 items-center justify-center mx-2 md:w-full md:max-w-md">
@@ -392,7 +384,7 @@ export const SendSys = () => {
             <Tooltip content="Network fee">
               <Input
                 disabled
-                className="pl-4 pr-8 py-3 w-60 text-brand-white text-sm bg-fields-input-primary border border-fields-input-border rounded-r-full outline-none opacity-50 cursor-not-allowed md:w-full"
+                className="block pl-4 pr-8 py-3 w-60 text-brand-white text-sm bg-fields-input-primary border border-fields-input-border rounded-r-full outline-none opacity-50 cursor-not-allowed md:w-full"
                 id="fee-input"
                 type="number"
                 placeholder="Fee network"
