@@ -1,7 +1,8 @@
+import { ASSET_PRICE_API } from 'constants/index';
+
 import store from 'state/store';
 import { updatePrices } from 'state/price';
 import { logError } from 'utils/index';
-import { ASSET_PRICE_API } from 'constants/index';
 import {
   getSearch as getCoingeckoSearch,
   isValidEthereumAddress,

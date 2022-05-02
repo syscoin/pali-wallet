@@ -17,8 +17,8 @@ const PriceState = createSlice({
     updatePrices(
       state: IPriceState,
       action: PayloadAction<{
-        fiat: AssetPrice;
         coins: any;
+        fiat: AssetPrice;
       }>
     ) {
       const { fiat, coins } = action.payload;
