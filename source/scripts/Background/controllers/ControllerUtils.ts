@@ -59,6 +59,8 @@ const ControllerUtils = (): IControllerUtils => {
 
       // todo: get list for coins and conversion page
 
+      console.log('CURRENCY CONTROLLER', currency);
+
       const coinList = await (
         await fetch(`${ASSET_PRICE_API}?currency=`)
       ).json();

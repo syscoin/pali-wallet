@@ -59,9 +59,6 @@ const CurrencyView = () => {
   const useFiatCurrency = asset ? String(asset).toUpperCase() : 'USD';
 
   const updateCurrency = () => {
-    getSymbolFromCurrency(
-      selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency
-    );
     controller.utils.updateFiat(selectedCoin);
   };
 
@@ -69,7 +66,7 @@ const CurrencyView = () => {
     const value = await getFiatAmount(
       activeAccount?.balances.syscoin || 0,
       4,
-      String(selectedCoin || asset || 'USD')
+      String(selectedCoin || 'USD')
     );
 
     setFiatAmountValue(value);
@@ -82,14 +79,11 @@ const CurrencyView = () => {
   }, [isUnlocked, activeAccountId]);
 
   useEffect(() => {
-    if (isUnlocked && selectedCoin) {
-      updateCurrency();
-      getFiatAmountValue();
+    updateCurrency();
+    getFiatAmountValue();
 
-      console.log('selectedCoin', selectedCoin);
-      console.log('asset selected', asset);
-      console.log('coins', coins);
-    }
+    console.log('selectedCoin', selectedCoin);
+    console.log('coins', coins);
   }, [isUnlocked, selectedCoin]);
 
   return (
