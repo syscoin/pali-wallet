@@ -10,7 +10,8 @@ import { TransactionDetails } from './TransactionDetails';
 export const DetailsView = () => {
   const controller = getController();
 
-  const { activeNetwork } = useStore();
+  const { activeNetwork, networks, activeAccount } = useStore();
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
   const {
     state: { assetGuid, tx, assetType, type },
@@ -44,8 +45,10 @@ export const DetailsView = () => {
         activeNetwork.url,
         tx.txid
       );
-
-      setTransactionDetails(txData);
+      // eslint-disable-next-line
+      isSyscoinChain
+        ? setTransactionDetails(txData)
+        : setTransactionDetails(activeAccount.transactions);
     };
 
     getTransactionData();

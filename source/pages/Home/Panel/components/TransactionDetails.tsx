@@ -6,7 +6,8 @@ import { getController } from 'utils/browser';
 import { Disclosure } from '@headlessui/react';
 
 export const TransactionDetails = ({ transactionType, transactionDetails }) => {
-  const { activeNetwork } = useStore();
+  const { activeNetwork, networks } = useStore();
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
   const { useCopyClipboard, alert } = useUtils();
 
   const controller = getController();
@@ -147,19 +148,67 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
 
   return (
     <>
-      {txData.map(({ label, value: currentValue }: any) => (
-        <>
-          <div
-            key={label}
-            className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
-          >
-            <p>{label}</p>
-            <b>{currentValue}</b>
-          </div>
-        </>
-      ))}
+      {isSyscoinChain &&
+        txData.map(({ label, value: currentValue }: any) => (
+          <>
+            <div
+              key={label}
+              className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
+            >
+              <p>{label}</p>
+              <b>{currentValue}</b>
+            </div>
+          </>
+        ))}
 
-      {Object.values(newSenders).length > 0 && (
+      {!isSyscoinChain &&
+        transactionDetails.slice(0, 15).map((label, i: number) => {
+          const txWeb3Tx = [
+            {
+              label: 'Blockhash',
+              value: ellipsis(label?.hash),
+            },
+            {
+              label: 'Type',
+              value: 'Transaction',
+            },
+            {
+              label: 'Confirmations',
+              value: label?.confirmations,
+            },
+            {
+              label: 'Blocknumber',
+              value: label?.blockNumber,
+            },
+            {
+              label: 'Mined',
+              value: label?.timestamp
+                ? formatDate(new Date(label?.timestamp * 1000).toDateString())
+                : '',
+            },
+            {
+              label: 'From',
+              value: ellipsis(label?.from),
+            },
+            {
+              label: 'To',
+              value: ellipsis(label?.to),
+            },
+          ];
+          return (
+            <>
+              <div
+                key={i}
+                className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
+              >
+                <b>{txWeb3Tx[i]?.label}</b>
+                <p>{txWeb3Tx[i]?.value}</p>
+              </div>
+            </>
+          );
+        })}
+
+      {isSyscoinChain && Object.values(newSenders).length > 0 && (
         <Disclosure>
           {({ open }) => (
             <>
@@ -192,7 +241,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
         </Disclosure>
       )}
 
-      {Object.values(newRecipients).length > 0 && (
+      {isSyscoinChain && Object.values(newRecipients).length > 0 && (
         <Disclosure>
           {({ open }) => (
             <>
@@ -225,7 +274,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
         </Disclosure>
       )}
 
-      {copied && showSuccessAlert()}
+      {isSyscoinChain && copied && showSuccessAlert()}
     </>
   );
 };
