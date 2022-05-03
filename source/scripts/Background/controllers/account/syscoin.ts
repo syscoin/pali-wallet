@@ -100,10 +100,7 @@ const SysAccountController = () => {
   const saveTokenInfo = async (token: CoingeckoCoins) => {
     const { activeAccount, activeNetwork } = store.getState().vault;
 
-    const isSyscoinChain = activeNetwork.currency === 'sys';
-
     const web3TokenBalance: any =
-      !isSyscoinChain &&
       token &&
       (await getErc20TokenBalance(
         activeNetwork,
@@ -119,7 +116,7 @@ const SysAccountController = () => {
     store.dispatch(
       setActiveAccountProperty({
         property: 'assets',
-        value: [...activeAccount.assets, !isSyscoinChain ? web3Token : token],
+        value: [...activeAccount.assets, web3Token],
       })
     );
   };
