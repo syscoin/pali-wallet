@@ -1,8 +1,9 @@
-export interface IFiatState {
-  [assetId: string]: number;
-  current: any | 'usd';
-}
+export type AssetPrice = {
+  asset: string;
+  price: number;
+};
 
-export default interface IPriceState {
-  fiat: IFiatState;
+export interface IPriceState {
+  coins: any;
+  fiat: AssetPrice;
 }

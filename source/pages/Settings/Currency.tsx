@@ -15,34 +15,46 @@ const CurrencyView = () => {
 
   if (!activeAccount) throw new Error('No account');
 
-  const { accounts, activeAccountId, fiat, activeNetwork } = useStore();
+  const { accounts, activeAccountId, coins, fiat, activeNetwork, networks } =
+    useStore();
 
-  const [selectedCoin, setSelectedCoin] = useState(String(fiat.current));
+  const { asset } = fiat;
+
+  const [selectedCoin, setSelectedCoin] = useState(String(asset));
   const [checkValueCoin, setCheckValueCoin] = useState('usd');
   const [confirmed, setConfirmed] = useState(false);
+  const [fiatAmountValue, setFiatAmountValue] = useState('');
 
-  const { availableCoins } = fiat;
   const convertCurrency = (value: number, toCoin: string) =>
-    value * availableCoins[toCoin];
+    value * coins[toCoin];
 
-  const convertToSys = (value: number, fromCoin: string) =>
-    value / availableCoins[fromCoin];
+  const convertToCrypto = (value: number, fromCoin: string) =>
+    value / coins[fromCoin];
+
+  const isUnlocked =
+    controller.wallet.isUnlocked() && activeAccount.address !== '';
+
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+
+  const balance = isSyscoinChain
+    ? activeAccount.balances.syscoin
+    : activeAccount.balances.ethereum;
 
   const [conversorValues, setConversorValues] = useState({
-    sys: activeAccount.balances.syscoin,
-    fiat: convertCurrency(activeAccount.balances.syscoin, checkValueCoin),
+    crypto: balance,
+    fiat: convertCurrency(balance, checkValueCoin),
   });
 
   const handleConvert = (value: number, toCoin: string) => {
     setConversorValues({
-      sys: value,
+      crypto: value,
       fiat: convertCurrency(value, toCoin),
     });
   };
 
   const handleReverseConvert = (value: number, fromCoin: string) => {
     setConversorValues({
-      sys: convertToSys(value, fromCoin),
+      crypto: convertToCrypto(value, fromCoin),
       fiat: value,
     });
   };
@@ -51,26 +63,34 @@ const CurrencyView = () => {
     setConfirmed(true);
   };
 
-  const useFiatCurrency = fiat.current
-    ? String(fiat.current).toUpperCase()
-    : 'USD';
+  const fiatCurrency = asset ? String(asset).toUpperCase() : 'USD';
 
-  const updateCurrency = () => {
-    getSymbolFromCurrency(
-      selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency
-    );
-    controller.utils.updateFiat(selectedCoin, 'syscoin');
+  const getFiatAmountValue = async () => {
+    const value = await getFiatAmount(balance || 0, 4, String(selectedCoin));
+
+    setFiatAmountValue(value);
   };
 
   useEffect(() => {
-    if (
-      controller.wallet.isUnlocked() &&
-      accounts &&
-      accounts[activeAccountId]
-    ) {
+    if (isUnlocked && accounts && accounts[activeAccountId]) {
       handleRefresh(true);
     }
-  }, [controller.wallet.isUnlocked(), accounts]);
+  }, [isUnlocked, activeAccountId]);
+
+  useEffect(() => {
+    if (selectedCoin) {
+      controller.utils.setFiat(
+        selectedCoin,
+        isSyscoinChain ? 'syscoin' : 'ethereum'
+      );
+
+      getFiatAmountValue();
+    }
+  }, [selectedCoin]);
+
+  useEffect(() => {
+    getFiatAmountValue();
+  }, [selectedCoin, getFiatAmountValue]);
 
   return (
     <Layout title="FIAT CURRENCY" id="fiat-currency-title">
@@ -90,13 +110,11 @@ const CurrencyView = () => {
       <div className="flex flex-col items-center justify-center">
         <Menu as="div" className="relative inline-block text-left">
           <Menu.Button
-            disabled={!fiat || !fiat.availableCoins}
+            disabled={!fiat || !coins}
             className="inline-flex justify-center py-2 w-80 text-white text-sm font-medium bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
           >
-            {updateCurrency()}
-
             <p className="ml-2">
-              {selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency}
+              {selectedCoin ? selectedCoin.toUpperCase() : fiatCurrency}
             </p>
 
             <Icon
@@ -115,9 +133,9 @@ const CurrencyView = () => {
             leaveFrom="transform opacity-100 scale-100"
             leaveTo="transform opacity-0 scale-95"
           >
-            {fiat && fiat.availableCoins && (
+            {fiat && coins && (
               <Menu.Items className="scrollbar-styled absolute z-10 mt-2 py-3 w-full h-44 text-brand-white font-poppins bg-bkg-4 border border-fields-input-border rounded-xl shadow-2xl overflow-auto origin-top-right">
-                {Object.entries(fiat.availableCoins).map(([key]) => (
+                {Object.entries(coins).map(([key]) => (
                   <Menu.Item key={key}>
                     <button
                       key={key}
@@ -139,7 +157,7 @@ const CurrencyView = () => {
           {activeNetwork.chainId === 5700 ? (
             <div className="flex gap-x-0.5 items-center justify-center mt-8">
               <p className="font-rubik text-5xl font-medium">
-                {formatNumber(Number(activeAccount?.balances.syscoin) || 0)}{' '}
+                {formatNumber(Number(balance) || 0)}{' '}
               </p>
 
               <p className="font-poppins md:mt-4">TSYS</p>
@@ -148,19 +166,17 @@ const CurrencyView = () => {
             <>
               <div className="flex gap-x-0.5 items-center justify-center mt-8">
                 <p className="font-rubik text-5xl font-medium">
-                  {formatNumber(activeAccount?.balances.syscoin || 0)}{' '}
+                  {formatNumber(balance || 0)}{' '}
                 </p>
 
-                <p className="font-poppins md:mt-4">SYS</p>
+                <p className="font-poppins md:mt-4">
+                  {activeNetwork.currency
+                    ? activeNetwork.currency.toUpperCase()
+                    : ''}
+                </p>
               </div>
 
-              <p>
-                {getFiatAmount(
-                  activeAccount?.balances.syscoin || 0,
-                  4,
-                  String(selectedCoin || (fiat.current ? fiat.current : 'USD'))
-                )}
-              </p>
+              <p>{fiatAmountValue ?? 0}</p>
             </>
           )}
         </div>
@@ -184,19 +200,14 @@ const CurrencyView = () => {
               handleConvert(Number(event.target.value), checkValueCoin)
             }
             maxLength={20}
-            value={Number(conversorValues.sys)}
+            value={Number(conversorValues.crypto)}
             className="flex items-center justify-between px-4 py-2 w-80 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none"
           />
 
           <div className="absolute bottom-1.5 right-4 flex gap-x-3 items-center justify-center">
             <p
               className="cursor-pointer"
-              onClick={() =>
-                handleConvert(
-                  Number(activeAccount.balances.syscoin),
-                  checkValueCoin
-                )
-              }
+              onClick={() => handleConvert(Number(balance), checkValueCoin)}
             >
               MAX
             </p>
@@ -226,7 +237,7 @@ const CurrencyView = () => {
           <div className="absolute bottom-2 right-2 flex gap-x-3 items-center justify-center">
             <Menu as="div" className="relative inline-block text-left">
               <Menu.Button
-                disabled={!fiat || !fiat.availableCoins}
+                disabled={!fiat || !coins}
                 className="flex gap-x-1 justify-center mr-5 text-brand-royalblue text-sm font-medium bg-fields-input-primary rounded-full"
               >
                 {getSymbolFromCurrency(checkValueCoin.toUpperCase())}
@@ -248,15 +259,15 @@ const CurrencyView = () => {
                 leaveFrom="transform opacity-100 scale-100"
                 leaveTo="transform opacity-0 scale-95"
               >
-                {fiat && fiat.availableCoins && (
+                {fiat && coins && (
                   <Menu.Items className="scrollbar-styled absolute z-10 bottom-10 right-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-bkg-4 border border-fields-input-border rounded-xl shadow-2xl overflow-auto origin-bottom-right">
-                    {Object.entries(fiat.availableCoins).map(([key]) => (
+                    {Object.entries(coins).map(([key]) => (
                       <Menu.Item key={key}>
                         <button
                           key={key}
                           onClick={() => {
                             setCheckValueCoin(key);
-                            handleConvert(conversorValues.sys, key);
+                            handleConvert(conversorValues.crypto, key);
                           }}
                           className="group flex gap-x-1 items-center justify-start px-4 py-2 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-brand-royalblue border-transparent border-opacity-30 transition-all duration-300"
                         >

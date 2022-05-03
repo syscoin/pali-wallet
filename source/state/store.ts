@@ -9,8 +9,9 @@ import { persistStore, persistReducer } from 'redux-persist';
 import { localStorage } from 'redux-persist-webextension-storage';
 
 import vault from './vault';
-import price, { IPriceState } from './price';
+import price from './price';
 import { IVaultState } from './vault/types';
+import { IPriceState } from './price/types';
 
 const reducers = combineReducers({
   price,
@@ -31,7 +32,7 @@ const middleware: any = [
 const nodeEnv = process.env.NODE_ENV;
 
 if (nodeEnv !== 'production' && nodeEnv !== 'test') {
-  middleware.push(logger);
+  middleware.push(logger as never);
 }
 
 const store: Store<{

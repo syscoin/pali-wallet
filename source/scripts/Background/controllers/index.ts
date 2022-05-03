@@ -1,4 +1,6 @@
-import ControllerUtils, { IControllerUtils } from './ControllerUtils';
+import { IControllerUtils } from 'types/controllers';
+
+import ControllerUtils from './ControllerUtils';
 import MainController from './MainController';
 
 export interface IMasterController {
@@ -13,7 +15,7 @@ const MasterController = (): IMasterController => {
   const utils = Object.freeze(ControllerUtils());
 
   const stateUpdater = () => {
-    utils.updateFiat();
+    utils.setFiat();
   };
 
   return {
