@@ -49,8 +49,6 @@ export const ImportToken: FC = () => {
         return validate;
       });
 
-      console.log('new list coins', newList);
-
       setFilteredSearch(newList);
 
       return;
@@ -85,6 +83,7 @@ export const ImportToken: FC = () => {
 
     setSelected({
       ...token,
+      explorer_link: data.links ? data.links.blockchain_site[0] : '',
       contract_address: data.contract_address,
       description: data.description ? data.description.en : '',
     });

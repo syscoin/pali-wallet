@@ -10,7 +10,10 @@ import { TransactionDetails } from './TransactionDetails';
 export const DetailsView = () => {
   const controller = getController();
 
-  const { activeNetwork } = useStore();
+  const {
+    activeNetwork,
+    activeAccount: { assets },
+  } = useStore();
 
   const {
     state: { assetGuid, tx, assetType, type },
@@ -18,24 +21,34 @@ export const DetailsView = () => {
 
   const [transactionDetails, setTransactionDetails] = useState<any>(null);
 
+  const isSysNetwork = activeNetwork.currency === 'sys';
+
   const isAsset = assetGuid && !tx;
+
+  const getWeb3TokenData = async (symbol: string) => {
+    const tokenData = await assets.filter(
+      (coin: any) =>
+        coin.symbol.toString().toUpperCase() === symbol.toUpperCase()
+    );
+
+    return tokenData[0];
+  };
 
   useEffect(() => {
     const getTransactionData = async () => {
       if (assetGuid) {
-        const assetData = await controller.utils.getAsset(
-          activeNetwork.url,
-          assetGuid
-        );
-
-        console.log('getting asset details', assetData);
+        const assetData: any = isSysNetwork
+          ? await controller.utils.getAsset(activeNetwork.url, assetGuid)
+          : await getWeb3TokenData(assetGuid);
 
         const description =
           assetData.pubData && assetData.pubData.desc
             ? atob(String(assetData.pubData.desc))
             : '';
 
-        setTransactionDetails(Object.assign(assetData, { description }));
+        setTransactionDetails(
+          Object.assign(assetData, isSysNetwork && { description })
+        );
 
         return;
       }
@@ -79,11 +92,13 @@ export const DetailsView = () => {
               type="button"
               onClick={() =>
                 window.open(
-                  `${activeNetwork.url}/${isAsset ? 'asset' : 'tx'}/${
-                    isAsset
-                      ? transactionDetails.assetGuid
-                      : transactionDetails.txid
-                  }`
+                  isSysNetwork
+                    ? `${activeNetwork.url}/${isAsset ? 'asset' : 'tx'}/${
+                        isAsset
+                          ? transactionDetails.assetGuid
+                          : transactionDetails.txid
+                      }`
+                    : transactionDetails.explorer_link
                 )
               }
               className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
