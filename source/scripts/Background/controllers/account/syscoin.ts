@@ -6,10 +6,10 @@ import {
 } from 'state/vault';
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
+import { CoingeckoCoins } from 'types/controllers';
 
 import SysTrezorController from '../trezor/syscoin';
 import { SysTransactionController } from '../transaction';
-import { CoingeckoCoins } from '../ControllerUtils';
 
 const SysAccountController = () => {
   const keyringManager = KeyringManager();

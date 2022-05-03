@@ -32,14 +32,23 @@ export const NormalHeader: React.FC = () => {
           active: true,
           currentWindow: true,
         });
-        setCurrentTabURL(String(tabs[0].url));
-        return;
+        return String(tabs[0].url);
       }
     }
   };
 
   useEffect(() => {
-    updateCurrentTabUrl();
+    let isMounted = true;
+
+    updateCurrentTabUrl().then((response: any) => {
+      if (isMounted) {
+        setCurrentTabURL(response);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
   }, [wallet.isUnlocked()]);
 
   const NetworkMenu = () => (

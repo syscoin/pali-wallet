@@ -19,6 +19,7 @@ export const SendSys = () => {
   const [ZDAG, setZDAG] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [recommend, setRecommend] = useState(0.00001);
+  const [fiatValueToShow, setFiatValueToShow] = useState('');
   const [form] = Form.useForm();
 
   const handleGetFee = useCallback(async () => {
@@ -95,6 +96,28 @@ export const SendSys = () => {
       alert.error('An internal error has occurred.');
     }
   };
+
+  const returnFiatAmount = async () => {
+    if (!selectedAsset) {
+      const value = await getFiatAmount(
+        Number(recommend),
+        6,
+        String(fiat.asset)
+      );
+
+      setFiatValueToShow(value);
+    }
+    const value = await getFiatAmount(
+      Number(recommend) + Number(recommend),
+      6,
+      String(fiat.asset)
+    );
+    setFiatValueToShow(value);
+  };
+
+  useEffect(() => {
+    returnFiatAmount();
+  }, [selectedAsset]);
 
   return (
     <div className="mt-4">
@@ -378,13 +401,7 @@ export const SendSys = () => {
 
           <span className="mt-0.5 text-brand-white font-rubik text-xs">
             {'≈ '}
-            {selectedAsset
-              ? getFiatAmount(
-                  Number(recommend) + Number(recommend),
-                  6,
-                  String(fiat.current)
-                )
-              : getFiatAmount(Number(recommend), 6, String(fiat.current))}
+            {fiatValueToShow}
           </span>
         </p>
 
