@@ -1,9 +1,7 @@
-import React, { FC, useCallback, Fragment, useEffect, useState } from 'react';
+import React, { FC, useCallback, Fragment } from 'react';
 import { IconButton, Icon } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
 import { ellipsis, formatCurrency, formatDate } from 'utils/index';
-import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
-import { setActiveNetwork } from '@pollum-io/sysweb3-network';
 
 interface IPanelList {
   activity: boolean;
@@ -18,12 +16,9 @@ export const PanelList: FC<IPanelList> = ({
   activity = false,
   isSyscoinChain = true,
 }) => {
-  const [ethBalance, setEthBalance] = useState<number>(0);
-  const [erc20TokensList, setErc20TokenList] = useState<any[]>([]);
-
   const { navigate } = useUtils();
 
-  const { activeAccount, activeNetwork } = useStore();
+  const { activeAccount } = useStore();
 
   const getTxType = (tx: any) => {
     if (isSyscoinChain) {
@@ -56,55 +51,6 @@ export const PanelList: FC<IPanelList> = ({
         new Date(transactions[idx - 1][blocktime] * 1e3).toDateString(),
     [transactions]
   );
-
-  const getEthBalance = async () => {
-    setActiveNetwork(activeNetwork);
-    await Web3Accounts()
-      .getBalance(String(activeAccount?.address))
-      .then((response) => {
-        setEthBalance(response);
-      });
-  };
-
-  const getErc20TokenBalance = async () => {
-    try {
-      setActiveNetwork(activeNetwork);
-
-      const tokenList = activeAccount.assets.filter(
-        (asset: any) => asset.symbol !== 'ETH'
-      );
-
-      for (const token of tokenList) {
-        if (token.contract_address) {
-          await Web3Accounts()
-            .getBalanceOfAnyToken(
-              String(token.contract_address),
-              String(activeAccount.address)
-            )
-            .then((response) => {
-              setErc20TokenList((list) => [
-                ...list,
-                {
-                  tokenId: token.id,
-                  value: response,
-                },
-              ]);
-            });
-        }
-      }
-    } catch (error) {
-      return 0;
-    }
-  };
-
-  const handleErc20TokenList = useCallback(() => {
-    getErc20TokenBalance();
-  }, [getErc20TokenBalance]);
-
-  useEffect(() => {
-    getEthBalance();
-    handleErc20TokenList();
-  }, [activeNetwork]);
 
   return (
     <>
@@ -232,15 +178,8 @@ export const PanelList: FC<IPanelList> = ({
                     >
                       <p className="font-rubik">
                         {asset.symbol === 'ETH'
-                          ? formatCurrency(String(ethBalance), 18)
-                          : erc20TokensList.map((token: any) =>
-                              asset.id === token.tokenId
-                                ? formatCurrency(
-                                    String(token.value),
-                                    asset.decimals || 18
-                                  )
-                                : null
-                            )}
+                          ? activeAccount?.balances?.ethereum
+                          : asset.balance}
                         <span className="text-button-secondary font-poppins">
                           {`  ${asset.symbol}`}
                         </span>

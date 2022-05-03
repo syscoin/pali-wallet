@@ -4,8 +4,9 @@ import {
   setActiveAccountProperty,
   setIsPendingBalances,
 } from 'state/vault';
-import { KeyringManager } from '@pollum-io/sysweb3-keyring';
+import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
+import { setActiveNetwork } from '@pollum-io/sysweb3-network';
 import { CoingeckoCoins } from 'types/controllers';
 
 import SysTrezorController from '../trezor/syscoin';
@@ -79,13 +80,46 @@ const SysAccountController = () => {
     return receivingAddress;
   };
 
+  const getErc20TokenBalance = async (
+    activeNetwork: any,
+    tokenAddress: any,
+    walletAddress: string
+  ) => {
+    try {
+      setActiveNetwork(activeNetwork);
+
+      return await Web3Accounts().getBalanceOfAnyToken(
+        tokenAddress,
+        walletAddress
+      );
+    } catch (error) {
+      return 0;
+    }
+  };
+
   const saveTokenInfo = async (token: CoingeckoCoins) => {
-    const { activeAccount } = store.getState().vault;
+    const { activeAccount, activeNetwork } = store.getState().vault;
+
+    const isSyscoinChain = activeNetwork.currency === 'sys';
+
+    const web3TokenBalance: any =
+      !isSyscoinChain &&
+      token &&
+      (await getErc20TokenBalance(
+        activeNetwork,
+        token.contract_address,
+        activeAccount.address
+      ));
+
+    const web3Token = {
+      ...token,
+      balance: web3TokenBalance,
+    };
 
     store.dispatch(
       setActiveAccountProperty({
         property: 'assets',
-        value: [...activeAccount.assets, token],
+        value: [...activeAccount.assets, !isSyscoinChain ? web3Token : token],
       })
     );
   };
