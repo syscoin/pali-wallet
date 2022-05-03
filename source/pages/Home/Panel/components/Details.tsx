@@ -70,6 +70,7 @@ export const DetailsView = () => {
                 transactionType={type}
                 transactionDetails={transactionDetails}
                 setTransactionHash={setHash}
+                txAddress={tx}
               />
             )}
           </ul>

@@ -10,10 +10,12 @@ export const TransactionDetails = ({
   transactionType,
   transactionDetails,
   setTransactionHash,
+  txAddress,
 }: {
   setTransactionHash?: any;
   transactionDetails: any;
   transactionType: any;
+  txAddress?: any;
 }) => {
   const { activeNetwork, networks } = useStore();
   const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
@@ -171,95 +173,97 @@ export const TransactionDetails = ({
         ))}
 
       {!isSyscoinChain &&
-        transactionDetails.slice(0, 15).map((label, i: number) => {
-          const txWeb3Tx = [
-            {
-              label: 'Blockhash',
-              value: ellipsis(label?.hash),
-            },
-            {
-              label: 'Type',
-              value: 'Transaction',
-            },
-            {
-              label: 'Confirmations',
-              value: label?.confirmations,
-            },
-            {
-              label: 'Blocknumber',
-              value: label?.blockNumber,
-            },
-            {
-              label: 'Mined',
-              value: label?.timestamp
-                ? formatDate(new Date(label?.timestamp * 1000).toDateString())
-                : '',
-            },
-            {
-              label: 'From',
-              value: ellipsis(label?.from),
-            },
-            {
-              label: 'To',
-              value: ellipsis(label?.to),
-            },
-            {
-              label: 'Value',
-              value: `${web3Provider.utils.fromWei(
-                `${parseInt(String(label.value.hex), 16)}`,
-                'ether'
-              )} ${activeNetwork.currency?.toUpperCase()}`,
-            },
-            {
-              label: 'Nonce',
-              value: label.nonce,
-            },
-            {
-              label: 'Gas Price',
-              value: `${web3Provider.utils.fromWei(
-                `${parseInt(String(label.gasPrice.hex), 16)}`,
-                'ether'
-              )}`,
-            },
-            {
-              label: 'Gas Limit',
-              value: `${web3Provider.utils.fromWei(
-                `${parseInt(String(label.gasLimit.hex), 16)}`,
-                'ether'
-              )}`,
-            },
-          ];
-          setTransactionHash(`${label?.hash}`);
-          return (
-            <>
-              <div
-                key={i}
-                className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
-              >
-                <b>{txWeb3Tx[i]?.label}</b>
-                <p
-                  onClick={
-                    txWeb3Tx[i]?.label === 'From' || txWeb3Tx[i]?.label === 'To'
-                      ? () =>
-                          copyText(
-                            txWeb3Tx[i]?.label === 'From'
-                              ? label.from
-                              : label.to
-                          )
-                      : () => ''
-                  }
-                  className={`${
-                    txWeb3Tx[i]?.label === 'From' || txWeb3Tx[i]?.label === 'To'
-                      ? 'cursor-pointer hover:text-fields-input-borderfocus'
-                      : 'cursor-default'
-                  }`}
-                >
-                  {txWeb3Tx[i]?.value}
-                </p>
+        transactionDetails
+          .filter((item: any) => txAddress.hash === item.hash)
+          .map((label, i: number) => {
+            setTransactionHash(`${label?.hash}`);
+            return (
+              <div key={i}>
+                <div className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
+                  <b>Blockhash</b>
+                  <p>{ellipsis(label?.hash)}</p>
+                </div>
+
+                <div className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
+                  <b>Type</b>
+                  <p>Transaction</p>
+                </div>
+
+                <div className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
+                  <b>Confirmations</b>
+                  <p>{label?.confirmations}</p>
+                </div>
+                <div className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
+                  <b>Blocknumber</b>
+                  <p>{label?.blockNumber}</p>
+                </div>
+                <div className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
+                  <b>Mined</b>
+                  <p>
+                    {label?.timestamp
+                      ? formatDate(
+                          new Date(label?.timestamp * 1000).toDateString()
+                        )
+                      : ''}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
+                  <b>From</b>
+                  <p
+                    onClick={() => copyText(label.from)}
+                    className="hover:text-fields-input-borderfocus cursor-pointer"
+                  >
+                    {ellipsis(label?.from)}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
+                  <b>To</b>
+                  <p
+                    onClick={() => copyText(label.to)}
+                    className="hover:text-fields-input-borderfocus cursor-pointer"
+                  >
+                    {ellipsis(label?.to)}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
+                  <b>Value</b>
+                  <p>
+                    {`${web3Provider.utils.fromWei(
+                      `${parseInt(String(label.value.hex), 16)}`,
+                      'ether'
+                    )} ${activeNetwork.currency?.toUpperCase()}`}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
+                  <b>Nonce</b>
+                  <p>{label.nonce}</p>
+                </div>
+
+                <div className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
+                  <b>Gas Price</b>
+                  <p>
+                    {`${web3Provider.utils.fromWei(
+                      `${parseInt(String(label.gasPrice.hex), 16)}`,
+                      'ether'
+                    )}`}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
+                  <b>Gas Limit</b>
+                  <p>
+                    {`${web3Provider.utils.fromWei(
+                      `${parseInt(String(label.gasLimit.hex), 16)}`,
+                      'ether'
+                    )}`}
+                  </p>
+                </div>
               </div>
-            </>
-          );
-        })}
+            );
+          })}
 
       {isSyscoinChain && Object.values(newSenders).length > 0 && (
         <Disclosure>
