@@ -83,7 +83,7 @@ export const ImportToken: FC = () => {
 
     setSelected({
       ...token,
-      explorer_link: data.links ? data.links.blockchain_site[0] : '',
+      explorer_link: data.links && data.links.blockchain_site ? data.links.blockchain_site[0] : '',
       contract_address: data.contract_address,
       description: data.description ? data.description.en : '',
     });
