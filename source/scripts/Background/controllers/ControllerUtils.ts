@@ -26,12 +26,6 @@ const ControllerUtils = (): IControllerUtils => {
     return route;
   };
 
-  // const getCoinsList = async () => {
-  //   const response = await CoinGeckoClient.coins.list();
-
-  //   return response;
-  // };
-
   const updateFiatCurrencyForWallet = async ({ base, currency }) => {
     const data = await CoinGeckoClient.simple.price({
       ids: [base],
@@ -41,7 +35,6 @@ const ControllerUtils = (): IControllerUtils => {
     return data;
   };
 
-  // updates fiat price for the current chain
   const updateFiat = async (currency = 'usd') => {
     try {
       const { activeNetwork, networks } = store.getState().vault;
