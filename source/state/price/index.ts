@@ -14,19 +14,15 @@ const PriceState = createSlice({
   name: 'price',
   initialState,
   reducers: {
-    updatePrices(
-      state: IPriceState,
-      action: PayloadAction<{
-        fiat: AssetPrice;
-      }>
-    ) {
-      const { fiat } = action.payload;
-
-      state.fiat = fiat;
+    setPrices(state: IPriceState, action: PayloadAction<AssetPrice>) {
+      state.fiat = action.payload;
+    },
+    setCoins(state: IPriceState, action: PayloadAction<any>) {
+      state.coins = action.payload;
     },
   },
 });
 
-export const { updatePrices } = PriceState.actions;
+export const { setPrices, setCoins } = PriceState.actions;
 
 export default PriceState.reducer;

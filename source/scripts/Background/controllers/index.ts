@@ -15,7 +15,7 @@ const MasterController = (): IMasterController => {
   const utils = Object.freeze(ControllerUtils());
 
   const stateUpdater = () => {
-    utils.updateFiat();
+    utils.setFiat();
   };
 
   return {

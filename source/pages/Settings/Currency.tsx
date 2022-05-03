@@ -15,7 +15,8 @@ const CurrencyView = () => {
 
   if (!activeAccount) throw new Error('No account');
 
-  const { accounts, activeAccountId, coins, fiat, activeNetwork } = useStore();
+  const { accounts, activeAccountId, coins, fiat, activeNetwork, networks } =
+    useStore();
 
   const { asset } = fiat;
 
@@ -27,27 +28,33 @@ const CurrencyView = () => {
   const convertCurrency = (value: number, toCoin: string) =>
     value * coins[toCoin];
 
-  const convertToSys = (value: number, fromCoin: string) =>
+  const convertToCrypto = (value: number, fromCoin: string) =>
     value / coins[fromCoin];
 
   const isUnlocked =
     controller.wallet.isUnlocked() && activeAccount.address !== '';
 
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+
+  const balance = isSyscoinChain
+    ? activeAccount.balances.syscoin
+    : activeAccount.balances.ethereum;
+
   const [conversorValues, setConversorValues] = useState({
-    sys: activeAccount.balances.syscoin,
-    fiat: convertCurrency(activeAccount.balances.syscoin, checkValueCoin),
+    crypto: balance,
+    fiat: convertCurrency(balance, checkValueCoin),
   });
 
   const handleConvert = (value: number, toCoin: string) => {
     setConversorValues({
-      sys: value,
+      crypto: value,
       fiat: convertCurrency(value, toCoin),
     });
   };
 
   const handleReverseConvert = (value: number, fromCoin: string) => {
     setConversorValues({
-      sys: convertToSys(value, fromCoin),
+      crypto: convertToCrypto(value, fromCoin),
       fiat: value,
     });
   };
@@ -56,21 +63,10 @@ const CurrencyView = () => {
     setConfirmed(true);
   };
 
-  const useFiatCurrency = asset ? String(asset).toUpperCase() : 'USD';
-
-  const updateCurrency = () => {
-    getSymbolFromCurrency(
-      selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency
-    );
-    controller.utils.updateFiat(selectedCoin, 'syscoin');
-  };
+  const fiatCurrency = asset ? String(asset).toUpperCase() : 'USD';
 
   const getFiatAmountValue = async () => {
-    const value = await getFiatAmount(
-      activeAccount?.balances.syscoin || 0,
-      4,
-      String(selectedCoin || asset || 'USD')
-    );
+    const value = await getFiatAmount(balance || 0, 4, String(selectedCoin));
 
     setFiatAmountValue(value);
   };
@@ -82,11 +78,19 @@ const CurrencyView = () => {
   }, [isUnlocked, activeAccountId]);
 
   useEffect(() => {
-    if (isUnlocked && selectedCoin) {
-      updateCurrency();
+    if (selectedCoin) {
+      controller.utils.setFiat(
+        selectedCoin,
+        isSyscoinChain ? 'syscoin' : 'ethereum'
+      );
+
       getFiatAmountValue();
     }
-  }, [isUnlocked, selectedCoin]);
+  }, [selectedCoin]);
+
+  useEffect(() => {
+    getFiatAmountValue();
+  }, [selectedCoin, getFiatAmountValue]);
 
   return (
     <Layout title="FIAT CURRENCY" id="fiat-currency-title">
@@ -110,7 +114,7 @@ const CurrencyView = () => {
             className="inline-flex justify-center py-2 w-80 text-white text-sm font-medium bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
           >
             <p className="ml-2">
-              {selectedCoin ? selectedCoin.toUpperCase() : useFiatCurrency}
+              {selectedCoin ? selectedCoin.toUpperCase() : fiatCurrency}
             </p>
 
             <Icon
@@ -153,7 +157,7 @@ const CurrencyView = () => {
           {activeNetwork.chainId === 5700 ? (
             <div className="flex gap-x-0.5 items-center justify-center mt-8">
               <p className="font-rubik text-5xl font-medium">
-                {formatNumber(Number(activeAccount?.balances.syscoin) || 0)}{' '}
+                {formatNumber(Number(balance) || 0)}{' '}
               </p>
 
               <p className="font-poppins md:mt-4">TSYS</p>
@@ -162,13 +166,17 @@ const CurrencyView = () => {
             <>
               <div className="flex gap-x-0.5 items-center justify-center mt-8">
                 <p className="font-rubik text-5xl font-medium">
-                  {formatNumber(activeAccount?.balances.syscoin || 0)}{' '}
+                  {formatNumber(balance || 0)}{' '}
                 </p>
 
-                <p className="font-poppins md:mt-4">SYS</p>
+                <p className="font-poppins md:mt-4">
+                  {activeNetwork.currency
+                    ? activeNetwork.currency.toUpperCase()
+                    : ''}
+                </p>
               </div>
 
-              <p>{fiatAmountValue}</p>
+              <p>{fiatAmountValue ?? 0}</p>
             </>
           )}
         </div>
@@ -192,19 +200,14 @@ const CurrencyView = () => {
               handleConvert(Number(event.target.value), checkValueCoin)
             }
             maxLength={20}
-            value={Number(conversorValues.sys)}
+            value={Number(conversorValues.crypto)}
             className="flex items-center justify-between px-4 py-2 w-80 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none"
           />
 
           <div className="absolute bottom-1.5 right-4 flex gap-x-3 items-center justify-center">
             <p
               className="cursor-pointer"
-              onClick={() =>
-                handleConvert(
-                  Number(activeAccount.balances.syscoin),
-                  checkValueCoin
-                )
-              }
+              onClick={() => handleConvert(Number(balance), checkValueCoin)}
             >
               MAX
             </p>
@@ -264,7 +267,7 @@ const CurrencyView = () => {
                           key={key}
                           onClick={() => {
                             setCheckValueCoin(key);
-                            handleConvert(conversorValues.sys, key);
+                            handleConvert(conversorValues.crypto, key);
                           }}
                           className="group flex gap-x-1 items-center justify-start px-4 py-2 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-brand-royalblue border-transparent border-opacity-30 transition-all duration-300"
                         >

@@ -7,7 +7,7 @@
 //     expect(reducer(undefined, { type: undefined })).toEqual(initialState);
 //   });
 
-//   //* updateFiatPrice
+//   //* setFiatPrice
 //   it('should update fiat', () => {
 //     const payload = {
 //       fiat: {

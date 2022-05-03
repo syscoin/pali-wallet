@@ -96,15 +96,15 @@ export interface IControllerUtils {
     guid: number | string;
     receivingAddress: string;
   }) => ITokenMap;
-  importToken: (contractAddress: string) => Promise<EthTokenDetails>;
+  importToken: (contractAddress: string) => Promise<any>;
   isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
   isValidSYSAddress: (
     address: string,
     activeNetwork: INetwork,
     verification?: boolean
   ) => boolean;
-  updateFiat: (currency?: string, assetId?: string) => Promise<void>;
-  updateFiatCurrencyForWallet: ({
+  setFiat: (currency?: string, assetId?: string) => Promise<void>;
+  setFiatCurrencyForWallet: ({
     base,
     currency,
   }: {
