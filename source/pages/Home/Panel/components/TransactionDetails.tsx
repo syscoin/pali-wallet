@@ -4,8 +4,17 @@ import { Icon, IconButton } from 'components/index';
 import { ellipsis, formatDate, formatUrl } from 'utils/index';
 import { getController } from 'utils/browser';
 import { Disclosure } from '@headlessui/react';
+import { web3Provider } from '@pollum-io/sysweb3-network';
 
-export const TransactionDetails = ({ transactionType, transactionDetails }) => {
+export const TransactionDetails = ({
+  transactionType,
+  transactionDetails,
+  setTransactionHash,
+}: {
+  setTransactionHash?: any;
+  transactionDetails: any;
+  transactionType: any;
+}) => {
   const { activeNetwork, networks } = useStore();
   const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
   const { useCopyClipboard, alert } = useUtils();
@@ -194,7 +203,33 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
               label: 'To',
               value: ellipsis(label?.to),
             },
+            {
+              label: 'Value',
+              value: `${web3Provider.utils.fromWei(
+                `${parseInt(String(label.value.hex), 16)}`,
+                'ether'
+              )} ${activeNetwork.currency?.toUpperCase()}`,
+            },
+            {
+              label: 'Nonce',
+              value: label.nonce,
+            },
+            {
+              label: 'Gas Price',
+              value: `${web3Provider.utils.fromWei(
+                `${parseInt(String(label.gasPrice.hex), 16)}`,
+                'ether'
+              )}`,
+            },
+            {
+              label: 'Gas Limit',
+              value: `${web3Provider.utils.fromWei(
+                `${parseInt(String(label.gasLimit.hex), 16)}`,
+                'ether'
+              )}`,
+            },
           ];
+          setTransactionHash(`${label?.hash}`);
           return (
             <>
               <div
@@ -202,7 +237,25 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
                 className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
               >
                 <b>{txWeb3Tx[i]?.label}</b>
-                <p>{txWeb3Tx[i]?.value}</p>
+                <p
+                  onClick={
+                    txWeb3Tx[i]?.label === 'From' || txWeb3Tx[i]?.label === 'To'
+                      ? () =>
+                          copyText(
+                            txWeb3Tx[i]?.label === 'From'
+                              ? label.from
+                              : label.to
+                          )
+                      : () => ''
+                  }
+                  className={`${
+                    txWeb3Tx[i]?.label === 'From' || txWeb3Tx[i]?.label === 'To'
+                      ? 'cursor-pointer hover:text-fields-input-borderfocus'
+                      : 'cursor-default'
+                  }`}
+                >
+                  {txWeb3Tx[i]?.value}
+                </p>
               </div>
             </>
           );
@@ -274,7 +327,7 @@ export const TransactionDetails = ({ transactionType, transactionDetails }) => {
         </Disclosure>
       )}
 
-      {isSyscoinChain && copied && showSuccessAlert()}
+      {copied && showSuccessAlert()}
     </>
   );
 };

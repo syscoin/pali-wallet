@@ -18,6 +18,7 @@ export const DetailsView = () => {
   }: any = useLocation();
 
   const [transactionDetails, setTransactionDetails] = useState<any>(null);
+  const [hash, setHash] = useState<string>('');
 
   const isAsset = assetGuid && !tx;
 
@@ -68,6 +69,7 @@ export const DetailsView = () => {
               <TransactionDetails
                 transactionType={type}
                 transactionDetails={transactionDetails}
+                setTransactionHash={setHash}
               />
             )}
           </ul>
@@ -88,6 +90,36 @@ export const DetailsView = () => {
                         ? transactionDetails.assetGuid
                         : transactionDetails.txid
                     }`
+                  )
+                }
+                className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
+              >
+                Go
+              </Button>
+            </div>
+          )}
+
+          {!isSyscoinChain && (
+            <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-3 md:max-w-2xl">
+              <p>
+                Would you like to go to view transaction on Etherscan Explorer?
+              </p>
+
+              <Button
+                type="button"
+                onClick={() =>
+                  window.open(
+                    `${
+                      activeNetwork.label.includes('Ethereum')
+                        ? 'https://etherscan.io'
+                        : activeNetwork.label.includes('Rinkeby')
+                        ? 'https://rinkeby.etherscan.io'
+                        : activeNetwork.label.includes('Goerli')
+                        ? 'https://goerli.etherscan.io'
+                        : activeNetwork.label.includes('Kovan')
+                        ? 'https://kovan.etherscan.io'
+                        : ''
+                    }/tx/${hash}`
                   )
                 }
                 className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
