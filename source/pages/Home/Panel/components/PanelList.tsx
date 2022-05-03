@@ -1,8 +1,7 @@
 import React, { FC, useCallback, Fragment } from 'react';
 import { IconButton, Icon } from 'components/index';
-import { useStore, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
 import { ellipsis, formatCurrency, formatDate } from 'utils/index';
-import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
 
 interface IPanelList {
   activity: boolean;
@@ -18,8 +17,6 @@ export const PanelList: FC<IPanelList> = ({
   isSyscoinChain = true,
 }) => {
   const { navigate } = useUtils();
-
-  const { activeAccount } = useStore();
 
   const getTxType = (tx: any) => {
     if (isSyscoinChain) {
@@ -178,15 +175,7 @@ export const PanelList: FC<IPanelList> = ({
                       className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark"
                     >
                       <p className="font-rubik">
-                        {console.log('ASSET', asset)}
-                        {asset.symbol === 'ETH'
-                          ? await Web3Accounts().getBalance(
-                              String(activeAccount?.address)
-                            )
-                          : await Web3Accounts().getBalanceOfAnyToken(
-                              String(asset.contract_address),
-                              String(activeAccount.address)
-                            )}
+                        {formatCurrency(String(12 / 10 ** 8), 8)}
 
                         <span className="text-button-secondary font-poppins">
                           {`  ${asset.symbol}`}
