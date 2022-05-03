@@ -167,7 +167,7 @@ export const PanelList: FC<IPanelList> = ({
 
           {!isSyscoinChain && (
             <>
-              {data.map(async (asset: any) => {
+              {data.map((asset: any) => {
                 if (asset.symbol) {
                   return (
                     <li
