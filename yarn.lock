@@ -1842,16 +1842,16 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.273":
-  version "1.0.273"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.273.tgz#5d296d3f599bca2d81ef02d9d43cae92ded1ff3c"
-  integrity sha512-BXgrufU+vU1+fmqgqrSoVvCo7QJy7RVGlCiHV9KMMxasuTKSB5yMkyPQrUOyscuCNBVkRtB8IJZu4BttiqLy4A==
+"@pollum-io/sysweb3-keyring@^1.0.281":
+  version "1.0.281"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.281.tgz#246e32bf35d4ef38114d1687cc887e332639d8e2"
+  integrity sha512-YfKEVp1CH4m8CuEdEe6yMWBml+rbqE6mtudrZIrByt4+5l+C3C8pnn8+hbTIN4HhZUOljh56u3Mxdx1RQVlcQQ==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "^1.0.16"
-    "@pollum-io/sysweb3-network" "^1.0.30"
-    "@pollum-io/sysweb3-utils" "^1.1.126"
+    "@pollum-io/sysweb3-network" "^1.0.36"
+    "@pollum-io/sysweb3-utils" "^1.1.133"
     axios "^0.26.1"
     bip39 "^3.0.4"
     coinselectsyscoin "^1.0.77"
@@ -1868,23 +1868,33 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
-"@pollum-io/sysweb3-network@^1.0.30":
-  version "1.0.30"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.30.tgz#cdf19fe4d3e2c52c2eedb4bf0b5a567f05ee5fd6"
-  integrity sha512-NZW6IPX63VE467zyRnnmYyzwpDShMf50BTsrBvCFFrlVEoBkoE/DkGLw4VW5jGv7wYHVdRfvezGFl8OgA+P0ZA==
+"@pollum-io/sysweb3-network@^1.0.32":
+  version "1.0.36"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.36.tgz#3a488bbf015b28d5c6a29bf23a9152e5b0e3ba8b"
+  integrity sha512-j0+MUC9l+z5/pl55ZVs7WzF/rbQ1HkS159iYMgC4Wg8eMDXnHJau1PXoOnMxWDeHndgoAl4SnY9raQE/5t0hSA==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.16"
-    "@pollum-io/sysweb3-utils" "^1.1.125"
+    "@pollum-io/sysweb3-utils" "^1.1.132"
     axios "^0.26.1"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@1.1.126":
-  version "1.1.126"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.126.tgz#fca5709eb7151103560fd37d7bba010046b320a4"
-  integrity sha512-7OwDlYFFTe93TGx4xlmbFb45iAyX4UUkuSGvEHWrHepX4jo4hvzCy6DHvWfgkzlbR0U+leEH3QFecyrBhkQ8hw==
+"@pollum-io/sysweb3-network@^1.0.36", "@pollum-io/sysweb3-network@^1.0.37":
+  version "1.0.37"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.37.tgz#594872ce13cd56d074f097d077dd39ca01fb4403"
+  integrity sha512-WdeUheMBshqK7e2Z1wkd6XOBrAcRGp6cbRllEVj98aw9O96RxTz9mFm0HgOKVxRt6hZ5vjJYLhEk9PHTkvUZwg==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.16"
-    "@pollum-io/sysweb3-network" "^1.0.30"
+    "@pollum-io/sysweb3-utils" "^1.1.132"
+    axios "^0.26.1"
+    web3 "^1.7.1"
+
+"@pollum-io/sysweb3-utils@^1.1.132":
+  version "1.1.132"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.132.tgz#8d564310b3fd69383a2d1ff59d80da7bf674cd02"
+  integrity sha512-5yVjo8s7dkPFCbbJjB2t/ROEWeYruJYpCGAcVmtzRc7jmi0MCZMaCfvb++22gFOoiLUrS8E1zHjDcHgdjFJ9sQ==
+  dependencies:
+    "@pollum-io/sysweb3-core" "^1.0.16"
+    "@pollum-io/sysweb3-network" "^1.0.32"
     axios "^0.26.1"
     bech32 "^2.0.0"
     bip44-constants "^114.0.0"
@@ -1897,13 +1907,13 @@
     syscointx-js "^1.0.101"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.125", "@pollum-io/sysweb3-utils@^1.1.126":
-  version "1.1.127"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.127.tgz#d88c474682770305eb36048d7b749e7ed0623581"
-  integrity sha512-9XahArOxwsdlFVo9OTrOP9DC7v85hGixZgu7hq0RFl4yZ1AWB3qfGgBUPEjEzjsya1KdZVt/+3qKh0Uk/ARjsg==
+"@pollum-io/sysweb3-utils@^1.1.133":
+  version "1.1.133"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.133.tgz#98529909bf04c7161accd8e370d9a2f9f54bd2b4"
+  integrity sha512-QuyMC0wXuA8tRiFvvrwjnksv8TnWmPJrCoBC5JqOVfN16EfpDkICspAax5bxtKu37KvrXu2AYYcfCysuJbAbAA==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.16"
-    "@pollum-io/sysweb3-network" "^1.0.30"
+    "@pollum-io/sysweb3-network" "^1.0.37"
     axios "^0.26.1"
     bech32 "^2.0.0"
     bip44-constants "^114.0.0"

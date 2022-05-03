@@ -9,7 +9,7 @@ import {
   isValidEthereumAddress,
   isValidSYSAddress,
   getTokenJson,
-  importWeb3Token,
+  getWeb3TokenData,
   getAsset,
   txUtils,
   ITokenMap,
@@ -93,7 +93,7 @@ export interface IControllerUtils {
     guid: number | string;
     receivingAddress: string;
   }) => ITokenMap;
-  importToken: (contractAddress: string) => Promise<EthTokenDetails>;
+  importToken: (contractAddress: string) => Promise<any>;
   isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
   isValidSYSAddress: (
     address: string,
@@ -155,7 +155,7 @@ const ControllerUtils = (): IControllerUtils => {
   };
 
   const importToken = async (contractAddress: string) =>
-    await importWeb3Token(contractAddress);
+    await getWeb3TokenData(contractAddress);
 
   const getSearch = async (query: string): Promise<any> =>
     getCoingeckoSearch(query);
