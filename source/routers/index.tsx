@@ -72,11 +72,13 @@ export const Router = () => {
   useEffect(() => {
     const route = controller.appRoute();
 
-    if (isUnlocked && accounts && activeAccount.address) {
+    const canProceed = isUnlocked && accounts && activeAccount.address;
+
+    if (canProceed) {
       navigate('/home');
     }
 
-    if (route !== '/') navigate(route);
+    if (route !== '/' && !canProceed) navigate(route);
   }, [isUnlocked]);
 
   useEffect(() => {

@@ -12,7 +12,7 @@ import {
 import { formatUrl, ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 import { IToken } from 'types/transactions';
-import { CoingeckoCoins } from 'scripts/Background/controllers/ControllerUtils';
+import { CoingeckoCoins } from 'types/controllers';
 
 export const ImportToken: FC = () => {
   const controller = getController();
