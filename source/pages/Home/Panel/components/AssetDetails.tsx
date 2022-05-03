@@ -108,7 +108,7 @@ export const AssetDetails = ({
     },
     {
       label: 'Decimals',
-      value: decimals ? decimals : '',
+      value: decimals || '',
     },
     {
       label: contract_address ? 'Contract' : '',
@@ -120,12 +120,12 @@ export const AssetDetails = ({
     },
     {
       label: 'Market Cap',
-      value: market_cap_rank ? market_cap_rank : '',
+      value: market_cap_rank || '',
     },
   ];
 
-  const renderAssets = (detailsArray: { label: string; value: any }[]) => {
-    return detailsArray.map(({ label, value }: any) => (
+  const renderAssets = (detailsArray: { label: string; value: any }[]) =>
+    detailsArray.map(({ label, value }: any) => (
       <>
         {label && value && (
           <div
@@ -138,7 +138,6 @@ export const AssetDetails = ({
         )}
       </>
     ));
-  };
 
   return (
     <>
