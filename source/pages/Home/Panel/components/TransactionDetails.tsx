@@ -30,7 +30,7 @@ export const TransactionDetails = ({
   const showSuccessAlert = () => {
     if (copied) {
       alert.removeAll();
-      alert.success('Link successfully copied');
+      alert.success('Address successfully copied');
     }
   };
 
