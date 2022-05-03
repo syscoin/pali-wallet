@@ -32,7 +32,7 @@ export const AssetDetails = ({
     contract_address,
     id,
     market_cap_rank,
-    // thumb: tokenThumb
+    thumb: tokenThumb,
   } = assetData;
 
   useEffect(() => {
@@ -95,6 +95,10 @@ export const AssetDetails = ({
 
   const ethAssetDetails = [
     {
+      label: 'Token Thumb',
+      value: tokenThumb,
+    },
+    {
       label: 'ID',
       value: id,
     },
@@ -132,8 +136,17 @@ export const AssetDetails = ({
             key={label}
             className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
           >
-            <p>{label}</p>
-            <b>{value}</b>
+            {label === 'Token Thumb' ? (
+              <>
+                <p>{label}</p>
+                <img src={value} alt={description} />
+              </>
+            ) : (
+              <>
+                <p>{label}</p>
+                <b>{value}</b>
+              </>
+            )}
           </div>
         )}
       </>
