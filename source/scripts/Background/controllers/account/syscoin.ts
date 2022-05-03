@@ -5,10 +5,7 @@ import {
   setIsPendingBalances,
 } from 'state/vault';
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
-import {
-  IKeyringAccountState,
-  importWeb3Token,
-} from '@pollum-io/sysweb3-utils';
+import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 
 import SysTrezorController from '../trezor/syscoin';
 import { SysTransactionController } from '../transaction';
@@ -20,7 +17,7 @@ const SysAccountController = () => {
   const getLatestUpdate = async (silent?: boolean) => {
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
-    const { activeAccount, activeNetwork, networks } = store.getState().vault;
+    const { activeAccount, networks, activeNetwork } = store.getState().vault;
 
     if (!activeAccount) return;
 
@@ -28,25 +25,13 @@ const SysAccountController = () => {
 
     store.dispatch(setIsPendingBalances(false));
 
-    console.log('updated account in pali going to store', updatedAccountInfo);
-
     const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
     const { assets } = updatedAccountInfo;
 
-    const isAssetStored =
-      assets.findIndex((asset: any) =>
-        activeAccount.assets.find(
-          (activeAccountAsset: any) => activeAccountAsset.id === asset.id
-        )
-      ) > -1;
-
-    console.log('isAssetStored', isAssetStored);
-    console.log(
-      assets.find((asset: any) =>
-        activeAccount.assets.find(
-          (activeAccountAsset: any) => activeAccountAsset.id === asset.id
-        )
+    const storedAssets = activeAccount.assets.filter((asset: any) =>
+      assets.filter(
+        (activeAccountAsset: any) => activeAccountAsset.id !== asset.id
       )
     );
 
@@ -54,7 +39,7 @@ const SysAccountController = () => {
       setActiveAccount({
         ...activeAccount,
         ...updatedAccountInfo,
-        assets,
+        assets: isSyscoinChain ? assets : storedAssets,
       })
     );
   };
@@ -97,20 +82,12 @@ const SysAccountController = () => {
   const saveTokenInfo = async (token: CoingeckoCoins) => {
     const { activeAccount } = store.getState().vault;
 
-    try {
-      const validToken = await importWeb3Token(String(token.contract_address));
-
-      console.log('saveTokenInfo info token', validToken);
-
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'assets',
-          value: [...activeAccount.assets, validToken],
-        })
-      );
-    } catch (error) {
-      throw new Error('Could not save token data. Try again later.');
-    }
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'assets',
+        value: [...activeAccount.assets, token],
+      })
+    );
   };
 
   const trezor = SysTrezorController();

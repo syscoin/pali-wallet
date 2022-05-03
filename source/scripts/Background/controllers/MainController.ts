@@ -86,23 +86,6 @@ const MainController = () => {
     account.sys.getLatestUpdate(false);
   };
 
-  const setAccountDefaultAssets = () => {
-    const { activeAccount } = store.getState().vault;
-
-    const defaultAsset = {
-      name: 'ethereum',
-      symbol: 'ETH',
-      decimals: 18,
-    };
-
-    store.dispatch(
-      setActiveAccount({
-        ...activeAccount,
-        assets: [...activeAccount.assets, defaultAsset],
-      })
-    );
-  };
-
   const setActiveNetwork = async (chain: string, chainId: number) => {
     store.dispatch(setIsPendingBalances(true));
 
@@ -136,8 +119,6 @@ const MainController = () => {
 
     store.dispatch(setIsPendingBalances(false));
     store.dispatch(setActiveAccount(account));
-
-    if (chain === 'ethereum') setAccountDefaultAssets();
 
     return account;
   };

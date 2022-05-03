@@ -63,7 +63,6 @@ export const ImportToken: FC = () => {
     try {
       await controller.wallet.account.sys.saveTokenInfo(token);
 
-      console.log('adding tokenassvv');
       alert.removeAll();
       alert.success(`${token.symbol} successfully added to your assets list.`);
     } catch (error) {
