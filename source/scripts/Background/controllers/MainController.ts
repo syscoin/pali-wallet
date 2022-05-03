@@ -100,13 +100,11 @@ const MainController = () => {
 
     store.dispatch(setNetwork(network));
 
-    /** this method sets new signers for syscoin when changing networks */
     const account = (await keyringManager.setSignerNetwork(
       network,
       chain
     )) as IKeyringAccountState;
 
-    /** directly set new keys for the current chain and update state if the active account is the first one */
     store.dispatch(
       setActiveAccountProperty({
         property: 'xpub',
@@ -120,7 +118,6 @@ const MainController = () => {
         value: keyringManager.getEncryptedXprv(),
       })
     );
-    /** end */
 
     if (account.id === 0)
       keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, FC, useEffect } from 'react';
-import { useUtils } from 'hooks/index';
+import { useUtils, useStore } from 'hooks/index';
 import { Form, Input } from 'antd';
 import {
   SecondaryButton,
@@ -19,9 +19,12 @@ export const ImportToken: FC = () => {
 
   const [form] = Form.useForm();
   const { navigate, alert, useCopyClipboard } = useUtils();
+  const { activeAccount } = useStore();
 
   const [copied, copy] = useCopyClipboard();
-  const [filteredSearch, setFilteredSearch] = useState<CoingeckoCoins[]>([]);
+  const [filteredSearch, setFilteredSearch] = useState<CoingeckoCoins[]>(
+    activeAccount.assets
+  );
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selected, setSelected] = useState<CoingeckoCoins | any>(null);
 
@@ -46,6 +49,8 @@ export const ImportToken: FC = () => {
         return validate;
       });
 
+      console.log('new list coins', newList);
+
       setFilteredSearch(newList);
 
       return;
@@ -54,9 +59,9 @@ export const ImportToken: FC = () => {
     setFilteredSearch(coins);
   };
 
-  const addToken = (token: IToken) => {
+  const addToken = async (token: IToken) => {
     try {
-      controller.wallet.account.saveTokenInfo(token);
+      await controller.wallet.account.sys.saveTokenInfo(token);
 
       alert.removeAll();
       alert.success(`${token.symbol} successfully added to your assets list.`);
@@ -111,7 +116,7 @@ export const ImportToken: FC = () => {
           <Input
             type="text"
             placeholder="Search by symbol"
-            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
+            className="large"
             onChange={(event) => handleSearch(event.target.value)}
           />
         </Form.Item>

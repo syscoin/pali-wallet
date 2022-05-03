@@ -97,13 +97,12 @@ const VaultState = createSlice({
       state.isPendingBalances = action.payload;
       state.activeToken = '';
       state.activeAccount.transactions = [];
-      state.activeAccount.assets = [];
     },
     setActiveAccountProperty(
       state: IVaultState,
       action: PayloadAction<{
         property: string;
-        value: number | string | boolean;
+        value: number | string | boolean | any[];
       }>
     ) {
       const { property, value } = action.payload;

@@ -140,14 +140,10 @@ export const SendEth = () => {
                 }),
               ]}
             >
-              <Input
-                type="text"
-                placeholder="Receiver"
-                className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
-              />
+              <Input type="text" placeholder="Receiver" className="large" />
             </Form.Item>
 
-            <div className="flex flex-col items-center justify-center md:w-full md:max-w-md">
+            <div className="flex items-center justify-center md:w-full md:max-w-md">
               {hasAccountAssets && (
                 <Form.Item
                   name="asset"
@@ -163,7 +159,7 @@ export const SendEth = () => {
                     <div className="relative inline-block text-left">
                       <Menu.Button
                         disabled={!hasAccountAssets}
-                        className="inline-flex justify-center py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+                        className="inline-flex justify-center mt-3 py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
                       >
                         {selectedAsset?.symbol
                           ? formatUrl(String(selectedAsset?.symbol), 2)
@@ -210,53 +206,55 @@ export const SendEth = () => {
                 </Form.Item>
               )}
 
-              <div className="flex w-full">
-                <label className="flex-1 mr-6 text-xs" htmlFor="gasPrice">
-                  Gas Price (GWEI)
-                </label>
-                <label className="flex-1 mr-6 text-xs" htmlFor="gasLimit">
-                  Gas Limit (Units)
-                </label>
-              </div>
+              <div className="flex flex-col">
+                <div className="flex w-full">
+                  <label className="flex-1 mr-4 text-xs" htmlFor="gasPrice">
+                    Gas Price
+                  </label>
+                  <label className="flex-1 mr-6 text-xs" htmlFor="gasLimit">
+                    Gas Limit
+                  </label>
+                </div>
 
-              <div
-                className={`${
-                  hasAccountAssets ? 'w-48 ml-4' : 'w-72'
-                } flex gap-x-0.5 items-center justify-center md:w-full`}
-              >
-                <Form.Item
-                  name="gasPrice"
-                  className="flex-1 w-32 text-center bg-fields-input-primary rounded-l-full md:w-full"
-                  rules={[
-                    {
-                      required: false,
-                      message: '',
-                    },
-                  ]}
+                <div
+                  className={`${
+                    hasAccountAssets ? 'w-48 ml-4' : 'w-72'
+                  } flex gap-x-0.5 items-center justify-center md:w-full`}
                 >
-                  <Input
-                    type="text"
-                    placeholder="Gas Price (GWEI)"
-                    className="p-3 w-full text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full outline-none md:w-full"
-                  />
-                </Form.Item>
+                  <Form.Item
+                    name="gasPrice"
+                    className="flex-1 w-32 text-center bg-fields-input-primary rounded-l-full md:w-full"
+                    rules={[
+                      {
+                        required: false,
+                        message: '',
+                      },
+                    ]}
+                  >
+                    <Input
+                      type="text"
+                      placeholder="Gas Price (GWEI)"
+                      className="p-3 w-full text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full outline-none md:w-full"
+                    />
+                  </Form.Item>
 
-                <Form.Item
-                  name="gasLimit"
-                  className="flex-1 w-32 text-center bg-fields-input-primary rounded-r-full"
-                  rules={[
-                    {
-                      required: false,
-                      message: '',
-                    },
-                  ]}
-                >
-                  <Input
-                    type="text"
-                    placeholder="Gas Limit"
-                    className="p-3 w-full text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full outline-none md:w-full"
-                  />
-                </Form.Item>
+                  <Form.Item
+                    name="gasLimit"
+                    className="flex-1 w-32 text-center bg-fields-input-primary rounded-r-full"
+                    rules={[
+                      {
+                        required: false,
+                        message: '',
+                      },
+                    ]}
+                  >
+                    <Input
+                      type="text"
+                      placeholder="Gas Limit"
+                      className="p-3 w-full text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full outline-none md:w-full"
+                    />
+                  </Form.Item>
+                </div>
               </div>
             </div>
 
@@ -284,11 +282,7 @@ export const SendEth = () => {
                 }),
               ]}
             >
-              <Input
-                className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
-                type="number"
-                placeholder="Amount"
-              />
+              <Input className="large" type="number" placeholder="Amount" />
             </Form.Item>
 
             <div className="flex gap-x-0.5 items-center justify-center mx-2 md:w-full md:max-w-md">
@@ -327,7 +321,7 @@ export const SendEth = () => {
                 <Tooltip content="Recommended network base fee">
                   <Input
                     disabled
-                    className="pl-4 pr-8 py-3 w-60 text-brand-white text-sm bg-fields-input-primary border border-fields-input-border rounded-r-full outline-none opacity-50 cursor-not-allowed md:w-full"
+                    className="block pl-4 pr-8 py-3 w-60 text-brand-white text-sm bg-fields-input-primary border border-fields-input-border rounded-r-full outline-none opacity-50 cursor-not-allowed md:w-full"
                     id="baseFee-input"
                     type="number"
                     placeholder="Base fee"

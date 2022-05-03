@@ -1842,7 +1842,7 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.273":
+"@pollum-io/sysweb3-keyring@^1.0.281":
   version "1.0.281"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.281.tgz#246e32bf35d4ef38114d1687cc887e332639d8e2"
   integrity sha512-YfKEVp1CH4m8CuEdEe6yMWBml+rbqE6mtudrZIrByt4+5l+C3C8pnn8+hbTIN4HhZUOljh56u3Mxdx1RQVlcQQ==
@@ -1878,7 +1878,7 @@
     axios "^0.26.1"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.127", "@pollum-io/sysweb3-utils@^1.1.132", "@pollum-io/sysweb3-utils@^1.1.133":
+"@pollum-io/sysweb3-utils@^1.1.132", "@pollum-io/sysweb3-utils@^1.1.133":
   version "1.1.133"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.133.tgz#98529909bf04c7161accd8e370d9a2f9f54bd2b4"
   integrity sha512-QuyMC0wXuA8tRiFvvrwjnksv8TnWmPJrCoBC5JqOVfN16EfpDkICspAax5bxtKu37KvrXu2AYYcfCysuJbAbAA==
@@ -10827,15 +10827,7 @@ prompts@^2.0.1, prompts@^2.4.2:
     kleur "^3.0.3"
     sisteransi "^1.0.5"
 
-<<<<<<< .merge_file_Ww2NvL
-<<<<<<< .merge_file_jchrET
 prop-types@^15.6.2, prop-types@^15.7.2, prop-types@^15.8.1:
-=======
-prop-types@^15.6.2, prop-types@^15.7.2:
->>>>>>> .merge_file_L0ufhX
-=======
-prop-types@^15.6.2, prop-types@^15.7.2:
->>>>>>> .merge_file_4JgDj4
   version "15.8.1"
   resolved "https://registry.yarnpkg.com/prop-types/-/prop-types-15.8.1.tgz#67d87bf1a694f48435cf332c24af10214a3140b5"
   integrity sha512-oj87CgZICdulUohogVAR7AjlC0327U4el4L6eAvOqCeudMDVU0NThNaV+b9Df4dXgSP1gXMTnPdhfe/2qDH5cg==
@@ -10953,19 +10945,12 @@ qrcode.react@^3.0.1:
   resolved "https://registry.yarnpkg.com/qrcode.react/-/qrcode.react-3.0.1.tgz#0cb1d7cfdf3955737fbd3509c193985795ca0612"
   integrity sha512-uCNm16ClMCrdM2R20c/zqmdwHcbMQf3K7ey39EiK/UgEKbqWeM0iH2QxW3iDVFzjQKFzH23ICgOyG4gNsJ0/gw==
 
-<<<<<<< .merge_file_Ww2NvL
 qs@6.10.3:
   version "6.10.3"
   resolved "https://registry.yarnpkg.com/qs/-/qs-6.10.3.tgz#d6cde1b2ffca87b5aa57889816c5f81535e22e8e"
   integrity sha512-wr7M2E0OFRfIfJZjKGieI8lBKb7fRCH4Fv5KNPEs7gJ8jadvotdsS08PzOKR7opXhZ/Xkjtt3WF9g38drmyRqQ==
   dependencies:
     side-channel "^1.0.4"
-=======
-qs@6.9.6:
-  version "6.9.6"
-  resolved "https://registry.yarnpkg.com/qs/-/qs-6.9.6.tgz#26ed3c8243a431b2924aca84cc90471f35d5a0ee"
-  integrity sha512-TIRk4aqYLNoJUbd+g2lEdz5kLWIuTMRagAXxl78Q0RiVjAOugHmeKNGdd3cwo/ktpf9aL9epCfFqWDEKysUlLQ==
->>>>>>> .merge_file_4JgDj4
 
 qs@~6.5.2:
   version "6.5.3"

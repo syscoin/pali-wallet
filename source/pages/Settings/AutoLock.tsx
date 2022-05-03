@@ -52,6 +52,7 @@ const AutolockView = () => {
       >
         <Form.Item
           name="minutes"
+          className="w-full"
           hasFeedback
           rules={[
             {
@@ -71,11 +72,7 @@ const AutolockView = () => {
             }),
           ]}
         >
-          <Input
-            type="number"
-            placeholder="Minutes"
-            className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-96"
-          />
+          <Input type="number" placeholder="Minutes" className="small" />
         </Form.Item>
 
         <div className="absolute bottom-12 md:static">

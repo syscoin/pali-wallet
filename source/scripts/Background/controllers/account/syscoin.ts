@@ -5,7 +5,7 @@ import {
   setIsPendingBalances,
 } from 'state/vault';
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
-import { validateToken, IKeyringAccountState } from '@pollum-io/sysweb3-utils';
+import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 import { CoingeckoCoins } from 'types/controllers';
 
 import SysTrezorController from '../trezor/syscoin';
@@ -17,7 +17,7 @@ const SysAccountController = () => {
   const getLatestUpdate = async (silent?: boolean) => {
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
-    const { activeAccount } = store.getState().vault;
+    const { activeAccount, networks, activeNetwork } = store.getState().vault;
 
     if (!activeAccount) return;
 
@@ -25,12 +25,21 @@ const SysAccountController = () => {
 
     store.dispatch(setIsPendingBalances(false));
 
-    console.log('updated account in pali going to store', updatedAccountInfo);
+    const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+
+    const { assets } = updatedAccountInfo;
+
+    const storedAssets = activeAccount.assets.filter((asset: any) =>
+      assets.filter(
+        (activeAccountAsset: any) => activeAccountAsset.id !== asset.id
+      )
+    );
 
     store.dispatch(
       setActiveAccount({
         ...activeAccount,
         ...updatedAccountInfo,
+        assets: isSyscoinChain ? assets : storedAssets,
       })
     );
   };
@@ -73,25 +82,12 @@ const SysAccountController = () => {
   const saveTokenInfo = async (token: CoingeckoCoins) => {
     const { activeAccount } = store.getState().vault;
 
-    console.log('saving token info', token);
-
-    try {
-      const validToken = await validateToken(String(token.contract_address));
-
-      console.log('token is valid', validToken);
-
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'assets',
-          value: {
-            ...activeAccount.assets,
-            [String(validToken.name)]: validToken,
-          },
-        })
-      );
-    } catch (error) {
-      console.log('validate errror', error);
-    }
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'assets',
+        value: [...activeAccount.assets, token],
+      })
+    );
   };
 
   const trezor = SysTrezorController();
