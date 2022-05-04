@@ -6,7 +6,6 @@ import {
 } from 'state/vault';
 import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
-import { setActiveNetwork } from '@pollum-io/sysweb3-network';
 import { CoingeckoCoins } from 'types/controllers';
 
 import SysTrezorController from '../trezor/syscoin';
@@ -81,36 +80,40 @@ const SysAccountController = () => {
   };
 
   const getErc20TokenBalance = async (
-    activeNetwork: any,
-    tokenAddress: any,
+    tokenAddress: string,
     walletAddress: string
   ) => {
     try {
-      setActiveNetwork(activeNetwork);
-
-      return await Web3Accounts().getBalanceOfAnyToken(
+      const balance = await Web3Accounts().getBalanceOfAnyToken(
         tokenAddress,
         walletAddress
       );
+
+      console.log('balance any tok', balance);
+
+      return balance;
     } catch (error) {
       return 0;
     }
   };
 
   const saveTokenInfo = async (token: CoingeckoCoins) => {
-    const { activeAccount, activeNetwork } = store.getState().vault;
+    const { activeAccount } = store.getState().vault;
 
-    const web3TokenBalance: any =
-      token &&
-      (await getErc20TokenBalance(
-        activeNetwork,
-        token.contract_address,
-        activeAccount.address
-      ));
+    const tokenExists = activeAccount.assets.find(
+      (asset: any) => asset.id === token.id
+    );
+
+    if (tokenExists) throw new Error('Token already exists');
+
+    const balance = await getErc20TokenBalance(
+      String(token.contract_address),
+      activeAccount.address
+    );
 
     const web3Token = {
       ...token,
-      balance: web3TokenBalance,
+      balance,
     };
 
     store.dispatch(
