@@ -150,7 +150,9 @@ export const ImportToken: FC = () => {
           {selected && (
             <div className="flex flex-col gap-y-4 items-start justify-start mx-auto my-6 p-4 max-w-xs text-left text-sm bg-bkg-3 border border-brand-royalblue rounded-lg">
               <div className="flex gap-x-2 justify-start w-full">
-                <img src={selected.thumb} alt="token thumb" />
+                {selected.thumb && (
+                  <img src={selected.thumb} alt="token thumb" />
+                )}
 
                 <p className="font-rubik text-2xl font-bold">
                   {formatUrl(selected.symbol)}
