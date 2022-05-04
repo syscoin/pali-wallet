@@ -10,7 +10,11 @@ import { TransactionDetails } from './TransactionDetails';
 export const DetailsView = () => {
   const controller = getController();
 
-  const { activeNetwork, networks, activeAccount } = useStore();
+  const {
+    activeNetwork,
+    networks,
+    activeAccount: { transactions },
+  } = useStore();
   const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
   const {
@@ -23,15 +27,6 @@ export const DetailsView = () => {
   const isSysNetwork = activeNetwork.currency === 'sys';
 
   const isAsset = assetGuid && !tx;
-
-  const getWeb3TokenData = async (symbol: string) => {
-    const tokenData = await assets.filter(
-      (coin: any) =>
-        coin.symbol.toString().toUpperCase() === symbol.toUpperCase()
-    );
-
-    return tokenData[0];
-  };
 
   useEffect(() => {
     const getTransactionData = async () => {
@@ -64,7 +59,7 @@ export const DetailsView = () => {
         return;
       }
 
-      setTransactionDetails(activeAccount.transactions);
+      setTransactionDetails(transactions);
     };
 
     getTransactionData();

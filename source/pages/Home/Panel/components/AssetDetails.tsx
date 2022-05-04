@@ -41,11 +41,7 @@ export const AssetDetails = ({
 
   useEffect(() => {
     const getImageLink = async () => {
-      if (
-        activeNetwork.currency === 'sys' &&
-        description &&
-        description.startsWith('https://ipfs.io/ipfs/')
-      ) {
+      if (description && description.startsWith('https://ipfs.io/ipfs/')) {
         setLoadingImage(true);
 
         const response = await axios.get(description);
@@ -55,7 +51,7 @@ export const AssetDetails = ({
       }
     };
 
-    getImageLink();
+    if (isSyscoinChain) getImageLink();
   }, [activeNetwork, description]);
 
   useEffect(() => {
@@ -157,18 +153,21 @@ export const AssetDetails = ({
                 <p>{label}</p>
                 <b>
                   {formatUrl(String(value), 15)}
-                  <IconButton
-                    onClick={() => copy(value ?? '')}
-                    type="primary"
-                    shape="circle"
-                    className="mt-3"
-                  >
-                    <Icon
-                      name="copy"
-                      className="text-xs"
-                      id="copy-address-btn"
-                    />
-                  </IconButton>
+
+                  {value && (
+                    <IconButton
+                      onClick={() => copy(value ?? '')}
+                      type="primary"
+                      shape="circle"
+                      className="mt-3"
+                    >
+                      <Icon
+                        name="copy"
+                        className="text-xs"
+                        id="copy-address-btn"
+                      />
+                    </IconButton>
+                  )}
                 </b>
               </>
             ) : (
