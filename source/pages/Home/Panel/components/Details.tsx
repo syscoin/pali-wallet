@@ -12,7 +12,8 @@ export const DetailsView = () => {
 
   const {
     activeNetwork,
-    activeAccount: { assets },
+    activeAccount: { assets, transactions },
+    networks,
   } = useStore();
 
   const {
@@ -20,8 +21,10 @@ export const DetailsView = () => {
   }: any = useLocation();
 
   const [transactionDetails, setTransactionDetails] = useState<any>(null);
+  const [hash, setHash] = useState<any>();
 
   const isSysNetwork = activeNetwork.currency === 'sys';
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
   const isAsset = assetGuid && !tx;
 
@@ -58,12 +61,34 @@ export const DetailsView = () => {
         tx.txid
       );
 
-      setTransactionDetails(txData);
+      if (isSyscoinChain) {
+        setTransactionDetails(txData);
+
+        return;
+      }
+
+      setTransactionDetails(transactions);
     };
 
     getTransactionData();
   }, [tx || assetGuid]);
+  const openEthExplorer = () => {
+    const { label } = activeNetwork;
 
+    const explorer = label.includes('Ethereum')
+      ? 'https://etherscan.io'
+      : `https://${label.toLowerCase()}.etherscan.io`;
+
+    window.open(`${explorer}/tx/${hash}`);
+  };
+
+  const openSysExplorer = () => {
+    window.open(
+      `${activeNetwork.url}/${isAsset ? 'asset' : 'tx'}/${
+        isAsset ? transactionDetails.assetGuid : transactionDetails.txid
+      }`
+    );
+  };
   return (
     <Layout title={`${assetGuid ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}>
       {transactionDetails ? (
@@ -78,6 +103,8 @@ export const DetailsView = () => {
               <TransactionDetails
                 transactionType={type}
                 transactionDetails={transactionDetails}
+                txAddress={tx}
+                setTransactionHash={setHash}
               />
             )}
           </ul>
@@ -85,22 +112,12 @@ export const DetailsView = () => {
           <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-3 md:max-w-2xl">
             <p>
               Would you like to go to view {isAsset ? 'asset' : 'transaction'}{' '}
-              on SYS Block Explorer?
+              on {isSyscoinChain ? 'SYS Block' : 'Etherscan'} Explorer?
             </p>
 
             <Button
               type="button"
-              onClick={() =>
-                window.open(
-                  isSysNetwork
-                    ? `${activeNetwork.url}/${isAsset ? 'asset' : 'tx'}/${
-                        isAsset
-                          ? transactionDetails.assetGuid
-                          : transactionDetails.txid
-                      }`
-                    : transactionDetails.explorer_link
-                )
-              }
+              onClick={isSyscoinChain ? openSysExplorer : openEthExplorer}
               className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
             >
               Go
