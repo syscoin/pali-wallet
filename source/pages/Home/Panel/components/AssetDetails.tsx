@@ -106,7 +106,7 @@ export const AssetDetails = ({
 
   const ethAssetDetails = [
     {
-      label: 'Token Thumb',
+      label: 'Icon',
       value: tokenThumb,
     },
     {
