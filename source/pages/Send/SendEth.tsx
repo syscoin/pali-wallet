@@ -43,10 +43,10 @@ export const SendEth = () => {
 
   const hasAccountAssets = activeAccount && activeAccount.assets.length > 0;
 
-  const handleSelectedAsset = (item: number) => {
+  const handleSelectedAsset = (item: string) => {
     if (activeAccount?.assets) {
       const getAsset = activeAccount?.assets.find(
-        (asset: any) => asset.contractAddress === item
+        (asset: any) => asset.contract_address === item
       );
 
       if (getAsset) {
@@ -163,7 +163,7 @@ export const SendEth = () => {
                       >
                         {selectedAsset?.symbol
                           ? formatUrl(String(selectedAsset?.symbol), 2)
-                          : 'eth'}
+                          : 'ETH'}
                         <ChevronDoubleDownIcon
                           className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
                           aria-hidden="true"
@@ -188,7 +188,7 @@ export const SendEth = () => {
                                     <button
                                       onClick={() =>
                                         handleSelectedAsset(
-                                          item.contractAddress
+                                          item.contract_address
                                         )
                                       }
                                       className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
