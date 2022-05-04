@@ -46,17 +46,19 @@ export const Receive = () => {
     >
       {loaded && activeAccount ? (
         <div className="flex flex-col items-center justify-center pt-8 w-full">
-          <QRCodeSVG
-            value={activeAccount.address}
-            bgColor="#fff"
-            fgColor="#000"
-            style={{
-              height: '240px',
-              width: '225px',
-              padding: '6px',
-              backgroundColor: '#fff',
-            }}
-          />
+          <div id="qr-code">
+            <QRCodeSVG
+              value={activeAccount.address}
+              bgColor="#fff"
+              fgColor="#000"
+              style={{
+                height: '240px',
+                width: '225px',
+                padding: '6px',
+                backgroundColor: '#fff',
+              }}
+            />
+          </div>
 
           <p className="mt-4 text-base">
             {ellipsis(activeAccount.address, 4, 10)}
