@@ -1,6 +1,6 @@
 import React, { FC, useCallback, Fragment } from 'react';
 import { IconButton, Icon } from 'components/index';
-import { useUtils } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import { ellipsis, formatCurrency, formatDate } from 'utils/index';
 
 interface IPanelList {
@@ -17,6 +17,8 @@ export const PanelList: FC<IPanelList> = ({
   isSyscoinChain = true,
 }) => {
   const { navigate } = useUtils();
+
+  const { activeAccount } = useStore();
 
   const getTxType = (tx: any) => {
     if (isSyscoinChain) {
@@ -167,16 +169,17 @@ export const PanelList: FC<IPanelList> = ({
 
           {!isSyscoinChain && (
             <>
-              {data.map((asset: any) => {
+              {data.map((asset: any, index: number) => {
                 if (asset.symbol) {
                   return (
                     <li
-                      key={asset.symbol}
+                      key={index}
                       className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark"
                     >
                       <p className="font-rubik">
-                        {formatCurrency(String(12 / 10 ** 8), 8)}
-
+                        {asset.symbol === 'ETH'
+                          ? activeAccount?.balances?.ethereum
+                          : asset.balance}
                         <span className="text-button-secondary font-poppins">
                           {`  ${asset.symbol}`}
                         </span>
@@ -204,7 +207,7 @@ export const PanelList: FC<IPanelList> = ({
               })}
 
               <p
-                className="my-4 text-center hover:text-brand-royalbluemedium cursor-pointer"
+                className="mb-8 mt-4 text-center hover:text-brand-royalbluemedium cursor-pointer"
                 onClick={() => navigate('/import-token')}
               >
                 Import token

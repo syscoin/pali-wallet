@@ -4,12 +4,12 @@ import {
   setActiveAccountProperty,
   setIsPendingBalances,
 } from 'state/vault';
-import { KeyringManager } from '@pollum-io/sysweb3-keyring';
+import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
+import { CoingeckoCoins } from 'types/controllers';
 
 import SysTrezorController from '../trezor/syscoin';
 import { SysTransactionController } from '../transaction';
-import { CoingeckoCoins } from '../ControllerUtils';
 
 const SysAccountController = () => {
   const keyringManager = KeyringManager();
@@ -79,13 +79,47 @@ const SysAccountController = () => {
     return receivingAddress;
   };
 
+  const getErc20TokenBalance = async (
+    tokenAddress: string,
+    walletAddress: string
+  ) => {
+    try {
+      const balance = await Web3Accounts().getBalanceOfAnyToken(
+        tokenAddress,
+        walletAddress
+      );
+
+      console.log('balance any tok', balance);
+
+      return balance;
+    } catch (error) {
+      return 0;
+    }
+  };
+
   const saveTokenInfo = async (token: CoingeckoCoins) => {
     const { activeAccount } = store.getState().vault;
+
+    const tokenExists = activeAccount.assets.find(
+      (asset: any) => asset.id === token.id
+    );
+
+    if (tokenExists) throw new Error('Token already exists');
+
+    const balance = await getErc20TokenBalance(
+      String(token.contract_address),
+      activeAccount.address
+    );
+
+    const web3Token = {
+      ...token,
+      balance,
+    };
 
     store.dispatch(
       setActiveAccountProperty({
         property: 'assets',
-        value: [...activeAccount.assets, token],
+        value: [...activeAccount.assets, web3Token],
       })
     );
   };

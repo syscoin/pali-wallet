@@ -45,6 +45,7 @@ const CreateAccount = () => {
           <Form.Item
             name="label"
             className="md:w-full"
+            hasFeedback
             rules={[
               {
                 required: false,
@@ -53,7 +54,8 @@ const CreateAccount = () => {
             ]}
           >
             <Input
-              className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
+              type="text"
+              className="large"
               placeholder="Name your new account (optional)"
               id="account-name-input"
             />

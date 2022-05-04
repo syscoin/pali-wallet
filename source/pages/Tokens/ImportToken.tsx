@@ -12,7 +12,7 @@ import {
 import { formatUrl, ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 import { IToken } from 'types/transactions';
-import { CoingeckoCoins } from 'scripts/Background/controllers/ControllerUtils';
+import { CoingeckoCoins } from 'types/controllers';
 
 export const ImportToken: FC = () => {
   const controller = getController();
@@ -83,7 +83,10 @@ export const ImportToken: FC = () => {
 
     setSelected({
       ...token,
-      explorer_link: data.links ? data.links.blockchain_site[0] : '',
+      explorer_link:
+        data.links && data.links.blockchain_site
+          ? data.links.blockchain_site[0]
+          : '',
       contract_address: data.contract_address,
       description: data.description ? data.description.en : '',
     });
@@ -147,7 +150,9 @@ export const ImportToken: FC = () => {
           {selected && (
             <div className="flex flex-col gap-y-4 items-start justify-start mx-auto my-6 p-4 max-w-xs text-left text-sm bg-bkg-3 border border-brand-royalblue rounded-lg">
               <div className="flex gap-x-2 justify-start w-full">
-                <img src={selected.thumb} alt="token thumb" />
+                {selected.thumb && (
+                  <img src={selected.thumb} alt="token thumb" />
+                )}
 
                 <p className="font-rubik text-2xl font-bold">
                   {formatUrl(selected.symbol)}
