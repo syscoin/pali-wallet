@@ -30,8 +30,6 @@ export const DetailsView = () => {
           assetGuid
         );
 
-        console.log('getting asset details', assetData);
-
         const description =
           assetData.pubData && assetData.pubData.desc
             ? atob(String(assetData.pubData.desc))
@@ -46,14 +44,36 @@ export const DetailsView = () => {
         activeNetwork.url,
         tx.txid
       );
-      // eslint-disable-next-line
-      isSyscoinChain
-        ? setTransactionDetails(txData)
-        : setTransactionDetails(activeAccount.transactions);
+
+      if (isSyscoinChain) {
+        setTransactionDetails(txData);
+
+        return;
+      }
+
+      setTransactionDetails(activeAccount.transactions);
     };
 
     getTransactionData();
   }, [tx || assetGuid]);
+
+  const openSysExplorer = () => {
+    window.open(
+      `${activeNetwork.url}/${isAsset ? 'asset' : 'tx'}/${
+        isAsset ? transactionDetails.assetGuid : transactionDetails.txid
+      }`
+    );
+  };
+
+  const openEthExplorer = () => {
+    const { label } = activeNetwork;
+
+    const explorer = label.includes('Ethereum')
+      ? 'https://etherscan.io'
+      : `https://${label.toLowerCase()}.etherscan.io`;
+
+    window.open(`${explorer}/tx/${hash}`);
+  };
 
   return (
     <Layout title={`${assetGuid ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}>
@@ -75,60 +95,20 @@ export const DetailsView = () => {
             )}
           </ul>
 
-          {isSyscoinChain && (
-            <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-3 md:max-w-2xl">
-              <p>
-                Would you like to go to view {isAsset ? 'asset' : 'transaction'}{' '}
-                on SYS Block Explorer?
-              </p>
+          <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-3 md:max-w-2xl">
+            <p>
+              Would you like to go to view {isAsset ? 'asset' : 'transaction'}{' '}
+              on {isSyscoinChain ? 'SYS Block' : 'Etherscan'} Explorer?
+            </p>
 
-              <Button
-                type="button"
-                onClick={() =>
-                  window.open(
-                    `${activeNetwork.url}/${isAsset ? 'asset' : 'tx'}/${
-                      isAsset
-                        ? transactionDetails.assetGuid
-                        : transactionDetails.txid
-                    }`
-                  )
-                }
-                className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
-              >
-                Go
-              </Button>
-            </div>
-          )}
-
-          {!isSyscoinChain && (
-            <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-3 md:max-w-2xl">
-              <p>
-                Would you like to go to view transaction on Etherscan Explorer?
-              </p>
-
-              <Button
-                type="button"
-                onClick={() =>
-                  window.open(
-                    `${
-                      activeNetwork.label.includes('Ethereum')
-                        ? 'https://etherscan.io'
-                        : activeNetwork.label.includes('Rinkeby')
-                        ? 'https://rinkeby.etherscan.io'
-                        : activeNetwork.label.includes('Goerli')
-                        ? 'https://goerli.etherscan.io'
-                        : activeNetwork.label.includes('Kovan')
-                        ? 'https://kovan.etherscan.io'
-                        : ''
-                    }/tx/${hash}`
-                  )
-                }
-                className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
-              >
-                Go
-              </Button>
-            </div>
-          )}
+            <Button
+              type="button"
+              onClick={isSyscoinChain ? openSysExplorer : openEthExplorer}
+              className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
+            >
+              Go
+            </Button>
+          </div>
         </>
       ) : (
         <Icon name="loading" className="absolute left-1/2 top-1/2 w-3" />
