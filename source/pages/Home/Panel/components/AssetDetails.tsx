@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import placeholder from 'assets/images/placeholder.png';
-import { Tooltip, Icon } from 'components/index';
+import { Tooltip, Icon, IconButton } from 'components/index';
 import { formatUrl } from 'utils/index';
-import { useStore } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import axios from 'axios';
 
 export const AssetDetails = ({
@@ -16,6 +16,10 @@ export const AssetDetails = ({
   const [loadingImage, setLoadingImage] = useState(false);
 
   const { activeNetwork, networks } = useStore();
+
+  const { useCopyClipboard, alert } = useUtils();
+
+  const [copied, copy] = useCopyClipboard();
 
   const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
@@ -53,6 +57,13 @@ export const AssetDetails = ({
 
     getImageLink();
   }, [activeNetwork, description]);
+
+  useEffect(() => {
+    if (!copied) return;
+
+    alert.removeAll();
+    alert.success('Contract successfully copied');
+  }, [copied]);
 
   const sysAssetDetails = [
     {
@@ -116,7 +127,7 @@ export const AssetDetails = ({
     },
     {
       label: contract_address ? 'Contract' : '',
-      value: contract_address ? formatUrl(String(contract_address), 15) : '',
+      value: contract_address || '',
     },
     {
       label: 'Description',
@@ -140,6 +151,25 @@ export const AssetDetails = ({
               <>
                 <p>{label}</p>
                 <img src={value} alt={description} />
+              </>
+            ) : label === 'Contract' ? (
+              <>
+                <p>{label}</p>
+                <b>
+                  {formatUrl(String(value), 15)}
+                  <IconButton
+                    onClick={() => copy(value ?? '')}
+                    type="primary"
+                    shape="circle"
+                    className="mt-3"
+                  >
+                    <Icon
+                      name="copy"
+                      className="text-xs"
+                      id="copy-address-btn"
+                    />
+                  </IconButton>
+                </b>
               </>
             ) : (
               <>
