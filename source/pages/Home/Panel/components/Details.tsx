@@ -20,7 +20,18 @@ export const DetailsView = () => {
   const [transactionDetails, setTransactionDetails] = useState<any>(null);
   const [hash, setHash] = useState<string>('');
 
+  const isSysNetwork = activeNetwork.currency === 'sys';
+
   const isAsset = assetGuid && !tx;
+
+  const getWeb3TokenData = async (symbol: string) => {
+    const tokenData = await assets.filter(
+      (coin: any) =>
+        coin.symbol.toString().toUpperCase() === symbol.toUpperCase()
+    );
+
+    return tokenData[0];
+  };
 
   useEffect(() => {
     const getTransactionData = async () => {
@@ -35,7 +46,9 @@ export const DetailsView = () => {
             ? atob(String(assetData.pubData.desc))
             : '';
 
-        setTransactionDetails(Object.assign(assetData, { description }));
+        setTransactionDetails(
+          Object.assign(assetData, isSysNetwork && { description })
+        );
 
         return;
       }

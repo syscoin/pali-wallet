@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import placeholder from 'assets/images/placeholder.png';
-import { Tooltip, Icon } from 'components/index';
+import { Tooltip, Icon, IconButton } from 'components/index';
 import { formatUrl } from 'utils/index';
-import { useStore } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import axios from 'axios';
 
 export const AssetDetails = ({
@@ -17,6 +17,10 @@ export const AssetDetails = ({
 
   const { activeNetwork, networks } = useStore();
 
+  const { useCopyClipboard, alert } = useUtils();
+
+  const [copied, copy] = useCopyClipboard();
+
   const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
   const {
@@ -28,11 +32,20 @@ export const AssetDetails = ({
     decimals,
     updateCapabilityFlags,
     description,
+    name,
+    contract_address,
+    id,
+    market_cap_rank,
+    thumb: tokenThumb,
   } = assetData;
 
   useEffect(() => {
     const getImageLink = async () => {
-      if (description && description.startsWith('https://ipfs.io/ipfs/')) {
+      if (
+        activeNetwork.currency === 'sys' &&
+        description &&
+        description.startsWith('https://ipfs.io/ipfs/')
+      ) {
         setLoadingImage(true);
 
         const response = await axios.get(description);
@@ -43,7 +56,14 @@ export const AssetDetails = ({
     };
 
     getImageLink();
-  }, [description]);
+  }, [activeNetwork, description]);
+
+  useEffect(() => {
+    if (!copied) return;
+
+    alert.removeAll();
+    alert.success('Contract successfully copied');
+  }, [copied]);
 
   const sysAssetDetails = [
     {
@@ -86,38 +106,81 @@ export const AssetDetails = ({
 
   const ethAssetDetails = [
     {
+      label: 'Icon',
+      value: tokenThumb,
+    },
+    {
+      label: 'ID',
+      value: id,
+    },
+    {
       label: 'Name',
-      value: 'name',
+      value: name,
     },
     {
       label: 'Symbol',
       value: symbol,
     },
     {
-      label: 'Contract',
-      value: formatUrl(String('asdasd'), 15),
+      label: 'Decimals',
+      value: decimals || '',
     },
     {
-      label: 'Decimals',
-      value: decimals,
+      label: contract_address ? 'Contract' : '',
+      value: contract_address || '',
     },
     {
       label: 'Description',
-      value: formatUrl('description', 15),
+      value: description ? formatUrl(String(description), 15) : '',
+    },
+    {
+      label: 'Market Cap',
+      value: market_cap_rank || '',
     },
   ];
 
-  const renderAssets = (detailsArray: { label: string; value: any }[]) => {
+  const renderAssets = (detailsArray: { label: string; value: any }[]) =>
     detailsArray.map(({ label, value }: any) => (
-      <div
-        key={label}
-        className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
-      >
-        <p>{label}</p>
-        <b>{value}</b>
-      </div>
+      <>
+        {label && value && (
+          <div
+            key={label}
+            className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
+          >
+            {label === 'Token Thumb' ? (
+              <>
+                <p>{label}</p>
+                <img src={value} alt={description} />
+              </>
+            ) : label === 'Contract' ? (
+              <>
+                <p>{label}</p>
+                <b>
+                  {formatUrl(String(value), 15)}
+                  <IconButton
+                    onClick={() => copy(value ?? '')}
+                    type="primary"
+                    shape="circle"
+                    className="mt-3"
+                  >
+                    <Icon
+                      name="copy"
+                      className="text-xs"
+                      id="copy-address-btn"
+                    />
+                  </IconButton>
+                </b>
+              </>
+            ) : (
+              <>
+                <p>{label}</p>
+                <b>{value}</b>
+              </>
+            )}
+          </div>
+        )}
+      </>
     ));
-  };
 
   return (
     <>
