@@ -143,7 +143,7 @@ export const AssetDetails = ({
             key={label}
             className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
           >
-            {label === 'Token Thumb' ? (
+            {label === 'Icon' ? (
               <>
                 <p>{label}</p>
                 <img src={value} alt={description} />

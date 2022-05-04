@@ -12,29 +12,34 @@ export const DetailsView = () => {
 
   const {
     activeNetwork,
-    networks,
-    activeAccount: { transactions },
+    activeAccount: { assets },
   } = useStore();
-  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
   const {
     state: { assetGuid, tx, assetType, type },
   }: any = useLocation();
 
   const [transactionDetails, setTransactionDetails] = useState<any>(null);
-  const [hash, setHash] = useState<string>('');
 
   const isSysNetwork = activeNetwork.currency === 'sys';
 
   const isAsset = assetGuid && !tx;
 
+  const getWeb3TokenData = async (symbol: string) => {
+    const tokenData = await assets.filter(
+      (coin: any) =>
+        coin.symbol.toString().toUpperCase() === symbol.toUpperCase()
+    );
+
+    return tokenData[0];
+  };
+
   useEffect(() => {
     const getTransactionData = async () => {
       if (assetGuid) {
-        const assetData = await controller.utils.getAsset(
-          activeNetwork.url,
-          assetGuid
-        );
+        const assetData: any = isSysNetwork
+          ? await controller.utils.getAsset(activeNetwork.url, assetGuid)
+          : await getWeb3TokenData(assetGuid);
 
         const description =
           assetData.pubData && assetData.pubData.desc
@@ -53,35 +58,11 @@ export const DetailsView = () => {
         tx.txid
       );
 
-      if (isSyscoinChain) {
-        setTransactionDetails(txData);
-
-        return;
-      }
-
-      setTransactionDetails(transactions);
+      setTransactionDetails(txData);
     };
 
     getTransactionData();
   }, [tx || assetGuid]);
-
-  const openSysExplorer = () => {
-    window.open(
-      `${activeNetwork.url}/${isAsset ? 'asset' : 'tx'}/${
-        isAsset ? transactionDetails.assetGuid : transactionDetails.txid
-      }`
-    );
-  };
-
-  const openEthExplorer = () => {
-    const { label } = activeNetwork;
-
-    const explorer = label.includes('Ethereum')
-      ? 'https://etherscan.io'
-      : `https://${label.toLowerCase()}.etherscan.io`;
-
-    window.open(`${explorer}/tx/${hash}`);
-  };
 
   return (
     <Layout title={`${assetGuid ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}>
@@ -97,8 +78,6 @@ export const DetailsView = () => {
               <TransactionDetails
                 transactionType={type}
                 transactionDetails={transactionDetails}
-                setTransactionHash={setHash}
-                txAddress={tx}
               />
             )}
           </ul>
@@ -106,12 +85,22 @@ export const DetailsView = () => {
           <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-3 md:max-w-2xl">
             <p>
               Would you like to go to view {isAsset ? 'asset' : 'transaction'}{' '}
-              on {isSyscoinChain ? 'SYS Block' : 'Etherscan'} Explorer?
+              on SYS Block Explorer?
             </p>
 
             <Button
               type="button"
-              onClick={isSyscoinChain ? openSysExplorer : openEthExplorer}
+              onClick={() =>
+                window.open(
+                  isSysNetwork
+                    ? `${activeNetwork.url}/${isAsset ? 'asset' : 'tx'}/${
+                        isAsset
+                          ? transactionDetails.assetGuid
+                          : transactionDetails.txid
+                      }`
+                    : transactionDetails.explorer_link
+                )
+              }
               className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
             >
               Go

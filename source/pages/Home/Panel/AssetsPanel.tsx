@@ -11,7 +11,7 @@ export const AssetsPanel: FC = () => {
 
   return (
     <>
-      <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
+      <ul className="scrollbar-styled p-4 w-full h-full text-white text-base bg-bkg-3 overflow-auto">
         {activeAccount.assets &&
         Object.values(activeAccount.assets).length > 0 ? (
           <PanelList
