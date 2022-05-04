@@ -7,6 +7,7 @@ import {
 import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 import { CoingeckoCoins } from 'types/controllers';
+import { setActiveNetwork } from '@pollum-io/sysweb3-network';
 
 import SysTrezorController from '../trezor/syscoin';
 import { SysTransactionController } from '../transaction';
@@ -84,6 +85,10 @@ const SysAccountController = () => {
     walletAddress: string
   ) => {
     try {
+      const { activeNetwork } = store.getState().vault;
+
+      setActiveNetwork(activeNetwork);
+
       const balance = await Web3Accounts().getBalanceOfAnyToken(
         tokenAddress,
         walletAddress

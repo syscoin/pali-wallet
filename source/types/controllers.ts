@@ -24,6 +24,9 @@ export interface MainController extends KeyringManager {
 
 export type CoingeckoCoins = {
   contract_address?: string;
+  contract_platforms: any;
+  description: string;
+  explorer_link: string;
   id: string;
   large: string;
   market_cap_rank: number;

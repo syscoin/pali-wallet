@@ -19,7 +19,7 @@ export const ImportToken: FC = () => {
 
   const [form] = Form.useForm();
   const { navigate, alert, useCopyClipboard } = useUtils();
-  const { activeAccount } = useStore();
+  const { activeAccount, activeNetwork } = useStore();
 
   const [copied, copy] = useCopyClipboard();
   const [filteredSearch, setFilteredSearch] = useState<CoingeckoCoins[]>(
@@ -76,10 +76,28 @@ export const ImportToken: FC = () => {
     alert.success('Token address successfully copied');
   }, [copied]);
 
+  const getContractAddressByNetwork = (platforms: any) => {
+    const newArray: any = [];
+
+    Object.keys(platforms).map((plat: any) => {
+      newArray.push({ id: plat, value: platforms[plat] });
+    });
+
+    const networkLabel = activeNetwork.label.toLowerCase().split(' ')[0];
+
+    const { value } = newArray.find(
+      (plat: any) => plat.id.toLowerCase() === networkLabel
+    );
+
+    return value || '';
+  };
+
   const handleSelectToken = async (token: CoingeckoCoins) => {
     setIsLoading(true);
 
     const { data } = await controller.utils.getDataForToken(token.id);
+
+    const actualContract = getContractAddressByNetwork(data.platforms);
 
     setSelected({
       ...token,
@@ -87,8 +105,9 @@ export const ImportToken: FC = () => {
         data.links && data.links.blockchain_site
           ? data.links.blockchain_site[0]
           : '',
-      contract_address: data.contract_address,
+      contract_address: actualContract || data.contract_address,
       description: data.description ? data.description.en : '',
+      contract_platforms: data.platforms,
     });
 
     setIsLoading(false);
