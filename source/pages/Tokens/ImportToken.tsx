@@ -85,11 +85,11 @@ export const ImportToken: FC = () => {
 
     const networkLabel = activeNetwork.label.toLowerCase().split(' ')[0];
 
-    const { value } = newArray.find(
+    const contract = newArray.find(
       (plat: any) => plat.id.toLowerCase() === networkLabel
     );
 
-    return value || '';
+    return contract?.value || '';
   };
 
   const handleSelectToken = async (token: CoingeckoCoins) => {
