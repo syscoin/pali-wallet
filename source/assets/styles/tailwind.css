@@ -80,6 +80,10 @@ input[type='number']::-webkit-inner-spin-button {
   @apply w-full bg-fields-input-primary;
 }
 
+.form .ant-input {
+  @apply w-52 bg-fields-input-primary;
+}
+
 .small > .ant-input {
   @apply block px-4 py-2 w-72 text-sm border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-96;
 }

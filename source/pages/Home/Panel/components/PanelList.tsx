@@ -18,7 +18,7 @@ export const PanelList: FC<IPanelList> = ({
 }) => {
   const { navigate } = useUtils();
 
-  const { activeAccount } = useStore();
+  const { activeAccount, activeNetwork } = useStore();
 
   const getTxType = (tx: any) => {
     if (isSyscoinChain) {
@@ -206,12 +206,23 @@ export const PanelList: FC<IPanelList> = ({
                 return null;
               })}
 
-              <p
-                className="mb-8 mt-4 text-center hover:text-brand-royalbluemedium cursor-pointer"
-                onClick={() => navigate('/import-token')}
-              >
-                Import token
-              </p>
+              {activeNetwork.label.includes('Ethereum') && (
+                <p
+                  className="mb-8 mt-4 text-center hover:text-brand-royalbluemedium cursor-pointer"
+                  onClick={() => navigate('/import-token')}
+                >
+                  Import token
+                </p>
+              )}
+
+              {!activeNetwork.label.includes('Ethereum') && (
+                <p
+                  className="mb-8 mt-4 text-center hover:text-brand-royalbluemedium cursor-pointer"
+                  onClick={() => navigate('/custom-token')}
+                >
+                  Custom token
+                </p>
+              )}
             </>
           )}
         </ul>
