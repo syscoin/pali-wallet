@@ -98,7 +98,7 @@ export const SendConfirm = () => {
   };
 
   return (
-    <Layout title={`SEND ${activeNetwork.currency?.toUpperCase()}`}>
+    <Layout title="SEND">
       <DefaultModal
         show={confirmed}
         title="Transaction successful"

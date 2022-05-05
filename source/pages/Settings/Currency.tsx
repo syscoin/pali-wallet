@@ -193,7 +193,7 @@ const CurrencyView = () => {
           Check your balance in different currencies
         </p>
 
-        <div className="relative text-brand-royalblue text-sm font-medium">
+        <div className="small relative text-brand-royalblue text-sm font-medium">
           <Input
             type="number"
             onChange={(event) =>
@@ -224,7 +224,7 @@ const CurrencyView = () => {
           </div>
         </div>
 
-        <div className="relative text-brand-royalblue text-sm font-medium">
+        <div className="small relative text-brand-royalblue text-sm font-medium">
           <Input
             type="number"
             maxLength={20}

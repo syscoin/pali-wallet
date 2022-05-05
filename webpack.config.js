@@ -126,7 +126,8 @@ module.exports = {
         loader: 'file-loader',
         exclude: /node_modules/,
         options: {
-          name: '/source/assets/images/[name].[ext]',
+          name: '[path][name].[ext]',
+          publicPath: '/',
         },
       },
       {
