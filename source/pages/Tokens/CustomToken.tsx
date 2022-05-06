@@ -4,6 +4,10 @@ import { useUtils } from 'hooks/index';
 import { Form, Input } from 'antd';
 import { SecondaryButton, DefaultModal, Layout } from 'components/index';
 import { getController } from 'utils/browser';
+import {
+  getWeb3TokenData,
+  isValidEthereumAddress,
+} from '@pollum-io/sysweb3-utils';
 
 export const CustomToken: FC = () => {
   const controller = getController();
@@ -22,10 +26,27 @@ export const CustomToken: FC = () => {
     decimal: number;
     symbol: string;
   }) => {
+    const {
+      asset_platform_id,
+      id,
+      current_price,
+      description,
+      explorer,
+      image,
+      links,
+      name,
+    } = await getWeb3TokenData(`${contract}`);
     await controller.wallet.account.sys.saveTokenInfo({
-      contract,
-      symbol,
+      symbol: symbol.toUpperCase(),
       decimal,
+      asset_platform_id,
+      id,
+      current_price,
+      description,
+      explorer,
+      image,
+      links,
+      name,
     });
 
     setAdded(true);
@@ -51,6 +72,15 @@ export const CustomToken: FC = () => {
               required: true,
               message: '',
             },
+            () => ({
+              validator(_, value) {
+                if (!value || isValidEthereumAddress(value)) {
+                  return Promise.resolve();
+                }
+
+                return Promise.reject();
+              },
+            }),
           ]}
         >
           <Input
@@ -107,9 +137,9 @@ export const CustomToken: FC = () => {
         <DefaultModal
           show={added}
           title="Token successfully added"
-          description={`${form.getFieldValue(
-            'symbol'
-          )} was successfully added to your wallet.`}
+          description={`${form
+            .getFieldValue('symbol')
+            .toUpperCase()} was successfully added to your wallet.`}
           onClose={() => navigate('/home')}
         />
       )}
