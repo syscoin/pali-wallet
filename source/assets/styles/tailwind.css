@@ -97,7 +97,15 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 .ant-input-suffix {
-  @apply absolute right-2 top-0.5 text-bkg-4;
+  @apply absolute right-2 text-bkg-4;
+}
+
+.ant-form-item-feedback-icon {
+  @apply ml-2;
+}
+
+.ant-form-item-feedback-icon-error {
+  @apply ml-2;
 }
 
 .ant-form-item-control-input {
