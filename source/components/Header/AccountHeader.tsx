@@ -11,6 +11,8 @@ const AccountMenu: React.FC = () => {
   const { wallet } = getController();
   const { encryptedMnemonic, accounts, activeAccount } = useStore();
 
+  const verifyAccounts = Object.keys(accounts);
+
   const setActiveAccount = async (id: number) => {
     await wallet.setAccount(Number(id));
     wallet.account.sys.watchMemPool(accounts[Number(id)]);
@@ -85,41 +87,60 @@ const AccountMenu: React.FC = () => {
                     />
                   </Disclosure.Button>
 
-                  <Disclosure.Panel className="pb-2 h-auto text-sm bg-menu-secondary">
-                    <li
-                      onClick={() => navigate('/settings/account/new')}
-                      className="backface-visibility-hidden flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
-                      id="create-new-account-btn"
+                  <div
+                    className="relative"
+                    style={{
+                      paddingTop: `${open ? '45px' : '0px'}`,
+                    }}
+                  >
+                    <Disclosure.Panel
+                      className={`static overflow-y-scroll scrollbar-styled pb-2 
+                    ${
+                      verifyAccounts?.length === 1
+                        ? 'h-16'
+                        : verifyAccounts?.length === 2
+                        ? 'h-28'
+                        : verifyAccounts?.length >= 3
+                        ? 'h-40'
+                        : ''
+                    }
+                    text-sm bg-menu-secondary`}
                     >
-                      <Icon
-                        name="appstoreadd"
-                        className="mb-1 mr-3 text-brand-white"
-                      />
-
-                      <span>Create new account</span>
-                    </li>
-
-                    {Object.values(accounts).map((account, index) => (
                       <li
-                        key={account.id}
-                        className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                        onClick={() => setActiveAccount(account.id)}
-                        id={`account-${index}`}
+                        onClick={() => navigate('/settings/account/new')}
+                        className="backface-visibility-hidden absolute top-0 flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
+                        id="create-new-account-btn"
                       >
-                        <span>
-                          {account.label} ({ellipsis(account.address, 4, 8)})
-                        </span>
+                        <Icon
+                          name="appstoreadd"
+                          className="mb-1 mr-3 text-brand-white"
+                        />
 
-                        {activeAccount.id === account.id && (
-                          <Icon
-                            name="check"
-                            className="mb-1 w-4"
-                            wrapperClassname="w-6 absolute right-1"
-                          />
-                        )}
+                        <span>Create new account</span>
                       </li>
-                    ))}
-                  </Disclosure.Panel>
+
+                      {Object.values(accounts).map((account, index) => (
+                        <li
+                          key={account.id}
+                          className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                          onClick={() => setActiveAccount(account.id)}
+                          id={`account-${index}`}
+                        >
+                          <span>
+                            {account.label} ({ellipsis(account.address, 4, 8)})
+                          </span>
+
+                          {activeAccount.id === account.id && (
+                            <Icon
+                              name="check"
+                              className="mb-1 w-4"
+                              wrapperClassname="w-6 absolute right-1"
+                            />
+                          )}
+                        </li>
+                      ))}
+                    </Disclosure.Panel>
+                  </div>
                 </>
               )}
             </Disclosure>
