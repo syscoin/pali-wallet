@@ -85,7 +85,7 @@ const AccountMenu: React.FC = () => {
                     />
                   </Disclosure.Button>
 
-                  <Disclosure.Panel className="scrollbar-styled pb-2 h-auto max-h-40 text-sm bg-menu-secondary overflow-auto">
+                  <Disclosure.Panel className="pb-2 h-auto max-h-40 text-sm bg-menu-secondary">
                     <li
                       onClick={() => navigate('/settings/account/new')}
                       className="backface-visibility-hidden flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
