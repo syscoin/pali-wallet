@@ -100,7 +100,11 @@ input[type='number']::-webkit-inner-spin-button {
   @apply absolute right-2 text-bkg-4;
 }
 
-.large .ant-input-suffix {
+#autolock .ant-input-suffix {
+  @apply top-0.5;
+}
+
+.small .ant-input-suffix {
   @apply top-0.5;
 }
 
