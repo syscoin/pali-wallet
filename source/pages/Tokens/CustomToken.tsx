@@ -38,6 +38,7 @@ export const CustomToken: FC = () => {
     } = await getWeb3TokenData(`${contract}`);
     await controller.wallet.account.sys.saveTokenInfo({
       symbol: symbol.toUpperCase(),
+      contract_address: contract,
       decimal,
       asset_platform_id,
       id,
