@@ -70,7 +70,7 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
           wrapperCol={{ span: 8 }}
           onFinish={updateTemporaryTransaction}
           autoComplete="off"
-          className="flex flex-col gap-3 items-center justify-center mt-4 text-center"
+          className="standard flex flex-col gap-3 items-center justify-center mt-4 text-center"
         >
           <div className="flex gap-x-0.5 items-center justify-center mx-2">
             <Form.Item
