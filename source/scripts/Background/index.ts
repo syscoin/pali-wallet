@@ -3,6 +3,8 @@ import { STORE_PORT } from 'constants/index';
 
 import { wrapStore } from 'webext-redux';
 import { browser } from 'webextension-polyfill-ts';
+// import { localStorage } from 'redux-persist-webextension-storage';
+import { sysweb3Di } from '@pollum-io/sysweb3-core';
 import store from 'state/store';
 
 import MasterController, { IMasterController } from './controllers';
@@ -21,6 +23,10 @@ browser.runtime.onInstalled.addListener(() => {
   }
 
   console.emoji('🤩', 'Pali extension enabled');
+
+  sysweb3Di.getStateStorageDb().setPrefix('sysweb3-');
+  sysweb3Di.useFetchHttpClient(window.fetch.bind(window));
+  sysweb3Di.useLocalStorageClient(window.localStorage);
 
   window.controller.stateUpdater();
 });
