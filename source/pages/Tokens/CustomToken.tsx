@@ -40,7 +40,7 @@ export const CustomToken: FC = () => {
         wrapperCol={{ span: 8 }}
         onFinish={nextStep}
         autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
+        className="standard flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
       >
         <Form.Item
           name="contract"

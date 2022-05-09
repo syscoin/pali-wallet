@@ -102,7 +102,7 @@ export const ImportToken: FC = () => {
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
+        className="standard flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
       >
         <Form.Item
           name="search"
