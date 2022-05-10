@@ -117,7 +117,7 @@ const ForgetWalletView = () => {
                     !isSeedValid && form.getFieldValue('seed')
                       ? 'border-warning-error'
                       : 'border-fields-input-border'
-                  } bg-bkg-4 border border-bkg-4 text-sm outline-none rounded-lg p-5`}
+                  } bg-fields-input-primary p-2 pl-4 w-full h-20 text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none`}
                   placeholder="Paste your wallet seed phrase"
                   id="forget_seed"
                 />
