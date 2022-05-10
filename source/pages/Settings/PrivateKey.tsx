@@ -52,7 +52,7 @@ const PrivateKeyView = () => {
         </p>
 
         <Form
-          className="password mx-auto my-3 w-full max-w-xs text-center md:max-w-xl"
+          className="standard password mx-auto my-3 w-full max-w-xs text-center md:max-w-xl"
           name="phraseview"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
