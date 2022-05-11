@@ -15,7 +15,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
 
   return (
     <div className={headerStyle}>
-      {isPendingBalances && <Loading />}
+      {isPendingBalances && <Loading opacity={50} />}
 
       <div className="fixed z-10 w-full md:max-w-2xl">
         <>
