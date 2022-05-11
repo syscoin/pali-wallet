@@ -93,7 +93,7 @@ export const DetailsView = () => {
     <Layout title={`${assetGuid ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}>
       {transactionDetails ? (
         <>
-          <ul className="scrollbar-styled mt-4 w-full h-96 text-sm overflow-auto md:h-full">
+          <ul className="scrollbar-styled mt-4 w-full h-96 text-sm overflow-auto md:h-bigmenu">
             {isAsset ? (
               <AssetDetails
                 assetType={assetType}
