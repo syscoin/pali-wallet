@@ -79,7 +79,7 @@ export const DetailsView = () => {
       ? 'https://etherscan.io'
       : `https://${label.toLowerCase()}.etherscan.io`;
 
-    window.open(`${explorer}/tx/${hash}`);
+    window.open(`${explorer}/${isAsset ? 'token' : 'tx'}/${hash}`);
   };
 
   const openSysExplorer = () => {
@@ -98,6 +98,7 @@ export const DetailsView = () => {
               <AssetDetails
                 assetType={assetType}
                 assetData={transactionDetails}
+                setAssetHash={setHash}
               />
             ) : (
               <TransactionDetails

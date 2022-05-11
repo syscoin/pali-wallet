@@ -126,8 +126,7 @@ export const ErrorModal = ({
       </div>
 
       <p className="my-4 text-button-primary text-sm">
-        Error description:
-        {log}
+        Error description: {log}
       </p>
 
       <div className="flex gap-x-8 items-center justify-between mt-8">

@@ -51,6 +51,8 @@
     "no-return-await": "off",
     "@typescript-eslint/return-await": "off",
     "@typescript-eslint/naming-convention": "off",
+    "no-unused-expressions": "off",
+    "@typescript-eslint/no-unused-expressions": "off",
     "no-nested-ternary": "off",
     "react/jsx-filename-extension": "off",
     "no-confusing-arrow": "off",

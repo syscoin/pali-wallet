@@ -8,9 +8,11 @@ import axios from 'axios';
 export const AssetDetails = ({
   assetType,
   assetData,
+  setAssetHash,
 }: {
   assetData: any;
   assetType?: string;
+  setAssetHash?: any;
 }) => {
   const [imageLink, setImageLink] = useState('');
   const [loadingImage, setLoadingImage] = useState(false);
@@ -38,6 +40,8 @@ export const AssetDetails = ({
     market_cap_rank,
     thumb: tokenThumb,
   } = assetData;
+
+  setAssetHash(contract_address);
 
   useEffect(() => {
     const getImageLink = async () => {
