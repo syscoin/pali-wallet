@@ -34,12 +34,12 @@ const ManageNetworkView = () => {
           isSyscoinToEdit={Boolean(networks.syscoin[selected.chainId])}
         />
       ) : (
-        <Layout title="MANAGE NETWORK">
+        <Layout title="MANAGE NETWORKS">
           <p className="mt-4 text-left text-brand-white font-poppins text-sm">
             Click on network to manage
           </p>
 
-          <ul className="scrollbar-styled mb-3 mt-2 px-4 py-2 w-full h-80 text-sm overflow-auto">
+          <ul className="scrollbar-styled mb-3 mt-2 px-4 py-2 w-full h-80 text-sm overflow-auto md:h-96">
             <p className="py-1 text-brand-royalbluemedium text-xs font-bold bg-bkg-1">
               Syscoin Networks
             </p>
