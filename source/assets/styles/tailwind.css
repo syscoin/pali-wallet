@@ -112,7 +112,6 @@ input[type='number']::-webkit-inner-spin-button {
   @apply top-0.5;
 } */
 
-
 .ant-form-item-feedback-icon {
   @apply ml-2;
 }

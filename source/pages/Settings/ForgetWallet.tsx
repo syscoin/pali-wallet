@@ -9,10 +9,16 @@ const ForgetWalletView = () => {
   const { navigate } = useUtils();
 
   const controller = getController();
-  const { activeAccount } = useStore();
+  const { activeAccount, networks, activeNetwork } = useStore();
 
   if (!activeAccount) throw new Error('No active account');
-  const hasAccountFunds = activeAccount.balances.syscoin > 0;
+
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+
+  const hasAccountFunds =
+    (isSyscoinChain
+      ? activeAccount.balances.syscoin
+      : activeAccount.balances.ethereum) > 0;
 
   // if account has no funds, no need to input the seed
   const [isSeedValid, setIsSeedValid] = useState<boolean>(!hasAccountFunds);
@@ -117,7 +123,7 @@ const ForgetWalletView = () => {
                     !isSeedValid && form.getFieldValue('seed')
                       ? 'border-warning-error'
                       : 'border-fields-input-border'
-                  } bg-bkg-4 border border-bkg-4 text-sm outline-none rounded-lg p-5`}
+                  } bg-fields-input-primary p-2 pl-4 w-full h-20 text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none`}
                   placeholder="Paste your wallet seed phrase"
                   id="forget_seed"
                 />

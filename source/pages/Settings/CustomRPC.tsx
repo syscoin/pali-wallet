@@ -164,6 +164,7 @@ const CustomRPCView = ({
             <Form.Item
               name="chainId"
               hasFeedback
+              className="md:w-full"
               rules={[
                 {
                   required: !isSyscoinRpc,
@@ -180,6 +181,7 @@ const CustomRPCView = ({
 
             <Form.Item
               hasFeedback
+              className="md:w-full"
               name="token_contract_address"
               rules={[
                 {
@@ -190,7 +192,7 @@ const CustomRPCView = ({
             >
               <Input
                 type="text"
-                placeholder="Token Contract Address"
+                placeholder="Token Contract Address (optional)"
                 className={`${isSyscoinRpc ? 'hidden' : 'block'} large`}
               />
             </Form.Item>

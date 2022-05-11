@@ -17,7 +17,7 @@ const AutolockView = () => {
   const onSubmit = (data: any) => {
     setLoading(true);
 
-    controller.wallet.account.sys.setAutolockTimer(data.minutes);
+    controller.wallet.setAutolockTimer(data.minutes);
 
     setConfirmed(true);
     setLoading(false);
