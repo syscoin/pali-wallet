@@ -93,7 +93,7 @@ const CustomRPCView = ({
             }
             onFinish={onSubmit}
             autoComplete="off"
-            className="flex flex-col gap-2 items-center justify-center text-center"
+            className="standard flex flex-col gap-2 items-center justify-center text-center"
           >
             <Form.Item
               id="network-switch"

@@ -216,7 +216,7 @@ export const NormalHeader: React.FC = () => {
                                   <Icon
                                     name="check"
                                     className="mb-1 w-4"
-                                    wrapperClassname="w-6 absolute right-20"
+                                    wrapperClassname="w-6 absolute right-16"
                                   />
                                 )}
                               </li>
@@ -263,7 +263,7 @@ export const NormalHeader: React.FC = () => {
   const GeneralMenu = () => (
     <Menu
       as="div"
-      className="absolute right-2 top-2 flex items-center justify-evenly"
+      className="absolute z-50 right-2 top-2 flex items-center justify-evenly"
     >
       {() => (
         <>
