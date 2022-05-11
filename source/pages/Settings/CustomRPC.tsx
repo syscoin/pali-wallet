@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Form, Input } from 'antd';
 import { Layout, SecondaryButton } from 'components/index';
 import { Switch } from '@headlessui/react';
-import { useUtils, useStore } from 'hooks/index';
+import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
+import { CustomRpcParams } from 'types/transactions';
+import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import { ManageNetwork } from '.';
 
@@ -12,62 +14,33 @@ const CustomRPCView = ({
   isSyscoinToEdit,
 }: {
   isSyscoinToEdit?: boolean;
-  selectedToEdit?: any;
+  selectedToEdit?: INetwork;
 }) => {
   const [loading, setLoading] = useState(false);
   const [edit, setEdit] = useState(false);
   const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinToEdit));
 
   const { alert } = useUtils();
-  const { networks } = useStore();
   const controller = getController();
 
-  const networkAlreadyExistsAlert = () => {
-    alert.removeAll();
-    alert.error('Network already exists.');
-
-    setLoading(false);
-  };
-
-  const onSubmit = async (data: {
-    chainId: number;
-    label: string;
-    rpcUrl: string;
-    token_contract_address?: string;
-  }) => {
+  const onSubmit = async (data: CustomRpcParams) => {
     setLoading(true);
 
-    const chain = isSyscoinRpc ? 'syscoin' : 'ethereum';
-
-    if (networks[chain][data.chainId]) {
-      alert.removeAll();
-      alert.error('Network already exists.');
-
-      setLoading(false);
-
-      return;
-    }
-
-    for (const network of Object.values(networks[chain])) {
-      if (data.rpcUrl === network.url || data.chainId === network.chainId) {
-        networkAlreadyExistsAlert();
-
-        return;
-      }
-    }
+    const customRpc = {
+      ...data,
+      isSyscoinRpc,
+    };
 
     try {
-      await controller.wallet.addCustomRpc({
-        ...data,
-        isSyscoinRpc,
-      });
+      if (!selectedToEdit) await controller.wallet.addCustomRpc(customRpc);
+      else await controller.wallet.editCustomRpc(customRpc, selectedToEdit);
 
       setEdit(true);
-    } catch (error) {
+    } catch (error: any) {
       console.log('error custom rpc', error);
 
       alert.removeAll();
-      alert.error("Can't add a custom RPC now. Try again later.");
+      alert.error(error.message);
     }
 
     setLoading(false);
