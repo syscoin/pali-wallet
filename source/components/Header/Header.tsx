@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore } from 'hooks/index';
-import { Icon } from 'components/Icon';
+import { Loading } from 'components/index';
 
 import { AccountHeader, NormalHeader } from '.';
 
@@ -15,11 +15,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
 
   return (
     <div className={headerStyle}>
-      {isPendingBalances && (
-        <div className="fixed z-20 flex items-center justify-center w-full min-w-popup h-full min-h-popup bg-brand-black bg-opacity-50">
-          <Icon name="loading" className="ml-2 w-4 text-brand-white" />
-        </div>
-      )}
+      {isPendingBalances && <Loading />}
 
       <div className="fixed z-10 w-full md:max-w-2xl">
         <>
