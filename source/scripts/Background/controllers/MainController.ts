@@ -18,6 +18,7 @@ import {
   setNetworks,
   removeNetwork as removeNetworkFromStore,
   setActiveToken,
+  removeNetwork,
 } from 'state/vault';
 import { CustomRpcParams } from 'types/transactions';
 
@@ -128,27 +129,59 @@ const MainController = () => {
     return account;
   };
 
-  const addCustomRpc = async (data: CustomRpcParams): Promise<INetwork> => {
-    const { chainId, rpcUrl, token_contract_address, isSyscoinRpc, label } =
-      data;
-
+  const validateAndBuildRpc = async (
+    {
+      chainId,
+      label,
+      rpcUrl,
+      isSyscoinRpc,
+      tokenContractAddress,
+    }: CustomRpcParams,
+    chainIdCheck = true
+  ): Promise<INetwork> => {
     const chain = isSyscoinRpc ? 'syscoin' : 'ethereum';
-
     const { networks } = store.getState().vault;
 
-    if (networks[chainId]) throw new Error('Network already exists');
+    if (chainIdCheck && networks[chain][chainId])
+      throw new Error(`Network with chain ID ${chainId} already exists`);
 
     const { valid, data: _data } = isSyscoinRpc
       ? await validateSysRpc(rpcUrl)
-      : await validateEthRpc(chainId, rpcUrl, token_contract_address);
+      : await validateEthRpc(chainId, rpcUrl, tokenContractAddress);
 
     if (!valid) throw new Error(`Invalid ${chain} RPC`);
 
-    const network = {
+    return {
       ..._data,
       label,
     };
+  };
 
+  const addCustomRpc = async (data: CustomRpcParams): Promise<INetwork> => {
+    const network = await validateAndBuildRpc(data);
+
+    const chain = data.isSyscoinRpc ? 'syscoin' : 'ethereum';
+    store.dispatch(setNetworks({ chain, network }));
+
+    return network;
+  };
+
+  const editCustomRpc = async (
+    newRpc: CustomRpcParams,
+    oldRpc: CustomRpcParams
+  ): Promise<INetwork> => {
+    const changedChainId = oldRpc.chainId != newRpc.chainId;
+    const network = await validateAndBuildRpc(newRpc, changedChainId);
+
+    const chain = newRpc.isSyscoinRpc ? 'syscoin' : 'ethereum';
+    if (changedChainId) {
+      store.dispatch(
+        removeNetwork({
+          chainId: oldRpc.chainId,
+          prefix: chain,
+        })
+      );
+    }
     store.dispatch(setNetworks({ chain, network }));
 
     return network;
@@ -182,6 +215,7 @@ const MainController = () => {
     setAutolockTimer,
     setActiveNetwork,
     addCustomRpc,
+    editCustomRpc,
     removeKeyringNetwork,
     setActiveTokenForWallet,
     ...keyringManager,
