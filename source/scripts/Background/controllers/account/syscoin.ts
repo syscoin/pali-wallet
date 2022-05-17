@@ -14,6 +14,9 @@ import { SysTransactionController } from '../transaction';
 const SysAccountController = () => {
   const keyringManager = KeyringManager();
 
+  // id for `watchMemPool` setInterval
+  let intervalId: NodeJS.Timer;
+
   const getLatestUpdate = async (silent?: boolean) => {
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
@@ -47,21 +50,19 @@ const SysAccountController = () => {
   /** check if there is no pending transaction in mempool
    *  and get the latest update for account
    */
-  const watchMemPool = (currentAccount: IKeyringAccountState | undefined) => {
+  const watchMemPool = (currentAccount: IKeyringAccountState) => {
+    if (intervalId) clearInterval(intervalId);
+
     // 30 seconds - 3000 milliseconds
     const interval = 30 * 1000;
 
-    const intervalId = setInterval(() => {
+    intervalId = setInterval(() => {
       getLatestUpdate(true);
 
       if (!currentAccount || !currentAccount?.transactions) {
         clearInterval(intervalId);
-
-        return false;
       }
     }, interval);
-
-    return true;
   };
 
   const setAddress = async (): Promise<string> => {
