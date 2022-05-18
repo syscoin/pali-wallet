@@ -5,33 +5,29 @@ import { By } from 'selenium-webdriver';
 import { buildWebDriver, Driver } from './driver';
 import { importWallet } from './initialize';
 
-describe('Receive screen tests', () => {
-  let uiWebDriver: Driver;
+describe('Receive', () => {
+  let driver: Driver;
 
   beforeEach(async () => {
-    const { driver } = await buildWebDriver();
-
-    uiWebDriver = driver;
+    driver = (await buildWebDriver()).driver;
 
     await driver.navigate();
-    await importWallet({ driver });
+    await importWallet(driver);
   });
 
   afterEach(async () => {
-    await uiWebDriver.quit();
+    await driver.quit();
   });
 
   it('should check receive button', async () => {
-    //   * find receive btn
-    const receiveButton = await uiWebDriver.findElement(By.id('receive-btn'));
+    // find receive btn
+    const receiveButton = await driver.findElement(By.id('receive-btn'));
 
     assert.ok(receiveButton, '<!> Cannot find receive button <!>');
 
-    await uiWebDriver.clickElement('#receive-btn');
-    //  * find receive page title
-    const findReceiveSYS = await uiWebDriver.findElement(
-      By.id('receiveSYS-title')
-    );
+    await driver.clickElement('#receive-btn');
+    // find receive page title
+    const findReceiveSYS = await driver.findElement(By.id('receiveSYS-title'));
     const receiveSYSText = await findReceiveSYS.getText();
 
     assert.equal(
@@ -42,26 +38,24 @@ describe('Receive screen tests', () => {
   });
 
   it('should check receive qr code', async () => {
-    //  * go to receive page
-    await uiWebDriver.clickElement('#receive-btn');
-    //  * fin qr Code
-    const qrCode = await uiWebDriver.findElement(By.id('qr-code'));
+    // go to receive page
+    await driver.clickElement('#receive-btn');
+
+    // find qrcode
+    const qrCode = await driver.findElement(By.id('qr-code'));
 
     assert.ok(qrCode, '<!> Cannot find QRcode <!>');
   });
 
-  it('should check receive copy address button', async () => {
-    //  * go to receive page
-    await uiWebDriver.clickElement('#receive-btn');
-    //  * find copy address btn
-    const copyAddresBtn = await uiWebDriver.findElement(
+  it('should copy the receive address', async () => {
+    // go to receive page
+    await driver.clickElement('#receive-btn');
+
+    // find copy address btn
+    const copyAddresBtn = await driver.findElement(
       By.id('copy-address-receive-btn')
     );
 
     assert.ok(copyAddresBtn, '<!> Cannot find receive copy address button <!>');
-    /* const copyAddresValue = await copyAddresBtn.getAttribute('value');
-    if (typeof copyAddresValue === 'string' || copyAddresValue.length != 0) {
-      assert.ok(copyAddresValue, '<!> Address different than the expected <!>');
-    } */
   });
 });

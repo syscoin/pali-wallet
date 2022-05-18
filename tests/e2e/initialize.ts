@@ -1,6 +1,8 @@
 import { MOCK_SEED_PHRASE, MOCK_PASSWORD } from '../mocks';
 
-export const importWallet = async ({ driver }) => {
+import { Driver } from './driver';
+
+export const importWallet = async (driver: Driver) => {
   await driver.navigate();
 
   await driver.clickElement('#import-wallet-link');

@@ -15,14 +15,14 @@ describe('General settings', () => {
     driver = (await buildWebDriver()).driver;
 
     await driver.navigate();
-    await importWallet({ driver });
+    await importWallet(driver);
   });
 
   afterEach(async () => {
     await driver.quit();
   });
 
-  it('should check general settings button ', async () => {
+  it('should find general settings button', async () => {
     const generalSettingsButton = await driver.findElement(
       By.id('general-settings-button')
     );
@@ -30,7 +30,7 @@ describe('General settings', () => {
     expect(generalSettingsButton).toBeTruthy();
   });
 
-  it('should display the correct seed', async () => {
+  it('should copy the seed phrase', async () => {
     await driver.clickElement('#general-settings-button');
 
     // go to wallet seed phrase
@@ -44,7 +44,7 @@ describe('General settings', () => {
     expect(clipboardValue).toBe(MOCK_SEED_PHRASE);
   });
 
-  it('should open a new tab to redirect the user to syscoin discord for support', async () => {
+  it('should open syscoin discord', async () => {
     await driver.clickElement('#general-settings-button');
 
     // go to info/help

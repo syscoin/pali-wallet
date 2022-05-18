@@ -5,24 +5,22 @@ import { By } from 'selenium-webdriver';
 import { buildWebDriver, Driver } from './driver';
 import { importWallet } from './initialize';
 
-describe('Account settings tests', () => {
-  let uiWebDriver: Driver;
+describe('Account settings', () => {
+  let driver: Driver;
 
   beforeEach(async () => {
-    const { driver } = await buildWebDriver();
-
-    uiWebDriver = driver;
+    driver = (await buildWebDriver()).driver;
 
     await driver.navigate();
-    await importWallet({ driver });
+    await importWallet(driver);
   });
 
   afterEach(async () => {
-    await uiWebDriver.quit();
+    await driver.quit();
   });
 
-  it('should check account settings button', async () => {
-    const settingsButton = await uiWebDriver.findElement(
+  it('should find account settings button', async () => {
+    const settingsButton = await driver.findElement(
       By.id('account-settings-btn')
     );
 
@@ -30,24 +28,24 @@ describe('Account settings tests', () => {
   });
 
   it('should switch account', async () => {
-    await uiWebDriver.clickElement('#account-settings-btn');
-    await uiWebDriver.clickElement('#accounts-btn');
+    await driver.clickElement('#account-settings-btn');
+    await driver.clickElement('#accounts-btn');
 
     // go to create new account
-    await uiWebDriver.clickElement('#create-new-account-btn');
-    await uiWebDriver.fill('#account-name-input', 'Account 2');
+    await driver.clickElement('#create-new-account-btn');
+    await driver.fill('#account-name-input', 'Account 2');
 
     // create new account
-    await uiWebDriver.clickElement('#create-btn');
-    await uiWebDriver.clickElement('#got-it-btn');
+    await driver.clickElement('#create-btn');
+    await driver.clickElement('#got-it-btn');
 
     // go home and open the menu again
-    await uiWebDriver.clickElement('#account-settings-btn');
-    await uiWebDriver.clickElement('#accounts-btn');
+    await driver.clickElement('#account-settings-btn');
+    await driver.clickElement('#accounts-btn');
 
     // switch account
-    await uiWebDriver.clickElement('#account-1');
-    const accountLabel = await uiWebDriver.findElement('#active-account-label');
+    await driver.clickElement('#account-1');
+    const accountLabel = await driver.findElement('#active-account-label');
 
     // check if Account 2 is the active one
     const activeAccountLabelText = await accountLabel.getText();
