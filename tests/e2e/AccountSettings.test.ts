@@ -32,25 +32,29 @@ describe('Account settings tests', () => {
   it('should switch account', async () => {
     await uiWebDriver.clickElement('#account-settings-btn');
     await uiWebDriver.clickElement('#accounts-btn');
-    //  * go to create new account
+
+    // go to create new account
     await uiWebDriver.clickElement('#create-new-account-btn');
     await uiWebDriver.fill('#account-name-input', 'Account 2');
-    //  * create new account
+
+    // create new account
     await uiWebDriver.clickElement('#create-btn');
     await uiWebDriver.clickElement('#got-it-btn');
-    //  * go home and open the menu again
+
+    // go home and open the menu again
     await uiWebDriver.clickElement('#account-settings-btn');
     await uiWebDriver.clickElement('#accounts-btn');
-    //  * switch account
+
+    // switch account
     await uiWebDriver.clickElement('#account-1');
-    const activeAccountLabel = await uiWebDriver.findElement(
-      '#active-account-label'
-    );
-    const activeAccountLabelText = await activeAccountLabel.getText();
-    //  * check if Account 2 is the active one
+    const accountLabel = await uiWebDriver.findElement('#active-account-label');
+
+    // check if Account 2 is the active one
+    const activeAccountLabelText = await accountLabel.getText();
     expect(activeAccountLabelText).toBe('Account 2');
   });
 
+  /*
   it('should open the trezor popup in a new tab', async () => {
     await uiWebDriver.clickElement('#account-settings-btn');
     //  * go to hardware wallet
@@ -68,5 +72,5 @@ describe('Account settings tests', () => {
     const expectedUrl = 'https://connect.trezor.io/8/popup.html';
     //    * check if this is being redirected to https://connect.trezor.io/8/popup.html
     expect(url).toContain(expectedUrl);
-  });
+  }); */
 });
