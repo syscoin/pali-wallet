@@ -15,13 +15,12 @@ declare global {
   }
 }
 
+if (!window.controller) {
+  window.controller = Object.freeze(MasterController());
+  setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
+}
+
 browser.runtime.onInstalled.addListener(() => {
-  if (!window.controller) {
-    window.controller = Object.freeze(MasterController());
-
-    setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
-  }
-
   console.emoji('🤩', 'Pali extension enabled');
 
   sysweb3Di.getStateStorageDb().setPrefix('sysweb3-');
