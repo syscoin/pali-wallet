@@ -286,7 +286,7 @@ export const NormalHeader: React.FC = () => {
           >
             <Icon name="reload" />
           </div>
-          
+
           <Menu.Button as="button" className="z-0 mx-1.5">
             {Boolean(encryptedMnemonic) && (
               <div id="general-settings-button">
