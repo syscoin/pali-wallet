@@ -38,10 +38,7 @@ const AboutView: FC = () => {
         </p>
       </div>
 
-      <div
-        className="flex flex-col items-center justify-center w-full max-w-xs md:max-w-full"
-        id="user-support-btn"
-      >
+      <div className="flex flex-col items-center justify-center w-full max-w-xs md:max-w-full">
         <SimpleCard className="mt-4">
           <div className="flex items-center justify-start mb-4 font-poppins text-base font-bold">
             <Icon
@@ -54,6 +51,7 @@ const AboutView: FC = () => {
           </div>
 
           <p
+            id="user-support-btn"
             className="text-brand-white underline text-xs cursor-pointer"
             onClick={() =>
               handleRedirect('https://discord.com/invite/8QKeyurHRd')
