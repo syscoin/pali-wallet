@@ -36,25 +36,15 @@ const VaultState = createSlice({
   name: 'vault',
   initialState,
   reducers: {
-    setAccountTransactions(
-      state: IVaultState,
-      action: PayloadAction<{ tx: any; txid: string }>
-    ) {
-      const { txid, tx } = action.payload;
-
-      state.accounts[state.activeAccount.id] = {
-        ...state.accounts[state.activeAccount.id],
-        [txid]: tx,
-      };
+    setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
+      const { id } = state.activeAccount;
+      state.accounts[id].transactions.push(action.payload);
     },
     createAccount(
       state: IVaultState,
       action: PayloadAction<IKeyringAccountState>
     ) {
-      state.accounts = {
-        ...state.accounts,
-        [action.payload.id]: action.payload,
-      };
+      state.accounts[action.payload.id] = action.payload;
     },
     setNetworks(
       state: IVaultState,
@@ -62,13 +52,7 @@ const VaultState = createSlice({
     ) {
       const { chain, network } = action.payload;
 
-      state.networks = {
-        ...state.networks,
-        [chain]: {
-          ...state.networks[chain],
-          [network.chainId]: network,
-        },
-      };
+      state.networks[chain][network.chainId] = network;
     },
     removeNetwork(
       state: IVaultState,
@@ -107,10 +91,15 @@ const VaultState = createSlice({
     ) {
       const { property, value } = action.payload;
 
-      state.activeAccount = {
-        ...state.activeAccount,
-        [property]: value,
-      };
+      if (!(property in state.activeAccount))
+        throw new Error('Unable to set property. Unknown key');
+
+      state.activeAccount[property] = value;
+
+      const {
+        activeAccount: { id },
+      } = state;
+      state.accounts[id][property] = value;
     },
     setActiveToken(state: IVaultState, action: PayloadAction<string>) {
       state.activeToken = action.payload;
@@ -134,10 +123,10 @@ const VaultState = createSlice({
     ) {
       const { label, id } = action.payload;
 
-      state.accounts[id] = {
-        ...state.accounts[id],
-        label,
-      };
+      if (!state.accounts[id])
+        throw new Error('Unable to set label. Account not found');
+
+      state.accounts[id].label = label;
     },
   },
 });

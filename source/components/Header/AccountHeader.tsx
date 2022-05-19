@@ -26,6 +26,7 @@ const AccountMenu: React.FC = () => {
 
   return (
     <Menu
+      id="account-settings-btn"
       as="div"
       className="absolute right-3 inline-block text-right md:max-w-2xl"
     >

@@ -286,14 +286,10 @@ export const NormalHeader: React.FC = () => {
           >
             <Icon name="reload" />
           </div>
-
-          <Menu.Button
-            as="button"
-            id="general-settings-button"
-            className="mx-1.5"
-          >
+          
+          <Menu.Button as="button" className="z-0 mx-1.5">
             {Boolean(encryptedMnemonic) && (
-              <div>
+              <div id="general-settings-button">
                 <Icon
                   name="settings"
                   className="hover:text-brand-royalblue text-brand-white"
@@ -351,13 +347,11 @@ export const NormalHeader: React.FC = () => {
                   onClick={() => navigate('/settings/phrase')}
                   className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                 >
-                  <Icon
-                    name="wallet"
-                    className="ml-1 mr-4 text-brand-white"
-                    id="wallet-seed-phrase-btn"
-                  />
+                  <Icon name="wallet" className="ml-1 mr-4 text-brand-white" />
 
-                  <span className="px-3">Wallet Seed Phrase</span>
+                  <span id="wallet-seed-phrase-btn" className="px-3">
+                    Wallet Seed Phrase
+                  </span>
                 </li>
               </Menu.Item>
 
