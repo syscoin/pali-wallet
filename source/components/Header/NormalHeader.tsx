@@ -52,7 +52,7 @@ export const NormalHeader: React.FC = () => {
   }, [wallet.isUnlocked()]);
 
   const NetworkMenu = () => (
-    <Menu as="div" className="absolute left-2 inline-block mr-8 text-left">
+    <Menu as="div" className="absolute z-0 left-2 inline-block mr-8 text-left">
       {(menuprops) => (
         <>
           <Menu.Button className="z-0 inline-flex gap-x-2 items-center justify-start ml-2 w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
@@ -75,9 +75,8 @@ export const NormalHeader: React.FC = () => {
             leave="transition ease-in duration-75"
             leaveFrom="opacity-100 scale-100"
             leaveTo="transform opacity-0 scale-95"
-            className="z-40"
           >
-            <div className="fixed z-50 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
+            <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
 
             <Menu.Items
               as="div"
@@ -263,27 +262,27 @@ export const NormalHeader: React.FC = () => {
   const GeneralMenu = () => (
     <Menu
       as="div"
-      className="absolute z-50 right-2 top-2 flex items-center justify-evenly"
+      className="absolute z-0 right-2 top-2 flex items-center justify-evenly"
     >
       {() => (
         <>
           <Tooltip content={ellipsis(currentTabURL, 25, 0)}>
             <div
               onClick={() => navigate('/settings/networks/connected-sites')}
-              className="relative z-0 mx-1.5 text-brand-white cursor-pointer"
+              className="relative mx-1.5 text-brand-white cursor-pointer"
             >
               <Icon
                 name="globe"
                 className="hover:text-brand-royalblue text-white"
               />
 
-              <Badge className="s absolute -right-1 top-1 w-3 h-3 text-warning-error bg-warning-error rounded-full" />
+              <Badge className="absolute -right-1 top-1 w-3 h-3 text-warning-error bg-warning-error rounded-full" />
             </div>
           </Tooltip>
 
           <div
             onClick={() => handleRefresh(false)}
-            className="z-0 mx-1.5 hover:text-brand-royalblue text-brand-white cursor-pointer"
+            className="mx-1.5 hover:text-brand-royalblue text-brand-white cursor-pointer"
           >
             <Icon name="reload" />
           </div>
@@ -291,7 +290,7 @@ export const NormalHeader: React.FC = () => {
           <Menu.Button
             as="button"
             id="general-settings-button"
-            className="z-0 mx-1.5"
+            className="mx-1.5"
           >
             {Boolean(encryptedMnemonic) && (
               <div>
@@ -312,7 +311,7 @@ export const NormalHeader: React.FC = () => {
             leaveFrom="opacity-100 scale-100"
             leaveTo="transform opacity-0 scale-95"
           >
-            <div className="fixed z-40 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
+            <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
 
             <Menu.Items
               as="div"
