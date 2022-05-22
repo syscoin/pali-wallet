@@ -55,7 +55,9 @@ export const Start = () => {
             () => ({
               async validator(_, value) {
                 if (await checkPassword(value)) {
-                  return Promise.resolve();
+                  return Promise.resolve().then(
+                    async () => await onSubmit({ password: value })
+                  );
                 }
 
                 return Promise.reject();
