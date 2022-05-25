@@ -122,7 +122,7 @@ export const Home = () => {
           <TxsPanel />
         </>
       ) : (
-        <Loading />
+        <Loading opacity={100} />
       )}
     </div>
   );

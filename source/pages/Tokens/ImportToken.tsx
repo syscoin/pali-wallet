@@ -204,7 +204,7 @@ export const ImportToken: FC = () => {
         </div>
       </div>
 
-      {isLoading && <Loading opacity={60} />}
+      {isLoading && <Loading />}
     </Layout>
   );
 };
