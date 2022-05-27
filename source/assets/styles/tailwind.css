@@ -10,34 +10,18 @@ input {
   @apply outline-none;
 }
 
+div[role='alert'] {
+  @apply absolute left-1/4 right-1/4 text-center text-brand-white text-base font-light;
+}
+
 /* Firefox */
 input[type='number'] {
   -moz-appearance: textfield;
 }
 
+/* scrollbar */
 .remove-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-
-.remove-scrollbar {
-  -ms-overflow-style: none;
-  /* IE and Edge */
-  scrollbar-width: none; /* Firefox */
-}
-
-input[type='number']::-webkit-outer-spin-button,
-input[type='number']::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.ant-form-item-control-input-content > textarea {
-  @apply p-2 pl-4 w-full h-20 text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none;
-}
-
-.ant-input-affix-wrapper.ant-input-password > input,
-.ant-input-affix-wrapper.ant-input > input {
-  @apply p-2 pl-4 w-full text-brand-graylight text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full;
+  @apply hidden;
 }
 
 .scrollbar-styled::-webkit-scrollbar {
@@ -62,55 +46,78 @@ input[type='number']::-webkit-inner-spin-button {
   scrollbar-width: thin;
 }
 
-/* unauth/create/pass inputs */
+.remove-scrollbar {
+  /* IE and Edge */
+  -ms-overflow-style: none;
+  /* Firefox */
+  scrollbar-width: none;
+}
+
+/* end */
+
+/* put textfield appearance on number inputs by removing spin */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* end */
+
+/* password inputs */
+.password > .ant-input {
+  @apply p-2 pl-4 w-full text-brand-graylight text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full;
+}
+
 .ant-input-affix-wrapper.ant-input-password {
   @apply relative;
+}
+
+/* end */
+
+/* inputs */
+.ant-input {
+  @apply w-full bg-fields-input-primary;
+}
+
+.small > .ant-input {
+  @apply block px-4 py-2 w-72 text-sm border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-96;
+}
+
+.large > .ant-input {
+  @apply block pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full;
+}
+
+.large > .ant-input > .ant-input-suffix {
+  @apply absolute right-2 top-2.5 text-bkg-4;
+}
+
+.standard .ant-input-suffix {
+  @apply top-0.5;
 }
 
 .ant-form-item-control-input-content {
   @apply w-full;
 }
 
-.ant-form-item-control-input-content > textarea {
-  @apply p-2 pl-4 w-full h-20 text-brand-graylight text-sm border rounded-lg outline-none resize-none;
-}
-
-.ant-input-affix-wrapper.ant-input-password > input {
-  @apply p-2 pl-4 w-full text-brand-graylight text-sm bg-fields-input-primary border border-fields-input-border rounded-full;
-}
-
 .ant-input-suffix {
   @apply absolute right-2 text-bkg-4;
 }
 
+/* #autolock .ant-input-suffix {
+  @apply top-0.5;
+} */
+
+.ant-form-item-feedback-icon {
+  @apply ml-2;
+}
+
+.ant-form-item-feedback-icon-error {
+  @apply ml-2;
+}
+
 .ant-form-item-control-input {
   @apply relative flex items-center justify-center;
-}
-
-.ant-form-item-children-icon {
-  @apply absolute right-4 top-1.5 text-bkg-4;
-}
-
-#rpc .ant-form-item-children-icon {
-  @apply absolute right-4 top-0;
-}
-
-#login .ant-form-item-children-icon,
-#delete .ant-form-item-children-icon,
-.password .ant-form-item-children-icon {
-  @apply absolute right-8 top-0.5 text-bkg-4;
-}
-
-#autolock .ant-form-item-children-icon {
-  @apply absolute right-2 top-0;
-}
-
-.ant-form-item-explain.ant-form-item-explain-error {
-  @apply relative;
-}
-
-div[role='alert'] {
-  @apply absolute left-1/4 right-1/4 text-center text-brand-white text-base font-light;
 }
 
 .anticon.anticon-check-circle {

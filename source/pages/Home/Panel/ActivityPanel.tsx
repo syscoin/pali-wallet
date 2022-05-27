@@ -1,21 +1,25 @@
 import { Fullscreen } from 'components/Fullscreen';
-import { getController } from 'utils/browser';
 import React, { FC } from 'react';
+import { useStore } from 'hooks/useStore';
 
 import { PanelList } from './components/PanelList';
 
 export const ActivityPanel: FC = () => {
-  const activeAccount = getController().wallet.account.getActiveAccount();
+  const { activeAccount, activeNetwork, networks } = useStore();
+
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
   return (
     <>
       <div className="p-4 w-full h-full text-white text-base bg-bkg-3">
-        {activeAccount?.transactions &&
+        {activeAccount &&
+        activeAccount.transactions &&
         activeAccount.transactions.length > 0 ? (
           <PanelList
-            data={activeAccount?.transactions}
+            data={activeAccount.transactions}
             activity
             assets={false}
+            isSyscoinChain={isSyscoinChain}
           />
         ) : (
           <p className="flex items-center justify-center text-brand-white text-sm">

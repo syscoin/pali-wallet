@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useUtils } from 'hooks/index';
+import { useUtils, useStore } from 'hooks/index';
 import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 import { QRCodeSVG } from 'qrcode.react';
@@ -10,18 +10,26 @@ export const Receive = () => {
   const [isCopied, copyText] = useCopyClipboard();
 
   const controller = getController();
-  const activeAccount = controller.wallet.account.getActiveAccount();
+  const { activeAccount, activeNetwork, networks } = useStore();
 
   const [loaded, setLoaded] = useState<boolean>(false);
 
   useEffect(() => {
-    const getNewAddress = async () => {
-      if (await controller.wallet.getNewAddress()) {
+    const setNewAddress = async () => {
+      if (
+        (activeNetwork.chainId === 57 || activeNetwork.chainId === 5700) &&
+        (await controller.wallet.account.sys.setAddress())
+      ) {
         setLoaded(true);
+
+        return;
       }
+
+      if (activeAccount.address && networks.ethereum[activeNetwork.chainId])
+        setLoaded(true);
     };
 
-    getNewAddress();
+    setNewAddress();
   }, []);
 
   useEffect(() => {
@@ -32,12 +40,15 @@ export const Receive = () => {
   }, [isCopied]);
 
   return (
-    <Layout title="RECEIVE SYS" id="receiveSYS-title">
+    <Layout
+      title={`RECEIVE ${activeNetwork.currency?.toUpperCase()}`}
+      id="receiveSYS-title"
+    >
       {loaded && activeAccount ? (
         <div className="flex flex-col items-center justify-center pt-8 w-full">
           <div id="qr-code">
             <QRCodeSVG
-              value={activeAccount.address.main}
+              value={activeAccount.address}
               bgColor="#fff"
               fgColor="#000"
               style={{
@@ -50,7 +61,7 @@ export const Receive = () => {
           </div>
 
           <p className="mt-4 text-base">
-            {ellipsis(activeAccount.address.main, 4, 10)}
+            {ellipsis(activeAccount.address, 4, 10)}
           </p>
 
           <div
@@ -59,7 +70,7 @@ export const Receive = () => {
           >
             <SecondaryButton
               type="button"
-              onClick={() => copyText(activeAccount.address.main)}
+              onClick={() => copyText(activeAccount.address)}
             >
               <span className="text-xs">Copy</span>
             </SecondaryButton>

@@ -12,17 +12,13 @@ const CreateAccount = () => {
   const controller = getController();
   const navigate = useNavigate();
 
-  const onSubmit = async (data: any) => {
+  const onSubmit = async ({ label }: { label?: string }) => {
     setLoading(true);
 
-    const response = await controller.wallet.addNewAccount(data.label);
+    const { address } = await controller.wallet.createAccount(label);
 
-    if (response) {
-      setAddress(response);
-      setLoading(false);
-
-      await controller.wallet.account.updateTokensState();
-    }
+    setAddress(address);
+    setLoading(false);
   };
 
   return (
@@ -39,7 +35,7 @@ const CreateAccount = () => {
         />
       ) : (
         <Form
-          className="flex flex-col gap-8 items-center justify-center pt-4 text-center md:w-full"
+          className="standard flex flex-col gap-8 items-center justify-center pt-4 text-center md:w-full"
           name="newaccount"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
@@ -49,6 +45,7 @@ const CreateAccount = () => {
           <Form.Item
             name="label"
             className="md:w-full"
+            hasFeedback
             rules={[
               {
                 required: false,
@@ -57,7 +54,8 @@ const CreateAccount = () => {
             ]}
           >
             <Input
-              className="phrase-input px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
+              type="text"
+              className="large"
               placeholder="Name your new account (optional)"
               id="account-name-input"
             />

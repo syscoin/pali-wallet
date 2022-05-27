@@ -47,6 +47,11 @@
     "react-hooks/rules-of-hooks": "error",
     "no-use-before-define": "off",
     "import/extensions": "off",
+    "react/no-array-index-key": "off",
+    "no-return-await": "off",
+    "@typescript-eslint/return-await": "off",
+    "@typescript-eslint/naming-convention": "off",
+    "no-nested-ternary": "off",
     "react/jsx-filename-extension": "off",
     "no-confusing-arrow": "off",
     "react/jsx-one-expression-per-line": "off",
@@ -80,6 +85,8 @@
     "@typescript-eslint/indent": "off",
     "@typescript-eslint/no-var-requires": "off",
     "no-await-in-loop": "off",
+    "no-shadow": "off",
+    "camelcase": "off",
     "prettier/prettier": [
       "error",
       {

@@ -34,9 +34,7 @@
     "test-all": "yarn lint && yarn test:unit"
   },
   "lint-staged": {
-    "*.@(ts|tsx|js|jsx)": [
-      "yarn format"
-    ]
+    "*.@(ts|tsx|js|jsx)": "eslint --fix"
   },
   "dependencies": {
     "@ant-design/icons": "^4.7.0",
@@ -45,8 +43,12 @@
     "@babel/preset-typescript": "^7.13.0",
     "@babel/register": "^7.17.0",
     "@babel/runtime": "^7.14.0",
-    "@headlessui/react": "^1.4.2",
+    "@headlessui/react": "^1.6.0",
     "@heroicons/react": "^1.0.5",
+    "@pollum-io/sysweb3-core": "^1.0.16",
+    "@pollum-io/sysweb3-keyring": "^1.0.288",
+    "@pollum-io/sysweb3-network": "^1.0.37",
+    "@pollum-io/sysweb3-utils": "^1.1.144",
     "@reduxjs/toolkit": "^1.4.0",
     "@tippyjs/react": "^4.2.6",
     "@types/chrome": "^0.0.177",
@@ -70,6 +72,7 @@
     "bech32": "^2.0.0",
     "bip174": "^2.0.1",
     "bip39": "^3.0.4",
+    "bip44-constants": "^114.0.0",
     "bip84": "^0.2.7",
     "bowser": "^2.11.0",
     "clsx": "^1.1.1",
@@ -85,13 +88,18 @@
     "eslint-config-prettier": "^6.15.0",
     "eslint-plugin-import": "^2.23.3",
     "eslint-plugin-jsx-a11y": "^6.4.1",
+    "eth-sig-util": "^3.0.1",
+    "ethers": "^5.6.4",
     "fs-extra": "^10.0.0",
+    "graphql": "^16.3.0",
+    "graphql-request": "^4.2.0",
     "jdenticon": "^3.1.1",
     "jest": "^27.4.0",
     "jest-chrome": "^0.7.2",
     "lint-staged": "^12.1.7",
     "lodash": "^4.17.20",
     "neo-async": "^2.6.2",
+    "node-fetch": "^3.2.3",
     "npm-check-updates": "^12.1.0",
     "postcss": "^8.4.5",
     "prettier-eslint": "^13.0.0",
@@ -109,7 +117,8 @@
     "redux-watch": "^1.2.0",
     "sass": "^1.32.12",
     "selenium-webdriver": "^4.1.1",
-    "syscoinjs-lib": "^1.0.199",
+    "serialize-javascript": "^6.0.0",
+    "syscoinjs-lib": "^1.0.212",
     "syscointx-js": "^1.0.90",
     "tailwindcss": "npm:@tailwindcss/postcss7-compat",
     "tippy.js": "^6.3.7",

@@ -16,7 +16,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
   const [seedIsValid, setSeedIsValid] = useState<boolean>();
 
   const onSubmit = ({ phrase }: { phrase: string }) => {
-    if (controller.wallet.importPhrase(phrase)) {
+    if (controller.wallet.validateSeed(phrase)) {
       onRegister();
     }
   };
@@ -48,10 +48,12 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
             () => ({
               validator(_, value) {
                 value = formatSeedPhrase(value);
-                form.setFieldsValue({ phrase: value });
-                setSeedIsValid(controller.wallet.importPhrase(value) && value);
 
-                if (controller.wallet.importPhrase(value)) {
+                form.setFieldsValue({ phrase: value });
+
+                setSeedIsValid(controller.wallet.validateSeed(value) && value);
+
+                if (controller.wallet.validateSeed(value)) {
                   return Promise.resolve();
                 }
 
@@ -65,7 +67,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
               !seedIsValid && form.getFieldValue('phrase')
                 ? 'border-warning-error'
                 : 'border-fields-input-border'
-            } bg-fields-input-primary`}
+            } bg-fields-input-primary p-2 pl-4 w-full h-20 text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none`}
             placeholder="Paste your wallet seed phrase"
             id="import-wallet-input"
             onKeyPress={handleKeypress}

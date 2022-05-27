@@ -9,9 +9,9 @@ import { getController } from 'utils/browser';
 export const Start = () => {
   const { navigate } = useUtils();
   const {
-    wallet: { unLock },
+    wallet: { unlock, checkPassword },
   } = getController();
-  const { encriptedMnemonic } = useStore();
+  const { encryptedMnemonic } = useStore();
 
   const getStarted = (
     <>
@@ -28,11 +28,13 @@ export const Start = () => {
     </>
   );
 
-  const onSubmit = async (data: any) => {
-    await unLock(data.password);
+  const onSubmit = async ({ password }: { password: string }) => {
+    await unlock(password);
+
+    navigate('/home');
   };
 
-  const unlock = (
+  const unLock = (
     <>
       <Form
         className="flex flex-col gap-8 items-center justify-center w-full max-w-xs text-center md:max-w-md"
@@ -52,8 +54,10 @@ export const Start = () => {
             },
             () => ({
               async validator(_, value) {
-                if (await unLock(value)) {
-                  return Promise.resolve();
+                if (await checkPassword(value)) {
+                  return Promise.resolve().then(
+                    async () => await onSubmit({ password: value })
+                  );
                 }
 
                 return Promise.reject();
@@ -61,7 +65,10 @@ export const Start = () => {
             }),
           ]}
         >
-          <Input.Password placeholder="Enter your password" />
+          <Input.Password
+            className="password"
+            placeholder="Enter your password"
+          />
         </Form.Item>
 
         <PrimaryButton type="submit" id="unlock-btn">
@@ -90,7 +97,7 @@ export const Start = () => {
 
       <img src={LogoImage} className="my-8 w-52" alt="syscoin" />
 
-      {encriptedMnemonic ? unlock : getStarted}
+      {encryptedMnemonic ? unLock : getStarted}
     </div>
   );
 };

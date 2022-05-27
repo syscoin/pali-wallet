@@ -26,7 +26,6 @@ const extensionReloaderPlugin =
           // TODO: reload manifest on update
           contentScript: 'contentScript',
           background: 'background',
-          inpage: 'inpage',
           extensionPage: ['popup'],
           trezorScript: 'trezorScript',
         },
@@ -68,7 +67,6 @@ module.exports = {
       'lib/index.js'
     ),
     background: path.join(sourcePath, 'scripts/Background', 'index.ts'),
-    inpage: path.join(sourcePath, 'scripts/ContentScript', 'inpage.ts'),
     contentScript: path.join(sourcePath, 'scripts/ContentScript', 'index.ts'),
     app: path.join(sourcePath, 'pages/App', 'index.tsx'),
     trezorScript: path.join(
@@ -128,7 +126,8 @@ module.exports = {
         loader: 'file-loader',
         exclude: /node_modules/,
         options: {
-          name: '/source/assets/images/[name].[ext]',
+          name: '[path][name].[ext]',
+          publicPath: '/',
         },
       },
       {

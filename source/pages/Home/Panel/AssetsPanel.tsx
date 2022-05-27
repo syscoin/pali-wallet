@@ -1,21 +1,40 @@
 import { Fullscreen } from 'components/Fullscreen';
-import { getController } from 'utils/browser';
 import React, { FC } from 'react';
+import { useStore, useUtils } from 'hooks/index';
 
 import { PanelList } from './components/PanelList';
 
 export const AssetsPanel: FC = () => {
-  const activeAccount = getController().wallet.account.getActiveAccount();
+  const { navigate } = useUtils();
+  const { activeNetwork, networks, activeAccount } = useStore();
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
   return (
     <>
       <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
-        {activeAccount?.assets && activeAccount?.assets.length > 0 ? (
-          <PanelList data={activeAccount?.assets} activity={false} assets />
+        {activeAccount.assets &&
+        Object.values(activeAccount.assets).length > 0 ? (
+          <PanelList
+            isSyscoinChain={isSyscoinChain}
+            data={Object.values(activeAccount.assets)}
+            activity={false}
+            assets
+          />
         ) : (
-          <p className="flex items-center justify-center text-brand-white text-sm">
-            You have no tokens or NFTs.
-          </p>
+          <div className="flex items-center justify-center text-brand-white text-sm">
+            {isSyscoinChain ? (
+              'You have no tokens or NFTs.'
+            ) : (
+              <>
+                <p
+                  className="hover:text-brand-royalbluemedium cursor-pointer"
+                  onClick={() => navigate('/import-token')}
+                >
+                  Import token
+                </p>
+              </>
+            )}
+          </div>
         )}
       </ul>
 

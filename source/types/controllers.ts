@@ -1,111 +1,114 @@
-import { IAccountState, INetwork } from 'state/wallet/types';
-
 import {
-  MintAsset,
-  NewAsset,
-  NewNFT,
-  SendAsset,
-  TransferAsset,
-  UpdateAsset,
-  TemporaryTransaction,
-} from './transactions';
+  IKeyringAccountState,
+  INetwork,
+  KeyringManager,
+  ITokenMap,
+} from '@pollum-io/sysweb3-utils';
+import { AxiosResponse } from 'axios';
 
-export interface IWalletController {
-  account: Readonly<IAccountController>;
-  addNewAccount: (label?: string) => Promise<string | null>;
-  checkPassword: (pwd: string) => boolean;
-  createWallet: (isUpdated?: boolean) => void;
-  encryptedPassword: string;
+export interface MainController extends KeyringManager {
+  account: any;
+  addCustomRpc: (network: INetwork) => Promise<INetwork | Error>;
+  createAccount: (label?: string) => Promise<IKeyringAccountState>;
+  createWallet: () => Promise<IKeyringAccountState>;
   forgetWallet: (pwd: string) => void;
-  generatePhrase: () => string | null;
-  getNewAddress: () => Promise<boolean>;
-  getPhrase: (pwd: string) => string | null;
-  importPhrase: (phr: string) => boolean;
-  isLocked: () => boolean;
-  logOut: () => void;
-  mnemonic: string;
-  password: string;
-  setWalletPassword: (pwd: string) => void;
-  switchNetwork: (networkId: string) => void;
-  switchWallet: (id: number) => void;
-  trezor: Readonly<any>;
-  unLock: (pwd: string) => Promise<boolean>;
+  lock: () => void;
+  setAccount: (id: number) => void;
+  setActiveNetwork: (
+    chain: string,
+    chainId: number
+  ) => Promise<IKeyringAccountState>;
+  setAutolockTimer: (minutes: number) => void;
+  unlock: (pwd: string) => Promise<void>;
 }
 
-export interface IAccountController {
-  clearTemporaryTransaction: (item: string) => void;
-  confirmAssetTransfer: (item: TransferAsset) => any;
-  confirmCreateNFT: (item: NewNFT) => any;
-  confirmMintNFT: (item: any) => any;
-  confirmMintSPT: (item: MintAsset) => any;
-  confirmSPTCreation: (item: NewAsset) => any;
-  confirmSendAssetTransaction: (items: SendAsset) => any;
-  confirmTemporaryTransaction: ({
-    type: string,
-    callback: any,
-  }) => Promise<any>;
-  confirmUpdateAsset: (item: UpdateAsset) => any;
-  connectedAccountXpub: string | null;
-  decryptAES: (encryptedString: any, key: string) => any;
-  getActiveAccount: () => IAccountState | undefined;
-  getChangeAddress: () => Promise<string>;
-  getConnectedAccount: () => IAccountState;
-  getDataAsset: (assetGuid: any) => any;
-  getHoldingsData: () => any;
-  getLatestUpdate: () => void;
-  getPrimaryAccount: (pwd: string, sjs: any) => void;
-  getRawTransaction: (txid: string) => any;
-  getRecommendFee: () => Promise<number>;
-  getSysExplorerSearch: () => string;
-  getTemporaryTransaction: (type: string) => any;
-  getTransactionInfoByTxId: (txid: any) => any;
-  getUserMintedTokens: () => any;
-  importPsbt: (psbt: any) => any;
+export type CoingeckoCoins = {
+  contract_address?: string;
+  id: string;
+  large: string;
+  market_cap_rank: number;
+  name: string;
+  symbol: string;
+  thumb: string;
+};
+
+export interface EthTokenDetails {
+  contract: string;
+  decimals: number;
+  description: string;
+  id: string;
+  name: string;
+  symbol: string;
+}
+
+export interface IControllerUtils {
+  appRoute: (newRoute?: string) => string;
+  getAsset: (
+    explorerUrl: string,
+    assetGuid: string
+  ) => Promise<{
+    assetGuid: string;
+    contract: string;
+    decimals: number;
+    maxSupply: string;
+    pubData: any;
+    symbol: string;
+    totalSupply: string;
+    updateCapabilityFlags: number;
+  }>;
+  getDataForToken: (tokenId: string) => any;
+  getFeeRate: (fee: number) => BigInt;
+  getGasUsedInTransaction: (transactionHash: string) => Promise<{
+    effectiveGasPrice: number;
+    gasUsed: number;
+  }>;
+  getPsbtFromJson: (psbt: JSON) => string;
+  getRawTransaction: (explorerUrl: string, txid: string) => any;
+  getSearch: (query: string) => Promise<
+    AxiosResponse<
+      {
+        categories: any[];
+        coins: CoingeckoCoins[];
+        exchanges: any[];
+        icos: any[];
+        nfts: any[];
+      },
+      any
+    >
+  >;
+  getTokenDataByContractAddress: (address: string, platform: string) => any;
+  getTokenJson: () => {
+    address: string;
+    chainId: number;
+    decimals: number;
+    logoURI: string;
+    name: string;
+    symbol: string;
+  }[];
+  getTokenMap: ({
+    guid,
+    changeAddress,
+    amount,
+    receivingAddress,
+  }: {
+    amount: number;
+    changeAddress: string;
+    guid: number | string;
+    receivingAddress: string;
+  }) => ITokenMap;
+  importToken: (contractAddress: string) => Promise<any>;
+  isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
   isValidSYSAddress: (
     address: string,
-    network: string,
+    activeNetwork: INetwork,
     verification?: boolean
-  ) => boolean | undefined;
-  setAutolockTimer: (minutes: number) => any;
-  setHDSigner: (accountId: number) => any;
-  setNewAddress: (addr: string) => boolean;
-  setNewXpub: (id: number, xpub: string, xprv: string, key: string) => void;
-  signTransaction: (psbt: any, type: boolean) => any;
-  subscribeAccount: (
-    isHardwareWallet: boolean,
-    sjs?: any,
-    label?: string,
-    walletCreation?: boolean
-  ) => Promise<string | null>;
-  temporaryTransaction: TemporaryTransaction;
-  updateAccountLabel: (id: number, label: string) => void;
-  updateNetworkData: (network: INetwork) => void;
-  updateTemporaryTransaction: ({ tx: any, type: string }) => any;
-  updateTokensState: () => any;
-  updateTxs: () => void;
-  watchMemPool: (currentAccount: IAccountState) => void;
-}
-
-export interface IConnectionsController {
-  connectWallet: () => any;
-  getChangeAddress: () => any | null;
-  getConnectedAccount: () => any | null;
-  getConnectedAccountXpub: () => any | null;
-  getDataAsset: (assetGuid: any) => any | null;
-  getHoldingsData: () => any | null;
-  getUserMintedTokens: () => Promise<any> | null;
-  getWalletState: () => any | null;
-  handleCreateNFT: (items: NewNFT) => Promise<any> | null;
-  handleCreateToken: (items: NewAsset) => Promise<any> | null;
-  handleIssueNFT: (amount: number, assetGuid: string) => Promise<any> | null;
-  handleIssueSPT: (items: MintAsset) => Promise<any> | null;
-  handleSendToken: (items: SendAsset) => Promise<any> | null;
-  handleTransferOwnership: (items: TransferAsset) => Promise<any> | null;
-  handleUpdateAsset: (items: UpdateAsset) => Promise<any> | null;
-  isLocked: () => any;
-  isNFT: (guid: number) => boolean | null;
-  isValidSYSAddress: (address: string) => any | null;
-  onWalletUpdate: (callback: any) => any;
-  signAndSend: (psbt: any) => Promise<any> | null;
-  signPSBT: (psbtToSign: any) => Promise<any> | null;
+  ) => boolean;
+  setFiat: (currency?: string, assetId?: string) => Promise<void>;
+  setFiatCurrencyForWallet: ({
+    base,
+    currency,
+  }: {
+    base: string;
+    currency: string;
+  }) => any;
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Header, Icon, Button } from 'components/index';
+import { Header, Icon, Button, Loading } from 'components/index';
 import { useStore, usePrice, useUtils } from 'hooks/index';
 import { formatNumber, getSymbolByChain } from 'utils/index';
 import { getController } from 'utils/browser';
@@ -8,63 +8,83 @@ import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = getController();
+  const {
+    networks,
+    activeNetwork,
+    fiat,
+    activeAccount,
+    lastLogin,
+    isPendingBalances,
+  } = useStore();
   const [symbol, setSymbol] = useState('SYS');
+  const [fiatPriceValue, setFiatPriceValue] = useState('');
+
   const { getFiatAmount } = usePrice();
 
-  const { navigate, handleRefresh } = useUtils();
-  const activeAccount = controller.wallet.account.getActiveAccount();
+  const { navigate } = useUtils();
 
-  const { accounts, activeNetwork, fiat } = useStore();
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+  const chain = isSyscoinChain ? 'syscoin' : 'ethereum';
+
+  const balance = isSyscoinChain
+    ? activeAccount.balances.syscoin
+    : activeAccount.balances.ethereum;
 
   const setChainSymbol = async () => {
-    const sb = await getSymbolByChain(activeNetwork);
-    console.log('curr symb', sb, activeNetwork);
-    setSymbol(sb);
+    const symbol = await getSymbolByChain(chain);
+
+    setSymbol(symbol);
+
+    return symbol;
   };
 
-  useEffect(() => {
-    if (!controller.wallet.isLocked() && accounts.length > 0 && activeAccount)
-      handleRefresh();
-    setChainSymbol();
-  }, [!controller.wallet.isLocked(), accounts.length > 0]);
+  const getFiatPrice = async () => {
+    const amount = await getFiatAmount(
+      balance || 0,
+      4,
+      String(fiat.asset).toUpperCase()
+    );
 
-  const isTestnet = activeNetwork === 'testnet';
-  const isNotTestnet = activeNetwork === 'main' ? 'SYS' : symbol;
+    setFiatPriceValue(String(amount));
+
+    return amount;
+  };
+
+  const isUnlocked =
+    controller.wallet.isUnlocked() && activeAccount.address !== '';
+
+  useEffect(() => {
+    setChainSymbol();
+    getFiatPrice();
+  }, [isUnlocked, activeNetwork]);
+
+  const isSysTestnet = activeNetwork.chainId === 5700;
+  const symbolByChain = isSysTestnet ? 'tsys' : symbol;
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
-      {activeAccount ? (
+      {activeAccount && lastLogin && isUnlocked && !isPendingBalances ? (
         <>
           <Header accountHeader />
 
           <section className="flex flex-col gap-1 items-center py-14 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
-              {activeNetwork && (
-                <>
-                  <div className="balance-account flex gap-x-0.5 items-center justify-center">
-                    <p
-                      id="home-balance"
-                      className="font-rubik text-5xl font-medium"
-                    >
-                      {formatNumber(activeAccount?.balance || 0)}{' '}
-                    </p>
+              <div className="balance-account flex gap-x-0.5 items-center justify-center">
+                <p
+                  id="home-balance"
+                  className="font-rubik text-5xl font-medium"
+                >
+                  {formatNumber(balance || 0)}{' '}
+                </p>
 
-                    <p className="mt-4 font-poppins">
-                      {isTestnet ? 'TSYS' : isNotTestnet}
-                    </p>
-                  </div>
+                <p className="mt-4 font-poppins">
+                  {activeNetwork.currency
+                    ? activeNetwork.currency.toUpperCase()
+                    : symbolByChain.toUpperCase()}
+                </p>
+              </div>
 
-                  {activeNetwork !== 'testnet' && (
-                    <p id="fiat-ammount">
-                      {getFiatAmount(
-                        activeAccount.balance || 0,
-                        4,
-                        String(fiat.current)
-                      )}
-                    </p>
-                  )}
-                </>
-              )}
+              <p id="fiat-ammount">{!isSysTestnet ? fiatPriceValue : null}</p>
             </div>
 
             <div className="flex gap-x-0.5 items-center justify-center pt-8 w-3/4 max-w-md">
@@ -102,9 +122,7 @@ export const Home = () => {
           <TxsPanel />
         </>
       ) : (
-        <div className="fixed z-20 flex items-center justify-center w-full min-w-popup h-full min-h-popup bg-bkg-2">
-          <Icon name="loading" className="ml-2 w-4 text-brand-white" />
-        </div>
+        <Loading opacity={100} />
       )}
     </div>
   );

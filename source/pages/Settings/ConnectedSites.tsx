@@ -2,15 +2,13 @@ import { Layout, Icon, IconButton, SecondaryButton } from 'components/index';
 import React, { Fragment, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { browser } from 'webextension-polyfill-ts';
-import { useUtils } from 'hooks/index';
+import { useUtils, useStore } from 'hooks/index';
 import { formatUrl, ellipsis } from 'utils/index';
-import { getController } from 'utils/browser';
 
 const ConnectedSites = (): any => {
   const { navigate } = useUtils();
 
-  const accountController = getController().wallet.account;
-  const activeAccount = accountController.getActiveAccount();
+  const { activeAccount } = useStore();
 
   const [selected, setSelected] = useState<string>('');
 
@@ -28,13 +26,11 @@ const ConnectedSites = (): any => {
   return (
     <Layout title="CONNECTED SITES">
       <p className="m-4 max-w-xs text-white text-xs md:max-w-md">
-        {activeAccount?.connectedTo.length
-          ? `${activeAccount.label} is connected to:`
-          : `${activeAccount?.label} is not connected to any sites. To connect to a SYS platform site, find the connect button on their site.`}
+        {`${activeAccount?.label} is not connected to any sites. To connect to a SYS platform site, find the connect button on their site.`}
       </p>
 
       <div className="flex flex-col items-center justify-center w-full">
-        {activeAccount?.connectedTo &&
+        {/* {activeAccount?.connectedTo &&
           activeAccount.connectedTo.map((url: string) => (
             <ul
               key={url}
@@ -42,13 +38,12 @@ const ConnectedSites = (): any => {
             >
               <li className="flex items-center justify-between my-2 py-3 w-full text-xs border-b border-dashed border-gray-500">
                 <p>{formatUrl(url, 25)}</p>
-
                 <IconButton onClick={() => setSelected(url)}>
                   <Icon name="edit" wrapperClassname="w-4" />
                 </IconButton>
               </li>
             </ul>
-          ))}
+          ))} */}
 
         {selected && (
           <Transition appear show={selected !== ''} as={Fragment}>
@@ -118,7 +113,7 @@ const ConnectedSites = (): any => {
                           </p>
 
                           <p className="text-brand-white text-xs">
-                            {ellipsis(activeAccount?.address.main)}
+                            {ellipsis(activeAccount?.address)}
                           </p>
                         </div>
 

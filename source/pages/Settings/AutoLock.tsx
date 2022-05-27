@@ -17,7 +17,7 @@ const AutolockView = () => {
   const onSubmit = (data: any) => {
     setLoading(true);
 
-    controller.wallet.account.setAutolockTimer(data.minutes);
+    controller.wallet.setAutolockTimer(data.minutes);
 
     setConfirmed(true);
     setLoading(false);
@@ -41,7 +41,7 @@ const AutolockView = () => {
       />
 
       <Form
-        className="flex flex-col gap-8 items-center justify-center text-center"
+        className="standard flex flex-col gap-8 items-center justify-center text-center"
         name="autolock"
         id="autolock"
         onFinish={onSubmit}
@@ -52,6 +52,7 @@ const AutolockView = () => {
       >
         <Form.Item
           name="minutes"
+          className="w-full"
           hasFeedback
           rules={[
             {
@@ -71,11 +72,7 @@ const AutolockView = () => {
             }),
           ]}
         >
-          <Input
-            type="number"
-            placeholder="Minutes"
-            className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-96"
-          />
+          <Input type="number" placeholder="Minutes" className="small" />
         </Form.Item>
 
         <div className="absolute bottom-12 md:static">

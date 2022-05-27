@@ -5,8 +5,13 @@ export const getAssetBalance = (
   activeAccount
 ) => {
   if (selectedAsset) {
-    const value = selectedAsset.balance / 10 ** selectedAsset.decimals;
-    return `${value.toFixed(selectedAsset.decimals)} ${selectedAsset.symbol}`;
+    const value = Number(
+      selectedAsset.symbol === 'ETH'
+        ? activeAccount.balances.ethereum
+        : selectedAsset.balance
+    );
+
+    return `${value.toFixed(8)} ${selectedAsset.symbol}`;
   }
 
   return `${activeAccount?.balance.toFixed(8)} SYS`;

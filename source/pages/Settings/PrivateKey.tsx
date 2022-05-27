@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useUtils } from 'hooks/index';
+import { useUtils, useStore } from 'hooks/index';
 import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 import {
@@ -13,7 +13,7 @@ import { Input, Form } from 'antd';
 
 const PrivateKeyView = () => {
   const controller = getController();
-  const activeAccount = controller.wallet.account.getActiveAccount();
+  const { activeAccount, activeNetwork } = useStore();
 
   const { navigate, useCopyClipboard, alert } = useUtils();
 
@@ -26,8 +26,6 @@ const PrivateKeyView = () => {
     alert.removeAll();
     alert.success('Successfully copied');
   }, [copied]);
-
-  const sysExplorer = controller.wallet.account.getSysExplorerSearch();
 
   return (
     <Layout title="YOUR KEYS">
@@ -54,7 +52,7 @@ const PrivateKeyView = () => {
         </p>
 
         <Form
-          className="password mx-auto my-3 w-full max-w-xs text-center md:max-w-xl"
+          className="standard password mx-auto my-3 w-full max-w-xs text-center md:max-w-xl"
           name="phraseview"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
@@ -71,7 +69,7 @@ const PrivateKeyView = () => {
               },
               () => ({
                 validator(_, value) {
-                  if (controller.wallet.getPhrase(value)) {
+                  if (controller.wallet.getSeed(value)) {
                     setValid(true);
 
                     return Promise.resolve();
@@ -82,7 +80,10 @@ const PrivateKeyView = () => {
               }),
             ]}
           >
-            <Input.Password placeholder="Enter your password" />
+            <Input.Password
+              className="password"
+              placeholder="Enter your password"
+            />
           </Form.Item>
         </Form>
 
@@ -103,7 +104,7 @@ const PrivateKeyView = () => {
         <div
           className="flex gap-2 items-center justify-center mt-4 hover:text-brand-royalblue text-xs cursor-pointer"
           onClick={() =>
-            window.open(`${sysExplorer}/xpub/${activeAccount?.xpub}`)
+            window.open(`${activeNetwork.url}/xpub/${activeAccount?.xpub}`)
           }
         >
           <p>View account on explorer</p>

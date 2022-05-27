@@ -1,72 +1,63 @@
 import React, { useState } from 'react';
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
-import { browser } from 'webextension-polyfill-ts';
-import {
-  log,
-  logError,
-  ellipsis,
-  formatUrl,
-  cancelTransaction,
-} from 'utils/index';
+import { formatUrl, logError, ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
+import { useLocation } from 'react-router-dom';
+import sys from 'syscoinjs-lib';
 
 export const SendConfirm = () => {
   const controller = getController();
-  const activeAccount = controller.wallet.account.getActiveAccount();
-  const { alert, navigate } = useUtils();
-  const { confirmingTransaction } = useStore();
+  const { activeAccount, networks, activeNetwork } = useStore();
+  const { alert, navigate, handleRefresh } = useUtils();
+
+  const {
+    state: { tx },
+  }: { state: any } = useLocation();
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
-  const tempTx = controller.wallet.account.getTemporaryTransaction('sendAsset');
+  const isSyscoinChain = networks.syscoin[activeNetwork.chainId];
 
   const handleConfirm = async () => {
-    const recommendedFee = await controller.wallet.account.getRecommendFee();
+    const balance = isSyscoinChain
+      ? activeAccount.balances.syscoin
+      : activeAccount.balances.ethereum;
 
-    if ((activeAccount ? activeAccount.balance : -1) > 0) {
+    if (activeAccount && balance > 0) {
       setLoading(true);
 
       try {
-        const callback = controller.wallet.account.confirmSendAssetTransaction;
+        if (isSyscoinChain) {
+          if (activeAccount.isTrezorWallet) {
+            const value = new sys.utils.BN(tx.amount * 1e8);
+            const feeRate = new sys.utils.BN(tx.fee * 1e8);
 
-        log('asset sent', 'Transaction', tempTx);
+            const outputs = [
+              {
+                address: tx.receiver,
+                value,
+              },
+            ];
 
-        const response =
-          await controller.wallet.account.confirmTemporaryTransaction({
-            type: 'sendAsset',
-            callback,
-          });
-
-        if (response) {
-          alert.removeAll();
-          alert.error("Can't complete transaction. Try again later.");
-
-          if (confirmingTransaction) {
-            browser.runtime.sendMessage({
-              type: 'WALLET_ERROR',
-              target: 'background',
-              transactionError: true,
-              invalidParams: false,
-              message: `TransactionError: ${response}`,
+            return controller.wallet.account.sys.trezor.confirmNativeTokenSend({
+              txOptions: { rbf: true },
+              outputs,
+              feeRate,
             });
-
-            setTimeout(() => {
-              cancelTransaction(browser, 'tempTx');
-            }, 4000);
           }
 
-          return;
+          const response =
+            await controller.wallet.account.sys.tx.sendTransaction(tx);
+
+          setConfirmed(true);
+          setLoading(false);
+
+          return response;
         }
 
-        browser.runtime.sendMessage({
-          type: 'WALLET_ERROR',
-          target: 'background',
-          transactionError: false,
-          invalidParams: false,
-          message: 'Everything is fine, transaction completed.',
-        });
+        await controller.wallet.account.eth.tx.sendTransaction(tx);
 
         setConfirmed(true);
         setLoading(false);
@@ -74,7 +65,7 @@ export const SendConfirm = () => {
         logError('error', 'Transaction', error);
 
         if (activeAccount) {
-          if (error && tempTx.fee > recommendedFee) {
+          if (error && tx.fee > 0.00001) {
             alert.removeAll();
             alert.error(
               `${formatUrl(
@@ -84,10 +75,10 @@ export const SendConfirm = () => {
             );
           }
 
-          if (error && tempTx.fee <= recommendedFee) {
-            const max = (100 * tempTx.amount) / activeAccount?.balance;
+          if (isSyscoinChain && error && tx.fee <= 0.00001) {
+            const max = (100 * tx.amount) / activeAccount?.balances.syscoin;
 
-            if (tempTx.amount >= (max * tempTx.amount) / 100) {
+            if (tx.amount >= (max * tx.amount) / 100) {
               alert.removeAll();
               alert.error(error.message);
 
@@ -95,24 +86,10 @@ export const SendConfirm = () => {
 
               return;
             }
-
-            alert.removeAll();
-            alert.error("Can't complete transaction. Try again later.");
           }
 
-          if (confirmingTransaction) {
-            browser.runtime.sendMessage({
-              type: 'WALLET_ERROR',
-              target: 'background',
-              transactionError: true,
-              invalidParams: false,
-              message: `TransactionError: ${error}`,
-            });
-
-            setTimeout(() => {
-              cancelTransaction(browser, tempTx);
-            }, 4000);
-          }
+          alert.removeAll();
+          alert.error("Can't complete transaction. Try again later.");
 
           setLoading(false);
         }
@@ -121,49 +98,59 @@ export const SendConfirm = () => {
   };
 
   return (
-    <Layout title="SEND SYS">
+    <Layout title="SEND">
       <DefaultModal
         show={confirmed}
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
-        onClose={() => navigate('/home')}
+        onClose={() => {
+          navigate('/home');
+          handleRefresh(false);
+        }}
       />
-
-      {tempTx && (
+      {tx && (
         <div className="flex flex-col items-center justify-center mt-4 w-full">
           <p className="flex flex-col items-center justify-center text-center font-rubik">
             <span className="text-brand-royalblue font-poppins font-thin">
               Send
             </span>
-            {tempTx.amount}
-            {tempTx.token ? tempTx.token.symbol : 'SYS'}
+
+            <span>
+              {`${tx.amount} ${' '} ${
+                tx.token
+                  ? tx.token.symbol
+                  : activeNetwork.currency?.toUpperCase()
+              }`}
+            </span>
           </p>
 
           <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
             <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               From
               <span className="text-brand-white">
-                {ellipsis(tempTx.fromAddress, 7, 15)}
+                {ellipsis(tx.sender, 7, 15)}
               </span>
             </p>
 
             <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               To
               <span className="text-brand-white">
-                {ellipsis(tempTx.toAddress, 7, 15)}
+                {ellipsis(tx.receivingAddress, 7, 15)}
               </span>
             </p>
 
             <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               Fee
-              <span className="text-brand-white">{tempTx.fee}</span>
+              <span className="text-brand-white">
+                {!isSyscoinChain ? tx.fee * 10 ** 9 : tx.fee}
+              </span>
             </p>
 
             <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               Max total
               <span className="text-brand-white">
-                {Number(tempTx.fee) + Number(tempTx.amount)}
-                SYS
+                {Number(tx.fee) + Number(tx.amount)}
+                {`${activeNetwork.currency?.toUpperCase()}`}
               </span>
             </p>
           </div>

@@ -1,29 +1,25 @@
-import { IWalletController } from 'types/controllers';
+import { IControllerUtils } from 'types/controllers';
 
-import WalletController from './WalletController';
-import ControllerUtils, { IControllerUtils } from './ControllerUtils';
-import ConnectionsController from './ConnectionsController';
+import ControllerUtils from './ControllerUtils';
+import MainController from './MainController';
 
 export interface IMasterController {
   appRoute: (newRoute?: string) => string;
-  connections: Readonly<any>;
   stateUpdater: () => void;
   utils: Readonly<IControllerUtils>;
-  wallet: Readonly<IWalletController>;
+  wallet: Readonly<any>;
 }
 
 const MasterController = (): IMasterController => {
-  const wallet = Object.freeze(WalletController());
+  const wallet = Object.freeze(MainController());
   const utils = Object.freeze(ControllerUtils());
-  const connectionsPrototype = Object.create(ConnectionsController);
 
   const stateUpdater = () => {
-    utils.updateFiat();
+    utils.setFiat();
   };
 
   return {
     wallet,
-    connections: Object.freeze(connectionsPrototype),
     appRoute: utils.appRoute,
     utils,
     stateUpdater,

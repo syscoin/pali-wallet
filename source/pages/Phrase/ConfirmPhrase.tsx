@@ -16,7 +16,7 @@ import {
 export const ConfirmPhrase = () => {
   const navigate = useNavigate();
   const controller = getController();
-  const phrases = controller.wallet.generatePhrase();
+  const phrases = controller.wallet.createSeed();
 
   const [orgList, setOrgList] = useState<Array<string>>(
     shuffle((phrases || '').split(' '))
@@ -44,10 +44,10 @@ export const ConfirmPhrase = () => {
     setNewList([...tempList]);
   };
 
-  const handleConfirm = () => {
-    controller.wallet.createWallet();
+  const handleConfirm = async () => {
+    await controller.wallet.createWallet();
 
-    navigate('/');
+    navigate('/home');
 
     setPassed(true);
   };

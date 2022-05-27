@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useUtils } from 'hooks/index';
+import { useUtils, useStore } from 'hooks/index';
 import { browser } from 'webextension-polyfill-ts';
 import {
   Layout,
@@ -17,7 +17,7 @@ import {
   cancelTransaction,
   camelCaseToText,
 } from 'utils/index';
-import { closePopup, getController } from 'utils/browser';
+import { getController } from 'utils/browser';
 
 interface ITxConfirm {
   callback: any;
@@ -40,7 +40,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
 }) => {
   const navigate = useNavigate();
   const accountController = getController().wallet.account;
-  const activeAccount = accountController.getActiveAccount();
+  const { activeAccount, activeNetwork } = useStore();
 
   const [data, setData] = useState<ITxData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -74,13 +74,15 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   }, [transaction]);
 
   const handleConfirmSiteTransaction = async () => {
-    const recommendedFee = await accountController.getRecommendFee();
+    const recommendedFee = await accountController.tx.getRecommendedFee(
+      activeNetwork.url
+    );
 
     let isPending = false;
 
     setLoading(true);
 
-    if ((activeAccount ? activeAccount.balance : -1) > 0) {
+    if ((activeAccount ? activeAccount.balances.syscoin : -1) > 0) {
       isPending = true;
 
       try {
@@ -90,7 +92,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
           setSubmitted(true);
         }
 
-        const response = await accountController.confirmTemporaryTransaction({
+        const response = await accountController.tx.sendTransaction({
           type: txType,
           callback,
         });
@@ -152,7 +154,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
     <>
       {failed ? (
         <ErrorModal
-          onClose={closePopup}
+          onClose={() => window.close()}
           title={`${capitalizeFirstLetter(title.toLowerCase())} request failed`}
           description="Sorry, we could not submit your request. Try again later."
           log={logError || 'No description provided'}
@@ -161,7 +163,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
       ) : (
         <DefaultModal
           show={submitted}
-          onClose={closePopup}
+          onClose={() => window.close()}
           title={`${capitalizeFirstLetter(
             title.toLowerCase()
           )} request successfully submitted`}
@@ -292,7 +294,7 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
     <>
       {confirmed && (
         <DefaultModal
-          onClose={closePopup}
+          onClose={() => window.close()}
           show={!failed}
           title={`${title.toLowerCase()} request successfully submitted`}
           description="You can check your request under activity on your home screen."
@@ -302,7 +304,7 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
 
       {failed && (
         <ErrorModal
-          onClose={closePopup}
+          onClose={() => window.close()}
           title="Token creation request failed"
           description="Sorry, we could not submit your request. Try again later."
           log={logError || '...'}
@@ -382,7 +384,7 @@ export const TxConfirmLayout: React.FC<ITxConfirmLayout> = ({
   txType,
 }) => {
   const walletCtlr = getController().wallet;
-  const { getTemporaryTransaction } = walletCtlr.account;
+  const { getTemporaryTransaction } = walletCtlr.account.tx;
 
   const transaction = getTemporaryTransaction(txType);
 

@@ -1,57 +1,133 @@
 import React, { useState } from 'react';
 import { useStore, useUtils } from 'hooks/index';
-import { Layout, SecondaryButton } from 'components/index';
+import { IconButton, Layout, SecondaryButton, Icon } from 'components/index';
 import { formatUrl } from 'utils/index';
+import { getController } from 'utils/browser';
+import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import { CustomRPC } from '..';
 
 const ManageNetworkView = () => {
   const { networks } = useStore();
   const { navigate } = useUtils();
+  const { wallet } = getController();
 
-  const defaultNetworks = ['main', 'testnet'];
+  const [selected, setSelected] = useState<INetwork>({
+    chainId: -1,
+    label: '',
+    url: '',
+    default: false,
+    currency: 'sys',
+  });
 
-  const [selected, setSelected] = useState('');
+  const removeNetwork = (chainId: number) => {
+    const chain = networks.syscoin[chainId] ? 'syscoin' : 'ethereum';
+
+    wallet.removeKeyringNetwork(chain, chainId);
+  };
 
   return (
     <>
-      {selected ? (
+      {selected.chainId > -1 ? (
         <CustomRPC
-          selectedToEdit={
-            selected || {
-              id: -1,
-              lael: '',
-              berl: '',
-              chinID: -1,
-            }
-          }
+          selectedToEdit={selected}
+          isSyscoinToEdit={Boolean(networks.syscoin[selected.chainId])}
         />
       ) : (
-        <Layout title="MANAGE NETWORK">
+        <Layout title="MANAGE NETWORKS">
           <p className="mt-4 text-left text-brand-white font-poppins text-sm">
             Click on network to manage
           </p>
 
-          <ul className="scrollbar-styled mb-3 mt-2 px-4 py-2 w-full h-80 text-sm overflow-auto">
-            {Object.values(networks).map((network: any) => (
+          <ul className="scrollbar-styled mb-3 mt-2 px-4 py-2 w-full h-80 text-sm overflow-auto md:h-96">
+            <p className="py-1 text-brand-royalbluemedium text-xs font-bold bg-bkg-1">
+              Syscoin Networks
+            </p>
+            {Object.values(networks.syscoin).map((network: INetwork) => (
               <li
-                key={network.id}
+                key={network.chainId}
                 className={
-                  defaultNetworks.includes(network.id)
+                  network.default
                     ? 'my-3 cursor-not-allowed border-b border-dashed bg-opacity-60 border-dashed-light flex flex-col w-full'
                     : 'my-3 w-full border-b border-dashed border-dashed-light cursor-pointer flex flex-col transition-all duration-300'
                 }
-                onClick={() =>
-                  !defaultNetworks.includes(network.id)
-                    ? setSelected(network)
-                    : undefined
+              >
+                <span
+                  onClick={() =>
+                    !network.default ? setSelected(network) : undefined
+                  }
+                  className={`${
+                    !network.default &&
+                    'hover:text-brand-royalblue cursor-pointer'
+                  }`}
+                >
+                  {formatUrl(network.label, 25)}
+                </span>
+
+                <small className="flex items-center justify-between">
+                  <div className="flex gap-x-3 items-center justify-start">
+                    <span>Blockbook URL:</span>
+                    <span>{formatUrl(String(network.url), 30)}</span>
+                  </div>
+
+                  {!network.default && (
+                    <IconButton
+                      onClick={() => removeNetwork(network.chainId)}
+                      type="primary"
+                      shape="circle"
+                    >
+                      <Icon
+                        name="trash"
+                        className="hover:text-brand-royalblue text-xl"
+                      />
+                    </IconButton>
+                  )}
+                </small>
+              </li>
+            ))}
+
+            <p className="py-1 text-brand-royalbluemedium text-xs font-bold bg-bkg-1">
+              Ethereum Networks
+            </p>
+            {Object.values(networks.ethereum).map((network: any) => (
+              <li
+                key={network.chainId}
+                className={
+                  network.default
+                    ? 'my-3 cursor-not-allowed border-b border-dashed bg-opacity-60 border-dashed-light flex flex-col w-full'
+                    : 'my-3 w-full border-b border-dashed border-dashed-light cursor-pointer flex flex-col transition-all duration-300'
                 }
               >
-                <span>{formatUrl(network.label, 25)}</span>
+                <span
+                  onClick={() =>
+                    !network.default ? setSelected(network) : undefined
+                  }
+                  className={`${
+                    !network.default &&
+                    'hover:text-brand-royalblue cursor-pointer'
+                  }`}
+                >
+                  {formatUrl(network.label, 25)}
+                </span>
 
-                <small className="flex gap-x-3 items-center justify-start">
-                  <span>Blockbook URL:</span>
-                  <span> {formatUrl(String(network.beUrl), 25)}</span>
+                <small className="flex items-center justify-between">
+                  <div className="flex gap-x-3 items-center justify-start">
+                    <span>RPC URL:</span>
+                    <span>{formatUrl(String(network.url), 30)}</span>
+                  </div>
+
+                  {!network.default && (
+                    <IconButton
+                      onClick={() => removeNetwork(network.chainId)}
+                      type="primary"
+                      shape="circle"
+                    >
+                      <Icon
+                        name="trash"
+                        className="hover:text-brand-royalblue text-xl"
+                      />
+                    </IconButton>
+                  )}
                 </small>
               </li>
             ))}

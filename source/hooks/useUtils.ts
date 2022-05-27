@@ -3,15 +3,20 @@ import { useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
 import { getController } from 'utils/browser';
 
+import { useStore } from '.';
+
 export const useUtils = () => {
   const alert = useAlert();
   const navigate = useNavigate();
   const controller = getController();
-  const activeAccount = controller.wallet.account.getActiveAccount();
+  const { activeAccount } = useStore();
 
-  const handleRefresh = (): void => {
-    controller.wallet.account.getLatestUpdate();
-    if (activeAccount) controller.wallet.account.watchMemPool(activeAccount);
+  const handleRefresh = (silent?: boolean): void => {
+    controller.wallet.account.sys.getLatestUpdate(silent);
+
+    if (activeAccount)
+      controller.wallet.account.sys.watchMemPool(activeAccount);
+
     controller.stateUpdater();
   };
 
@@ -35,7 +40,6 @@ export const useUtils = () => {
           clearTimeout(hide);
         };
       }
-      return undefined;
     }, [isCopied, setIsCopied, timeout]);
 
     return [isCopied, staticCopy];

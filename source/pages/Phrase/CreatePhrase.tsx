@@ -7,11 +7,7 @@ export const CreatePhrase: FC = () => {
   const navigate = useNavigate();
   const controller = getController();
 
-  const phrases = controller.wallet.generatePhrase();
-
-  const nextHandler = () => {
-    navigate('/phrase/confirm');
-  };
+  const phrases = controller.wallet.createSeed();
 
   return (
     <OnboardingLayout
@@ -37,7 +33,12 @@ export const CreatePhrase: FC = () => {
         )}
 
         <div className="absolute bottom-12 md:bottom-32">
-          <PrimaryButton type="button" width="56 px-6" onClick={nextHandler}>
+          <PrimaryButton
+            disabled={!phrases}
+            type="button"
+            width="56 px-6"
+            onClick={() => navigate('/phrase/confirm')}
+          >
             I've written it down
           </PrimaryButton>
         </div>

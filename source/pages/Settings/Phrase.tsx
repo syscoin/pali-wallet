@@ -49,7 +49,7 @@ const PhraseView = () => {
               },
               () => ({
                 validator(_, value) {
-                  const seed = controller.wallet.getPhrase(value);
+                  const seed = controller.wallet.getSeed(value);
 
                   if (seed) {
                     setPhrase(seed);
@@ -63,7 +63,7 @@ const PhraseView = () => {
             ]}
           >
             <Input.Password
-              className="seed-phrase-password-input"
+              className="password"
               placeholder="Enter your password"
               id="phraseview_password"
             />

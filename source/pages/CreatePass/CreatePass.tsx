@@ -14,7 +14,7 @@ export const CreatePass = () => {
 
       navigate('/phrase/create');
     } catch (error) {
-      logError('could not create password');
+      logError('could not create password', 'UI', error);
     }
   };
 

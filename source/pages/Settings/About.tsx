@@ -8,6 +8,8 @@ import {
   IconButton,
 } from 'components/index';
 
+import { version } from '../../../package.json';
+
 const AboutView: FC = () => {
   const handleRedirect = (url: string) => {
     window.open(url);
@@ -26,7 +28,7 @@ const AboutView: FC = () => {
     <Layout title="INFO & HELP" id="info-help-title">
       <div className="flex flex-col gap-y-4 mt-4 pl-8 w-full text-brand-white text-sm md:pl-20">
         <p>Pali Wallet Browser Extension v2.0</p>
-        <p>Version: 1.0.23</p>
+        <p>Version: {version}</p>
 
         <p
           className="hover:text-brand-royalblue transition-all duration-200"
@@ -36,10 +38,7 @@ const AboutView: FC = () => {
         </p>
       </div>
 
-      <div
-        className="flex flex-col items-center justify-center w-full max-w-xs md:max-w-full"
-        id="user-support-btn"
-      >
+      <div className="flex flex-col items-center justify-center w-full max-w-xs md:max-w-full">
         <SimpleCard className="mt-4">
           <div className="flex items-center justify-start mb-4 font-poppins text-base font-bold">
             <Icon
@@ -52,6 +51,7 @@ const AboutView: FC = () => {
           </div>
 
           <p
+            id="user-support-btn"
             className="text-brand-white underline text-xs cursor-pointer"
             onClick={() =>
               handleRedirect('https://discord.com/invite/8QKeyurHRd')

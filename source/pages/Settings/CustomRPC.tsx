@@ -1,49 +1,49 @@
 import React, { useState } from 'react';
 import { Form, Input } from 'antd';
 import { Layout, SecondaryButton } from 'components/index';
-import axios from 'axios';
+import { Switch } from '@headlessui/react';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
+import { CustomRpcParams } from 'types/transactions';
+import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import { ManageNetwork } from '.';
 
-const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
+const CustomRPCView = ({
+  selectedToEdit,
+  isSyscoinToEdit,
+}: {
+  isSyscoinToEdit?: boolean;
+  selectedToEdit?: INetwork;
+}) => {
   const [loading, setLoading] = useState(false);
   const [edit, setEdit] = useState(false);
+  const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinToEdit));
 
   const { alert } = useUtils();
   const controller = getController();
 
-  const onSubmit = async ({ network, blockbookURL }: any) => {
+  const onSubmit = async (data: CustomRpcParams) => {
     setLoading(true);
 
+    const customRpc = {
+      ...data,
+      isSyscoinRpc,
+    };
+
     try {
-      const response = await axios.get(`${blockbookURL}/api/v2`);
-      const { coin } = response.data.blockbook;
-      const { chain } = response.data.backend;
+      if (!selectedToEdit) await controller.wallet.addCustomRpc(customRpc);
+      else await controller.wallet.editCustomRpc(customRpc, selectedToEdit);
 
-      if (response && coin) {
-        controller.wallet.account.updateNetworkData({
-          id: selectedToEdit
-            ? selectedToEdit.id
-            : coin.toString().toLowerCase(),
-          label: `${network.toString().toLowerCase()} ${chain
-            .toString()
-            .toLowerCase()}`,
-          beUrl: blockbookURL,
-        });
+      setEdit(true);
+    } catch (error: any) {
+      console.log('error custom rpc', error);
 
-        setLoading(false);
-        setEdit(true);
-
-        return;
-      }
-    } catch (error) {
       alert.removeAll();
-      alert.error('Invalid blockbook URL.');
-
-      setLoading(false);
+      alert.error(error.message);
     }
+
+    setLoading(false);
   };
 
   return (
@@ -57,17 +57,65 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             name="rpc"
             labelCol={{ span: 8 }}
             wrapperCol={{ span: 8 }}
-            initialValues={{
-              blockbookURL: selectedToEdit ? selectedToEdit.beUrl : '',
-              network: selectedToEdit ? selectedToEdit.label : '',
-              chainID: selectedToEdit ? selectedToEdit.chainID : '',
-            }}
+            initialValues={
+              selectedToEdit && {
+                label: selectedToEdit.label ?? '',
+                rpcUrl: selectedToEdit.url ?? '',
+                chainId: selectedToEdit.chainId ?? '',
+              }
+            }
             onFinish={onSubmit}
             autoComplete="off"
-            className="flex flex-col gap-4 items-center justify-center mt-8 text-center"
+            className="standard flex flex-col gap-2 items-center justify-center text-center"
           >
             <Form.Item
-              name="network"
+              id="network-switch"
+              name="network-switch"
+              rules={[
+                {
+                  required: false,
+                  message: '',
+                },
+              ]}
+            >
+              <div className="flex gap-x-2 my-4 text-xs">
+                <p>Ethereum</p>
+
+                <Switch
+                  checked={isSyscoinRpc}
+                  onChange={() => setIsSyscoinRpc(!isSyscoinRpc)}
+                  className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
+                >
+                  <span className="sr-only">Syscoin Network</span>
+                  <span
+                    className={`${
+                      isSyscoinRpc
+                        ? 'translate-x-6 bg-brand-royalblue'
+                        : 'translate-x-1 bg-brand-deepPink100'
+                    } inline-block w-2 h-2 transform rounded-full`}
+                  />
+                </Switch>
+
+                <p>Syscoin</p>
+              </div>
+            </Form.Item>
+
+            <Form.Item
+              name="label"
+              className="md:w-full"
+              hasFeedback
+              rules={[
+                {
+                  required: true,
+                  message: '',
+                },
+              ]}
+            >
+              <Input type="text" placeholder="Label" className="large" />
+            </Form.Item>
+
+            <Form.Item
+              name="rpcUrl"
               className="md:w-full"
               hasFeedback
               rules={[
@@ -79,53 +127,35 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
             >
               <Input
                 type="text"
-                placeholder="Network name"
-                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
+                placeholder={`${
+                  isSyscoinRpc ? 'Trezor Block Explorer' : 'RPC URL'
+                }`}
+                className="large"
               />
             </Form.Item>
 
             <Form.Item
-              name="blockbookURL"
-              className="md:w-full"
+              name="chainId"
               hasFeedback
+              className="md:w-full"
               rules={[
                 {
-                  required: true,
+                  required: !isSyscoinRpc,
                   message: '',
                 },
-                () => ({
-                  async validator(_, value) {
-                    try {
-                      const response = await axios.get(`${value}/api/v2`);
-                      const { coin } = response.data.blockbook;
-
-                      if (response && coin) {
-                        if (
-                          coin === 'Syscoin' ||
-                          coin === 'Syscoin Testnet' ||
-                          !value
-                        ) {
-                          return await Promise.resolve();
-                        }
-                      }
-                    } catch (error) {
-                      return Promise.reject();
-                    }
-                  },
-                }),
               ]}
             >
               <Input
                 type="text"
-                placeholder="Blockbook URL"
-                className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
+                placeholder="Chain ID"
+                className={`${isSyscoinRpc ? 'hidden' : 'block'} large`}
               />
             </Form.Item>
 
             <Form.Item
-              name="chainID"
-              className="md:w-full"
               hasFeedback
+              className="md:w-full"
+              name="token_contract_address"
               rules={[
                 {
                   required: false,
@@ -134,13 +164,9 @@ const CustomRPCView = ({ selectedToEdit }: { selectedToEdit?: any }) => {
               ]}
             >
               <Input
-                disabled
                 type="text"
-                placeholder="Chain ID"
-                className={`${
-                  true &&
-                  'opacity-50 rounded-full py-2 pl-4 w-72 md:w-full bg-fields-input-primary border border-fields-input-border text-sm focus:border-fields-input-borderfocus md:max-w-md'
-                }`}
+                placeholder="Token Contract Address (optional)"
+                className={`${isSyscoinRpc ? 'hidden' : 'block'} large`}
               />
             </Form.Item>
 

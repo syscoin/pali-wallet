@@ -32,7 +32,10 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => (
           },
         ]}
       >
-        <Input.Password placeholder="New password (min 8 chars)" />
+        <Input.Password
+          className="password"
+          placeholder="New password (min 8 chars)"
+        />
       </Form.Item>
 
       <Form.Item
@@ -54,7 +57,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => (
           }),
         ]}
       >
-        <Input.Password placeholder="Confirm password" />
+        <Input.Password className="password" placeholder="Confirm password" />
       </Form.Item>
 
       <span className="px-3 w-full text-left text-brand-graylight text-xs">

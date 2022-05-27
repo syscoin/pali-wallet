@@ -3,67 +3,65 @@ import assert from 'assert';
 import { By } from 'selenium-webdriver';
 import clipboard from 'copy-paste';
 
-import { FAKE_PASSWORD, FAKE_SEED_PHRASE } from '../mocks';
+import { MOCK_PASSWORD, MOCK_SEED_PHRASE } from '../mocks';
 
 import { buildWebDriver, Driver } from './driver';
 import { importWallet } from './initialize';
 
-describe('General settings tests', () => {
-  let uiWebDriver: Driver;
+describe('General settings', () => {
+  let driver: Driver;
 
   beforeEach(async () => {
-    const { driver } = await buildWebDriver();
-
-    uiWebDriver = driver;
+    driver = (await buildWebDriver()).driver;
 
     await driver.navigate();
-    await importWallet({ driver });
+    await importWallet(driver);
   });
 
   afterEach(async () => {
-    await uiWebDriver.quit();
+    await driver.quit();
   });
 
-  it('should check general settings button ', async () => {
-    const generalSettingsButton = await uiWebDriver.findElement(
+  it('should find general settings button', async () => {
+    const generalSettingsButton = await driver.findElement(
       By.id('general-settings-button')
     );
 
-    assert.ok(
-      generalSettingsButton,
-      '<!> Cannot find general settings button <!>'
-    );
+    expect(generalSettingsButton).toBeTruthy();
   });
 
-  it('should display the correct seed', async () => {
-    await uiWebDriver.clickElement('#general-settings-button');
-    //* go to wallet seed phrase
-    await uiWebDriver.clickElement('#wallet-seed-phrase-btn');
-    //* input password
-    await uiWebDriver.fill('#phraseview_password', FAKE_PASSWORD);
-    await uiWebDriver.clickElement('#copy-btn');
+  it('should copy the seed phrase', async () => {
+    await driver.clickElement('#general-settings-button');
 
-    const currentClipboard = clipboard.paste();
-    const expectedClipboard = FAKE_SEED_PHRASE;
+    // go to wallet seed phrase
+    await driver.clickElement('#wallet-seed-phrase-btn');
 
-    //* check if it is copying correctly after click on copy button
-    expect(currentClipboard).toBe(expectedClipboard);
+    // input password
+    await driver.fill('#phraseview_password', MOCK_PASSWORD);
+    await driver.clickElement('#copy-btn');
+
+    const clipboardValue = clipboard.paste();
+    expect(clipboardValue).toBe(MOCK_SEED_PHRASE);
   });
 
-  it('should open a new tab to redirect the user to syscoin discord for support', async () => {
-    await uiWebDriver.clickElement('#general-settings-button');
-    //  * go to info/help
-    await uiWebDriver.clickElement('#info-help-btn');
-    //    * click on element to open the discord invite in a new tab
-    await uiWebDriver.clickElement('#user-support-btn');
+  it('should open syscoin discord', async () => {
+    await driver.clickElement('#general-settings-button');
+
+    // go to info/help
+    await driver.clickElement('#info-help-btn');
+
+    // open the discord invite in a new tab
+    await driver.clickElement('#user-support-btn');
+
     try {
-      await uiWebDriver.switchToWindowWithTitle('Syscoin', null);
+      await driver.switchToWindowWithTitle('Syscoin', null);
     } catch (error) {
       assert.ifError(error);
     }
-    const url = await uiWebDriver.getCurrentUrl();
+
+    const url = await driver.getCurrentUrl();
     const expectedUrl = 'https://discord.com/invite/8QKeyurHRd';
-    //    * check if this is being redirected to https://discord.com/invite/8QKeyurHRd
+
     expect(url).toBe(expectedUrl);
   });
 });

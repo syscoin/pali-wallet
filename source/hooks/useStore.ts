@@ -1,51 +1,40 @@
 import { useSelector } from 'react-redux';
-import IPriceState from 'state/price/types';
+import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
-import IWalletState from 'state/wallet/types';
+import { IVaultState } from 'state/vault/types';
 
 export const useStore = () => {
+  const { fiat, coins }: IPriceState = useSelector(
+    (state: RootState) => state.price
+  );
+
   const {
-    status,
-    accounts,
-    activeAccountId,
-    activeNetwork,
-    encriptedMnemonic,
-    confirmingTransaction,
-    changingNetwork,
-    signingTransaction,
-    signingPSBT,
-    walletTokens,
-    tabs,
+    lastLogin,
     timer,
-    networks,
+    encryptedMnemonic,
     trustedApps,
-    temporaryTransactionState,
-  }: IWalletState = useSelector((state: RootState) => state.wallet);
-
-  const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
-
-  const { currentSenderURL, currentURL, canConnect, connections } = tabs;
+    activeNetwork,
+    isPendingBalances,
+    networks,
+    activeAccount,
+    accounts,
+    activeToken,
+  }: IVaultState = useSelector((state: RootState) => state.vault);
 
   return {
-    status,
     accounts,
-    activeAccountId,
+    activeAccount,
+    activeAccountId: activeAccount.id,
     activeNetwork,
-    encriptedMnemonic,
-    confirmingTransaction,
-    changingNetwork,
-    signingTransaction,
-    signingPSBT,
-    walletTokens,
-    timer,
-    tabs,
-    currentSenderURL,
-    currentURL,
-    canConnect,
-    connections,
+    isPendingBalances,
+    walletTokens: [],
     networks,
     trustedApps,
-    temporaryTransactionState,
+    lastLogin,
     fiat,
+    coins,
+    timer,
+    encryptedMnemonic,
+    activeToken,
   };
 };

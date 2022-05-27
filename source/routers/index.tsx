@@ -1,14 +1,9 @@
 import React, { useEffect } from 'react';
-import {
-  Routes,
-  Route,
-  useLocation,
-  useParams,
-  Navigate,
-} from 'react-router-dom';
+import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { useStore, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { browser } from 'webextension-polyfill-ts';
+import { CustomToken, ImportToken } from 'pages/Tokens';
 
 import {
   About,
@@ -54,17 +49,14 @@ import {
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const Router = () => {
-  const params = useParams();
   const location = useLocation();
   const controller = getController();
-  const { getConnectedAccount, getTemporaryTransaction } =
-    controller.wallet.account;
 
-  const { accounts, canConnect, temporaryTransactionState } = useStore();
-  const { alert, navigate } = useUtils();
+  const { accounts, activeAccount } = useStore();
+  const { alert, navigate, handleRefresh } = useUtils();
 
-  const connectedAccount = getConnectedAccount();
-  const isUnlocked = !controller.wallet.isLocked();
+  const isUnlocked =
+    controller.wallet.isUnlocked() && activeAccount.address !== '';
 
   useEffect(() => {
     if (isUnlocked) {
@@ -79,102 +71,32 @@ export const Router = () => {
 
   useEffect(() => {
     const route = controller.appRoute();
-    const { executing, type } = temporaryTransactionState;
 
-    const hasSendAssetTx = getTemporaryTransaction('sendAsset') !== null;
-    const hasUpdateAssetTx = getTemporaryTransaction('updateAsset') !== null;
+    const canProceed = isUnlocked && accounts && activeAccount.address;
 
-    if (
-      route === '/send/confirm' &&
-      !hasSendAssetTx &&
-      !executing &&
-      type !== 'sendAsset'
-    ) {
+    if (canProceed) {
       navigate('/home');
-      return;
     }
 
-    if (route === '/tx/asset/update/confirm' && !hasUpdateAssetTx) {
-      navigate('/home');
-      return;
-    }
+    if (route !== '/' && !canProceed) navigate(route);
+  }, [isUnlocked]);
 
-    if (!isUnlocked && accounts.length > 0) {
-      navigate('/');
-      return;
-    }
-
-    if (executing && isUnlocked) {
-      if (type === 'sendAsset' && hasSendAssetTx) {
-        navigate('/send/confirm');
-        return;
-      }
-
-      switch (type) {
-        case 'signAndSendPSBT':
-          navigate('/tx/sign');
-          return;
-
-        case 'mintNFT':
-          navigate('/tx/asset/nft/mint');
-          return;
-
-        case 'signPSBT':
-          navigate('/tx/sign-psbt');
-          return;
-
-        case 'newAsset':
-          navigate('/tx/create');
-          return;
-
-        case 'mintAsset':
-          navigate('/tx/asset/issue');
-          return;
-
-        case 'newNFT':
-          navigate('/tx/asset/nft/issue');
-          return;
-
-        case 'updateAsset':
-          navigate('/tx/asset/update');
-          return;
-
-        case 'transferAsset':
-          navigate('/tx/asset/transfer');
-          return;
-
-        default:
-          break;
-      }
-    }
-
-    if (!executing && type !== 'sendAsset' && hasSendAssetTx) {
-      navigate('/home');
-      return;
-    }
-
+  useEffect(() => {
     if (isUnlocked) {
-      if (canConnect) {
-        if (connectedAccount) {
-          navigate('/connected-accounts');
-          return;
-        }
-
-        navigate('/connect-wallet');
-        return;
-      }
-
-      navigate('/home');
-      return;
+      handleRefresh(true);
+      console.log(
+        'refreshing',
+        controller.wallet.isUnlocked(),
+        accounts,
+        activeAccount
+      );
     }
-
-    if (route !== '/') navigate(route);
-  }, [canConnect, isUnlocked]);
+  }, [isUnlocked]);
 
   useEffect(() => {
     alert.removeAll();
     controller.appRoute(location.pathname);
-  }, [location]);
+  }, [location, isUnlocked]);
 
   return (
     <Routes>
@@ -190,7 +112,6 @@ export const Router = () => {
       />
       <Route path="home" element={<ProtectedRoute element={<Home />} />} />
       <Route
-        // ? maybe this route should belong to transaction scope
         path="home/tx-details"
         element={<ProtectedRoute element={<DetailsView />} />}
       />
@@ -207,10 +128,12 @@ export const Router = () => {
         element={<ProtectedRoute element={<SendConfirm />} />}
       />
       <Route
-        path="send/:address"
-        element={
-          <ProtectedRoute element={<Send initAddress={params.address} />} />
-        }
+        path="import-token"
+        element={<ProtectedRoute element={<ImportToken />} />}
+      />
+      <Route
+        path="custom-token"
+        element={<ProtectedRoute element={<CustomToken />} />}
       />
       {/* /settings */}
       <Route path="settings">
