@@ -37,7 +37,12 @@ const ControllerUtils = (): IControllerUtils => {
     return data;
   };
 
-  const setFiat = async (currency = 'usd') => {
+  const setFiat = async (currency?: string) => {
+    if (!currency) {
+      const storeCurrency = store.getState().price.fiat.asset;
+      currency = storeCurrency || 'usd';
+    }
+
     try {
       const { activeNetwork, networks } = store.getState().vault;
 
