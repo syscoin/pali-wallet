@@ -8,8 +8,14 @@ import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = getController();
-  const { networks, activeNetwork, fiat, activeAccount, lastLogin } =
-    useStore();
+  const {
+    networks,
+    activeNetwork,
+    fiat,
+    activeAccount,
+    lastLogin,
+    isPendingBalances,
+  } = useStore();
   const [symbol, setSymbol] = useState('SYS');
   const [fiatPriceValue, setFiatPriceValue] = useState('');
 
@@ -57,7 +63,7 @@ export const Home = () => {
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
-      {activeAccount && lastLogin && isUnlocked ? (
+      {activeAccount && lastLogin && isUnlocked && !isPendingBalances ? (
         <>
           <Header accountHeader />
 
@@ -116,7 +122,7 @@ export const Home = () => {
           <TxsPanel />
         </>
       ) : (
-        <Loading />
+        <Loading opacity={100} />
       )}
     </div>
   );
