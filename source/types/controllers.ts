@@ -1,3 +1,6 @@
+/* eslint-disable camelcase */
+// camelcase disabled for CoingeckoCoins
+
 import {
   IKeyringAccountState,
   INetwork,
