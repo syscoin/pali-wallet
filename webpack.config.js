@@ -69,6 +69,7 @@ module.exports = {
     background: path.join(sourcePath, 'scripts/Background', 'index.ts'),
     contentScript: path.join(sourcePath, 'scripts/ContentScript', 'index.ts'),
     app: path.join(sourcePath, 'pages/App', 'index.tsx'),
+    options: path.join(sourcePath, 'pages/Options', 'index.tsx'),
     trezorScript: path.join(
       sourcePath,
       'scripts/ContentScript/trezor',
@@ -224,6 +225,13 @@ module.exports = {
       chunks: ['app'],
       hash: true,
       filename: 'app.html',
+    }),
+    new HtmlWebpackPlugin({
+      template: path.join(viewsPath, 'options.html'),
+      inject: 'body',
+      chunks: ['options'],
+      hash: true,
+      filename: 'options.html',
     }),
     new HtmlWebpackPlugin({
       template: path.join(viewsPath, 'trezor-usb-permissions.html'),

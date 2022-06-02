@@ -20,7 +20,7 @@
     "notifications"
   ],
   "options_ui": {
-    "page": "app.html",
+    "page": "options.html",
     "open_in_tab": true,
     "__chrome__chrome_style": false
   },
