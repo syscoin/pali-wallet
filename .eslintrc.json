@@ -2,12 +2,10 @@
   "extends": [
     "plugin:react/recommended", // Uses the recommended rules from @eslint-plugin-react
     "plugin:@typescript-eslint/recommended",
-    "airbnb-typescript",
     "prettier",
-    "prettier/react",
-    "airbnb"
+    "prettier/react"
   ],
-  "plugins": ["@typescript-eslint", "eslint-plugin-prettier", "react-hooks"],
+  "plugins": ["@typescript-eslint", "eslint-plugin-prettier", "react-hooks", "import"],
   "overrides": [
     {
       "files": ["*.{ts,tsx}"],
@@ -125,7 +123,8 @@
       }
     ],
     "react/no-unescaped-entities": 0, // Checks rules of Hooks
-    "react-hooks/exhaustive-deps": "off" // Checks effect dependencies
+    "react-hooks/exhaustive-deps": "off", // Checks effect dependencies
+    "@typescript-eslint/no-empty-function": "warn"
   },
   "env": {
     "webextensions": true
