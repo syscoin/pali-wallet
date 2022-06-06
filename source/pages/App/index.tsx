@@ -1,15 +1,15 @@
-import { STORE_PORT } from 'constants/index';
-
-import React from 'react';
-import ReactDOM from 'react-dom';
-import { Provider } from 'react-redux';
-import { Store } from 'webext-redux';
-import watch from 'redux-watch';
-import { transitions, positions, Provider as AlertProvider } from 'react-alert';
-import { ToastAlert } from 'components/index';
-import appStore from 'state/store';
 import 'assets/styles/tailwind.css';
 import 'assets/fonts/index.css';
+import React from 'react';
+import { transitions, positions, Provider as AlertProvider } from 'react-alert';
+import ReactDOM from 'react-dom';
+import { Provider } from 'react-redux';
+import watch from 'redux-watch';
+import { Store } from 'webext-redux';
+
+import { ToastAlert } from 'components/index';
+import { STORE_PORT } from 'constants/index';
+import appStore from 'state/store';
 import { log } from 'utils/index';
 
 import App from './App';

@@ -1,5 +1,4 @@
 import assert from 'assert';
-
 import { By } from 'selenium-webdriver';
 
 import { SYS_EXPLORER_SEARCH } from '../../source/constants/index';

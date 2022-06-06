@@ -1,6 +1,9 @@
+import { AES } from 'crypto-js';
+
 import { networks } from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
-import { AES } from 'crypto-js';
+
+import { MOCK_ACCOUNT, STATE_W_ACCOUNT } from '../mocks';
 import reducer, {
   createAccount,
   forgetWallet,
@@ -21,8 +24,6 @@ import reducer, {
   setTimer,
 } from 'state/vault';
 import { IVaultState } from 'state/vault/types';
-
-import { MOCK_ACCOUNT, STATE_W_ACCOUNT } from '../mocks';
 
 describe('Vault store actions', () => {
   it('should return the initial state', () => {

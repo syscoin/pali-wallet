@@ -1,10 +1,12 @@
-import { useStore, useUtils } from 'hooks/index';
-import React, { useState, useEffect } from 'react';
-import { Icon, IconButton } from 'components/index';
-import { ellipsis, formatDate, formatUrl } from 'utils/index';
-import { getController } from 'utils/browser';
 import { Disclosure } from '@headlessui/react';
+import React, { useState, useEffect } from 'react';
+
 import { web3Provider } from '@pollum-io/sysweb3-network';
+
+import { Icon, IconButton } from 'components/index';
+import { useStore, useUtils } from 'hooks/index';
+import { getController } from 'utils/browser';
+import { ellipsis, formatDate, formatUrl } from 'utils/index';
 
 export const TransactionDetails = ({
   transactionType,

@@ -1,8 +1,9 @@
+import { Form, Input } from 'antd';
 import * as React from 'react';
 import { useState, FC } from 'react';
-import { useUtils } from 'hooks/index';
-import { Form, Input } from 'antd';
+
 import { SecondaryButton, DefaultModal, Layout } from 'components/index';
+import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
 export const CustomToken: FC = () => {

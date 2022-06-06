@@ -1,5 +1,5 @@
-import React, { ReactNode, FC } from 'react';
 import { Button as AntButton } from 'antd';
+import React, { ReactNode, FC } from 'react';
 
 interface IIconButton {
   children: ReactNode;

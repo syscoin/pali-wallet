@@ -1,7 +1,9 @@
+import { utils as SysUtils } from 'syscoinjs-lib';
+
 import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
+
 import store from 'state/store';
-import { utils as SysUtils } from 'syscoinjs-lib';
 import { openNotificationsPopup } from 'utils/notifications';
 
 import SysTrezorController from './syscoin';

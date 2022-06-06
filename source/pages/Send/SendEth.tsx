@@ -1,13 +1,15 @@
+import { Menu, Transition } from '@headlessui/react';
+import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
+import { Form, Input } from 'antd';
 import * as React from 'react';
 import { useState, useEffect, Fragment, useCallback } from 'react';
-import { useStore, useUtils } from 'hooks/index';
-import { Form, Input } from 'antd';
-import { Menu, Transition } from '@headlessui/react';
-import { SecondaryButton, Tooltip, Icon } from 'components/index';
-import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
-import { formatUrl, getAssetBalance } from 'utils/index';
-import { getController } from 'utils/browser';
+
 import { isValidEthereumAddress, feeUtils } from '@pollum-io/sysweb3-utils';
+
+import { SecondaryButton, Tooltip, Icon } from 'components/index';
+import { useStore, useUtils } from 'hooks/index';
+import { getController } from 'utils/browser';
+import { formatUrl, getAssetBalance } from 'utils/index';
 
 import { EditGasFee } from './EditGasFee';
 

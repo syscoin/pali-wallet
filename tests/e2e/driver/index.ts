@@ -1,7 +1,7 @@
 import { Browser } from 'selenium-webdriver';
 
-import { Driver } from './driver';
 import ChromeDriver from './chrome';
+import { Driver } from './driver';
 import FirefoxDriver from './firefox';
 
 export { Driver } from './driver';

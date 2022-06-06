@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
+
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
 import { useStore } from 'hooks/index';
-import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
+import { ellipsis } from 'utils/index';
 
 export const ConnectedAccounts = () => {
   const accountController = getController().wallet.account;

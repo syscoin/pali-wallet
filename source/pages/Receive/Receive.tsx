@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { useUtils, useStore } from 'hooks/index';
-import { ellipsis } from 'utils/index';
-import { getController } from 'utils/browser';
 import { QRCodeSVG } from 'qrcode.react';
+import React, { useEffect, useState } from 'react';
+
 import { Layout, SecondaryButton, Icon } from 'components/index';
+import { useUtils, useStore } from 'hooks/index';
+import { getController } from 'utils/browser';
+import { ellipsis } from 'utils/index';
 
 export const Receive = () => {
   const { useCopyClipboard, alert } = useUtils();

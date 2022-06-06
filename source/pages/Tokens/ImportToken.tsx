@@ -1,7 +1,7 @@
+import { Form, Input } from 'antd';
 import * as React from 'react';
 import { useState, FC, useEffect } from 'react';
-import { useUtils, useStore } from 'hooks/index';
-import { Form, Input } from 'antd';
+
 import {
   SecondaryButton,
   Layout,
@@ -9,10 +9,11 @@ import {
   Loading,
   Tooltip,
 } from 'components/index';
-import { formatUrl, ellipsis } from 'utils/index';
-import { getController } from 'utils/browser';
-import { IToken } from 'types/transactions';
+import { useUtils, useStore } from 'hooks/index';
 import { ICoingeckoCoins } from 'types/controllers';
+import { IToken } from 'types/transactions';
+import { getController } from 'utils/browser';
+import { formatUrl, ellipsis } from 'utils/index';
 
 export const ImportToken: FC = () => {
   const controller = getController();

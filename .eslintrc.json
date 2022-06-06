@@ -49,10 +49,14 @@
     // * ESLint default rules
     "array-callback-return": "error",
     "arrow-body-style": ["error", "as-needed"],
+    "eol-last": "warn",
     "eqeqeq": "warn",
     "no-nested-ternary": "warn",
+    "no-undef-init": "warn",
+    "no-unneeded-ternary": "error",
     "no-unused-vars": "warn",
     "no-shadow": "warn",
+    "no-var":"warn",
     "semi": "error",
     "comma-dangle": [
       "error",
@@ -68,15 +72,78 @@
     // * Plugins rules
     "import/no-extraneous-dependencies": "error",
     "import/order": [
-      "error",
+      "warn",
       {
         "groups": [
-          "builtin",
-          ["external", "internal"],
-          "parent",
-          ["sibling", "index"]
+          ["builtin", "external"],
+          ["internal", "parent"],
+          ["sibling", "index", "object", "type"]
         ],
-        "newlines-between": "always"
+        "pathGroups": [
+          {
+            "pattern": "@pollum-io/**",
+            "group": "internal",
+            "position": "before"
+          },
+          {
+            "pattern": "assets/**",
+            "group": "internal"
+          },
+          {
+            "pattern": "components/**",
+            "group": "internal"
+          },
+          {
+            "pattern": "scripts/**",
+            "group": "internal"
+          },
+          {
+            "pattern": "containers/**",
+            "group": "internal"
+          },
+          {
+            "pattern": "pages/**",
+            "group": "internal"
+          },
+          {
+            "pattern": "routers/**",
+            "group": "internal"
+          },
+          {
+            "pattern": "state/**",
+            "group": "internal"
+          },
+          {
+            "pattern": "constants/**",
+            "group": "internal"
+          },
+          {
+            "pattern": "services/**",
+            "group": "internal"
+          },
+          {
+            "pattern": "hooks/**",
+            "group": "internal"
+          },
+          {
+            "pattern": "types/**",
+            "group": "internal"
+          },
+          {
+            "pattern": "utils/**",
+            "group": "internal"
+          },
+          {
+            "pattern": "tests/**",
+            "group": "internal"
+          }
+        ],
+        "pathGroupsExcludedImportTypes": ["@pollum-io/**"],
+        "newlines-between": "always",
+        "alphabetize": {
+          "order": "asc",
+          "caseInsensitive": true
+        }
       }
     ],
 

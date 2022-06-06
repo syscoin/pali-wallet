@@ -1,8 +1,9 @@
-import { Layout, SecondaryButton } from 'components/index';
+import { Form, Input } from 'antd';
 import React, { useState } from 'react';
+
+import { Layout, SecondaryButton } from 'components/index';
 import { useUtils, useStore } from 'hooks/index';
 import { formatUrl } from 'utils/index';
-import { Form, Input } from 'antd';
 
 const TrustedSitesView = () => {
   const { navigate } = useUtils();

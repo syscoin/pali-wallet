@@ -1,6 +1,6 @@
 import axios from 'axios';
-import { memoize } from 'lodash';
 import bip44Constants from 'bip44-constants';
+import { memoize } from 'lodash';
 
 import ControllerUtils from './ControllerUtils';
 

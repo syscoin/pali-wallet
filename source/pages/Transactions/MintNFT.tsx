@@ -1,4 +1,5 @@
 import React from 'react';
+
 import { TxConfirmLayout, TxLayout } from 'components/Layout';
 
 // confirmAssetTransfer

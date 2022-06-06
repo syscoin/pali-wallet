@@ -1,8 +1,5 @@
-import { ASSET_PRICE_API } from 'constants/index';
+import CoinGecko from 'coingecko-api';
 
-import store from 'state/store';
-import { setPrices, setCoins } from 'state/price';
-import { logError } from 'utils/index';
 import {
   getSearch as getCoingeckoSearch,
   isValidEthereumAddress,
@@ -12,8 +9,12 @@ import {
   getAsset,
   txUtils,
 } from '@pollum-io/sysweb3-utils';
-import CoinGecko from 'coingecko-api';
+
+import { ASSET_PRICE_API } from 'constants/index';
+import { setPrices, setCoins } from 'state/price';
+import store from 'state/store';
 import { IControllerUtils } from 'types/controllers';
+import { logError } from 'utils/index';
 
 export const CoinGeckoClient = new CoinGecko();
 

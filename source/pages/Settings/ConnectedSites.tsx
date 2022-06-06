@@ -1,7 +1,8 @@
-import { Layout, Icon, IconButton, SecondaryButton } from 'components/index';
-import React, { Fragment, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
+import React, { Fragment, useState } from 'react';
 import { browser } from 'webextension-polyfill-ts';
+
+import { Layout, Icon, IconButton, SecondaryButton } from 'components/index';
 import { useUtils, useStore } from 'hooks/index';
 import { formatUrl, ellipsis } from 'utils/index';
 

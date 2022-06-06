@@ -1,4 +1,6 @@
+import { Dialog } from '@headlessui/react';
 import React, { useEffect, useState } from 'react';
+
 import {
   Layout,
   PrimaryButton,
@@ -7,9 +9,8 @@ import {
   Modal,
 } from 'components/index';
 import { useStore } from 'hooks/index';
-import { ellipsis, getHost } from 'utils/index';
 import { getController } from 'utils/browser';
-import { Dialog } from '@headlessui/react';
+import { ellipsis, getHost } from 'utils/index';
 
 export const ConnectWallet = () => {
   const { accounts, trustedApps } = useStore();

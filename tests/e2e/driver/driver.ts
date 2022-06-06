@@ -1,7 +1,7 @@
 /* eslint-disable class-methods-use-this */
-import { promises as fs } from 'fs';
 import { strict as assert } from 'assert';
-
+import cssToXPath from 'css-to-xpath';
+import { promises as fs } from 'fs';
 import {
   until,
   error as webdriverError,
@@ -9,7 +9,6 @@ import {
   WebDriver,
   WebElement,
 } from 'selenium-webdriver';
-import cssToXPath from 'css-to-xpath';
 
 interface ICustomWebElement extends WebElement {
   fill(input);

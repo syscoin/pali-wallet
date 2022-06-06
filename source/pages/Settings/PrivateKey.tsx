@@ -1,7 +1,6 @@
+import { Input, Form } from 'antd';
 import React, { useState, useEffect } from 'react';
-import { useUtils, useStore } from 'hooks/index';
-import { ellipsis } from 'utils/index';
-import { getController } from 'utils/browser';
+
 import {
   Layout,
   Icon,
@@ -9,7 +8,9 @@ import {
   Card,
   CopyCard,
 } from 'components/index';
-import { Input, Form } from 'antd';
+import { useUtils, useStore } from 'hooks/index';
+import { getController } from 'utils/browser';
+import { ellipsis } from 'utils/index';
 
 const PrivateKeyView = () => {
   const controller = getController();

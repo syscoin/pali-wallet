@@ -1,9 +1,10 @@
+import axios from 'axios';
 import React, { useEffect, useState } from 'react';
+
 import placeholder from 'assets/images/placeholder.png';
 import { Tooltip, Icon, IconButton } from 'components/index';
-import { formatUrl } from 'utils/index';
 import { useStore, useUtils } from 'hooks/index';
-import axios from 'axios';
+import { formatUrl } from 'utils/index';
 
 export const AssetDetails = ({
   assetType,

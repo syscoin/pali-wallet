@@ -1,10 +1,11 @@
+import { AxiosResponse } from 'axios';
+
 import {
   IKeyringAccountState,
   INetwork,
   KeyringManager,
   ITokenMap,
 } from '@pollum-io/sysweb3-utils';
-import { AxiosResponse } from 'axios';
 
 export interface IMainController extends KeyringManager {
   account: any;

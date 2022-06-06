@@ -1,10 +1,11 @@
+import { Disclosure, Menu, Transition } from '@headlessui/react';
+import { toSvg } from 'jdenticon';
 import React, { useEffect } from 'react';
+
 import { IconButton, Icon } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
-import { toSvg } from 'jdenticon';
-import { Disclosure, Menu, Transition } from '@headlessui/react';
-import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
+import { ellipsis } from 'utils/index';
 
 const AccountMenu: React.FC = () => {
   const { navigate } = useUtils();

@@ -1,7 +1,9 @@
-import { useSelector } from 'react-redux';
-import { RootState } from 'state/store';
 import getSymbolFromCurrency from 'currency-symbol-map';
+import { useSelector } from 'react-redux';
+
 import { getFiatValueByToken } from '@pollum-io/sysweb3-utils';
+
+import { RootState } from 'state/store';
 
 export const usePrice = () => {
   const { fiat } = useSelector((state: RootState) => state.price);

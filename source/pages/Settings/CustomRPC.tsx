@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
-import { Form, Input } from 'antd';
-import { Layout, SecondaryButton } from 'components/index';
 import { Switch } from '@headlessui/react';
-import { useUtils } from 'hooks/index';
-import { getController } from 'utils/browser';
-import { ICustomRpcParams } from 'types/transactions';
+import { Form, Input } from 'antd';
+import React, { useState } from 'react';
+
 import { INetwork } from '@pollum-io/sysweb3-utils';
+
+import { Layout, SecondaryButton } from 'components/index';
+import { useUtils } from 'hooks/index';
+import { ICustomRpcParams } from 'types/transactions';
+import { getController } from 'utils/browser';
 
 import { ManageNetwork } from '.';
 

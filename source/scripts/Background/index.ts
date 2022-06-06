@@ -1,12 +1,13 @@
 import 'emoji-log';
-import { STORE_PORT } from 'constants/index';
-
 import { wrapStore } from 'webext-redux';
 import { browser } from 'webextension-polyfill-ts';
-// import { localStorage } from 'redux-persist-webextension-storage';
+
 import { sysweb3Di } from '@pollum-io/sysweb3-core';
+
+import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
 
+// import { localStorage } from 'redux-persist-webextension-storage';
 import MasterController, { IMasterController } from './controllers';
 
 declare global {

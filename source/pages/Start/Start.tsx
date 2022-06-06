@@ -1,9 +1,10 @@
+import { Form, Input } from 'antd';
 import React from 'react';
+import { Link } from 'react-router-dom';
+
 import LogoImage from 'assets/images/logo-s.svg';
 import { PrimaryButton } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
-import { Form, Input } from 'antd';
-import { Link } from 'react-router-dom';
 import { getController } from 'utils/browser';
 
 export const Start = () => {

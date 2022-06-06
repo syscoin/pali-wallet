@@ -1,7 +1,6 @@
 import assert from 'assert';
-
-import { By } from 'selenium-webdriver';
 import clipboard from 'copy-paste';
+import { By } from 'selenium-webdriver';
 
 import { MOCK_PASSWORD, MOCK_SEED_PHRASE } from '../mocks';
 
