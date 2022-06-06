@@ -39,7 +39,6 @@
   ],
   "rules": {
     // TODO "react/jsx-one-expression-per-line": ["warn", { "allow": "single-child" }],
-    // TODO "eqeqeq": "error",
     // ? "no-confusing-arrow": "warn",
     // ? "@typescript-eslint/explicit-module-boundary-types": "warn",
     // ? "consistent-return": "warn",
@@ -51,7 +50,7 @@
     // * ESLint default rules
     "array-callback-return": "error",
     "arrow-body-style": ["error", "as-needed"],
-    "camelcase": "off",
+    "eqeqeq": "warn",
     "no-nested-ternary": "warn",
     "no-unused-vars": "warn",
     "semi": "error",

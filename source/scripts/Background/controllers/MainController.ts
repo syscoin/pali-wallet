@@ -170,7 +170,7 @@ const MainController = () => {
     newRpc: ICustomRpcParams,
     oldRpc: ICustomRpcParams
   ): Promise<INetwork> => {
-    const changedChainId = oldRpc.chainId != newRpc.chainId;
+    const changedChainId = oldRpc.chainId !== newRpc.chainId;
     const network = await validateAndBuildRpc(newRpc, changedChainId);
 
     const chain = newRpc.isSyscoinRpc ? 'syscoin' : 'ethereum';
