@@ -38,13 +38,7 @@
     }
   ],
   "rules": {
-    // TODO "react/jsx-one-expression-per-line": ["warn", { "allow": "single-child" }],
-    // ? "no-confusing-arrow": "warn",
-    // ? "@typescript-eslint/explicit-module-boundary-types": "warn",
-    // ? "consistent-return": "warn",
-    // ? "no-await-in-loop": "error",
-
-    "@typescript-eslint/no-explicit-any": "off", // ?
+    "@typescript-eslint/no-explicit-any": "off",
 
     // * ESLint default rules
     "array-callback-return": "error",
@@ -94,11 +88,11 @@
             "group": "internal"
           },
           {
-            "pattern": "scripts/**",
+            "pattern": "constants/**",
             "group": "internal"
           },
           {
-            "pattern": "containers/**",
+            "pattern": "hooks/**",
             "group": "internal"
           },
           {
@@ -110,19 +104,11 @@
             "group": "internal"
           },
           {
+            "pattern": "scripts/**",
+            "group": "internal"
+          },
+          {
             "pattern": "state/**",
-            "group": "internal"
-          },
-          {
-            "pattern": "constants/**",
-            "group": "internal"
-          },
-          {
-            "pattern": "services/**",
-            "group": "internal"
-          },
-          {
-            "pattern": "hooks/**",
             "group": "internal"
           },
           {
@@ -131,10 +117,6 @@
           },
           {
             "pattern": "utils/**",
-            "group": "internal"
-          },
-          {
-            "pattern": "tests/**",
             "group": "internal"
           }
         ],
