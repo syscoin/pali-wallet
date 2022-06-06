@@ -88,9 +88,9 @@ export const ConnectWallet = () => {
             type="button"
             action
             disabled={accountId === -1}
-            onClick={
-              !isInTrustedList ? () => setOpenExtraConfirmation(true) : () => {}
-            }
+            onClick={() => {
+              if (!isInTrustedList) setOpenExtraConfirmation(true);
+            }}
           >
             {accountId > -1 ? 'Confirm' : 'Next'}
           </PrimaryButton>
@@ -126,7 +126,7 @@ export const ConnectWallet = () => {
                 Cancel
               </SecondaryButton>
 
-              <PrimaryButton action width="32" type="button" onClick={() => {}}>
+              <PrimaryButton action width="32" type="button">
                 Confirm
               </PrimaryButton>
             </div>

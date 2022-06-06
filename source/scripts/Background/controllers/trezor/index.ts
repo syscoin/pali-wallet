@@ -38,7 +38,9 @@ const TrezorController = () => {
     return account.createAccount();
   };
 
-  const forgetHardware = () => {};
+  const forgetHardware = () => {
+    // TODO forgetHardware
+  };
 
   return {
     tx: isSyscoinNetwork ? trezor : Web3Accounts(),

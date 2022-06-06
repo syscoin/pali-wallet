@@ -58,12 +58,7 @@ export const ConnectedAccounts = () => {
             Cancel
           </SecondaryButton>
 
-          <PrimaryButton
-            type="button"
-            width="40"
-            disabled={accountId === -1}
-            onClick={() => {}}
-          >
+          <PrimaryButton type="button" width="40" disabled={accountId === -1}>
             Change
           </PrimaryButton>
         </div>
