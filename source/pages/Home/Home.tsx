@@ -31,11 +31,7 @@ export const Home = () => {
     : activeAccount.balances.ethereum;
 
   const setChainSymbol = async () => {
-    const symbol = await getSymbolByChain(chain);
-
-    setSymbol(symbol);
-
-    return symbol;
+    setSymbol(await getSymbolByChain(chain));
   };
 
   const getFiatPrice = async () => {

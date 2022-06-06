@@ -213,8 +213,7 @@ describe('Vault store actions', () => {
     const payload = { prefix: 'ethereum', chainId: 4 };
     const newState = reducer(initialState, removeNetwork(payload));
 
-    const { networks } = newState;
-    expect(networks.ethereum).toBeDefined();
-    expect(networks.ethereum[4]).toBeUndefined();
+    expect(newState.networks.ethereum).toBeDefined();
+    expect(newState.networks.ethereum[4]).toBeUndefined();
   });
 });

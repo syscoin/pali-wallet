@@ -101,10 +101,10 @@ const MainController = () => {
 
     store.dispatch(setNetwork(network));
 
-    const account = (await keyringManager.setSignerNetwork(
+    const networkAccount = await keyringManager.setSignerNetwork(
       network,
       chain
-    )) as IKeyringAccountState;
+    );
 
     store.dispatch(
       setActiveAccountProperty({
@@ -120,13 +120,13 @@ const MainController = () => {
       })
     );
 
-    if (account.id === 0)
+    if (networkAccount.id === 0)
       keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
 
     store.dispatch(setIsPendingBalances(false));
-    store.dispatch(setActiveAccount(account));
+    store.dispatch(setActiveAccount(networkAccount));
 
-    return account;
+    return networkAccount;
   };
 
   const validateAndBuildRpc = async (

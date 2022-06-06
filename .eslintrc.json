@@ -43,7 +43,6 @@
     // ? "@typescript-eslint/explicit-module-boundary-types": "warn",
     // ? "consistent-return": "warn",
     // ? "no-await-in-loop": "error",
-    // ? "no-shadow": "error",
 
     "@typescript-eslint/no-explicit-any": "off", // ?
 
@@ -53,6 +52,7 @@
     "eqeqeq": "warn",
     "no-nested-ternary": "warn",
     "no-unused-vars": "warn",
+    "no-shadow": "warn",
     "semi": "error",
     "comma-dangle": [
       "error",
