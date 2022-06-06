@@ -38,7 +38,6 @@
     }
   ],
   "rules": {
-    // TODO "no-nested-ternary": "error",
     // TODO "react/jsx-one-expression-per-line": ["warn", { "allow": "single-child" }],
     // TODO "@typescript-eslint/interface-name-prefix": "error",
     // TODO "eqeqeq": "error",
@@ -54,6 +53,7 @@
     "array-callback-return": "error",
     "arrow-body-style": ["error", "as-needed"],
     "camelcase": "off",
+    "no-nested-ternary": "warn",
     "no-unused-vars": "warn",
     "semi": "error",
     "comma-dangle": [
