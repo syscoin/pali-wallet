@@ -10,6 +10,7 @@ import store from 'state/store';
 import MasterController, { IMasterController } from './controllers';
 
 declare global {
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   interface Window {
     controller: Readonly<IMasterController>;
   }

@@ -6,7 +6,7 @@ import {
 } from '@pollum-io/sysweb3-utils';
 import { AxiosResponse } from 'axios';
 
-export interface MainController extends KeyringManager {
+export interface IMainController extends KeyringManager {
   account: any;
   addCustomRpc: (network: INetwork) => Promise<INetwork | Error>;
   createAccount: (label?: string) => Promise<IKeyringAccountState>;
@@ -22,7 +22,7 @@ export interface MainController extends KeyringManager {
   unlock: (pwd: string) => Promise<void>;
 }
 
-export type CoingeckoCoins = {
+export interface ICoingeckoCoins {
   contract_address?: string;
   id: string;
   large: string;
@@ -30,9 +30,9 @@ export type CoingeckoCoins = {
   name: string;
   symbol: string;
   thumb: string;
-};
+}
 
-export interface EthTokenDetails {
+export interface IEthTokenDetails {
   contract: string;
   decimals: number;
   description: string;
@@ -68,7 +68,7 @@ export interface IControllerUtils {
     AxiosResponse<
       {
         categories: any[];
-        coins: CoingeckoCoins[];
+        coins: ICoingeckoCoins[];
         exchanges: any[];
         icos: any[];
         nfts: any[];

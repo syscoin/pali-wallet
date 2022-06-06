@@ -4,7 +4,7 @@ import { Layout, SecondaryButton } from 'components/index';
 import { Switch } from '@headlessui/react';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
-import { CustomRpcParams } from 'types/transactions';
+import { ICustomRpcParams } from 'types/transactions';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import { ManageNetwork } from '.';
@@ -23,7 +23,7 @@ const CustomRPCView = ({
   const { alert } = useUtils();
   const controller = getController();
 
-  const onSubmit = async (data: CustomRpcParams) => {
+  const onSubmit = async (data: ICustomRpcParams) => {
     setLoading(true);
 
     const customRpc = {

@@ -1,9 +1,9 @@
-export type AssetPrice = {
+export interface IAssetPrice {
   asset: string;
   price: number;
-};
+}
 
 export interface IPriceState {
   coins: any;
-  fiat: AssetPrice;
+  fiat: IAssetPrice;
 }

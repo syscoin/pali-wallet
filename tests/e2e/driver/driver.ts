@@ -11,13 +11,13 @@ import {
 } from 'selenium-webdriver';
 import cssToXPath from 'css-to-xpath';
 
-interface CustomWebElement extends WebElement {
+interface ICustomWebElement extends WebElement {
   fill(input);
   press(key): Promise<void>;
   waitForElementState(state, timeout);
 }
 
-function wrapElementWithAPI(element, driver): CustomWebElement {
+function wrapElementWithAPI(element, driver): ICustomWebElement {
   element.press = (key) => element.sendKeys(key);
   element.fill = async (input) => {
     await element.clear();

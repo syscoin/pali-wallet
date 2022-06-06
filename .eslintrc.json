@@ -39,7 +39,6 @@
   ],
   "rules": {
     // TODO "react/jsx-one-expression-per-line": ["warn", { "allow": "single-child" }],
-    // TODO "@typescript-eslint/interface-name-prefix": "error",
     // TODO "eqeqeq": "error",
     // ? "no-confusing-arrow": "warn",
     // ? "@typescript-eslint/explicit-module-boundary-types": "warn",
@@ -101,6 +100,17 @@
     "react-hooks/rules-of-hooks": "error",
 
     "@typescript-eslint/ban-ts-comment": "warn",
+    "@typescript-eslint/naming-convention": [
+      "warn",
+      {
+        "selector": "interface",
+        "format": ["PascalCase"],
+        "custom": {
+          "regex": "^I[A-Z]",
+          "match": true
+        }
+      }
+    ],
     "@typescript-eslint/no-empty-function": "warn"
   }
 }

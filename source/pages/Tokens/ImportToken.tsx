@@ -12,7 +12,7 @@ import {
 import { formatUrl, ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
 import { IToken } from 'types/transactions';
-import { CoingeckoCoins } from 'types/controllers';
+import { ICoingeckoCoins } from 'types/controllers';
 
 export const ImportToken: FC = () => {
   const controller = getController();
@@ -22,11 +22,11 @@ export const ImportToken: FC = () => {
   const { activeAccount } = useStore();
 
   const [copied, copy] = useCopyClipboard();
-  const [filteredSearch, setFilteredSearch] = useState<CoingeckoCoins[]>(
+  const [filteredSearch, setFilteredSearch] = useState<ICoingeckoCoins[]>(
     activeAccount.assets
   );
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [selected, setSelected] = useState<CoingeckoCoins | any>(null);
+  const [selected, setSelected] = useState<ICoingeckoCoins | any>(null);
 
   const handleSearch = async (query: string) => {
     setSelected(null);
@@ -35,7 +35,7 @@ export const ImportToken: FC = () => {
       data: { coins },
     } = await controller.utils.getSearch(query);
 
-    let newList: CoingeckoCoins[] = [];
+    let newList: ICoingeckoCoins[] = [];
 
     if (query) {
       newList = coins.filter(async (item) => {
@@ -76,7 +76,7 @@ export const ImportToken: FC = () => {
     alert.success('Token address successfully copied');
   }, [copied]);
 
-  const handleSelectToken = async (token: CoingeckoCoins) => {
+  const handleSelectToken = async (token: ICoingeckoCoins) => {
     setIsLoading(true);
 
     const { data } = await controller.utils.getDataForToken(token.id);

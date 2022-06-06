@@ -20,7 +20,7 @@ import {
   setActiveToken,
   removeNetwork,
 } from 'state/vault';
-import { CustomRpcParams } from 'types/transactions';
+import { ICustomRpcParams } from 'types/transactions';
 
 import WalletController from './account';
 import { validateEthRpc, validateSysRpc } from './utils';
@@ -136,7 +136,7 @@ const MainController = () => {
       rpcUrl,
       isSyscoinRpc,
       tokenContractAddress,
-    }: CustomRpcParams,
+    }: ICustomRpcParams,
     chainIdCheck = true
   ): Promise<INetwork> => {
     const chain = isSyscoinRpc ? 'syscoin' : 'ethereum';
@@ -157,7 +157,7 @@ const MainController = () => {
     };
   };
 
-  const addCustomRpc = async (data: CustomRpcParams): Promise<INetwork> => {
+  const addCustomRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
     const network = await validateAndBuildRpc(data);
 
     const chain = data.isSyscoinRpc ? 'syscoin' : 'ethereum';
@@ -167,8 +167,8 @@ const MainController = () => {
   };
 
   const editCustomRpc = async (
-    newRpc: CustomRpcParams,
-    oldRpc: CustomRpcParams
+    newRpc: ICustomRpcParams,
+    oldRpc: ICustomRpcParams
   ): Promise<INetwork> => {
     const changedChainId = oldRpc.chainId != newRpc.chainId;
     const network = await validateAndBuildRpc(newRpc, changedChainId);
