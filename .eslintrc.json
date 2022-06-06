@@ -11,6 +11,14 @@
     "react-hooks",
     "import"
   ],
+  "env": {
+    "webextensions": true
+  },
+  "settings": {
+    "react": {
+      "version": "detect"
+    }
+  },
   "overrides": [
     {
       "files": ["*.{ts,tsx}"],
@@ -42,7 +50,12 @@
 
     "@typescript-eslint/no-explicit-any": "off", // ?
 
+    // * ESLint default rules
+    "array-callback-return": "error",
     "arrow-body-style": ["error", "as-needed"],
+    "camelcase": "off",
+    "no-unused-vars": "warn",
+    "semi": "error",
     "comma-dangle": [
       "error",
       {
@@ -53,26 +66,9 @@
         "functions": "never"
       }
     ],
-    "semi": "error",
-    "react-hooks/rules-of-hooks": "error",
-    "react/jsx-filename-extension": [
-      "error",
-      { "extensions": [".jsx", ".tsx"] }
-    ],
+
+    // * Plugins rules
     "import/no-extraneous-dependencies": "error",
-    "no-unused-vars": "warn",
-    "camelcase": "off",
-    "prettier/prettier": [
-      "error",
-      {
-        "trailingComma": "es5",
-        "tabWidth": 2,
-        "semi": true,
-        "singleQuote": true
-      }
-    ],
-    "array-callback-return": "error",
-    "@typescript-eslint/ban-ts-comment": "warn",
     "import/order": [
       "error",
       {
@@ -85,16 +81,26 @@
         "newlines-between": "always"
       }
     ],
+
+    "prettier/prettier": [
+      "error",
+      {
+        "trailingComma": "es5",
+        "tabWidth": 2,
+        "semi": true,
+        "singleQuote": true
+      }
+    ],
+
     "react/no-unescaped-entities": "off",
+    "react/jsx-filename-extension": [
+      "error",
+      { "extensions": [".jsx", ".tsx"] }
+    ],
+
+    "react-hooks/rules-of-hooks": "error",
+
+    "@typescript-eslint/ban-ts-comment": "warn",
     "@typescript-eslint/no-empty-function": "warn"
-  },
-  "env": {
-    "webextensions": true
-  },
-  "settings": {
-    "react": {
-      "version": "detect"
-    }
-  },
-  "globals": {}
+  }
 }
