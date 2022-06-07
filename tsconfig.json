@@ -11,6 +11,7 @@
     "skipLibCheck": true,
     "noResolve": false,
     "moduleResolution": "node",
+    "esModuleInterop": true,
     "resolveJsonModule": true,
     "noImplicitAny": false,
     "noImplicitReturns": false,
