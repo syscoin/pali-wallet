@@ -1,6 +1,6 @@
 {
   "extends": [
-    "plugin:react/recommended", // Uses the recommended rules from @eslint-plugin-react
+    "plugin:react/recommended",
     "plugin:@typescript-eslint/recommended",
     "prettier",
     "prettier/react"
@@ -30,9 +30,8 @@
       },
       "plugins": ["typescript-sort-keys"],
       "rules": {
-        "typescript-sort-keys/interface": 2,
-        "typescript-sort-keys/string-enum": 2,
-        "@typescript-eslint/no-unused-vars": 1,
+        "typescript-sort-keys/interface": 1,
+        "typescript-sort-keys/string-enum": 1,
         "@typescript-eslint/switch-exhaustiveness-check": 2
       }
     }
