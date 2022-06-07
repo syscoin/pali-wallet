@@ -186,7 +186,7 @@ export const SendEth = () => {
                             {activeAccount &&
                               Object.values(activeAccount.assets).map(
                                 (item: any) => (
-                                  <Menu.Item>
+                                  <Menu.Item key={item.id}>
                                     <button
                                       onClick={() =>
                                         handleSelectedAsset(
