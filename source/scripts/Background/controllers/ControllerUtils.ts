@@ -8,7 +8,7 @@ import {
   isValidEthereumAddress,
   isValidSYSAddress,
   getTokenJson,
-  getWeb3TokenData,
+  getTokenByContract,
   getAsset,
   txUtils,
 } from '@pollum-io/sysweb3-utils';
@@ -76,9 +76,6 @@ const ControllerUtils = (): IControllerUtils => {
     }
   };
 
-  const importToken = async (contractAddress: string) =>
-    await getWeb3TokenData(contractAddress);
-
   const getSearch = async (query: string): Promise<any> =>
     getCoingeckoSearch(query);
 
@@ -88,37 +85,19 @@ const ControllerUtils = (): IControllerUtils => {
     return response;
   };
 
-  const getTokenDataByContractAddress = async (
-    address: string,
-    platform: string
-  ) => {
-    const { data, success } = await CoinGeckoClient.coins.fetchCoinContractInfo(
-      address,
-      platform
-    );
-
-    if (!success || data.error) return new Error(data.error);
-
-    return {
-      data,
-      success,
-    };
-  };
-
   const txs = txUtils();
 
   return {
     appRoute,
     setFiat,
     setFiatCurrencyForWallet,
-    importToken,
     getSearch,
     getAsset,
     isValidEthereumAddress,
     isValidSYSAddress,
     getTokenJson,
     getDataForToken,
-    getTokenDataByContractAddress,
+    getTokenByContract,
     ...txs,
   };
 };

@@ -3,6 +3,7 @@ import {
   INetwork,
   KeyringManager,
   ITokenMap,
+  ICoingeckoToken,
 } from '@pollum-io/sysweb3-utils';
 import { AxiosResponse } from 'axios';
 
@@ -76,7 +77,7 @@ export interface IControllerUtils {
       any
     >
   >;
-  getTokenDataByContractAddress: (address: string, platform: string) => any;
+  getTokenByContract: (contractAddress: string) => Promise<ICoingeckoToken>;
   getTokenJson: () => {
     address: string;
     chainId: number;
@@ -96,7 +97,6 @@ export interface IControllerUtils {
     guid: number | string;
     receivingAddress: string;
   }) => ITokenMap;
-  importToken: (contractAddress: string) => Promise<any>;
   isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
   isValidSYSAddress: (
     address: string,
