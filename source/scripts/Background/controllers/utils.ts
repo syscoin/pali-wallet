@@ -1,8 +1,7 @@
 import axios from 'axios';
 import { memoize } from 'lodash';
 import bip44Constants from 'bip44-constants';
-
-import ControllerUtils from './ControllerUtils';
+import { getTokenByContract } from '@pollum-io/sysweb3-utils';
 
 const getFetchWithTimeout = memoize((timeout) => {
   if (!Number.isInteger(timeout) || timeout < 1) {
@@ -159,19 +158,6 @@ export const validateSysRpc = async (
   };
 };
 
-const utils = ControllerUtils();
-
-const getTokenData = async (address?: string) => {
-  if (!address) return null;
-
-  const tokenData: any = await utils.getTokenDataByContractAddress(
-    address,
-    'ethereum'
-  );
-
-  return tokenData;
-};
-
 export const validateEthRpc = async (
   chainId: number,
   rpcUrl: string,
@@ -194,8 +180,12 @@ export const validateEthRpc = async (
     throw new Error('RPC has an invalid chain ID');
   }
 
-  const tokenData = await getTokenData(tokenContractAddress);
-  const symbol = tokenData && tokenData.symbol ? tokenData.symbol : 'eth';
+  let symbol = 'eth';
+  if (tokenContractAddress) {
+    const tokenData = await getTokenByContract(tokenContractAddress);
+    symbol = tokenData.symbol;
+  }
+
   const data = {
     chainId,
     url: rpcUrl,
