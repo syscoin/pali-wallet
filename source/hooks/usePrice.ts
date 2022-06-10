@@ -19,7 +19,7 @@ export const usePrice = () => {
       ? 'syscoin'
       : 'ethereum';
 
-    const { price } = await getFiatValueByToken(chain, fiat.asset);
+    const price = await getFiatValueByToken(chain, fiat.asset);
 
     const value = amount * Number(price);
 
