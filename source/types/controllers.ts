@@ -93,11 +93,4 @@ export interface IControllerUtils {
     verification?: boolean
   ) => boolean;
   setFiat: (currency?: string, assetId?: string) => Promise<void>;
-  setFiatCurrencyForWallet: ({
-    base,
-    currency,
-  }: {
-    base: string;
-    currency: string;
-  }) => any;
 }

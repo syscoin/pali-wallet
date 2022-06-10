@@ -12,11 +12,9 @@ import {
   getTokenByContract,
   getAsset,
   txUtils,
+  getFiatValueByToken,
 } from '@pollum-io/sysweb3-utils';
-import CoinGecko from 'coingecko-api';
 import { IControllerUtils } from 'types/controllers';
-
-export const CoinGeckoClient = new CoinGecko();
 
 const ControllerUtils = (): IControllerUtils => {
   let route = '/';
@@ -27,15 +25,6 @@ const ControllerUtils = (): IControllerUtils => {
     }
 
     return route;
-  };
-
-  const setFiatCurrencyForWallet = async ({ base, currency }) => {
-    const data = await CoinGeckoClient.simple.price({
-      ids: [base],
-      vs_currencies: [currency],
-    });
-
-    return data;
   };
 
   const setFiat = async (currency?: string) => {
@@ -51,10 +40,7 @@ const ControllerUtils = (): IControllerUtils => {
         ? 'syscoin'
         : 'ethereum';
 
-      const { success, data } = await setFiatCurrencyForWallet({
-        base: chain,
-        currency,
-      });
+      const price = await getFiatValueByToken(chain, currency);
 
       const currencies = await (
         await fetch(`${ASSET_PRICE_API}/currency`)
@@ -64,14 +50,12 @@ const ControllerUtils = (): IControllerUtils => {
         store.dispatch(setCoins(currencies.rates));
       }
 
-      if (success && data) {
-        store.dispatch(
-          setPrices({
-            asset: currency,
-            price: data[chain][currency],
-          })
-        );
-      }
+      store.dispatch(
+        setPrices({
+          asset: currency,
+          price,
+        })
+      );
     } catch (error) {
       logError('Failed to retrieve asset price', '', error);
     }
@@ -82,7 +66,6 @@ const ControllerUtils = (): IControllerUtils => {
   return {
     appRoute,
     setFiat,
-    setFiatCurrencyForWallet,
     getSearch,
     getAsset,
     isValidEthereumAddress,
