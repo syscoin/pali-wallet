@@ -48,7 +48,7 @@
     "@pollum-io/sysweb3-core": "^1.0.16",
     "@pollum-io/sysweb3-keyring": "^1.0.288",
     "@pollum-io/sysweb3-network": "^1.0.37",
-    "@pollum-io/sysweb3-utils": "^1.1.148",
+    "@pollum-io/sysweb3-utils": "^1.1.149",
     "@reduxjs/toolkit": "^1.4.0",
     "@tippyjs/react": "^4.2.6",
     "@types/chrome": "^0.0.177",
