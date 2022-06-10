@@ -28,6 +28,8 @@ import { validateEthRpc, validateSysRpc } from './utils';
 const MainController = () => {
   const keyringManager = KeyringManager();
 
+  const { account, addAccount } = WalletController();
+
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
   };
@@ -63,8 +65,6 @@ const MainController = () => {
 
     return account;
   };
-
-  const { account, addAccount } = WalletController();
 
   const lock = () => {
     keyringManager.logout();
@@ -149,7 +149,8 @@ const MainController = () => {
       ? await validateSysRpc(rpcUrl)
       : await validateEthRpc(chainId, rpcUrl, tokenContractAddress);
 
-    if (!valid) throw new Error(`Invalid ${chain} RPC`);
+    if (!valid)
+      throw new Error('Invalid chainID, please verify the current RPC URL!');
 
     return {
       ..._data,
