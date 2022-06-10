@@ -28,6 +28,7 @@ import { validateEthRpc, validateSysRpc } from './utils';
 
 const MainController = () => {
   const keyringManager = KeyringManager();
+  const walletController = WalletController();
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -65,8 +66,6 @@ const MainController = () => {
     return account;
   };
 
-  const { account, addAccount } = WalletController();
-
   const lock = () => {
     keyringManager.logout();
 
@@ -76,7 +75,7 @@ const MainController = () => {
   const createAccount = async (
     label?: string
   ): Promise<IKeyringAccountState> => {
-    const newAccount = await addAccount(label);
+    const newAccount = await walletController.addAccount(label);
 
     store.dispatch(addAccountToStore(newAccount));
     store.dispatch(setActiveAccount(newAccount));
@@ -90,7 +89,7 @@ const MainController = () => {
     keyringManager.setActiveAccount(id);
     store.dispatch(setActiveAccount(accounts[id]));
 
-    account.sys.getLatestUpdate(false);
+    walletController.account.sys.getLatestUpdate(false);
   };
 
   const setActiveNetwork = async (chain: string, chainId: number) => {
@@ -150,7 +149,8 @@ const MainController = () => {
       ? await validateSysRpc(rpcUrl)
       : await validateEthRpc(chainId, rpcUrl, tokenContractAddress);
 
-    if (!valid) throw new Error(`Invalid ${chain} RPC`);
+    if (!valid)
+      throw new Error('Invalid chainID, please verify the current RPC URL!');
 
     return {
       ..._data,
@@ -211,7 +211,7 @@ const MainController = () => {
     unlock,
     lock,
     createAccount,
-    account,
+    account: walletController.account,
     setAccount,
     setAutolockTimer,
     setActiveNetwork,

@@ -34,10 +34,14 @@ const CustomRPCView = ({
     };
 
     try {
-      if (!selectedToEdit) await controller.wallet.addCustomRpc(customRpc);
-      else await controller.wallet.editCustomRpc(customRpc, selectedToEdit);
-
-      setEdit(true);
+      if (!selectedToEdit) {
+        await controller.wallet.addCustomRpc(customRpc);
+        alert.success('RPC successfully added!');
+      } else {
+        await controller.wallet.editCustomRpc(customRpc, selectedToEdit);
+        setEdit(true);
+        alert.success('RPC successfully edited!');
+      }
     } catch (error: any) {
       console.log('error custom rpc', error);
 
