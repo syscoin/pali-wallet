@@ -5,8 +5,10 @@ import {
   setIsPendingBalances,
 } from 'state/vault';
 import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
-import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
-import { CoingeckoCoins } from 'types/controllers';
+import {
+  ICoingeckoToken,
+  IKeyringAccountState,
+} from '@pollum-io/sysweb3-utils';
 
 import SysTrezorController from '../trezor/syscoin';
 import { SysTransactionController } from '../transaction';
@@ -98,7 +100,7 @@ const SysAccountController = () => {
     }
   };
 
-  const saveTokenInfo = async (token: CoingeckoCoins) => {
+  const saveTokenInfo = async (token: ICoingeckoToken) => {
     const { activeAccount } = store.getState().vault;
 
     const tokenExists = activeAccount.assets.find(
@@ -108,7 +110,7 @@ const SysAccountController = () => {
     if (tokenExists) throw new Error('Token already exists');
 
     const balance = await getErc20TokenBalance(
-      String(token.contract_address),
+      String(token.contractAddress),
       activeAccount.address
     );
 

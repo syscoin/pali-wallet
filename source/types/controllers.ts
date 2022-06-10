@@ -4,8 +4,8 @@ import {
   KeyringManager,
   ITokenMap,
   ICoingeckoToken,
+  ICoingeckoSearchResults,
 } from '@pollum-io/sysweb3-utils';
-import { AxiosResponse } from 'axios';
 
 export interface MainController extends KeyringManager {
   account: any;
@@ -65,18 +65,7 @@ export interface IControllerUtils {
   }>;
   getPsbtFromJson: (psbt: JSON) => string;
   getRawTransaction: (explorerUrl: string, txid: string) => any;
-  getSearch: (query: string) => Promise<
-    AxiosResponse<
-      {
-        categories: any[];
-        coins: CoingeckoCoins[];
-        exchanges: any[];
-        icos: any[];
-        nfts: any[];
-      },
-      any
-    >
-  >;
+  getSearch: (query: string) => Promise<ICoingeckoSearchResults>;
   getTokenByContract: (contractAddress: string) => Promise<ICoingeckoToken>;
   getTokenJson: () => {
     address: string;

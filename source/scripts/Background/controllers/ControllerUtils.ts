@@ -4,7 +4,7 @@ import store from 'state/store';
 import { setPrices, setCoins } from 'state/price';
 import { logError } from 'utils/index';
 import {
-  getSearch as getCoingeckoSearch,
+  getSearch,
   isValidEthereumAddress,
   isValidSYSAddress,
   getTokenJson,
@@ -75,9 +75,6 @@ const ControllerUtils = (): IControllerUtils => {
       logError('Failed to retrieve asset price', '', error);
     }
   };
-
-  const getSearch = async (query: string): Promise<any> =>
-    getCoingeckoSearch(query);
 
   const getDataForToken = async (tokenId: string) => {
     const response = await CoinGeckoClient.coins.fetch(tokenId);
