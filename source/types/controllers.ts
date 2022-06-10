@@ -57,7 +57,6 @@ export interface IControllerUtils {
     totalSupply: string;
     updateCapabilityFlags: number;
   }>;
-  getDataForToken: (tokenId: string) => any;
   getFeeRate: (fee: number) => BigInt;
   getGasUsedInTransaction: (transactionHash: string) => Promise<{
     effectiveGasPrice: number;
@@ -66,6 +65,7 @@ export interface IControllerUtils {
   getPsbtFromJson: (psbt: JSON) => string;
   getRawTransaction: (explorerUrl: string, txid: string) => any;
   getSearch: (query: string) => Promise<ICoingeckoSearchResults>;
+  getToken: (tokenId: string) => Promise<ICoingeckoToken>;
   getTokenByContract: (contractAddress: string) => Promise<ICoingeckoToken>;
   getTokenJson: () => {
     address: string;

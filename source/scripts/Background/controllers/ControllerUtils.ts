@@ -7,6 +7,7 @@ import {
   getSearch,
   isValidEthereumAddress,
   isValidSYSAddress,
+  getToken,
   getTokenJson,
   getTokenByContract,
   getAsset,
@@ -76,12 +77,6 @@ const ControllerUtils = (): IControllerUtils => {
     }
   };
 
-  const getDataForToken = async (tokenId: string) => {
-    const response = await CoinGeckoClient.coins.fetch(tokenId);
-
-    return response;
-  };
-
   const txs = txUtils();
 
   return {
@@ -93,7 +88,7 @@ const ControllerUtils = (): IControllerUtils => {
     isValidEthereumAddress,
     isValidSYSAddress,
     getTokenJson,
-    getDataForToken,
+    getToken,
     getTokenByContract,
     ...txs,
   };
