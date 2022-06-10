@@ -1878,6 +1878,17 @@
     axios "^0.26.1"
     web3 "^1.7.1"
 
+"@pollum-io/sysweb3-network@^1.0.47":
+  version "1.0.47"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.47.tgz#00955cb76cee63881ad8032dc959be92dc11c148"
+  integrity sha512-6X499K53EeOaS53YM1r+nO8ukdLxySUxf6U4nh+XH9blY6k7MiWyjfmGV24AzWljbs0gLo4uIHIxNdIeNnTOHA==
+  dependencies:
+    "@pollum-io/sysweb3-core" "^1.0.16"
+    "@pollum-io/sysweb3-utils" "^1.1.132"
+    axios "^0.26.1"
+    bip44-constants "^114.0.0"
+    web3 "^1.7.1"
+
 "@pollum-io/sysweb3-utils@^1.1.132":
   version "1.1.133"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.133.tgz#98529909bf04c7161accd8e370d9a2f9f54bd2b4"
