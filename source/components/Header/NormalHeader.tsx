@@ -52,10 +52,10 @@ export const NormalHeader: React.FC = () => {
   }, [wallet.isUnlocked()]);
 
   const NetworkMenu = () => (
-    <Menu as="div" className="absolute z-0 left-2 inline-block mr-8 text-left">
+    <Menu as="div" className="absolute left-2 inline-block mr-8 text-left">
       {(menuprops) => (
         <>
-          <Menu.Button className="z-0 inline-flex gap-x-2 items-center justify-start ml-2 w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
+          <Menu.Button className="inline-flex gap-x-2 items-center justify-start ml-2 w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
             <span>{activeNetwork.label}</span>
 
             <Icon
@@ -76,7 +76,7 @@ export const NormalHeader: React.FC = () => {
             leaveFrom="opacity-100 scale-100"
             leaveTo="transform opacity-0 scale-95"
           >
-            <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
+            <div className="fixed z-50 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
 
             <Menu.Items
               as="div"
@@ -262,7 +262,7 @@ export const NormalHeader: React.FC = () => {
   const GeneralMenu = () => (
     <Menu
       as="div"
-      className="absolute z-0 right-2 top-2 flex items-center justify-evenly"
+      className="absolute right-2 top-2 flex items-center justify-evenly"
     >
       {() => (
         <>
@@ -287,7 +287,7 @@ export const NormalHeader: React.FC = () => {
             <Icon name="reload" />
           </div>
 
-          <Menu.Button as="button" className="z-0 mx-1.5">
+          <Menu.Button as="button" className="mx-1.5">
             {Boolean(encryptedMnemonic) && (
               <div id="general-settings-button">
                 <Icon
@@ -307,7 +307,7 @@ export const NormalHeader: React.FC = () => {
             leaveFrom="opacity-100 scale-100"
             leaveTo="transform opacity-0 scale-95"
           >
-            <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
+            <div className="fixed z-50 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
 
             <Menu.Items
               as="div"

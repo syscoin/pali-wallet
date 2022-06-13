@@ -102,7 +102,7 @@
     "eqeqeq": "off",
     "new-cap": "off",
     "no-new": "off",
-    "@typescript-eslint/no-non-null-assertion": "error",
+    "@typescript-eslint/no-non-null-assertion": "off",
     "@typescript-eslint/comma-dangle": "off",
     "array-callback-return": "off",
     "no-restricted-syntax": "off",
