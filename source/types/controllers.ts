@@ -1,6 +1,3 @@
-/* eslint-disable camelcase */
-// camelcase disabled for CoingeckoCoins
-
 import {
   IKeyringAccountState,
   INetwork,
@@ -25,16 +22,6 @@ export interface MainController extends KeyringManager {
   setAutolockTimer: (minutes: number) => void;
   unlock: (pwd: string) => Promise<void>;
 }
-
-export type CoingeckoCoins = {
-  contract_address?: string;
-  id: string;
-  large: string;
-  market_cap_rank: number;
-  name: string;
-  symbol: string;
-  thumb: string;
-};
 
 export interface EthTokenDetails {
   contract: string;
