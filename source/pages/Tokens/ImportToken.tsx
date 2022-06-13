@@ -11,8 +11,12 @@ import {
 } from 'components/index';
 import { formatUrl, ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
-import { IToken } from 'types/transactions';
-import { CoingeckoCoins } from 'types/controllers';
+import {
+  getToken,
+  getSearch,
+  ICoingeckoSearchResultToken,
+  ICoingeckoToken,
+} from '@pollum-io/sysweb3-utils';
 
 export const ImportToken: FC = () => {
   const controller = getController();
@@ -22,42 +26,42 @@ export const ImportToken: FC = () => {
   const { activeAccount } = useStore();
 
   const [copied, copy] = useCopyClipboard();
-  const [filteredSearch, setFilteredSearch] = useState<CoingeckoCoins[]>(
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  const [tokens, setTokens] = useState<ICoingeckoSearchResultToken[]>(
     activeAccount.assets
   );
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [selected, setSelected] = useState<CoingeckoCoins | any>(null);
+  const [selected, setSelected] = useState<ICoingeckoToken | null>(null);
 
   const handleSearch = async (query: string) => {
     setSelected(null);
 
-    const {
-      data: { coins },
-    } = await controller.utils.getSearch(query);
+    const { coins } = await getSearch(query);
 
-    let newList: CoingeckoCoins[] = [];
+    let newList: ICoingeckoSearchResultToken[] = [];
 
     if (query) {
       newList = coins.filter(async (item) => {
         const name = item.symbol.toLowerCase();
         const typedValue = query.toLowerCase();
 
-        const { data } = await controller.utils.getDataForToken(item.id);
+        const tokenData = await getToken(item.id);
 
-        const validate = !!name.includes(typedValue) && data.contract_address;
+        const validate =
+          !!name.includes(typedValue) && tokenData.contractAddress;
 
         return validate;
       });
 
-      setFilteredSearch(newList);
+      setTokens(newList);
 
       return;
     }
 
-    setFilteredSearch(coins);
+    setTokens(coins);
   };
 
-  const addToken = async (token: IToken) => {
+  const addToken = async (token: ICoingeckoToken) => {
     try {
       await controller.wallet.account.sys.saveTokenInfo(token);
 
@@ -76,20 +80,10 @@ export const ImportToken: FC = () => {
     alert.success('Token address successfully copied');
   }, [copied]);
 
-  const handleSelectToken = async (token: CoingeckoCoins) => {
+  const handleSelectToken = async (token: ICoingeckoSearchResultToken) => {
     setIsLoading(true);
 
-    const { data } = await controller.utils.getDataForToken(token.id);
-
-    setSelected({
-      ...token,
-      explorer_link:
-        data.links && data.links.blockchain_site
-          ? data.links.blockchain_site[0]
-          : '',
-      contract_address: data.contract_address,
-      description: data.description ? data.description.en : '',
-    });
+    setSelected(await getToken(token.id));
 
     setIsLoading(false);
   };
@@ -126,32 +120,28 @@ export const ImportToken: FC = () => {
 
       <div className="flex flex-col items-center justify-center w-full">
         <ul className="scrollbar-styled my-1 p-4 w-full h-72 overflow-auto">
-          {filteredSearch ? (
+          {tokens ? (
             !selected &&
-            filteredSearch.map((token) => (
+            tokens.map((token) => (
               <li
                 onClick={() => handleSelectToken(token)}
                 key={token.id}
-                className={`${
-                  selected && selected.id === token.id
-                    ? 'text-brand-royalblue'
-                    : 'text-brand-white'
-                } p-2 hover:text-brand-royalblue text-xs border-b border-dashed cursor-pointer`}
+                className="p-2 hover:text-brand-royalblue text-brand-white text-xs border-b border-dashed cursor-pointer"
               >
                 <p>{formatUrl(token.symbol, 40)}</p>
               </li>
             ))
           ) : (
             <li className="p-2 text-brand-royalblue hover:text-brand-royalblue text-xs border-b border-dashed cursor-pointer">
-              <p>{formatUrl(selected.symbol, 40)}</p>
+              <p>{formatUrl(selected?.symbol || '', 40)}</p>
             </li>
           )}
 
           {selected && (
             <div className="flex flex-col gap-y-4 items-start justify-start mx-auto my-6 p-4 max-w-xs text-left text-sm bg-bkg-3 border border-brand-royalblue rounded-lg">
               <div className="flex gap-x-2 justify-start w-full">
-                {selected.thumb && (
-                  <img src={selected.thumb} alt="token thumb" />
+                {selected!.image.thumb && (
+                  <img src={selected.image.thumb} alt="token thumb" />
                 )}
 
                 <p className="font-rubik text-2xl font-bold">
@@ -159,13 +149,13 @@ export const ImportToken: FC = () => {
                 </p>
               </div>
 
-              {selected.contract_address && (
+              {selected.contractAddress && (
                 <div
-                  onClick={() => copy(selected.contract_address)}
+                  onClick={() => copy(selected.contractAddress!)}
                   className="flex gap-x-0.5 items-center justify-center hover:text-brand-royalblue text-brand-white"
                 >
                   <p className="cursor-pointer">
-                    Address: {ellipsis(selected.contract_address)}
+                    Address: {ellipsis(selected.contractAddress)}
                   </p>
 
                   <Icon name="copy" className="mb-1.5" />
@@ -174,10 +164,11 @@ export const ImportToken: FC = () => {
 
               <p>Name: {formatUrl(selected.name)}</p>
 
-              <p>Market cap rank: {selected.market_cap_rank}</p>
+              <p>Market cap rank: {selected.marketCapRank}</p>
 
               <p className="max-w-xs break-all text-xs">
-                {formatUrl(selected.description, 140)}
+                {/* @ts-ignore */}
+                {formatUrl(selected.description.en, 140)}
               </p>
             </div>
           )}
@@ -186,14 +177,14 @@ export const ImportToken: FC = () => {
         <div className="absolute bottom-12 md:static">
           <Tooltip
             content={`${
-              selected && selected.contract_address
+              selected && selected.contractAddress
                 ? ''
                 : 'Pali could not find the contract address for this token'
             }`}
           >
             <SecondaryButton
               type="button"
-              disabled={selected && !selected.contract_address}
+              disabled={Boolean(selected && !selected.contractAddress)}
               onClick={
                 selected ? () => addToken(selected) : () => navigate('/home')
               }
