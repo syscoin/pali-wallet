@@ -34,6 +34,7 @@ export const MOCK_ACCOUNT: IKeyringAccountState = {
   id: 15,
   isTrezorWallet: false,
   label: 'My account',
+  nfts: [],
   transactions: [
     {
       tokenType: '',

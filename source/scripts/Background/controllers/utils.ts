@@ -2,10 +2,7 @@ import {
   validateCustomEthRpc,
   validateSysRpc as validateCustomSysRpc,
 } from '@pollum-io/sysweb3-network';
-
-import ControllerUtils from './ControllerUtils';
-
-const utils = ControllerUtils();
+import { getTokenByContract } from '@pollum-io/sysweb3-utils';
 
 export const countDecimals = (x: number) => {
   if (Math.floor(x) === x) return 0;
@@ -35,17 +32,6 @@ export const validateSysRpc = async (
   };
 };
 
-const getTokenData = async (address?: string) => {
-  if (!address) return null;
-
-  const tokenData: any = await utils.getTokenDataByContractAddress(
-    address,
-    'ethereum'
-  );
-
-  return tokenData;
-};
-
 export const validateEthRpc = async (
   chainId: number,
   rpcUrl: string,
@@ -53,8 +39,12 @@ export const validateEthRpc = async (
 ): Promise<{ data: any; valid: boolean }> => {
   const { valid } = await validateCustomEthRpc(chainId, rpcUrl);
 
-  const tokenData = await getTokenData(tokenContractAddress);
-  const symbol = tokenData && tokenData.symbol ? tokenData.symbol : 'eth';
+  let symbol = 'eth';
+  if (tokenContractAddress) {
+    const tokenData = await getTokenByContract(tokenContractAddress);
+    symbol = tokenData.symbol;
+  }
+
   const data = {
     chainId,
     url: rpcUrl,

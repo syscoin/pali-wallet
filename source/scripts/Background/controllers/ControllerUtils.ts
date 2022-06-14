@@ -1,13 +1,13 @@
-import CoinGecko from 'coingecko-api';
-
 import {
-  getSearch as getCoingeckoSearch,
+  getSearch,
   isValidEthereumAddress,
   isValidSYSAddress,
+  getToken,
   getTokenJson,
-  getWeb3TokenData,
+  getTokenByContract,
   getAsset,
   txUtils,
+  getFiatValueByToken,
 } from '@pollum-io/sysweb3-utils';
 
 import { ASSET_PRICE_API } from 'constants/index';
@@ -15,8 +15,6 @@ import { setPrices, setCoins } from 'state/price';
 import store from 'state/store';
 import { IControllerUtils } from 'types/controllers';
 import { logError } from 'utils/index';
-
-export const CoinGeckoClient = new CoinGecko();
 
 const ControllerUtils = (): IControllerUtils => {
   let route = '/';
@@ -27,15 +25,6 @@ const ControllerUtils = (): IControllerUtils => {
     }
 
     return route;
-  };
-
-  const setFiatCurrencyForWallet = async ({ base, currency }) => {
-    const data = await CoinGeckoClient.simple.price({
-      ids: [base],
-      vs_currencies: [currency],
-    });
-
-    return data;
   };
 
   const setFiat = async (currency?: string) => {
@@ -51,10 +40,7 @@ const ControllerUtils = (): IControllerUtils => {
         ? 'syscoin'
         : 'ethereum';
 
-      const { success, data } = await setFiatCurrencyForWallet({
-        base: chain,
-        currency,
-      });
+      const price = await getFiatValueByToken(chain, currency);
 
       const currencies = await (
         await fetch(`${ASSET_PRICE_API}/currency`)
@@ -64,46 +50,15 @@ const ControllerUtils = (): IControllerUtils => {
         store.dispatch(setCoins(currencies.rates));
       }
 
-      if (success && data) {
-        store.dispatch(
-          setPrices({
-            asset: currency,
-            price: data[chain][currency],
-          })
-        );
-      }
+      store.dispatch(
+        setPrices({
+          asset: currency,
+          price,
+        })
+      );
     } catch (error) {
       logError('Failed to retrieve asset price', '', error);
     }
-  };
-
-  const importToken = async (contractAddress: string) =>
-    await getWeb3TokenData(contractAddress);
-
-  const getSearch = async (query: string): Promise<any> =>
-    getCoingeckoSearch(query);
-
-  const getDataForToken = async (tokenId: string) => {
-    const response = await CoinGeckoClient.coins.fetch(tokenId);
-
-    return response;
-  };
-
-  const getTokenDataByContractAddress = async (
-    address: string,
-    platform: string
-  ) => {
-    const { data, success } = await CoinGeckoClient.coins.fetchCoinContractInfo(
-      address,
-      platform
-    );
-
-    if (!success || data.error) return new Error(data.error);
-
-    return {
-      data,
-      success,
-    };
   };
 
   const txs = txUtils();
@@ -111,15 +66,13 @@ const ControllerUtils = (): IControllerUtils => {
   return {
     appRoute,
     setFiat,
-    setFiatCurrencyForWallet,
-    importToken,
     getSearch,
     getAsset,
     isValidEthereumAddress,
     isValidSYSAddress,
     getTokenJson,
-    getDataForToken,
-    getTokenDataByContractAddress,
+    getToken,
+    getTokenByContract,
     ...txs,
   };
 };

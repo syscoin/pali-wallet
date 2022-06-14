@@ -1,10 +1,10 @@
-import { AxiosResponse } from 'axios';
-
 import {
   IKeyringAccountState,
   INetwork,
   KeyringManager,
   ITokenMap,
+  ICoingeckoToken,
+  ICoingeckoSearchResults,
 } from '@pollum-io/sysweb3-utils';
 
 export interface IMainController extends KeyringManager {
@@ -57,7 +57,6 @@ export interface IControllerUtils {
     totalSupply: string;
     updateCapabilityFlags: number;
   }>;
-  getDataForToken: (tokenId: string) => any;
   getFeeRate: (fee: number) => BigInt;
   getGasUsedInTransaction: (transactionHash: string) => Promise<{
     effectiveGasPrice: number;
@@ -65,19 +64,9 @@ export interface IControllerUtils {
   }>;
   getPsbtFromJson: (psbt: JSON) => string;
   getRawTransaction: (explorerUrl: string, txid: string) => any;
-  getSearch: (query: string) => Promise<
-    AxiosResponse<
-      {
-        categories: any[];
-        coins: ICoingeckoCoins[];
-        exchanges: any[];
-        icos: any[];
-        nfts: any[];
-      },
-      any
-    >
-  >;
-  getTokenDataByContractAddress: (address: string, platform: string) => any;
+  getSearch: (query: string) => Promise<ICoingeckoSearchResults>;
+  getToken: (tokenId: string) => Promise<ICoingeckoToken>;
+  getTokenByContract: (contractAddress: string) => Promise<ICoingeckoToken>;
   getTokenJson: () => {
     address: string;
     chainId: number;
@@ -97,7 +86,6 @@ export interface IControllerUtils {
     guid: number | string;
     receivingAddress: string;
   }) => ITokenMap;
-  importToken: (contractAddress: string) => Promise<any>;
   isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
   isValidSYSAddress: (
     address: string,
@@ -105,11 +93,4 @@ export interface IControllerUtils {
     verification?: boolean
   ) => boolean;
   setFiat: (currency?: string, assetId?: string) => Promise<void>;
-  setFiatCurrencyForWallet: ({
-    base,
-    currency,
-  }: {
-    base: string;
-    currency: string;
-  }) => any;
 }
