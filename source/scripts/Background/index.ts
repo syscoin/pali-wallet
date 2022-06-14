@@ -22,7 +22,9 @@ if (!window.controller) {
 
 browser.runtime.onInstalled.addListener(() => {
   console.emoji('🤩', 'Pali extension enabled');
+});
 
+browser.runtime.onConnect.addListener(() => {
   sysweb3Di.getStateStorageDb().setPrefix('sysweb3-');
   sysweb3Di.useFetchHttpClient(window.fetch.bind(window));
   sysweb3Di.useLocalStorageClient(window.localStorage);
