@@ -57,6 +57,7 @@ export interface IControllerUtils {
     totalSupply: string;
     updateCapabilityFlags: number;
   }>;
+  // eslint-disable-next-line @typescript-eslint/ban-types
   getFeeRate: (fee: number) => BigInt;
   getGasUsedInTransaction: (transactionHash: string) => Promise<{
     effectiveGasPrice: number;
