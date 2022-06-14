@@ -48,11 +48,38 @@ const VaultState = createSlice({
     },
     setNetworks(
       state: IVaultState,
-      action: PayloadAction<{ chain: string; network: INetwork }>
+      action: PayloadAction<{
+        chain: string;
+        chainId?: number;
+        network: INetwork;
+      }>
     ) {
-      const { chain, network } = action.payload;
+      const { chain, network, chainId } = action.payload;
 
-      state.networks[chain][network.chainId] = network;
+      const alreadyExist = Boolean(state.networks[chain][Number(chainId)]);
+
+      if (alreadyExist) {
+        state.networks[chain] = {
+          ...state.networks[chain],
+          [`${network.label.replace(/\s/g, '').toLowerCase()}-${
+            network.chainId
+          }`]: {
+            ...network,
+
+            key: `${network.label.replace(/\s/g, '').toLowerCase()}-${
+              network.chainId
+            }`,
+          },
+        };
+
+        return;
+      }
+      state.networks[chain] = {
+        ...state.networks[chain],
+        [network.chainId]: network,
+      };
+      // eslint-disable-next-line
+      return;
     },
     removeNetwork(
       state: IVaultState,
