@@ -92,10 +92,46 @@ const MainController = () => {
     walletController.account.sys.getLatestUpdate(false);
   };
 
-  const setActiveNetwork = async (chain: string, chainId: number) => {
+  const setActiveNetwork = async (
+    chain: string,
+    chainId: number,
+    key?: string | number
+  ) => {
     store.dispatch(setIsPendingBalances(true));
 
     const { networks, activeAccount } = store.getState().vault;
+
+    if (key) {
+      const network = networks[chain][key];
+      store.dispatch(setNetwork(network));
+
+      const account = (await keyringManager.setSignerNetwork(
+        network,
+        chain
+      )) as IKeyringAccountState;
+
+      store.dispatch(
+        setActiveAccountProperty({
+          property: 'xpub',
+          value: keyringManager.getAccountXpub(),
+        })
+      );
+
+      store.dispatch(
+        setActiveAccountProperty({
+          property: 'xprv',
+          value: keyringManager.getEncryptedXprv(),
+        })
+      );
+
+      if (account.id === 0)
+        keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
+
+      store.dispatch(setIsPendingBalances(false));
+      store.dispatch(setActiveAccount(account));
+
+      return account;
+    }
 
     const network = networks[chain][chainId];
 
@@ -129,22 +165,13 @@ const MainController = () => {
     return networkAccount;
   };
 
-  const validateAndBuildRpc = async (
-    {
-      chainId,
-      label,
-      rpcUrl,
-      isSyscoinRpc,
-      tokenContractAddress,
-    }: ICustomRpcParams,
-    chainIdCheck = true
-  ): Promise<INetwork> => {
-    const chain = isSyscoinRpc ? 'syscoin' : 'ethereum';
-    const { networks } = store.getState().vault;
-
-    if (chainIdCheck && networks[chain][chainId])
-      throw new Error(`Network with chain ID ${chainId} already exists`);
-
+  const validateAndBuildRpc = async ({
+    chainId,
+    label,
+    rpcUrl,
+    isSyscoinRpc,
+    tokenContractAddress,
+  }: ICustomRpcParams): Promise<INetwork> => {
     const { valid, data: _data } = isSyscoinRpc
       ? await validateSysRpc(rpcUrl)
       : await validateEthRpc(chainId, rpcUrl, tokenContractAddress);
@@ -162,7 +189,7 @@ const MainController = () => {
     const network = await validateAndBuildRpc(data);
 
     const chain = data.isSyscoinRpc ? 'syscoin' : 'ethereum';
-    store.dispatch(setNetworks({ chain, network }));
+    store.dispatch(setNetworks({ chain, network, chainId: network.chainId }));
 
     return network;
   };
@@ -172,7 +199,7 @@ const MainController = () => {
     oldRpc: ICustomRpcParams
   ): Promise<INetwork> => {
     const changedChainId = oldRpc.chainId !== newRpc.chainId;
-    const network = await validateAndBuildRpc(newRpc, changedChainId);
+    const network = await validateAndBuildRpc(newRpc);
 
     const chain = newRpc.isSyscoinRpc ? 'syscoin' : 'ethereum';
     if (changedChainId) {
