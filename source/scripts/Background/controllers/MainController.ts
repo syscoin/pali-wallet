@@ -177,7 +177,7 @@ const MainController = () => {
       : await validateEthRpc(chainId, rpcUrl, tokenContractAddress);
 
     if (!valid)
-      throw new Error('Invalid chainID, please verify the current RPC URL!');
+      throw new Error('Invalid chainID. Please, verify the current RPC URL.');
 
     return {
       ..._data,
