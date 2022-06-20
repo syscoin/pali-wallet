@@ -1,6 +1,7 @@
+import { useCallback, useEffect, useState } from 'react';
 import { useAlert } from 'react-alert';
 import { useNavigate } from 'react-router-dom';
-import { useCallback, useEffect, useState } from 'react';
+
 import { getController } from 'utils/browser';
 
 import { useStore } from '.';

@@ -1,7 +1,14 @@
+import { Form, Input } from 'antd';
 import * as React from 'react';
 import { useState, FC, useEffect } from 'react';
-import { useUtils, useStore } from 'hooks/index';
-import { Form, Input } from 'antd';
+
+import {
+  getToken,
+  getSearch,
+  ICoingeckoSearchResultToken,
+  ICoingeckoToken,
+} from '@pollum-io/sysweb3-utils';
+
 import {
   SecondaryButton,
   Layout,
@@ -9,14 +16,9 @@ import {
   Loading,
   Tooltip,
 } from 'components/index';
-import { formatUrl, ellipsis } from 'utils/index';
+import { useUtils, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
-import {
-  getToken,
-  getSearch,
-  ICoingeckoSearchResultToken,
-  ICoingeckoToken,
-} from '@pollum-io/sysweb3-utils';
+import { formatUrl, ellipsis } from 'utils/index';
 
 export const ImportToken: FC = () => {
   const controller = getController();

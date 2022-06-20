@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Layout, SecondaryButton, PrimaryButton, Card } from 'components/index';
 import { Form, Input } from 'antd';
-import { useUtils, useStore } from 'hooks/index';
 import TextArea from 'antd/lib/input/TextArea';
+import React, { useState } from 'react';
+
+import { Layout, SecondaryButton, PrimaryButton, Card } from 'components/index';
+import { useUtils, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
 
 const ForgetWalletView = () => {

@@ -1,10 +1,11 @@
+import { Form } from 'antd';
+import { useForm } from 'antd/lib/form/Form';
+import TextArea from 'antd/lib/input/TextArea';
 import React, { FC, useState } from 'react';
+
 import { OnboardingLayout, PrimaryButton } from 'components/index';
 import { getController } from 'utils/browser';
 import { formatSeedPhrase } from 'utils/format';
-import { Form } from 'antd';
-import TextArea from 'antd/lib/input/TextArea';
-import { useForm } from 'antd/lib/form/Form';
 
 interface IImportPhrase {
   onRegister: () => void;

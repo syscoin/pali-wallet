@@ -1,6 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
-import { AssetPrice, IPriceState } from './types';
+import { IAssetPrice, IPriceState } from './types';
 
 export const initialState: IPriceState = {
   fiat: {
@@ -14,7 +14,7 @@ const PriceState = createSlice({
   name: 'price',
   initialState,
   reducers: {
-    setPrices(state: IPriceState, action: PayloadAction<AssetPrice>) {
+    setPrices(state: IPriceState, action: PayloadAction<IAssetPrice>) {
       state.fiat = action.payload;
     },
     setCoins(state: IPriceState, action: PayloadAction<any>) {

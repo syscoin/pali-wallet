@@ -1,4 +1,7 @@
+import { Form, Input } from 'antd';
 import React, { useState, FC, useEffect } from 'react';
+import { browser } from 'webextension-polyfill-ts';
+
 import {
   Layout,
   PrimaryButton,
@@ -6,11 +9,9 @@ import {
   Tooltip,
   Icon,
 } from 'components/index';
-import { browser } from 'webextension-polyfill-ts';
 import { useUtils, useStore } from 'hooks/index';
-import { rejectTransaction } from 'utils/index';
 import { getController } from 'utils/browser';
-import { Form, Input } from 'antd';
+import { rejectTransaction } from 'utils/index';
 
 interface ITxLayout {
   confirmRoute: string;

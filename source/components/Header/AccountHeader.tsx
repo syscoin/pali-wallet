@@ -1,17 +1,30 @@
+import { Disclosure, Menu, Transition } from '@headlessui/react';
+import { toSvg } from 'jdenticon';
 import React, { useEffect } from 'react';
+
 import { IconButton, Icon } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
-import { toSvg } from 'jdenticon';
-import { Disclosure, Menu, Transition } from '@headlessui/react';
-import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
+import { ellipsis } from 'utils/index';
 
 const AccountMenu: React.FC = () => {
   const { navigate } = useUtils();
   const { wallet } = getController();
   const { encryptedMnemonic, accounts, activeAccount } = useStore();
 
-  const verifyAccounts = Object.keys(accounts);
+  const numberOfAccounts = Object.keys(accounts).length;
+  let className: string;
+  switch (numberOfAccounts) {
+    case 1:
+      className = 'h-16';
+      break;
+    case 2:
+      className = 'h-28';
+      break;
+    default:
+      className = 'h-40';
+      break;
+  }
 
   const setActiveAccount = async (id: number) => {
     await wallet.setAccount(Number(id));
@@ -95,17 +108,7 @@ const AccountMenu: React.FC = () => {
                     }}
                   >
                     <Disclosure.Panel
-                      className={`static overflow-y-scroll scrollbar-styled pb-2 
-                    ${
-                      verifyAccounts?.length === 1
-                        ? 'h-16'
-                        : verifyAccounts?.length === 2
-                        ? 'h-28'
-                        : verifyAccounts?.length >= 3
-                        ? 'h-40'
-                        : ''
-                    }
-                    text-sm bg-menu-secondary`}
+                      className={`static overflow-y-scroll scrollbar-styled pb-2 ${className} text-sm bg-menu-secondary`}
                     >
                       <li
                         onClick={() => navigate('/settings/account/new')}

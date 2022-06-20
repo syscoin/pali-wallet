@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { FC, useState } from 'react';
+
 import { Button } from 'components/index';
 
 import { ActivityPanel, AssetsPanel } from './Panel/index';

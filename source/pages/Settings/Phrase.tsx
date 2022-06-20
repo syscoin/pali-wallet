@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
 import { Form, Input } from 'antd';
-import { useUtils } from 'hooks/index';
+import React, { useState, useEffect } from 'react';
+
 import { Layout, SecondaryButton, Card, CopyCard } from 'components/index';
+import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
 const PhraseView = () => {

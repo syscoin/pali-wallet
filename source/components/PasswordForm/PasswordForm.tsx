@@ -1,5 +1,6 @@
-import React from 'react';
 import { Form, Input } from 'antd';
+import React from 'react';
+
 import { OnboardingLayout, PrimaryButton } from 'components/index';
 
 interface IPasswordForm {

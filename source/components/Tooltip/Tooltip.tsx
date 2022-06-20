@@ -1,5 +1,5 @@
-import React, { ReactNode } from 'react';
 import Tippy from '@tippyjs/react';
+import React, { ReactNode } from 'react';
 import 'tippy.js/animations/scale.css';
 import { Placement } from 'tippy.js';
 

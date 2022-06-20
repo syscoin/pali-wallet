@@ -1,9 +1,10 @@
+import axios from 'axios';
 import React, { useEffect, useState } from 'react';
+
 import placeholder from 'assets/images/placeholder.png';
 import { Tooltip, Icon, IconButton } from 'components/index';
-import { formatUrl } from 'utils/index';
 import { useStore, useUtils } from 'hooks/index';
-import axios from 'axios';
+import { formatUrl } from 'utils/index';
 
 export const AssetDetails = ({
   assetType,
@@ -135,51 +136,65 @@ export const AssetDetails = ({
     },
   ];
 
-  const renderAssets = (detailsArray: { label: string; value: any }[]) =>
-    detailsArray.map(({ label, value }: any) => (
-      <>
-        {label && value && (
-          <div
-            key={label}
-            className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
-          >
-            {label === 'Icon' ? (
-              <>
-                <p>{label}</p>
-                <img src={value} alt={description} />
-              </>
-            ) : label === 'Contract' ? (
-              <>
-                <p>{label}</p>
-                <b>
-                  {formatUrl(String(value), 15)}
+  const renderAssets = (assets: { label: string; value: any }[]) =>
+    assets.map(({ label, value }) => {
+      let body: JSX.Element;
+      switch (label) {
+        case 'Icon':
+          body = (
+            <>
+              <p>{label}</p>
+              <img src={value} alt={description} />
+            </>
+          );
+          break;
+        case 'Contract':
+          body = (
+            <>
+              <p>{label}</p>
+              <b>
+                {formatUrl(String(value), 15)}
 
-                  {value && (
-                    <IconButton
-                      onClick={() => copy(value ?? '')}
-                      type="primary"
-                      shape="circle"
-                      className="mt-3"
-                    >
-                      <Icon
-                        name="copy"
-                        className="text-xs"
-                        id="copy-address-btn"
-                      />
-                    </IconButton>
-                  )}
-                </b>
-              </>
-            ) : (
-              <>
-                <p>{label}</p>
-                <b>{value}</b>
-              </>
-            )}
-          </div>
-        )}
-      </>
-    ));
+                {value && (
+                  <IconButton
+                    onClick={() => copy(value ?? '')}
+                    type="primary"
+                    shape="circle"
+                    className="mt-3"
+                  >
+                    <Icon
+                      name="copy"
+                      className="text-xs"
+                      id="copy-address-btn"
+                    />
+                  </IconButton>
+                )}
+              </b>
+            </>
+          );
+        default:
+          body = (
+            <>
+              <p>{label}</p>
+              <b>{value}</b>
+            </>
+          );
+          break;
+      }
+
+      return (
+        <>
+          {label && value && (
+            <div
+              key={label}
+              className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
+            >
+              {body}
+            </div>
+          )}
+        </>
+      );
+    });
 
   return (
     <>

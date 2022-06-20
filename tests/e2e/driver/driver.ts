@@ -1,7 +1,7 @@
 /* eslint-disable class-methods-use-this */
-import { promises as fs } from 'fs';
 import { strict as assert } from 'assert';
-
+import cssToXPath from 'css-to-xpath';
+import { promises as fs } from 'fs';
 import {
   until,
   error as webdriverError,
@@ -9,15 +9,14 @@ import {
   WebDriver,
   WebElement,
 } from 'selenium-webdriver';
-import cssToXPath from 'css-to-xpath';
 
-interface CustomWebElement extends WebElement {
+interface ICustomWebElement extends WebElement {
   fill(input);
   press(key): Promise<void>;
   waitForElementState(state, timeout);
 }
 
-function wrapElementWithAPI(element, driver): CustomWebElement {
+function wrapElementWithAPI(element, driver): ICustomWebElement {
   element.press = (key) => element.sendKeys(key);
   element.fill = async (input) => {
     await element.clear();

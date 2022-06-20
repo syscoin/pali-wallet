@@ -1,9 +1,10 @@
 import * as React from 'react';
+
 import { Layout } from 'components/index';
 import { useStore } from 'hooks/index';
 
-import { SendSys } from './SendSys';
 import { SendEth } from './SendEth';
+import { SendSys } from './SendSys';
 
 interface ISend {
   initAddress?: string;

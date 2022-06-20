@@ -4,6 +4,7 @@ import {
   IKeyringAccountState,
   INetwork,
 } from '@pollum-io/sysweb3-utils';
+
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -20,15 +21,14 @@ import {
   setActiveToken,
   removeNetwork,
 } from 'state/vault';
-import { CustomRpcParams } from 'types/transactions';
+import { ICustomRpcParams } from 'types/transactions';
 
 import WalletController from './account';
 import { validateEthRpc, validateSysRpc } from './utils';
 
 const MainController = () => {
   const keyringManager = KeyringManager();
-
-  const { account, addAccount } = WalletController();
+  const walletController = WalletController();
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -75,7 +75,7 @@ const MainController = () => {
   const createAccount = async (
     label?: string
   ): Promise<IKeyringAccountState> => {
-    const newAccount = await addAccount(label);
+    const newAccount = await walletController.addAccount(label);
 
     store.dispatch(addAccountToStore(newAccount));
     store.dispatch(setActiveAccount(newAccount));
@@ -89,7 +89,7 @@ const MainController = () => {
     keyringManager.setActiveAccount(id);
     store.dispatch(setActiveAccount(accounts[id]));
 
-    account.sys.getLatestUpdate(false);
+    walletController.account.sys.getLatestUpdate(false);
   };
 
   const setActiveNetwork = async (
@@ -137,10 +137,10 @@ const MainController = () => {
 
     store.dispatch(setNetwork(network));
 
-    const account = (await keyringManager.setSignerNetwork(
+    const networkAccount = await keyringManager.setSignerNetwork(
       network,
       chain
-    )) as IKeyringAccountState;
+    );
 
     store.dispatch(
       setActiveAccountProperty({
@@ -156,13 +156,14 @@ const MainController = () => {
       })
     );
 
-    if (account.id === 0)
+    if (networkAccount.id === 0)
       keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
 
     store.dispatch(setIsPendingBalances(false));
-    store.dispatch(setActiveAccount(account));
+    // @ts-ignore
+    store.dispatch(setActiveAccount(networkAccount));
 
-    return account;
+    return networkAccount;
   };
 
   const validateAndBuildRpc = async ({
@@ -171,7 +172,7 @@ const MainController = () => {
     rpcUrl,
     isSyscoinRpc,
     tokenContractAddress,
-  }: CustomRpcParams): Promise<INetwork> => {
+  }: ICustomRpcParams): Promise<INetwork> => {
     const { valid, data: _data } = isSyscoinRpc
       ? await validateSysRpc(rpcUrl)
       : await validateEthRpc(chainId, rpcUrl, tokenContractAddress);
@@ -185,7 +186,7 @@ const MainController = () => {
     };
   };
 
-  const addCustomRpc = async (data: CustomRpcParams): Promise<INetwork> => {
+  const addCustomRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
     const network = await validateAndBuildRpc(data);
 
     const chain = data.isSyscoinRpc ? 'syscoin' : 'ethereum';
@@ -195,10 +196,10 @@ const MainController = () => {
   };
 
   const editCustomRpc = async (
-    newRpc: CustomRpcParams,
-    oldRpc: CustomRpcParams
+    newRpc: ICustomRpcParams,
+    oldRpc: ICustomRpcParams
   ): Promise<INetwork> => {
-    const changedChainId = oldRpc.chainId != newRpc.chainId;
+    const changedChainId = oldRpc.chainId !== newRpc.chainId;
     const network = await validateAndBuildRpc(newRpc);
 
     const chain = newRpc.isSyscoinRpc ? 'syscoin' : 'ethereum';
@@ -238,7 +239,7 @@ const MainController = () => {
     unlock,
     lock,
     createAccount,
-    account,
+    account: walletController.account,
     setAccount,
     setAutolockTimer,
     setActiveNetwork,

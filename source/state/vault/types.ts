@@ -26,7 +26,7 @@ export interface IVaultState {
   trustedApps: string[];
 }
 
-export interface Holding {
+export interface IHolding {
   NFTID: string;
   assetGuid: string;
   balance: number;

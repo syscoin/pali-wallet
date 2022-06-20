@@ -30,7 +30,7 @@ export const Modal = ({
     <Dialog
       as="div"
       className={`fixed z-10 inset-0 overflow-y-auto ${className}`}
-      onClose={onClose ?? (() => {})}
+      onClose={onClose}
     >
       <div
         onClick={() => console.log('inside onClick')}

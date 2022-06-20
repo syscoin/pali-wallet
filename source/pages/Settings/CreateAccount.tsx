@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { ellipsis } from 'utils/index';
-import { getController } from 'utils/browser';
 import { Form, Input } from 'antd';
-import { Layout, SecondaryButton, DefaultModal } from 'components/index';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+import { Layout, SecondaryButton, DefaultModal } from 'components/index';
+import { getController } from 'utils/browser';
+import { ellipsis } from 'utils/index';
 
 const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();
@@ -15,9 +16,11 @@ const CreateAccount = () => {
   const onSubmit = async ({ label }: { label?: string }) => {
     setLoading(true);
 
-    const { address } = await controller.wallet.createAccount(label);
+    const { address: newAddress } = await controller.wallet.createAccount(
+      label
+    );
 
-    setAddress(address);
+    setAddress(newAddress);
     setLoading(false);
   };
 

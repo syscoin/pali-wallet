@@ -1,11 +1,12 @@
+import { Disclosure, Menu, Transition } from '@headlessui/react';
+import { Badge } from 'antd';
 import React, { useEffect, useState } from 'react';
+import { browser } from 'webextension-polyfill-ts';
+
 import { Icon, Tooltip } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
-import { ellipsis } from 'utils/index';
 import { getController } from 'utils/browser';
-import { Badge } from 'antd';
-import { Disclosure, Menu, Transition } from '@headlessui/react';
-import { browser } from 'webextension-polyfill-ts';
+import { ellipsis } from 'utils/index';
 
 export const NormalHeader: React.FC = () => {
   const { wallet } = getController();

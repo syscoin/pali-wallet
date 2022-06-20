@@ -1,5 +1,5 @@
-import { browser } from 'webextension-polyfill-ts';
 import React from 'react';
+import { browser } from 'webextension-polyfill-ts';
 
 import { Icon } from '..';
 

@@ -1,16 +1,17 @@
+import shuffle from 'lodash/shuffle';
 import React, {
   useState,
   // useMemo
 } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getController } from 'utils/browser';
-import shuffle from 'lodash/shuffle';
+
 import {
   Button,
   DefaultModal,
   PrimaryButton,
   OnboardingLayout,
 } from 'components/index';
+import { getController } from 'utils/browser';
 // import isEqual from 'lodash/isEqual';
 
 export const ConfirmPhrase = () => {

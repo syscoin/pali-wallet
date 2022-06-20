@@ -1,8 +1,9 @@
+import { Form, Input } from 'antd';
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import { useStore } from 'hooks/index';
-import { Form, Input } from 'antd';
-import { useNavigate } from 'react-router-dom';
 import { getController } from 'utils/browser';
 
 const AutolockView = () => {

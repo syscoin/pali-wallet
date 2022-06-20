@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Layout, SecondaryButton, DefaultModal } from 'components/index';
-import { useStore, useUtils } from 'hooks/index';
-import { formatUrl, logError, ellipsis } from 'utils/index';
-import { getController } from 'utils/browser';
 import { useLocation } from 'react-router-dom';
 import sys from 'syscoinjs-lib';
+
+import { Layout, SecondaryButton, DefaultModal } from 'components/index';
+import { useStore, useUtils } from 'hooks/index';
+import { getController } from 'utils/browser';
+import { formatUrl, logError, ellipsis } from 'utils/index';
 
 export const SendConfirm = () => {
   const controller = getController();

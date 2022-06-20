@@ -1,6 +1,7 @@
 import React from 'react';
-import { useUtils } from 'hooks/index';
+
 import { PasswordForm } from 'components/index';
+import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
 const CreatePass = () => {

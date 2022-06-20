@@ -1,5 +1,5 @@
-import React, { FC } from 'react';
 import * as AntIcons from '@ant-design/icons';
+import React, { FC } from 'react';
 
 import { ForgetWalletIcon } from './ForgetWalletIcon';
 

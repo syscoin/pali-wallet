@@ -1,6 +1,9 @@
+import { AES } from 'crypto-js';
+
 import { networks } from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
-import { AES } from 'crypto-js';
+
+import { MOCK_ACCOUNT, STATE_W_ACCOUNT } from '../mocks';
 import reducer, {
   createAccount,
   forgetWallet,
@@ -21,8 +24,6 @@ import reducer, {
   setTimer,
 } from 'state/vault';
 import { IVaultState } from 'state/vault/types';
-
-import { MOCK_ACCOUNT, STATE_W_ACCOUNT } from '../mocks';
 
 describe('Vault store actions', () => {
   it('should return the initial state', () => {
@@ -213,8 +214,7 @@ describe('Vault store actions', () => {
     const payload = { prefix: 'ethereum', chainId: 4 };
     const newState = reducer(initialState, removeNetwork(payload));
 
-    const { networks } = newState;
-    expect(networks.ethereum).toBeDefined();
-    expect(networks.ethereum[4]).toBeUndefined();
+    expect(newState.networks.ethereum).toBeDefined();
+    expect(newState.networks.ethereum[4]).toBeUndefined();
   });
 });
