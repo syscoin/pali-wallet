@@ -23,16 +23,6 @@ export interface IMainController extends KeyringManager {
   unlock: (pwd: string) => Promise<void>;
 }
 
-export interface ICoingeckoCoins {
-  contract_address?: string;
-  id: string;
-  large: string;
-  market_cap_rank: number;
-  name: string;
-  symbol: string;
-  thumb: string;
-}
-
 export interface IEthTokenDetails {
   contract: string;
   decimals: number;

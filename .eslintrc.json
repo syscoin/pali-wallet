@@ -43,6 +43,7 @@
     // * ESLint default rules
     "array-callback-return": "error",
     "arrow-body-style": ["error", "as-needed"],
+    "camelcase": "warn",
     "eol-last": "warn",
     "eqeqeq": "warn",
     "no-nested-ternary": "warn",

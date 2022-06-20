@@ -161,7 +161,7 @@ const CustomRPCView = ({
             <Form.Item
               hasFeedback
               className="md:w-full"
-              name="token_contract_address"
+              name="tokenContractAddress"
               rules={[
                 {
                   required: false,
