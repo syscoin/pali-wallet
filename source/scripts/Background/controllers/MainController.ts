@@ -160,6 +160,7 @@ const MainController = () => {
       keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
 
     store.dispatch(setIsPendingBalances(false));
+    // @ts-ignore
     store.dispatch(setActiveAccount(networkAccount));
 
     return networkAccount;
