@@ -23,16 +23,6 @@ export interface MainController extends KeyringManager {
   unlock: (pwd: string) => Promise<void>;
 }
 
-export type CoingeckoCoins = {
-  contract_address?: string;
-  id: string;
-  large: string;
-  market_cap_rank: number;
-  name: string;
-  symbol: string;
-  thumb: string;
-};
-
 export interface EthTokenDetails {
   contract: string;
   decimals: number;

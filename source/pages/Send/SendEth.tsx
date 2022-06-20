@@ -46,7 +46,7 @@ export const SendEth = () => {
   const handleSelectedAsset = (item: string) => {
     if (activeAccount?.assets) {
       const getAsset = activeAccount?.assets.find(
-        (asset: any) => asset.contract_address === item
+        (asset: any) => asset.contractAddress === item
       );
 
       if (getAsset) {
@@ -188,7 +188,7 @@ export const SendEth = () => {
                                     <button
                                       onClick={() =>
                                         handleSelectedAsset(
-                                          item.contract_address
+                                          item.contractAddress
                                         )
                                       }
                                       className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"

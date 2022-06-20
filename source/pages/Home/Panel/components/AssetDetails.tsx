@@ -33,9 +33,9 @@ export const AssetDetails = ({
     updateCapabilityFlags,
     description,
     name,
-    contract_address,
+    contractAddress,
     id,
-    market_cap_rank,
+    marketCapRank,
     thumb: tokenThumb,
   } = assetData;
 
@@ -122,8 +122,8 @@ export const AssetDetails = ({
       value: decimals || '',
     },
     {
-      label: contract_address ? 'Contract' : '',
-      value: contract_address || '',
+      label: contractAddress ? 'Contract' : '',
+      value: contractAddress || '',
     },
     {
       label: 'Description',
@@ -131,7 +131,7 @@ export const AssetDetails = ({
     },
     {
       label: 'Market Cap',
-      value: market_cap_rank || '',
+      value: marketCapRank || '',
     },
   ];
 
