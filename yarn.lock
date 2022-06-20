@@ -1927,10 +1927,10 @@
     syscointx-js "^1.0.101"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.149":
-  version "1.1.149"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.149.tgz#3c5563cc0f365768af219f2f67e1d32354318873"
-  integrity sha512-XkIr45B+GAGb+2lak9fh4niLC3QnUaDwQcCeUQskH7k8i9ZOmtoAOep+YqaOWED29jJJHT5PF9QkVLHIdQ7wTg==
+"@pollum-io/sysweb3-utils@^1.1.152":
+  version "1.1.152"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.152.tgz#83de3d0fa5f9827bad1501715bc85f19ef7be382"
+  integrity sha512-ArMadVSFda8kVh8yzxMYUIZ7UWiOQ/a1ikF+KxYknfLM2ImmvNMy1b5yKL12cMC8JQDqMYXKXiA9aHDTcCdvvA==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.16"
     "@pollum-io/sysweb3-network" "^1.0.37"

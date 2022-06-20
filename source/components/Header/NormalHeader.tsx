@@ -15,8 +15,12 @@ export const NormalHeader: React.FC = () => {
 
   const [currentTabURL, setCurrentTabURL] = useState<string>('');
 
-  const handleChangeNetwork = (chain: string, chainId: number) => {
-    wallet.setActiveNetwork(chain, chainId);
+  const handleChangeNetwork = (
+    chain: string,
+    chainId: number,
+    key?: string | number
+  ) => {
+    wallet.setActiveNetwork(chain, chainId, key);
 
     if (chain === 'syscoin') wallet.account.sys.setAddress();
   };
@@ -202,7 +206,10 @@ export const NormalHeader: React.FC = () => {
                                 onClick={() =>
                                   handleChangeNetwork(
                                     'ethereum',
-                                    currentNetwork.chainId
+                                    currentNetwork.chainId,
+                                    currentNetwork.key
+                                      ? currentNetwork.key
+                                      : null
                                   )
                                 }
                               >
