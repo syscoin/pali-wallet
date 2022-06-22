@@ -1,15 +1,15 @@
-const path = require('path');
-const webpack = require('webpack');
-const ZipPlugin = require('zip-webpack-plugin');
-const TerserPlugin = require('terser-webpack-plugin');
-const CopyWebpackPlugin = require('copy-webpack-plugin');
-const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
-const ExtensionReloader = require('webpack-extension-reloader');
-const MiniCssExtractPlugin = require('mini-css-extract-plugin');
-const WextManifestWebpackPlugin = require('wext-manifest-webpack-plugin');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const OptimizeCSSAssetsPlugin = require('optimize-css-assets-webpack-plugin');
+const path = require('path');
+const TerserPlugin = require('terser-webpack-plugin');
+const webpack = require('webpack');
+const ExtensionReloader = require('webpack-extension-reloader');
+const WextManifestWebpackPlugin = require('wext-manifest-webpack-plugin');
+const ZipPlugin = require('zip-webpack-plugin');
 
 const viewsPath = path.join(__dirname, 'views');
 const sourcePath = path.join(__dirname, 'source');
@@ -69,7 +69,6 @@ module.exports = {
     background: path.join(sourcePath, 'scripts/Background', 'index.ts'),
     contentScript: path.join(sourcePath, 'scripts/ContentScript', 'index.ts'),
     app: path.join(sourcePath, 'pages/App', 'index.tsx'),
-    options: path.join(sourcePath, 'pages/Options', 'index.tsx'),
     trezorScript: path.join(
       sourcePath,
       'scripts/ContentScript/trezor',
@@ -225,13 +224,6 @@ module.exports = {
       chunks: ['app'],
       hash: true,
       filename: 'app.html',
-    }),
-    new HtmlWebpackPlugin({
-      template: path.join(viewsPath, 'options.html'),
-      inject: 'body',
-      chunks: ['options'],
-      hash: true,
-      filename: 'options.html',
     }),
     new HtmlWebpackPlugin({
       template: path.join(viewsPath, 'trezor-usb-permissions.html'),
