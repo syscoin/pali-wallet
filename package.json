@@ -34,7 +34,7 @@
     "test-all": "yarn lint && yarn test:unit"
   },
   "lint-staged": {
-    "*.@(ts|tsx|js|jsx)": "eslint --fix --ext .ts,.tsx"
+    "*.@(ts|tsx|js|jsx)": "eslint --fix"
   },
   "dependencies": {
     "@ant-design/icons": "^4.7.0",
