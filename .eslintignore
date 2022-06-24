@@ -3,3 +3,8 @@ dist/
 build/
 .yarn/
 .pnp.js
+webpack.config.js
+tailwind.config.js
+jest.setup.js
+tests/e2e/driver/firefox.js
+tests/e2e/driver/chrome.js
