@@ -1,8 +1,9 @@
-import React, { FC, useEffect, useState } from 'react';
-import { Layout, SecondaryButton, Icon, Tooltip } from 'components/index';
-import { getController } from 'utils/browser';
 import { Disclosure } from '@headlessui/react';
+import React, { FC, useEffect, useState } from 'react';
+
+import { Layout, SecondaryButton, Icon, Tooltip } from 'components/index';
 import { useStore } from 'hooks/index';
+import { getController } from 'utils/browser';
 
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);

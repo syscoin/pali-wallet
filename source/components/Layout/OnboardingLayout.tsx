@@ -1,5 +1,6 @@
-import React, { ReactNode, FC } from 'react';
 import { QuestionCircleOutlined } from '@ant-design/icons';
+import React, { ReactNode, FC } from 'react';
+
 import { LogoHeader, Tooltip } from 'components/index';
 
 interface IOnboardingLayout {

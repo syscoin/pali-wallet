@@ -1,7 +1,8 @@
 import React, { FC } from 'react';
-import { Header, Icon, IconButton, Tooltip } from 'components/index';
-import { browser } from 'webextension-polyfill-ts';
 import { useNavigate } from 'react-router-dom';
+import { browser } from 'webextension-polyfill-ts';
+
+import { Header, Icon, IconButton, Tooltip } from 'components/index';
 
 interface ILayout {
   canGoBack?: boolean;

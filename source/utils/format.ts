@@ -1,5 +1,5 @@
-import format from 'date-fns/format';
 import currency from 'currency.js';
+import format from 'date-fns/format';
 
 /**
  * Add `...` to shorten a string. Keeps chars at the beginning and end

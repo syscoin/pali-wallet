@@ -1,17 +1,17 @@
-import store from 'state/store';
-import {
-  setActiveAccount,
-  setActiveAccountProperty,
-  setIsPendingBalances,
-} from 'state/vault';
 import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import {
   ICoingeckoToken,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-utils';
 
-import SysTrezorController from '../trezor/syscoin';
 import { SysTransactionController } from '../transaction';
+import SysTrezorController from '../trezor/syscoin';
+import store from 'state/store';
+import {
+  setActiveAccount,
+  setActiveAccountProperty,
+  setIsPendingBalances,
+} from 'state/vault';
 
 const SysAccountController = () => {
   const keyringManager = KeyringManager();

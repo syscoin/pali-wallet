@@ -1,5 +1,6 @@
 import React, { FC } from 'react';
 import { useNavigate } from 'react-router-dom';
+
 import { OnboardingLayout, PrimaryButton } from 'components/index';
 import { getController } from 'utils/browser';
 

@@ -1,7 +1,7 @@
-import { Assets } from 'types/transactions';
+import { IAssets } from 'types/transactions';
 
 export const getAssetBalance = (
-  selectedAsset: Assets | null,
+  selectedAsset: IAssets | null,
   activeAccount
 ) => {
   if (selectedAsset) {

@@ -1,9 +1,6 @@
 import React, { useEffect } from 'react';
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
-import { useStore, useUtils } from 'hooks/index';
-import { getController } from 'utils/browser';
 import { browser } from 'webextension-polyfill-ts';
-import { CustomToken, ImportToken } from 'pages/Tokens';
 
 import {
   About,
@@ -45,6 +42,9 @@ import {
   UpdateAsset,
   UpdateAssetConfirm,
 } from '../pages';
+import { useStore, useUtils } from 'hooks/index';
+import { CustomToken, ImportToken } from 'pages/Tokens';
+import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
 

@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { useStore, useUtils } from 'hooks/index';
-import { IconButton, Layout, SecondaryButton, Icon } from 'components/index';
-import { formatUrl } from 'utils/index';
-import { getController } from 'utils/browser';
+
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import { CustomRPC } from '..';
+import { IconButton, Layout, SecondaryButton, Icon } from 'components/index';
+import { useStore, useUtils } from 'hooks/index';
+import { getController } from 'utils/browser';
+import { formatUrl } from 'utils/index';
 
 const ManageNetworkView = () => {
   const { networks } = useStore();

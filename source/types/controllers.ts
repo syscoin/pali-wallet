@@ -7,7 +7,7 @@ import {
   ICoingeckoSearchResults,
 } from '@pollum-io/sysweb3-utils';
 
-export interface MainController extends KeyringManager {
+export interface IMainController extends KeyringManager {
   account: any;
   addCustomRpc: (network: INetwork) => Promise<INetwork | Error>;
   createAccount: (label?: string) => Promise<IKeyringAccountState>;
@@ -23,7 +23,7 @@ export interface MainController extends KeyringManager {
   unlock: (pwd: string) => Promise<void>;
 }
 
-export interface EthTokenDetails {
+export interface IEthTokenDetails {
   contract: string;
   decimals: number;
   description: string;
@@ -47,6 +47,7 @@ export interface IControllerUtils {
     totalSupply: string;
     updateCapabilityFlags: number;
   }>;
+  // eslint-disable-next-line @typescript-eslint/ban-types
   getFeeRate: (fee: number) => BigInt;
   getGasUsedInTransaction: (transactionHash: string) => Promise<{
     effectiveGasPrice: number;

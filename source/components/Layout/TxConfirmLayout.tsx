@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useUtils, useStore } from 'hooks/index';
+import { useNavigate } from 'react-router-dom';
 import { browser } from 'webextension-polyfill-ts';
+
 import {
   Layout,
   PrimaryButton,
@@ -8,7 +9,8 @@ import {
   DefaultModal,
   SecondaryButton,
 } from 'components/index';
-import { useNavigate } from 'react-router-dom';
+import { useUtils, useStore } from 'hooks/index';
+import { getController } from 'utils/browser';
 import {
   ellipsis,
   formatUrl,
@@ -17,7 +19,6 @@ import {
   cancelTransaction,
   camelCaseToText,
 } from 'utils/index';
-import { getController } from 'utils/browser';
 
 interface ITxConfirm {
   callback: any;

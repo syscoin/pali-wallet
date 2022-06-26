@@ -1,5 +1,6 @@
 import React, { FC } from 'react';
-import { useUtils } from 'hooks/index';
+
+import { version } from '../../../package.json';
 import {
   Layout,
   Icon,
@@ -7,8 +8,7 @@ import {
   SimpleCard,
   IconButton,
 } from 'components/index';
-
-import { version } from '../../../package.json';
+import { useUtils } from 'hooks/index';
 
 const AboutView: FC = () => {
   const handleRedirect = (url: string) => {

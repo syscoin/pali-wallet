@@ -1,19 +1,19 @@
-export type Transaction = {
+export interface ITransaction {
   blockTime: number;
   confirmations: number;
   fees: number;
   tokenType: string;
   txid: string;
   value: number;
-};
+}
 
-export type Assets = {
+export interface IAssets {
   assetGuid: number;
   balance: number;
   decimals: number;
   symbol: string;
   type: string;
-};
+}
 
 export interface IToken {
   address: string;
@@ -26,9 +26,9 @@ export interface IToken {
 
 export interface IAccountInfo {
   address?: string | null;
-  assets: Assets[];
+  assets: IAssets[];
   balance: number;
-  transactions: Transaction[];
+  transactions: ITransaction[];
 }
 
 export interface ITransactionInfo {
@@ -38,37 +38,37 @@ export interface ITransactionInfo {
   isToken: boolean;
   rbf: boolean;
   toAddress: string;
-  token: Assets | null;
+  token: IAssets | null;
 }
 
-export type PendingTx = {
+export interface IPendingTx {
   blockTime: number;
   confirmations: number;
   fees: number;
   txid: string;
   value: number;
-};
+}
 
-export type NotaryDetails = {
+export interface INotaryDetails {
   endpoint?: string | null;
   hdrequired?: boolean;
   instanttransfers?: boolean;
-};
+}
 
-export type AuxFees = {
+export interface IAuxFees {
   [auxfees: number]: {
     bound: number;
     percent: number;
   };
-};
+}
 
-export type NewAsset = {
+export interface INewAsset {
   advanced?: {
-    auxfeedetails?: AuxFees[];
+    auxfeedetails?: IAuxFees[];
     capabilityflags?: string | '127';
     initialSupply?: number;
     notaryAddress?: string;
-    notarydetails?: NotaryDetails;
+    notarydetails?: INotaryDetails;
     payoutAddress?: string;
   };
   description?: string;
@@ -77,9 +77,9 @@ export type NewAsset = {
   precision: number | 8;
   receiver?: string;
   symbol: string;
-};
+}
 
-export type SentAsset = {
+export interface ISentAsset {
   amount: number;
   fee: number;
   isToken: boolean;
@@ -87,27 +87,27 @@ export type SentAsset = {
   receiver: string;
   sender: string;
   token: string;
-};
+}
 
-export type MintAsset = {
+export interface IMintAsset {
   amount: number;
   assetGuid: string;
   fee: number;
-};
+}
 
-export type NewNFT = {
+export interface INewNFT {
   description: string;
   fee: number;
   precision: number;
   receiver: string;
   symbol: string;
-};
+}
 
-export type UpdateAsset = {
+export interface IUpdateAsset {
   advanced?: {
-    auxfeedetails?: AuxFees[];
+    auxfeedetails?: IAuxFees[];
     notaryAddress?: string;
-    notarydetails?: NotaryDetails;
+    notarydetails?: INotaryDetails;
     payoutAddress?: string;
   };
   assetGuid: number;
@@ -116,37 +116,37 @@ export type UpdateAsset = {
   contract: string;
   description: string;
   fee: number;
-};
+}
 
-export type TransferAsset = {
+export interface ITransferAsset {
   assetGuid: string;
   fee: number;
   newOwner: string;
-};
+}
 
-export type SendAsset = {
+export interface ISendAsset {
   amount: number;
   fee: number;
   fromAddress: string;
   isToken: boolean;
   rbf?: boolean;
   toAddress: string;
-  token: Assets | null;
-};
+  token: IAssets | null;
+}
 
-export type TemporaryTransaction = {
-  mintAsset: MintAsset | null;
-  mintNFT: MintAsset | null;
-  newAsset: NewAsset | null;
-  newNFT: NewNFT | null;
-  sendAsset: SendAsset | null;
+export interface ITemporaryTransaction {
+  mintAsset: IMintAsset | null;
+  mintNFT: IMintAsset | null;
+  newAsset: INewAsset | null;
+  newNFT: INewNFT | null;
+  sendAsset: ISendAsset | null;
   signAndSendPSBT: any | null;
   signPSBT: any | null;
-  transferAsset: TransferAsset | null;
-  updateAsset: UpdateAsset | null;
-};
+  transferAsset: ITransferAsset | null;
+  updateAsset: IUpdateAsset | null;
+}
 
-export interface CustomRpcParams {
+export interface ICustomRpcParams {
   chainId: number;
   isSyscoinRpc?: boolean;
   label: string;

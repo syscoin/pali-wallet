@@ -1,8 +1,9 @@
 import React, { FC } from 'react';
-import { Container, Loading } from 'components/index';
-import { Router } from 'routers/index';
 import { BrowserRouter } from 'react-router-dom';
+
+import { Container, Loading } from 'components/index';
 import { useStore } from 'hooks/index';
+import { Router } from 'routers/index';
 
 const App: FC = () => {
   const { isPendingBalances } = useStore();

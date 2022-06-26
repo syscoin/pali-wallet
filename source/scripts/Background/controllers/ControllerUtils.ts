@@ -1,8 +1,3 @@
-import { ASSET_PRICE_API } from 'constants/index';
-
-import store from 'state/store';
-import { setPrices, setCoins } from 'state/price';
-import { logError } from 'utils/index';
 import {
   getSearch,
   isValidEthereumAddress,
@@ -14,7 +9,12 @@ import {
   txUtils,
   getFiatValueByToken,
 } from '@pollum-io/sysweb3-utils';
+
+import { ASSET_PRICE_API } from 'constants/index';
+import { setPrices, setCoins } from 'state/price';
+import store from 'state/store';
 import { IControllerUtils } from 'types/controllers';
+import { logError } from 'utils/index';
 
 const ControllerUtils = (): IControllerUtils => {
   let route = '/';

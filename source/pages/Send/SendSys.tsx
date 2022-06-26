@@ -1,13 +1,15 @@
+import { Switch, Menu, Transition } from '@headlessui/react';
+import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
+import { Form, Input } from 'antd';
 import * as React from 'react';
 import { useState, useEffect, Fragment, useCallback } from 'react';
-import { usePrice, useStore, useUtils } from 'hooks/index';
-import { Form, Input } from 'antd';
-import { Switch, Menu, Transition } from '@headlessui/react';
-import { SecondaryButton, Tooltip, Icon } from 'components/index';
-import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
-import { formatUrl, isNFT, getAssetBalance } from 'utils/index';
-import { getController } from 'utils/browser';
+
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
+
+import { SecondaryButton, Tooltip, Icon } from 'components/index';
+import { usePrice, useStore, useUtils } from 'hooks/index';
+import { getController } from 'utils/browser';
+import { formatUrl, isNFT, getAssetBalance } from 'utils/index';
 
 export const SendSys = () => {
   const { getFiatAmount } = usePrice();

@@ -1,5 +1,6 @@
-import { Fullscreen } from 'components/Fullscreen';
 import React, { FC } from 'react';
+
+import { Fullscreen } from 'components/Fullscreen';
 import { useStore, useUtils } from 'hooks/index';
 
 import { PanelList } from './components/PanelList';

@@ -15,14 +15,8 @@ export const isNFT = (guid: number) => {
   return assetGuid >> BigInt(32) > 0;
 };
 
-export const sortList = (list: any) =>
-  list.sort((a: any, b: any) => {
-    const previous: any = a.symbol.toLowerCase();
-    const next: any = b.symbol.toLowerCase();
-
-    // @ts-ignore
-    return (previous > next) - (previous < next);
-  });
+export const sortList = (list: object[]) =>
+  list.sort((a: any, b: any) => a.symbol.localeCompare(b.symbol));
 
 export const base64 =
   /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
