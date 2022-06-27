@@ -57,19 +57,32 @@ const VaultState = createSlice({
     ) {
       const { chain, network, chainId } = action.payload;
 
+      const replaceNetworkName = `${network.label
+        .replace(/\s/g, '')
+        .toLocaleLowerCase()}-${network.chainId}`;
+
       const alreadyExist = Boolean(state.networks[chain][Number(chainId)]);
 
       if (alreadyExist) {
+        const verifyIfRpcOrNameExists = Object.values(
+          state.networks[chain]
+        ).find(
+          (networkState: INetwork) =>
+            networkState.url === network.url ||
+            networkState.key === replaceNetworkName
+        );
+
+        if (verifyIfRpcOrNameExists)
+          throw new Error(
+            'Network RPC or name already exists, try with a new one!'
+          );
+
         state.networks[chain] = {
           ...state.networks[chain],
-          [`${network.label.replace(/\s/g, '').toLowerCase()}-${
-            network.chainId
-          }`]: {
+          [replaceNetworkName]: {
             ...network,
 
-            key: `${network.label.replace(/\s/g, '').toLowerCase()}-${
-              network.chainId
-            }`,
+            key: replaceNetworkName,
           },
         };
 
