@@ -9,7 +9,7 @@ export const MintTokenConfirm = () => (
 
 export const MintToken = () => (
   <TxLayout
-    confirmRoute="/tx/asset/issue/confirm"
+    confirmRoute="/external/tx/asset/issue/confirm"
     txType="mintAsset"
     title="Mint token"
   />

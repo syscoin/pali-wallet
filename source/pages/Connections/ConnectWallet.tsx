@@ -8,30 +8,29 @@ import {
   Icon,
   Modal,
 } from 'components/index';
-import { useStore } from 'hooks/index';
+import { useStore, useDappConnection } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { ellipsis, getHost } from 'utils/index';
 
 export const ConnectWallet = () => {
+  const { confirmConnection } = useDappConnection();
   const { accounts, trustedApps } = useStore();
-  const accountController = getController().wallet.account;
-  const connectedAccount = accountController.getConnectedAccount();
+  const {
+    wallet: { account },
+    dapp,
+  } = getController();
+  const connectedAccount = account.getConnectedAccount();
+
+  const current = dapp.getCurrent();
+  const origin = current && current.origin;
 
   const [accountId, setAccountId] = useState<number>(-1);
   const [isInTrustedList, setIsInTrustedList] = useState<boolean>(false);
   const [openExtraConfirmation, setOpenExtraConfirmation] =
     useState<boolean>(false);
 
-  const handleSelectAccount = (id: number) => {
-    if (connectedAccount && id === connectedAccount.id) {
-      return;
-    }
-
-    setAccountId(id);
-  };
-
   useEffect(() => {
-    const trustedApp = trustedApps.includes(getHost(''));
+    const trustedApp = trustedApps[getHost(origin)] !== '';
 
     setIsInTrustedList(trustedApp);
   });
@@ -43,7 +42,7 @@ export const ConnectWallet = () => {
 
         {accounts ? (
           <ul className="scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-64 overflow-auto">
-            {Object.values(accounts).map((acc: any) => (
+            {Object.values(accounts).map((acc) => (
               <li
                 className={`${
                   connectedAccount && acc.id === connectedAccount.id
@@ -51,12 +50,12 @@ export const ConnectWallet = () => {
                     : 'cursor-pointer hover:bg-bkg-4 border-brand-royalblue'
                 } border border-solid  rounded-lg px-2 py-4 text-xs bg-bkg-2 flex justify-between items-center transition-all duration-200`}
                 key={acc.id}
-                onClick={() => handleSelectAccount(acc.id)}
+                onClick={() => setAccountId(acc.id)}
               >
                 <p>{acc.label}</p>
 
                 <div className="flex gap-3 items-center justify-center">
-                  <small>{ellipsis(acc.address.main)}</small>
+                  <small>{ellipsis(acc.address)}</small>
 
                   <div
                     className={`${
@@ -89,9 +88,11 @@ export const ConnectWallet = () => {
             type="button"
             action
             disabled={accountId === -1}
-            onClick={() => {
-              if (!isInTrustedList) setOpenExtraConfirmation(true);
-            }}
+            onClick={
+              !isInTrustedList
+                ? () => setOpenExtraConfirmation(true)
+                : () => confirmConnection(accountId)
+            }
           >
             {accountId > -1 ? 'Confirm' : 'Next'}
           </PrimaryButton>
@@ -127,7 +128,12 @@ export const ConnectWallet = () => {
                 Cancel
               </SecondaryButton>
 
-              <PrimaryButton action width="32" type="button">
+              <PrimaryButton
+                action
+                width="32"
+                type="button"
+                onClick={() => confirmConnection(accountId)}
+              >
                 Confirm
               </PrimaryButton>
             </div>

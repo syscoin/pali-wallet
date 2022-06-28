@@ -1,22 +1,22 @@
 import React, { useEffect } from 'react';
-import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import {
+  Routes,
+  Route,
+  useLocation,
+  useParams,
+  Navigate,
+} from 'react-router-dom';
 import { browser } from 'webextension-polyfill-ts';
 
 import {
   About,
   AutoLock,
   ConfirmPhrase,
-  ConnectedAccounts,
   ConnectedSites,
   ConnectHardwareWallet,
-  ConnectWallet,
-  Create,
   CreateAccount,
-  CreateAndIssueNFT,
-  CreateAndIssueNFTConfirm,
   CreatePass,
   CreatePhrase,
-  CreateTokenConfirm,
   Currency,
   CustomRPC,
   ForgetWallet,
@@ -24,39 +24,31 @@ import {
   ManageNetwork,
   Home,
   Import,
-  MintNFT,
-  MintNFTConfirm,
-  MintToken,
-  MintTokenConfirm,
   Phrase,
   PrivateKey,
   Receive,
   Send,
   SendConfirm,
-  SignAndSend,
-  SignPSBT,
   Start,
-  TransferOwnership,
-  TransferOwnershipConfirm,
   TrustedSites,
-  UpdateAsset,
-  UpdateAssetConfirm,
 } from '../pages';
-import { useStore, useUtils } from 'hooks/index';
-import { CustomToken, ImportToken } from 'pages/Tokens';
+import { useUtils, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const Router = () => {
-  const location = useLocation();
-  const controller = getController();
+  const params = useParams();
+  const {
+    wallet: { isLocked },
+    appRoute,
+  } = getController();
 
-  const { accounts, activeAccount } = useStore();
-  const { alert, navigate, handleRefresh } = useUtils();
+  const { alert, navigate } = useUtils();
+  const { accounts } = useStore();
+  const { pathname } = useLocation();
 
-  const isUnlocked =
-    controller.wallet.isUnlocked() && activeAccount.address !== '';
+  const isUnlocked = !isLocked();
 
   useEffect(() => {
     if (isUnlocked) {
@@ -70,71 +62,54 @@ export const Router = () => {
   }, [isUnlocked, browser.runtime]);
 
   useEffect(() => {
-    const route = controller.appRoute();
+    const route = appRoute();
 
-    const canProceed = isUnlocked && accounts && activeAccount.address;
-
-    if (canProceed) {
+    if (isUnlocked && accounts) {
       navigate('/home');
+
+      return;
     }
 
-    if (route !== '/' && !canProceed) navigate(route);
-  }, [isUnlocked]);
-
-  useEffect(() => {
-    if (isUnlocked) {
-      handleRefresh(true);
-      console.log(
-        'refreshing',
-        controller.wallet.isUnlocked(),
-        accounts,
-        activeAccount
-      );
-    }
-  }, [isUnlocked]);
+    if (route !== '/') navigate(route);
+  }, [isUnlocked, accounts]);
 
   useEffect(() => {
     alert.removeAll();
-    controller.appRoute(location.pathname);
-  }, [location, isUnlocked]);
+    appRoute(pathname);
+  }, [pathname]);
 
   return (
     <Routes>
       <Route path="/" element={<Start />} />
+
       <Route path="create-password" element={<CreatePass />} />
-      <Route
-        path="connect-wallet"
-        element={<ProtectedRoute element={<ConnectWallet />} />}
-      />
-      <Route
-        path="connected-accounts"
-        element={<ProtectedRoute element={<ConnectedAccounts />} />}
-      />
-      <Route path="home" element={<ProtectedRoute element={<Home />} />} />
-      <Route
-        path="home/tx-details"
-        element={<ProtectedRoute element={<DetailsView />} />}
-      />
       <Route path="import" element={<Import />} />
       <Route path="phrase/create" element={<CreatePhrase />} />
       <Route path="phrase/confirm" element={<ConfirmPhrase />} />
+
+      <Route path="home" element={<ProtectedRoute element={<Home />} />} />
+      <Route
+        path="home/details"
+        element={<ProtectedRoute element={<DetailsView />} />}
+      />
+
       <Route
         path="/receive"
         element={<ProtectedRoute element={<Receive />} />}
       />
+
       <Route path="send" element={<ProtectedRoute element={<Send />} />} />
       <Route
         path="send/confirm"
         element={<ProtectedRoute element={<SendConfirm />} />}
       />
       <Route
-        path="import-token"
-        element={<ProtectedRoute element={<ImportToken />} />}
+        path="send/:address"
+        element={
+          <ProtectedRoute element={<Send initAddress={params.address} />} />
+        }
       />
-      <Route
-        path="custom-token"
-        element={<ProtectedRoute element={<CustomToken />} />}
-      />
+
       {/* /settings */}
       <Route path="settings">
         <Route path="about" element={<ProtectedRoute element={<About />} />} />
@@ -154,6 +129,7 @@ export const Router = () => {
           path="phrase"
           element={<ProtectedRoute element={<Phrase />} />}
         />
+
         {/* /settings/account */}
         <Route path="account">
           <Route
@@ -169,6 +145,7 @@ export const Router = () => {
             element={<ProtectedRoute element={<PrivateKey />} />}
           />
         </Route>
+
         {/* /settings/networks */}
         <Route path="networks">
           <Route
@@ -189,73 +166,7 @@ export const Router = () => {
           />
         </Route>
       </Route>
-      {/* /tx */}
-      <Route path="tx">
-        <Route
-          path="create"
-          element={<ProtectedRoute element={<Create />} />}
-        />
-        <Route
-          path="create/confirm"
-          element={<ProtectedRoute element={<CreateTokenConfirm />} />}
-        />
-        <Route
-          path="sign"
-          element={<ProtectedRoute element={<SignAndSend />} />}
-        />
-        <Route
-          path="sign-psbt"
-          element={<ProtectedRoute element={<SignPSBT />} />}
-        />
-        {/* /tx/asset */}
-        <Route path="asset">
-          <Route
-            path="issue"
-            element={<ProtectedRoute element={<MintToken />} />}
-          />
-          <Route
-            path="issue/confirm"
-            element={<ProtectedRoute element={<MintTokenConfirm />} />}
-          />
-          <Route
-            path="transfer"
-            element={<ProtectedRoute element={<TransferOwnership />} />}
-          />
-          <Route
-            path="transfer/confirm"
-            element={<ProtectedRoute element={<TransferOwnershipConfirm />} />}
-          />
-          <Route
-            path="update"
-            element={<ProtectedRoute element={<UpdateAsset />} />}
-          />
-          <Route
-            path="update/confirm"
-            element={<ProtectedRoute element={<UpdateAssetConfirm />} />}
-          />
-          {/* /tx/asset/nft */}
-          <Route path="nft">
-            <Route
-              path="issue"
-              element={<ProtectedRoute element={<CreateAndIssueNFT />} />}
-            />
-            <Route
-              path="issue/confirm"
-              element={
-                <ProtectedRoute element={<CreateAndIssueNFTConfirm />} />
-              }
-            />
-            <Route
-              path="mint"
-              element={<ProtectedRoute element={<MintNFT />} />}
-            />
-            <Route
-              path="mint/confirm"
-              element={<ProtectedRoute element={<MintNFTConfirm />} />}
-            />
-          </Route>
-        </Route>
-      </Route>
+
       <Route path="app.html" element={<Navigate to={{ pathname: '/' }} />} />
     </Routes>
   );

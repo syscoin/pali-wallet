@@ -1,0 +1,77 @@
+const injectedProvider = (asset) => {
+  const getMethod = (method) => {
+    console.log('geting method', method)
+     return (...args) => window.providerManager.proxy('CAL_REQUEST', {
+      asset,
+      method,
+      args
+    })
+  };
+
+  return {
+    getMethod,
+  };
+};
+
+const ProviderManager = () => {
+  let cache = {};
+
+  const proxy = (type, data) => {
+    return new Promise((resolve, reject) => {
+      const id = Date.now() + '.' + Math.random();
+
+      window.addEventListener(
+        id,
+        (event) => {
+          const response = JSON.parse(event.detail);
+
+          if (response.error) {
+            reject(new Error(response.error));
+
+            return;
+          }
+
+          resolve(response);
+        },
+        {
+          once: true,
+          passive: true,
+        }
+      );
+
+      window.postMessage(
+        {
+          id,
+          type,
+          data,
+        },
+        '*'
+      );
+    });
+  };
+
+  const getProviderFor = (asset) => {
+    if (cache[asset]) return cache[asset];
+
+    cache[asset] = injectedProvider(asset);
+
+    return cache[asset];
+  };
+
+  const enable = () => {
+    return proxy('ENABLE_REQUEST', { asset: 'SYS', network: 'main' });
+  };
+
+  const disable = () => {
+    return proxy('DISABLE_REQUEST', { asset: 'SYS', network: 'main' });
+  };
+
+  return {
+    proxy,
+    getProviderFor,
+    enable,
+    disable
+  }
+}
+
+window.providerManager = ProviderManager();

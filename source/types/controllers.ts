@@ -7,6 +7,9 @@ import {
   ICoingeckoSearchResults,
 } from '@pollum-io/sysweb3-utils';
 
+import { ISigRequest } from 'scripts/Background/controllers/DAppController';
+import { IDAppInfo } from 'state/dapp/types';
+
 export interface IMainController extends KeyringManager {
   account: any;
   addCustomRpc: (network: INetwork) => Promise<INetwork | Error>;
@@ -33,7 +36,7 @@ export interface IEthTokenDetails {
 }
 
 export interface IControllerUtils {
-  appRoute: (newRoute?: string) => string;
+  appRoute: (newRoute?: string, external?: boolean) => string;
   getAsset: (
     explorerUrl: string,
     assetGuid: string
@@ -84,4 +87,20 @@ export interface IControllerUtils {
     verification?: boolean
   ) => boolean;
   setFiat: (currency?: string, assetId?: string) => Promise<void>;
+}
+
+export interface IDAppController {
+  deregisterListeningSite: (origin: string, eventName: string) => void;
+  ethereumProvider: any;
+  getCurrent: () => IDAppInfo;
+  getSigRequest: () => ISigRequest;
+  isDAppConnected: (origin: string) => boolean;
+  isSiteListening: (origin: string, eventName: string) => boolean;
+  notifyAccountsChanged: (accountId: number) => void;
+  pageConnectDApp: (origin: string, title: string) => boolean;
+  paliProvider: any;
+  registerListeningSite: (origin: string, eventName: string) => void;
+  setSigRequest: (req: ISigRequest) => void;
+  userConnectDApp: (origin: string, dapp: IDAppInfo, accountId: number) => void;
+  userDisconnectDApp: (origin: string) => void;
 }

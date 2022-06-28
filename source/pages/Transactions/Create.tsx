@@ -9,7 +9,7 @@ export const CreateTokenConfirm = () => (
 
 export const Create = () => (
   <TxLayout
-    confirmRoute="/tx/create/confirm"
+    confirmRoute="/external/tx/create/confirm"
     txType="newAsset"
     title="Create token"
   />

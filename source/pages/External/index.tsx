@@ -1,5 +1,3 @@
-import 'assets/styles/tailwind.css';
-import 'assets/fonts/index.css';
 import React from 'react';
 import { transitions, positions, Provider as AlertProvider } from 'react-alert';
 import ReactDOM from 'react-dom';
@@ -10,11 +8,13 @@ import { Store } from 'webext-redux';
 import { ToastAlert } from 'components/index';
 import { STORE_PORT } from 'constants/index';
 import appStore from 'state/store';
+import 'assets/styles/tailwind.css';
+import 'assets/fonts/index.css';
 import { log } from 'utils/index';
 
-import App from './App';
+import External from './External';
 
-const app = document.getElementById('app-root');
+const app = document.getElementById('external-root');
 const store = new Store({ portName: STORE_PORT });
 
 const w = watch(appStore.getState, 'vault.lastLogin');
@@ -35,7 +35,7 @@ store.ready().then(() => {
   ReactDOM.render(
     <Provider store={store}>
       <AlertProvider template={ToastAlert} {...options}>
-        <App />
+        <External />
       </AlertProvider>
     </Provider>,
     app

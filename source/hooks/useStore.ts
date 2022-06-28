@@ -28,7 +28,6 @@ export const useStore = () => {
     activeAccountId: activeAccount.id,
     activeNetwork,
     isPendingBalances,
-    walletTokens: [],
     networks,
     trustedApps,
     lastLogin,

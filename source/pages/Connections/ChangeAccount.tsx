@@ -5,20 +5,15 @@ import { useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
-export const ConnectedAccounts = () => {
-  const accountController = getController().wallet.account;
-  const connectedAccount = accountController.getConnectedAccount();
-
+export const ChangeAccount = () => {
   const { accounts } = useStore();
+  const { getConnectedAccount } = getController().wallet.account;
+  const connectedAccount = getConnectedAccount();
 
-  const [accountId, setAccountId] = useState<number>(
-    connectedAccount?.id || -1
-  );
+  const [accountId, setAccountId] = useState<number>(connectedAccount.id || -1);
 
   const handleChangeAccount = (id: number) => {
-    if (id === connectedAccount?.id) {
-      return;
-    }
+    if (id === connectedAccount.id) return;
 
     setAccountId(id);
   };
