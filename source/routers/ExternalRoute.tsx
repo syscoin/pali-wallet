@@ -41,7 +41,7 @@ export const ExternalRoute = () => {
   const isUnlocked = wallet.isUnlocked();
 
   useEffect(() => {
-    const externalRoute = appRoute('/start', true);
+    const externalRoute = appRoute(null, true);
 
     if (isUnlocked && accounts && defaultRoute) {
       navigate(`/external/${defaultRoute}`);
@@ -54,7 +54,7 @@ export const ExternalRoute = () => {
 
   useEffect(() => {
     alert.removeAll();
-    appRoute(pathname);
+    appRoute(pathname, true);
   }, [pathname]);
 
   return (
