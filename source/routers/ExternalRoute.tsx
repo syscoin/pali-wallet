@@ -30,10 +30,7 @@ import { getController } from 'utils/browser';
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const ExternalRoute = () => {
-  const {
-    wallet: { isLocked },
-    appRoute,
-  } = getController();
+  const { wallet, appRoute } = getController();
   const { navigate, alert } = useUtils();
   const { accounts } = useStore();
   const { pathname } = useLocation();
@@ -41,7 +38,7 @@ export const ExternalRoute = () => {
   const query = useQuery();
   const route = query.get('route');
   const [defaultRoute] = useState(route);
-  const isUnlocked = !isLocked();
+  const isUnlocked = wallet.isUnlocked();
 
   useEffect(() => {
     const externalRoute = appRoute('/start', true);
