@@ -39,16 +39,12 @@ import { ProtectedRoute } from './ProtectedRoute';
 
 export const Router = () => {
   const params = useParams();
-  const {
-    wallet: { isLocked },
-    appRoute,
-  } = getController();
+  const { wallet, appRoute } = getController();
+  const isUnlocked = wallet.isUnlocked();
 
   const { alert, navigate } = useUtils();
   const { accounts } = useStore();
   const { pathname } = useLocation();
-
-  const isUnlocked = !isLocked();
 
   useEffect(() => {
     if (isUnlocked) {
