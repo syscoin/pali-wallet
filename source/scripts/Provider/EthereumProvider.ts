@@ -2,40 +2,12 @@ import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import { web3Provider } from '@pollum-io/sysweb3-network';
 
 import store from 'state/store';
-import { removeSensitiveDataFromVault } from 'utils/account';
-import { getController } from 'utils/browser';
+import {
+  getConnectedAccount,
+  removeSensitiveDataFromVault,
+} from 'utils/account';
 
 export const EthereumProvider = () => {
-  const getConnectedAccount = () => {
-    const controller = getController();
-
-    const {
-      address,
-      assets,
-      balance,
-      id,
-      isTrezorWallet,
-      label,
-      web3Address,
-      xpub,
-      trezorId,
-    } = controller?.wallet?.account?.getConnectedAccount();
-
-    return {
-      address,
-      assets,
-      balance,
-      id,
-      isTrezorWallet,
-      label,
-      web3Address,
-      xpub,
-      trezorId,
-    };
-  };
-
-  const { balance } = getConnectedAccount();
-
   const getNetwork = async () => {
     const currentNetwork = await web3Provider.eth.net.getNetworkType();
 
@@ -66,7 +38,7 @@ export const EthereumProvider = () => {
     return address[0];
   };
 
-  const getBalance = async () => balance;
+  const getBalance = async () => getConnectedAccount().balances.ethereum;
 
   const handleLockAccount = async (walletAddress: string) =>
     web3Provider.eth.personal.lockAccount(walletAddress);
@@ -81,9 +53,7 @@ export const EthereumProvider = () => {
   const getState = () => removeSensitiveDataFromVault(store.getState().vault);
 
   return {
-    isConnected: Boolean(
-      getController()?.wallet?.account.getConnectedAccount()
-    ),
+    isConnected: () => Boolean(getConnectedAccount()),
     getAccounts,
     getNetwork,
     getChainId,

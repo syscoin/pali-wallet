@@ -11,11 +11,11 @@ import {
 } from 'utils/index';
 
 export const PaliProvider = () => {
-  const connectedAccount = getConnectedAccount();
+  // const connectedAccount = getConnectedAccount();
   // const txs = SyscoinTransactions();
 
   // ? this might retrieve not updated data
-  const { address, balances, xpub, assets } = connectedAccount;
+  // const { address, balances, xpub, assets } = connectedAccount;
 
   const getNetwork = () => store.getState().vault.activeNetwork;
 
@@ -62,16 +62,19 @@ export const PaliProvider = () => {
   };
 
   return {
-    connectedAccount,
-    assets,
+    // ? maybe remove xprv field before sending the connected acc
+    getConnectedAccount,
+    // assets is inside acc
+    // assets,
     getNetwork,
     getState,
     notifyWalletChanges,
     setAccount,
-    getBalance: () => balances,
-    getAccounts: () => connectedAccount,
-    getPublicKey: () => xpub,
-    getAddress: () => address,
+    // inside acc
+    // getBalance: () => balances,
+    // getAccounts: () => connectedAccount,
+    // getPublicKey: () => xpub,
+    // getAddress: () => address,
     // we can just call from sysweb3 since we already have new methods for transactions in there as soon as we get the signer issue fixed
     // ...txs
   };
