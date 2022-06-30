@@ -17,7 +17,7 @@ export const handleRequest = async (
   const { method, args, asset } = message.data;
 
   const allowed = controller.dapp.isDAppConnected(origin);
-  const walletIsLocked = controller.wallet.isLocked();
+  const walletIsLocked = !controller.wallet.isUnlocked();
 
   const provider =
     asset === 'SYS'
