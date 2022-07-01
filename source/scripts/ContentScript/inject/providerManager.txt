@@ -1,11 +1,12 @@
 const injectedProvider = (asset) => {
   const getMethod = (method) => {
-    console.log('geting method', method)
-     return (...args) => window.providerManager.proxy('CAL_REQUEST', {
-      asset,
-      method,
-      args
-    })
+    console.log('geting method', method);
+    return (...args) =>
+      window.providerManager.proxy('CAL_REQUEST', {
+        asset,
+        method,
+        args,
+      });
   };
 
   return {
@@ -16,8 +17,8 @@ const injectedProvider = (asset) => {
 const ProviderManager = () => {
   let cache = {};
 
-  const proxy = (type, data) => {
-    return new Promise((resolve, reject) => {
+  const proxy = (type, data) =>
+    new Promise((resolve, reject) => {
       const id = Date.now() + '.' + Math.random();
 
       window.addEventListener(
@@ -48,7 +49,6 @@ const ProviderManager = () => {
         '*'
       );
     });
-  };
 
   const getProviderFor = (asset) => {
     if (cache[asset]) return cache[asset];
@@ -58,20 +58,18 @@ const ProviderManager = () => {
     return cache[asset];
   };
 
-  const enable = () => {
-    return proxy('ENABLE_REQUEST', { asset: 'SYS', network: 'main' });
-  };
+  const enable = () =>
+    proxy('ENABLE_REQUEST', { asset: 'SYS', network: 'main' });
 
-  const disable = () => {
-    return proxy('DISABLE_REQUEST', { asset: 'SYS', network: 'main' });
-  };
+  const disable = () =>
+    proxy('DISABLE_REQUEST', { asset: 'SYS', network: 'main' });
 
   return {
     proxy,
     getProviderFor,
     enable,
-    disable
-  }
-}
+    disable,
+  };
+};
 
 window.providerManager = ProviderManager();

@@ -76,8 +76,8 @@ const handleRequest = async (chain, request) => {
 
   if (
     prefix &&
-    (Object.prototype.hasOwnProperty.call(REQUEST_MAP, prefix) &&
-    Object.prototype.hasOwnProperty.call(REQUEST_MAP[prefix], method))
+    Object.prototype.hasOwnProperty.call(REQUEST_MAP, prefix) &&
+    Object.prototype.hasOwnProperty.call(REQUEST_MAP[prefix], method)
   ) {
     const response = await provider.getMethod(REQUEST_MAP[prefix][method])(
       ...request.params
@@ -192,17 +192,9 @@ window.pali = {
 
     return response;
   },
-  disable: async () => {
-    return await window.providerManager.disable();
-  },
-  request: async (req) => {
-    return sysProvider.request(req);
-  },
-  on: (method, callback) => {
-    return sysProvider.on(method, callback);
-  },
-  removeListener: (method) => {
-    return sysProvider.removeListener(method);
-  },
+  disable: async () => window.providerManager.disable(),
+  request: async (req) => sysProvider.request(req),
+  on: (method, callback) => sysProvider.on(method, callback),
+  removeListener: (method) => sysProvider.removeListener(method),
   _listeners: {},
 };
