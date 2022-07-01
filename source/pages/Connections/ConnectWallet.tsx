@@ -10,16 +10,13 @@ import {
 } from 'components/index';
 import { useStore, useDappConnection } from 'hooks/index';
 import { getController } from 'utils/browser';
-import { ellipsis, getHost } from 'utils/index';
+import { ellipsis, getConnectedAccount, getHost } from 'utils/index';
 
 export const ConnectWallet = () => {
   const { confirmConnection } = useDappConnection();
   const { accounts, trustedApps } = useStore();
-  const {
-    wallet: { account },
-    dapp,
-  } = getController();
-  const connectedAccount = account.getConnectedAccount();
+  const { dapp } = getController();
+  const connectedAccount = getConnectedAccount();
 
   const current = dapp.getCurrent();
   const origin = current && current.origin;

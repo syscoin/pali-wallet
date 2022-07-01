@@ -2,12 +2,10 @@ import React, { useState } from 'react';
 
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
 import { useStore } from 'hooks/index';
-import { getController } from 'utils/browser';
-import { ellipsis } from 'utils/index';
+import { ellipsis, getConnectedAccount } from 'utils/index';
 
 export const ChangeAccount = () => {
   const { accounts } = useStore();
-  const { getConnectedAccount } = getController().wallet.account;
   const connectedAccount = getConnectedAccount();
 
   const [accountId, setAccountId] = useState<number>(connectedAccount.id || -1);
