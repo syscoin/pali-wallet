@@ -5,15 +5,14 @@ import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 import store from 'state/store';
 import { IVaultState, IOmittedVault, IOmmitedAccount } from 'state/vault/types';
 
-export const getConnectedAccount = (): IKeyringAccountState => {
+export const getConnectedAccount = (): IKeyringAccountState | null => {
   const { sender } = browser.runtime.connect(window.location.port);
-  if (!(sender && sender.id)) throw new Error('No connection');
+  if (!(sender && sender.id)) return null;
 
   const { accounts } = store.getState().vault;
   const { accountId } = store.getState().dapp.whitelist[sender.id];
 
   const account = Object.values(accounts).find((acc) => acc.id === accountId);
-  if (!account) throw new Error('Connected account not found');
 
   return account;
 };
