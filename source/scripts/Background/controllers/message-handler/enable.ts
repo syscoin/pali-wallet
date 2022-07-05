@@ -2,7 +2,6 @@ import { v4 as uuid } from 'uuid';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { getHost } from 'utils/getHost';
-import { log } from 'utils/logger';
 
 import { Message } from './types';
 
@@ -65,8 +64,6 @@ export const enable = async (
         setPendingWindow(false);
       }
     });
-
-    log('returning Promise.resolve null', 'Connection');
 
     return Promise.resolve(null);
   }
