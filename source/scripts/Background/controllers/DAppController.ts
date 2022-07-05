@@ -11,6 +11,7 @@ import {
 import { IDAppInfo } from 'state/dapp/types';
 import store from 'state/store';
 import { IDAppController } from 'types/controllers';
+import { getHost } from 'utils/index';
 import { log } from 'utils/logger';
 
 export interface ISigRequest {
@@ -24,6 +25,10 @@ const DAppController = (): IDAppController => {
   let request: ISigRequest;
 
   const isDAppConnected = (origin: string) => {
+    if (origin.startsWith('https://')) {
+      origin = getHost(origin);
+    }
+
     const { whitelist } = store.getState().dapp;
 
     return !!whitelist[origin];
