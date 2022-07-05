@@ -43,7 +43,7 @@ browser.runtime.onConnect.addListener((port: Runtime.Port) => {
 
   const senderUrl = port.sender.url;
   if (
-    senderUrl?.includes(browser.runtime.getURL('/app.html')) &&
+    senderUrl?.includes(browser.runtime.getURL('/app.html')) ||
     senderUrl?.includes(browser.runtime.getURL('/external.html'))
   ) {
     port.onDisconnect.addListener(() => {
