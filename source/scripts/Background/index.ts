@@ -29,10 +29,6 @@ browser.runtime.onInstalled.addListener(() => {
 });
 
 browser.runtime.onConnect.addListener((port: Runtime.Port) => {
-  sysweb3Di.getStateStorageDb().setPrefix('sysweb3-');
-  sysweb3Di.useFetchHttpClient(window.fetch.bind(window));
-  sysweb3Di.useLocalStorageClient(window.localStorage);
-
   if (port.name === 'pali-inject') {
     messageHandler(port, window.controller);
 
@@ -44,6 +40,12 @@ browser.runtime.onConnect.addListener((port: Runtime.Port) => {
     senderUrl?.includes(browser.runtime.getURL('/app.html')) ||
     senderUrl?.includes(browser.runtime.getURL('/external.html'))
   ) {
+    sysweb3Di.getStateStorageDb().setPrefix('sysweb3-');
+    sysweb3Di.useFetchHttpClient(window.fetch.bind(window));
+    sysweb3Di.useLocalStorageClient(window.localStorage);
+
+    window.controller.stateUpdater();
+
     port.onDisconnect.addListener(() => {
       log('pali disconnecting port', 'System');
     });
