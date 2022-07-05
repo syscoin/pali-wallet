@@ -21,9 +21,9 @@ export const enable = async (
       ? masterController.paliProvider
       : masterController.ethereumProvider;
 
-  const allowed = masterController.dapp.isDAppConnected(getHost(origin));
+  const isConnected = masterController.dapp.isDAppConnected(getHost(origin));
 
-  if (origin && !allowed) {
+  if (origin && !isConnected) {
     if (isPendingWindow()) {
       return Promise.resolve(null);
     }
@@ -59,7 +59,7 @@ export const enable = async (
       if (popup && id === popup.id) {
         port.postMessage({
           id: message.id,
-          data: { result: origin && allowed },
+          data: { result: origin && isConnected },
         });
 
         setPendingWindow(false);
@@ -71,5 +71,5 @@ export const enable = async (
     return Promise.resolve(null);
   }
 
-  return Promise.resolve({ id: message.id, result: origin && allowed });
+  return Promise.resolve({ id: message.id, result: origin && isConnected });
 };

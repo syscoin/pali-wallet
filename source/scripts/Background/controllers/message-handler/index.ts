@@ -32,13 +32,6 @@ export const messageHandler = (port: Runtime.Port, masterController: any) => {
     const title = connection.sender?.tab?.title as string;
     const origin = url && new URL(url as string).origin;
 
-    console.log('master controller', masterController);
-
-    console.log(
-      '[listener handle request] method:',
-      message,
-      masterController.dapp.paliProvider.getBalance()
-    );
     // Set current page
     masterController.dapp.pageConnectDApp(origin, title);
 
@@ -87,9 +80,11 @@ export const messageHandler = (port: Runtime.Port, masterController: any) => {
 
   const listener = async (message: Message, connection: Runtime.Port) => {
     try {
-      const response = await listenerHandler(message, connection);
+      console.log('listener');
+      console.log('message', message);
 
-      console.log('response listener handler', message, connection);
+      const response = await listenerHandler(message, connection);
+      console.log('response', response);
 
       if (response) {
         const { id, result } = response;

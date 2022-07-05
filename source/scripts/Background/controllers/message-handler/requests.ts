@@ -16,7 +16,7 @@ export const handleRequest = async (
 ) => {
   const { method, args, asset } = message.data;
 
-  const allowed = controller.dapp.isDAppConnected(origin);
+  const isConnected = controller.dapp.isDAppConnected(origin);
   const walletIsLocked = !controller.wallet.isUnlocked();
 
   const provider =
@@ -140,7 +140,7 @@ export const handleRequest = async (
 
   switch (+method) {
     case SupportedWalletMethods.isConnected:
-      result = { connected: !!allowed && !walletIsLocked };
+      result = { connected: !!isConnected && !walletIsLocked };
       break;
     case SupportedWalletMethods.getAddress:
       result = provider.getAddress();

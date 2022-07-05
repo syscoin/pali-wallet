@@ -20,9 +20,9 @@ export const disable = async (
       ? masterController.paliProvider
       : masterController.ethereumProvider;
 
-  const allowed = masterController.dapp.isDAppConnected(getHost(origin));
+  const isConnected = masterController.dapp.isDAppConnected(getHost(origin));
 
-  if (origin && !allowed) {
+  if (origin && !isConnected) {
     return Promise.resolve(null);
   }
 
@@ -54,5 +54,5 @@ export const disable = async (
     { once: true, passive: true }
   );
 
-  return Promise.resolve({ id: message.id, result: origin && allowed });
+  return Promise.resolve({ id: message.id, result: origin && isConnected });
 };

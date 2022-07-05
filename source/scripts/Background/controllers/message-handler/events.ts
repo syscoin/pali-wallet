@@ -16,12 +16,15 @@ export const initializeEvents = (masterController: any, port: Runtime.Port) => {
         }
 
         // Event listeners can be attached before connection but DApp must be connected to receive events
-        const allowed = masterController.dapp.isDAppConnected(origin);
+        const isConnected = masterController.dapp.isDAppConnected(origin);
 
         // The event origin is checked to prevent sites that have not been
         // granted permissions to the user's account information from
         // receiving updates.
-        if (allowed && masterController.dapp.isSiteListening(origin, method)) {
+        if (
+          isConnected &&
+          masterController.dapp.isSiteListening(origin, method)
+        ) {
           port.postMessage({ id, data });
         }
       },
