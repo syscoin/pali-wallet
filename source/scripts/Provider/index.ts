@@ -3,7 +3,7 @@ import { browser } from 'webextension-polyfill-ts';
 
 const emitter = new EventEmitter();
 const backgroundPort = browser.runtime.connect(undefined, {
-  name: 'pali',
+  name: 'pali-inject',
 });
 
 const onMessage = ({ id, data }: { data: string; id: string }) => {

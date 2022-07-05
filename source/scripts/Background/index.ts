@@ -33,9 +33,7 @@ browser.runtime.onConnect.addListener((port: Runtime.Port) => {
   sysweb3Di.useFetchHttpClient(window.fetch.bind(window));
   sysweb3Di.useLocalStorageClient(window.localStorage);
 
-  window.controller.stateUpdater();
-
-  if (port.name === 'pali') {
+  if (port.name === 'pali-inject') {
     messageHandler(port, window.controller);
 
     return;
