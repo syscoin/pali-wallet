@@ -1,4 +1,5 @@
 import { Input, Form } from 'antd';
+import CryptoJS from 'crypto-js';
 import React, { useState, useEffect } from 'react';
 
 import {
@@ -14,12 +15,15 @@ import { ellipsis } from 'utils/index';
 
 const PrivateKeyView = () => {
   const controller = getController();
-  const { activeAccount, activeNetwork } = useStore();
+  const { activeAccount, activeNetwork, networks } = useStore();
 
   const { navigate, useCopyClipboard, alert } = useUtils();
 
   const [copied, copyText] = useCopyClipboard();
   const [valid, setValid] = useState<boolean>(false);
+  const [pwd, setPwd] = useState<string>('');
+
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
   useEffect(() => {
     if (!copied) return;
@@ -72,7 +76,7 @@ const PrivateKeyView = () => {
                 validator(_, value) {
                   if (controller.wallet.getSeed(value)) {
                     setValid(true);
-
+                    setPwd(value);
                     return Promise.resolve();
                   }
 
@@ -91,14 +95,35 @@ const PrivateKeyView = () => {
         <CopyCard
           className="my-3"
           onClick={
-            valid ? () => copyText(String(activeAccount?.xprv)) : undefined
+            valid
+              ? () =>
+                  copyText(
+                    String(
+                      isSyscoinChain
+                        ? CryptoJS.AES.decrypt(
+                            activeAccount?.xprv,
+                            pwd
+                          ).toString()
+                        : activeAccount?.xprv
+                    )
+                  )
+              : undefined
           }
           label="Your private key"
         >
           <p>
-            {valid
-              ? ellipsis(activeAccount?.xprv, 4, 16)
-              : '********...************'}
+            {
+              // eslint-disable-next-line
+              valid && isSyscoinChain
+                ? ellipsis(
+                    CryptoJS.AES.decrypt(activeAccount?.xprv, pwd).toString(),
+                    4,
+                    16
+                  )
+                : valid && !isSyscoinChain
+                ? ellipsis(activeAccount?.xprv, 4, 16)
+                : '********...************'
+            }
           </p>
         </CopyCard>
 
