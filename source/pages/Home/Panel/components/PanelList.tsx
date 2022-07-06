@@ -1,8 +1,14 @@
 import React, { FC, useCallback, Fragment } from 'react';
 
 import { IconButton, Icon } from 'components/index';
+import { FiatComponent } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
-import { ellipsis, formatCurrency, formatDate } from 'utils/index';
+import {
+  ellipsis,
+  formatCurrency,
+  formatDate,
+  formatTransactionValue,
+} from 'utils/index';
 
 interface IPanelList {
   activity: boolean;
@@ -19,7 +25,7 @@ export const PanelList: FC<IPanelList> = ({
 }) => {
   const { navigate } = useUtils();
 
-  const { activeAccount } = useStore();
+  const { activeAccount, activeNetwork, activeToken, networks } = useStore();
 
   const getTxType = (tx: any) => {
     if (isSyscoinChain) {
@@ -78,7 +84,7 @@ export const PanelList: FC<IPanelList> = ({
                 )}
 
                 <li className="py-2 border-b border-dashed border-dashed-dark">
-                  <div className="relative grid grid-cols-2 text-xs">
+                  <div className="relative flex items-center justify-between text-xs">
                     <div>
                       <p>{ellipsis(tx[txid], 4, 14)}</p>
 
@@ -93,29 +99,62 @@ export const PanelList: FC<IPanelList> = ({
                       </p>
                     </div>
 
-                    <div className="flex justify-between pl-4 pr-2 md:pl-8">
+                    <div className="flex pl-4 pr-2 md:pl-8">
                       <div className="text-left">
                         <p className="text-blue-300">{timestamp}</p>
 
                         <p>{getTxType(tx)}</p>
                       </div>
-
-                      <IconButton
-                        className="w-5"
-                        onClick={() =>
-                          navigate('/home/tx-details/', {
-                            state: {
-                              tx,
-                              type: getTxType(tx),
-                              assetGuid: null,
-                              assetType: null,
-                            },
-                          })
-                        }
-                      >
-                        <Icon name="select" className="text-base" />
-                      </IconButton>
                     </div>
+
+                    <div className="flex flex-col items-start">
+                      {!isSyscoinChain ? (
+                        <>
+                          <p>
+                            {formatTransactionValue(
+                              tx?.value?.hex,
+                              activeNetwork,
+                              networks,
+                              activeToken,
+                              false
+                            )}
+                          </p>
+
+                          <FiatComponent transactionValue={tx?.value?.hex} />
+                        </>
+                      ) : (
+                        <>
+                          <p>
+                            {formatTransactionValue(
+                              tx?.vout[0]?.value,
+                              activeNetwork,
+                              networks,
+                              activeToken,
+                              false
+                            )}
+                          </p>
+                          <FiatComponent
+                            transactionValue={tx?.vout[0]?.value}
+                          />
+                        </>
+                      )}
+                    </div>
+
+                    <IconButton
+                      className="w-5"
+                      onClick={() =>
+                        navigate('/home/tx-details/', {
+                          state: {
+                            tx,
+                            type: getTxType(tx),
+                            assetGuid: null,
+                            assetType: null,
+                          },
+                        })
+                      }
+                    >
+                      <Icon name="select" className="text-base" />
+                    </IconButton>
                   </div>
                 </li>
               </Fragment>

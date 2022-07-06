@@ -15,7 +15,8 @@ export const usePrice = () => {
   const getFiatAmount = async (
     amount: number,
     precision = 4,
-    currency = 'usd'
+    currency = 'usd',
+    withSymbol?: boolean
   ): Promise<string> => {
     const chain = networks.syscoin[activeNetwork.chainId]
       ? 'syscoin'
@@ -34,7 +35,9 @@ export const usePrice = () => {
       maximumFractionDigits: precision,
     });
 
-    return `${currencySymbol || '  '}  ${formattedValue}  ${currency}`;
+    return `${
+      (withSymbol && currencySymbol) || '  '
+    }  ${formattedValue}  ${currency}`;
   };
 
   return { getFiatAmount };
