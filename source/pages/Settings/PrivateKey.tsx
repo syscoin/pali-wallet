@@ -25,6 +25,13 @@ const PrivateKeyView = () => {
 
   const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
+  const decrypt = (value: string, key: string) => {
+    if (!isSyscoinChain) {
+      return value;
+    }
+    return CryptoJS.AES.decrypt(value, key).toString();
+  };
+
   useEffect(() => {
     if (!copied) return;
 
@@ -96,34 +103,15 @@ const PrivateKeyView = () => {
           className="my-3"
           onClick={
             valid
-              ? () =>
-                  copyText(
-                    String(
-                      isSyscoinChain
-                        ? CryptoJS.AES.decrypt(
-                            activeAccount?.xprv,
-                            pwd
-                          ).toString()
-                        : activeAccount?.xprv
-                    )
-                  )
+              ? () => copyText(decrypt(activeAccount?.xprv, pwd))
               : undefined
           }
           label="Your private key"
         >
           <p>
-            {
-              // eslint-disable-next-line
-              valid && isSyscoinChain
-                ? ellipsis(
-                    CryptoJS.AES.decrypt(activeAccount?.xprv, pwd).toString(),
-                    4,
-                    16
-                  )
-                : valid && !isSyscoinChain
-                ? ellipsis(activeAccount?.xprv, 4, 16)
-                : '********...************'
-            }
+            {valid
+              ? ellipsis(decrypt(activeAccount?.xprv, pwd), 4, 16)
+              : '********...************'}
           </p>
         </CopyCard>
 
