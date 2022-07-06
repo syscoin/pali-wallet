@@ -134,6 +134,7 @@ export const SendSys = () => {
       </p>
 
       <Form
+        validateMessages={{ default: '' }}
         form={form}
         id="send-form"
         labelCol={{ span: 8 }}

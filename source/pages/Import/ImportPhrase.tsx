@@ -32,6 +32,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
   return (
     <OnboardingLayout title="Import wallet">
       <Form
+        validateMessages={{ default: '' }}
         form={form}
         name="import"
         onFinish={onSubmit}

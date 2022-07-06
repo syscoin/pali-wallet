@@ -37,6 +37,7 @@ const TrustedSitesView = () => {
       </p>
 
       <Form
+        validateMessages={{ default: '' }}
         id="trusted"
         name="trusted"
         labelCol={{ span: 8 }}

@@ -49,6 +49,7 @@ const ForgetWalletView = () => {
           Please input your wallet password
         </p>
         <Form
+          validateMessages={{ default: '' }}
           form={form}
           onFinish={onSubmit}
           className="password flex flex-col gap-6 items-center justify-center w-full max-w-xs text-center md:max-w-md"
