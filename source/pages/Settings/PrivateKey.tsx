@@ -21,7 +21,7 @@ const PrivateKeyView = () => {
 
   const [copied, copyText] = useCopyClipboard();
   const [valid, setValid] = useState<boolean>(false);
-  const [pwd, setPwd] = useState<string>('');
+  const [form] = Form.useForm();
 
   const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
@@ -66,6 +66,7 @@ const PrivateKeyView = () => {
         <Form
           className="standard password mx-auto my-3 w-full max-w-xs text-center md:max-w-xl"
           name="phraseview"
+          form={form}
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
           autoComplete="off"
@@ -83,7 +84,6 @@ const PrivateKeyView = () => {
                 validator(_, value) {
                   if (controller.wallet.getSeed(value)) {
                     setValid(true);
-                    setPwd(value);
                     return Promise.resolve();
                   }
 
@@ -103,14 +103,21 @@ const PrivateKeyView = () => {
           className="my-3"
           onClick={
             valid
-              ? () => copyText(decrypt(activeAccount?.xprv, pwd))
+              ? () =>
+                  copyText(
+                    decrypt(activeAccount?.xprv, form.getFieldValue('password'))
+                  )
               : undefined
           }
           label="Your private key"
         >
           <p>
             {valid
-              ? ellipsis(decrypt(activeAccount?.xprv, pwd), 4, 16)
+              ? ellipsis(
+                  decrypt(activeAccount?.xprv, form.getFieldValue('password')),
+                  4,
+                  16
+                )
               : '********...************'}
           </p>
         </CopyCard>
