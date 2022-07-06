@@ -26,9 +26,8 @@ const PrivateKeyView = () => {
   const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
 
   const decrypt = (value: string, key: string) => {
-    if (!isSyscoinChain) {
-      return value;
-    }
+    if (!isSyscoinChain) return value;
+    
     return CryptoJS.AES.decrypt(value, key).toString();
   };
 
