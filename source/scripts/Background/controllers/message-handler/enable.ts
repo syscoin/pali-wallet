@@ -21,8 +21,9 @@ export const enable = async (
       : masterController.ethereumProvider;
 
   const isConnected = masterController.dapp.isDAppConnected(getHost(origin));
+  const hasConnectedAccount = masterController.dapp.hasConnectedAccount();
 
-  if (origin && !isConnected) {
+  if (origin && (!isConnected || !hasConnectedAccount)) {
     if (isPendingWindow()) {
       return Promise.resolve(null);
     }
