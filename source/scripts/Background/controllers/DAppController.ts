@@ -1,5 +1,7 @@
 import { browser } from 'webextension-polyfill-ts';
 
+import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
+
 import { EthereumProvider } from 'scripts/Provider/EthereumProvider';
 import { PaliProvider } from 'scripts/Provider/PaliProvider';
 import {
