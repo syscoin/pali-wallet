@@ -106,7 +106,7 @@ const DAppController = (): IDAppController => {
 
     const listeningEvents = listening[origin];
 
-    if (!listeningEvents.includes('close')) {
+    if (listeningEvents && !listeningEvents.includes('close')) {
       log('notifySiteDisconnected includes close', 'Connection');
 
       return;
