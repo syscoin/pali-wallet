@@ -21,7 +21,12 @@ export interface ISigRequest {
 }
 
 const DAppController = (): IDAppController => {
-  let current: IDAppInfo = { accountId: -1, origin: '', logo: '', title: '' };
+  let current: IDAppInfo = {
+    accountId: null,
+    origin: '',
+    logo: '',
+    title: '',
+  };
   let request: ISigRequest;
 
   const isDAppConnected = (origin: string) => {
@@ -33,6 +38,8 @@ const DAppController = (): IDAppController => {
 
     return !!whitelist[origin];
   };
+
+  const hasConnectedAccount = () => current.accountId !== null;
 
   const pageConnectDApp = (origin: string, title: string) => {
     current = {
@@ -50,6 +57,7 @@ const DAppController = (): IDAppController => {
     dapp: IDAppInfo,
     accountId: number
   ) => {
+    current.accountId = accountId;
     store.dispatch(listNewDapp({ id: origin, dapp, accountId }));
   };
 
@@ -117,6 +125,7 @@ const DAppController = (): IDAppController => {
 
   const userDisconnectDApp = (origin: string) => {
     _notifySiteDisconnected(origin);
+    current.accountId = null;
     store.dispatch(unlistDapp({ id: origin }));
   };
 
@@ -136,6 +145,13 @@ const DAppController = (): IDAppController => {
 
   const getCurrent = () => current;
 
+  const getConnectedAccount = (): IKeyringAccountState | null => {
+    if (current.accountId === -1) return null;
+
+    const { accounts } = store.getState().vault;
+    return accounts[current.accountId];
+  };
+
   const setSigRequest = (req: ISigRequest) => {
     request = req;
   };
@@ -147,6 +163,8 @@ const DAppController = (): IDAppController => {
 
   return {
     getCurrent,
+    getConnectedAccount,
+    hasConnectedAccount,
     pageConnectDApp,
     userConnectDApp,
     setSigRequest,

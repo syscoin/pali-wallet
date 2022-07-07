@@ -92,8 +92,10 @@ export interface IControllerUtils {
 export interface IDAppController {
   deregisterListeningSite: (origin: string, eventName: string) => void;
   ethereumProvider: any;
+  getConnectedAccount: () => IKeyringAccountState | null;
   getCurrent: () => IDAppInfo;
   getSigRequest: () => ISigRequest;
+  hasConnectedAccount: () => boolean;
   isDAppConnected: (origin: string) => boolean;
   isSiteListening: (origin: string, eventName: string) => boolean;
   notifyAccountsChanged: (accountId: number) => void;

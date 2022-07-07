@@ -3,19 +3,13 @@ import { browser } from 'webextension-polyfill-ts';
 // import { SyscoinTransactions } from '@pollum-io/sysweb3-keyring';
 import { listNewDapp } from 'state/dapp';
 import store from 'state/store';
-import {
-  getConnectedAccount,
-  removeSensitiveDataFromVault,
-  log,
-  getHost,
-} from 'utils/index';
+import { removeSensitiveDataFromVault, log, getHost } from 'utils/index';
 
 export const PaliProvider = () => {
-  // const connectedAccount = getConnectedAccount();
   // const txs = SyscoinTransactions();
 
-  // ? this might retrieve not updated data
-  // const { address, balances, xpub, assets } = connectedAccount;
+  const { controller } = browser.extension.getBackgroundPage();
+  const getConnectedAccount = () => controller.dapp.getConnectedAccount();
 
   const getNetwork = () => store.getState().vault.activeNetwork;
 
@@ -71,10 +65,10 @@ export const PaliProvider = () => {
     notifyWalletChanges,
     setAccount,
     // inside acc
-    // getBalance: () => balances,
-    // getAccounts: () => connectedAccount,
-    // getPublicKey: () => xpub,
-    // getAddress: () => address,
+    getBalance: () => getConnectedAccount().balances.syscoin,
+    getAccounts: () => getConnectedAccount(),
+    getPublicKey: () => getConnectedAccount().xpub,
+    getAddress: () => getConnectedAccount().address,
     // we can just call from sysweb3 since we already have new methods for transactions in there as soon as we get the signer issue fixed
     // ...txs
   };

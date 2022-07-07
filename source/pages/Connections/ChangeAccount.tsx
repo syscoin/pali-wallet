@@ -2,13 +2,16 @@ import React, { useState } from 'react';
 
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
 import { useStore } from 'hooks/index';
-import { ellipsis, getConnectedAccount } from 'utils/index';
+import { getController } from 'utils/browser';
+import { ellipsis } from 'utils/index';
 
 export const ChangeAccount = () => {
   const { accounts } = useStore();
-  const connectedAccount = getConnectedAccount();
+  const connectedAccount = getController().dapp.getConnectedAccount();
 
-  const [accountId, setAccountId] = useState<number>(connectedAccount.id || -1);
+  const [accountId, setAccountId] = useState<number>(
+    connectedAccount?.id || -1
+  );
 
   const handleChangeAccount = (id: number) => {
     if (id === connectedAccount.id) return;

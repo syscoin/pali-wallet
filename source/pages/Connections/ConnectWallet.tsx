@@ -10,18 +10,20 @@ import {
 } from 'components/index';
 import { useStore, useDappConnection } from 'hooks/index';
 import { getController } from 'utils/browser';
-import { ellipsis, getConnectedAccount, getHost } from 'utils/index';
+import { ellipsis, getHost } from 'utils/index';
 
 export const ConnectWallet = () => {
   const { confirmConnection } = useDappConnection();
   const { accounts, trustedApps } = useStore();
   const { dapp } = getController();
-  const connectedAccount = getConnectedAccount();
 
   const current = dapp.getCurrent();
+  const connectedAccount = dapp.getConnectedAccount();
   const origin = current && current.origin;
 
-  const [accountId, setAccountId] = useState<number>(-1);
+  const [accountId, setAccountId] = useState<number>(
+    connectedAccount?.id || -1
+  );
   const [isInTrustedList, setIsInTrustedList] = useState<boolean>(false);
   const [openExtraConfirmation, setOpenExtraConfirmation] =
     useState<boolean>(false);
