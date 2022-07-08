@@ -71,10 +71,12 @@ const ForgetWalletView = () => {
 
                   if (seed) {
                     setIsPasswordValid(true);
+
                     return Promise.resolve();
                   }
 
                   setIsPasswordValid(false);
+
                   return Promise.reject();
                 },
               }),
@@ -111,10 +113,12 @@ const ForgetWalletView = () => {
 
                       if (seed === value) {
                         setIsSeedValid(true);
+
                         return Promise.resolve();
                       }
 
                       setIsSeedValid(false);
+
                       return Promise.reject();
                     },
                   }),
