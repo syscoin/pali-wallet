@@ -37,8 +37,8 @@ const REQUEST_MAP = {
 };
 
 const ERRORS = {
-  USER_REJECTED: () => console.error('User rejected the request'),
-  INVALID_METHOD: () => console.error('invalid method'),
+  USER_REJECTED: new Error('User rejected the request'),
+  INVALID_METHOD: new Error('Invalid method'),
 };
 
 const handleRequest = async (chain, request) => {
@@ -63,7 +63,7 @@ const handleRequest = async (chain, request) => {
   let methodIsValid;
   if (prefix) {
     if (prefix.toLowerCase() !== SUPPORTED_CHAINS[chain].prefix) {
-      throw ERRORS.INVALID_METHOD();
+      throw ERRORS.INVALID_METHOD;
     }
 
     methodIsValid = Boolean(REQUEST_MAP[prefix][method]);
@@ -71,14 +71,14 @@ const handleRequest = async (chain, request) => {
     methodIsValid = Boolean(REQUEST_MAP[method]);
   }
 
-  if (!methodIsValid) throw ERRORS.INVALID_METHOD();
+  if (!methodIsValid) throw ERRORS.INVALID_METHOD;
 
   // All request accounts go to the same place
   if (method === 'getAccounts') {
     const { result, data } = await window.providerManager.enable();
 
     if (!result) {
-      ERRORS.USER_REJECTED();
+      throw ERRORS.USER_REJECTED;
     }
 
     return data.accounts;
@@ -86,7 +86,7 @@ const handleRequest = async (chain, request) => {
 
   const response = await provider.getMethod(method)(...request.params);
 
-  if (response.result === false) throw ERRORS.USER_REJECTED();
+  if (response.result === false) throw ERRORS.USER_REJECTED;
   else return response;
 };
 
@@ -185,7 +185,7 @@ window.pali = {
   enable: async () => {
     const response = await window.providerManager.enable();
 
-    if (!response) throw Errors.USER_REJECTED();
+    if (!response) throw ERRORS.USER_REJECTED;
 
     return response;
   },
