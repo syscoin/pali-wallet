@@ -160,7 +160,7 @@ const DAppController = (): IDAppController => {
 
   const getSigRequest = () => request;
 
-  const paliProvider = PaliProvider();
+  const paliProvider = PaliProvider(getConnectedAccount);
   const ethereumProvider = EthereumProvider();
 
   return {

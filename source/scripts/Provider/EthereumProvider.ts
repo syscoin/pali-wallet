@@ -1,15 +1,13 @@
-import { browser } from 'webextension-polyfill-ts';
-
 import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import { web3Provider } from '@pollum-io/sysweb3-network';
+import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
 import { removeSensitiveDataFromVault } from 'utils/account';
 
-export const EthereumProvider = () => {
-  const { controller } = browser.extension.getBackgroundPage();
-  const getConnectedAccount = () => controller.dapp.getConnectedAccount();
-
+export const EthereumProvider = (
+  getConnectedAccount: () => IKeyringAccountState | null
+) => {
   const getNetwork = async () => {
     const currentNetwork = await web3Provider.eth.net.getNetworkType();
 
