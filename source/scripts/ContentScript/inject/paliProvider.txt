@@ -52,16 +52,26 @@ const handleRequest = async (chain, request) => {
 
   let [prefix, method] = request.method.split('_');
 
-  if (prefix && prefix.toLowerCase() !== SUPPORTED_CHAINS[chain].prefix) {
-    ERRORS.INVALID_METHOD();
-  }
-
   if (!method) {
     prefix = null;
     method = request.method;
   } else {
     prefix = prefix.toUpperCase();
   }
+
+  //* Prefix / Method validation
+  let methodIsValid;
+  if (prefix) {
+    if (prefix.toLowerCase() !== SUPPORTED_CHAINS[chain].prefix) {
+      throw ERRORS.INVALID_METHOD();
+    }
+
+    methodIsValid = Boolean(REQUEST_MAP[prefix][method]);
+  } else {
+    methodIsValid = Boolean(REQUEST_MAP[method]);
+  }
+
+  if (!methodIsValid) throw ERRORS.INVALID_METHOD();
 
   // All request accounts go to the same place
   if (method === 'getAccounts') {
