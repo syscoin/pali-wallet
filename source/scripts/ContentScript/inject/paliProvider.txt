@@ -84,23 +84,10 @@ const handleRequest = async (chain, request) => {
     return data.accounts;
   }
 
-  if (
-    prefix &&
-    Object.prototype.hasOwnProperty.call(REQUEST_MAP, prefix) &&
-    Object.prototype.hasOwnProperty.call(REQUEST_MAP[prefix], method)
-  ) {
-    const response = await provider.getMethod(REQUEST_MAP[prefix][method])(
-      ...request.params
-    );
+  const response = await provider.getMethod(method)(...request.params);
 
-    if (response.result === false) {
-      ERRORS.USER_REJECTED();
-    }
-
-    return response;
-  }
-
-  ERRORS.INVALID_METHOD();
+  if (response.result === false) throw ERRORS.USER_REJECTED();
+  else return response;
 };
 
 const provider = (chain) => {
