@@ -28,4 +28,3 @@ jobs:
           echo REACT_APP_SEED_LAW_COOK=${{ secrets.SEED_LAW_COOK }} >> .env
           echo REACT_APP_SEED_PEACE_GLOBE=${{ secrets.SEED_PEACE_GLOBE }} >> .env
           echo REACT_APP_SEED_SWALLOW_HEALTH=${{ secrets.SEED_SWALLOW_HEALTH }} >> .env
-          yarn build
