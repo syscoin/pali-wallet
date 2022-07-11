@@ -161,14 +161,15 @@ export const NormalHeader: React.FC = () => {
                                   {currentNetwork.label}
                                 </span>
 
-                                {activeNetwork.chainId ===
-                                  currentNetwork.chainId && (
-                                  <Icon
-                                    name="check"
-                                    className="mb-1 w-4"
-                                    wrapperClassname="w-6 absolute right-20"
-                                  />
-                                )}
+                                {activeNetwork.url.includes('blockbook') &&
+                                  activeNetwork.chainId ===
+                                    currentNetwork.chainId && (
+                                    <Icon
+                                      name="check"
+                                      className="mb-1 w-4"
+                                      wrapperClassname="w-6 absolute right-20"
+                                    />
+                                  )}
                               </li>
                             )
                           )}
@@ -218,14 +219,15 @@ export const NormalHeader: React.FC = () => {
                                   {currentNetwork.label}
                                 </span>
 
-                                {activeNetwork.chainId ===
-                                  currentNetwork.chainId && (
-                                  <Icon
-                                    name="check"
-                                    className="mb-1 w-4"
-                                    wrapperClassname="w-6 absolute right-16"
-                                  />
-                                )}
+                                {!activeNetwork.url.includes('blockbook') &&
+                                  activeNetwork.chainId ===
+                                    currentNetwork.chainId && (
+                                    <Icon
+                                      name="check"
+                                      className="mb-1 w-4"
+                                      wrapperClassname="w-6 absolute right-16"
+                                    />
+                                  )}
                               </li>
                             )
                           )}
