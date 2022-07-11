@@ -62,12 +62,12 @@ describe('Format', () => {
   // transform in lowerCase
   it('should format a Seed Phrase', () => {
     const input =
-      ' peace? uncle! Grit   essence3 stuff angle Cruise annual fury letter snack globe ';
+      ' this? test! phrase   phone3 here use hello annual fury letter snack globe ';
     const output = formatSeedPhrase(input);
     const outputLenght = output.split(' ').length;
 
     expect(output).toBe(
-      'peace uncle grit essence stuff angle cruise annual fury letter snack globe'
+      'this test phrase phone here use hello annual fury letter snack globe'
     );
     expect(outputLenght).toBe(12);
   });
