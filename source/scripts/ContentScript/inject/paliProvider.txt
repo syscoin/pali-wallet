@@ -94,7 +94,7 @@ const provider = (chain) => {
   chain = chain.toLowerCase();
 
   if (!Object.keys(SUPPORTED_CHAINS).includes(chain)) {
-    console.error('Unsupported chain:', chain);
+    throw new Error('Unsupported chain: ' + chain);
   }
 
   return {
