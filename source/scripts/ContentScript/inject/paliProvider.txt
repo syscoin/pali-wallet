@@ -114,13 +114,13 @@ const provider = (chain) => {
 
       const id = `${chain}.${origin}.${method}`;
 
-      window.pali.listeners[id] = ({ detail }) => {
+      window.pali._listeners[id] = ({ detail }) => {
         if (detail) {
           callback(JSON.parse(detail));
         }
       };
 
-      window.addEventListener(id, window.pali.listeners[id], {
+      window.addEventListener(id, window.pali._listeners[id], {
         passive: true,
       });
 
@@ -146,10 +146,10 @@ const provider = (chain) => {
 
       const id = `${chain}.${origin}.${method}`;
 
-      if (window.pali.listeners[id]) {
-        window.removeEventListener(id, window.pali.listeners[id]);
+      if (window.pali._listeners[id]) {
+        window.removeEventListener(id, window.pali._listeners[id]);
 
-        delete window.pali.listeners[id];
+        delete window.pali._listeners[id];
       }
 
       window.postMessage(
