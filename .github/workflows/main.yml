@@ -13,3 +13,19 @@ jobs:
           check-latest: true
       - run: yarn install
       - run: yarn test-all
+  secrets:
+    name: Create env file with gh secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+          check-latest: true
+      - run: yarn install
+      - run: |
+          touch .env
+          echo REACT_APP_SEED_LAW_COOK=${{ secrets.SEED_LAW_COOK }} >> .env
+          echo REACT_APP_SEED_PEACE_GLOBE=${{ secrets.SEED_PEACE_GLOBE }} >> .env
+          echo REACT_APP_SEED_SWALLOW_HEALTH=${{ secrets.SEED_SWALLOW_HEALTH }} >> .env
+          yarn build
