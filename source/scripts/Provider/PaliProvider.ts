@@ -8,9 +8,16 @@ import store from 'state/store';
 import { removeSensitiveDataFromVault, log, getHost } from 'utils/index';
 
 export const PaliProvider = (
-  getConnectedAccount: () => IKeyringAccountState | null
+  _getConnectedAccount: () => IKeyringAccountState | null
 ) => {
   // const txs = SyscoinTransactions();
+
+  const getConnectedAccount = () => {
+    const account = _getConnectedAccount();
+    if (!account) throw new Error('No connected account');
+
+    return account;
+  };
 
   const getNetwork = () => store.getState().vault.activeNetwork;
 

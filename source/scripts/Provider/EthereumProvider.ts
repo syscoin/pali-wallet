@@ -6,8 +6,15 @@ import store from 'state/store';
 import { removeSensitiveDataFromVault } from 'utils/account';
 
 export const EthereumProvider = (
-  getConnectedAccount: () => IKeyringAccountState | null
+  _getConnectedAccount: () => IKeyringAccountState | null
 ) => {
+  const getConnectedAccount = () => {
+    const account = _getConnectedAccount();
+    if (!account) throw new Error('No connected account');
+
+    return account;
+  };
+
   const getNetwork = async () => {
     const currentNetwork = await web3Provider.eth.net.getNetworkType();
 
