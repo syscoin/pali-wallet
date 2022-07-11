@@ -66,7 +66,9 @@ describe('Format', () => {
     const output = formatSeedPhrase(input);
     const outputLenght = output.split(' ').length;
 
-    expect(output).toBe(process.env.REACT_APP_SEED_PEACE_GLOBE);
+    expect(output).toBe(
+      'this test phrase phone here use hello annual fury letter snack globe'
+    );
     expect(outputLenght).toBe(12);
   });
 });
