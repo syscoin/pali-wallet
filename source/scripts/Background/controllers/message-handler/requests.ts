@@ -151,9 +151,9 @@ export const handleRequest = async (
     case SupportedWalletMethods.setAccount:
       result = provider.setAccount();
       break;
-    /* case SupportedWalletMethods.getChainId:
+    case SupportedWalletMethods.getChainId:
       result = provider.getChainId();
-      break; */
+      break;
     case SupportedWalletMethods.getBlockNumber:
       result = provider.getBlockNumber();
       break;

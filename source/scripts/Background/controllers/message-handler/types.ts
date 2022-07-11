@@ -23,7 +23,7 @@ export enum SupportedEventTypes {
 }
 
 export enum SupportedWalletMethods {
-  // getChainId,
+  getChainId,
   getAccounts,
   getBlockNumber,
   estimateGas,
