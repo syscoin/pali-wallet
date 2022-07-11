@@ -104,9 +104,6 @@ const provider = (chain) => {
       return handleRequest(chain, {
         method: req.method,
         params,
-      }).catch((err) => {
-        console.error(err);
-        throw err;
       });
     },
     on: (method, callback) => {

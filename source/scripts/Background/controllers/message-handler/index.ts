@@ -59,12 +59,6 @@ export const messageHandler = (port: Runtime.Port, masterController: any) => {
           isPendingWindow
         );
       case 'CAL_REQUEST':
-        console.log(
-          'cal request received, handling request',
-          port,
-          message,
-          origin
-        );
         return handleRequest(
           port,
           masterController,
