@@ -10,7 +10,8 @@ export const formatTransactionValue = (
   activeNetwork: INetwork,
   networks: any,
   activeToken: string,
-  forFiat?: boolean
+  forFiat?: boolean,
+  decimals?: number
 ) => {
   try {
     const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
@@ -22,7 +23,8 @@ export const formatTransactionValue = (
 
       return forFiat
         ? web3Value
-        : chooseDecimalsPlaces(web3Value, 4) + `${activeToken || ' ETH'}`;
+        : chooseDecimalsPlaces(web3Value, decimals || 2) +
+            `${activeToken || ' ETH'}`;
     }
 
     const syscoinValue = ethers.utils.formatUnits(transactionValue, 8);

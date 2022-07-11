@@ -30,7 +30,7 @@ export const FiatComponent: FC<IFiatComponent> = ({ transactionValue }) => {
     try {
       const amount = await getFiatAmount(
         Number(getTransactionValue) || 0,
-        4,
+        2,
         String(fiat.asset).toUpperCase(),
         false
       );

@@ -108,7 +108,7 @@ export const PanelList: FC<IPanelList> = ({
                     </div>
 
                     <div className="flex flex-col items-start">
-                      {!isSyscoinChain ? (
+                      {!isSyscoinChain && (
                         <>
                           <p>
                             {formatTransactionValue(
@@ -121,21 +121,6 @@ export const PanelList: FC<IPanelList> = ({
                           </p>
 
                           <FiatComponent transactionValue={tx?.value?.hex} />
-                        </>
-                      ) : (
-                        <>
-                          <p>
-                            {formatTransactionValue(
-                              tx?.vout[0]?.value,
-                              activeNetwork,
-                              networks,
-                              activeToken,
-                              false
-                            )}
-                          </p>
-                          <FiatComponent
-                            transactionValue={tx?.vout[0]?.value}
-                          />
                         </>
                       )}
                     </div>
