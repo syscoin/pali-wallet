@@ -180,7 +180,7 @@ window.pali = {
   isConnected: async () => {
     const pali = window.providerManager.getProviderFor('SYS');
 
-    return pali.getMethod('wallet.isConnected');
+    return pali.getMethod('isConnected')();
   },
   enable: async () => {
     const response = await window.providerManager.enable();
