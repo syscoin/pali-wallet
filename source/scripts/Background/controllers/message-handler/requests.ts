@@ -14,6 +14,7 @@ export const handleRequest = async (
   setPendingWindow: (isPending: boolean) => void,
   isPendingWindow: () => boolean
 ) => {
+  console.log('[request handler] data:', message.data);
   const { method, args, asset } = message.data;
 
   const isConnected = controller.dapp.isDAppConnected(origin);
@@ -27,8 +28,6 @@ export const handleRequest = async (
   let result: any;
 
   const windowId = `signMessage${uuid()}`;
-
-  console.log('asset and provider', asset, provider);
 
   const isSignMessage = async () => {
     if (isPendingWindow()) {
@@ -131,14 +130,7 @@ export const handleRequest = async (
     return sendTransaction(data);
   };
 
-  console.log(
-    '[handle request] method:',
-    method,
-    SupportedWalletMethods[method],
-    provider.getBalance()
-  );
-
-  switch (+method) {
+  switch (SupportedWalletMethods[method]) {
     case SupportedWalletMethods.isConnected:
       result = { connected: !!isConnected && !walletIsLocked };
       break;
