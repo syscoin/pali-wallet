@@ -1,7 +1,5 @@
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
-import { log, logError } from 'utils/logger';
-
 import { disable } from './disable';
 import { enable } from './enable';
 import { initializeEvents, registerEvent, deregisterEvent } from './events';
@@ -86,10 +84,9 @@ export const messageHandler = (port: Runtime.Port, masterController: any) => {
         port.postMessage({ id, data: result });
       }
     } catch (error: any) {
-      logError('messagesHandler.ERROR', error);
-      log(JSON.stringify(error, null, 2));
+      console.error(error);
 
-      port.postMessage({ id: error.type, data: { error: error.detail } });
+      port.postMessage({ id: message.id, data: { error: error.message } });
     }
   };
 

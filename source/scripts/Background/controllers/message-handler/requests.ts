@@ -172,7 +172,5 @@ export const handleRequest = async (
     return Promise.resolve({ id: message.id, result });
   }
 
-  return Promise.reject(
-    new CustomEvent(message.id, { detail: 'Unknown Request' })
-  );
+  return Promise.reject(new Error('Unknown Request'));
 };
