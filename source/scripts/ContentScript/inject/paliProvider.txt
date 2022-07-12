@@ -171,7 +171,7 @@ const provider = (chain) => {
 const ethProvider = provider('ethereum');
 const sysProvider = provider('syscoin');
 
-window.pali = {
+window.pali = Object.freeze({
   version: 2,
   getProvider: (chain) => provider(chain),
   isConnected: async () => {
@@ -191,4 +191,4 @@ window.pali = {
   on: (method, callback) => sysProvider.on(method, callback),
   removeListener: (method) => sysProvider.removeListener(method),
   _listeners: {},
-};
+});
