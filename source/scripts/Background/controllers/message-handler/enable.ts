@@ -13,10 +13,10 @@ export const enable = async (
   setPendingWindow: (isPending: boolean) => void,
   isPendingWindow: () => boolean
 ) => {
-  const { asset } = message.data;
+  const { chain } = message.data;
 
   const provider =
-    asset === 'SYS'
+    chain === 'syscoin'
       ? masterController.paliProvider
       : masterController.ethereumProvider;
 

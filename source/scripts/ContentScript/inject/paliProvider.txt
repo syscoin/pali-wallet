@@ -1,13 +1,4 @@
-const SUPPORTED_CHAINS = {
-  syscoin: {
-    prefix: 'sys',
-    asset: 'SYS',
-  },
-  ethereum: {
-    prefix: 'eth',
-    asset: 'ETH',
-  },
-};
+const SUPPORTED_CHAINS = ['syscoin', 'ethereum'];
 
 const { SUPPORTED_WALLET_METHODS } = window;
 
@@ -41,144 +32,98 @@ const ERRORS = {
   INVALID_METHOD: new Error('Invalid method'),
 };
 
-const handleRequest = async (chain, request) => {
-  const { asset } = SUPPORTED_CHAINS[chain];
+const request = async (req) => {
+  const { method, args, chain } = req;
+  const prefix = chain?.substring(0, 3).toUpperCase();
 
-  const provider = window.providerManager.getProviderFor(asset);
-
-  if (request.method === 'personal_sign') {
-    request.method = 'eth_signMessage';
-  }
-
-  let [prefix, method] = request.method.split('_');
-
-  if (!method) {
-    prefix = null;
-    method = request.method;
-  } else {
-    prefix = prefix.toUpperCase();
-  }
+  console.log('handling request', req);
 
   //* Prefix / Method validation
-  let methodIsValid;
-  if (prefix) {
-    if (prefix.toLowerCase() !== SUPPORTED_CHAINS[chain].prefix) {
-      throw ERRORS.INVALID_METHOD;
-    }
+  if (!method) throw ERRORS.INVALID_METHOD;
 
-    methodIsValid = Boolean(REQUEST_MAP[prefix][method]);
-  } else {
-    methodIsValid = Boolean(REQUEST_MAP[method]);
+  if (chain && !SUPPORTED_CHAINS.includes(chain)) {
+    throw ERRORS.INVALID_METHOD;
   }
 
-  if (!methodIsValid) throw ERRORS.INVALID_METHOD;
+  let method_ = prefix ? REQUEST_MAP[prefix][method] : REQUEST_MAP[method];
+  if (!method_) throw ERRORS.INVALID_METHOD;
 
-  // All request accounts go to the same place
-  if (method === 'getAccounts') {
-    const { result, data } = await window.providerManager.enable();
-
-    if (!result) {
-      throw ERRORS.USER_REJECTED;
-    }
-
-    return data.accounts;
-  }
-
-  const response = await provider.getMethod(method)(...request.params);
+  //* Call the method
+  const response = await window.providerManager.proxy('CAL_REQUEST', {
+    chain,
+    method,
+    args,
+  });
 
   if (response.result === false) throw ERRORS.USER_REJECTED;
   else return response;
 };
 
-const provider = (chain) => {
-  chain = chain.toLowerCase();
-
-  if (!Object.keys(SUPPORTED_CHAINS).includes(chain)) {
-    throw new Error('Unsupported chain: ' + chain);
+const on = (method, callback) => {
+  let origin = window.location.hostname;
+  if (window.location.port) {
+    origin += `:${window.location.port}`;
   }
 
-  return {
-    request: async (req) => {
-      const params = req.params || [];
+  const id = `${origin}.${method}`;
 
-      return handleRequest(chain, {
-        method: req.method,
-        params,
-      });
-    },
-    on: (method, callback) => {
-      let origin = window.location.hostname;
-      if (window.location.port) {
-        origin += `:${window.location.port}`;
-      }
-
-      const id = `${chain}.${origin}.${method}`;
-
-      window.pali._listeners[id] = ({ detail }) => {
-        if (detail) {
-          callback(JSON.parse(detail));
-        }
-      };
-
-      window.addEventListener(id, window.pali._listeners[id], {
-        passive: true,
-      });
-
-      // Register the origin of the listening site.
-      window.postMessage(
-        {
-          id,
-          type: 'PALI_EVENT_REG',
-          data: {
-            method,
-            origin,
-            chain,
-          },
-        },
-        '*'
-      );
-    },
-    removeListener: (method) => {
-      let origin = window.location.hostname;
-      if (window.location.port) {
-        origin += `:${window.location.port}`;
-      }
-
-      const id = `${chain}.${origin}.${method}`;
-
-      if (window.pali._listeners[id]) {
-        window.removeEventListener(id, window.pali._listeners[id]);
-
-        delete window.pali._listeners[id];
-      }
-
-      window.postMessage(
-        {
-          id,
-          type: 'PALI_EVENT_DEREG',
-          data: {
-            method,
-            origin,
-            chain,
-          },
-        },
-        '*'
-      );
-    },
+  window.pali._listeners[id] = ({ detail }) => {
+    if (detail) {
+      callback(JSON.parse(detail));
+    }
   };
+
+  window.addEventListener(id, window.pali._listeners[id], {
+    passive: true,
+  });
+
+  // Register the origin of the listening site.
+  window.postMessage(
+    {
+      id,
+      type: 'PALI_EVENT_REG',
+      data: {
+        method,
+        origin,
+      },
+    },
+    '*'
+  );
 };
 
-const ethProvider = provider('ethereum');
-const sysProvider = provider('syscoin');
+const removeListener = (method) => {
+  let origin = window.location.hostname;
+  if (window.location.port) {
+    origin += `:${window.location.port}`;
+  }
+
+  const id = `${origin}.${method}`;
+
+  if (window.pali._listeners[id]) {
+    window.removeEventListener(id, window.pali._listeners[id]);
+
+    delete window.pali._listeners[id];
+  }
+
+  window.postMessage(
+    {
+      id,
+      type: 'PALI_EVENT_DEREG',
+      data: {
+        method,
+        origin,
+      },
+    },
+    '*'
+  );
+};
 
 window.pali = Object.freeze({
   version: 2,
-  getProvider: (chain) => provider(chain),
-  isConnected: async () => {
-    const pali = window.providerManager.getProviderFor('SYS');
-
-    return pali.getMethod('isConnected')();
-  },
+  request,
+  on,
+  removeListener,
+  isConnected: () => request({ method: 'isConnected' }),
   enable: async () => {
     const response = await window.providerManager.enable();
 
@@ -187,8 +132,5 @@ window.pali = Object.freeze({
     return response;
   },
   disable: async () => window.providerManager.disable(),
-  request: async (req) => sysProvider.request(req),
-  on: (method, callback) => sysProvider.on(method, callback),
-  removeListener: (method) => sysProvider.removeListener(method),
   _listeners: {},
 });

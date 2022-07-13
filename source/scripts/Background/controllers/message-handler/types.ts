@@ -2,7 +2,7 @@
 export type Message = {
   data: {
     args: any[];
-    asset: string;
+    chain?: string;
     data: string;
     from?: string;
     gas?: string;
