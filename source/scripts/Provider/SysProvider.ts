@@ -6,7 +6,7 @@
 // import store from 'state/store';
 // import { removeSensitiveDataFromVault, log, getHost } from 'utils/index';
 
-export const PaliProvider = () => {
+export const SysProvider = () => {
   // const txs = SyscoinTransactions();
 
   const getConnectedAccount = () => {

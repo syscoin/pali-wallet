@@ -2,8 +2,8 @@ import { browser } from 'webextension-polyfill-ts';
 
 import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 
-import { EthereumProvider } from 'scripts/Provider/EthereumProvider';
-import { PaliProvider } from 'scripts/Provider/PaliProvider';
+import { EthProvider } from 'scripts/Provider/EthProvider';
+import { SysProvider } from 'scripts/Provider/SysProvider';
 import {
   listNewDapp,
   unlistDapp,
@@ -160,8 +160,8 @@ const DAppController = (): IDAppController => {
 
   const getSigRequest = () => request;
 
-  const paliProvider = PaliProvider();
-  const ethereumProvider = EthereumProvider();
+  const sysProvider = SysProvider();
+  const ethProvider = EthProvider();
 
   return {
     getCurrent,
@@ -177,8 +177,8 @@ const DAppController = (): IDAppController => {
     deregisterListeningSite,
     isSiteListening,
     isDAppConnected,
-    paliProvider,
-    ethereumProvider,
+    sysProvider,
+    ethProvider,
   };
 };
 

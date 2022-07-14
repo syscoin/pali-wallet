@@ -17,8 +17,8 @@ export const disable = async (
 
   const provider =
     chain === 'syscoin'
-      ? masterController.paliProvider
-      : masterController.ethereumProvider;
+      ? masterController.sysProvider
+      : masterController.ethProvider;
 
   const isConnected = masterController.dapp.isDAppConnected(getHost(origin));
 

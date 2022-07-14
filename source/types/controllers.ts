@@ -91,7 +91,7 @@ export interface IControllerUtils {
 
 export interface IDAppController {
   deregisterListeningSite: (origin: string, eventName: string) => void;
-  ethereumProvider: any;
+  ethProvider: any;
   getConnectedAccount: () => IKeyringAccountState | null;
   getCurrent: () => IDAppInfo;
   getSigRequest: () => ISigRequest;
@@ -100,9 +100,9 @@ export interface IDAppController {
   isSiteListening: (origin: string, eventName: string) => boolean;
   notifyAccountsChanged: (accountId: number) => void;
   pageConnectDApp: (origin: string, title: string) => boolean;
-  paliProvider: any;
   registerListeningSite: (origin: string, eventName: string) => void;
   setSigRequest: (req: ISigRequest) => void;
+  sysProvider: any;
   userConnectDApp: (origin: string, dapp: IDAppInfo, accountId: number) => void;
   userDisconnectDApp: (origin: string) => void;
 }

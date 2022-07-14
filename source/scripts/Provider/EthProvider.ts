@@ -4,7 +4,7 @@ import { web3Provider } from '@pollum-io/sysweb3-network';
 import store from 'state/store';
 import { removeSensitiveDataFromVault } from 'utils/account';
 
-export const EthereumProvider = () => {
+export const EthProvider = () => {
   const getConnectedAccount = () => {
     const account = window.controller.dapp.getConnectedAccount();
     if (!account) throw new Error('No connected account');

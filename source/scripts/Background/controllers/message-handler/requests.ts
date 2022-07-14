@@ -23,8 +23,8 @@ export const handleRequest = async (
 
   const provider =
     prefix === 'sys'
-      ? controller.dapp.paliProvider
-      : controller.dapp.ethereumProvider;
+      ? controller.dapp.sysProvider
+      : controller.dapp.ethProvider;
 
   /* const windowId = `signMessage${uuid()}`;
 
