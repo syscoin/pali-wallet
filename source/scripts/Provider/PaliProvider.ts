@@ -1,20 +1,19 @@
 import { browser } from 'webextension-polyfill-ts';
 
 // import { SyscoinTransactions } from '@pollum-io/sysweb3-keyring';
-import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 
 import { listNewDapp } from 'state/dapp';
 import store from 'state/store';
 import { removeSensitiveDataFromVault, log, getHost } from 'utils/index';
 
-export const PaliProvider = (
-  _getConnectedAccount: () => IKeyringAccountState | null
-) => {
+export const PaliProvider = () => {
   // const txs = SyscoinTransactions();
 
   const getConnectedAccount = () => {
-    const account = _getConnectedAccount();
+    const account = window.controller.dapp.getConnectedAccount();
     if (!account) throw new Error('No connected account');
+
+    delete account.xprv;
 
     return account;
   };

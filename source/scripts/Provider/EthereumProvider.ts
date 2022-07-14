@@ -1,16 +1,15 @@
 import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import { web3Provider } from '@pollum-io/sysweb3-network';
-import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
 import { removeSensitiveDataFromVault } from 'utils/account';
 
-export const EthereumProvider = (
-  _getConnectedAccount: () => IKeyringAccountState | null
-) => {
+export const EthereumProvider = () => {
   const getConnectedAccount = () => {
-    const account = _getConnectedAccount();
+    const account = window.controller.dapp.getConnectedAccount();
     if (!account) throw new Error('No connected account');
+
+    delete account.xprv;
 
     return account;
   };
