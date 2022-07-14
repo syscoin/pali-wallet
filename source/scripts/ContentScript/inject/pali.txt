@@ -39,7 +39,7 @@ const proxy = (type, data) =>
 const request = async (req) => {
   console.log('handling request', req);
 
-  const response = await proxy('CAL_REQUEST', req);
+  const response = await proxy('METHOD_REQUEST', req);
   console.log('response', response);
 
   if (response.result === false) throw ERRORS.USER_REJECTED;

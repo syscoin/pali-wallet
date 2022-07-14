@@ -56,7 +56,7 @@ export const messageHandler = (port: Runtime.Port, masterController: any) => {
           setPendingWindow,
           isPendingWindow
         );
-      case 'CAL_REQUEST':
+      case 'METHOD_REQUEST':
         return handleRequest(
           port,
           masterController,
