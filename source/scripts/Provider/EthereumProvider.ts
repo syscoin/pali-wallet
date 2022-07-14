@@ -14,35 +14,16 @@ export const EthereumProvider = () => {
     return account;
   };
 
-  const getNetwork = async () => {
-    const currentNetwork = await web3Provider.eth.net.getNetworkType();
+  const getNetwork = async () => web3Provider.eth.net.getNetworkType();
 
-    return currentNetwork;
-  };
+  const getAccounts = async () => web3Provider.eth.getAccounts();
 
-  const getAccounts = async () => {
-    const accounts = await web3Provider.eth.getAccounts();
+  const getTokens = async (address: string) =>
+    Web3Accounts().getTokens(address);
 
-    return accounts;
-  };
+  const getChainId = async () => web3Provider.eth.getChainId();
 
-  const getTokens = async (address: string) => {
-    const userTokens = await Web3Accounts().getTokens(address);
-
-    return userTokens;
-  };
-
-  const getChainId = async () => {
-    const currentChainId = await web3Provider.eth.getChainId();
-
-    return currentChainId;
-  };
-
-  const getAddress = async () => {
-    const address = await web3Provider.eth.getAccounts();
-
-    return address[0];
-  };
+  const getAddress = async () => await web3Provider.eth.getAccounts()[0];
 
   const getBalance = async () => getConnectedAccount().balances.ethereum;
 
