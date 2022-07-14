@@ -15,13 +15,14 @@ export const handleRequest = async (
   isPendingWindow: () => boolean
 ) => {
   console.log('[request handler] data:', message.data);
-  const { method, args, chain } = message.data;
+  const { args } = message.data;
+  const [prefix, method] = message.data.method.split('_');
 
   const isConnected = controller.dapp.isDAppConnected(origin);
   const walletIsLocked = !controller.wallet.isUnlocked();
 
   const provider =
-    chain === 'syscoin'
+    prefix === 'sys'
       ? controller.dapp.paliProvider
       : controller.dapp.ethereumProvider;
 

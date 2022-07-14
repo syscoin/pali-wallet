@@ -1,9 +1,7 @@
-const SUPPORTED_CHAINS = ['syscoin', 'ethereum'];
-
 const { SUPPORTED_WALLET_METHODS } = window;
 
 const REQUEST_MAP = {
-  ETH: {
+  eth: {
     chainId: SUPPORTED_WALLET_METHODS.getChainId,
     setAccount: SUPPORTED_WALLET_METHODS.setAccount,
     accounts: SUPPORTED_WALLET_METHODS.getAccounts,
@@ -13,7 +11,7 @@ const REQUEST_MAP = {
     signMessage: SUPPORTED_WALLET_METHODS.signMessage,
     getBalance: SUPPORTED_WALLET_METHODS.getBalance,
   },
-  SYS: {
+  sys: {
     setAccount: SUPPORTED_WALLET_METHODS.setAccount,
     chainId: SUPPORTED_WALLET_METHODS.getChainId,
     accounts: SUPPORTED_WALLET_METHODS.getAccounts,
@@ -22,9 +20,10 @@ const REQUEST_MAP = {
     signMessage: SUPPORTED_WALLET_METHODS.signMessage,
     getBalance: SUPPORTED_WALLET_METHODS.getBalance,
   },
-  isConnected: SUPPORTED_WALLET_METHODS.isConnected,
-  getNetwork: SUPPORTED_WALLET_METHODS.getNetwork,
-  getAddress: SUPPORTED_WALLET_METHODS.getAddress,
+  wallet: {
+    isConnected: SUPPORTED_WALLET_METHODS.isConnected,
+    getNetwork: SUPPORTED_WALLET_METHODS.getNetwork,
+  },
 };
 
 const ERRORS = {
@@ -33,15 +32,14 @@ const ERRORS = {
 };
 
 const request = async (req) => {
-  const { method, args, chain } = req;
-  const prefix = chain?.substring(0, 3).toUpperCase();
-
   console.log('handling request', req);
+
+  const [prefix, method] = req.method.split('_');
 
   //* Prefix / Method validation
   if (!method) throw ERRORS.INVALID_METHOD;
 
-  if (chain && !SUPPORTED_CHAINS.includes(chain)) {
+  if (prefix && !Object.keys(REQUEST_MAP).includes(prefix)) {
     throw ERRORS.INVALID_METHOD;
   }
 
@@ -49,11 +47,8 @@ const request = async (req) => {
   if (!method_) throw ERRORS.INVALID_METHOD;
 
   //* Call the method
-  const response = await window.providerManager.proxy('CAL_REQUEST', {
-    chain,
-    method,
-    args,
-  });
+  const response = await window.providerManager.proxy('CAL_REQUEST', req);
+  console.log('response', response);
 
   if (response.result === false) throw ERRORS.USER_REJECTED;
   else return response;
