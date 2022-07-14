@@ -1,7 +1,7 @@
 import { provider } from '../Provider/index';
 import { SupportedWalletMethods } from 'scripts/Background/controllers/message-handler/types';
 
-import { paliProvider, providerManager } from './inject';
+import { pali } from './inject';
 
 provider.start();
 
@@ -18,5 +18,4 @@ const inject = (content: string) => {
 inject(
   `window.SUPPORTED_WALLET_METHODS = ${JSON.stringify(SupportedWalletMethods)}`
 );
-inject(providerManager);
-inject(paliProvider);
+inject(pali);
