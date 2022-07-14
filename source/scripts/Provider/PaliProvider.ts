@@ -1,10 +1,10 @@
-import { browser } from 'webextension-polyfill-ts';
+// import { browser } from 'webextension-polyfill-ts';
 
 // import { SyscoinTransactions } from '@pollum-io/sysweb3-keyring';
 
-import { listNewDapp } from 'state/dapp';
-import store from 'state/store';
-import { removeSensitiveDataFromVault, log, getHost } from 'utils/index';
+// import { listNewDapp } from 'state/dapp';
+// import store from 'state/store';
+// import { removeSensitiveDataFromVault, log, getHost } from 'utils/index';
 
 export const PaliProvider = () => {
   // const txs = SyscoinTransactions();
@@ -13,12 +13,10 @@ export const PaliProvider = () => {
     const account = window.controller.dapp.getConnectedAccount();
     if (!account) throw new Error('No connected account');
 
-    delete account.xprv;
-
     return account;
   };
 
-  const getNetwork = () => store.getState().vault.activeNetwork;
+  /* const getNetwork = () => store.getState().vault.activeNetwork;
 
   const getState = () => removeSensitiveDataFromVault(store.getState().vault);
 
@@ -60,23 +58,13 @@ export const PaliProvider = () => {
         dapp: currentDapp,
       })
     );
-  };
+  }; */
 
   return {
-    // ? maybe remove xprv field before sending the connected acc
-    getConnectedAccount,
-    // assets is inside acc
-    // assets,
-    getNetwork,
-    getState,
-    notifyWalletChanges,
-    setAccount,
-    // inside acc
-    getBalance: () => getConnectedAccount()?.balances.syscoin,
-    getAccounts: () => getConnectedAccount(),
-    getPublicKey: () => getConnectedAccount()?.xpub,
-    getAddress: () => getConnectedAccount()?.address,
-    // we can just call from sysweb3 since we already have new methods for transactions in there as soon as we get the signer issue fixed
-    // ...txs
+    getAccount: () => getConnectedAccount(),
+    getAddress: () => getConnectedAccount().address,
+    getBalance: () => getConnectedAccount().balances.syscoin,
+    getPublicKey: () => getConnectedAccount().xpub,
+    getTokens: () => getConnectedAccount().assets,
   };
 };

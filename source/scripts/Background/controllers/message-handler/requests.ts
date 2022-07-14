@@ -1,10 +1,10 @@
-import { v4 as uuid } from 'uuid';
+// import { v4 as uuid } from 'uuid';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { IMasterController } from '..';
-import { erc20DataDecoder } from 'utils/ethUtil';
+// import { erc20DataDecoder } from 'utils/ethUtil';
 
-import { Message, SupportedWalletMethods } from './types';
+import { Message } from './types';
 
 export const handleRequest = async (
   port: Runtime.Port,
@@ -16,19 +16,17 @@ export const handleRequest = async (
 ) => {
   console.log('[request handler] data:', message.data);
   const { args } = message.data;
-  const [prefix, method] = message.data.method.split('_');
+  const [prefix, methodName] = message.data.method.split('_');
 
-  const isConnected = controller.dapp.isDAppConnected(origin);
-  const walletIsLocked = !controller.wallet.isUnlocked();
+  // const isConnected = controller.dapp.isDAppConnected(origin);
+  // const walletIsLocked = !controller.wallet.isUnlocked();
 
   const provider =
     prefix === 'sys'
       ? controller.dapp.paliProvider
       : controller.dapp.ethereumProvider;
 
-  let result: any;
-
-  const windowId = `signMessage${uuid()}`;
+  /* const windowId = `signMessage${uuid()}`;
 
   const isSignMessage = async () => {
     if (isPendingWindow()) {
@@ -129,49 +127,11 @@ export const handleRequest = async (
     }
 
     return sendTransaction(data);
-  };
+  }; */
 
-  switch (SupportedWalletMethods[method]) {
-    case SupportedWalletMethods.isConnected:
-      result = { connected: !!isConnected && !walletIsLocked };
-      break;
-    case SupportedWalletMethods.getAddress:
-      result = provider.getAddress();
-      break;
-    case SupportedWalletMethods.getAccounts:
-      result = provider.getAccounts();
-      break;
-    case SupportedWalletMethods.setAccount:
-      result = provider.setAccount();
-      break;
-    case SupportedWalletMethods.getChainId:
-      result = provider.getChainId();
-      break;
-    case SupportedWalletMethods.getBlockNumber:
-      result = provider.getBlockNumber();
-      break;
-    case SupportedWalletMethods.estimateGas:
-      result = await provider.getGasEstimate();
-      break;
-    case SupportedWalletMethods.getNetwork:
-      result = provider.getNetwork();
-      break;
-    case SupportedWalletMethods.getBalance:
-      result = provider.getBalance();
-      break;
-    case SupportedWalletMethods.signMessage:
-      isSignMessage();
-      break;
-    case SupportedWalletMethods.sendTransaction:
-      isSendTransaction();
-      break;
-    default:
-      return Promise.reject(new Error('Unknown Request'));
-  }
+  const method = provider[methodName];
+  if (!method) throw new Error('Unknown method');
+  const result = await method(args);
 
-  if (result !== undefined) {
-    return Promise.resolve({ id: message.id, result });
-  }
-
-  return Promise.reject(new Error('Unknown Request'));
+  return Promise.resolve({ id: message.id, result });
 };

@@ -9,8 +9,6 @@ export const EthereumProvider = () => {
     const account = window.controller.dapp.getConnectedAccount();
     if (!account) throw new Error('No connected account');
 
-    delete account.xprv;
-
     return account;
   };
 

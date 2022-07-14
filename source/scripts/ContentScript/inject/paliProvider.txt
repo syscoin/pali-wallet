@@ -1,31 +1,3 @@
-const { SUPPORTED_WALLET_METHODS } = window;
-
-const REQUEST_MAP = {
-  eth: {
-    chainId: SUPPORTED_WALLET_METHODS.getChainId,
-    setAccount: SUPPORTED_WALLET_METHODS.setAccount,
-    accounts: SUPPORTED_WALLET_METHODS.getAccounts,
-    blockNumber: SUPPORTED_WALLET_METHODS.getBlockNumber,
-    estimateGas: SUPPORTED_WALLET_METHODS.estimateGas,
-    sendTransaction: SUPPORTED_WALLET_METHODS.sendTransaction,
-    signMessage: SUPPORTED_WALLET_METHODS.signMessage,
-    getBalance: SUPPORTED_WALLET_METHODS.getBalance,
-  },
-  sys: {
-    setAccount: SUPPORTED_WALLET_METHODS.setAccount,
-    chainId: SUPPORTED_WALLET_METHODS.getChainId,
-    accounts: SUPPORTED_WALLET_METHODS.getAccounts,
-    sendTransaction: SUPPORTED_WALLET_METHODS.sendTransaction,
-    getPublicKey: SUPPORTED_WALLET_METHODS.getPublicKey,
-    signMessage: SUPPORTED_WALLET_METHODS.signMessage,
-    getBalance: SUPPORTED_WALLET_METHODS.getBalance,
-  },
-  wallet: {
-    isConnected: SUPPORTED_WALLET_METHODS.isConnected,
-    getNetwork: SUPPORTED_WALLET_METHODS.getNetwork,
-  },
-};
-
 const ERRORS = {
   USER_REJECTED: new Error('User rejected the request'),
   INVALID_METHOD: new Error('Invalid method'),
@@ -36,17 +8,6 @@ const request = async (req) => {
 
   const [prefix, method] = req.method.split('_');
 
-  //* Prefix / Method validation
-  if (!method) throw ERRORS.INVALID_METHOD;
-
-  if (prefix && !Object.keys(REQUEST_MAP).includes(prefix)) {
-    throw ERRORS.INVALID_METHOD;
-  }
-
-  let method_ = prefix ? REQUEST_MAP[prefix][method] : REQUEST_MAP[method];
-  if (!method_) throw ERRORS.INVALID_METHOD;
-
-  //* Call the method
   const response = await window.providerManager.proxy('CAL_REQUEST', req);
   console.log('response', response);
 
