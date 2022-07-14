@@ -165,7 +165,7 @@ export const handleRequest = async (
       isSendTransaction();
       break;
     default:
-      return isSendTransaction();
+      return Promise.reject(new Error('Unknown Request'));
   }
 
   if (result !== undefined) {
