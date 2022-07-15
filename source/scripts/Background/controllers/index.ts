@@ -1,4 +1,4 @@
-import { browser } from 'webextension-polyfill-ts';
+import { browser, Windows } from 'webextension-polyfill-ts';
 
 import { IControllerUtils, IDAppController } from 'types/controllers';
 
@@ -13,7 +13,7 @@ export interface IMasterController {
     network?: string,
     route?: string,
     data?: object
-  ) => any;
+  ) => Promise<Windows.Window>;
   dapp: Readonly<IDAppController>;
   stateUpdater: () => void;
   utils: Readonly<IControllerUtils>;
