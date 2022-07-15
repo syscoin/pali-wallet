@@ -25,7 +25,7 @@ export const ChangeAccount = () => {
         <h1 className="mt-4 text-sm">PALI WALLET</h1>
 
         <ul className="scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-72 overflow-auto">
-          {Object.values(accounts).map((account: any) => (
+          {Object.values(accounts).map((account) => (
             <li
               className={`${
                 connectedAccount && account.id === connectedAccount.id
@@ -37,7 +37,7 @@ export const ChangeAccount = () => {
             >
               <p>{account.label}</p>
 
-              <small>{ellipsis(account.address.main)}</small>
+              <small>{ellipsis(account.address)}</small>
 
               <div
                 className={`${
