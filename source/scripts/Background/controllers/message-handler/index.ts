@@ -16,7 +16,7 @@ export const messageHandler = (port: Runtime.Port, masterController: any) => {
   const isPendingWindow = (): boolean => pendingWindow;
 
   // Set up listeners once, then check origin/method based on registration in state
-  initializeEvents(masterController, port);
+  initializeEvents(port);
 
   const listenerHandler = async (
     message: Message,
@@ -35,22 +35,14 @@ export const messageHandler = (port: Runtime.Port, masterController: any) => {
 
     switch (message.type) {
       case 'PALI_EVENT_REG':
-        return registerEvent(masterController, message);
+        return registerEvent(message);
       case 'PALI_EVENT_DEREG':
-        return deregisterEvent(masterController, message);
+        return deregisterEvent(message);
       case 'ENABLE_REQUEST':
-        return enable(
-          port,
-          masterController,
-          message,
-          origin,
-          setPendingWindow,
-          isPendingWindow
-        );
+        return enable(port, message, origin, setPendingWindow, isPendingWindow);
       case 'DISABLE_REQUEST':
         return disable(
           port,
-          masterController,
           message,
           origin,
           setPendingWindow,
@@ -59,7 +51,6 @@ export const messageHandler = (port: Runtime.Port, masterController: any) => {
       case 'METHOD_REQUEST':
         return handleRequest(
           port,
-          masterController,
           message,
           origin,
           setPendingWindow,

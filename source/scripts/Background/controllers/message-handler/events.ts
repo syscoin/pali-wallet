@@ -2,7 +2,7 @@ import { Runtime } from 'webextension-polyfill-ts';
 
 import { Message, SupportedEventTypes } from './types';
 
-export const initializeEvents = (masterController: any, port: Runtime.Port) => {
+export const initializeEvents = (port: Runtime.Port) => {
   Object.values(SupportedEventTypes).forEach((method) => {
     window.addEventListener(
       method,
@@ -16,14 +16,14 @@ export const initializeEvents = (masterController: any, port: Runtime.Port) => {
         }
 
         // Event listeners can be attached before connection but DApp must be connected to receive events
-        const isConnected = masterController.dapp.isDAppConnected(origin);
+        const isConnected = window.controller.dapp.isDAppConnected(origin);
 
         // The event origin is checked to prevent sites that have not been
         // granted permissions to the user's account information from
         // receiving updates.
         if (
           isConnected &&
-          masterController.dapp.isSiteListening(origin, method)
+          window.controller.dapp.isSiteListening(origin, method)
         ) {
           port.postMessage({ id, data });
         }
@@ -33,7 +33,7 @@ export const initializeEvents = (masterController: any, port: Runtime.Port) => {
   });
 };
 
-export const registerEvent = (masterController: any, message: Message) => {
+export const registerEvent = (message: Message) => {
   const { origin, method } = message.data;
 
   if (
@@ -43,10 +43,10 @@ export const registerEvent = (masterController: any, message: Message) => {
   }
 
   // Register the origin of the site that is listening for an event
-  masterController.dapp.registerListeningSite(origin, method);
+  window.controller.dapp.registerListeningSite(origin, method);
 };
 
-export const deregisterEvent = (masterController: any, message: Message) => {
+export const deregisterEvent = (message: Message) => {
   const listenerOrigin = message.data.origin;
   const { method } = message.data;
 
@@ -56,5 +56,5 @@ export const deregisterEvent = (masterController: any, message: Message) => {
     return;
   }
 
-  masterController.dapp.deregisterListeningSite(listenerOrigin, method);
+  window.controller.dapp.deregisterListeningSite(listenerOrigin, method);
 };

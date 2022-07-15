@@ -7,20 +7,20 @@ import { Message } from './types';
 
 export const disable = async (
   port: Runtime.Port,
-  masterController: any,
   message: Message,
   origin: string,
   setPendingWindow: (isPending: boolean) => void,
   isPendingWindow: () => boolean
 ) => {
   const { chain } = message.data;
+  const { controller } = window;
 
   const provider =
     chain === 'syscoin'
-      ? masterController.sysProvider
-      : masterController.ethProvider;
+      ? controller.dapp.sysProvider
+      : controller.dapp.ethProvider;
 
-  const isConnected = masterController.dapp.isDAppConnected(getHost(origin));
+  const isConnected = controller.dapp.isDAppConnected(getHost(origin));
 
   if (origin && !isConnected) {
     return Promise.resolve(null);
@@ -34,7 +34,7 @@ export const disable = async (
 
   setPendingWindow(true);
 
-  masterController.dapp.userDisconnectDApp(getHost(origin));
+  controller.dapp.userDisconnectDApp(getHost(origin));
 
   window.addEventListener(
     'disconnectWallet',

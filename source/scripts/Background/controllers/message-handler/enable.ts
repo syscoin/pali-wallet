@@ -7,21 +7,18 @@ import { Message } from './types';
 
 export const enable = async (
   port: Runtime.Port,
-  masterController: any,
   message: Message,
   origin: string,
   setPendingWindow: (isPending: boolean) => void,
   isPendingWindow: () => boolean
 ) => {
+  const { dapp } = window.controller;
+
   const { chain } = message.data;
+  const provider = chain === 'syscoin' ? dapp.sysProvider : dapp.ethProvider;
 
-  const provider =
-    chain === 'syscoin'
-      ? masterController.sysProvider
-      : masterController.ethProvider;
-
-  const isConnected = masterController.dapp.isDAppConnected(getHost(origin));
-  const hasConnectedAccount = masterController.dapp.hasConnectedAccount();
+  const isConnected = dapp.isDAppConnected(getHost(origin));
+  const hasConnectedAccount = dapp.hasConnectedAccount();
 
   if (origin && (!isConnected || !hasConnectedAccount)) {
     if (isPendingWindow()) {
@@ -29,7 +26,7 @@ export const enable = async (
     }
 
     const windowId = uuid();
-    const popup = await masterController.createPopup(
+    const popup = await window.controller.createPopup(
       windowId,
       message.data.network,
       'connect-wallet'

@@ -1,14 +1,12 @@
 import { v4 as uuid } from 'uuid';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
-import { IMasterController } from '..';
 // import { erc20DataDecoder } from 'utils/ethUtil';
 
 import { Message } from './types';
 
 export const handleRequest = async (
   port: Runtime.Port,
-  controller: IMasterController,
   message: Message,
   origin: string,
   setPendingWindow: (isPending: boolean) => void,
@@ -17,6 +15,8 @@ export const handleRequest = async (
   console.log('[request handler] data:', message.data);
   const { args } = message.data;
   const [prefix, methodName] = message.data.method.split('_');
+
+  const { controller } = window;
 
   // const isConnected = controller.dapp.isDAppConnected(origin);
   // const walletIsLocked = !controller.wallet.isUnlocked();
