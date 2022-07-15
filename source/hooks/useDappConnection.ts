@@ -19,7 +19,7 @@ export const useDappConnection = () => {
     const windowId = query.get('windowId');
 
     background.dispatchEvent(
-      new CustomEvent('connectWallet', { detail: { windowId, accountId } })
+      new CustomEvent('connectWallet', { detail: { origin } })
     );
 
     window.close();

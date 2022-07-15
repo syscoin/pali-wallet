@@ -62,16 +62,14 @@ export const messageHandler = (port: Runtime.Port, masterController: any) => {
 
   const listener = async (message: Message, connection: Runtime.Port) => {
     try {
-      console.log('listener');
       console.log('message', message);
 
       const response = await listenerHandler(message, connection);
-      console.log('response', response);
 
-      if (response) {
-        const { id, result } = response;
+      if (response !== undefined) {
+        console.log('response', response);
 
-        port.postMessage({ id, data: result });
+        port.postMessage({ id: message.id, data: response });
       }
     } catch (error: any) {
       console.error(error);

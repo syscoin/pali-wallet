@@ -137,7 +137,7 @@ export const handleRequest = async (
   if (!method) throw new Error('Unknown method');
   const result = await method(args);
 
-  return Promise.resolve({ id: message.id, result });
+  return result;
 };
 
 const changeAccount = async (network) => {

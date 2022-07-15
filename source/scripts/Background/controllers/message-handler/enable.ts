@@ -12,57 +12,41 @@ export const enable = async (
 ) => {
   const { dapp } = window.controller;
 
-  const { chain } = message.data;
-  const provider = chain === 'syscoin' ? dapp.sysProvider : dapp.ethProvider;
-
   const isConnected = dapp.isDAppConnected(origin);
   const hasConnectedAccount = dapp.hasConnectedAccount();
 
-  if (origin && (!isConnected || !hasConnectedAccount)) {
-    if (isPendingWindow()) {
-      return Promise.resolve(null);
-    }
+  if (isConnected && hasConnectedAccount) return true;
 
-    const windowId = uuid();
-    const popup = await window.controller.createPopup(
-      windowId,
-      message.data.network,
-      'connect-wallet'
-    );
+  if (isPendingWindow()) return;
 
-    setPendingWindow(true);
+  const windowId = uuid();
+  const popup = await window.controller.createPopup(
+    windowId,
+    message.data.network,
+    'connect-wallet'
+  );
 
+  setPendingWindow(true);
+
+  return new Promise<boolean>((resolve) => {
     window.addEventListener(
       'connectWallet',
-      (ev: any) => {
-        if (ev.detail.windowId === windowId) {
-          port.postMessage({
-            id: message.id,
-            data: {
-              result: true,
-              data: { accounts: provider.getAccounts() },
-            },
-          });
+      (event: CustomEvent) => {
+        if (event.detail.origin === origin) {
+          port.postMessage({ id: `${origin}.connectWallet` });
 
           setPendingWindow(false);
+          resolve(true);
         }
       },
       { once: true, passive: true }
     );
 
     browser.windows.onRemoved.addListener((id) => {
-      if (popup && id === popup.id) {
-        port.postMessage({
-          id: message.id,
-          data: { result: origin && isConnected },
-        });
-
+      if (id === popup.id) {
         setPendingWindow(false);
+        resolve(false);
       }
     });
-
-    return Promise.resolve(null);
-  }
-
-  return Promise.resolve({ id: message.id, result: origin && isConnected });
+  });
 };

@@ -52,9 +52,7 @@ const on = (method, callback) => {
   const id = `${origin}.${method}`;
 
   window.pali._listeners[id] = ({ detail }) => {
-    if (detail) {
-      callback(JSON.parse(detail));
-    }
+    callback(JSON.parse(detail));
   };
 
   window.addEventListener(id, window.pali._listeners[id], {
@@ -105,17 +103,15 @@ window.pali = Object.freeze({
   on,
   removeListener,
   isConnected: () => request({ method: 'isConnected' }),
-  enable: async () => {
-    const response = proxy('ENABLE_REQUEST', {
+  enable: () =>
+    proxy('ENABLE_REQUEST', {
       chain: 'syscoin',
       network: 'main',
-    });
-
-    if (!response) throw ERRORS.USER_REJECTED;
-
-    return response;
-  },
-  disable: async () =>
-    proxy('DISABLE_REQUEST', { chain: 'syscoin', network: 'main' }),
+    }),
+  disable: () =>
+    proxy('DISABLE_REQUEST', {
+      chain: 'syscoin',
+      network: 'main',
+    }),
   _listeners: {},
 });
