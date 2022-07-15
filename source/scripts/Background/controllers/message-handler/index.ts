@@ -6,7 +6,7 @@ import { initializeEvents, registerEvent, deregisterEvent } from './events';
 import { handleRequest } from './requests';
 import { Message } from './types';
 
-export const messageHandler = (port: Runtime.Port, masterController: any) => {
+export const messageHandler = (port: Runtime.Port) => {
   let pendingWindow = false;
 
   const setPendingWindow = (isPending: boolean): void => {
@@ -30,7 +30,7 @@ export const messageHandler = (port: Runtime.Port, masterController: any) => {
     const title = connection.sender?.tab?.title;
 
     // Set current page
-    masterController.dapp.pageConnectDApp(origin, title);
+    window.controller.dapp.pageConnectDApp(origin, title);
 
     switch (message.type) {
       case 'PALI_EVENT_REG':

@@ -30,7 +30,7 @@ browser.runtime.onInstalled.addListener(() => {
 
 browser.runtime.onConnect.addListener((port: Runtime.Port) => {
   if (port.name === 'pali-inject') {
-    messageHandler(port, window.controller);
+    messageHandler(port);
 
     return;
   }
