@@ -20,6 +20,7 @@ export enum SupportedEventTypes {
   accountChanged = 'accountsChanged',
   chainChanged = 'chainChanged', // TODO: implement
   close = 'close',
+  connectWallet = 'connectWallet',
 }
 
 export enum SupportedWalletMethods {

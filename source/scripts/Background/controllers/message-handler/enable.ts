@@ -33,8 +33,6 @@ export const enable = async (
       'connectWallet',
       (event: CustomEvent) => {
         if (event.detail.origin === origin) {
-          port.postMessage({ id: `${origin}.connectWallet` });
-
           setPendingWindow(false);
           resolve(true);
         }

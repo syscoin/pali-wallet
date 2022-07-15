@@ -3,27 +3,20 @@ import { Runtime } from 'webextension-polyfill-ts';
 import { Message, SupportedEventTypes } from './types';
 
 export const initializeEvents = (port: Runtime.Port) => {
-  Object.values(SupportedEventTypes).forEach((method) => {
+  Object.values(SupportedEventTypes).forEach((eventType) => {
     window.addEventListener(
-      method,
+      eventType,
       (event: any) => {
-        const { data, origin, chain } = event.detail;
-        const id = `${chain}.${origin}.${method}`; // mirrored in inject.ts
+        const { data, origin } = event.detail;
+        const id = `${origin}.${eventType}`;
 
-        // Always send close because site will already be disconnected and not listening
-        if (method === 'close') {
+        if (eventType === 'close') {
           port.postMessage({ id, data });
         }
 
-        // Event listeners can be attached before connection but DApp must be connected to receive events
-        const isConnected = window.controller.dapp.isDAppConnected(origin);
-
-        // The event origin is checked to prevent sites that have not been
-        // granted permissions to the user's account information from
-        // receiving updates.
         if (
-          isConnected &&
-          window.controller.dapp.isSiteListening(origin, method)
+          window.controller.dapp.isDAppConnected(origin) &&
+          window.controller.dapp.isSiteListening(origin, eventType)
         ) {
           port.postMessage({ id, data });
         }
@@ -36,25 +29,15 @@ export const initializeEvents = (port: Runtime.Port) => {
 export const registerEvent = (message: Message) => {
   const { origin, method } = message.data;
 
-  if (
-    !Object.values(SupportedEventTypes).includes(method as SupportedEventTypes)
-  ) {
-    return;
-  }
+  if (!SupportedEventTypes[method]) return;
 
-  // Register the origin of the site that is listening for an event
   window.controller.dapp.registerListeningSite(origin, method);
 };
 
 export const deregisterEvent = (message: Message) => {
-  const listenerOrigin = message.data.origin;
-  const { method } = message.data;
+  const { origin, method } = message.data;
 
-  if (
-    !Object.values(SupportedEventTypes).includes(method as SupportedEventTypes)
-  ) {
-    return;
-  }
+  if (!SupportedEventTypes[method]) return;
 
-  window.controller.dapp.deregisterListeningSite(listenerOrigin, method);
+  window.controller.dapp.deregisterListeningSite(origin, method);
 };
