@@ -1,8 +1,6 @@
 import { v4 as uuid } from 'uuid';
 import { Runtime } from 'webextension-polyfill-ts';
 
-import { getHost } from 'utils/getHost';
-
 import { Message } from './types';
 
 export const disable = async (
@@ -20,7 +18,7 @@ export const disable = async (
       ? controller.dapp.sysProvider
       : controller.dapp.ethProvider;
 
-  const isConnected = controller.dapp.isDAppConnected(getHost(origin));
+  const isConnected = controller.dapp.isDAppConnected(origin);
 
   if (origin && !isConnected) {
     return Promise.resolve(null);
@@ -34,7 +32,7 @@ export const disable = async (
 
   setPendingWindow(true);
 
-  controller.dapp.userDisconnectDApp(getHost(origin));
+  controller.dapp.userDisconnectDApp(origin);
 
   window.addEventListener(
     'disconnectWallet',

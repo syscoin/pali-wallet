@@ -47,10 +47,7 @@ const request = async (req) => {
 };
 
 const on = (method, callback) => {
-  let origin = window.location.hostname;
-  if (window.location.port) {
-    origin += `:${window.location.port}`;
-  }
+  let origin = window.location.host;
 
   const id = `${origin}.${method}`;
 
@@ -79,10 +76,7 @@ const on = (method, callback) => {
 };
 
 const removeListener = (method) => {
-  let origin = window.location.hostname;
-  if (window.location.port) {
-    origin += `:${window.location.port}`;
-  }
+  let origin = window.location.host;
 
   const id = `${origin}.${method}`;
 

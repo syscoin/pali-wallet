@@ -26,9 +26,8 @@ export const messageHandler = (port: Runtime.Port, masterController: any) => {
       return Promise.reject(new Error('Runtime Last Error'));
     }
 
-    const url = connection.sender?.url as string;
-    const title = connection.sender?.tab?.title as string;
-    const origin = url && new URL(url as string).origin;
+    const origin = new URL(connection.sender?.url).host;
+    const title = connection.sender?.tab?.title;
 
     // Set current page
     masterController.dapp.pageConnectDApp(origin, title);

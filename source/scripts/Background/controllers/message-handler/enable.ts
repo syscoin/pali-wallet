@@ -1,8 +1,6 @@
 import { v4 as uuid } from 'uuid';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
-import { getHost } from 'utils/getHost';
-
 import { Message } from './types';
 
 export const enable = async (
@@ -17,7 +15,7 @@ export const enable = async (
   const { chain } = message.data;
   const provider = chain === 'syscoin' ? dapp.sysProvider : dapp.ethProvider;
 
-  const isConnected = dapp.isDAppConnected(getHost(origin));
+  const isConnected = dapp.isDAppConnected(origin);
   const hasConnectedAccount = dapp.hasConnectedAccount();
 
   if (origin && (!isConnected || !hasConnectedAccount)) {

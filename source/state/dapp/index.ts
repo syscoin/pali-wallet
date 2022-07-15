@@ -71,9 +71,7 @@ const DAppState = createSlice({
         id: string;
       }>
     ) {
-      const { dapp, accountId } = action.payload;
-
-      const id = action.payload.id.replace(/(^\w+:|^)\/\//, '');
+      const { dapp, accountId, id } = action.payload;
 
       return {
         ...state,
