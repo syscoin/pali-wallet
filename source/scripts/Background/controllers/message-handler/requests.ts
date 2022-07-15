@@ -1,4 +1,4 @@
-// import { v4 as uuid } from 'uuid';
+import { v4 as uuid } from 'uuid';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { IMasterController } from '..';
@@ -20,6 +20,10 @@ export const handleRequest = async (
 
   // const isConnected = controller.dapp.isDAppConnected(origin);
   // const walletIsLocked = !controller.wallet.isUnlocked();
+
+  // TODO improve this
+  if (prefix === 'wallet' && methodName === 'changeAccount')
+    return changeAccount(message.data.network);
 
   const provider =
     prefix === 'sys'
@@ -134,4 +138,15 @@ export const handleRequest = async (
   const result = await method(args);
 
   return Promise.resolve({ id: message.id, result });
+};
+
+const changeAccount = async (network) => {
+  // TODO check isConnected
+  // TODO isPendingWindow
+  const windowId = uuid();
+  const popup = await window.controller.createPopup(
+    windowId,
+    network,
+    'change-account'
+  );
 };

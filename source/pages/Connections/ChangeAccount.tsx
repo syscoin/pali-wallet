@@ -1,20 +1,21 @@
 import React, { useState } from 'react';
 
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
-import { useStore } from 'hooks/index';
+import { useDappConnection, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ChangeAccount = () => {
   const { accounts } = useStore();
-  const connectedAccount = getController().dapp.getConnectedAccount();
+  const { changeConnectedAccount } = useDappConnection();
 
-  const [accountId, setAccountId] = useState<number>(
-    connectedAccount?.id || -1
-  );
+  const dappController = getController().dapp;
+  const connectedAccountId = dappController.getCurrent().accountId;
+
+  const [accountId, setAccountId] = useState<number>(connectedAccountId);
 
   const handleChangeAccount = (id: number) => {
-    if (id === connectedAccount.id) return;
+    if (id === connectedAccountId) return;
 
     setAccountId(id);
   };
@@ -28,7 +29,7 @@ export const ChangeAccount = () => {
           {Object.values(accounts).map((account) => (
             <li
               className={`${
-                connectedAccount && account.id === connectedAccount.id
+                account.id === connectedAccountId
                   ? 'cursor-not-allowed bg-opacity-50 border-brand-royalblue'
                   : 'cursor-pointer hover:bg-bkg-4 border-brand-royalblue'
               } border border-solid  rounded-lg px-2 py-4 text-xs bg-bkg-2 flex justify-between items-center transition-all duration-200`}
@@ -55,7 +56,12 @@ export const ChangeAccount = () => {
             Cancel
           </SecondaryButton>
 
-          <PrimaryButton type="button" width="40" disabled={accountId === -1}>
+          <PrimaryButton
+            type="button"
+            width="40"
+            disabled={accountId === undefined}
+            onClick={() => changeConnectedAccount(accountId)}
+          >
             Change
           </PrimaryButton>
         </div>

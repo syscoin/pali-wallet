@@ -1,15 +1,11 @@
 import { browser } from 'webextension-polyfill-ts';
 
-import { useUtils, useQuery } from 'hooks/index';
+import { useQuery } from 'hooks/useQuery';
 import { getController } from 'utils/browser';
 
 export const useDappConnection = () => {
-  const {
-    dapp,
-    wallet: { account },
-  } = getController();
+  const { dapp } = getController();
 
-  const { alert } = useUtils();
   const query = useQuery();
 
   const current = dapp.getCurrent();
@@ -30,22 +26,9 @@ export const useDappConnection = () => {
   };
 
   const changeConnectedAccount = async (accountId: number) => {
-    try {
-      await browser.runtime.sendMessage({
-        type: 'CHANGE_CONNECTED_ACCOUNT',
-        target: 'background',
-        id: accountId,
-        url: origin,
-      });
+    dapp.userConnectDApp(origin, current, accountId);
 
-      // await closePopup();
-      window.close();
-
-      await account.updateTokensState();
-    } catch (error) {
-      alert.removeAll();
-      alert.error('Error changing account. Try again.');
-    }
+    window.close();
   };
 
   return {
