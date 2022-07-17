@@ -1,0 +1,1 @@
+export { FiatComponent } from './FiatComponent';
