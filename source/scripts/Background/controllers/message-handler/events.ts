@@ -29,7 +29,7 @@ export const initializeEvents = (port: Runtime.Port) => {
 export const registerEvent = (message: Message) => {
   const { origin, method } = message.data;
 
-  if (!SupportedEventTypes[method]) return;
+  if (!SupportedEventTypes[method]) throw new Error('Invalid event');
 
   window.controller.dapp.registerListeningSite(origin, method);
 };
@@ -37,7 +37,7 @@ export const registerEvent = (message: Message) => {
 export const deregisterEvent = (message: Message) => {
   const { origin, method } = message.data;
 
-  if (!SupportedEventTypes[method]) return;
+  if (!SupportedEventTypes[method]) throw new Error('Invalid event');
 
   window.controller.dapp.deregisterListeningSite(origin, method);
 };

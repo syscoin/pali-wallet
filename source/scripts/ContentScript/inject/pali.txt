@@ -10,6 +10,12 @@ const proxy = (type, data) =>
     window.addEventListener(
       id,
       (event) => {
+        if (!event.detail) {
+          resolve(undefined);
+
+          return;
+        }
+
         const response = JSON.parse(event.detail);
 
         if (response.error) {
@@ -46,8 +52,10 @@ const request = async (req) => {
   else return response;
 };
 
-const on = (method, callback) => {
+const on = async (method, callback) => {
   let origin = window.location.host;
+
+  await proxy('PALI_EVENT_REG', { method, origin });
 
   const id = `${origin}.${method}`;
 
@@ -58,19 +66,6 @@ const on = (method, callback) => {
   window.addEventListener(id, window.pali._listeners[id], {
     passive: true,
   });
-
-  // Register the origin of the listening site.
-  window.postMessage(
-    {
-      id,
-      type: 'PALI_EVENT_REG',
-      data: {
-        method,
-        origin,
-      },
-    },
-    '*'
-  );
 };
 
 const removeListener = (method) => {
