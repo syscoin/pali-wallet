@@ -28,7 +28,7 @@ import { validateEthRpc, validateSysRpc } from './utils';
 
 const MainController = () => {
   const keyringManager = KeyringManager();
-  const walletController = WalletController();
+  const walletController = WalletController(keyringManager);
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
