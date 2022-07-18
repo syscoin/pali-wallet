@@ -1,16 +1,14 @@
 import React, { useState } from 'react';
 
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
-import { useDappConnection, useStore } from 'hooks/index';
+import { useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ChangeAccount = () => {
   const { accounts } = useStore();
-  const { changeConnectedAccount } = useDappConnection();
-
-  const dappController = getController().dapp;
-  const connectedAccountId = dappController.getCurrent().accountId;
+  const { dapp } = getController();
+  const connectedAccountId = dapp.getCurrent().accountId;
 
   const [accountId, setAccountId] = useState<number>(connectedAccountId);
 
@@ -18,6 +16,11 @@ export const ChangeAccount = () => {
     if (id === connectedAccountId) return;
 
     setAccountId(id);
+  };
+
+  const changeConnectedAccount = () => {
+    dapp.changeConnectedAccount(accountId);
+    window.close();
   };
 
   return (
@@ -60,7 +63,7 @@ export const ChangeAccount = () => {
             type="button"
             width="40"
             disabled={accountId === undefined}
-            onClick={() => changeConnectedAccount(accountId)}
+            onClick={() => changeConnectedAccount()}
           >
             Change
           </PrimaryButton>

@@ -13,7 +13,6 @@ import {
 import { IDAppInfo } from 'state/dapp/types';
 import store from 'state/store';
 import { IDAppController } from 'types/controllers';
-import { log } from 'utils/logger';
 
 export interface ISigRequest {
   address: string;
@@ -38,6 +37,7 @@ const DAppController = (): IDAppController => {
 
   const hasConnectedAccount = () => current.accountId !== null;
 
+  // ! connecting a second page might break the first connection
   const pageConnectDApp = (origin: string, title: string) => {
     current = {
       ...current,
@@ -49,7 +49,7 @@ const DAppController = (): IDAppController => {
     return isDAppConnected(origin);
   };
 
-  const userConnectDApp = (
+  const _userConnectDApp = (
     origin: string,
     dapp: IDAppInfo,
     accountId: number
@@ -58,72 +58,32 @@ const DAppController = (): IDAppController => {
     store.dispatch(listNewDapp({ id: origin, dapp, accountId }));
   };
 
+  const connectAccount = async (accountId: number) => {
+    const origin = current.origin;
+    _userConnectDApp(origin, current, accountId);
+
+    _dispatchEvents([new CustomEvent('connectWallet', { detail: { origin } })]);
+  };
+
+  const changeConnectedAccount = async (accountId: number) => {
+    const origin = current.origin;
+    _userConnectDApp(origin, current, accountId);
+
+    // TODO accountChanged event
+    // _dispatchEvents([new CustomEvent('accountChanged')]);
+  };
+
   const _dispatchEvents = async (events: Event[]) => {
     const background = await browser.runtime.getBackgroundPage();
 
     events.forEach((event) => background.dispatchEvent(event));
   };
 
-  const notifyAccountsChanged = async (accountId: number): Promise<void> => {
-    const { whitelist, listening } = store.getState().dapp;
-
-    let events: Event[] = [];
-
-    // Will only notify whitelisted dapps that are listening for a wallet change.
-    for (const origin of Object.keys(listening)) {
-      const site = whitelist[origin as string];
-      const listeningEvents = listening[origin];
-
-      if (!listeningEvents.includes('accountsChanged')) {
-        return;
-      }
-
-      if (site) {
-        // Dispatch a separate event for each chain
-        const _events = [
-          new CustomEvent('accountsChanged', {
-            detail: { data: accountId, origin, chain: 'ethereum' },
-          }),
-          new CustomEvent('accountsChanged', {
-            detail: { data: accountId, origin, chain: 'syscoin' },
-          }),
-        ];
-
-        events = [...events, ..._events];
-      }
-    }
-
-    _dispatchEvents(events);
-  };
-
-  const _notifySiteDisconnected = async (origin: string): Promise<void> => {
-    const { listening } = store.getState().dapp;
-
-    const listeningEvents = listening[origin];
-
-    if (listeningEvents && !listeningEvents.includes('close')) {
-      log('notifySiteDisconnected includes close', 'Connection');
-
-      return;
-    }
-
-    // Dispatch a separate event for each chain
-    const events = [
-      new CustomEvent('close', {
-        detail: { data: {}, origin, chain: 'ethereum' },
-      }),
-      new CustomEvent('close', {
-        detail: { data: {}, origin, chain: 'syscoin' },
-      }),
-    ];
-
-    _dispatchEvents(events);
-  };
-
   const userDisconnectDApp = (origin: string) => {
-    _notifySiteDisconnected(origin);
     current.accountId = null;
     store.dispatch(unlistDapp({ id: origin }));
+    // TODO close event
+    // _dispatchEvents([new CustomEvent('close')]);
   };
 
   const registerListeningSite = (origin: string, eventName: string) => {
@@ -142,9 +102,7 @@ const DAppController = (): IDAppController => {
 
   const getCurrent = () => current;
 
-  const getConnectedAccount = (): IKeyringAccountState | null => {
-    if (current.accountId === -1) return null;
-
+  const getConnectedAccount = (): IKeyringAccountState | undefined => {
     const { accounts } = store.getState().vault;
     return accounts[current.accountId];
   };
@@ -163,11 +121,12 @@ const DAppController = (): IDAppController => {
     getConnectedAccount,
     hasConnectedAccount,
     pageConnectDApp,
-    userConnectDApp,
+    connectAccount,
+    changeConnectedAccount,
     setSigRequest,
     getSigRequest,
     userDisconnectDApp,
-    notifyAccountsChanged,
+    // notifyAccountsChanged,
     registerListeningSite,
     deregisterListeningSite,
     isSiteListening,

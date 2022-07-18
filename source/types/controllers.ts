@@ -90,19 +90,19 @@ export interface IControllerUtils {
 }
 
 export interface IDAppController {
+  changeConnectedAccount: (accountId: number) => void;
+  connectAccount: (accountId: number) => void;
   deregisterListeningSite: (origin: string, eventName: string) => void;
   ethProvider: any;
-  getConnectedAccount: () => IKeyringAccountState | null;
+  getConnectedAccount: () => IKeyringAccountState | undefined;
   getCurrent: () => IDAppInfo;
   getSigRequest: () => ISigRequest;
   hasConnectedAccount: () => boolean;
   isDAppConnected: (origin: string) => boolean;
   isSiteListening: (origin: string, eventName: string) => boolean;
-  notifyAccountsChanged: (accountId: number) => void;
   pageConnectDApp: (origin: string, title: string) => boolean;
   registerListeningSite: (origin: string, eventName: string) => void;
   setSigRequest: (req: ISigRequest) => void;
   sysProvider: any;
-  userConnectDApp: (origin: string, dapp: IDAppInfo, accountId: number) => void;
   userDisconnectDApp: (origin: string) => void;
 }
