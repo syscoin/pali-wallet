@@ -1843,14 +1843,14 @@
     rimraf "^3.0.2"
 
 "@pollum-io/sysweb3-keyring@^1.0.307":
-  version "1.0.307"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.307.tgz#3f7fdd7801806e6d09428ce699309fb51d03fff5"
-  integrity sha512-/iH4iVLLlC0etKpguKXgnNrOvSKmpDzJ68mIYxeIiXkZk+dC3611EG06lXWwD5w+8+VkrQ4GK1VCheFg8PoDFw==
+  version "1.0.313"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.313.tgz#aa8fef212d7080bbee4fddd7d03a739458edaac4"
+  integrity sha512-/tqAwbJZkP+0VLLMx3Lg9ZAzKErXDMw3K9vRvjbFOY3SGsfeq1ZQB/fI/9K2gnZhOTLaArfNHj42nDqEr6ntAg==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "^1.0.16"
-    "@pollum-io/sysweb3-network" "^1.0.36"
+    "@pollum-io/sysweb3-network" "^1.0.47"
     "@pollum-io/sysweb3-utils" "^1.1.159"
     axios "^0.26.1"
     bip39 "^3.0.4"
@@ -1868,7 +1868,7 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
-"@pollum-io/sysweb3-network@^1.0.36", "@pollum-io/sysweb3-network@^1.0.37", "@pollum-io/sysweb3-network@^1.0.47":
+"@pollum-io/sysweb3-network@^1.0.37", "@pollum-io/sysweb3-network@^1.0.47":
   version "1.0.47"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.47.tgz#00955cb76cee63881ad8032dc959be92dc11c148"
   integrity sha512-6X499K53EeOaS53YM1r+nO8ukdLxySUxf6U4nh+XH9blY6k7MiWyjfmGV24AzWljbs0gLo4uIHIxNdIeNnTOHA==
