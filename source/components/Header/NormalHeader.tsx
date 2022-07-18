@@ -144,7 +144,7 @@ export const NormalHeader: React.FC = () => {
                           />
                         </Disclosure.Button>
 
-                        <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
+                        <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
                           {Object.values(networks.syscoin).map(
                             (currentNetwork: any) => (
                               <li
@@ -199,7 +199,7 @@ export const NormalHeader: React.FC = () => {
                           />
                         </Disclosure.Button>
 
-                        <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
+                        <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
                           {Object.values(networks.ethereum).map(
                             (currentNetwork: any) => (
                               <li
