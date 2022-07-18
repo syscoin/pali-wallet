@@ -17,7 +17,7 @@ export type Message = {
 };
 
 export enum SupportedEventTypes {
-  accountChanged = 'accountsChanged',
+  accountChanged = 'accountChanged',
   chainChanged = 'chainChanged', // TODO: implement
   close = 'close',
   connectWallet = 'connectWallet',
