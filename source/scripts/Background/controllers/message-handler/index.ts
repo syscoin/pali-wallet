@@ -56,17 +56,15 @@ export const messageHandler = (port: Runtime.Port) => {
 
   const listener = async (message: Message, connection: Runtime.Port) => {
     console.log(
-      `[Connections] Message from ${connection.sender.url}`,
+      `[DApp] Message from ${connection.sender.url}`,
       message.type,
       message.data
     );
     try {
       const response = await listenerHandler(message, connection);
-
       if (response === undefined) return;
 
-      console.log('[Connections] Response', response);
-
+      console.log('[DApp] Response', response);
       port.postMessage({ id: message.id, data: response });
     } catch (error: any) {
       console.error(error);
