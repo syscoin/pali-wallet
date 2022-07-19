@@ -64,6 +64,7 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
         <h1 className="mt-4 text-sm">FEE</h1>
 
         <Form
+          validateMessages={{ default: '' }}
           form={form}
           id="site"
           labelCol={{ span: 8 }}

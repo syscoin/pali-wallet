@@ -63,6 +63,7 @@ const PrivateKeyView = () => {
         </p>
 
         <Form
+          validateMessages={{ default: '' }}
           className="standard password mx-auto my-3 w-full max-w-xs text-center md:max-w-xl"
           name="phraseview"
           form={form}

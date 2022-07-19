@@ -33,6 +33,7 @@ const PhraseView = () => {
 
       <div className="flex flex-col items-center justify-center md:w-full md:max-w-md">
         <Form
+          validateMessages={{ default: '' }}
           className="password flex flex-col gap-8 items-center justify-center my-6 w-full max-w-xs text-center md:max-w-md"
           name="phraseview"
           labelCol={{ span: 8 }}

@@ -49,6 +49,7 @@ const ForgetWalletView = () => {
           Please input your wallet password
         </p>
         <Form
+          validateMessages={{ default: '' }}
           form={form}
           onFinish={onSubmit}
           className="password flex flex-col gap-6 items-center justify-center w-full max-w-xs text-center md:max-w-md"
@@ -70,10 +71,12 @@ const ForgetWalletView = () => {
 
                   if (seed) {
                     setIsPasswordValid(true);
+
                     return Promise.resolve();
                   }
 
                   setIsPasswordValid(false);
+
                   return Promise.reject();
                 },
               }),
@@ -110,10 +113,12 @@ const ForgetWalletView = () => {
 
                       if (seed === value) {
                         setIsSeedValid(true);
+
                         return Promise.resolve();
                       }
 
                       setIsSeedValid(false);
+
                       return Promise.reject();
                     },
                   }),

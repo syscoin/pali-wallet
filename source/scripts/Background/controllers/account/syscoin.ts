@@ -1,8 +1,5 @@
 import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
-import {
-  ICoingeckoToken,
-  IKeyringAccountState,
-} from '@pollum-io/sysweb3-utils';
+import { ICoingeckoToken } from '@pollum-io/sysweb3-utils';
 
 import { SysTransactionController } from '../transaction';
 import SysTrezorController from '../trezor/syscoin';
@@ -20,11 +17,11 @@ const SysAccountController = () => {
   let intervalId: NodeJS.Timer;
 
   const getLatestUpdate = async (silent?: boolean) => {
-    if (!silent) store.dispatch(setIsPendingBalances(true));
-
     const { activeAccount, networks, activeNetwork } = store.getState().vault;
 
-    if (!activeAccount) return;
+    if (!activeAccount.address) return;
+
+    if (!silent) store.dispatch(setIsPendingBalances(true));
 
     const updatedAccountInfo = await keyringManager.getLatestUpdateForAccount();
 
@@ -52,18 +49,22 @@ const SysAccountController = () => {
   /** check if there is no pending transaction in mempool
    *  and get the latest update for account
    */
-  const watchMemPool = (currentAccount: IKeyringAccountState) => {
+  const watchMemPool = () => {
     if (intervalId) clearInterval(intervalId);
 
     // 30 seconds - 3000 milliseconds
     const interval = 30 * 1000;
 
     intervalId = setInterval(() => {
-      getLatestUpdate(true);
+      const { activeAccount } = store.getState().vault;
 
-      if (!currentAccount || !currentAccount?.transactions) {
+      if (!activeAccount.address || !activeAccount.transactions) {
         clearInterval(intervalId);
+
+        return;
       }
+
+      getLatestUpdate(true);
     }, interval);
   };
 

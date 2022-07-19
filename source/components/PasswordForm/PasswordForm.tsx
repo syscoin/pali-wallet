@@ -10,6 +10,7 @@ interface IPasswordForm {
 export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => (
   <OnboardingLayout title="Password">
     <Form
+      validateMessages={{ default: '' }}
       name="basic"
       labelCol={{ span: 8 }}
       wrapperCol={{ span: 8 }}

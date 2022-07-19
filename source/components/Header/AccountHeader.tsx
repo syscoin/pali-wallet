@@ -28,7 +28,7 @@ const AccountMenu: React.FC = () => {
 
   const setActiveAccount = async (id: number) => {
     await wallet.setAccount(Number(id));
-    wallet.account.sys.watchMemPool(accounts[Number(id)]);
+    wallet.account.sys.watchMemPool();
   };
 
   const handleLogout = () => {

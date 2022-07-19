@@ -84,12 +84,6 @@ export const Router = () => {
   useEffect(() => {
     if (isUnlocked) {
       handleRefresh(true);
-      console.log(
-        'refreshing',
-        controller.wallet.isUnlocked(),
-        accounts,
-        activeAccount
-      );
     }
   }, [isUnlocked]);
 

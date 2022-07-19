@@ -160,7 +160,6 @@ const MainController = () => {
       keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
 
     store.dispatch(setIsPendingBalances(false));
-    // @ts-ignore
     store.dispatch(setActiveAccount(networkAccount));
 
     return networkAccount;
@@ -190,6 +189,7 @@ const MainController = () => {
     const network = await validateAndBuildRpc(data);
 
     const chain = data.isSyscoinRpc ? 'syscoin' : 'ethereum';
+
     store.dispatch(setNetworks({ chain, network, chainId: network.chainId }));
 
     return network;
@@ -203,6 +203,7 @@ const MainController = () => {
     const network = await validateAndBuildRpc(newRpc);
 
     const chain = newRpc.isSyscoinRpc ? 'syscoin' : 'ethereum';
+
     if (changedChainId) {
       store.dispatch(
         removeNetwork({
