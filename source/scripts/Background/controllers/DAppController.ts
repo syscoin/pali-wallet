@@ -62,7 +62,7 @@ const DAppController = (): IDAppController => {
     const origin = current.origin;
     _userConnectDApp(origin, current, accountId);
 
-    _dispatchEvents([new CustomEvent('connectWallet', { detail: { origin } })]);
+    _dispatchEvents([new CustomEvent('connect', { detail: { origin } })]);
   };
 
   const changeConnectedAccount = async (accountId: number) => {
@@ -70,7 +70,7 @@ const DAppController = (): IDAppController => {
     _userConnectDApp(origin, current, accountId);
 
     _dispatchEvents([
-      new CustomEvent('accountChanged', { detail: { origin } }),
+      new CustomEvent('account-change', { detail: { origin } }),
     ]);
   };
 
@@ -84,7 +84,7 @@ const DAppController = (): IDAppController => {
     current.accountId = null;
     store.dispatch(unlistDapp({ id: origin }));
 
-    _dispatchEvents([new CustomEvent('close', { detail: { origin } })]);
+    _dispatchEvents([new CustomEvent('disconnect', { detail: { origin } })]);
   };
 
   const registerListeningSite = (origin: string, eventName: string) => {

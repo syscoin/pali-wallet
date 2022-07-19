@@ -1,16 +1,16 @@
 import { Runtime } from 'webextension-polyfill-ts';
 
-import { Message, SupportedEventTypes } from './types';
+import { Message, DAppEvents } from './types';
 
 export const initializeEvents = (port: Runtime.Port) => {
-  Object.values(SupportedEventTypes).forEach((eventType) => {
+  Object.values(DAppEvents).forEach((eventType) => {
     window.addEventListener(
       eventType,
       (event: any) => {
         const { data, origin } = event.detail;
         const id = `${origin}.${eventType}`;
 
-        if (eventType === 'close') {
+        if (eventType === 'disconnect') {
           port.postMessage({ id, data });
         }
 
@@ -29,7 +29,7 @@ export const initializeEvents = (port: Runtime.Port) => {
 export const registerEvent = (message: Message) => {
   const { origin, method } = message.data;
 
-  if (!SupportedEventTypes[method]) return;
+  if (!DAppEvents[method]) return;
 
   window.controller.dapp.registerListeningSite(origin, method);
 };
@@ -37,7 +37,7 @@ export const registerEvent = (message: Message) => {
 export const deregisterEvent = (message: Message) => {
   const { origin, method } = message.data;
 
-  if (!SupportedEventTypes[method]) return;
+  if (!DAppEvents[method]) return;
 
   window.controller.dapp.deregisterListeningSite(origin, method);
 };

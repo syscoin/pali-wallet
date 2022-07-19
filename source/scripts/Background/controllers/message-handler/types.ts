@@ -16,11 +16,11 @@ export type Message = {
   type: string;
 };
 
-export enum SupportedEventTypes {
-  accountChanged = 'accountChanged',
-  chainChanged = 'chainChanged', // TODO: implement
-  close = 'close',
-  connectWallet = 'connectWallet',
+export enum DAppEvents {
+  accountChange = 'accountChange',
+  chainChange = 'chainChange',
+  connect = 'connect',
+  disconnect = 'disconnect',
 }
 
 export enum SupportedWalletMethods {
