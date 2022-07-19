@@ -40,13 +40,7 @@ export const messageHandler = (port: Runtime.Port) => {
       case 'ENABLE_REQUEST':
         return enable(port, message, origin, setPendingWindow, isPendingWindow);
       case 'DISABLE_REQUEST':
-        return disable(
-          port,
-          message,
-          origin,
-          setPendingWindow,
-          isPendingWindow
-        );
+        return disable(origin, isPendingWindow);
       case 'METHOD_REQUEST':
         return handleRequest(
           port,

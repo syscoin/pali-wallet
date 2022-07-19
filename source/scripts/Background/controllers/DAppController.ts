@@ -83,8 +83,8 @@ const DAppController = (): IDAppController => {
   const userDisconnectDApp = (origin: string) => {
     current.accountId = null;
     store.dispatch(unlistDapp({ id: origin }));
-    // TODO close event
-    // _dispatchEvents([new CustomEvent('close')]);
+
+    _dispatchEvents([new CustomEvent('close', { detail: { origin } })]);
   };
 
   const registerListeningSite = (origin: string, eventName: string) => {
