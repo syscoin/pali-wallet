@@ -23,7 +23,12 @@ export const handleRequest = async (
 
   // TODO improve this
   if (prefix === 'wallet' && methodName === 'changeAccount')
-    return changeAccount(message.data.network);
+    return changeAccount(
+      message.data.network,
+      origin,
+      isPendingWindow,
+      setPendingWindow
+    );
 
   const provider =
     prefix === 'sys'
@@ -140,13 +145,45 @@ export const handleRequest = async (
   return result;
 };
 
-const changeAccount = async (network) => {
-  // TODO check isConnected
-  // TODO isPendingWindow
+const changeAccount = async (
+  network: string,
+  origin: string,
+  isPendingWindow: () => boolean,
+  setPendingWindow: (isPending: boolean) => void
+) => {
+  const { dapp } = window.controller;
+  const isWhitelisted = dapp.isDAppConnected(origin);
+  const hasConnectedAccount = dapp.hasConnectedAccount();
+  const isConnected = isWhitelisted && hasConnectedAccount;
+
+  if (isPendingWindow() || !isConnected) return;
+
   const windowId = uuid();
   const popup = await window.controller.createPopup(
     windowId,
     network,
     'change-account'
   );
+
+  setPendingWindow(true);
+
+  return new Promise<boolean>((resolve) => {
+    window.addEventListener(
+      'accountChanged',
+      (event: CustomEvent) => {
+        if (event.detail.origin === origin) {
+          setPendingWindow(false);
+          resolve(true);
+        }
+      },
+      { once: true, passive: true }
+    );
+
+    browser.windows.onRemoved.addListener((id) => {
+      if (id === popup.id) {
+        setPendingWindow(false);
+        resolve(false);
+      }
+    });
+  });
 };
