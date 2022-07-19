@@ -1,8 +1,3 @@
-const ERRORS = {
-  USER_REJECTED: new Error('User rejected the request'),
-  INVALID_METHOD: new Error('Invalid method'),
-};
-
 const proxy = (type, data) =>
   new Promise((resolve, reject) => {
     const id = Date.now() + '.' + Math.random();
@@ -48,8 +43,7 @@ const request = async (req) => {
   const response = await proxy('METHOD_REQUEST', req);
   console.log('response', response);
 
-  if (response.result === false) throw ERRORS.USER_REJECTED;
-  else return response;
+  return response;
 };
 
 const on = (method, callback) => {
