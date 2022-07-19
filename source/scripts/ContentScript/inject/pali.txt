@@ -52,10 +52,8 @@ const request = async (req) => {
   else return response;
 };
 
-const on = async (method, callback) => {
+const on = (method, callback) => {
   let origin = window.location.host;
-
-  await proxy('PALI_EVENT_REG', { method, origin });
 
   const id = `${origin}.${method}`;
 
@@ -66,6 +64,18 @@ const on = async (method, callback) => {
   window.addEventListener(id, window.pali._listeners[id], {
     passive: true,
   });
+
+  window.postMessage(
+    {
+      id: id,
+      type: 'PALI_EVENT_REG',
+      data: {
+        method,
+        origin,
+      },
+    },
+    '*'
+  );
 };
 
 const removeListener = (method) => {

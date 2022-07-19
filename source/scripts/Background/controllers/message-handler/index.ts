@@ -68,6 +68,9 @@ export const messageHandler = (port: Runtime.Port) => {
     );
     try {
       const response = await listenerHandler(message, connection);
+
+      if (response === undefined) return;
+
       console.log('[Connections] Response', response);
 
       port.postMessage({ id: message.id, data: response });
