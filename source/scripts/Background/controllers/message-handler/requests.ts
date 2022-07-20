@@ -62,7 +62,7 @@ const changeAccount = async (
 
   return new Promise<boolean>((resolve) => {
     window.addEventListener(
-      'accountChanged',
+      'accountChange',
       (event: CustomEvent) => {
         if (event.detail.origin === origin) {
           setPendingWindow(false);

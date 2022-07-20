@@ -29,7 +29,7 @@ export const enable = async (
 
   return new Promise<boolean>((resolve) => {
     window.addEventListener(
-      'connectWallet',
+      'connect',
       (event: CustomEvent) => {
         if (event.detail.origin === origin) {
           setPendingWindow(false);

@@ -69,9 +69,7 @@ const DAppController = (): IDAppController => {
     const origin = current.origin;
     _userConnectDApp(origin, current, accountId);
 
-    _dispatchEvents([
-      new CustomEvent('account-change', { detail: { origin } }),
-    ]);
+    _dispatchEvents([new CustomEvent('accountChange', { detail: { origin } })]);
   };
 
   const _dispatchEvents = async (events: Event[]) => {
