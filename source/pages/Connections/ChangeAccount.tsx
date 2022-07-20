@@ -18,7 +18,6 @@ export const ChangeAccount = () => {
     setAccountId(id);
   };
 
-  // TODO return on accountId === connectedId
   const changeConnectedAccount = () => {
     dapp.changeAccount(accountId);
     window.close();
@@ -63,7 +62,7 @@ export const ChangeAccount = () => {
           <PrimaryButton
             type="button"
             width="40"
-            disabled={accountId === undefined}
+            disabled={accountId === connectedAccountId}
             onClick={() => changeConnectedAccount()}
           >
             Change
