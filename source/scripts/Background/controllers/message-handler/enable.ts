@@ -1,10 +1,9 @@
 import { v4 as uuid } from 'uuid';
-import { browser, Runtime } from 'webextension-polyfill-ts';
+import { browser } from 'webextension-polyfill-ts';
 
 import { Message } from './types';
 
 export const enable = async (
-  port: Runtime.Port,
   message: Message,
   origin: string,
   setPendingWindow: (isPending: boolean) => void,

@@ -6,7 +6,7 @@ export const initializeEvents = (port: Runtime.Port) => {
   Object.values(DAppEvents).forEach((eventType) => {
     window.addEventListener(
       eventType,
-      (event: any) => {
+      (event: CustomEvent) => {
         const { data, origin } = event.detail;
         const id = `${origin}.${eventType}`;
 

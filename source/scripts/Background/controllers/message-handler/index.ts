@@ -15,7 +15,6 @@ export const messageHandler = (port: Runtime.Port) => {
 
   const isPendingWindow = (): boolean => pendingWindow;
 
-  // Set up listeners once, then check origin/method based on registration in state
   initializeEvents(port);
 
   const listenerHandler = async (
@@ -23,13 +22,12 @@ export const messageHandler = (port: Runtime.Port) => {
     connection: Runtime.Port
   ) => {
     if (browser.runtime.lastError) {
-      return Promise.reject(new Error('Runtime Last Error'));
+      throw new Error('Runtime last error');
     }
 
     const origin = new URL(connection.sender?.url).host;
     const title = connection.sender?.tab?.title;
 
-    // Set current page
     window.controller.dapp.pageConnectDApp(origin, title);
 
     switch (message.type) {
@@ -38,19 +36,18 @@ export const messageHandler = (port: Runtime.Port) => {
       case 'PALI_EVENT_DEREG':
         return deregisterEvent(message);
       case 'ENABLE_REQUEST':
-        return enable(port, message, origin, setPendingWindow, isPendingWindow);
+        return enable(message, origin, setPendingWindow, isPendingWindow);
       case 'DISABLE_REQUEST':
         return disable(origin, isPendingWindow);
       case 'METHOD_REQUEST':
         return handleRequest(
-          port,
           message,
           origin,
           setPendingWindow,
           isPendingWindow
         );
       default:
-        return Promise.resolve(null);
+        throw new Error('Unknown message type');
     }
   };
 

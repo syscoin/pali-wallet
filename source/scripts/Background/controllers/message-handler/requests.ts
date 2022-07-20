@@ -1,12 +1,9 @@
 import { v4 as uuid } from 'uuid';
-import { browser, Runtime } from 'webextension-polyfill-ts';
-
-// import { erc20DataDecoder } from 'utils/ethUtil';
+import { browser } from 'webextension-polyfill-ts';
 
 import { Message } from './types';
 
 export const handleRequest = async (
-  port: Runtime.Port,
   message: Message,
   origin: string,
   setPendingWindow: (isPending: boolean) => void,
