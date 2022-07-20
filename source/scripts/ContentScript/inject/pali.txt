@@ -101,7 +101,7 @@ window.pali = Object.freeze({
   request,
   on,
   removeListener,
-  isConnected: () => request({ method: 'isConnected' }),
+  isConnected: () => request({ method: 'wallet_isConnected' }),
   enable: () =>
     proxy('ENABLE_REQUEST', {
       chain: 'syscoin',
