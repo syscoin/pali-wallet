@@ -5,12 +5,12 @@ import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import {
-  listNewDapp,
-  unlistDapp,
-  registerListeningSite as registerListeningSiteAction,
-  deregisterListeningSite as deregisterListeningSiteAction,
+  addDApp,
+  removeDApp,
+  addListener as addListenerAction,
+  removeListener as removeListenerAction,
 } from 'state/dapp';
-import { IDAppInfo } from 'state/dapp/types';
+import { IDApp } from 'state/dapp/types';
 import store from 'state/store';
 import { IDAppController } from 'types/controllers';
 
@@ -21,7 +21,9 @@ export interface ISigRequest {
 }
 
 const DAppController = (): IDAppController => {
-  let current: IDAppInfo = {
+  // TODO multiple connections support
+
+  let current: IDApp = {
     accountId: null,
     origin: '',
     logo: '',
@@ -29,16 +31,15 @@ const DAppController = (): IDAppController => {
   };
   let request: ISigRequest;
 
-  const isDAppConnected = (origin: string) => {
-    const { whitelist } = store.getState().dapp;
+  const isConnected = (origin: string) => {
+    const { dapps } = store.getState().dapp;
 
-    return !!whitelist[origin];
+    return !!dapps[origin];
   };
 
   const hasConnectedAccount = () => current.accountId !== null;
 
-  // ! connecting a second page might break the first connection
-  const pageConnectDApp = (origin: string, title: string) => {
+  const setCurrent = (origin: string, title: string) => {
     current = {
       ...current,
       origin,
@@ -46,28 +47,24 @@ const DAppController = (): IDAppController => {
       title,
     };
 
-    return isDAppConnected(origin);
+    return isConnected(origin);
   };
 
-  const _userConnectDApp = (
-    origin: string,
-    dapp: IDAppInfo,
-    accountId: number
-  ) => {
+  const _connect = (origin: string, dapp: IDApp, accountId: number) => {
     current.accountId = accountId;
-    store.dispatch(listNewDapp({ id: origin, dapp, accountId }));
+    store.dispatch(addDApp({ id: origin, dapp, accountId }));
   };
 
-  const connectAccount = async (accountId: number) => {
+  const connect = async (accountId: number) => {
     const origin = current.origin;
-    _userConnectDApp(origin, current, accountId);
+    _connect(origin, current, accountId);
 
     _dispatchEvents([new CustomEvent('connect', { detail: { origin } })]);
   };
 
-  const changeConnectedAccount = async (accountId: number) => {
+  const changeAccount = async (accountId: number) => {
     const origin = current.origin;
-    _userConnectDApp(origin, current, accountId);
+    _connect(origin, current, accountId);
 
     _dispatchEvents([new CustomEvent('accountChange', { detail: { origin } })]);
   };
@@ -78,25 +75,25 @@ const DAppController = (): IDAppController => {
     events.forEach((event) => background.dispatchEvent(event));
   };
 
-  const userDisconnectDApp = (origin: string) => {
+  const disconnect = (origin: string) => {
     current.accountId = null;
-    store.dispatch(unlistDapp({ id: origin }));
+    store.dispatch(removeDApp({ id: origin }));
 
     _dispatchEvents([new CustomEvent('disconnect', { detail: { origin } })]);
   };
 
-  const registerListeningSite = (origin: string, eventName: string) => {
-    store.dispatch(registerListeningSiteAction({ origin, eventName }));
+  const addListener = (origin: string, eventName: string) => {
+    store.dispatch(addListenerAction({ origin, eventName }));
   };
 
-  const deregisterListeningSite = (origin: string, eventName: string) => {
-    store.dispatch(deregisterListeningSiteAction({ origin, eventName }));
+  const removeListener = (origin: string, eventName: string) => {
+    store.dispatch(removeListenerAction({ origin, eventName }));
   };
 
-  const isSiteListening = (origin: string, eventName: string) => {
+  const hasListener = (origin: string, eventName: string) => {
     const { dapp } = store.getState();
 
-    return dapp.listening[origin] && dapp.listening[origin].includes(eventName);
+    return dapp.listeners[origin] && dapp.listeners[origin].includes(eventName);
   };
 
   const getCurrent = () => current;
@@ -106,6 +103,7 @@ const DAppController = (): IDAppController => {
     return accounts[current.accountId];
   };
 
+  // TODO review sig request
   const setSigRequest = (req: ISigRequest) => {
     request = req;
   };
@@ -117,19 +115,18 @@ const DAppController = (): IDAppController => {
 
   return {
     getCurrent,
+    setCurrent,
     getConnectedAccount,
     hasConnectedAccount,
-    pageConnectDApp,
-    connectAccount,
-    changeConnectedAccount,
+    connect,
+    changeAccount,
     setSigRequest,
     getSigRequest,
-    userDisconnectDApp,
-    // notifyAccountsChanged,
-    registerListeningSite,
-    deregisterListeningSite,
-    isSiteListening,
-    isDAppConnected,
+    disconnect,
+    addListener,
+    removeListener,
+    hasListener,
+    isConnected,
     sysProvider,
     ethProvider,
   };

@@ -1,82 +1,83 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
-import { IDAppState, IDAppInfo } from './types';
+import { IDAppState, IDApp } from './types';
 
 export const initialState: IDAppState = {
-  listening: {},
-  whitelist: {},
+  dapps: {},
+  listeners: {},
 };
 
 const DAppState = createSlice({
   name: 'dapp',
   initialState,
   reducers: {
-    registerListeningSite(
+    addListener(
       state: IDAppState,
       action: PayloadAction<{ eventName: string; origin: string }>
     ) {
       const { origin, eventName } = action.payload;
 
       const originState = Object.prototype.hasOwnProperty.call(
-        state.listening,
+        state.listeners,
         origin
       )
-        ? state.listening[origin].filter((item: string) => item !== eventName)
+        ? state.listeners[origin].filter((item: string) => item !== eventName)
         : [];
 
       return {
         ...state,
-        listening: {
-          ...state.listening,
+        listeners: {
+          ...state.listeners,
           [origin]: [...originState, eventName],
         },
       };
     },
-    deregisterListeningSite(
+    removeListener(
       state: IDAppState,
       action: PayloadAction<{ eventName: string; origin: string }>
     ) {
       const { origin, eventName } = action.payload;
 
       const hasOriginListening = Object.prototype.hasOwnProperty.call(
-        state.listening,
+        state.listeners,
         origin
       );
 
       if (!hasOriginListening) return state;
 
-      const originState = state.listening[origin].filter(
+      const originState = state.listeners[origin].filter(
         (val: string) => val !== eventName
       );
 
       const retState = {
         ...state,
-        listening: {
-          ...state.listening,
+        listeners: {
+          ...state.listeners,
           [origin]: originState,
         },
       };
 
       if (originState.length === 0) {
-        delete retState.listening[origin];
+        delete retState.listeners[origin];
       }
 
       return retState;
     },
-    listNewDapp(
+    addDApp(
       state: IDAppState,
       action: PayloadAction<{
         accountId: number;
-        dapp: IDAppInfo;
+        dapp: IDApp;
         id: string;
       }>
     ) {
       const { dapp, accountId, id } = action.payload;
 
+      // TODO refactor
       return {
         ...state,
-        whitelist: {
-          ...state.whitelist,
+        dapps: {
+          ...state.dapps,
           [id]: {
             id,
             ...dapp,
@@ -85,18 +86,14 @@ const DAppState = createSlice({
         },
       };
     },
-    unlistDapp(state: IDAppState, action: PayloadAction<{ id: string }>) {
-      delete state.whitelist[action.payload.id];
-      delete state.listening[action.payload.id];
+    removeDApp(state: IDAppState, action: PayloadAction<{ id: string }>) {
+      delete state.dapps[action.payload.id];
+      delete state.listeners[action.payload.id];
     },
   },
 });
 
-export const {
-  listNewDapp,
-  unlistDapp,
-  registerListeningSite,
-  deregisterListeningSite,
-} = DAppState.actions;
+export const { addDApp, removeDApp, addListener, removeListener } =
+  DAppState.actions;
 
 export default DAppState.reducer;

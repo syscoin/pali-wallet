@@ -1,4 +1,4 @@
-export interface IDAppInfo {
+export interface IDApp {
   accountId: number;
   logo: string;
   origin: string;
@@ -7,17 +7,17 @@ export interface IDAppInfo {
 
 export interface IDAppState {
   /**
-   * Dapps that are currently listening for updates
-   */
-  listening: {
-    [dappId: string]: Array<string>;
-  };
-
-  /**
    * A list of sites that have been granted permissions to access a user's
    * account information.
    */
-  whitelist: {
-    [dappId: string]: IDAppInfo;
+  dapps: {
+    [dappId: string]: IDApp;
+  };
+
+  /**
+   * Dapps that are currently listening for updates
+   */
+  listeners: {
+    [dappId: string]: Array<string>;
   };
 }

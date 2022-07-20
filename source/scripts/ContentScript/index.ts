@@ -1,5 +1,5 @@
 import { provider } from '../Provider/index';
-import { SupportedWalletMethods } from 'scripts/Background/controllers/message-handler/types';
+import { DAppMethods } from 'scripts/Background/controllers/message-handler/types';
 
 import { pali } from './inject';
 
@@ -15,7 +15,5 @@ const inject = (content: string) => {
   container.insertBefore(scriptTag, container.children[0]);
 };
 
-inject(
-  `window.SUPPORTED_WALLET_METHODS = ${JSON.stringify(SupportedWalletMethods)}`
-);
+inject(`window.SUPPORTED_WALLET_METHODS = ${JSON.stringify(DAppMethods)}`);
 inject(pali);

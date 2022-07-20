@@ -26,7 +26,7 @@ export const ConnectWallet = () => {
     useState<boolean>(false);
 
   const confirmConnection = () => {
-    dapp.connectAccount(accountId);
+    dapp.connect(accountId);
     window.close();
   };
 

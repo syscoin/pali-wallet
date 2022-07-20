@@ -15,7 +15,7 @@ backgroundPort.onMessage.addListener((message: { data: string; id: string }) =>
 );
 
 const checkForPaliRegisterEvent = (type, id) => {
-  if (type === 'PALI_EVENT_REG') {
+  if (type === 'EVENT_REG') {
     emitter.on(id, (result) => {
       window.dispatchEvent(
         new CustomEvent(id, { detail: JSON.stringify(result) })

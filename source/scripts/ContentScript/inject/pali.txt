@@ -62,7 +62,7 @@ const on = (method, callback) => {
   window.postMessage(
     {
       id: id,
-      type: 'PALI_EVENT_REG',
+      type: 'EVENT_REG',
       data: {
         method,
         origin,
@@ -86,7 +86,7 @@ const removeListener = (method) => {
   window.postMessage(
     {
       id,
-      type: 'PALI_EVENT_DEREG',
+      type: 'EVENT_DEREG',
       data: {
         method,
         origin,
@@ -103,12 +103,12 @@ window.pali = Object.freeze({
   removeListener,
   isConnected: () => request({ method: 'wallet_isConnected' }),
   enable: () =>
-    proxy('ENABLE_REQUEST', {
+    proxy('ENABLE', {
       chain: 'syscoin',
       network: 'main',
     }),
   disable: () =>
-    proxy('DISABLE_REQUEST', {
+    proxy('DISABLE', {
       chain: 'syscoin',
       network: 'main',
     }),

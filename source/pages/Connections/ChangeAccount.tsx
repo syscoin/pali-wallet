@@ -18,8 +18,9 @@ export const ChangeAccount = () => {
     setAccountId(id);
   };
 
+  // TODO return on accountId === connectedId
   const changeConnectedAccount = () => {
-    dapp.changeConnectedAccount(accountId);
+    dapp.changeAccount(accountId);
     window.close();
   };
 

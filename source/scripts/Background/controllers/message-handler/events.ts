@@ -2,7 +2,7 @@ import { Runtime } from 'webextension-polyfill-ts';
 
 import { Message, DAppEvents } from './types';
 
-export const initializeEvents = (port: Runtime.Port) => {
+export const setupEvents = (port: Runtime.Port) => {
   Object.values(DAppEvents).forEach((eventType) => {
     window.addEventListener(
       eventType,
@@ -15,10 +15,12 @@ export const initializeEvents = (port: Runtime.Port) => {
         }
 
         if (
-          window.controller.dapp.isDAppConnected(origin) &&
-          window.controller.dapp.isSiteListening(origin, eventType)
+          window.controller.dapp.isConnected(origin) &&
+          window.controller.dapp.hasListener(origin, eventType)
         ) {
+          console.log('is connected, has listener');
           port.postMessage({ id, data });
+          // port.postMessage({ id: 'localhost:3000.connect', data });
         }
       },
       { passive: true }
@@ -31,7 +33,7 @@ export const registerEvent = (message: Message) => {
 
   if (!DAppEvents[method]) return;
 
-  window.controller.dapp.registerListeningSite(origin, method);
+  window.controller.dapp.addListener(origin, method);
 };
 
 export const deregisterEvent = (message: Message) => {
@@ -39,5 +41,5 @@ export const deregisterEvent = (message: Message) => {
 
   if (!DAppEvents[method]) return;
 
-  window.controller.dapp.deregisterListeningSite(origin, method);
+  window.controller.dapp.removeListener(origin, method);
 };

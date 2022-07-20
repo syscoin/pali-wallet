@@ -2,8 +2,8 @@ import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { disable } from './disable';
 import { enable } from './enable';
-import { initializeEvents, registerEvent, deregisterEvent } from './events';
-import { handleRequest } from './requests';
+import { setupEvents, registerEvent, deregisterEvent } from './events';
+import { methodRequest } from './requests';
 import { Message } from './types';
 
 export const messageHandler = (port: Runtime.Port) => {
@@ -15,7 +15,7 @@ export const messageHandler = (port: Runtime.Port) => {
 
   const isPendingWindow = (): boolean => pendingWindow;
 
-  initializeEvents(port);
+  setupEvents(port);
 
   const listenerHandler = async (
     message: Message,
@@ -28,19 +28,19 @@ export const messageHandler = (port: Runtime.Port) => {
     const origin = new URL(connection.sender?.url).host;
     const title = connection.sender?.tab?.title;
 
-    window.controller.dapp.pageConnectDApp(origin, title);
+    window.controller.dapp.setCurrent(origin, title);
 
     switch (message.type) {
-      case 'PALI_EVENT_REG':
+      case 'EVENT_REG':
         return registerEvent(message);
-      case 'PALI_EVENT_DEREG':
+      case 'EVENT_DEREG':
         return deregisterEvent(message);
-      case 'ENABLE_REQUEST':
+      case 'ENABLE':
         return enable(message, origin, setPendingWindow, isPendingWindow);
-      case 'DISABLE_REQUEST':
+      case 'DISABLE':
         return disable(origin, isPendingWindow);
       case 'METHOD_REQUEST':
-        return handleRequest(
+        return methodRequest(
           message,
           origin,
           setPendingWindow,

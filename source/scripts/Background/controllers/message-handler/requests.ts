@@ -3,7 +3,7 @@ import { browser } from 'webextension-polyfill-ts';
 
 import { Message } from './types';
 
-export const handleRequest = async (
+export const methodRequest = async (
   message: Message,
   origin: string,
   setPendingWindow: (isPending: boolean) => void,
@@ -15,9 +15,9 @@ export const handleRequest = async (
   if (prefix === 'wallet') {
     switch (methodName) {
       case 'isConnected':
-        const isWhitelisted = dapp.isDAppConnected(origin);
+        const isConnected = dapp.isConnected(origin);
         const hasConnectedAccount = dapp.hasConnectedAccount();
-        return isWhitelisted && hasConnectedAccount;
+        return isConnected && hasConnectedAccount;
       case 'changeAccount':
         return changeAccount(
           message.data.network,
@@ -45,7 +45,7 @@ const changeAccount = async (
   setPendingWindow: (isPending: boolean) => void
 ) => {
   const { dapp } = window.controller;
-  const isWhitelisted = dapp.isDAppConnected(origin);
+  const isWhitelisted = dapp.isConnected(origin);
   const hasConnectedAccount = dapp.hasConnectedAccount();
   const isConnected = isWhitelisted && hasConnectedAccount;
 

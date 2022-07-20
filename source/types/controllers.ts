@@ -8,7 +8,7 @@ import {
 } from '@pollum-io/sysweb3-utils';
 
 import { ISigRequest } from 'scripts/Background/controllers/DAppController';
-import { IDAppInfo } from 'state/dapp/types';
+import { IDApp } from 'state/dapp/types';
 
 export interface IMainController extends KeyringManager {
   account: any;
@@ -90,19 +90,19 @@ export interface IControllerUtils {
 }
 
 export interface IDAppController {
-  changeConnectedAccount: (accountId: number) => void;
-  connectAccount: (accountId: number) => void;
-  deregisterListeningSite: (origin: string, eventName: string) => void;
+  addListener: (origin: string, eventName: string) => void;
+  changeAccount: (accountId: number) => void;
+  connect: (accountId: number) => void;
+  disconnect: (origin: string) => void;
   ethProvider: any;
   getConnectedAccount: () => IKeyringAccountState | undefined;
-  getCurrent: () => IDAppInfo;
+  getCurrent: () => IDApp;
   getSigRequest: () => ISigRequest;
   hasConnectedAccount: () => boolean;
-  isDAppConnected: (origin: string) => boolean;
-  isSiteListening: (origin: string, eventName: string) => boolean;
-  pageConnectDApp: (origin: string, title: string) => boolean;
-  registerListeningSite: (origin: string, eventName: string) => void;
+  hasListener: (origin: string, eventName: string) => boolean;
+  isConnected: (origin: string) => boolean;
+  removeListener: (origin: string, eventName: string) => void;
+  setCurrent: (origin: string, title: string) => boolean;
   setSigRequest: (req: ISigRequest) => void;
   sysProvider: any;
-  userDisconnectDApp: (origin: string) => void;
 }

@@ -11,7 +11,7 @@ export const enable = async (
 ) => {
   const { dapp } = window.controller;
 
-  const isConnected = dapp.isDAppConnected(origin);
+  const isConnected = dapp.isConnected(origin);
   const hasConnectedAccount = dapp.hasConnectedAccount();
 
   if (isConnected && hasConnectedAccount) return true;

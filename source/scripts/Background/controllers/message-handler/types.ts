@@ -23,7 +23,8 @@ export enum DAppEvents {
   disconnect = 'disconnect',
 }
 
-export enum SupportedWalletMethods {
+// TODO review dapp methods
+export enum DAppMethods {
   getChainId,
   getAccounts,
   getBlockNumber,
