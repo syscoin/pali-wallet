@@ -102,6 +102,7 @@ export interface IDAppController {
   hasListener: (origin: string, eventName: string) => boolean;
   isConnected: (origin: string) => boolean;
   removeListener: (origin: string, eventName: string) => void;
+  removeListeners: (origin: string) => void;
   setCurrent: (origin: string, title: string) => boolean;
   setSigRequest: (req: ISigRequest) => void;
   sysProvider: any;

@@ -63,6 +63,9 @@ const DAppState = createSlice({
 
       return retState;
     },
+    removeListeners(state: IDAppState, action: PayloadAction<string>) {
+      delete state.listeners[action.payload];
+    },
     addDApp(
       state: IDAppState,
       action: PayloadAction<{
@@ -88,12 +91,16 @@ const DAppState = createSlice({
     },
     removeDApp(state: IDAppState, action: PayloadAction<{ id: string }>) {
       delete state.dapps[action.payload.id];
-      delete state.listeners[action.payload.id];
     },
   },
 });
 
-export const { addDApp, removeDApp, addListener, removeListener } =
-  DAppState.actions;
+export const {
+  addDApp,
+  removeDApp,
+  addListener,
+  removeListener,
+  removeListeners,
+} = DAppState.actions;
 
 export default DAppState.reducer;

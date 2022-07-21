@@ -9,6 +9,7 @@ import {
   removeDApp,
   addListener as addListenerAction,
   removeListener as removeListenerAction,
+  removeListeners as removeListenersAction,
 } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
 import store from 'state/store';
@@ -90,6 +91,10 @@ const DAppController = (): IDAppController => {
     store.dispatch(removeListenerAction({ origin, eventName }));
   };
 
+  const removeListeners = (origin: string) => {
+    store.dispatch(removeListenersAction(origin));
+  };
+
   const hasListener = (origin: string, eventName: string) => {
     const { dapp } = store.getState();
 
@@ -125,6 +130,7 @@ const DAppController = (): IDAppController => {
     disconnect,
     addListener,
     removeListener,
+    removeListeners,
     hasListener,
     isConnected,
     sysProvider,

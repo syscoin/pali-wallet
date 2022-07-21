@@ -6,7 +6,7 @@ import { setupEvents, registerEvent, deregisterEvent } from './events';
 import { methodRequest } from './requests';
 import { Message } from './types';
 
-export const messageHandler = (port: Runtime.Port) => {
+export const setupConnection = (port: Runtime.Port) => {
   let pendingWindow = false;
 
   const setPendingWindow = (isPending: boolean): void => {
@@ -17,15 +17,13 @@ export const messageHandler = (port: Runtime.Port) => {
 
   setupEvents(port);
 
-  const listenerHandler = async (
-    message: Message,
-    connection: Runtime.Port
-  ) => {
+  const origin = new URL(port.sender?.url).host;
+
+  const messageHandler = async (message: Message, connection: Runtime.Port) => {
     if (browser.runtime.lastError) {
       throw new Error('Runtime last error');
     }
 
-    const origin = new URL(connection.sender?.url).host;
     const title = connection.sender?.tab?.title;
 
     window.controller.dapp.setCurrent(origin, title);
@@ -51,14 +49,10 @@ export const messageHandler = (port: Runtime.Port) => {
     }
   };
 
-  const listener = async (message: Message, connection: Runtime.Port) => {
-    console.log(
-      `[DApp] Message from ${connection.sender.url}`,
-      message.type,
-      message.data
-    );
+  const onMessage = async (message: Message, _port: Runtime.Port) => {
+    console.log(`[DApp] Message from ${origin}`, message.type, message.data);
     try {
-      const response = await listenerHandler(message, connection);
+      const response = await messageHandler(message, _port);
       if (response === undefined) return;
 
       console.log('[DApp] Response', response);
@@ -70,5 +64,10 @@ export const messageHandler = (port: Runtime.Port) => {
     }
   };
 
-  port.onMessage.addListener(listener);
+  const onDisconnect = () => {
+    window.controller.dapp.removeListeners(origin);
+  };
+
+  port.onMessage.addListener(onMessage);
+  port.onDisconnect.addListener(onDisconnect);
 };

@@ -4,6 +4,7 @@ import reducer, {
   addDApp,
   removeDApp,
   initialState,
+  removeListeners,
 } from '.';
 import { IDApp } from './types';
 
@@ -33,6 +34,21 @@ describe('dapp store actions', () => {
       const newState = reducer(customState, removeListener(payload));
 
       expect(newState.listeners).not.toContain(payload.origin);
+    });
+
+    //* removeListeners
+    it('should remove a listener ', () => {
+      const origin = 'originname.com';
+      const event1 = { eventName: 'event1', origin };
+      const event2 = { eventName: 'event2', origin };
+
+      let customState = reducer(initialState, addListener(event1));
+      customState = reducer(customState, addListener(event2));
+
+      const newState = reducer(customState, removeListeners(origin));
+      console.log(newState);
+
+      expect(newState.listeners[origin]).toBeUndefined();
     });
   });
 
