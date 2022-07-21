@@ -19,17 +19,24 @@ export const Home = () => {
   } = useStore();
   const [symbol, setSymbol] = useState('SYS');
   const [fiatPriceValue, setFiatPriceValue] = useState('');
+  const [chain, setChain] = useState('syscoin');
+  const [balance, setBalance] = useState(0);
 
   const { getFiatAmount } = usePrice();
 
   const { navigate } = useUtils();
 
-  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
-  const chain = isSyscoinChain ? 'syscoin' : 'ethereum';
+  useEffect(() => {
+    const isSyscoinChain =
+      Boolean(networks.syscoin[activeNetwork.chainId]) &&
+      activeNetwork.url.includes('blockbook');
 
-  const balance = isSyscoinChain
-    ? activeAccount.balances.syscoin
-    : activeAccount.balances.ethereum;
+    setChain(isSyscoinChain ? 'syscoin' : 'ethereum');
+
+    const { syscoin, ethereum } = activeAccount.balances;
+
+    setBalance(chain === 'syscoin' ? syscoin : ethereum);
+  }, [activeNetwork]);
 
   const setChainSymbol = async () => {
     setSymbol(await getSymbolByChain(chain));
