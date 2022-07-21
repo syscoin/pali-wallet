@@ -27,7 +27,6 @@ const DAppController = (): IDAppController => {
   let current: IDApp = {
     accountId: null,
     origin: '',
-    logo: '',
     title: '',
   };
   let request: ISigRequest;
@@ -44,28 +43,25 @@ const DAppController = (): IDAppController => {
     current = {
       ...current,
       origin,
-      logo: `chrome://favicon/size/64@1x/${origin}`,
       title,
     };
 
     return isConnected(origin);
   };
 
-  const _connect = (origin: string, dapp: IDApp, accountId: number) => {
-    current.accountId = accountId;
-    store.dispatch(addDApp({ id: origin, dapp, accountId }));
+  const _connect = (dapp: IDApp) => {
+    current.accountId = dapp.accountId;
+    store.dispatch(addDApp(dapp));
   };
 
   const connect = async (accountId: number) => {
-    const origin = current.origin;
-    _connect(origin, current, accountId);
+    _connect({ ...current, accountId });
 
     _dispatchEvents([new CustomEvent('connect', { detail: { origin } })]);
   };
 
   const changeAccount = async (accountId: number) => {
-    const origin = current.origin;
-    _connect(origin, current, accountId);
+    _connect({ ...current, accountId });
 
     _dispatchEvents([new CustomEvent('accountChange', { detail: { origin } })]);
   };
@@ -78,7 +74,7 @@ const DAppController = (): IDAppController => {
 
   const disconnect = (origin: string) => {
     current.accountId = null;
-    store.dispatch(removeDApp({ id: origin }));
+    store.dispatch(removeDApp(origin));
 
     _dispatchEvents([new CustomEvent('disconnect', { detail: { origin } })]);
   };

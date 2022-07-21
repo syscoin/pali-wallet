@@ -12,7 +12,7 @@ import { IDApp } from './types';
 
 describe('dapp store actions', () => {
   describe('Listeners tests', () => {
-    //* registerListenerSite
+    //* addListener
     it('should add a listener', () => {
       const payload = {
         eventName: 'fake event',
@@ -22,7 +22,7 @@ describe('dapp store actions', () => {
       expect(newState.listeners[payload.origin]).toContain(payload.eventName);
     });
 
-    //* deregisterListenerSite
+    //* removeListener
     it('should remove a listener ', () => {
       const payload = {
         eventName: 'fake event',
@@ -54,31 +54,22 @@ describe('dapp store actions', () => {
 
   describe('Dapp tests', () => {
     const FAKE_DAPP: IDApp = {
-      logo: 'fake logo',
       origin: 'fake origin',
       title: 'fake title',
       accountId: 0,
     };
 
-    const payload = {
-      dapp: FAKE_DAPP,
-      id: 'fake id',
-      accountId: 0,
-    };
-
-    //* listNewDapp
+    //* addDApp
     it('should add a dapp', () => {
-      const newState = reducer(initialState, addDApp(payload));
+      const newState = reducer(initialState, addDApp(FAKE_DAPP));
 
-      expect(newState.dapps[payload.id]).toEqual({
-        ...payload.dapp,
-        id: payload.id,
-      });
+      expect(newState.dapps[FAKE_DAPP.origin]).toEqual(FAKE_DAPP);
     });
 
+    //* removeDApp
     it('should remove a dapp', () => {
-      const customState = reducer(initialState, addDApp(payload));
-      const newState = reducer(customState, removeDApp({ id: payload.id }));
+      const customState = reducer(initialState, addDApp(FAKE_DAPP));
+      const newState = reducer(customState, removeDApp(FAKE_DAPP.origin));
 
       expect(newState.dapps).toEqual(initialState.dapps);
     });

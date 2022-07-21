@@ -1,6 +1,5 @@
 export interface IDApp {
   accountId: number;
-  logo: string;
   origin: string;
   title: string;
 }
