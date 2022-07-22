@@ -8,12 +8,7 @@ import MainController from './MainController';
 
 export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
-  createPopup: (
-    windowId: string,
-    network?: string,
-    route?: string,
-    data?: object
-  ) => Promise<Windows.Window>;
+  createPopup: (route?: string, data?: object) => Promise<Windows.Window>;
   dapp: Readonly<IDAppController>;
   stateUpdater: () => void;
   utils: Readonly<IControllerUtils>;
@@ -29,31 +24,20 @@ const MasterController = (): IMasterController => {
     utils.setFiat();
   };
 
-  const createPopup = async (
-    windowId,
-    network = 'main',
-    route = '',
-    data = {}
-  ) => {
-    const _window = await browser.windows.getCurrent();
+  const createPopup = async (route = '', data = {}) => {
+    const window = await browser.windows.getCurrent();
 
-    if (!_window || !_window.width) return null;
+    if (!window || !window.width) return;
 
-    let url = '/external.html?';
-
-    if (route) {
-      url += `route=${route}&windowId=${windowId}&data=${JSON.stringify(
-        data
-      )}&network=${network}`;
-    }
+    const params = new URLSearchParams();
+    if (route) params.append('route', route);
+    if (data) params.append('data', JSON.stringify(data));
 
     return browser.windows.create({
-      url,
+      url: '/external.html?' + params.toString(),
       width: 372,
       height: 600,
       type: 'popup',
-      top: 0,
-      left: _window.width - 372,
     });
   };
 

@@ -33,11 +33,11 @@ export const ExternalRoute = () => {
   const { wallet, appRoute } = getController();
   const { navigate, alert } = useUtils();
   const { accounts } = useStore();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
 
   const query = useQuery();
-  const route = query.get('route');
-  const [defaultRoute] = useState(route);
+  const [defaultRoute] = useState(query.route + '?data=' + query.data);
+
   const isUnlocked = wallet.isUnlocked();
 
   useEffect(() => {
@@ -54,7 +54,7 @@ export const ExternalRoute = () => {
 
   useEffect(() => {
     alert.removeAll();
-    appRoute(pathname, true);
+    appRoute(pathname + search, true);
   }, [pathname]);
 
   return (

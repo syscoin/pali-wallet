@@ -1,4 +1,3 @@
-import { v4 as uuid } from 'uuid';
 import { browser } from 'webextension-polyfill-ts';
 
 import { Message } from './types';
@@ -44,19 +43,14 @@ const changeAccount = async (
   isPendingWindow: () => boolean,
   setPendingWindow: (isPending: boolean) => void
 ) => {
-  const { dapp } = window.controller;
+  const { dapp, createPopup } = window.controller;
   const isWhitelisted = dapp.isConnected(origin);
   const hasConnectedAccount = dapp.hasConnectedAccount();
   const isConnected = isWhitelisted && hasConnectedAccount;
 
   if (isPendingWindow() || !isConnected) return;
 
-  const windowId = uuid();
-  const popup = await window.controller.createPopup(
-    windowId,
-    network,
-    'change-account'
-  );
+  const popup = await createPopup('change-account', { network });
 
   setPendingWindow(true);
 
