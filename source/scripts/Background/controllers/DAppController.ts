@@ -1,17 +1,13 @@
 import { browser } from 'webextension-polyfill-ts';
 
-import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
-
-import { EthProvider } from 'scripts/Provider/EthProvider';
-import { SysProvider } from 'scripts/Provider/SysProvider';
 import {
-  addDApp,
+  addDApp as addDAppAction,
   removeDApp,
   addListener as addListenerAction,
   removeListener as removeListenerAction,
   removeListeners as removeListenersAction,
+  updateDAppAccount,
 } from 'state/dapp';
-import { IDApp } from 'state/dapp/types';
 import store from 'state/store';
 import { IDAppController } from 'types/controllers';
 
@@ -22,46 +18,34 @@ export interface ISigRequest {
 }
 
 const DAppController = (): IDAppController => {
-  // TODO multiple connections support
-
-  let current: IDApp = {
-    accountId: null,
-    origin: '',
-    title: '',
-  };
   let request: ISigRequest;
 
-  const isConnected = (origin: string) => {
+  const hasDApp = (origin: string) => {
     const { dapps } = store.getState().dapp;
 
     return !!dapps[origin];
   };
 
-  const hasConnectedAccount = () => current.accountId !== null;
+  const isConnected = (origin: string) => {
+    const dapp = store.getState().dapp.dapps[origin];
 
-  const setCurrent = (origin: string, title: string) => {
-    current = {
-      ...current,
-      origin,
-      title,
-    };
+    if (!dapp) return false;
 
-    return isConnected(origin);
+    return dapp.accountId !== null;
   };
 
-  const _connect = (dapp: IDApp) => {
-    current.accountId = dapp.accountId;
-    store.dispatch(addDApp(dapp));
+  const addDApp = (origin: string, title: string) => {
+    store.dispatch(addDAppAction({ origin, title, accountId: null }));
   };
 
-  const connect = async (accountId: number) => {
-    _connect({ ...current, accountId });
+  const connect = (origin: string, accountId: number) => {
+    store.dispatch(updateDAppAccount({ origin, accountId }));
 
     _dispatchEvents([new CustomEvent('connect', { detail: { origin } })]);
   };
 
-  const changeAccount = async (accountId: number) => {
-    _connect({ ...current, accountId });
+  const changeAccount = (origin: string, accountId: number) => {
+    store.dispatch(updateDAppAccount({ origin, accountId }));
 
     _dispatchEvents([new CustomEvent('accountChange', { detail: { origin } })]);
   };
@@ -73,7 +57,6 @@ const DAppController = (): IDAppController => {
   };
 
   const disconnect = (origin: string) => {
-    current.accountId = null;
     store.dispatch(removeDApp(origin));
 
     _dispatchEvents([new CustomEvent('disconnect', { detail: { origin } })]);
@@ -97,11 +80,15 @@ const DAppController = (): IDAppController => {
     return dapp.listeners[origin] && dapp.listeners[origin].includes(eventName);
   };
 
-  const getCurrent = () => current;
+  const getDApp = (origin: string) => store.getState().dapp.dapps[origin];
 
-  const getConnectedAccount = (): IKeyringAccountState | undefined => {
+  const getAccount = (origin: string) => {
+    const dapp = store.getState().dapp.dapps[origin];
     const { accounts } = store.getState().vault;
-    return accounts[current.accountId];
+
+    if (dapp?.accountId === null) return;
+
+    return accounts[dapp.accountId];
   };
 
   // TODO review sig request
@@ -111,14 +98,11 @@ const DAppController = (): IDAppController => {
 
   const getSigRequest = () => request;
 
-  const sysProvider = SysProvider();
-  const ethProvider = EthProvider();
-
   return {
-    getCurrent,
-    setCurrent,
-    getConnectedAccount,
-    hasConnectedAccount,
+    getDApp,
+    getAccount,
+    isConnected,
+    addDApp,
     connect,
     changeAccount,
     setSigRequest,
@@ -128,9 +112,7 @@ const DAppController = (): IDAppController => {
     removeListener,
     removeListeners,
     hasListener,
-    isConnected,
-    sysProvider,
-    ethProvider,
+    hasDApp,
   };
 };
 

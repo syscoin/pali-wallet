@@ -1,25 +1,26 @@
 import React, { useState } from 'react';
 
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
-import { useStore } from 'hooks/index';
+import { useQueryData, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ChangeAccount = () => {
   const { accounts } = useStore();
   const { dapp } = getController();
-  const connectedAccountId = dapp.getCurrent().accountId;
+  const { origin } = useQueryData();
 
-  const [accountId, setAccountId] = useState<number>(connectedAccountId);
+  const currentAccountId = dapp.getDApp(origin).accountId;
 
-  const handleChangeAccount = (id: number) => {
-    if (id === connectedAccountId) return;
+  const [accountId, setAccountId] = useState<number>(currentAccountId);
 
+  const handleSetAccountId = (id: number) => {
+    if (id === currentAccountId) return;
     setAccountId(id);
   };
 
-  const changeConnectedAccount = () => {
-    dapp.changeAccount(accountId);
+  const handleChangeAccount = () => {
+    dapp.changeAccount(origin, accountId);
     window.close();
   };
 
@@ -32,12 +33,12 @@ export const ChangeAccount = () => {
           {Object.values(accounts).map((account) => (
             <li
               className={`${
-                account.id === connectedAccountId
+                account.id === currentAccountId
                   ? 'cursor-not-allowed bg-opacity-50 border-brand-royalblue'
                   : 'cursor-pointer hover:bg-bkg-4 border-brand-royalblue'
               } border border-solid  rounded-lg px-2 py-4 text-xs bg-bkg-2 flex justify-between items-center transition-all duration-200`}
               key={account.id}
-              onClick={() => handleChangeAccount(account.id)}
+              onClick={() => handleSetAccountId(account.id)}
             >
               <p>{account.label}</p>
 
@@ -62,8 +63,8 @@ export const ChangeAccount = () => {
           <PrimaryButton
             type="button"
             width="40"
-            disabled={accountId === connectedAccountId}
-            onClick={() => changeConnectedAccount()}
+            disabled={accountId === currentAccountId}
+            onClick={() => handleChangeAccount()}
           >
             Change
           </PrimaryButton>

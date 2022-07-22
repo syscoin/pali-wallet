@@ -1,8 +1,8 @@
 export const disable = (origin: string, isPendingWindow: () => boolean) => {
   const { dapp } = window.controller;
-  const isConnected = dapp.isConnected(origin);
+  const hasDApp = dapp.hasDApp(origin);
 
-  if (isPendingWindow() || !isConnected) return;
+  if (isPendingWindow() || !hasDApp) return;
 
   dapp.disconnect(origin);
 };

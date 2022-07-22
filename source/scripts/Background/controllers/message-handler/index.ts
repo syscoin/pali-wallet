@@ -15,18 +15,16 @@ export const setupConnection = (port: Runtime.Port) => {
 
   const isPendingWindow = (): boolean => pendingWindow;
 
+  const origin = new URL(port.sender?.url).host;
+  const title = port.sender?.tab?.title;
+
+  window.controller.dapp.addDApp(origin, title);
   setupEvents(port);
 
-  const origin = new URL(port.sender?.url).host;
-
-  const messageHandler = async (message: Message, connection: Runtime.Port) => {
+  const messageHandler = async (message: Message) => {
     if (browser.runtime.lastError) {
       throw new Error('Runtime last error');
     }
-
-    const title = connection.sender?.tab?.title;
-
-    window.controller.dapp.setCurrent(origin, title);
 
     switch (message.type) {
       case 'EVENT_REG':
@@ -49,10 +47,10 @@ export const setupConnection = (port: Runtime.Port) => {
     }
   };
 
-  const onMessage = async (message: Message, _port: Runtime.Port) => {
+  const onMessage = async (message: Message) => {
     console.log(`[DApp] Message from ${origin}`, message.type, message.data);
     try {
-      const response = await messageHandler(message, _port);
+      const response = await messageHandler(message);
       if (response === undefined) return;
 
       console.log('[DApp] Response', response);

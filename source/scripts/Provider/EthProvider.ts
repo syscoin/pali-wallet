@@ -4,9 +4,9 @@ import { web3Provider } from '@pollum-io/sysweb3-network';
 import store from 'state/store';
 import { removeSensitiveDataFromVault } from 'utils/account';
 
-export const EthProvider = () => {
-  const getConnectedAccount = () => {
-    const account = window.controller.dapp.getConnectedAccount();
+export const EthProvider = (origin: string) => {
+  const getAccount = () => {
+    const account = window.controller.dapp.getAccount(origin);
     if (!account) throw new Error('No connected account');
 
     return account;
@@ -23,7 +23,7 @@ export const EthProvider = () => {
 
   const getAddress = async () => await web3Provider.eth.getAccounts()[0];
 
-  const getBalance = async () => getConnectedAccount().balances.ethereum;
+  const getBalance = async () => getAccount().balances.ethereum;
 
   const handleLockAccount = async (walletAddress: string) =>
     web3Provider.eth.personal.lockAccount(walletAddress);
@@ -38,7 +38,7 @@ export const EthProvider = () => {
   const getState = () => removeSensitiveDataFromVault(store.getState().vault);
 
   return {
-    isConnected: () => Boolean(getConnectedAccount()),
+    isConnected: () => Boolean(getAccount()),
     getAccounts,
     getNetwork,
     getChainId,
@@ -48,7 +48,7 @@ export const EthProvider = () => {
     getBalance,
     handleLockAccount,
     handleUnlockAccount,
-    getConnectedAccount,
+    getAccount,
     getState,
   };
 };

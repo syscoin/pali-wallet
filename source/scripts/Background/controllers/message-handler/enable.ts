@@ -11,14 +11,11 @@ export const enable = async (
   const { network } = message.data;
   const { dapp, createPopup } = window.controller;
 
-  const isConnected = dapp.isConnected(origin);
-  const hasConnectedAccount = dapp.hasConnectedAccount();
-
-  if (isConnected && hasConnectedAccount) return true;
+  if (dapp.isConnected(origin)) return true;
 
   if (isPendingWindow()) return;
 
-  const popup = await createPopup('connect-wallet', { network });
+  const popup = await createPopup('connect-wallet', { network, origin });
 
   setPendingWindow(true);
 

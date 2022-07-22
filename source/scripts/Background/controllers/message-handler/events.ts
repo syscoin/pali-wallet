@@ -18,9 +18,7 @@ export const setupEvents = (port: Runtime.Port) => {
           window.controller.dapp.isConnected(origin) &&
           window.controller.dapp.hasListener(origin, eventType)
         ) {
-          console.log('is connected, has listener');
           port.postMessage({ id, data });
-          // port.postMessage({ id: 'localhost:3000.connect', data });
         }
       },
       { passive: true }

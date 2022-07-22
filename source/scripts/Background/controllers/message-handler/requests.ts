@@ -1,5 +1,8 @@
 import { browser } from 'webextension-polyfill-ts';
 
+import { EthProvider } from 'scripts/Provider/EthProvider';
+import { SysProvider } from 'scripts/Provider/SysProvider';
+
 import { Message } from './types';
 
 export const methodRequest = async (
@@ -14,9 +17,7 @@ export const methodRequest = async (
   if (prefix === 'wallet') {
     switch (methodName) {
       case 'isConnected':
-        const isConnected = dapp.isConnected(origin);
-        const hasConnectedAccount = dapp.hasConnectedAccount();
-        return isConnected && hasConnectedAccount;
+        return dapp.isConnected(origin);
       case 'changeAccount':
         return changeAccount(
           message.data.network,
@@ -29,7 +30,7 @@ export const methodRequest = async (
     }
   }
 
-  const provider = prefix === 'sys' ? dapp.sysProvider : dapp.ethProvider;
+  const provider = prefix === 'sys' ? SysProvider(origin) : EthProvider(origin);
   const method = provider[methodName];
 
   if (!method) throw new Error('Unknown method');
@@ -44,13 +45,12 @@ const changeAccount = async (
   setPendingWindow: (isPending: boolean) => void
 ) => {
   const { dapp, createPopup } = window.controller;
-  const isWhitelisted = dapp.isConnected(origin);
-  const hasConnectedAccount = dapp.hasConnectedAccount();
-  const isConnected = isWhitelisted && hasConnectedAccount;
+
+  const isConnected = dapp.isConnected(origin);
 
   if (isPendingWindow() || !isConnected) return;
 
-  const popup = await createPopup('change-account', { network });
+  const popup = await createPopup('change-account', { network, origin });
 
   setPendingWindow(true);
 

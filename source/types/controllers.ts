@@ -90,20 +90,19 @@ export interface IControllerUtils {
 }
 
 export interface IDAppController {
+  addDApp: (origin: string, title: string) => void;
   addListener: (origin: string, eventName: string) => void;
-  changeAccount: (accountId: number) => void;
-  connect: (accountId: number) => void;
+  changeAccount: (origin: string, accountId: number) => void;
+  connect: (origin: string, accountId: number) => void;
   disconnect: (origin: string) => void;
-  ethProvider: any;
-  getConnectedAccount: () => IKeyringAccountState | undefined;
-  getCurrent: () => IDApp;
+  getAccount: (origin: string) => IKeyringAccountState | undefined;
+  getDApp: (origin: string) => IDApp | undefined;
   getSigRequest: () => ISigRequest;
-  hasConnectedAccount: () => boolean;
+  hasDApp: (origin: string) => boolean;
   hasListener: (origin: string, eventName: string) => boolean;
   isConnected: (origin: string) => boolean;
   removeListener: (origin: string, eventName: string) => void;
   removeListeners: (origin: string) => void;
-  setCurrent: (origin: string, title: string) => boolean;
+  // setCurrent: (origin: string, title: string) => boolean;
   setSigRequest: (req: ISigRequest) => void;
-  sysProvider: any;
 }

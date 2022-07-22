@@ -6,11 +6,11 @@
 // import store from 'state/store';
 // import { removeSensitiveDataFromVault, log, getHost } from 'utils/index';
 
-export const SysProvider = () => {
+export const SysProvider = (origin: string) => {
   // const txs = SyscoinTransactions();
 
-  const getConnectedAccount = () => {
-    const account = window.controller.dapp.getConnectedAccount();
+  const getAccount = () => {
+    const account = window.controller.dapp.getAccount(origin);
     if (!account) throw new Error('No connected account');
 
     return account;
@@ -61,10 +61,10 @@ export const SysProvider = () => {
   }; */
 
   return {
-    getAccount: () => getConnectedAccount(),
-    getAddress: () => getConnectedAccount().address,
-    getBalance: () => getConnectedAccount().balances.syscoin,
-    getPublicKey: () => getConnectedAccount().xpub,
-    getTokens: () => getConnectedAccount().assets,
+    getAccount: () => getAccount(),
+    getAddress: () => getAccount().address,
+    getBalance: () => getAccount().balances.syscoin,
+    getPublicKey: () => getAccount().xpub,
+    getTokens: () => getAccount().assets,
   };
 };

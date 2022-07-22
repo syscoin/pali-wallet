@@ -8,31 +8,29 @@ import {
   Icon,
   Modal,
 } from 'components/index';
-import { useStore } from 'hooks/index';
+import { useQueryData, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
-import { ellipsis, getHost } from 'utils/index';
+import { ellipsis } from 'utils/index';
 
 export const ConnectWallet = () => {
   const { accounts, trustedApps } = useStore();
   const { dapp } = getController();
+  const { origin } = useQueryData();
 
-  const current = dapp.getCurrent();
-  const connectedAccountId = dapp.getCurrent().accountId;
-  const origin = current && current.origin;
+  const currentAccountId = dapp.getDApp(origin).accountId;
 
-  const [accountId, setAccountId] = useState<number>(connectedAccountId);
+  const [accountId, setAccountId] = useState<number>(currentAccountId);
   const [isInTrustedList, setIsInTrustedList] = useState<boolean>(false);
   const [openExtraConfirmation, setOpenExtraConfirmation] =
     useState<boolean>(false);
 
-  const confirmConnection = () => {
-    dapp.connect(accountId);
+  const handleConnect = () => {
+    dapp.connect(origin, accountId);
     window.close();
   };
 
   useEffect(() => {
-    const trustedApp = trustedApps[getHost(origin)] !== '';
-
+    const trustedApp = trustedApps[origin] !== '';
     setIsInTrustedList(trustedApp);
   });
 
@@ -46,7 +44,7 @@ export const ConnectWallet = () => {
             {Object.values(accounts).map((acc) => (
               <li
                 className={`${
-                  acc.id === connectedAccountId
+                  acc.id === currentAccountId
                     ? 'cursor-not-allowed bg-opacity-50 border-brand-royalblue'
                     : 'cursor-pointer hover:bg-bkg-4 border-brand-royalblue'
                 } border border-solid  rounded-lg px-2 py-4 text-xs bg-bkg-2 flex justify-between items-center transition-all duration-200`}
@@ -92,7 +90,7 @@ export const ConnectWallet = () => {
             onClick={
               !isInTrustedList
                 ? () => setOpenExtraConfirmation(true)
-                : () => confirmConnection()
+                : () => handleConnect()
             }
           >
             {accountId > -1 ? 'Confirm' : 'Next'}
@@ -133,7 +131,7 @@ export const ConnectWallet = () => {
                 action
                 width="32"
                 type="button"
-                onClick={() => confirmConnection()}
+                onClick={() => handleConnect()}
               >
                 Confirm
               </PrimaryButton>
