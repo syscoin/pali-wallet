@@ -1,4 +1,4 @@
-import React, { FC, useCallback, Fragment } from 'react';
+import React, { FC, useCallback, Fragment, useEffect } from 'react';
 
 import { IconButton, Icon } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
@@ -19,7 +19,7 @@ export const PanelList: FC<IPanelList> = ({
 }) => {
   const { navigate } = useUtils();
 
-  const { activeAccount } = useStore();
+  const { activeAccount, activeNetwork } = useStore();
 
   const getTxType = (tx: any) => {
     if (isSyscoinChain) {
@@ -42,8 +42,22 @@ export const PanelList: FC<IPanelList> = ({
   };
 
   const txid = isSyscoinChain ? 'txid' : 'hash';
-  const blocktime = isSyscoinChain ? 'blockTime' : 'timestamp';
+  const blocktime = isSyscoinChain
+    ? 'blockTime'
+    : activeNetwork.chainId === 57 || activeNetwork.chainId === 5700
+    ? 'timeStamp'
+    : 'timestamp';
   const transactions = isSyscoinChain ? data : data.slice(0).reverse();
+
+  useEffect(() => {
+    console.log({
+      txid,
+      blocktime,
+      transactions,
+      isSyscoinChain,
+      activeAccount,
+    });
+  }, [blocktime]);
 
   const isShowedGroupBar = useCallback(
     (tx: any, idx: number) =>
@@ -69,7 +83,7 @@ export const PanelList: FC<IPanelList> = ({
                 }
               );
 
-            return tx[blocktime] !== undefined ? (
+            return tx[blocktime] ? (
               <Fragment key={tx[txid]}>
                 {isShowedGroupBar(tx, idx) && (
                   <li className="my-3 text-center text-sm bg-bkg-1">

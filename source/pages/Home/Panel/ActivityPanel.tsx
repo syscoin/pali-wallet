@@ -8,7 +8,9 @@ import { PanelList } from './components/PanelList';
 export const ActivityPanel: FC = () => {
   const { activeAccount, activeNetwork, networks } = useStore();
 
-  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+  const isSyscoinChain =
+    Boolean(networks.syscoin[activeNetwork.chainId]) &&
+    activeNetwork.url.includes('blockbook');
 
   return (
     <>

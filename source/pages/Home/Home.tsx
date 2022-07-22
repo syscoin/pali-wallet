@@ -35,7 +35,7 @@ export const Home = () => {
 
     const { syscoin, ethereum } = activeAccount.balances;
 
-    setBalance(chain === 'syscoin' ? syscoin : ethereum);
+    setBalance(isSyscoinChain ? syscoin : ethereum);
   }, [activeNetwork]);
 
   const setChainSymbol = async () => {
