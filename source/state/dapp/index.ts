@@ -32,7 +32,7 @@ const DAppState = createSlice({
       const index = state.listeners[origin].findIndex((e) => e === eventName);
       if (index === -1) return;
 
-      state.listeners[origin].splice(index);
+      state.listeners[origin].splice(index, 1);
     },
 
     removeListeners(state: IDAppState, action: PayloadAction<string>) {
