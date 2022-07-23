@@ -2,6 +2,11 @@ import { browser } from 'webextension-polyfill-ts';
 
 import { Message } from './types';
 
+/**
+ * Opens a popup to select an account to connect
+ *
+ * @return `true` if an account was selected
+ */
 export const enable = async (
   message: Message,
   origin: string,

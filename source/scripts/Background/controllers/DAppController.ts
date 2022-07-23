@@ -17,6 +17,11 @@ export interface ISigRequest {
   origin: string;
 }
 
+/**
+ * Controls the dapp store
+ *
+ * DApps connections use the site origin as id
+ */
 const DAppController = (): IDAppController => {
   let request: ISigRequest;
 

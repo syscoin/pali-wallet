@@ -35,6 +35,8 @@ export const ExternalRoute = () => {
   const { accounts } = useStore();
   const { pathname, search } = useLocation();
 
+  // defaultRoute stores info from createPopup
+  // used to redirect after unlocking the wallet
   const query = useQuery();
   const [defaultRoute] = useState(query.route + '?data=' + query.data);
 

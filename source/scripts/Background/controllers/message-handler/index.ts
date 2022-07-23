@@ -6,21 +6,31 @@ import { setupEvents, registerEvent, deregisterEvent } from './events';
 import { methodRequest } from './requests';
 import { Message } from './types';
 
+/**
+ * Setups message communication with DApp
+ *
+ * A message listener will handle:
+ * - Enable/disable requests
+ * - Add/remove listeners for `DAppEvents`
+ * - Requests for Sys and Eth providers methods
+ */
 export const setupConnection = (port: Runtime.Port) => {
-  let pendingWindow = false;
-
-  const setPendingWindow = (isPending: boolean): void => {
-    pendingWindow = isPending;
-  };
-
-  const isPendingWindow = (): boolean => pendingWindow;
-
   const origin = new URL(port.sender?.url).host;
   const title = port.sender?.tab?.title;
 
   window.controller.dapp.addDApp(origin, title);
   setupEvents(port);
 
+  // used to prevent multiple popups open
+  let pendingWindow = false;
+  const isPendingWindow = () => pendingWindow;
+  const setPendingWindow = (isPending: boolean) => {
+    pendingWindow = isPending;
+  };
+
+  /**
+   * Handles message request execution
+   */
   const messageHandler = async (message: Message) => {
     if (browser.runtime.lastError) {
       throw new Error('Runtime last error');
@@ -47,6 +57,9 @@ export const setupConnection = (port: Runtime.Port) => {
     }
   };
 
+  /**
+   * Receives and reply messages
+   */
   const onMessage = async (message: Message) => {
     console.log(`[DApp] Message from ${origin}`, message.type, message.data);
     try {

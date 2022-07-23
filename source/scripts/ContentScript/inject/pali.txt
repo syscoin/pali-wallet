@@ -1,3 +1,6 @@
+/**
+ * Sends a message to pali and add a listerner for the response
+ */
 const proxy = (type, data) =>
   new Promise((resolve, reject) => {
     const id = Date.now() + '.' + Math.random();
@@ -37,6 +40,11 @@ const proxy = (type, data) =>
     );
   });
 
+/**
+ * Requests a method execution to pali
+ * @param req is an object that contains `method` and maybe `args`
+ * @returns the result of the method execution
+ */
 const request = async (req) => {
   console.log('[Pali] Requesting method', req);
 
@@ -46,6 +54,10 @@ const request = async (req) => {
   return response;
 };
 
+/**
+ * Adds a listener to pali events
+ * @see `DAppEvents`
+ */
 const on = (method, callback) => {
   let origin = window.location.host;
 
@@ -72,6 +84,10 @@ const on = (method, callback) => {
   );
 };
 
+/**
+ * Removes a listener from pali events
+ * @see `DAppEvents`
+ */
 const removeListener = (method) => {
   let origin = window.location.host;
 

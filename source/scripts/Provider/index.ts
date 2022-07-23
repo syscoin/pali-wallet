@@ -1,19 +1,21 @@
+// Runs at the page environment
+
 import { EventEmitter } from 'events';
 import { browser } from 'webextension-polyfill-ts';
 
 const emitter = new EventEmitter();
+
+// Connect to pali
 const backgroundPort = browser.runtime.connect(undefined, {
   name: 'pali-inject',
 });
 
-const onMessage = ({ id, data }: { data: string; id: string }) => {
+// Every message from pali emits an event
+backgroundPort.onMessage.addListener(({ id, data }) => {
   emitter.emit(id, data);
-};
+});
 
-backgroundPort.onMessage.addListener((message: { data: string; id: string }) =>
-  onMessage(message)
-);
-
+// Add listener for pali events
 const checkForPaliRegisterEvent = (type, id) => {
   if (type === 'EVENT_REG') {
     emitter.on(id, (result) => {
@@ -32,6 +34,9 @@ const checkForPaliRegisterEvent = (type, id) => {
   });
 };
 
+/**
+ * Listens to local messages and sends them to pali
+ */
 const start = () => {
   window.addEventListener(
     'message',
@@ -43,6 +48,7 @@ const start = () => {
 
       if (!id || !type) return;
 
+      // listen for the response
       checkForPaliRegisterEvent(type, id);
 
       backgroundPort.postMessage({

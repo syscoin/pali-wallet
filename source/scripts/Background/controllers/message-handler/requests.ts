@@ -5,6 +5,14 @@ import { SysProvider } from 'scripts/Provider/SysProvider';
 
 import { Message } from './types';
 
+/**
+ * Handles methods request.
+ *
+ * Methods have a prefix and a name. Prefixes are the destination of the
+ * request. Supported: sys, eth, wallet
+ *
+ * @return The method return
+ */
 export const methodRequest = async (
   message: Message,
   origin: string,
@@ -14,6 +22,8 @@ export const methodRequest = async (
   const { dapp } = window.controller;
 
   const [prefix, methodName] = message.data.method.split('_');
+
+  //* Wallet methods
   if (prefix === 'wallet') {
     switch (methodName) {
       case 'isConnected':
@@ -30,6 +40,7 @@ export const methodRequest = async (
     }
   }
 
+  //* Providers methods
   const provider = prefix === 'sys' ? SysProvider(origin) : EthProvider(origin);
   const method = provider[methodName];
 
@@ -38,6 +49,11 @@ export const methodRequest = async (
   return await method(message.data.args);
 };
 
+/**
+ * Opens a popup to select another account to connect
+ *
+ * @return `true` if the selected account was changed
+ */
 const changeAccount = async (
   network: string,
   origin: string,
