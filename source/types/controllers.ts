@@ -90,19 +90,57 @@ export interface IControllerUtils {
 }
 
 export interface IDAppController {
+  /**
+   * Adds the DApp to the store without an account
+   */
   addDApp: (origin: string, title: string) => void;
+  /**
+   * Adds an event listener
+   */
   addListener: (origin: string, eventName: string) => void;
+  /**
+   * Changes the account
+   * @emits accountChange
+   */
   changeAccount: (origin: string, accountId: number) => void;
+  /**
+   * Complete a connection with a DApp. Adds the account
+   * @emits connect
+   */
   connect: (origin: string, accountId: number) => void;
+  /**
+   * Removes the DApp from the store
+   * @emits disconnect
+   */
   disconnect: (origin: string) => void;
+  /**
+   * Retrieves the connected account
+   */
   getAccount: (origin: string) => IKeyringAccountState | undefined;
+  /**
+   * Retrieves a DApp
+   */
   getDApp: (origin: string) => IDApp | undefined;
   getSigRequest: () => ISigRequest;
+  /**
+   * Checks if DApp exists
+   */
   hasDApp: (origin: string) => boolean;
+  /**
+   * Checks if listener exists
+   */
   hasListener: (origin: string, eventName: string) => boolean;
+  /**
+   * Checks if DApp has a connected account
+   */
   isConnected: (origin: string) => boolean;
+  /**
+   * Removes an event listener
+   */
   removeListener: (origin: string, eventName: string) => void;
+  /**
+   * Removes all listeners from a DApp
+   */
   removeListeners: (origin: string) => void;
-  // setCurrent: (origin: string, title: string) => boolean;
   setSigRequest: (req: ISigRequest) => void;
 }
