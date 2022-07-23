@@ -58,10 +58,10 @@ const request = async (req) => {
  * Adds a listener to pali events
  * @see `DAppEvents`
  */
-const on = (method, callback) => {
+const on = (eventName, callback) => {
   let origin = window.location.host;
 
-  const id = `${origin}.${method}`;
+  const id = `${origin}.${eventName}`;
 
   window.pali._listeners[id] = ({ detail }) => {
     callback(JSON.parse(detail));
@@ -76,7 +76,7 @@ const on = (method, callback) => {
       id: id,
       type: 'EVENT_REG',
       data: {
-        method,
+        eventName,
         origin,
       },
     },
@@ -88,10 +88,10 @@ const on = (method, callback) => {
  * Removes a listener from pali events
  * @see `DAppEvents`
  */
-const removeListener = (method) => {
+const removeListener = (eventName) => {
   let origin = window.location.host;
 
-  const id = `${origin}.${method}`;
+  const id = `${origin}.${eventName}`;
 
   if (window.pali._listeners[id]) {
     window.removeEventListener(id, window.pali._listeners[id]);
@@ -104,7 +104,7 @@ const removeListener = (method) => {
       id,
       type: 'EVENT_DEREG',
       data: {
-        method,
+        eventName,
         origin,
       },
     },

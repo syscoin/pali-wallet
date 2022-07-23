@@ -31,17 +31,17 @@ export const setupEvents = (port: Runtime.Port) => {
 };
 
 export const registerEvent = (message: Message) => {
-  const { origin, method } = message.data;
+  const { origin, eventName } = message.data;
 
-  if (!DAppEvents[method]) return;
+  if (!DAppEvents[eventName]) return;
 
-  window.controller.dapp.addListener(origin, method);
+  window.controller.dapp.addListener(origin, eventName);
 };
 
 export const deregisterEvent = (message: Message) => {
-  const { origin, method } = message.data;
+  const { origin, eventName } = message.data;
 
-  if (!DAppEvents[method]) return;
+  if (!DAppEvents[eventName]) return;
 
-  window.controller.dapp.removeListener(origin, method);
+  window.controller.dapp.removeListener(origin, eventName);
 };

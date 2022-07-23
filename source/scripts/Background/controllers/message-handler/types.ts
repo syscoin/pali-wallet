@@ -1,17 +1,6 @@
 /* eslint-disable no-shadow */
 export type Message = {
-  data: {
-    args: any[];
-    chain?: string;
-    data: string;
-    from?: string;
-    gas?: string;
-    method: string;
-    network: string;
-    origin?: string;
-    to?: string;
-    value?: string;
-  };
+  data: any;
   id: string;
   type: string;
 };
