@@ -23,5 +23,9 @@ export const useQuery = (): {
  */
 export const useQueryData = () => {
   const params = useQuery();
-  return React.useMemo(() => JSON.parse(params.data), [params]);
+
+  return React.useMemo(() => {
+    if (!params.data) return undefined;
+    return JSON.parse(params.data);
+  }, [params]);
 };
