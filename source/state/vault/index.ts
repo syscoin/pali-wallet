@@ -1,11 +1,11 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 import {
-  INetwork,
   initialNetworksState,
-  IKeyringAccountState,
   initialActiveAccountState,
-} from '@pollum-io/sysweb3-utils';
+  IKeyringAccountState,
+} from '@pollum-io/sysweb3-keyring';
+import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import trustedApps from './trustedApps.json';
 import { IVaultState } from './types';

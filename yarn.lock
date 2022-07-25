@@ -1828,16 +1828,16 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.331":
-  version "1.0.331"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.331.tgz#70db89f3ef060810d93407062ad6abd8a4de70e3"
-  integrity sha512-OJbra9ef/AA0GatvXyomEjD8d3WoqR7Q1ZWJRTJzZsmhBPYWD4q4ABOeWn1mOoTWyZRyEsZxfcBXg9infNqcXA==
+"@pollum-io/sysweb3-keyring@^1.0.333":
+  version "1.0.333"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.333.tgz#b600874feb6767c0f91621ea131470a3f15c001a"
+  integrity sha512-VV6GDhoraCTVffJ8/TzvlQ72J/x1TAGZ7EBPxlOhRI6Ihr2Wjgcdx3W6FZHLEFy2wN7IK9/s2Uu7EkIQzkq+gA==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "^1.0.16"
-    "@pollum-io/sysweb3-network" "^1.0.47"
-    "@pollum-io/sysweb3-utils" "^1.1.159"
+    "@pollum-io/sysweb3-network" "^1.0.51"
+    "@pollum-io/sysweb3-utils" "^1.1.172"
     axios "^0.26.1"
     bip39 "^3.0.4"
     coinselectsyscoin "^1.0.77"
@@ -1854,10 +1854,22 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
-"@pollum-io/sysweb3-network@^1.0.47", "@pollum-io/sysweb3-network@^1.0.50":
+"@pollum-io/sysweb3-network@^1.0.50":
   version "1.0.50"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.50.tgz#24288f0e101ad20eefcab5859362770be2b479b9"
   integrity sha512-UI2zv5CbsF7ohTP3WV7KutOqfmnfhc6fMfmsqhvwWqrAMDNOAn0+/yZkOy/5dO5PPyMwxPSGEszDPOWfy75JHw==
+  dependencies:
+    "@pollum-io/sysweb3-core" "^1.0.18"
+    "@pollum-io/sysweb3-utils" "^1.1.159"
+    axios "^0.26.1"
+    bip44-constants "^114.0.0"
+    ethers "^5.6.9"
+    web3 "^1.7.1"
+
+"@pollum-io/sysweb3-network@^1.0.51":
+  version "1.0.51"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.51.tgz#efd057a354bd630af06bf26cc220c9c254608ff5"
+  integrity sha512-7YNxqUyAtGHzxY/sgPG/cIXkYfv1Ue9ApzHc8w/EEt6JE3mRFB98atCHX5Kdp0LWRXLdM3Wzndo+8Z6Qu/ePzA==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.18"
     "@pollum-io/sysweb3-utils" "^1.1.159"
@@ -1873,6 +1885,26 @@
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.16"
     "@pollum-io/sysweb3-network" "^1.0.50"
+    axios "^0.26.1"
+    bech32 "^2.0.0"
+    bip44-constants "^114.0.0"
+    bip84 "^0.2.7"
+    bitcoinjs-lib "^6.0.1"
+    camelcase-keys "^7.0.2"
+    coinselectsyscoin "^1.0.77"
+    crypto-js "^4.1.1"
+    ethers "^5.6.4"
+    syscoinjs-lib "^1.0.214"
+    syscointx-js "^1.0.101"
+    web3 "^1.7.1"
+
+"@pollum-io/sysweb3-utils@^1.1.172":
+  version "1.1.172"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.172.tgz#90fa0a292058a72964ea9598f46e77f265b6afaa"
+  integrity sha512-qTIw6RP5+wOJlXg0wzg2UqVvBYB88YzmnJS9SvSsp3hAJgjMXV2IJu405MnKzRpru/T6FteDqPY2LvTZgTJGpQ==
+  dependencies:
+    "@pollum-io/sysweb3-core" "^1.0.16"
+    "@pollum-io/sysweb3-network" "^1.0.51"
     axios "^0.26.1"
     bech32 "^2.0.0"
     bip44-constants "^114.0.0"
@@ -3766,9 +3798,9 @@ bitcoinjs-lib@^6.0.1:
   dependencies:
     nanoassert "^1.0.0"
 
-"blake2b@git+https://github.com/BitGo/blake2b.git#6268e6dd678661e0acc4359e9171b97eb1ebf8ac":
+"blake2b@https://github.com/BitGo/blake2b#6268e6dd678661e0acc4359e9171b97eb1ebf8ac":
   version "2.1.3"
-  resolved "git+https://github.com/BitGo/blake2b.git#6268e6dd678661e0acc4359e9171b97eb1ebf8ac"
+  resolved "https://github.com/BitGo/blake2b#6268e6dd678661e0acc4359e9171b97eb1ebf8ac"
   dependencies:
     blake2b-wasm "https://github.com/BitGo/blake2b-wasm#193cdb71656c1a6c7f89b05d0327bb9b758d071b"
     nanoassert "^1.0.0"
@@ -5974,9 +6006,9 @@ eth-lib@^0.1.26:
     ws "^3.0.0"
     xhr-request-promise "^0.1.2"
 
-eth-object@^1.0.3, "eth-object@git+https://github.com/syscoin/eth-object.git":
+eth-object@^1.0.3, "eth-object@https://github.com/syscoin/eth-object.git":
   version "1.0.3"
-  resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
+  resolved "https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
     eth-util-lite "^1.0.1"
 

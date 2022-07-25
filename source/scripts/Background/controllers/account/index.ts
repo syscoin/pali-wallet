@@ -1,9 +1,9 @@
-import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
+import { IKeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
 
 import SysAccountController from './syscoin';
 
 const WalletController = (
-  keyringManager: any
+  keyringManager: IKeyringManager
 ): { account: any; addAccount: any } => {
   const controller = {
     account: {

@@ -1,8 +1,5 @@
-import {
-  IKeyringAccountState,
-  INetwork,
-  INetworkType,
-} from '@pollum-io/sysweb3-utils';
+import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
+import { INetwork, INetworkType } from '@pollum-io/sysweb3-utils';
 
 export interface IVaultState {
   accounts: {

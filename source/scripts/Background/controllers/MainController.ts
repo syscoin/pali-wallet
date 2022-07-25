@@ -1,9 +1,8 @@
-import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 import {
-  getSymbolByChain,
+  KeyringManager,
   IKeyringAccountState,
-  INetwork,
-} from '@pollum-io/sysweb3-utils';
+} from '@pollum-io/sysweb3-keyring';
+import { getSymbolByChain, INetwork } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
 import {
