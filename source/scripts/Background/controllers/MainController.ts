@@ -124,9 +124,6 @@ const MainController = () => {
         })
       );
 
-      if (account.id === 0)
-        keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
-
       store.dispatch(setIsPendingBalances(false));
       store.dispatch(setActiveAccount(account));
 
@@ -155,9 +152,6 @@ const MainController = () => {
         value: keyringManager.getEncryptedXprv(),
       })
     );
-
-    if (networkAccount.id === 0)
-      keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
 
     store.dispatch(setIsPendingBalances(false));
     store.dispatch(setActiveAccount(networkAccount));

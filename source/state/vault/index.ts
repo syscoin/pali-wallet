@@ -37,6 +37,14 @@ const VaultState = createSlice({
   name: 'vault',
   initialState,
   reducers: {
+    setAccounts(
+      state: IVaultState,
+      action: PayloadAction<{
+        [id: number]: IKeyringAccountState;
+      }>
+    ) {
+      state.accounts = action.payload;
+    },
     setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
       const { id } = state.activeAccount;
       state.accounts[id].transactions.push(action.payload);
@@ -173,6 +181,7 @@ const VaultState = createSlice({
 });
 
 export const {
+  setAccounts,
   setActiveAccount,
   setActiveAccountProperty,
   setActiveNetwork,

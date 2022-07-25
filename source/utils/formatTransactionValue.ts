@@ -14,7 +14,9 @@ export const formatTransactionValue = (
   decimals?: number
 ) => {
   try {
-    const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+    const isSyscoinChain =
+      Boolean(networks.syscoin[activeNetwork.chainId]) &&
+      activeNetwork.url.includes('blockbook');
 
     const isSysTestnet = activeNetwork.chainId === 5700;
 
@@ -34,7 +36,6 @@ export const formatTransactionValue = (
       : chooseDecimalsPlaces(syscoinValue, 4) +
           `${isSysTestnet ? ' TSYS' : ' SYS'}`;
   } catch (error) {
-    console.log('error', error);
     return 0;
   }
 };
