@@ -3,11 +3,11 @@
 // import { SyscoinTransactions } from '@pollum-io/sysweb3-keyring';
 
 // import { listNewDapp } from 'state/dapp';
-// import store from 'state/store';
+import store from 'state/store';
 // import { removeSensitiveDataFromVault, log, getHost } from 'utils/index';
 
 export const SysProvider = (origin: string) => {
-  // const txs = SyscoinTransactions();
+  const txs = window.controller.wallet.account.sys.tx;
 
   const getAccount = () => {
     const account = window.controller.dapp.getAccount(origin);
@@ -16,9 +16,15 @@ export const SysProvider = (origin: string) => {
     return account;
   };
 
-  /* const getNetwork = () => store.getState().vault.activeNetwork;
+  const getNetwork = () => store.getState().vault.activeNetwork;
 
-  const getState = () => removeSensitiveDataFromVault(store.getState().vault);
+  const estimateFee = () => txs.getRecommendedFee(getNetwork().url);
+
+  const sendTransaction = (tx) => {
+    window.controller.createPopup('tx/send/confirm', tx);
+  };
+
+  /* const getState = () => removeSensitiveDataFromVault(store.getState().vault);
 
   const notifyWalletChanges = async (): Promise<void> => {
     const { vault } = store.getState();
@@ -66,5 +72,7 @@ export const SysProvider = (origin: string) => {
     getBalance: () => getAccount().balances.syscoin,
     getPublicKey: () => getAccount().xpub,
     getTokens: () => getAccount().assets,
+    estimateFee,
+    sendTransaction,
   };
 };
