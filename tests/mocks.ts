@@ -4,8 +4,7 @@ import { initialState } from 'state/vault';
 import { IVaultState } from 'state/vault/types';
 
 export const MOCK_PASSWORD = 'Asdqwe123!';
-export const MOCK_SEED_PHRASE =
-  'peace uncle grit essence stuff angle cruise annual fury letter snack globe';
+export const MOCK_SEED_PHRASE = process.env.REACT_APP_SEED_PEACE_GLOBE;
 
 export const MOCK_XPUB =
   'zpub6rowqhwXmUCV5Dem7TFFWQSisgK9NwbdkJDYMqBi7JoRHK8fd9Zobr4bdJPGhzGvniAhfrCAbNetRqSDsbTQBXPdN4qzyNv5B1SMsWVtin2';

@@ -5,6 +5,7 @@ import { SysTransactionController } from '../transaction';
 import SysTrezorController from '../trezor/syscoin';
 import store from 'state/store';
 import {
+  setAccounts,
   setActiveAccount,
   setActiveAccountProperty,
   setIsPendingBalances,
@@ -17,33 +18,25 @@ const SysAccountController = () => {
   let intervalId: NodeJS.Timer;
 
   const getLatestUpdate = async (silent?: boolean) => {
-    const { activeAccount, networks, activeNetwork } = store.getState().vault;
+    const { activeAccount } = store.getState().vault;
 
     if (!activeAccount.address) return;
 
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
-    const updatedAccountInfo = await keyringManager.getLatestUpdateForAccount();
+    const { accountLatestUpdate, walleAccountstLatestUpdate } =
+      await keyringManager.getLatestUpdateForAccount();
 
     store.dispatch(setIsPendingBalances(false));
-
-    const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
-
-    const { assets } = updatedAccountInfo;
-
-    const storedAssets = activeAccount.assets.filter((asset: any) =>
-      assets.filter(
-        (activeAccountAsset: any) => activeAccountAsset.id !== asset.id
-      )
-    );
 
     store.dispatch(
       setActiveAccount({
         ...activeAccount,
-        ...updatedAccountInfo,
-        assets: isSyscoinChain ? assets : storedAssets,
+        ...accountLatestUpdate,
       })
     );
+
+    store.dispatch(setAccounts(walleAccountstLatestUpdate));
   };
 
   /** check if there is no pending transaction in mempool
@@ -69,18 +62,18 @@ const SysAccountController = () => {
   };
 
   const setAddress = async (): Promise<string> => {
-    // @ts-ignore
-    const { receivingAddress } =
-      await keyringManager.getLatestUpdateForAccount();
+    const {
+      accountLatestUpdate: { address },
+    } = await keyringManager.getLatestUpdateForAccount();
 
     store.dispatch(
       setActiveAccountProperty({
         property: 'address',
-        value: String(receivingAddress),
+        value: String(address),
       })
     );
 
-    return receivingAddress;
+    return address;
   };
 
   const getErc20TokenBalance = async (
@@ -92,8 +85,6 @@ const SysAccountController = () => {
         tokenAddress,
         walletAddress
       );
-
-      console.log('balance any tok', balance);
 
       return balance;
     } catch (error) {

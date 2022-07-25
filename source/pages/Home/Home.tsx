@@ -16,6 +16,7 @@ export const Home = () => {
     activeAccount,
     lastLogin,
     isPendingBalances,
+    activeToken,
   } = useStore();
   const [symbol, setSymbol] = useState('SYS');
   const [fiatPriceValue, setFiatPriceValue] = useState('');
@@ -46,7 +47,8 @@ export const Home = () => {
     const amount = await getFiatAmount(
       balance || 0,
       4,
-      String(fiat.asset).toUpperCase()
+      String(fiat.asset).toUpperCase(),
+      true
     );
 
     setFiatPriceValue(String(amount));
@@ -82,8 +84,8 @@ export const Home = () => {
                 </p>
 
                 <p className="mt-4 font-poppins">
-                  {activeNetwork.currency
-                    ? activeNetwork.currency.toUpperCase()
+                  {activeToken
+                    ? activeToken.toUpperCase()
                     : symbolByChain.toUpperCase()}
                 </p>
               </div>

@@ -99,7 +99,7 @@ const MainController = () => {
   ) => {
     store.dispatch(setIsPendingBalances(true));
 
-    const { networks, activeAccount } = store.getState().vault;
+    const { networks } = store.getState().vault;
 
     if (key) {
       const network = networks[chain][key];
@@ -123,9 +123,6 @@ const MainController = () => {
           value: keyringManager.getEncryptedXprv(),
         })
       );
-
-      if (account.id === 0)
-        keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
 
       store.dispatch(setIsPendingBalances(false));
       store.dispatch(setActiveAccount(account));
@@ -155,9 +152,6 @@ const MainController = () => {
         value: keyringManager.getEncryptedXprv(),
       })
     );
-
-    if (networkAccount.id === 0)
-      keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
 
     store.dispatch(setIsPendingBalances(false));
     store.dispatch(setActiveAccount(networkAccount));
