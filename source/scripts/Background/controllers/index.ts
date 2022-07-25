@@ -24,6 +24,10 @@ const MasterController = (): IMasterController => {
     utils.setFiat();
   };
 
+  /**
+   * Creates a popup for external routes. Mostly for DApps
+   * @returns the window object from the popup
+   */
   const createPopup = async (route = '', data = {}) => {
     const window = await browser.windows.getCurrent();
 
