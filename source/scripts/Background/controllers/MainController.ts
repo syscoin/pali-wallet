@@ -99,7 +99,7 @@ const MainController = () => {
   ) => {
     store.dispatch(setIsPendingBalances(true));
 
-    const { networks, activeAccount } = store.getState().vault;
+    const { networks } = store.getState().vault;
 
     if (key) {
       const network = networks[chain][key];
