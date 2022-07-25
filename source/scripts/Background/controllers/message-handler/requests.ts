@@ -45,5 +45,7 @@ export const methodRequest = async (
 
   if (!method) throw new Error('Unknown method');
 
-  return await method(message.data.args);
+  if (message.data.args) return await method(...message.data.args);
+
+  return await method();
 };
