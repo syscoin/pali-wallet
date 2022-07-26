@@ -62,7 +62,7 @@ const DAppController = (): IDAppController => {
   };
 
   const disconnect = (origin: string) => {
-    store.dispatch(removeDApp(origin));
+    store.dispatch(updateDAppAccount({ origin, accountId: null }));
 
     _dispatchEvents([new CustomEvent('disconnect', { detail: { origin } })]);
   };

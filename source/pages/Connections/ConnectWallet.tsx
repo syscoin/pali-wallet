@@ -17,7 +17,7 @@ export const ConnectWallet = () => {
   const { dapp } = getController();
   const { origin } = useQueryData();
 
-  const currentAccountId = dapp.getDApp(origin).accountId;
+  const currentAccountId = dapp.getDApp(origin)?.accountId;
 
   const [accountId, setAccountId] = useState<number>(currentAccountId);
   const [isInTrustedList, setIsInTrustedList] = useState<boolean>(false);
