@@ -11,6 +11,8 @@ import {
 import store from 'state/store';
 import { IDAppController } from 'types/controllers';
 
+import { DAppEvents } from './message-handler/types';
+
 export interface ISigRequest {
   address: string;
   message: string;
@@ -78,10 +80,14 @@ const DAppController = (): IDAppController => {
   };
 
   const addListener = (origin: string, eventName: string) => {
+    if (!DAppEvents[eventName]) return;
+
     store.dispatch(addListenerAction({ origin, eventName }));
   };
 
   const removeListener = (origin: string, eventName: string) => {
+    if (!DAppEvents[eventName]) return;
+
     store.dispatch(removeListenerAction({ origin, eventName }));
   };
 

@@ -2,7 +2,6 @@ import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { disable } from './disable';
 import { enable } from './enable';
-import { registerEvent, deregisterEvent } from './events';
 import { methodRequest } from './requests';
 import { Message } from './types';
 
@@ -15,10 +14,12 @@ import { Message } from './types';
  * - Requests for Sys and Eth providers methods
  */
 export const setupConnection = (port: Runtime.Port) => {
+  const { dapp } = window.controller;
+
   const origin = new URL(port.sender?.url).host;
   const title = port.sender?.tab?.title;
 
-  window.controller.dapp.addDApp(origin, title, port);
+  dapp.addDApp(origin, title, port);
   // setupEvents(port);
 
   // used to prevent multiple popups open
@@ -38,9 +39,9 @@ export const setupConnection = (port: Runtime.Port) => {
 
     switch (message.type) {
       case 'EVENT_REG':
-        return registerEvent(message);
+        return dapp.addListener(origin, message.data.eventName);
       case 'EVENT_DEREG':
-        return deregisterEvent(message);
+        return dapp.removeListener(origin, message.data.eventName);
       case 'ENABLE':
         return enable(message, origin, setPendingWindow, isPendingWindow);
       case 'DISABLE':
