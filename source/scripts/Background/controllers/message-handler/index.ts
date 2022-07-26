@@ -1,6 +1,5 @@
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
-import { disable } from './disable';
 import { enable } from './enable';
 import { methodRequest } from './requests';
 import { Message } from './types';
@@ -38,7 +37,7 @@ export const setupConnection = (port: Runtime.Port) => {
       case 'ENABLE':
         return enable(message, origin);
       case 'DISABLE':
-        return disable(origin);
+        return dapp.disconnect(origin);
       case 'METHOD_REQUEST':
         return methodRequest(message, origin);
       default:
