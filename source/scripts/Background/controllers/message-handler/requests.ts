@@ -12,12 +12,7 @@ import { Message } from './types';
  *
  * @return The method return
  */
-export const methodRequest = async (
-  message: Message,
-  origin: string,
-  setPendingWindow: (isPending: boolean) => void,
-  isPendingWindow: () => boolean
-) => {
+export const methodRequest = async (message: Message, origin: string) => {
   const { dapp } = window.controller;
 
   const [prefix, methodName] = message.data.method.split('_');
@@ -28,12 +23,7 @@ export const methodRequest = async (
       case 'isConnected':
         return dapp.isConnected(origin);
       case 'changeAccount':
-        return changeAccount(
-          message.data.network,
-          origin,
-          isPendingWindow,
-          setPendingWindow
-        );
+        return changeAccount(message.data.network, origin);
       default:
         throw new Error('Unknown method');
     }

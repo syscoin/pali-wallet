@@ -22,13 +22,6 @@ export const setupConnection = (port: Runtime.Port) => {
   dapp.addDApp(origin, title, port);
   // setupEvents(port);
 
-  // used to prevent multiple popups open
-  let pendingWindow = false;
-  const isPendingWindow = () => pendingWindow;
-  const setPendingWindow = (isPending: boolean) => {
-    pendingWindow = isPending;
-  };
-
   /**
    * Handles message request execution
    */
@@ -43,16 +36,11 @@ export const setupConnection = (port: Runtime.Port) => {
       case 'EVENT_DEREG':
         return dapp.removeListener(origin, message.data.eventName);
       case 'ENABLE':
-        return enable(message, origin, setPendingWindow, isPendingWindow);
+        return enable(message, origin);
       case 'DISABLE':
-        return disable(origin, isPendingWindow);
+        return disable(origin);
       case 'METHOD_REQUEST':
-        return methodRequest(
-          message,
-          origin,
-          setPendingWindow,
-          isPendingWindow
-        );
+        return methodRequest(message, origin);
       default:
         throw new Error('Unknown message type');
     }

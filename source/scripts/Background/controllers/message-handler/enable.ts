@@ -7,29 +7,23 @@ import { Message } from './types';
  *
  * @return `true` if an account was selected
  */
-export const enable = async (
-  message: Message,
-  origin: string,
-  setPendingWindow: (isPending: boolean) => void,
-  isPendingWindow: () => boolean
-) => {
+export const enable = async (message: Message, origin: string) => {
   const { network } = message.data;
   const { dapp, createPopup } = window.controller;
 
   if (dapp.isConnected(origin)) return true;
 
-  if (isPendingWindow()) return;
+  if (dapp.hasWindow(origin)) return;
 
   const popup = await createPopup('connect-wallet', { network, origin });
 
-  setPendingWindow(true);
+  dapp.setHasWindow(origin, true);
 
   return new Promise<boolean>((resolve) => {
     window.addEventListener(
       'connect',
       (event: CustomEvent) => {
         if (event.detail.origin === origin) {
-          setPendingWindow(false);
           resolve(true);
         }
       },
@@ -38,7 +32,7 @@ export const enable = async (
 
     browser.windows.onRemoved.addListener((id) => {
       if (id === popup.id) {
-        setPendingWindow(false);
+        dapp.setHasWindow(origin, false);
         resolve(false);
       }
     });

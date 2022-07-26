@@ -132,6 +132,7 @@ export interface IDAppController {
    * Checks if listener exists
    */
   hasListener: (origin: string, eventName: string) => boolean;
+  hasWindow: (origin: string) => boolean;
   /**
    * Checks if DApp has a connected account
    */
@@ -148,5 +149,6 @@ export interface IDAppController {
    * Removes all listeners from a DApp
    */
   removeListeners: (origin: string) => void;
+  setHasWindow: (origin: string, hasWindow: boolean) => void;
   setSigRequest: (req: ISigRequest) => void;
 }

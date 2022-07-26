@@ -19,6 +19,13 @@ export interface ISigRequest {
   origin: string;
 }
 
+interface IDappUtils {
+  [origin: string]: {
+    hasWindow: boolean;
+    port: Runtime.Port;
+  };
+}
+
 /**
  * Controls the dapp store
  *
@@ -27,8 +34,7 @@ export interface ISigRequest {
 const DAppController = (): IDAppController => {
   let request: ISigRequest;
 
-  // Map <'origin', port>
-  const _ports = new Map<string, Runtime.Port>();
+  const _dapps: IDappUtils = {};
 
   const hasDApp = (origin: string) => {
     const { dapps } = store.getState().dapp;
@@ -45,7 +51,7 @@ const DAppController = (): IDAppController => {
   };
 
   const addDApp = (origin: string, title: string, port: Runtime.Port) => {
-    _ports.set(origin, port);
+    _dapps[origin] = { port, hasWindow: false };
     store.dispatch(addDAppAction({ origin, title, accountId: null }));
   };
 
@@ -76,7 +82,7 @@ const DAppController = (): IDAppController => {
     if (!isConnected(origin)) return;
 
     const id = `${origin}.${eventName}`;
-    _ports.get(origin).postMessage({ id, data });
+    _dapps[origin].port.postMessage({ id, data });
   };
 
   const addListener = (origin: string, eventName: string) => {
@@ -119,6 +125,12 @@ const DAppController = (): IDAppController => {
 
   const getSigRequest = () => request;
 
+  const hasWindow = (origin: string) => _dapps[origin].hasWindow;
+
+  const setHasWindow = (origin: string, has: boolean) => {
+    _dapps[origin].hasWindow = has;
+  };
+
   return {
     getDApp,
     getAccount,
@@ -135,6 +147,8 @@ const DAppController = (): IDAppController => {
     removeListeners,
     hasListener,
     hasDApp,
+    hasWindow,
+    setHasWindow,
   };
 };
 

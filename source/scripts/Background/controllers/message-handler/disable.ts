@@ -3,11 +3,11 @@
  *
  * Keeps the listeners
  */
-export const disable = (origin: string, isPendingWindow: () => boolean) => {
+export const disable = (origin: string) => {
   const { dapp } = window.controller;
   const hasDApp = dapp.hasDApp(origin);
 
-  if (isPendingWindow() || !hasDApp) return;
+  if (dapp.hasWindow(origin) || !hasDApp) return;
 
   dapp.disconnect(origin);
 };
