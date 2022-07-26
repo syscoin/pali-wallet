@@ -109,7 +109,7 @@ export interface IDAppController {
    */
   connect: (origin: string, accountId: number) => void;
   /**
-   * Removes the DApp from the store
+   * Removes a connection with a DApp. Removes the account
    * @emits disconnect
    */
   disconnect: (origin: string) => void;
@@ -134,6 +134,10 @@ export interface IDAppController {
    * Checks if DApp has a connected account
    */
   isConnected: (origin: string) => boolean;
+  /**
+   * Removes a DApp
+   */
+  removeDApp: (origin: string) => void;
   /**
    * Removes an event listener
    */

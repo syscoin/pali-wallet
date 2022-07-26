@@ -2,7 +2,7 @@ import { browser } from 'webextension-polyfill-ts';
 
 import {
   addDApp as addDAppAction,
-  removeDApp,
+  removeDApp as removeDAppAction,
   addListener as addListenerAction,
   removeListener as removeListenerAction,
   removeListeners as removeListenersAction,
@@ -41,6 +41,10 @@ const DAppController = (): IDAppController => {
 
   const addDApp = (origin: string, title: string) => {
     store.dispatch(addDAppAction({ origin, title, accountId: null }));
+  };
+
+  const removeDApp = (origin: string) => {
+    store.dispatch(removeDAppAction(origin));
   };
 
   const connect = (origin: string, accountId: number) => {
@@ -108,6 +112,7 @@ const DAppController = (): IDAppController => {
     getAccount,
     isConnected,
     addDApp,
+    removeDApp,
     connect,
     changeAccount,
     setSigRequest,

@@ -76,6 +76,7 @@ export const setupConnection = (port: Runtime.Port) => {
   };
 
   const onDisconnect = () => {
+    window.controller.dapp.removeDApp(origin);
     window.controller.dapp.removeListeners(origin);
   };
 
