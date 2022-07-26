@@ -1,14 +1,11 @@
 import { browser } from 'webextension-polyfill-ts';
 
-import { Message } from './types';
-
 /**
  * Opens a popup to select an account to connect
  *
  * @return `true` if an account was selected
  */
-export const enable = async (message: Message, origin: string) => {
-  const { network } = message.data;
+export const enable = async (origin: string, network: string) => {
   const { dapp, createPopup } = window.controller;
 
   if (dapp.isConnected(origin)) return true;

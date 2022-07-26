@@ -2,7 +2,6 @@ import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 
 import { changeAccount } from './change-account';
-import { Message } from './types';
 
 /**
  * Handles methods request.
@@ -12,10 +11,13 @@ import { Message } from './types';
  *
  * @return The method return
  */
-export const methodRequest = async (message: Message, origin: string) => {
+export const methodRequest = async (
+  origin: string,
+  data: { args?: any[]; method: string; network?: string }
+) => {
   const { dapp } = window.controller;
 
-  const [prefix, methodName] = message.data.method.split('_');
+  const [prefix, methodName] = data.method.split('_');
 
   //* Wallet methods
   if (prefix === 'wallet') {
@@ -23,7 +25,7 @@ export const methodRequest = async (message: Message, origin: string) => {
       case 'isConnected':
         return dapp.isConnected(origin);
       case 'changeAccount':
-        return changeAccount(message.data.network, origin);
+        return changeAccount(data.network, origin);
       default:
         throw new Error('Unknown method');
     }
@@ -35,7 +37,7 @@ export const methodRequest = async (message: Message, origin: string) => {
 
   if (!method) throw new Error('Unknown method');
 
-  if (message.data.args) return await method(...message.data.args);
+  if (data.args) return await method(...data.args);
 
   return await method();
 };

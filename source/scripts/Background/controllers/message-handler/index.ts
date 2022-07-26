@@ -35,11 +35,11 @@ export const setupConnection = (port: Runtime.Port) => {
       case 'EVENT_DEREG':
         return dapp.removeListener(origin, message.data.eventName);
       case 'ENABLE':
-        return enable(message, origin);
+        return enable(origin, message.data.network);
       case 'DISABLE':
         return dapp.disconnect(origin);
       case 'METHOD_REQUEST':
-        return methodRequest(message, origin);
+        return methodRequest(origin, message.data);
       default:
         throw new Error('Unknown message type');
     }
