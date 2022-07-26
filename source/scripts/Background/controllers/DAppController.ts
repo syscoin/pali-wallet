@@ -1,4 +1,4 @@
-import { browser } from 'webextension-polyfill-ts';
+import { Runtime } from 'webextension-polyfill-ts';
 
 import {
   addDApp as addDAppAction,
@@ -25,6 +25,9 @@ export interface ISigRequest {
 const DAppController = (): IDAppController => {
   let request: ISigRequest;
 
+  // Map <'origin', port>
+  const _ports = new Map<string, Runtime.Port>();
+
   const hasDApp = (origin: string) => {
     const { dapps } = store.getState().dapp;
 
@@ -39,7 +42,8 @@ const DAppController = (): IDAppController => {
     return dapp.accountId !== null;
   };
 
-  const addDApp = (origin: string, title: string) => {
+  const addDApp = (origin: string, title: string, port: Runtime.Port) => {
+    _ports.set(origin, port);
     store.dispatch(addDAppAction({ origin, title, accountId: null }));
   };
 
@@ -50,25 +54,27 @@ const DAppController = (): IDAppController => {
   const connect = (origin: string, accountId: number) => {
     store.dispatch(updateDAppAccount({ origin, accountId }));
 
-    _dispatchEvents([new CustomEvent('connect', { detail: { origin } })]);
+    _postEvent(origin, 'connect');
   };
 
   const changeAccount = (origin: string, accountId: number) => {
     store.dispatch(updateDAppAccount({ origin, accountId }));
 
-    _dispatchEvents([new CustomEvent('accountChange', { detail: { origin } })]);
-  };
-
-  const _dispatchEvents = async (events: Event[]) => {
-    const background = await browser.runtime.getBackgroundPage();
-
-    events.forEach((event) => background.dispatchEvent(event));
+    _postEvent(origin, 'accountChange');
   };
 
   const disconnect = (origin: string) => {
     store.dispatch(updateDAppAccount({ origin, accountId: null }));
 
-    _dispatchEvents([new CustomEvent('disconnect', { detail: { origin } })]);
+    _postEvent(origin, 'disconnect');
+  };
+
+  const _postEvent = async (origin: string, eventName: string, data?: any) => {
+    if (!hasListener(origin, eventName)) return;
+    if (!isConnected(origin)) return;
+
+    const id = `${origin}.${eventName}`;
+    _ports.get(origin).postMessage({ id, data });
   };
 
   const addListener = (origin: string, eventName: string) => {

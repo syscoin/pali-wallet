@@ -1,4 +1,4 @@
-import { Runtime } from 'webextension-polyfill-ts';
+// import { Runtime } from 'webextension-polyfill-ts';
 
 import { Message, DAppEvents } from './types';
 
@@ -6,7 +6,7 @@ import { Message, DAppEvents } from './types';
  * Adds event listeners for `DAppEvents`. If DApps are listening
  * to those events, sends message to propagate the event
  */
-export const setupEvents = (port: Runtime.Port) => {
+/* export const setupEvents = (port: Runtime.Port) => {
   Object.values(DAppEvents).forEach((eventType) => {
     window.addEventListener(
       eventType,
@@ -28,7 +28,7 @@ export const setupEvents = (port: Runtime.Port) => {
       { passive: true }
     );
   });
-};
+}; */
 
 export const registerEvent = (message: Message) => {
   const { origin, eventName } = message.data;

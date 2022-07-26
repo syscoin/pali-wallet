@@ -2,7 +2,7 @@ import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { disable } from './disable';
 import { enable } from './enable';
-import { setupEvents, registerEvent, deregisterEvent } from './events';
+import { registerEvent, deregisterEvent } from './events';
 import { methodRequest } from './requests';
 import { Message } from './types';
 
@@ -18,8 +18,8 @@ export const setupConnection = (port: Runtime.Port) => {
   const origin = new URL(port.sender?.url).host;
   const title = port.sender?.tab?.title;
 
-  window.controller.dapp.addDApp(origin, title);
-  setupEvents(port);
+  window.controller.dapp.addDApp(origin, title, port);
+  // setupEvents(port);
 
   // used to prevent multiple popups open
   let pendingWindow = false;

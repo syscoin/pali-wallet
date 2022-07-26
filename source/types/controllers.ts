@@ -1,3 +1,5 @@
+import { Runtime } from 'webextension-polyfill-ts';
+
 import {
   IKeyringAccountState,
   INetwork,
@@ -93,7 +95,7 @@ export interface IDAppController {
   /**
    * Adds the DApp to the store without an account
    */
-  addDApp: (origin: string, title: string) => void;
+  addDApp: (origin: string, title: string, port: Runtime.Port) => void;
   /**
    * Adds an event listener
    */
