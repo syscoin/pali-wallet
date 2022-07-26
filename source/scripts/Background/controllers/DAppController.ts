@@ -80,9 +80,10 @@ const DAppController = (): IDAppController => {
   };
 
   const disconnect = (origin: string) => {
-    store.dispatch(updateDAppAccount({ origin, accountId: null }));
-
+    // after disconnecting, the event would not be sent
     _postEvent(origin, 'disconnect');
+
+    store.dispatch(updateDAppAccount({ origin, accountId: null }));
   };
 
   const _postEvent = async (origin: string, eventName: string, data?: any) => {
