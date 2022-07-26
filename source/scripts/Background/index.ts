@@ -10,7 +10,6 @@ import store from 'state/store';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
-import { setupConnection } from './controllers/message-handler';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -30,7 +29,7 @@ browser.runtime.onInstalled.addListener(() => {
 
 browser.runtime.onConnect.addListener((port: Runtime.Port) => {
   if (port.name === 'pali-inject') {
-    setupConnection(port);
+    window.controller.dapp.addDApp(port);
 
     return;
   }

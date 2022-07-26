@@ -11,6 +11,7 @@ import {
 import store from 'state/store';
 import { IDAppController } from 'types/controllers';
 
+import { onDisconnect, onMessage } from './message-handler';
 import { DAppEvents } from './message-handler/types';
 
 export interface ISigRequest {
@@ -50,8 +51,15 @@ const DAppController = (): IDAppController => {
     return dapp.accountId !== null;
   };
 
-  const addDApp = (origin: string, title: string, port: Runtime.Port) => {
+  const addDApp = (port: Runtime.Port) => {
+    const origin = new URL(port.sender.url).host;
+    const title = port.sender.tab.title;
+
     _dapps[origin] = { port, hasWindow: false };
+
+    port.onMessage.addListener(onMessage);
+    port.onDisconnect.addListener(onDisconnect);
+
     store.dispatch(addDAppAction({ origin, title, accountId: null }));
   };
 

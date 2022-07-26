@@ -95,7 +95,7 @@ export interface IDAppController {
   /**
    * Adds the DApp to the store without an account
    */
-  addDApp: (origin: string, title: string, port: Runtime.Port) => void;
+  addDApp: (port: Runtime.Port) => void;
   /**
    * Adds an event listener
    */
