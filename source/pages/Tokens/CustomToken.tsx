@@ -1,18 +1,30 @@
 import { Form, Input } from 'antd';
 import * as React from 'react';
-import { useState, FC } from 'react';
+import { useState } from 'react';
 
-import { SecondaryButton, DefaultModal, Layout } from 'components/index';
+import {
+  getSearch,
+  isValidEthereumAddress,
+  validateToken,
+} from '@pollum-io/sysweb3-utils';
+
+import {
+  SecondaryButton,
+  DefaultModal,
+  Layout,
+  ErrorModal,
+} from 'components/index';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
-export const CustomToken: FC = () => {
+export const CustomToken = () => {
   const controller = getController();
 
   const [form] = Form.useForm();
   const { navigate } = useUtils();
 
   const [added, setAdded] = useState(false);
+  const [error, setError] = useState(false);
 
   const nextStep = async ({
     contract,
@@ -23,13 +35,32 @@ export const CustomToken: FC = () => {
     decimal: number;
     symbol: string;
   }) => {
-    await controller.wallet.account.eth.saveTokenInfo({
-      contract,
-      symbol,
-      decimal,
-    });
+    const tokenIsValid = await validateToken(contract);
 
-    setAdded(true);
+    if (tokenIsValid) {
+      const { coins } = await getSearch(tokenIsValid.symbol);
+
+      const { id, marketCapRank, name, thumb } = coins[0];
+
+      await controller.wallet.account.eth.saveTokenInfo({
+        symbol: symbol.toUpperCase(),
+        contract,
+        decimal,
+        marketCapRank,
+        id,
+        explorer: '',
+        description: '',
+        image: thumb,
+        links: '',
+        name,
+      });
+
+      setAdded(true);
+
+      return;
+    }
+
+    setError(true);
   };
 
   return (
@@ -53,6 +84,15 @@ export const CustomToken: FC = () => {
               required: true,
               message: '',
             },
+            () => ({
+              validator(_, value) {
+                if (!value || isValidEthereumAddress(value)) {
+                  return Promise.resolve();
+                }
+
+                return Promise.reject();
+              },
+            }),
           ]}
         >
           <Input
@@ -113,6 +153,16 @@ export const CustomToken: FC = () => {
             'symbol'
           )} was successfully added to your wallet.`}
           onClose={() => navigate('/home')}
+        />
+      )}
+
+      {error && (
+        <ErrorModal
+          show={error}
+          title="Verify the current token"
+          description="This token probably is not available in the current network. Verify the token network and try again."
+          log="Token network probably is different from current network."
+          onClose={() => setError(false)}
         />
       )}
     </Layout>
