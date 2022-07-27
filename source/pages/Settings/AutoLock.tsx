@@ -42,6 +42,7 @@ const AutolockView = () => {
       />
 
       <Form
+        validateMessages={{ default: '' }}
         className="standard flex flex-col gap-8 items-center justify-center text-center"
         name="autolock"
         id="autolock"

@@ -1,4 +1,5 @@
 import { Input, Form } from 'antd';
+import CryptoJS from 'crypto-js';
 import React, { useState, useEffect } from 'react';
 
 import {
@@ -14,12 +15,21 @@ import { ellipsis } from 'utils/index';
 
 const PrivateKeyView = () => {
   const controller = getController();
-  const { activeAccount, activeNetwork } = useStore();
+  const { activeAccount, activeNetwork, networks } = useStore();
 
   const { navigate, useCopyClipboard, alert } = useUtils();
 
   const [copied, copyText] = useCopyClipboard();
   const [valid, setValid] = useState<boolean>(false);
+  const [form] = Form.useForm();
+
+  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+
+  const decrypt = (value: string, key: string) => {
+    if (!isSyscoinChain) return value;
+
+    return CryptoJS.AES.decrypt(value, key).toString();
+  };
 
   useEffect(() => {
     if (!copied) return;
@@ -53,8 +63,10 @@ const PrivateKeyView = () => {
         </p>
 
         <Form
+          validateMessages={{ default: '' }}
           className="standard password mx-auto my-3 w-full max-w-xs text-center md:max-w-xl"
           name="phraseview"
+          form={form}
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
           autoComplete="off"
@@ -72,7 +84,6 @@ const PrivateKeyView = () => {
                 validator(_, value) {
                   if (controller.wallet.getSeed(value)) {
                     setValid(true);
-
                     return Promise.resolve();
                   }
 
@@ -91,13 +102,22 @@ const PrivateKeyView = () => {
         <CopyCard
           className="my-3"
           onClick={
-            valid ? () => copyText(String(activeAccount?.xprv)) : undefined
+            valid
+              ? () =>
+                  copyText(
+                    decrypt(activeAccount?.xprv, form.getFieldValue('password'))
+                  )
+              : undefined
           }
           label="Your private key"
         >
           <p>
             {valid
-              ? ellipsis(activeAccount?.xprv, 4, 16)
+              ? ellipsis(
+                  decrypt(activeAccount?.xprv, form.getFieldValue('password')),
+                  4,
+                  16
+                )
               : '********...************'}
           </p>
         </CopyCard>

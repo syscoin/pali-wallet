@@ -42,8 +42,8 @@ export const Router = () => {
   const { wallet, appRoute } = getController();
   const isUnlocked = wallet.isUnlocked();
 
-  const { alert, navigate } = useUtils();
-  const { accounts } = useStore();
+  const { alert, navigate, handleRefresh } = useUtils();
+  const { accounts, activeAccount } = useStore();
   const { pathname } = useLocation();
 
   useEffect(() => {
@@ -58,16 +58,22 @@ export const Router = () => {
   }, [isUnlocked, browser.runtime]);
 
   useEffect(() => {
-    const route = appRoute();
-
-    if (isUnlocked && accounts) {
+    const canProceed = isUnlocked && accounts && activeAccount.address;
+    if (canProceed) {
       navigate('/home');
 
       return;
     }
 
+    const route = appRoute();
     if (route !== '/') navigate(route);
-  }, [isUnlocked, accounts]);
+  }, [isUnlocked]);
+
+  useEffect(() => {
+    if (isUnlocked) {
+      handleRefresh(true);
+    }
+  }, [isUnlocked]);
 
   useEffect(() => {
     alert.removeAll();

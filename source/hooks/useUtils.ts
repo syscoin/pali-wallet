@@ -13,11 +13,10 @@ export const useUtils = () => {
   const { activeAccount } = useStore();
 
   const handleRefresh = (silent?: boolean): void => {
+    if (!activeAccount.address) return;
+
     controller.wallet.account.sys.getLatestUpdate(silent);
-
-    if (activeAccount)
-      controller.wallet.account.sys.watchMemPool(activeAccount);
-
+    controller.wallet.account.sys.watchMemPool();
     controller.stateUpdater();
   };
 

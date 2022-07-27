@@ -35,6 +35,7 @@ export const CustomToken: FC = () => {
   return (
     <Layout title="CUSTOM TOKEN">
       <Form
+        validateMessages={{ default: '' }}
         form={form}
         id="send-form"
         labelCol={{ span: 8 }}

@@ -59,6 +59,7 @@ const CustomRPCView = ({
       ) : (
         <Layout title="CUSTOM RPC">
           <Form
+            validateMessages={{ default: '' }}
             id="rpc"
             name="rpc"
             labelCol={{ span: 8 }}
