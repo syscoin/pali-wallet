@@ -1,7 +1,7 @@
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 
-import { changeAccount } from './change-account';
+import { popupPromise } from './popup-promise';
 
 /**
  * Handles methods request.
@@ -25,7 +25,12 @@ export const methodRequest = async (
       case 'isConnected':
         return dapp.isConnected(origin);
       case 'changeAccount':
-        return changeAccount(data.network, origin);
+        return popupPromise({
+          origin,
+          route: 'change-account',
+          eventName: 'accountChange',
+          data: { network: data.network },
+        });
       default:
         throw new Error('Unknown method');
     }

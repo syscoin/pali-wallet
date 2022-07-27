@@ -70,26 +70,35 @@ const DAppController = (): IDAppController => {
   const connect = (origin: string, accountId: number) => {
     store.dispatch(updateDAppAccount({ origin, accountId }));
 
-    _postEvent(origin, 'connect');
+    _dispatchEvent(origin, 'connect');
   };
 
   const changeAccount = (origin: string, accountId: number) => {
     store.dispatch(updateDAppAccount({ origin, accountId }));
 
-    _postEvent(origin, 'accountChange');
+    _dispatchEvent(origin, 'accountChange');
   };
 
   const disconnect = (origin: string) => {
     // after disconnecting, the event would not be sent
-    _postEvent(origin, 'disconnect');
+    _dispatchEvent(origin, 'disconnect');
 
     store.dispatch(updateDAppAccount({ origin, accountId: null }));
   };
 
-  const _postEvent = async (origin: string, eventName: string, data?: any) => {
+  const _dispatchEvent = async (
+    origin: string,
+    eventName: string,
+    data?: any
+  ) => {
     if (!hasListener(origin, eventName)) return;
     if (!isConnected(origin)) return;
 
+    // dispatch the event locally
+    const event = new CustomEvent(eventName, { detail: { origin, data } });
+    window.dispatchEvent(event);
+
+    // post the event to the DApp
     const id = `${origin}.${eventName}`;
     _dapps[origin].port.postMessage({ id, data });
   };

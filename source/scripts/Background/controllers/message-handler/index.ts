@@ -1,6 +1,6 @@
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
-import { enable } from './enable';
+import { popupPromise } from './popup-promise';
 import { methodRequest } from './requests';
 import { Message } from './types';
 
@@ -22,7 +22,12 @@ const _messageHandler = async (origin: string, message: Message) => {
     case 'EVENT_DEREG':
       return dapp.removeListener(origin, message.data.eventName);
     case 'ENABLE':
-      return enable(origin, message.data.network);
+      return popupPromise({
+        origin,
+        route: 'connect-wallet',
+        eventName: 'connect',
+        data: { network: message.data.network },
+      });
     case 'DISABLE':
       return dapp.disconnect(origin);
     case 'METHOD_REQUEST':
