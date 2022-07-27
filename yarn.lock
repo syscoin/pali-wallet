@@ -1828,20 +1828,21 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.333":
-  version "1.0.333"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.333.tgz#b600874feb6767c0f91621ea131470a3f15c001a"
-  integrity sha512-VV6GDhoraCTVffJ8/TzvlQ72J/x1TAGZ7EBPxlOhRI6Ihr2Wjgcdx3W6FZHLEFy2wN7IK9/s2Uu7EkIQzkq+gA==
+"@pollum-io/sysweb3-keyring@^1.0.337":
+  version "1.0.337"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.337.tgz#3ebd9520e4b79e318f8f0dd550dd177cfdb4894a"
+  integrity sha512-wYuUhJ5+oFN1QPg3pfxlZIJV9xk52eQw9TDivYtjdOXsALA/hKCjyX8HNC9N87KV6ltbD6zuXZ69ya8zI13C7A==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "^1.0.16"
     "@pollum-io/sysweb3-network" "^1.0.51"
-    "@pollum-io/sysweb3-utils" "^1.1.172"
+    "@pollum-io/sysweb3-utils" "^1.1.174"
     axios "^0.26.1"
     bip39 "^3.0.4"
     coinselectsyscoin "^1.0.77"
     crypto-js "^4.1.1"
+    eth-chains "^1.0.0"
     eth-sig-util "^3.0.1"
     ethereumjs-util "^7.1.4"
     ethereumjs-wallet "^1.0.2"
@@ -1898,10 +1899,10 @@
     syscointx-js "^1.0.101"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.172":
-  version "1.1.172"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.172.tgz#90fa0a292058a72964ea9598f46e77f265b6afaa"
-  integrity sha512-qTIw6RP5+wOJlXg0wzg2UqVvBYB88YzmnJS9SvSsp3hAJgjMXV2IJu405MnKzRpru/T6FteDqPY2LvTZgTJGpQ==
+"@pollum-io/sysweb3-utils@^1.1.174":
+  version "1.1.174"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.174.tgz#8575543ac44780aca153dbd0ed50e88926fc924e"
+  integrity sha512-uelMi7oq9ExPuv72PDEQYMpCUXfRifn9PYvD3YOul5XjsOgM+QJbCVCyJLLKZMz7pZOgC63OnD4cD7a9GL638A==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.16"
     "@pollum-io/sysweb3-network" "^1.0.51"
@@ -5976,6 +5977,11 @@ etag@~1.8.1:
   version "1.8.1"
   resolved "https://registry.yarnpkg.com/etag/-/etag-1.8.1.tgz#41ae2eeb65efa62268aebfea83ac7d79299b0887"
   integrity sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==
+
+eth-chains@^1.0.0:
+  version "1.0.0"
+  resolved "https://registry.yarnpkg.com/eth-chains/-/eth-chains-1.0.0.tgz#1386496ee1aa231a4d050fde6a87fe36741ecb83"
+  integrity sha512-SnJrJPSr5I3rKpW6RZT/qhX8qbmE5bsMeeHoRWBXkvbifudfi3YLKHXZMdLsg+Yv+PP8oqSyPxOvQxKwjNVqmQ==
 
 eth-ens-namehash@2.0.8:
   version "2.0.8"

@@ -23,7 +23,7 @@ export const CustomToken: FC = () => {
     decimal: number;
     symbol: string;
   }) => {
-    await controller.wallet.account.sys.saveTokenInfo({
+    await controller.wallet.account.eth.saveTokenInfo({
       contract,
       symbol,
       decimal,

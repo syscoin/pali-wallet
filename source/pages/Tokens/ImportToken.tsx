@@ -65,7 +65,7 @@ export const ImportToken: FC = () => {
 
   const addToken = async (token: ICoingeckoToken) => {
     try {
-      await controller.wallet.account.sys.saveTokenInfo(token);
+      await controller.wallet.account.eth.saveTokenInfo(token);
 
       alert.removeAll();
       alert.success(`${token.symbol} successfully added to your assets list.`);

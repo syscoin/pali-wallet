@@ -1,5 +1,6 @@
-import { IKeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
+import { IKeyringManager } from '@pollum-io/sysweb3-keyring';
 
+import EthAccountController from './evm';
 import SysAccountController from './syscoin';
 
 const WalletController = (
@@ -8,7 +9,7 @@ const WalletController = (
   const controller = {
     account: {
       sys: SysAccountController(),
-      eth: Web3Accounts(),
+      eth: EthAccountController(),
     },
   };
 

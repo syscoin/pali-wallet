@@ -1,5 +1,4 @@
-import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
-import { ICoingeckoToken } from '@pollum-io/sysweb3-utils';
+import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 
 import { SysTransactionController } from '../transaction';
 import SysTrezorController from '../trezor/syscoin';
@@ -18,7 +17,7 @@ const SysAccountController = () => {
   let intervalId: NodeJS.Timer;
 
   const getLatestUpdate = async (silent?: boolean) => {
-    const { activeAccount } = store.getState().vault;
+    const { activeAccount, activeNetwork, networks } = store.getState().vault;
 
     if (!activeAccount.address) return;
 
@@ -29,10 +28,28 @@ const SysAccountController = () => {
 
     store.dispatch(setIsPendingBalances(false));
 
+    const isSyscoinChain =
+      networks.syscoin[activeNetwork.chainId] &&
+      activeNetwork.url.includes('blockbook');
+
+    const filteredTransactions = !isSyscoinChain
+      ? activeAccount.transactions.filter((transaction: any) =>
+          accountLatestUpdate.transactions.filter(
+            (tx: any) => tx.hash !== transaction.hash
+          )
+        )
+      : [];
+
+    const txs =
+      activeAccount.transactions && !isSyscoinChain
+        ? filteredTransactions
+        : accountLatestUpdate.transactions;
+
     store.dispatch(
       setActiveAccount({
         ...activeAccount,
         ...accountLatestUpdate,
+        transactions: txs,
       })
     );
 
@@ -76,49 +93,6 @@ const SysAccountController = () => {
     return address;
   };
 
-  const getErc20TokenBalance = async (
-    tokenAddress: string,
-    walletAddress: string
-  ) => {
-    try {
-      const balance = await Web3Accounts().getBalanceOfAnyToken(
-        tokenAddress,
-        walletAddress
-      );
-
-      return balance;
-    } catch (error) {
-      return 0;
-    }
-  };
-
-  const saveTokenInfo = async (token: ICoingeckoToken) => {
-    const { activeAccount } = store.getState().vault;
-
-    const tokenExists = activeAccount.assets.find(
-      (asset: any) => asset.id === token.id
-    );
-
-    if (tokenExists) throw new Error('Token already exists');
-
-    const balance = await getErc20TokenBalance(
-      String(token.contractAddress),
-      activeAccount.address
-    );
-
-    const web3Token = {
-      ...token,
-      balance,
-    };
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'assets',
-        value: [...activeAccount.assets, web3Token],
-      })
-    );
-  };
-
   const trezor = SysTrezorController();
   const tx = SysTransactionController();
 
@@ -128,7 +102,6 @@ const SysAccountController = () => {
     tx,
     setAddress,
     getLatestUpdate,
-    saveTokenInfo,
   };
 };
 

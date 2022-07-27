@@ -19,7 +19,9 @@ export const SendConfirm = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
-  const isSyscoinChain = networks.syscoin[activeNetwork.chainId];
+  const isSyscoinChain =
+    networks.syscoin[activeNetwork.chainId] &&
+    activeNetwork.url.includes('blockbook');
 
   const handleConfirm = async () => {
     const balance = isSyscoinChain
@@ -58,7 +60,11 @@ export const SendConfirm = () => {
           return response;
         }
 
-        await controller.wallet.account.eth.tx.sendTransaction(tx);
+        await controller.wallet.account.eth.tx.sendAndSaveTransaction({
+          ...tx,
+          amount: Number(tx.amount),
+          chainId: activeNetwork.chainId,
+        });
 
         setConfirmed(true);
         setLoading(false);

@@ -12,7 +12,9 @@ interface ISend {
 export const Send: React.FC<ISend> = () => {
   const { networks, activeNetwork } = useStore();
 
-  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+  const isSyscoinChain =
+    networks.syscoin[activeNetwork.chainId] &&
+    activeNetwork.url.includes('blockbook');
 
   return (
     <Layout
