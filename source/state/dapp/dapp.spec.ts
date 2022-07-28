@@ -46,7 +46,6 @@ describe('dapp store actions', () => {
       customState = reducer(customState, addListener(event2));
 
       const newState = reducer(customState, removeListeners(origin));
-      console.log(newState);
 
       expect(newState.listeners[origin]).toBeUndefined();
     });

@@ -132,6 +132,9 @@ export interface IDAppController {
    * Checks if listener exists
    */
   hasListener: (origin: string, eventName: string) => boolean;
+  /**
+   * Checks if DApp has an open popup
+   */
   hasWindow: (origin: string) => boolean;
   /**
    * Checks if DApp has a connected account
