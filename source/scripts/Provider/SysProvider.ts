@@ -6,11 +6,11 @@
 import store from 'state/store';
 // import { removeSensitiveDataFromVault, log, getHost } from 'utils/index';
 
-export const SysProvider = (origin: string) => {
+export const SysProvider = (host: string) => {
   const txs = window.controller.wallet.account.sys.tx;
 
   const getAccount = () => {
-    const account = window.controller.dapp.getAccount(origin);
+    const account = window.controller.dapp.getAccount(host);
     if (!account) throw new Error('No connected account');
 
     return account;

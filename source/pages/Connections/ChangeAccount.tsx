@@ -8,9 +8,9 @@ import { ellipsis } from 'utils/index';
 export const ChangeAccount = () => {
   const { accounts } = useStore();
   const { dapp } = getController();
-  const { origin } = useQueryData();
+  const { host } = useQueryData();
 
-  const currentAccountId = dapp.getDApp(origin).accountId;
+  const currentAccountId = dapp.getDApp(host).accountId;
 
   const [accountId, setAccountId] = useState<number>(currentAccountId);
 
@@ -20,7 +20,7 @@ export const ChangeAccount = () => {
   };
 
   const handleChangeAccount = () => {
-    dapp.changeAccount(origin, accountId);
+    dapp.changeAccount(host, accountId);
     window.close();
   };
 

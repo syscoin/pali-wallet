@@ -12,7 +12,7 @@ import { popupPromise } from './popup-promise';
  * @return The method return
  */
 export const methodRequest = async (
-  origin: string,
+  host: string,
   data: { args?: any[]; method: string; network?: string }
 ) => {
   const { dapp } = window.controller;
@@ -23,10 +23,10 @@ export const methodRequest = async (
   if (prefix === 'wallet') {
     switch (methodName) {
       case 'isConnected':
-        return dapp.isConnected(origin);
+        return dapp.isConnected(host);
       case 'changeAccount':
         return popupPromise({
-          origin,
+          host,
           route: 'change-account',
           eventName: 'accountChange',
           data: { network: data.network },
@@ -37,7 +37,7 @@ export const methodRequest = async (
   }
 
   //* Providers methods
-  const provider = prefix === 'sys' ? SysProvider(origin) : EthProvider(origin);
+  const provider = prefix === 'sys' ? SysProvider(host) : EthProvider(host);
   const method = provider[methodName];
 
   if (!method) throw new Error('Unknown method');

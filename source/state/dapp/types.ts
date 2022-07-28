@@ -1,6 +1,6 @@
 export interface IDApp {
   accountId: number;
-  origin: string;
+  host: string;
   title: string;
 }
 
@@ -10,13 +10,13 @@ export interface IDAppState {
    * account information.
    */
   dapps: {
-    [dappId: string]: IDApp;
+    [host: string]: IDApp;
   };
 
   /**
    * Dapps that are currently listening for updates
    */
   listeners: {
-    [dappId: string]: Array<string>;
+    [host: string]: Array<string>;
   };
 }

@@ -59,9 +59,9 @@ const request = async (req) => {
  * @see `DAppEvents`
  */
 const on = (eventName, callback) => {
-  let origin = window.location.host;
+  let host = window.location.host;
 
-  const id = `${origin}.${eventName}`;
+  const id = `${host}.${eventName}`;
 
   window.pali._listeners[id] = ({ detail }) => {
     callback(JSON.parse(detail));
@@ -77,7 +77,7 @@ const on = (eventName, callback) => {
       type: 'EVENT_REG',
       data: {
         eventName,
-        origin,
+        host,
       },
     },
     '*'
@@ -89,9 +89,9 @@ const on = (eventName, callback) => {
  * @see `DAppEvents`
  */
 const removeListener = (eventName) => {
-  let origin = window.location.host;
+  let host = window.location.host;
 
-  const id = `${origin}.${eventName}`;
+  const id = `${host}.${eventName}`;
 
   if (window.pali._listeners[id]) {
     window.removeEventListener(id, window.pali._listeners[id]);
@@ -105,7 +105,7 @@ const removeListener = (eventName) => {
       type: 'EVENT_DEREG',
       data: {
         eventName,
-        origin,
+        host,
       },
     },
     '*'

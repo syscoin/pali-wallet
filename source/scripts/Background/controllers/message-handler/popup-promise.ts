@@ -3,7 +3,7 @@ import { browser } from 'webextension-polyfill-ts';
 /**
  * Opens a popup and adds events listener to resolve a promise.
  *
- * @param origin The dApp origin
+ * @param host The dApp host
  * @param route The popup route
  * @param eventName The event which will resolve the promise
  * @param data information that will be passed to the route. Optional
@@ -13,27 +13,27 @@ import { browser } from 'webextension-polyfill-ts';
 export const popupPromise = async ({
   data,
   eventName,
-  origin,
+  host,
   route,
 }: {
   data?: object;
   eventName: string;
-  origin: string;
+  host: string;
   route: string;
 }) => {
   const { dapp, createPopup } = window.controller;
 
-  if (eventName !== 'connect' && !dapp.isConnected(origin)) return;
-  if (dapp.hasWindow(origin)) return;
+  if (eventName !== 'connect' && !dapp.isConnected(host)) return;
+  if (dapp.hasWindow(host)) return;
 
-  const popup = await createPopup(route, { ...data, origin });
-  dapp.setHasWindow(origin, true);
+  const popup = await createPopup(route, { ...data, host });
+  dapp.setHasWindow(host, true);
 
   return new Promise((resolve) => {
     window.addEventListener(
       eventName,
       (event: CustomEvent) => {
-        if (event.detail.origin === origin) {
+        if (event.detail.host === host) {
           if (event.detail.data !== undefined) {
             resolve(event.detail.data);
           }
@@ -45,7 +45,7 @@ export const popupPromise = async ({
 
     browser.windows.onRemoved.addListener((id) => {
       if (id === popup.id) {
-        dapp.setHasWindow(origin, false);
+        dapp.setHasWindow(host, false);
         resolve({ success: false });
       }
     });

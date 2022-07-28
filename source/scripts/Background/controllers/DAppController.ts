@@ -16,12 +16,12 @@ import { DAppEvents } from './message-handler/types';
 
 export interface ISigRequest {
   address: string;
+  host: string;
   message: string;
-  origin: string;
 }
 
 interface IDappUtils {
-  [origin: string]: {
+  [host: string]: {
     hasWindow: boolean;
     port: Runtime.Port;
   };
@@ -30,21 +30,21 @@ interface IDappUtils {
 /**
  * Controls the dapp store
  *
- * DApps connections use the site origin as id
+ * DApps connections use the site host as id
  */
 const DAppController = (): IDAppController => {
   let request: ISigRequest;
 
   const _dapps: IDappUtils = {};
 
-  const hasDApp = (origin: string) => {
+  const hasDApp = (host: string) => {
     const { dapps } = store.getState().dapp;
 
-    return !!dapps[origin];
+    return !!dapps[host];
   };
 
-  const isConnected = (origin: string) => {
-    const dapp = store.getState().dapp.dapps[origin];
+  const isConnected = (host: string) => {
+    const dapp = store.getState().dapp.dapps[host];
 
     if (!dapp) return false;
 
@@ -52,83 +52,83 @@ const DAppController = (): IDAppController => {
   };
 
   const addDApp = (port: Runtime.Port) => {
-    const origin = new URL(port.sender.url).host;
+    const { host } = new URL(port.sender.url);
     const title = port.sender.tab.title;
 
-    _dapps[origin] = { port, hasWindow: false };
+    _dapps[host] = { port, hasWindow: false };
 
     port.onMessage.addListener(onMessage);
     port.onDisconnect.addListener(onDisconnect);
 
-    store.dispatch(addDAppAction({ origin, title, accountId: null }));
+    store.dispatch(addDAppAction({ host, title, accountId: null }));
   };
 
-  const removeDApp = (origin: string) => {
-    store.dispatch(removeDAppAction(origin));
+  const removeDApp = (host: string) => {
+    store.dispatch(removeDAppAction(host));
   };
 
-  const connect = (origin: string, accountId: number) => {
-    store.dispatch(updateDAppAccount({ origin, accountId }));
+  const connect = (host: string, accountId: number) => {
+    store.dispatch(updateDAppAccount({ host, accountId }));
 
-    _dispatchEvent(origin, 'connect');
+    _dispatchEvent(host, 'connect');
   };
 
-  const changeAccount = (origin: string, accountId: number) => {
-    store.dispatch(updateDAppAccount({ origin, accountId }));
+  const changeAccount = (host: string, accountId: number) => {
+    store.dispatch(updateDAppAccount({ host, accountId }));
 
-    _dispatchEvent(origin, 'accountChange');
+    _dispatchEvent(host, 'accountChange');
   };
 
-  const disconnect = (origin: string) => {
+  const disconnect = (host: string) => {
     // after disconnecting, the event would not be sent
-    _dispatchEvent(origin, 'disconnect');
+    _dispatchEvent(host, 'disconnect');
 
-    store.dispatch(updateDAppAccount({ origin, accountId: null }));
+    store.dispatch(updateDAppAccount({ host, accountId: null }));
   };
 
   const _dispatchEvent = async (
-    origin: string,
+    host: string,
     eventName: string,
     data?: any
   ) => {
-    if (!hasListener(origin, eventName)) return;
-    if (!isConnected(origin)) return;
+    if (!hasListener(host, eventName)) return;
+    if (!isConnected(host)) return;
 
     // dispatch the event locally
-    const event = new CustomEvent(eventName, { detail: { origin, data } });
+    const event = new CustomEvent(eventName, { detail: { host, data } });
     window.dispatchEvent(event);
 
     // post the event to the DApp
-    const id = `${origin}.${eventName}`;
-    _dapps[origin].port.postMessage({ id, data });
+    const id = `${host}.${eventName}`;
+    _dapps[host].port.postMessage({ id, data });
   };
 
-  const addListener = (origin: string, eventName: string) => {
+  const addListener = (host: string, eventName: string) => {
     if (!DAppEvents[eventName]) return;
 
-    store.dispatch(addListenerAction({ origin, eventName }));
+    store.dispatch(addListenerAction({ host, eventName }));
   };
 
-  const removeListener = (origin: string, eventName: string) => {
+  const removeListener = (host: string, eventName: string) => {
     if (!DAppEvents[eventName]) return;
 
-    store.dispatch(removeListenerAction({ origin, eventName }));
+    store.dispatch(removeListenerAction({ host, eventName }));
   };
 
-  const removeListeners = (origin: string) => {
-    store.dispatch(removeListenersAction(origin));
+  const removeListeners = (host: string) => {
+    store.dispatch(removeListenersAction(host));
   };
 
-  const hasListener = (origin: string, eventName: string) => {
+  const hasListener = (host: string, eventName: string) => {
     const { dapp } = store.getState();
 
-    return dapp.listeners[origin] && dapp.listeners[origin].includes(eventName);
+    return dapp.listeners[host] && dapp.listeners[host].includes(eventName);
   };
 
-  const getDApp = (origin: string) => store.getState().dapp.dapps[origin];
+  const getDApp = (host: string) => store.getState().dapp.dapps[host];
 
-  const getAccount = (origin: string) => {
-    const dapp = store.getState().dapp.dapps[origin];
+  const getAccount = (host: string) => {
+    const dapp = store.getState().dapp.dapps[host];
     const { accounts } = store.getState().vault;
 
     if (dapp?.accountId === null) return;
@@ -143,10 +143,10 @@ const DAppController = (): IDAppController => {
 
   const getSigRequest = () => request;
 
-  const hasWindow = (origin: string) => _dapps[origin].hasWindow;
+  const hasWindow = (host: string) => _dapps[host].hasWindow;
 
-  const setHasWindow = (origin: string, has: boolean) => {
-    _dapps[origin].hasWindow = has;
+  const setHasWindow = (host: string, has: boolean) => {
+    _dapps[host].hasWindow = has;
   };
 
   return {

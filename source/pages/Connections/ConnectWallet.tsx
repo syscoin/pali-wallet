@@ -15,9 +15,9 @@ import { ellipsis } from 'utils/index';
 export const ConnectWallet = () => {
   const { accounts, trustedApps } = useStore();
   const { dapp } = getController();
-  const { origin } = useQueryData();
+  const { host } = useQueryData();
 
-  const currentAccountId = dapp.getDApp(origin)?.accountId;
+  const currentAccountId = dapp.getDApp(host)?.accountId;
 
   const [accountId, setAccountId] = useState<number>(currentAccountId);
   const [isInTrustedList, setIsInTrustedList] = useState<boolean>(false);
@@ -25,12 +25,12 @@ export const ConnectWallet = () => {
     useState<boolean>(false);
 
   const handleConnect = () => {
-    dapp.connect(origin, accountId);
+    dapp.connect(host, accountId);
     window.close();
   };
 
   useEffect(() => {
-    const trustedApp = trustedApps[origin] !== '';
+    const trustedApp = trustedApps[host] !== '';
     setIsInTrustedList(trustedApp);
   });
 

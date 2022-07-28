@@ -99,59 +99,59 @@ export interface IDAppController {
   /**
    * Adds an event listener
    */
-  addListener: (origin: string, eventName: string) => void;
+  addListener: (host: string, eventName: string) => void;
   /**
    * Changes the account
    * @emits accountChange
    */
-  changeAccount: (origin: string, accountId: number) => void;
+  changeAccount: (host: string, accountId: number) => void;
   /**
    * Complete a connection with a DApp. Adds the account
    * @emits connect
    */
-  connect: (origin: string, accountId: number) => void;
+  connect: (host: string, accountId: number) => void;
   /**
    * Removes a connection with a DApp. Removes the account
    * @emits disconnect
    */
-  disconnect: (origin: string) => void;
+  disconnect: (host: string) => void;
   /**
    * Retrieves the connected account
    */
-  getAccount: (origin: string) => IKeyringAccountState | undefined;
+  getAccount: (host: string) => IKeyringAccountState | undefined;
   /**
    * Retrieves a DApp
    */
-  getDApp: (origin: string) => IDApp | undefined;
+  getDApp: (host: string) => IDApp | undefined;
   getSigRequest: () => ISigRequest;
   /**
    * Checks if DApp exists
    */
-  hasDApp: (origin: string) => boolean;
+  hasDApp: (host: string) => boolean;
   /**
    * Checks if listener exists
    */
-  hasListener: (origin: string, eventName: string) => boolean;
+  hasListener: (host: string, eventName: string) => boolean;
   /**
    * Checks if DApp has an open popup
    */
-  hasWindow: (origin: string) => boolean;
+  hasWindow: (host: string) => boolean;
   /**
    * Checks if DApp has a connected account
    */
-  isConnected: (origin: string) => boolean;
+  isConnected: (host: string) => boolean;
   /**
    * Removes a DApp
    */
-  removeDApp: (origin: string) => void;
+  removeDApp: (host: string) => void;
   /**
    * Removes an event listener
    */
-  removeListener: (origin: string, eventName: string) => void;
+  removeListener: (host: string, eventName: string) => void;
   /**
    * Removes all listeners from a DApp
    */
-  removeListeners: (origin: string) => void;
-  setHasWindow: (origin: string, hasWindow: boolean) => void;
+  removeListeners: (host: string) => void;
+  setHasWindow: (host: string, hasWindow: boolean) => void;
   setSigRequest: (req: ISigRequest) => void;
 }

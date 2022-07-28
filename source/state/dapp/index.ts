@@ -13,26 +13,26 @@ const DAppState = createSlice({
   reducers: {
     addListener(
       state: IDAppState,
-      action: PayloadAction<{ eventName: string; origin: string }>
+      action: PayloadAction<{ eventName: string; host: string }>
     ) {
-      const { origin, eventName } = action.payload;
+      const { host, eventName } = action.payload;
 
-      if (!state.listeners[origin]) state.listeners[origin] = [eventName];
-      if (state.listeners[origin].includes(eventName)) return;
+      if (!state.listeners[host]) state.listeners[host] = [eventName];
+      if (state.listeners[host].includes(eventName)) return;
 
-      state.listeners[origin].push(eventName);
+      state.listeners[host].push(eventName);
     },
 
     removeListener(
       state: IDAppState,
-      action: PayloadAction<{ eventName: string; origin: string }>
+      action: PayloadAction<{ eventName: string; host: string }>
     ) {
-      const { origin, eventName } = action.payload;
+      const { host, eventName } = action.payload;
 
-      const index = state.listeners[origin].findIndex((e) => e === eventName);
+      const index = state.listeners[host].findIndex((e) => e === eventName);
       if (index === -1) return;
 
-      state.listeners[origin].splice(index, 1);
+      state.listeners[host].splice(index, 1);
     },
 
     removeListeners(state: IDAppState, action: PayloadAction<string>) {
@@ -40,19 +40,19 @@ const DAppState = createSlice({
     },
 
     addDApp(state: IDAppState, action: PayloadAction<IDApp>) {
-      state.dapps[action.payload.origin] = action.payload;
+      state.dapps[action.payload.host] = action.payload;
     },
 
     updateDAppAccount(
       state: IDAppState,
-      action: PayloadAction<{ accountId: number; origin: string }>
+      action: PayloadAction<{ accountId: number; host: string }>
     ) {
-      const { origin, accountId } = action.payload;
+      const { host, accountId } = action.payload;
 
-      if (!state.dapps[origin])
+      if (!state.dapps[host])
         throw new Error('Unable to update account. DApp does not exist');
 
-      state.dapps[origin].accountId = accountId;
+      state.dapps[host].accountId = accountId;
     },
 
     removeDApp(state: IDAppState, action: PayloadAction<string>) {

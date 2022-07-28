@@ -16,44 +16,44 @@ describe('dapp store actions', () => {
     it('should add a listener', () => {
       const payload = {
         eventName: 'fake event',
-        origin: 'fake origin',
+        host: 'fake host',
       };
       const newState = reducer(initialState, addListener(payload));
-      expect(newState.listeners[payload.origin]).toContain(payload.eventName);
+      expect(newState.listeners[payload.host]).toContain(payload.eventName);
     });
 
     //* removeListener
     it('should remove a listener ', () => {
       const payload = {
         eventName: 'fake event',
-        origin: 'fake origin',
+        host: 'fake host',
       };
 
       const customState = reducer(initialState, addListener(payload));
 
       const newState = reducer(customState, removeListener(payload));
 
-      expect(newState.listeners).not.toContain(payload.origin);
+      expect(newState.listeners).not.toContain(payload.host);
     });
 
     //* removeListeners
     it('should remove a listener ', () => {
-      const origin = 'originname.com';
-      const event1 = { eventName: 'event1', origin };
-      const event2 = { eventName: 'event2', origin };
+      const host = 'hostname.com';
+      const event1 = { eventName: 'event1', host };
+      const event2 = { eventName: 'event2', host };
 
       let customState = reducer(initialState, addListener(event1));
       customState = reducer(customState, addListener(event2));
 
-      const newState = reducer(customState, removeListeners(origin));
+      const newState = reducer(customState, removeListeners(host));
 
-      expect(newState.listeners[origin]).toBeUndefined();
+      expect(newState.listeners[host]).toBeUndefined();
     });
   });
 
   describe('Dapp tests', () => {
     const FAKE_DAPP: IDApp = {
-      origin: 'fake origin',
+      host: 'fake host',
       title: 'fake title',
       accountId: 0,
     };
@@ -62,13 +62,13 @@ describe('dapp store actions', () => {
     it('should add a dapp', () => {
       const newState = reducer(initialState, addDApp(FAKE_DAPP));
 
-      expect(newState.dapps[FAKE_DAPP.origin]).toEqual(FAKE_DAPP);
+      expect(newState.dapps[FAKE_DAPP.host]).toEqual(FAKE_DAPP);
     });
 
     //* removeDApp
     it('should remove a dapp', () => {
       const customState = reducer(initialState, addDApp(FAKE_DAPP));
-      const newState = reducer(customState, removeDApp(FAKE_DAPP.origin));
+      const newState = reducer(customState, removeDApp(FAKE_DAPP.host));
 
       expect(newState.dapps).toEqual(initialState.dapps);
     });

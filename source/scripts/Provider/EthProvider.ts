@@ -4,9 +4,9 @@ import { web3Provider } from '@pollum-io/sysweb3-network';
 import store from 'state/store';
 import { removeSensitiveDataFromVault } from 'utils/account';
 
-export const EthProvider = (origin: string) => {
+export const EthProvider = (host: string) => {
   const getAccount = () => {
-    const account = window.controller.dapp.getAccount(origin);
+    const account = window.controller.dapp.getAccount(host);
     if (!account) throw new Error('No connected account');
 
     return account;
