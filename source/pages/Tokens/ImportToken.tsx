@@ -143,7 +143,7 @@ export const ImportToken: FC = () => {
           {selected && (
             <div className="flex flex-col gap-y-4 items-start justify-start mx-auto my-6 p-4 max-w-xs text-left text-sm bg-bkg-3 border border-brand-royalblue rounded-lg">
               <div className="flex gap-x-2 justify-start w-full">
-                {selected!.image.thumb && (
+                {selected.image.thumb && (
                   <img src={selected.image.thumb} alt="token thumb" />
                 )}
 
@@ -154,7 +154,7 @@ export const ImportToken: FC = () => {
 
               {selected.contractAddress && (
                 <div
-                  onClick={() => copy(selected.contractAddress!)}
+                  onClick={() => copy(selected.contractAddress)}
                   className="flex gap-x-0.5 items-center justify-center hover:text-brand-royalblue text-brand-white"
                 >
                   <p className="cursor-pointer">
