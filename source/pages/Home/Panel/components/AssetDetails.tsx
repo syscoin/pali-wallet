@@ -137,7 +137,7 @@ export const AssetDetails = ({
   ];
 
   const renderAssets = (assets: { label: string; value: any }[]) =>
-    assets.map(({ label, value }) => {
+    assets.map(({ label, value }, index: number) => {
       let body: JSX.Element;
       switch (label) {
         case 'Icon':
@@ -183,16 +183,13 @@ export const AssetDetails = ({
       }
 
       return (
-        <>
+        <div key={index}>
           {label && value && (
-            <div
-              key={label}
-              className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
-            >
+            <div className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
               {body}
             </div>
           )}
-        </>
+        </div>
       );
     });
 

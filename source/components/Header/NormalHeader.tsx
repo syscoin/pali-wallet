@@ -146,9 +146,9 @@ export const NormalHeader: React.FC = () => {
 
                         <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
                           {Object.values(networks.syscoin).map(
-                            (currentNetwork: any) => (
+                            (currentNetwork: any, index: number) => (
                               <li
-                                key={currentNetwork.chainId}
+                                key={index}
                                 className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                                 onClick={() =>
                                   handleChangeNetwork(
@@ -200,9 +200,9 @@ export const NormalHeader: React.FC = () => {
 
                         <Disclosure.Panel className="scrollbar-styled pb-2 pt-0.5 h-28 text-sm bg-menu-secondary overflow-auto">
                           {Object.values(networks.ethereum).map(
-                            (currentNetwork: any) => (
+                            (currentNetwork: any, index: number) => (
                               <li
-                                key={currentNetwork.id}
+                                key={index}
                                 className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                                 onClick={() =>
                                   handleChangeNetwork(

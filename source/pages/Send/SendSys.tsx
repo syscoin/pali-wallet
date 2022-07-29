@@ -216,8 +216,8 @@ export const SendSys = () => {
                           <>
                             {hasAccountAssets &&
                               Object.values(activeAccount.assets).map(
-                                (item: any) => (
-                                  <>
+                                (item: any, index: number) => (
+                                  <Menu.Item key={index}>
                                     <Menu.Item>
                                       <button
                                         onClick={() => handleSelectedAsset(-1)}
@@ -243,7 +243,7 @@ export const SendSys = () => {
                                         </small>
                                       </button>
                                     </Menu.Item>
-                                  </>
+                                  </Menu.Item>
                                 )
                               )}
                           </>

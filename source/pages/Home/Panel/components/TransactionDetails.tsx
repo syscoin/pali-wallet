@@ -97,31 +97,33 @@ export const TransactionDetails = ({
   }, [transactionDetails]);
 
   const renderAddresses = (list: any) =>
-    Object.values(list).map(({ address, value: addressValue }: any) => (
-      <li
-        onClick={() => copyText(address)}
-        key={address}
-        className="flex gap-x-1 items-center justify-between mt-2 p-1 text-xs rounded-lg cursor-pointer transition-all duration-200"
-      >
-        <p>{ellipsis(address) || '...'}</p>
+    Object.values(list).map(
+      ({ address, value: addressValue }: any, index: number) => (
+        <li
+          onClick={() => copyText(address)}
+          key={index}
+          className="flex gap-x-1 items-center justify-between mt-2 p-1 text-xs rounded-lg cursor-pointer transition-all duration-200"
+        >
+          <p>{ellipsis(address) || '...'}</p>
 
-        <div>
-          <small>
-            {formatUrl(String(Number(addressValue) / 10 ** 8), 18)
-              ? formatUrl(String(Number(addressValue) / 10 ** 8), 18)
-              : 0}{' '}
-            {activeNetwork.chainId === 57 ? 'SYS' : 'tSYS'}
-          </small>
+          <div>
+            <small>
+              {formatUrl(String(Number(addressValue) / 10 ** 8), 18)
+                ? formatUrl(String(Number(addressValue) / 10 ** 8), 18)
+                : 0}{' '}
+              {activeNetwork.chainId === 57 ? 'SYS' : 'tSYS'}
+            </small>
 
-          <IconButton onClick={() => copyText(address)}>
-            <Icon
-              name="copy"
-              className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-            />
-          </IconButton>
-        </div>
-      </li>
-    ));
+            <IconButton onClick={() => copyText(address)}>
+              <Icon
+                name="copy"
+                className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+              />
+            </IconButton>
+          </div>
+        </li>
+      )
+    );
 
   const { blockHash, confirmations, blockTime, valueIn, value, fees } =
     transactionDetails;
@@ -167,10 +169,10 @@ export const TransactionDetails = ({
   return (
     <>
       {isSyscoinChain &&
-        txData.map(({ label, value: currentValue }: any) => (
+        txData.map(({ label, value: currentValue }: any, index) => (
           <>
             <div
-              key={label}
+              key={index}
               className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300"
             >
               <p>{label}</p>
