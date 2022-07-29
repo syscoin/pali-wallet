@@ -40,11 +40,12 @@ import { ProtectedRoute } from './ProtectedRoute';
 export const Router = () => {
   const params = useParams();
   const { wallet, appRoute } = getController();
-  const isUnlocked = wallet.isUnlocked();
 
   const { alert, navigate, handleRefresh } = useUtils();
   const { accounts, activeAccount } = useStore();
   const { pathname } = useLocation();
+
+  const isUnlocked = wallet.isUnlocked() && activeAccount.address !== '';
 
   useEffect(() => {
     if (isUnlocked) {
@@ -55,7 +56,7 @@ export const Router = () => {
         });
       });
     }
-  }, [isUnlocked, browser.runtime]);
+  }, [isUnlocked]);
 
   useEffect(() => {
     const canProceed = isUnlocked && accounts && activeAccount.address;
