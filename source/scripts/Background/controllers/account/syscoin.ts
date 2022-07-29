@@ -41,7 +41,7 @@ const SysAccountController = () => {
       : [];
 
     const txs =
-      activeAccount.transactions && !isSyscoinChain
+      activeAccount.transactions && !isSyscoinChain && filteredTransactions
         ? filteredTransactions
         : accountLatestUpdate.transactions;
 

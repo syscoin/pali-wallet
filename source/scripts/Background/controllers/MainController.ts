@@ -19,6 +19,7 @@ import {
   removeNetwork as removeNetworkFromStore,
   setActiveToken,
   removeNetwork,
+  setStoreError,
 } from 'state/vault';
 import { ICustomRpcParams } from 'types/transactions';
 
@@ -91,23 +92,23 @@ const MainController = () => {
     walletController.account.sys.getLatestUpdate(false);
   };
 
-  const setActiveNetwork = async (
-    chain: string,
-    chainId: number,
-    key?: string | number
-  ) => {
+  const setActiveNetwork = async (network: INetwork) => {
     store.dispatch(setIsPendingBalances(true));
 
-    const { networks } = store.getState().vault;
+    const { networks, activeNetwork } = store.getState().vault;
 
-    if (key) {
-      const network = networks[chain][key];
-      store.dispatch(setNetwork(network));
+    const isSyscoinChain =
+      networks.syscoin[network.chainId] && network.url.includes('blockbook');
 
-      const account = (await keyringManager.setSignerNetwork(
+    const chain = isSyscoinChain ? 'syscoin' : 'ethereum';
+
+    try {
+      const networkAccount = await keyringManager.setSignerNetwork(
         network,
         chain
-      )) as IKeyringAccountState;
+      );
+
+      store.dispatch(setNetwork(network));
 
       store.dispatch(
         setActiveAccountProperty({
@@ -124,39 +125,19 @@ const MainController = () => {
       );
 
       store.dispatch(setIsPendingBalances(false));
-      store.dispatch(setActiveAccount(account));
+      store.dispatch(setActiveAccount(networkAccount));
 
-      return account;
+      if (isSyscoinChain) walletController.account.sys.setAddress();
+
+      return networkAccount;
+    } catch (error) {
+      setActiveNetwork(activeNetwork);
+
+      store.dispatch(setStoreError(true));
     }
-
-    const network = networks[chain][chainId];
-
-    store.dispatch(setNetwork(network));
-
-    const networkAccount = await keyringManager.setSignerNetwork(
-      network,
-      chain
-    );
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'xpub',
-        value: keyringManager.getAccountXpub(),
-      })
-    );
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'xprv',
-        value: keyringManager.getEncryptedXprv(),
-      })
-    );
-
-    store.dispatch(setIsPendingBalances(false));
-    store.dispatch(setActiveAccount(networkAccount));
-
-    return networkAccount;
   };
+
+  const resolveError = () => store.dispatch(setStoreError(false));
 
   const validateAndBuildRpc = async ({
     chainId,
@@ -241,6 +222,7 @@ const MainController = () => {
     editCustomRpc,
     removeKeyringNetwork,
     setActiveTokenForWallet,
+    resolveError,
     ...keyringManager,
   };
 };

@@ -3,7 +3,9 @@ import { Badge } from 'antd';
 import React, { useEffect, useState } from 'react';
 import { browser } from 'webextension-polyfill-ts';
 
-import { Icon, Tooltip } from 'components/index';
+import { INetwork } from '@pollum-io/sysweb3-utils';
+
+import { Icon, Tooltip, ErrorModal } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
@@ -11,20 +13,42 @@ import { ellipsis } from 'utils/index';
 export const NormalHeader: React.FC = () => {
   const { wallet } = getController();
 
-  const { activeNetwork, encryptedMnemonic, networks } = useStore();
+  const {
+    activeNetwork,
+    encryptedMnemonic,
+    networks,
+    isPendingBalances,
+    error,
+  } = useStore();
   const { handleRefresh, navigate } = useUtils();
 
   const [currentTabURL, setCurrentTabURL] = useState<string>('');
+  const [networkErrorStatus, setNetworkErrorStatus] = useState({
+    error: false,
+    description: '',
+    title: '',
+  });
 
-  const handleChangeNetwork = (
-    chain: string,
-    chainId: number,
-    key?: string | number
-  ) => {
-    wallet.setActiveNetwork(chain, chainId, key);
-
-    if (chain === 'syscoin') wallet.account.sys.setAddress();
+  const handleChangeNetwork = (network: INetwork) => {
+    try {
+      wallet.setActiveNetwork(network);
+    } catch (networkError) {
+      navigate('/home');
+    }
   };
+
+  useEffect(() => {
+    if (!isPendingBalances && error) {
+      setNetworkErrorStatus({
+        error: true,
+        description:
+          'There was an error while trying to switch network. Try again later.',
+        title: 'Error switching networks',
+      });
+
+      wallet.resolveError();
+    }
+  }, [isPendingBalances, error]);
 
   const updateCurrentTabUrl = async () => {
     const windows = await browser.windows.getAll({ populate: true });
@@ -151,10 +175,7 @@ export const NormalHeader: React.FC = () => {
                                 key={currentNetwork.chainId}
                                 className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                                 onClick={() =>
-                                  handleChangeNetwork(
-                                    'syscoin',
-                                    currentNetwork.chainId
-                                  )
+                                  handleChangeNetwork(currentNetwork)
                                 }
                               >
                                 <span className="ml-8 text-left">
@@ -206,13 +227,7 @@ export const NormalHeader: React.FC = () => {
                                 key={currentNetwork.id}
                                 className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                                 onClick={() =>
-                                  handleChangeNetwork(
-                                    'ethereum',
-                                    currentNetwork.chainId,
-                                    currentNetwork.key
-                                      ? currentNetwork.key
-                                      : null
-                                  )
+                                  handleChangeNetwork(currentNetwork)
                                 }
                               >
                                 <span className="ml-8 text-left">
@@ -406,6 +421,16 @@ export const NormalHeader: React.FC = () => {
       <NetworkMenu />
 
       <GeneralMenu />
+
+      <ErrorModal
+        title="Error switching networks"
+        description="There was an error while trying to switch network. Try again later."
+        log={networkErrorStatus.description}
+        show={networkErrorStatus.error}
+        onClose={() =>
+          setNetworkErrorStatus({ error: false, description: '', title: '' })
+        }
+      />
     </div>
   );
 };

@@ -31,6 +31,7 @@ export const initialState: IVaultState = {
   trustedApps,
   activeToken: 'SYS',
   encryptedMnemonic: '',
+  error: false,
 };
 
 const VaultState = createSlice({
@@ -178,6 +179,9 @@ const VaultState = createSlice({
 
       state.accounts[id].label = label;
     },
+    setStoreError(state: IVaultState, action: PayloadAction<boolean>) {
+      state.error = action.payload;
+    },
   },
 });
 
@@ -199,6 +203,7 @@ export const {
   createAccount,
   setAccountLabel,
   setAccountTransactions,
+  setStoreError,
 } = VaultState.actions;
 
 export default VaultState.reducer;

@@ -1,4 +1,4 @@
-import React, { FC, useCallback, Fragment, useEffect } from 'react';
+import React, { FC, useCallback, Fragment } from 'react';
 
 import { IconButton, Icon } from 'components/index';
 import { FiatComponent } from 'components/index';
@@ -47,24 +47,9 @@ export const PanelList: FC<IPanelList> = ({
     return `Type: ${tx.type}`;
   };
 
-  const isWeb3SyscoinNetwork =
-    activeNetwork.chainId === 57 || activeNetwork.chainId === 5700
-      ? 'timeStamp'
-      : 'timestamp';
-
   const txid = isSyscoinChain ? 'txid' : 'hash';
-  const blocktime = isSyscoinChain ? 'blockTime' : isWeb3SyscoinNetwork;
+  const blocktime = isSyscoinChain ? 'blockTime' : 'timestamp';
   const transactions = isSyscoinChain ? data : data.slice(0).reverse();
-
-  useEffect(() => {
-    console.log({
-      txid,
-      blocktime,
-      transactions,
-      isSyscoinChain,
-      activeAccount,
-    });
-  }, [blocktime]);
 
   const isShowedGroupBar = useCallback(
     (tx: any, idx: number) =>
