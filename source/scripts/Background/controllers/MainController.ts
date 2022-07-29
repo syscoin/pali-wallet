@@ -21,12 +21,13 @@ import {
   setActiveToken,
   removeNetwork,
 } from 'state/vault';
+import { IMainController } from 'types/controllers';
 import { ICustomRpcParams } from 'types/transactions';
 
 import WalletController from './account';
 import { validateEthRpc, validateSysRpc } from './utils';
 
-const MainController = () => {
+const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
   const walletController = WalletController();
 
@@ -105,10 +106,7 @@ const MainController = () => {
       const network = networks[chain][key];
       store.dispatch(setNetwork(network));
 
-      const account = (await keyringManager.setSignerNetwork(
-        network,
-        chain
-      )) as IKeyringAccountState;
+      const account = await keyringManager.setSignerNetwork(network, chain);
 
       store.dispatch(
         setActiveAccountProperty({
@@ -124,8 +122,7 @@ const MainController = () => {
         })
       );
 
-      if (account.id === 0)
-        keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
+      if (account.id === 0) keyringManager.addAccountToSigner(activeAccount.id);
 
       store.dispatch(setIsPendingBalances(false));
       store.dispatch(setActiveAccount(account));
@@ -157,7 +154,7 @@ const MainController = () => {
     );
 
     if (networkAccount.id === 0)
-      keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
+      keyringManager.addAccountToSigner(activeAccount.id);
 
     store.dispatch(setIsPendingBalances(false));
     store.dispatch(setActiveAccount(networkAccount));

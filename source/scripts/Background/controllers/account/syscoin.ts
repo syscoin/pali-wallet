@@ -1,8 +1,10 @@
 import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
-import { ICoingeckoToken } from '@pollum-io/sysweb3-utils';
 
-import { SysTransactionController } from '../transaction';
-import SysTrezorController from '../trezor/syscoin';
+import {
+  ISysTransactionController,
+  SysTransactionController,
+} from '../transaction';
+import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
 import {
   setActiveAccount,
@@ -10,7 +12,16 @@ import {
   setIsPendingBalances,
 } from 'state/vault';
 
-const SysAccountController = () => {
+export interface ISysAccountController {
+  getLatestUpdate: (silent?: boolean) => Promise<void>;
+  saveTokenInfo: (token: any) => Promise<void>;
+  setAddress: () => Promise<string>;
+  trezor: ISysTrezorController;
+  tx: ISysTransactionController;
+  watchMemPool: () => void;
+}
+
+const SysAccountController = (): ISysAccountController => {
   const keyringManager = KeyringManager();
 
   // id for `watchMemPool` setInterval
@@ -101,7 +112,7 @@ const SysAccountController = () => {
     }
   };
 
-  const saveTokenInfo = async (token: ICoingeckoToken) => {
+  const saveTokenInfo = async (token: any) => {
     const { activeAccount } = store.getState().vault;
 
     const tokenExists = activeAccount.assets.find(

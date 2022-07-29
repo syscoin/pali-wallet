@@ -1,8 +1,18 @@
-import { KeyringManager } from '@pollum-io/sysweb3-keyring';
+import {
+  ISyscoinTransactions,
+  KeyringManager,
+} from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
 
-export const SysTransactionController = () => {
+export interface ISysTransactionController extends ISyscoinTransactions {
+  clearTemporaryTransaction: (item: string) => void;
+  confirmTemporaryTransaction: ({ type, callback }) => Promise<any>;
+  getTemporaryTransaction: (type: string) => any;
+  updateTemporaryTransaction: ({ tx, type }) => void;
+}
+
+export const SysTransactionController = (): ISysTransactionController => {
   const { txs } = KeyringManager();
 
   const temporaryTransaction = {
