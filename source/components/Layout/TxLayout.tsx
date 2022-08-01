@@ -1,6 +1,4 @@
-import React from 'react';
-
-/* import { Form, Input } from 'antd';
+import { Form, Input } from 'antd';
 import React, { useState, FC, useEffect } from 'react';
 import { browser } from 'webextension-polyfill-ts';
 
@@ -13,7 +11,7 @@ import {
 } from 'components/index';
 import { useUtils, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
-import { rejectTransaction } from 'utils/index'; */
+import { rejectTransaction } from 'utils/index';
 
 interface ITxLayout {
   confirmRoute: string;
@@ -21,10 +19,9 @@ interface ITxLayout {
   txType: string;
 }
 
-export const TxLayout: React.FC<ITxLayout> = () => <div></div>;
-/* export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
-  const { account } = getController().wallet;
-  const transaction = account.tx.getTemporaryTransaction(txType);
+export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
+  const accountController = getController().wallet.account;
+  const transaction = accountController.tx.getTemporaryTransaction(txType);
 
   const { navigate } = useUtils();
   const { activeNetwork } = useStore();
@@ -34,7 +31,9 @@ export const TxLayout: React.FC<ITxLayout> = () => <div></div>;
   const [form] = Form.useForm();
 
   const getFee = async () => {
-    const recommendFee = await account.tx.getRecommendedFee(activeNetwork.url);
+    const recommendFee = await accountController.tx.getRecommendedFee(
+      activeNetwork.url
+    );
     setRecommend(recommendFee);
     form.setFieldsValue({ fee: recommendFee });
   };
@@ -44,7 +43,7 @@ export const TxLayout: React.FC<ITxLayout> = () => <div></div>;
   });
 
   const updateTemporaryTransaction = ({ fee }) => {
-    account.tx.updateTemporaryTransaction({
+    accountController.tx.updateTemporaryTransaction({
       tx: {
         ...transaction,
         fee,
@@ -156,4 +155,4 @@ export const TxLayout: React.FC<ITxLayout> = () => <div></div>;
       </div>
     </Layout>
   );
-};*/
+};

@@ -2,14 +2,12 @@ import React, { useState } from 'react';
 
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
 import { useStore } from 'hooks/index';
-// import { getController } from 'utils/browser';
+import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ConnectedAccounts = () => {
-  // const accountController = getController().wallet.account;
-  // const connectedAccount = accountController.getConnectedAccount();
-  // const connectedAccount = accountController.getConnectedAccount();
-  const connectedAccount = null;
+  const accountController = getController().wallet.account;
+  const connectedAccount = accountController.getConnectedAccount();
 
   const { accounts } = useStore();
 

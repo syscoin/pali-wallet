@@ -1,4 +1,4 @@
-import { IControllerUtils, IMainController } from 'types/controllers';
+import { IControllerUtils } from 'types/controllers';
 
 import ControllerUtils from './ControllerUtils';
 import MainController from './MainController';
@@ -7,7 +7,7 @@ export interface IMasterController {
   appRoute: (newRoute?: string) => string;
   stateUpdater: () => void;
   utils: Readonly<IControllerUtils>;
-  wallet: Readonly<IMainController>;
+  wallet: Readonly<any>;
 }
 
 const MasterController = (): IMasterController => {

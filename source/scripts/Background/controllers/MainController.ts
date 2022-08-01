@@ -21,13 +21,12 @@ import {
   setActiveToken,
   removeNetwork,
 } from 'state/vault';
-import { IMainController } from 'types/controllers';
 import { ICustomRpcParams } from 'types/transactions';
 
 import WalletController from './account';
 import { validateEthRpc, validateSysRpc } from './utils';
 
-const MainController = (): IMainController => {
+const MainController = () => {
   const keyringManager = KeyringManager();
   const walletController = WalletController();
 
@@ -106,7 +105,10 @@ const MainController = (): IMainController => {
       const network = networks[chain][key];
       store.dispatch(setNetwork(network));
 
-      const account = await keyringManager.setSignerNetwork(network, chain);
+      const account = (await keyringManager.setSignerNetwork(
+        network,
+        chain
+      )) as IKeyringAccountState;
 
       store.dispatch(
         setActiveAccountProperty({
@@ -122,7 +124,8 @@ const MainController = (): IMainController => {
         })
       );
 
-      if (account.id === 0) keyringManager.addAccountToSigner(activeAccount.id);
+      if (account.id === 0)
+        keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
 
       store.dispatch(setIsPendingBalances(false));
       store.dispatch(setActiveAccount(account));
@@ -154,7 +157,7 @@ const MainController = (): IMainController => {
     );
 
     if (networkAccount.id === 0)
-      keyringManager.addAccountToSigner(activeAccount.id);
+      keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
 
     store.dispatch(setIsPendingBalances(false));
     store.dispatch(setActiveAccount(networkAccount));
@@ -165,13 +168,13 @@ const MainController = (): IMainController => {
   const validateAndBuildRpc = async ({
     chainId,
     label,
-    url,
+    rpcUrl,
     isSyscoinRpc,
     tokenContractAddress,
   }: ICustomRpcParams): Promise<INetwork> => {
     const { valid, data: _data } = isSyscoinRpc
-      ? await validateSysRpc(url)
-      : await validateEthRpc(chainId, url, tokenContractAddress);
+      ? await validateSysRpc(rpcUrl)
+      : await validateEthRpc(chainId, rpcUrl, tokenContractAddress);
 
     if (!valid)
       throw new Error('Invalid chainID. Please, verify the current RPC URL.');

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
-// import sys from 'syscoinjs-lib';
+import sys from 'syscoinjs-lib';
 
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
@@ -31,8 +31,7 @@ export const SendConfirm = () => {
 
       try {
         if (isSyscoinChain) {
-          // TODO
-          /* if (activeAccount.isTrezorWallet) {
+          if (activeAccount.isTrezorWallet) {
             const value = new sys.utils.BN(tx.amount * 1e8);
             const feeRate = new sys.utils.BN(tx.fee * 1e8);
 
@@ -48,7 +47,7 @@ export const SendConfirm = () => {
               outputs,
               feeRate,
             });
-          } */
+          }
 
           const response =
             await controller.wallet.account.sys.tx.sendTransaction(tx);
