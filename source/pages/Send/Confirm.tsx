@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 // import sys from 'syscoinjs-lib';
 
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
-import { useQueryData, useStore, useUtils } from 'hooks/index';
+import { useStore, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { formatUrl, logError, ellipsis } from 'utils/index';
 
@@ -12,11 +12,9 @@ export const SendConfirm = () => {
   const { activeAccount, networks, activeNetwork } = useStore();
   const { alert, navigate, handleRefresh } = useUtils();
 
-  // when using the default routing, state will have the tx data
-  // when using createPopup (DApps), the data comes from route params
-  const { state }: { state: any } = useLocation();
-  const externalTx = useQueryData();
-  const tx = state ? state.tx : externalTx;
+  const {
+    state: { tx },
+  }: { state: any } = useLocation();
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);

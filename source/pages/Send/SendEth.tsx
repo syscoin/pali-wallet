@@ -35,7 +35,7 @@ export const SendEth = () => {
     const gasLimit = await getGasLimit(undefined);
 
     setRecommendedGasPrice(Number(gasPrice));
-    setRecommendedGasLimit(Number(gasLimit));
+    setRecommendedGasLimit(gasLimit);
     setFeeValue(Number(gasPrice));
 
     form.setFieldsValue({ baseFee: recommendedGasPrice, gasLimit, gasPrice });
