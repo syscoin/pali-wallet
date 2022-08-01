@@ -97,7 +97,7 @@ export const Home = () => {
                   name="arrow-up"
                   className="w-4"
                   wrapperClassname="mb-2 mr-2"
-                  rotate={40}
+                  rotate={45}
                 />
                 Send
               </Button>
