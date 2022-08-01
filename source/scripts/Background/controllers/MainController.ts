@@ -109,28 +109,30 @@ const MainController = () => {
       );
 
       store.dispatch(setNetwork(network));
-
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'xpub',
-          value: keyringManager.getAccountXpub(),
-        })
-      );
-
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'xprv',
-          value: keyringManager.getEncryptedXprv(),
-        })
-      );
-
       store.dispatch(setIsPendingBalances(false));
       store.dispatch(setActiveAccount(networkAccount));
 
-      if (isSyscoinChain) walletController.account.sys.setAddress();
+      if (isSyscoinChain) {
+        store.dispatch(
+          setActiveAccountProperty({
+            property: 'xpub',
+            value: keyringManager.getAccountXpub(),
+          })
+        );
+
+        store.dispatch(
+          setActiveAccountProperty({
+            property: 'xprv',
+            value: keyringManager.getEncryptedXprv(),
+          })
+        );
+
+        walletController.account.sys.setAddress();
+      }
 
       return networkAccount;
     } catch (error) {
+      console.log({ error });
       setActiveNetwork(activeNetwork);
 
       store.dispatch(setStoreError(true));

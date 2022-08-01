@@ -45,15 +45,23 @@ const SysAccountController = () => {
         ? filteredTransactions
         : accountLatestUpdate.transactions;
 
+    const currentAccount = {
+      ...activeAccount,
+      ...accountLatestUpdate,
+      transactions: txs,
+    };
+
+    store.dispatch(setActiveAccount(currentAccount));
+
     store.dispatch(
-      setActiveAccount({
-        ...activeAccount,
-        ...accountLatestUpdate,
-        transactions: txs,
+      setAccounts({
+        ...walleAccountstLatestUpdate,
+        accounts: {
+          ...walleAccountstLatestUpdate.accounts,
+          [currentAccount.id]: currentAccount,
+        },
       })
     );
-
-    store.dispatch(setAccounts(walleAccountstLatestUpdate));
   };
 
   /** check if there is no pending transaction in mempool
