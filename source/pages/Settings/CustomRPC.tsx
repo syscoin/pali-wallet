@@ -67,7 +67,7 @@ const CustomRPCView = ({
             initialValues={
               selectedToEdit && {
                 label: selectedToEdit.label ?? '',
-                url: selectedToEdit.url ?? '',
+                rpcUrl: selectedToEdit.url ?? '',
                 chainId: selectedToEdit.chainId ?? '',
               }
             }
@@ -122,7 +122,7 @@ const CustomRPCView = ({
             </Form.Item>
 
             <Form.Item
-              name="url"
+              name="rpcUrl"
               className="md:w-full"
               hasFeedback
               rules={[

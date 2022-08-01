@@ -3,17 +3,16 @@ import React, { FC, useEffect, useState } from 'react';
 
 import { Layout, SecondaryButton, Icon, Tooltip } from 'components/index';
 import { useStore } from 'hooks/index';
-// import { getController } from 'utils/browser';
+import { getController } from 'utils/browser';
 
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
   const [isTestnet, setIsTestnet] = useState<boolean>(false);
 
-  // const controller = getController();
+  const controller = getController();
 
   const handleCreateHardwareWallet = async () => {
-    // TODO connectHardware
-    // await controller.wallet.trezor.connectHardware();
+    await controller.wallet.trezor.connectHardware();
   };
 
   const { activeNetwork } = useStore();
