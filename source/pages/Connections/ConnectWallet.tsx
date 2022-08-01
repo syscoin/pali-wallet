@@ -8,29 +8,32 @@ import {
   Icon,
   Modal,
 } from 'components/index';
-import { useQueryData, useStore } from 'hooks/index';
-import { getController } from 'utils/browser';
-import { ellipsis } from 'utils/index';
+import { useStore } from 'hooks/index';
+// import { getController } from 'utils/browser';
+import { ellipsis, getHost } from 'utils/index';
 
 export const ConnectWallet = () => {
   const { accounts, trustedApps } = useStore();
-  const { dapp } = getController();
-  const { host } = useQueryData();
+  // const accountController = getController().wallet.account;
+  // const connectedAccount = accountController.getConnectedAccount();
+  const connectedAccount = null;
 
-  const currentAccountId = dapp.getDApp(host)?.accountId;
-
-  const [accountId, setAccountId] = useState<number>(currentAccountId);
+  const [accountId, setAccountId] = useState<number>(-1);
   const [isInTrustedList, setIsInTrustedList] = useState<boolean>(false);
   const [openExtraConfirmation, setOpenExtraConfirmation] =
     useState<boolean>(false);
 
-  const handleConnect = () => {
-    dapp.connect(host, accountId);
-    window.close();
+  const handleSelectAccount = (id: number) => {
+    if (connectedAccount && id === connectedAccount.id) {
+      return;
+    }
+
+    setAccountId(id);
   };
 
   useEffect(() => {
-    const trustedApp = trustedApps[host] !== '';
+    const trustedApp = trustedApps.includes(getHost(''));
+
     setIsInTrustedList(trustedApp);
   });
 
@@ -41,20 +44,20 @@ export const ConnectWallet = () => {
 
         {accounts ? (
           <ul className="scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-64 overflow-auto">
-            {Object.values(accounts).map((acc) => (
+            {Object.values(accounts).map((acc: any) => (
               <li
                 className={`${
-                  acc.id === currentAccountId
+                  connectedAccount && acc.id === connectedAccount.id
                     ? 'cursor-not-allowed bg-opacity-50 border-brand-royalblue'
                     : 'cursor-pointer hover:bg-bkg-4 border-brand-royalblue'
                 } border border-solid  rounded-lg px-2 py-4 text-xs bg-bkg-2 flex justify-between items-center transition-all duration-200`}
                 key={acc.id}
-                onClick={() => setAccountId(acc.id)}
+                onClick={() => handleSelectAccount(acc.id)}
               >
                 <p>{acc.label}</p>
 
                 <div className="flex gap-3 items-center justify-center">
-                  <small>{ellipsis(acc.address)}</small>
+                  <small>{ellipsis(acc.address.main)}</small>
 
                   <div
                     className={`${
@@ -87,11 +90,9 @@ export const ConnectWallet = () => {
             type="button"
             action
             disabled={accountId === -1}
-            onClick={
-              !isInTrustedList
-                ? () => setOpenExtraConfirmation(true)
-                : () => handleConnect()
-            }
+            onClick={() => {
+              if (!isInTrustedList) setOpenExtraConfirmation(true);
+            }}
           >
             {accountId > -1 ? 'Confirm' : 'Next'}
           </PrimaryButton>
@@ -127,12 +128,7 @@ export const ConnectWallet = () => {
                 Cancel
               </SecondaryButton>
 
-              <PrimaryButton
-                action
-                width="32"
-                type="button"
-                onClick={() => handleConnect()}
-              >
+              <PrimaryButton action width="32" type="button">
                 Confirm
               </PrimaryButton>
             </div>

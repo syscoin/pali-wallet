@@ -9,7 +9,7 @@ export const TransferOwnershipConfirm = () => (
 
 export const TransferOwnership = () => (
   <TxLayout
-    confirmRoute="/external/tx/asset/transfer/confirm"
+    confirmRoute="/tx/asset/transfer/confirm"
     txType="transferAsset"
     title="Transfer Asset"
   />

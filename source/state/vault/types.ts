@@ -44,9 +44,3 @@ export interface IMintedToken {
   symbol: string;
   totalSupply: number;
 }
-
-export type IOmmitedAccount = Omit<IKeyringAccountState, 'xprv'>;
-
-export type IOmittedVault = Omit<IVaultState, 'accounts'> & {
-  accounts: { [id: number]: IOmmitedAccount };
-};

@@ -1,4 +1,4 @@
-export const STORE_PORT = 'pali';
+export const STORE_PORT = 'SYSCOIN';
 
 export const SYS_NETWORK: {
   [networkId: string]: {
