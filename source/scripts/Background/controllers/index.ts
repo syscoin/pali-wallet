@@ -1,6 +1,10 @@
 import { browser, Windows } from 'webextension-polyfill-ts';
 
-import { IControllerUtils, IDAppController } from 'types/controllers';
+import {
+  IControllerUtils,
+  IDAppController,
+  IMainController,
+} from 'types/controllers';
 
 import ControllerUtils from './ControllerUtils';
 import DAppController from './DAppController';
@@ -12,7 +16,7 @@ export interface IMasterController {
   dapp: Readonly<IDAppController>;
   stateUpdater: () => void;
   utils: Readonly<IControllerUtils>;
-  wallet: Readonly<any>;
+  wallet: Readonly<IMainController>;
 }
 
 const MasterController = (): IMasterController => {

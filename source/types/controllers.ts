@@ -1,29 +1,47 @@
 import { Runtime } from 'webextension-polyfill-ts';
 
+import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
+import { IKeyringManager } from '@pollum-io/sysweb3-keyring';
 import {
   IKeyringAccountState,
   INetwork,
-  KeyringManager,
   ITokenMap,
   ICoingeckoToken,
   ICoingeckoSearchResults,
 } from '@pollum-io/sysweb3-utils';
 
+import { ISysAccountController } from 'scripts/Background/controllers/account/syscoin';
 import { ISigRequest } from 'scripts/Background/controllers/DAppController';
 import { IDApp } from 'state/dapp/types';
 
-export interface IMainController extends KeyringManager {
-  account: any;
-  addCustomRpc: (network: INetwork) => Promise<INetwork | Error>;
+import { ICustomRpcParams } from './transactions';
+
+// TODO IWeb3Accounts
+const web3Accounts = Web3Accounts();
+type IWeb3Accounts = typeof web3Accounts;
+
+export interface IMainController extends IKeyringManager {
+  account: {
+    eth: IWeb3Accounts;
+    sys: ISysAccountController;
+  };
+  addCustomRpc: (rpc: ICustomRpcParams) => Promise<INetwork>;
   createAccount: (label?: string) => Promise<IKeyringAccountState>;
   createWallet: () => Promise<IKeyringAccountState>;
+  editCustomRpc: (
+    newRpc: ICustomRpcParams,
+    oldRpc: ICustomRpcParams
+  ) => Promise<INetwork>;
   forgetWallet: (pwd: string) => void;
   lock: () => void;
+  removeKeyringNetwork: (chain: string, chainId: number) => void;
   setAccount: (id: number) => void;
   setActiveNetwork: (
     chain: string,
-    chainId: number
+    chainId: number,
+    key?: string | number
   ) => Promise<IKeyringAccountState>;
+  setActiveTokenForWallet: () => Promise<void>;
   setAutolockTimer: (minutes: number) => void;
   unlock: (pwd: string) => Promise<void>;
 }

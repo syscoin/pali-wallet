@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+/* import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { browser } from 'webextension-polyfill-ts';
 
@@ -369,7 +369,9 @@ const callbackNameResolver = (txType: string) => {
     default:
       throw new Error('Unknown transaction type');
   }
-};
+}; */
+
+import React from 'react';
 
 interface ITxConfirmLayout {
   sign?: boolean;
@@ -378,7 +380,7 @@ interface ITxConfirmLayout {
   txType: string;
 }
 
-export const TxConfirmLayout: React.FC<ITxConfirmLayout> = ({
+/* export const TxConfirmLayout: React.FC<ITxConfirmLayout> = ({
   sign = false,
   signAndSend = false,
   title,
@@ -410,4 +412,6 @@ export const TxConfirmLayout: React.FC<ITxConfirmLayout> = ({
       )}
     </Layout>
   );
-};
+}; */
+
+export const TxConfirmLayout: React.FC<ITxConfirmLayout> = () => <div></div>;
