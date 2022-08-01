@@ -28,13 +28,15 @@ export const SendEth = () => {
   const { convertGasFee } = feeUtils();
 
   const getRecomendedFees = useCallback(async () => {
-    const gasPrice =
-      await controller.wallet.account.eth.tx.getRecommendedGasPrice(false);
-    const gasLimit = await controller.wallet.account.eth.tx.getGasLimit();
+    const { getGasLimit, getRecommendedGasPrice } =
+      controller.wallet.account.eth.tx;
 
-    setRecommendedGasPrice(gasPrice);
+    const gasPrice = await getRecommendedGasPrice(false);
+    const gasLimit = await getGasLimit(undefined);
+
+    setRecommendedGasPrice(Number(gasPrice));
     setRecommendedGasLimit(gasLimit);
-    setFeeValue(gasPrice);
+    setFeeValue(Number(gasPrice));
 
     form.setFieldsValue({ baseFee: recommendedGasPrice, gasLimit, gasPrice });
   }, [controller.wallet.account]);

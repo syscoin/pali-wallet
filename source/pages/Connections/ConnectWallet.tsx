@@ -9,13 +9,14 @@ import {
   Modal,
 } from 'components/index';
 import { useStore } from 'hooks/index';
-import { getController } from 'utils/browser';
+// import { getController } from 'utils/browser';
 import { ellipsis, getHost } from 'utils/index';
 
 export const ConnectWallet = () => {
   const { accounts, trustedApps } = useStore();
-  const accountController = getController().wallet.account;
-  const connectedAccount = accountController.getConnectedAccount();
+  // const accountController = getController().wallet.account;
+  // const connectedAccount = accountController.getConnectedAccount();
+  const connectedAccount = null;
 
   const [accountId, setAccountId] = useState<number>(-1);
   const [isInTrustedList, setIsInTrustedList] = useState<boolean>(false);
