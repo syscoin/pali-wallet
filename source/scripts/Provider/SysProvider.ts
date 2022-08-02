@@ -1,10 +1,5 @@
-// import { browser } from 'webextension-polyfill-ts';
-
-// import { SyscoinTransactions } from '@pollum-io/sysweb3-keyring';
-
-// import { listNewDapp } from 'state/dapp';
+import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import store from 'state/store';
-// import { removeSensitiveDataFromVault, log, getHost } from 'utils/index';
 
 export const SysProvider = (host: string) => {
   const txs = window.controller.wallet.account.sys.tx;
@@ -20,51 +15,17 @@ export const SysProvider = (host: string) => {
 
   const estimateFee = () => txs.getRecommendedFee(getNetwork().url);
 
-  const sendTransaction = (tx) => {
-    window.controller.createPopup('tx/send/confirm', tx);
-  };
-
-  /* const getState = () => removeSensitiveDataFromVault(store.getState().vault);
-
-  const notifyWalletChanges = async (): Promise<void> => {
-    const { vault } = store.getState();
-    const { activeNetwork, networks } = vault;
-
-    const isEthereumChain = Boolean(networks.ethereum[activeNetwork.chainId]);
-    if (isEthereumChain) {
-      store.subscribe(async () => {
-        const background = await browser.runtime.getBackgroundPage();
-
-        background.dispatchEvent(
-          new CustomEvent('walletChanged', {
-            detail: {
-              data: removeSensitiveDataFromVault(vault),
-              chain: 'ethereum',
-            },
-          })
-        );
-      });
-    }
-
-    log('could not notify wallet changes, network is not web3', 'System');
-  };
-
-  const setAccount = (accountId: number) => {
-    const { accounts } = store.getState().vault;
-    if (!accounts[accountId]) throw new Error('Account not found');
-
-    const { origin } = window.controller.dapp.getCurrent();
-    const id = getHost(origin);
-    const currentDapp = store.getState().dapp.whitelist[id];
-
-    store.dispatch(
-      listNewDapp({
-        id,
-        accountId,
-        dapp: currentDapp,
-      })
-    );
-  }; */
+  const sendTransaction = (tx: {
+    amount: number;
+    fee: number;
+    receivingAddress: string;
+  }) =>
+    popupPromise({
+      host,
+      route: 'tx/send/confirm',
+      data: tx,
+      eventName: 'txSend',
+    });
 
   return {
     getAccount: () => getAccount(),

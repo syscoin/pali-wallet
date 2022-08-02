@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import { useQueryData, useStore, useUtils } from 'hooks/index';
-import { getController } from 'utils/browser';
+import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { formatUrl, logError, ellipsis } from 'utils/index';
 
 export const SendConfirm = () => {
@@ -15,8 +15,9 @@ export const SendConfirm = () => {
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
-  const externalTx = useQueryData();
-  const tx = state ? state.tx : externalTx;
+  const { host, ...externalTx } = useQueryData();
+  const isExternal = Boolean(externalTx);
+  const tx = isExternal ? externalTx : state.tx;
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -35,7 +36,7 @@ export const SendConfirm = () => {
 
       try {
         if (isSyscoinChain) {
-          // TODO
+          // TODO trezor send
           /* if (activeAccount.isTrezorWallet) {
             const value = new sys.utils.BN(tx.amount * 1e8);
             const feeRate = new sys.utils.BN(tx.fee * 1e8);
@@ -59,6 +60,9 @@ export const SendConfirm = () => {
 
           setConfirmed(true);
           setLoading(false);
+
+          if (isExternal)
+            dispatchBackgroundEvent('txSend', { host, data: response });
 
           return response;
         }
@@ -114,8 +118,9 @@ export const SendConfirm = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          navigate('/home');
           handleRefresh(false);
+          if (isExternal) window.close();
+          else navigate('/home');
         }}
       />
       {tx && (
