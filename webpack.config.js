@@ -26,6 +26,7 @@ const extensionReloaderPlugin =
           // TODO: reload manifest on update
           contentScript: 'contentScript',
           background: 'background',
+          inpage: 'inject',
           extensionPage: ['popup'],
           trezorScript: 'trezorScript',
         },
@@ -67,8 +68,10 @@ module.exports = {
       'lib/index.js'
     ),
     background: path.join(sourcePath, 'scripts/Background', 'index.ts'),
+    inpage: path.join(sourcePath, 'scripts/ContentScript', 'inject/index.ts'),
     contentScript: path.join(sourcePath, 'scripts/ContentScript', 'index.ts'),
     app: path.join(sourcePath, 'pages/App', 'index.tsx'),
+    external: path.join(sourcePath, 'pages/External', 'index.tsx'),
     trezorScript: path.join(
       sourcePath,
       'scripts/ContentScript/trezor',
@@ -120,6 +123,17 @@ module.exports = {
           },
         },
         exclude: /node_modules/,
+      },
+      {
+        test: /\.txt$/i,
+        use: [
+          {
+            loader: 'raw-loader',
+            options: {
+              esModule: false,
+            },
+          },
+        ],
       },
       {
         test: /\.(jpg|png)x?$/,
@@ -224,6 +238,13 @@ module.exports = {
       chunks: ['app'],
       hash: true,
       filename: 'app.html',
+    }),
+    new HtmlWebpackPlugin({
+      template: path.join(viewsPath, 'external.html'),
+      inject: 'body',
+      chunks: ['external'],
+      hash: true,
+      filename: 'external.html',
     }),
     new HtmlWebpackPlugin({
       template: path.join(viewsPath, 'trezor-usb-permissions.html'),

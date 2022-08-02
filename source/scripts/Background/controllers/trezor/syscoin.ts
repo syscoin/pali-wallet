@@ -1,6 +1,13 @@
-import { KeyringManager } from '@pollum-io/sysweb3-keyring';
+import {
+  IKeyringAccountState,
+  KeyringManager,
+} from '@pollum-io/sysweb3-keyring';
 
-const SysTrezorController = () => {
+export interface ISysTrezorController {
+  createAccount: () => Promise<IKeyringAccountState>;
+}
+
+const SysTrezorController = (): ISysTrezorController => {
   const { trezor } = KeyringManager();
 
   const createAccount = () => trezor.createWallet();

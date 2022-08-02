@@ -18,13 +18,15 @@ import { logError } from 'utils/index';
 
 const ControllerUtils = (): IControllerUtils => {
   let route = '/';
+  let externalRoute = '/start';
 
-  const appRoute = (newRoute?: string) => {
+  const appRoute = (newRoute?: string, external = false) => {
     if (newRoute) {
-      route = newRoute;
+      if (external) externalRoute = newRoute;
+      else route = newRoute;
     }
 
-    return route;
+    return external ? externalRoute : route;
   };
 
   const setFiat = async (currency?: string) => {
