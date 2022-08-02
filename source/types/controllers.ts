@@ -106,10 +106,6 @@ export interface IControllerUtils {
 
 export interface IDAppController {
   /**
-   * Adds the DApp to the store without an account
-   */
-  addDApp: (port: Runtime.Port) => void;
-  /**
    * Adds an event listener
    */
   addListener: (host: string, eventName: string) => void;
@@ -129,18 +125,14 @@ export interface IDAppController {
    */
   disconnect: (host: string) => void;
   /**
+   * Retrieves a DApp
+   */
+  get: (host: string) => IDApp | undefined;
+  /**
    * Retrieves the connected account
    */
   getAccount: (host: string) => IKeyringAccountState | undefined;
-  /**
-   * Retrieves a DApp
-   */
-  getDApp: (host: string) => IDApp | undefined;
   getSigRequest: () => ISigRequest;
-  /**
-   * Checks if DApp exists
-   */
-  hasDApp: (host: string) => boolean;
   /**
    * Checks if listener exists
    */
@@ -154,10 +146,6 @@ export interface IDAppController {
    */
   isConnected: (host: string) => boolean;
   /**
-   * Removes a DApp
-   */
-  removeDApp: (host: string) => void;
-  /**
    * Removes an event listener
    */
   removeListener: (host: string, eventName: string) => void;
@@ -167,4 +155,8 @@ export interface IDAppController {
   removeListeners: (host: string) => void;
   setHasWindow: (host: string, hasWindow: boolean) => void;
   setSigRequest: (req: ISigRequest) => void;
+  /**
+   * Setup communication
+   */
+  setup: (port: Runtime.Port) => void;
 }
