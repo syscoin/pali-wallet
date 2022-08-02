@@ -9,18 +9,30 @@ import {
   ICoingeckoSearchResults,
 } from '@pollum-io/sysweb3-utils';
 
+import { ISysAccountController } from 'scripts/Background/controllers/account/syscoin';
+
+import { ICustomRpcParams } from './transactions';
+
 export interface IMainController extends IKeyringManager {
-  account: any;
-  addCustomRpc: (network: INetwork) => Promise<INetwork | Error>;
+  account: {
+    // TODO eth acc ctlr interface
+    eth: any;
+    sys: ISysAccountController;
+  };
+  addCustomRpc: (rpc: ICustomRpcParams) => Promise<INetwork>;
   createAccount: (label?: string) => Promise<IKeyringAccountState>;
   createWallet: () => Promise<IKeyringAccountState>;
+  editCustomRpc: (
+    newRpc: ICustomRpcParams,
+    oldRpc: ICustomRpcParams
+  ) => Promise<INetwork>;
   forgetWallet: (pwd: string) => void;
   lock: () => void;
+  removeKeyringNetwork: (chain: string, chainId: number) => void;
+  resolveError: () => void;
   setAccount: (id: number) => void;
-  setActiveNetwork: (
-    chain: string,
-    chainId: number
-  ) => Promise<IKeyringAccountState>;
+  setActiveNetwork: (network: INetwork) => Promise<IKeyringAccountState>;
+  setActiveTokenForWallet: () => Promise<void>;
   setAutolockTimer: (minutes: number) => void;
   unlock: (pwd: string) => Promise<void>;
 }
