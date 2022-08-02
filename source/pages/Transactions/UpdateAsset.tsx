@@ -9,7 +9,7 @@ export const UpdateAssetConfirm = () => (
 
 export const UpdateAsset = () => (
   <TxLayout
-    confirmRoute="/tx/asset/update/confirm"
+    confirmRoute="/external/tx/asset/update/confirm"
     txType="updateAsset"
     title="Update Asset"
   />

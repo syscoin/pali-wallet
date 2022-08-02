@@ -150,6 +150,6 @@ export interface ICustomRpcParams {
   chainId: number;
   isSyscoinRpc?: boolean;
   label: string;
-  rpcUrl: string;
   tokenContractAddress?: string;
+  url: string;
 }

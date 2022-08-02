@@ -1,3 +1,5 @@
+import { Runtime } from 'webextension-polyfill-ts';
+
 import {
   IKeyringManager,
   IKeyringAccountState,
@@ -9,18 +11,32 @@ import {
   ICoingeckoSearchResults,
 } from '@pollum-io/sysweb3-utils';
 
+import { ISysAccountController } from 'scripts/Background/controllers/account/syscoin';
+import { ISigRequest } from 'scripts/Background/controllers/DAppController';
+import { IDApp } from 'state/dapp/types';
+
+import { ICustomRpcParams } from './transactions';
+
 export interface IMainController extends IKeyringManager {
-  account: any;
-  addCustomRpc: (network: INetwork) => Promise<INetwork | Error>;
+  account: {
+    // TODO eth acc ctlr interface
+    eth: any;
+    sys: ISysAccountController;
+  };
+  addCustomRpc: (rpc: ICustomRpcParams) => Promise<INetwork>;
   createAccount: (label?: string) => Promise<IKeyringAccountState>;
   createWallet: () => Promise<IKeyringAccountState>;
+  editCustomRpc: (
+    newRpc: ICustomRpcParams,
+    oldRpc: ICustomRpcParams
+  ) => Promise<INetwork>;
   forgetWallet: (pwd: string) => void;
   lock: () => void;
+  removeKeyringNetwork: (chain: string, chainId: number) => void;
+  resolveError: () => void;
   setAccount: (id: number) => void;
-  setActiveNetwork: (
-    chain: string,
-    chainId: number
-  ) => Promise<IKeyringAccountState>;
+  setActiveNetwork: (network: INetwork) => Promise<IKeyringAccountState>;
+  setActiveTokenForWallet: () => Promise<void>;
   setAutolockTimer: (minutes: number) => void;
   unlock: (pwd: string) => Promise<void>;
 }
@@ -35,7 +51,7 @@ export interface IEthTokenDetails {
 }
 
 export interface IControllerUtils {
-  appRoute: (newRoute?: string) => string;
+  appRoute: (newRoute?: string, external?: boolean) => string;
   getAsset: (
     explorerUrl: string,
     assetGuid: string
@@ -86,4 +102,69 @@ export interface IControllerUtils {
     verification?: boolean
   ) => boolean;
   setFiat: (currency?: string, assetId?: string) => Promise<void>;
+}
+
+export interface IDAppController {
+  /**
+   * Adds the DApp to the store without an account
+   */
+  addDApp: (port: Runtime.Port) => void;
+  /**
+   * Adds an event listener
+   */
+  addListener: (host: string, eventName: string) => void;
+  /**
+   * Changes the account
+   * @emits accountChange
+   */
+  changeAccount: (host: string, accountId: number) => void;
+  /**
+   * Complete a connection with a DApp. Adds the account
+   * @emits connect
+   */
+  connect: (host: string, accountId: number) => void;
+  /**
+   * Removes a connection with a DApp. Removes the account
+   * @emits disconnect
+   */
+  disconnect: (host: string) => void;
+  /**
+   * Retrieves the connected account
+   */
+  getAccount: (host: string) => IKeyringAccountState | undefined;
+  /**
+   * Retrieves a DApp
+   */
+  getDApp: (host: string) => IDApp | undefined;
+  getSigRequest: () => ISigRequest;
+  /**
+   * Checks if DApp exists
+   */
+  hasDApp: (host: string) => boolean;
+  /**
+   * Checks if listener exists
+   */
+  hasListener: (host: string, eventName: string) => boolean;
+  /**
+   * Checks if DApp has an open popup
+   */
+  hasWindow: (host: string) => boolean;
+  /**
+   * Checks if DApp has a connected account
+   */
+  isConnected: (host: string) => boolean;
+  /**
+   * Removes a DApp
+   */
+  removeDApp: (host: string) => void;
+  /**
+   * Removes an event listener
+   */
+  removeListener: (host: string, eventName: string) => void;
+  /**
+   * Removes all listeners from a DApp
+   */
+  removeListeners: (host: string) => void;
+  setHasWindow: (host: string, hasWindow: boolean) => void;
+  setSigRequest: (req: ISigRequest) => void;
 }

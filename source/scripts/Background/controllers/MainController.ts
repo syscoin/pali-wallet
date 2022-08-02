@@ -21,12 +21,13 @@ import {
   removeNetwork,
   setStoreError,
 } from 'state/vault';
+import { IMainController } from 'types/controllers';
 import { ICustomRpcParams } from 'types/transactions';
 
 import WalletController from './account';
 import { validateEthRpc, validateSysRpc } from './utils';
 
-const MainController = () => {
+const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
   const walletController = WalletController(keyringManager);
 
@@ -143,13 +144,13 @@ const MainController = () => {
   const validateAndBuildRpc = async ({
     chainId,
     label,
-    rpcUrl,
+    url,
     isSyscoinRpc,
     tokenContractAddress,
   }: ICustomRpcParams): Promise<INetwork> => {
     const { valid, data: _data } = isSyscoinRpc
-      ? await validateSysRpc(rpcUrl)
-      : await validateEthRpc(chainId, rpcUrl, tokenContractAddress);
+      ? await validateSysRpc(url)
+      : await validateEthRpc(chainId, url, tokenContractAddress);
 
     if (!valid)
       throw new Error('Invalid chainID. Please, verify the current RPC URL.');
