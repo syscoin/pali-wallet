@@ -59,6 +59,7 @@ export const onMessage = async (message: Message, port: Runtime.Port) => {
 
 export const onDisconnect = (port: Runtime.Port) => {
   const { host } = new URL(port.sender.url);
-  window.controller.dapp.removeDApp(host);
-  window.controller.dapp.removeListeners(host);
+  const { dapp } = window.controller;
+
+  dapp.removeListeners(host);
 };

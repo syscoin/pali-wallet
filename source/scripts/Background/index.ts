@@ -29,7 +29,7 @@ browser.runtime.onInstalled.addListener(() => {
 
 browser.runtime.onConnect.addListener((port: Runtime.Port) => {
   if (port.name === 'pali-inject') {
-    window.controller.dapp.addDApp(port);
+    window.controller.dapp.setup(port);
 
     return;
   }

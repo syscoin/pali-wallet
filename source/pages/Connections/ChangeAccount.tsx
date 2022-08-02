@@ -10,7 +10,7 @@ export const ChangeAccount = () => {
   const { dapp } = getController();
   const { host } = useQueryData();
 
-  const currentAccountId = dapp.getDApp(host).accountId;
+  const currentAccountId = dapp.get(host).accountId;
 
   const [accountId, setAccountId] = useState<number>(currentAccountId);
 
