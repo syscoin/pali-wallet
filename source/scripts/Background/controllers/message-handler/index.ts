@@ -22,7 +22,7 @@ const _messageHandler = async (host: string, message: Message) => {
     case 'EVENT_DEREG':
       return dapp.removeListener(host, message.data.eventName);
     case 'ENABLE':
-      if (dapp.isConnected(host)) return;
+      if (dapp.isConnected(host)) return { success: true };
       return popupPromise({
         host,
         route: 'connect-wallet',
