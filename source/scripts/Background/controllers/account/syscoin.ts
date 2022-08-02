@@ -1,10 +1,10 @@
-import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
-import { ICoingeckoToken } from '@pollum-io/sysweb3-utils';
+import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 
 import { SysTransactionController } from '../transaction';
 import SysTrezorController from '../trezor/syscoin';
 import store from 'state/store';
 import {
+  setAccounts,
   setActiveAccount,
   setActiveAccountProperty,
   setIsPendingBalances,
@@ -17,31 +17,42 @@ const SysAccountController = () => {
   let intervalId: NodeJS.Timer;
 
   const getLatestUpdate = async (silent?: boolean) => {
-    const { activeAccount, networks, activeNetwork } = store.getState().vault;
+    const { activeAccount, activeNetwork, networks } = store.getState().vault;
 
     if (!activeAccount.address) return;
 
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
-    const updatedAccountInfo = await keyringManager.getLatestUpdateForAccount();
+    const { accountLatestUpdate, walleAccountstLatestUpdate } =
+      await keyringManager.getLatestUpdateForAccount();
 
     store.dispatch(setIsPendingBalances(false));
 
-    const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+    const isSyscoinChain =
+      networks.syscoin[activeNetwork.chainId] &&
+      activeNetwork.url.includes('blockbook');
 
-    const { assets } = updatedAccountInfo;
-
-    const storedAssets = activeAccount.assets.filter((asset: any) =>
-      assets.filter(
-        (activeAccountAsset: any) => activeAccountAsset.id !== asset.id
-      )
+    const filtered = accountLatestUpdate.transactions.filter(
+      ({ hash }) =>
+        !activeAccount.transactions.some(({ hash: txHash }) => txHash === hash)
     );
 
+    const filteredTransactions = !isSyscoinChain
+      ? [...activeAccount.transactions, ...filtered]
+      : accountLatestUpdate.transactions;
+
+    const currentAccount = {
+      ...activeAccount,
+      ...accountLatestUpdate,
+      transactions: filteredTransactions,
+    };
+
+    store.dispatch(setActiveAccount(currentAccount));
+
     store.dispatch(
-      setActiveAccount({
-        ...activeAccount,
-        ...updatedAccountInfo,
-        assets: isSyscoinChain ? assets : storedAssets,
+      setAccounts({
+        ...walleAccountstLatestUpdate,
+        [currentAccount.id]: currentAccount,
       })
     );
   };
@@ -69,63 +80,18 @@ const SysAccountController = () => {
   };
 
   const setAddress = async (): Promise<string> => {
-    // @ts-ignore
-    const { receivingAddress } =
-      await keyringManager.getLatestUpdateForAccount();
+    const {
+      accountLatestUpdate: { address },
+    } = await keyringManager.getLatestUpdateForAccount();
 
     store.dispatch(
       setActiveAccountProperty({
         property: 'address',
-        value: String(receivingAddress),
+        value: String(address),
       })
     );
 
-    return receivingAddress;
-  };
-
-  const getErc20TokenBalance = async (
-    tokenAddress: string,
-    walletAddress: string
-  ) => {
-    try {
-      const balance = await Web3Accounts().getBalanceOfAnyToken(
-        tokenAddress,
-        walletAddress
-      );
-
-      console.log('balance any tok', balance);
-
-      return balance;
-    } catch (error) {
-      return 0;
-    }
-  };
-
-  const saveTokenInfo = async (token: ICoingeckoToken) => {
-    const { activeAccount } = store.getState().vault;
-
-    const tokenExists = activeAccount.assets.find(
-      (asset: any) => asset.id === token.id
-    );
-
-    if (tokenExists) throw new Error('Token already exists');
-
-    const balance = await getErc20TokenBalance(
-      String(token.contractAddress),
-      activeAccount.address
-    );
-
-    const web3Token = {
-      ...token,
-      balance,
-    };
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'assets',
-        value: [...activeAccount.assets, web3Token],
-      })
-    );
+    return address;
   };
 
   const trezor = SysTrezorController();
@@ -137,7 +103,6 @@ const SysAccountController = () => {
     tx,
     setAddress,
     getLatestUpdate,
-    saveTokenInfo,
   };
 };
 

@@ -1,6 +1,5 @@
 import { ethers } from 'ethers';
 
-import { web3Provider } from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import { chooseDecimalsPlaces } from 'utils/index';
@@ -14,12 +13,14 @@ export const formatTransactionValue = (
   decimals?: number
 ) => {
   try {
-    const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+    const isSyscoinChain =
+      Boolean(networks.syscoin[activeNetwork.chainId]) &&
+      activeNetwork.url.includes('blockbook');
 
     const isSysTestnet = activeNetwork.chainId === 5700;
 
     if (!isSyscoinChain) {
-      const web3Value = web3Provider.utils.fromWei(transactionValue);
+      const web3Value = ethers.utils.formatEther(transactionValue);
 
       return forFiat
         ? web3Value
@@ -34,7 +35,6 @@ export const formatTransactionValue = (
       : chooseDecimalsPlaces(syscoinValue, 4) +
           `${isSysTestnet ? ' TSYS' : ' SYS'}`;
   } catch (error) {
-    console.log('error', error);
     return 0;
   }
 };

@@ -13,6 +13,7 @@ const AccountMenu: React.FC = () => {
   const { encryptedMnemonic, accounts, activeAccount } = useStore();
 
   const numberOfAccounts = Object.keys(accounts).length;
+
   let className: string;
   switch (numberOfAccounts) {
     case 1:

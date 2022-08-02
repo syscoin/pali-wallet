@@ -52,7 +52,6 @@ export const SendSys = () => {
   const hasAccountAssets = assets && assets.length > 0;
 
   const handleSelectedAsset = (item: number) => {
-    console.log('selected item', item);
     if (assets) {
       const getAsset = assets.find((asset: any) => asset.assetGuid === item);
 

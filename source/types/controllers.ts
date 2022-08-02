@@ -1,13 +1,15 @@
 import {
+  IKeyringManager,
   IKeyringAccountState,
+} from '@pollum-io/sysweb3-keyring';
+import {
   INetwork,
-  KeyringManager,
   ITokenMap,
   ICoingeckoToken,
   ICoingeckoSearchResults,
 } from '@pollum-io/sysweb3-utils';
 
-export interface IMainController extends KeyringManager {
+export interface IMainController extends IKeyringManager {
   account: any;
   addCustomRpc: (network: INetwork) => Promise<INetwork | Error>;
   createAccount: (label?: string) => Promise<IKeyringAccountState>;

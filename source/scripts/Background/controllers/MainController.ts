@@ -1,9 +1,8 @@
-import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 import {
-  getSymbolByChain,
+  KeyringManager,
   IKeyringAccountState,
-  INetwork,
-} from '@pollum-io/sysweb3-utils';
+} from '@pollum-io/sysweb3-keyring';
+import { getSymbolByChain, INetwork } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
 import {
@@ -20,6 +19,7 @@ import {
   removeNetwork as removeNetworkFromStore,
   setActiveToken,
   removeNetwork,
+  setStoreError,
 } from 'state/vault';
 import { ICustomRpcParams } from 'types/transactions';
 
@@ -28,7 +28,7 @@ import { validateEthRpc, validateSysRpc } from './utils';
 
 const MainController = () => {
   const keyringManager = KeyringManager();
-  const walletController = WalletController();
+  const walletController = WalletController(keyringManager);
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -92,78 +92,53 @@ const MainController = () => {
     walletController.account.sys.getLatestUpdate(false);
   };
 
-  const setActiveNetwork = async (
-    chain: string,
-    chainId: number,
-    key?: string | number
-  ) => {
+  const setActiveNetwork = async (network: INetwork) => {
     store.dispatch(setIsPendingBalances(true));
 
-    const { networks, activeAccount } = store.getState().vault;
+    const { networks, activeNetwork } = store.getState().vault;
 
-    if (key) {
-      const network = networks[chain][key];
-      store.dispatch(setNetwork(network));
+    const isSyscoinChain =
+      networks.syscoin[network.chainId] && network.url.includes('blockbook');
 
-      const account = (await keyringManager.setSignerNetwork(
+    const chain = isSyscoinChain ? 'syscoin' : 'ethereum';
+
+    try {
+      const networkAccount = await keyringManager.setSignerNetwork(
         network,
         chain
-      )) as IKeyringAccountState;
-
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'xpub',
-          value: keyringManager.getAccountXpub(),
-        })
       );
 
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'xprv',
-          value: keyringManager.getEncryptedXprv(),
-        })
-      );
-
-      if (account.id === 0)
-        keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
-
+      store.dispatch(setNetwork(network));
       store.dispatch(setIsPendingBalances(false));
-      store.dispatch(setActiveAccount(account));
+      store.dispatch(setActiveAccount(networkAccount));
 
-      return account;
+      if (isSyscoinChain) {
+        store.dispatch(
+          setActiveAccountProperty({
+            property: 'xpub',
+            value: keyringManager.getAccountXpub(),
+          })
+        );
+
+        store.dispatch(
+          setActiveAccountProperty({
+            property: 'xprv',
+            value: keyringManager.getEncryptedXprv(),
+          })
+        );
+
+        walletController.account.sys.setAddress();
+      }
+
+      return networkAccount;
+    } catch (error) {
+      setActiveNetwork(activeNetwork);
+
+      store.dispatch(setStoreError(true));
     }
-
-    const network = networks[chain][chainId];
-
-    store.dispatch(setNetwork(network));
-
-    const networkAccount = await keyringManager.setSignerNetwork(
-      network,
-      chain
-    );
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'xpub',
-        value: keyringManager.getAccountXpub(),
-      })
-    );
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'xprv',
-        value: keyringManager.getEncryptedXprv(),
-      })
-    );
-
-    if (networkAccount.id === 0)
-      keyringManager.setAccountIndexForDerivedAccount(activeAccount.id);
-
-    store.dispatch(setIsPendingBalances(false));
-    store.dispatch(setActiveAccount(networkAccount));
-
-    return networkAccount;
   };
+
+  const resolveError = () => store.dispatch(setStoreError(false));
 
   const validateAndBuildRpc = async ({
     chainId,
@@ -248,6 +223,7 @@ const MainController = () => {
     editCustomRpc,
     removeKeyringNetwork,
     setActiveTokenForWallet,
+    resolveError,
     ...keyringManager,
   };
 };

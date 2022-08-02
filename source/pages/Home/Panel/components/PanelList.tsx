@@ -49,21 +49,20 @@ export const PanelList: FC<IPanelList> = ({
 
   const txid = isSyscoinChain ? 'txid' : 'hash';
   const blocktime = isSyscoinChain ? 'blockTime' : 'timestamp';
-  const transactions = isSyscoinChain ? data : data.slice(0).reverse();
 
   const isShowedGroupBar = useCallback(
     (tx: any, idx: number) =>
       idx === 0 ||
       new Date(tx[blocktime] * 1e3).toDateString() !==
-        new Date(transactions[idx - 1][blocktime] * 1e3).toDateString(),
-    [transactions]
+        new Date(data[idx - 1][blocktime] * 1e3).toDateString(),
+    [data]
   );
 
   return (
     <>
       {activity && (
         <ul className="pb-24 md:pb-8">
-          {transactions.map((tx: any, idx: number) => {
+          {data.map((tx: any, idx: number) => {
             const isConfirmed = tx.confirmations > 0;
             const timestamp =
               blocktime &&
@@ -75,8 +74,8 @@ export const PanelList: FC<IPanelList> = ({
                 }
               );
 
-            return tx[blocktime] !== undefined ? (
-              <Fragment key={idx}>
+            return tx[blocktime] ? (
+              <Fragment key={tx[txid]}>
                 {isShowedGroupBar(tx, idx) && (
                   <li className="my-3 text-center text-sm bg-bkg-1">
                     {formatDate(new Date(tx[blocktime] * 1000).toDateString())}

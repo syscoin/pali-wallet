@@ -32,10 +32,7 @@ export const Modal = ({
       className={`fixed z-10 inset-0 overflow-y-auto ${className}`}
       onClose={onClose}
     >
-      <div
-        onClick={() => console.log('inside onClick')}
-        className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out"
-      />
+      <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
 
       <div className="px-4 min-h-screen text-center">
         <Transition.Child

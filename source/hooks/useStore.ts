@@ -20,6 +20,7 @@ export const useStore = () => {
     activeAccount,
     accounts,
     activeToken,
+    error,
   }: IVaultState = useSelector((state: RootState) => state.vault);
 
   return {
@@ -37,5 +38,6 @@ export const useStore = () => {
     timer,
     encryptedMnemonic,
     activeToken,
+    error,
   };
 };

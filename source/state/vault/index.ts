@@ -1,11 +1,11 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 import {
-  INetwork,
   initialNetworksState,
-  IKeyringAccountState,
   initialActiveAccountState,
-} from '@pollum-io/sysweb3-utils';
+  IKeyringAccountState,
+} from '@pollum-io/sysweb3-keyring';
+import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import trustedApps from './trustedApps.json';
 import { IVaultState } from './types';
@@ -31,15 +31,25 @@ export const initialState: IVaultState = {
   trustedApps,
   activeToken: 'SYS',
   encryptedMnemonic: '',
+  error: false,
 };
 
 const VaultState = createSlice({
   name: 'vault',
   initialState,
   reducers: {
+    setAccounts(
+      state: IVaultState,
+      action: PayloadAction<{
+        [id: number]: IKeyringAccountState;
+      }>
+    ) {
+      state.accounts = action.payload;
+    },
     setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
       const { id } = state.activeAccount;
       state.accounts[id].transactions.push(action.payload);
+      state.activeAccount.transactions.push(action.payload);
     },
     createAccount(
       state: IVaultState,
@@ -169,10 +179,14 @@ const VaultState = createSlice({
 
       state.accounts[id].label = label;
     },
+    setStoreError(state: IVaultState, action: PayloadAction<boolean>) {
+      state.error = action.payload;
+    },
   },
 });
 
 export const {
+  setAccounts,
   setActiveAccount,
   setActiveAccountProperty,
   setActiveNetwork,
@@ -189,6 +203,7 @@ export const {
   createAccount,
   setAccountLabel,
   setAccountTransactions,
+  setStoreError,
 } = VaultState.actions;
 
 export default VaultState.reducer;

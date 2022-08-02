@@ -1,7 +1,10 @@
 import { utils as SysUtils } from 'syscoinjs-lib';
 
-import { KeyringManager, Web3Accounts } from '@pollum-io/sysweb3-keyring';
-import { IKeyringAccountState } from '@pollum-io/sysweb3-utils';
+import {
+  KeyringManager,
+  Web3Accounts,
+  IKeyringAccountState,
+} from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
 import { openNotificationsPopup } from 'utils/notifications';

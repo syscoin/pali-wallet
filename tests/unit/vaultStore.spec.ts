@@ -1,6 +1,5 @@
 import { AES } from 'crypto-js';
 
-import { networks } from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import { MOCK_ACCOUNT, STATE_W_ACCOUNT } from '../mocks';
@@ -49,7 +48,7 @@ describe('Vault store actions', () => {
     });
 
     it('should update an existing network', () => {
-      const sysMain = networks.syscoin[57];
+      const sysMain = initialState.networks.syscoin[57];
       const payloadNetwork: INetwork = {
         ...sysMain,
         label: 'New Label',
@@ -142,7 +141,7 @@ describe('Vault store actions', () => {
 
   //* setActiveNetwork
   it('should set the active network)', () => {
-    const sysTestnet = networks.syscoin[5700];
+    const sysTestnet = initialState.networks.syscoin[5700];
     const newState = reducer(initialState, setActiveNetwork(sysTestnet));
 
     expect(newState.activeNetwork).toEqual(sysTestnet);
