@@ -1,28 +1,27 @@
 import React, { useState } from 'react';
 
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
-import { useStore } from 'hooks/index';
-// import { getController } from 'utils/browser';
+import { useQueryData, useStore } from 'hooks/index';
+import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
-export const ConnectedAccounts = () => {
-  // const accountController = getController().wallet.account;
-  // const connectedAccount = accountController.getConnectedAccount();
-  // const connectedAccount = accountController.getConnectedAccount();
-  const connectedAccount = null;
-
+export const ChangeAccount = () => {
   const { accounts } = useStore();
+  const { dapp } = getController();
+  const { host } = useQueryData();
 
-  const [accountId, setAccountId] = useState<number>(
-    connectedAccount?.id || -1
-  );
+  const currentAccountId = dapp.getDApp(host).accountId;
 
-  const handleChangeAccount = (id: number) => {
-    if (id === connectedAccount?.id) {
-      return;
-    }
+  const [accountId, setAccountId] = useState<number>(currentAccountId);
 
+  const handleSetAccountId = (id: number) => {
+    if (id === currentAccountId) return;
     setAccountId(id);
+  };
+
+  const handleChangeAccount = () => {
+    dapp.changeAccount(host, accountId);
+    window.close();
   };
 
   return (
@@ -31,19 +30,19 @@ export const ConnectedAccounts = () => {
         <h1 className="mt-4 text-sm">PALI WALLET</h1>
 
         <ul className="scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-72 overflow-auto">
-          {Object.values(accounts).map((account: any) => (
+          {Object.values(accounts).map((account) => (
             <li
               className={`${
-                connectedAccount && account.id === connectedAccount.id
+                account.id === currentAccountId
                   ? 'cursor-not-allowed bg-opacity-50 border-brand-royalblue'
                   : 'cursor-pointer hover:bg-bkg-4 border-brand-royalblue'
               } border border-solid  rounded-lg px-2 py-4 text-xs bg-bkg-2 flex justify-between items-center transition-all duration-200`}
               key={account.id}
-              onClick={() => handleChangeAccount(account.id)}
+              onClick={() => handleSetAccountId(account.id)}
             >
               <p>{account.label}</p>
 
-              <small>{ellipsis(account.address.main)}</small>
+              <small>{ellipsis(account.address)}</small>
 
               <div
                 className={`${
@@ -61,7 +60,12 @@ export const ConnectedAccounts = () => {
             Cancel
           </SecondaryButton>
 
-          <PrimaryButton type="button" width="40" disabled={accountId === -1}>
+          <PrimaryButton
+            type="button"
+            width="40"
+            disabled={accountId === currentAccountId}
+            onClick={() => handleChangeAccount()}
+          >
             Change
           </PrimaryButton>
         </div>

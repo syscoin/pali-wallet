@@ -9,7 +9,7 @@ export const CreateAndIssueNFTConfirm = () => (
 
 export const CreateAndIssueNFT = () => (
   <TxLayout
-    confirmRoute="/tx/asset/nft/issue/confirm"
+    confirmRoute="/external/tx/asset/nft/issue/confirm"
     txType="newNFT"
     title="Create NFT"
   />
