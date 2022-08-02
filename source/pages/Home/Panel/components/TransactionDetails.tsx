@@ -2,15 +2,10 @@ import { Disclosure } from '@headlessui/react';
 import { ethers } from 'ethers';
 import React, { useState, useEffect } from 'react';
 
-import { Icon, IconButton, FiatComponent } from 'components/index';
+import { Icon, IconButton } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
-import {
-  ellipsis,
-  formatDate,
-  formatUrl,
-  formatTransactionValue,
-} from 'utils/index';
+import { ellipsis, formatDate, formatUrl } from 'utils/index';
 
 export const TransactionDetails = ({
   transactionType,
@@ -23,7 +18,7 @@ export const TransactionDetails = ({
   transactionType: any;
   txAddress?: any;
 }) => {
-  const { activeNetwork, networks, activeToken } = useStore();
+  const { activeNetwork, networks } = useStore();
   const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
   const { useCopyClipboard, alert } = useUtils();
 
@@ -237,27 +232,6 @@ export const TransactionDetails = ({
                 </div>
 
                 <div className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
-                  <b>Value</b>
-                  <p>
-                    {formatTransactionValue(
-                      label?.value?.hex,
-                      activeNetwork,
-                      networks,
-                      activeToken,
-                      false,
-                      8
-                    )}
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
-                  <b>Fiat Value</b>
-                  <p>
-                    {<FiatComponent transactionValue={label?.value?.hex} />}
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
                   <b>Nonce</b>
                   <p>{label.nonce}</p>
                 </div>
@@ -266,7 +240,7 @@ export const TransactionDetails = ({
                   <b>Gas Price</b>
                   <p>
                     {`${ethers.utils.formatEther(
-                      `${parseInt(String(label.gasPrice.hex), 16)}`
+                      `${parseInt(String(label.gasPrice.hex))}`
                     )}`}
                   </p>
                 </div>
@@ -274,7 +248,7 @@ export const TransactionDetails = ({
                   <b>Gas Limit</b>
                   <p>
                     {`${ethers.utils.formatEther(
-                      `${parseInt(String(label.gasLimit.hex), 16)}`
+                      `${parseInt(String(label.gasLimit.hex))}`
                     )}`}
                   </p>
                 </div>

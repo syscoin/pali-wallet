@@ -7,10 +7,26 @@ import format from 'date-fns/format';
 export const ellipsis = (str: any, start = 7, end = 4): string => {
   if (typeof str !== 'string') return str;
 
+  console.log({ str, lg: str.length, start, end });
+
   return `${str.substring(0, start)}...${str.substring(
     str.length - end,
     str.length
-  )}`;
+  )}`.toLowerCase();
+};
+
+export const formatWithDecimals = (value: number | string, precision = 2) => {
+  const valueInNumber = Number(value);
+
+  const decimals = valueInNumber.toString().split('.')[1];
+
+  const decimalsLength = decimals && decimals.length;
+
+  const factor = Math.pow(10, precision);
+
+  return decimalsLength > 2
+    ? Math.floor(valueInNumber * factor) / factor
+    : valueInNumber.toFixed(2);
 };
 
 export const capitalizeFirstLetter = (string: string) =>

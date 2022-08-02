@@ -1,7 +1,6 @@
-import React, { FC, useState, useEffect } from 'react';
+import React, { FC } from 'react';
 
-import { useStore, usePrice } from 'hooks/index';
-import { getController } from 'utils/browser';
+import { usePrice, useStore } from 'hooks/index';
 import { formatTransactionValue } from 'utils/index';
 
 interface IFiatComponent {
@@ -9,46 +8,22 @@ interface IFiatComponent {
 }
 
 export const FiatComponent: FC<IFiatComponent> = ({ transactionValue }) => {
-  const controller = getController();
-
+  const { activeNetwork, fiat } = useStore();
   const { getFiatAmount } = usePrice();
 
-  const { fiat, activeAccount, activeNetwork, networks, activeToken } =
-    useStore();
-
-  const [fiatValue, setFiatValue] = useState<number | string>(0);
-
-  const getTransactionValue = formatTransactionValue(
+  const { crypto, formattedFiatAmount } = formatTransactionValue(
     transactionValue,
-    activeNetwork,
-    networks,
-    activeToken,
-    true
+    activeNetwork.chainId,
+    fiat.asset,
+    getFiatAmount
   );
 
-  const getFiatPrice = async () => {
-    try {
-      const amount = await getFiatAmount(
-        Number(getTransactionValue) || 0,
-        2,
-        String(fiat.asset).toUpperCase(),
-        false
-      );
-
-      setFiatValue(amount);
-    } catch (error) {
-      setFiatValue(0);
-    }
-  };
-
-  const isUnlocked =
-    controller.wallet.isUnlocked() && activeAccount.address !== '';
-
-  useEffect(() => {
-    if (!transactionValue) return;
-
-    getFiatPrice();
-  }, [isUnlocked, activeNetwork]);
-
-  return <>{fiatValue}</>;
+  return !(transactionValue || formattedFiatAmount || crypto) ? null : (
+    <div className="absolute right-8 flex flex-col items-start justify-start w-20">
+      <div className="max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis">
+        <p>{crypto}</p>
+        <p>{formattedFiatAmount}</p>
+      </div>
+    </div>
+  );
 };

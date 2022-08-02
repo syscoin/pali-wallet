@@ -1,40 +1,34 @@
+import { chains } from 'eth-chains';
 import { ethers } from 'ethers';
 
-import { INetwork } from '@pollum-io/sysweb3-utils';
+import { IGetFiatAmount } from 'hooks/index';
 
-import { chooseDecimalsPlaces } from 'utils/index';
+import { formatWithDecimals } from './format';
 
 export const formatTransactionValue = (
   transactionValue: string,
-  activeNetwork: INetwork,
-  networks: any,
-  activeToken: string,
-  forFiat?: boolean,
+  chainId: number,
+  fiatAsset: string,
+  getFiatAmount: IGetFiatAmount,
   decimals?: number
-) => {
+): { crypto: string; formattedFiatAmount: string } => {
   try {
-    const isSyscoinChain =
-      Boolean(networks.syscoin[activeNetwork.chainId]) &&
-      activeNetwork.url.includes('blockbook');
+    const { nativeCurrency } = chains.getById(chainId);
 
-    const isSysTestnet = activeNetwork.chainId === 5700;
+    const ethValue = ethers.utils.formatEther(transactionValue);
+    const fiatWithDecimals = formatWithDecimals(ethValue, decimals || 2);
 
-    if (!isSyscoinChain) {
-      const web3Value = ethers.utils.formatEther(transactionValue);
+    const formattedFiatAmount = getFiatAmount(
+      Number(fiatWithDecimals) || 0,
+      2,
+      String(fiatAsset).toUpperCase()
+    );
 
-      return forFiat
-        ? web3Value
-        : chooseDecimalsPlaces(web3Value, decimals || 2) +
-            `${activeToken || ' ETH'}`;
-    }
-
-    const syscoinValue = ethers.utils.formatUnits(transactionValue, 8);
-
-    return forFiat
-      ? syscoinValue
-      : chooseDecimalsPlaces(syscoinValue, 4) +
-          `${isSysTestnet ? ' TSYS' : ' SYS'}`;
+    return {
+      crypto: `${ethValue} ${nativeCurrency.symbol}`,
+      formattedFiatAmount,
+    };
   } catch (error) {
-    return 0;
+    return { crypto: '0', formattedFiatAmount: '0' };
   }
 };
