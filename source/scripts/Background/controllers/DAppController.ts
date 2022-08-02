@@ -1,8 +1,8 @@
 import { Runtime } from 'webextension-polyfill-ts';
 
 import {
-  addDApp as addDAppAction,
-  removeDApp as removeDAppAction,
+  addDApp,
+  removeDApp,
   addListener as addListenerAction,
   removeListener as removeListenerAction,
   removeListeners as removeListenersAction,
@@ -37,38 +37,24 @@ const DAppController = (): IDAppController => {
 
   const _dapps: IDappUtils = {};
 
-  const hasDApp = (host: string) => {
+  const isConnected = (host: string) => {
     const { dapps } = store.getState().dapp;
 
-    return !!dapps[host];
+    return Boolean(dapps[host]);
   };
 
-  const isConnected = (host: string) => {
-    const dapp = store.getState().dapp.dapps[host];
-
-    if (!dapp) return false;
-
-    return dapp.accountId !== null;
-  };
-
-  const addDApp = (port: Runtime.Port) => {
+  const setup = (port: Runtime.Port) => {
     const { host } = new URL(port.sender.url);
-    const title = port.sender.tab.title;
 
     _dapps[host] = { port, hasWindow: false };
 
     port.onMessage.addListener(onMessage);
     port.onDisconnect.addListener(onDisconnect);
-
-    store.dispatch(addDAppAction({ host, title, accountId: null }));
-  };
-
-  const removeDApp = (host: string) => {
-    store.dispatch(removeDAppAction(host));
   };
 
   const connect = (host: string, accountId: number) => {
-    store.dispatch(updateDAppAccount({ host, accountId }));
+    const title = _dapps[host].port.sender.tab.title;
+    store.dispatch(addDApp({ host, title, accountId }));
 
     _dispatchEvent(host, 'connect');
   };
@@ -83,7 +69,8 @@ const DAppController = (): IDAppController => {
     // after disconnecting, the event would not be sent
     _dispatchEvent(host, 'disconnect');
 
-    store.dispatch(updateDAppAccount({ host, accountId: null }));
+    delete _dapps[host];
+    store.dispatch(removeDApp(host));
   };
 
   const _dispatchEvent = async (
@@ -116,7 +103,8 @@ const DAppController = (): IDAppController => {
   };
 
   const removeListeners = (host: string) => {
-    store.dispatch(removeListenersAction(host));
+    const listeners = store.getState().dapp.listeners[host];
+    if (listeners) store.dispatch(removeListenersAction(host));
   };
 
   const hasListener = (host: string, eventName: string) => {
@@ -125,7 +113,7 @@ const DAppController = (): IDAppController => {
     return dapp.listeners[host] && dapp.listeners[host].includes(eventName);
   };
 
-  const getDApp = (host: string) => store.getState().dapp.dapps[host];
+  const get = (host: string) => store.getState().dapp.dapps[host];
 
   const getAccount = (host: string) => {
     const dapp = store.getState().dapp.dapps[host];
@@ -150,11 +138,10 @@ const DAppController = (): IDAppController => {
   };
 
   return {
-    getDApp,
+    get,
     getAccount,
     isConnected,
-    addDApp,
-    removeDApp,
+    setup,
     connect,
     changeAccount,
     setSigRequest,
@@ -164,7 +151,6 @@ const DAppController = (): IDAppController => {
     removeListener,
     removeListeners,
     hasListener,
-    hasDApp,
     hasWindow,
     setHasWindow,
   };
