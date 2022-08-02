@@ -7,4 +7,3 @@ export * from './transactions';
 export * from './notifications';
 export * from './tokens';
 export * from './formatTransactionValue';
-export * from './chooseDecimalsPlaces';

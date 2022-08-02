@@ -98,22 +98,13 @@ export const SendSys = () => {
     }
   };
 
-  const returnFiatAmount = async () => {
-    if (!selectedAsset) {
-      const value = await getFiatAmount(
-        Number(recommend),
-        6,
-        String(fiat.asset)
-      );
+  const returnFiatAmount = () => {
+    const value = selectedAsset
+      ? Number(recommend) + Number(recommend)
+      : Number(recommend);
+    const amount = getFiatAmount(value, 6, String(fiat.asset));
 
-      setFiatValueToShow(value);
-    }
-    const value = await getFiatAmount(
-      Number(recommend) + Number(recommend),
-      6,
-      String(fiat.asset)
-    );
-    setFiatValueToShow(value);
+    setFiatValueToShow(amount);
   };
 
   useEffect(() => {

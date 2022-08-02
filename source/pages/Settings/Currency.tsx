@@ -25,6 +25,8 @@ const CurrencyView = () => {
   const [checkValueCoin, setCheckValueCoin] = useState('usd');
   const [confirmed, setConfirmed] = useState(false);
   const [fiatAmountValue, setFiatAmountValue] = useState('');
+  const [balance, setBalance] = useState(0);
+  const [chain, setChain] = useState('syscoin');
 
   const convertCurrency = (value: number, toCoin: string) =>
     value * coins[toCoin];
@@ -35,11 +37,17 @@ const CurrencyView = () => {
   const isUnlocked =
     controller.wallet.isUnlocked() && activeAccount.address !== '';
 
-  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+  useEffect(() => {
+    const isSyscoinChain =
+      Boolean(networks.syscoin[activeNetwork.chainId]) &&
+      activeNetwork.url.includes('blockbook');
 
-  const balance = isSyscoinChain
-    ? activeAccount.balances.syscoin
-    : activeAccount.balances.ethereum;
+    setChain(isSyscoinChain ? 'syscoin' : 'ethereum');
+
+    const { syscoin, ethereum } = activeAccount.balances;
+
+    setBalance(isSyscoinChain ? syscoin : ethereum);
+  }, [activeNetwork]);
 
   const [conversorValues, setConversorValues] = useState({
     crypto: balance,
@@ -66,8 +74,8 @@ const CurrencyView = () => {
 
   const fiatCurrency = asset ? String(asset).toUpperCase() : 'USD';
 
-  const getFiatAmountValue = async () => {
-    const value = await getFiatAmount(balance || 0, 4, String(selectedCoin));
+  const getFiatAmountValue = () => {
+    const value = getFiatAmount(balance || 0, 4, String(selectedCoin));
 
     setFiatAmountValue(value);
   };
@@ -80,10 +88,7 @@ const CurrencyView = () => {
 
   useEffect(() => {
     if (selectedCoin) {
-      controller.utils.setFiat(
-        selectedCoin,
-        isSyscoinChain ? 'syscoin' : 'ethereum'
-      );
+      controller.utils.setFiat(selectedCoin, chain);
 
       getFiatAmountValue();
     }

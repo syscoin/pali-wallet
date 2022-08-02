@@ -1,9 +1,12 @@
+import { chains } from 'eth-chains';
 import React, { useEffect, useState } from 'react';
+
+import { validateSysRpc } from '@pollum-io/sysweb3-utils';
 
 import { Header, Icon, Button, Loading } from 'components/index';
 import { useStore, usePrice, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
-import { formatNumber, getSymbolByChain } from 'utils/index';
+import { formatNumber } from 'utils/index';
 
 import { TxsPanel } from './TxsPanel';
 
@@ -16,12 +19,11 @@ export const Home = () => {
     activeAccount,
     lastLogin,
     isPendingBalances,
-    activeToken,
   } = useStore();
-  const [symbol, setSymbol] = useState('SYS');
   const [fiatPriceValue, setFiatPriceValue] = useState('');
-  const [chain, setChain] = useState('syscoin');
+  const [symbol, setSymbol] = useState('SYS');
   const [balance, setBalance] = useState(0);
+  const [isTestnet, setIsTestnet] = useState(false);
 
   const { getFiatAmount } = usePrice();
 
@@ -32,19 +34,25 @@ export const Home = () => {
       Boolean(networks.syscoin[activeNetwork.chainId]) &&
       activeNetwork.url.includes('blockbook');
 
-    setChain(isSyscoinChain ? 'syscoin' : 'ethereum');
-
     const { syscoin, ethereum } = activeAccount.balances;
 
     setBalance(isSyscoinChain ? syscoin : ethereum);
   }, [activeNetwork]);
 
   const setChainSymbol = async () => {
-    setSymbol(await getSymbolByChain(chain));
+    const { nativeCurrency } = chains.getById(activeNetwork.chainId);
+
+    setSymbol(nativeCurrency.symbol);
   };
 
-  const getFiatPrice = async () => {
-    const amount = await getFiatAmount(
+  const setMainOrTestNetwork = async () => {
+    const { isTestnet: _isTestnet } = await validateSysRpc(activeNetwork.url);
+
+    setIsTestnet(_isTestnet);
+  };
+
+  const setFiatPrice = () => {
+    const amount = getFiatAmount(
       balance || 0,
       4,
       String(fiat.asset).toUpperCase(),
@@ -52,8 +60,6 @@ export const Home = () => {
     );
 
     setFiatPriceValue(String(amount));
-
-    return amount;
   };
 
   const isUnlocked =
@@ -61,11 +67,9 @@ export const Home = () => {
 
   useEffect(() => {
     setChainSymbol();
-    getFiatPrice();
+    setFiatPrice();
+    setMainOrTestNetwork();
   }, [isUnlocked, activeNetwork]);
-
-  const isSysTestnet = activeNetwork.chainId === 5700;
-  const symbolByChain = isSysTestnet ? 'tsys' : symbol;
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
@@ -83,14 +87,10 @@ export const Home = () => {
                   {formatNumber(balance || 0)}{' '}
                 </p>
 
-                <p className="mt-4 font-poppins">
-                  {activeToken
-                    ? activeToken.toUpperCase()
-                    : symbolByChain.toUpperCase()}
-                </p>
+                <p className="mt-4 font-poppins">{symbol.toUpperCase()}</p>
               </div>
 
-              <p id="fiat-ammount">{!isSysTestnet ? fiatPriceValue : null}</p>
+              <p id="fiat-ammount">{isTestnet ? null : fiatPriceValue}</p>
             </div>
 
             <div className="flex gap-x-0.5 items-center justify-center pt-8 w-3/4 max-w-md">

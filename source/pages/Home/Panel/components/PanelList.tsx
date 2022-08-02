@@ -3,12 +3,7 @@ import React, { FC, useCallback, Fragment } from 'react';
 import { IconButton, Icon } from 'components/index';
 import { FiatComponent } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
-import {
-  ellipsis,
-  formatCurrency,
-  formatDate,
-  formatTransactionValue,
-} from 'utils/index';
+import { ellipsis, formatCurrency, formatDate } from 'utils/index';
 
 interface IPanelList {
   activity: boolean;
@@ -25,7 +20,7 @@ export const PanelList: FC<IPanelList> = ({
 }) => {
   const { navigate } = useUtils();
 
-  const { activeAccount, activeNetwork, activeToken, networks } = useStore();
+  const { activeAccount } = useStore();
 
   const getTxType = (tx: any) => {
     if (isSyscoinChain) {
@@ -98,31 +93,21 @@ export const PanelList: FC<IPanelList> = ({
                       </p>
                     </div>
 
-                    <div className="flex pl-4 pr-2 md:pl-8">
-                      <div className="text-left">
+                    <div
+                      className={`absolute flex ${
+                        isSyscoinChain ? 'right-20 w-20' : 'right-32 w-14'
+                      }`}
+                    >
+                      <div className="max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis">
                         <p className="text-blue-300">{timestamp}</p>
 
                         <p>{getTxType(tx)}</p>
                       </div>
                     </div>
 
-                    <div className="flex flex-col items-start">
-                      {!isSyscoinChain && (
-                        <>
-                          <p>
-                            {formatTransactionValue(
-                              tx?.value?.hex,
-                              activeNetwork,
-                              networks,
-                              activeToken,
-                              false
-                            )}
-                          </p>
-
-                          <FiatComponent transactionValue={tx?.value?.hex} />
-                        </>
-                      )}
-                    </div>
+                    {!isSyscoinChain && (
+                      <FiatComponent transactionValue={tx?.value?.hex} />
+                    )}
 
                     <IconButton
                       className="w-5"

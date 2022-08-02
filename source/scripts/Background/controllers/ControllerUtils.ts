@@ -36,9 +36,11 @@ const ControllerUtils = (): IControllerUtils => {
     try {
       const { activeNetwork, networks } = store.getState().vault;
 
-      const chain = networks.syscoin[activeNetwork.chainId]
-        ? 'syscoin'
-        : 'ethereum';
+      const chain =
+        networks.syscoin[activeNetwork.chainId] &&
+        activeNetwork.url.includes('blockbook')
+          ? 'syscoin'
+          : 'ethereum';
 
       const price = await getFiatValueByToken(chain, currency);
 
