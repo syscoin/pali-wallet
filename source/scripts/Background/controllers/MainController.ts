@@ -132,7 +132,6 @@ const MainController = () => {
 
       return networkAccount;
     } catch (error) {
-      console.log({ error });
       setActiveNetwork(activeNetwork);
 
       store.dispatch(setStoreError(true));

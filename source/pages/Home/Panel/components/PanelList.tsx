@@ -152,11 +152,11 @@ export const PanelList: FC<IPanelList> = ({
       {assets && (
         <ul className="pb-24 md:pb-4">
           {isSyscoinChain &&
-            data.map((asset: any) => {
+            data.map((asset: any, index: number) => {
               if (asset.assetGuid && asset.balance > 0) {
                 return (
                   <li
-                    key={asset.assetGuid}
+                    key={index}
                     className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark"
                   >
                     <p className="font-rubik">
