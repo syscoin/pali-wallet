@@ -1,8 +1,38 @@
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
+import store from 'state/store';
+
 import { popupPromise } from './popup-promise';
 import { methodRequest } from './requests';
 import { Message } from './types';
+
+const enable = async (host: string, data: any) => {
+  const { chain, chainId } = data;
+  const { dapp, wallet } = window.controller;
+
+  if (dapp.isConnected(host)) return { success: true };
+
+  // network check
+  const {
+    vault: { activeNetwork, networks },
+  } = store.getState();
+  const isSysCore = activeNetwork.url.includes('blockbook');
+  const activeChain = isSysCore ? 'syscoin' : 'ethereum';
+
+  const isSameChain = chain === activeChain;
+  const isSameChainId = activeNetwork.chainId === chainId;
+  if (!isSameChain || !isSameChainId) {
+    const network = networks[chain][chainId];
+    await wallet.setActiveNetwork(network);
+  }
+
+  return popupPromise({
+    host,
+    route: 'connect-wallet',
+    eventName: 'connect',
+    data: { chain, chainId },
+  });
+};
 
 /**
  * Handles:
@@ -22,15 +52,7 @@ const _messageHandler = async (host: string, message: Message) => {
     case 'EVENT_DEREG':
       return dapp.removeListener(host, message.data.eventName);
     case 'ENABLE':
-      if (dapp.isConnected(host)) return { success: true };
-
-      const { chain, chainId } = message.data;
-      return popupPromise({
-        host,
-        route: 'connect-wallet',
-        eventName: 'connect',
-        data: { chain, chainId },
-      });
+      return enable(host, message.data);
     case 'DISABLE':
       return dapp.disconnect(host);
     case 'METHOD_REQUEST':
