@@ -12,7 +12,6 @@ import {
 } from '@pollum-io/sysweb3-utils';
 
 import { ISysAccountController } from 'scripts/Background/controllers/account/syscoin';
-import { ISigRequest } from 'scripts/Background/controllers/DAppController';
 import { IDApp } from 'state/dapp/types';
 
 import { ICustomRpcParams } from './transactions';
@@ -132,7 +131,6 @@ export interface IDAppController {
    * Retrieves the connected account
    */
   getAccount: (host: string) => IKeyringAccountState | undefined;
-  getSigRequest: () => ISigRequest;
   /**
    * Checks if listener exists
    */
@@ -154,7 +152,6 @@ export interface IDAppController {
    */
   removeListeners: (host: string) => void;
   setHasWindow: (host: string, hasWindow: boolean) => void;
-  setSigRequest: (req: ISigRequest) => void;
   /**
    * Setup communication
    */
