@@ -23,11 +23,13 @@ const _messageHandler = async (host: string, message: Message) => {
       return dapp.removeListener(host, message.data.eventName);
     case 'ENABLE':
       if (dapp.isConnected(host)) return { success: true };
+
+      const { chain, chainId } = message.data;
       return popupPromise({
         host,
         route: 'connect-wallet',
         eventName: 'connect',
-        data: { network: message.data.network },
+        data: { chain, chainId },
       });
     case 'DISABLE':
       return dapp.disconnect(host);

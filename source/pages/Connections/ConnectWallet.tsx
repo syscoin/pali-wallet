@@ -15,7 +15,7 @@ import { ellipsis } from 'utils/index';
 export const ConnectWallet = () => {
   const { accounts, trustedApps } = useStore();
   const { dapp } = getController();
-  const { host } = useQueryData();
+  const { host, chain, chainId } = useQueryData();
 
   const currentAccountId = dapp.get(host)?.accountId;
 
@@ -25,7 +25,7 @@ export const ConnectWallet = () => {
     useState<boolean>(false);
 
   const handleConnect = () => {
-    dapp.connect(host, accountId);
+    dapp.connect({ host, chain, chainId, accountId });
     window.close();
   };
 

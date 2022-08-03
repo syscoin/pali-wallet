@@ -118,7 +118,7 @@ export interface IDAppController {
    * Complete a connection with a DApp. Adds the account
    * @emits connect
    */
-  connect: (host: string, accountId: number) => void;
+  connect: (dapp: IDApp) => void;
   /**
    * Removes a connection with a DApp. Removes the account
    * @emits disconnect
