@@ -130,3 +130,14 @@ window.pali = Object.freeze({
     }),
   _listeners: {},
 });
+
+window.ethereum = Object.freeze({
+  wallet: 'pali-v2',
+  request,
+  on,
+  removeListener,
+  isConnected: () => request({ method: 'wallet_isConnected' }),
+  enable: () => proxy('ENABLE', { chain: 'ethereum', chainId: '' }),
+  disable: () => proxy('DISABLE', { chain: 'ethereum' }),
+  _listeners: {},
+});
