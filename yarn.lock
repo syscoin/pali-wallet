@@ -1209,7 +1209,7 @@
   dependencies:
     "@ethersproject/bignumber" "^5.6.2"
 
-"@ethersproject/contracts@5.6.2":
+"@ethersproject/contracts@5.6.2", "@ethersproject/contracts@^5.6.2":
   version "5.6.2"
   resolved "https://registry.yarnpkg.com/@ethersproject/contracts/-/contracts-5.6.2.tgz#20b52e69ebc1b74274ff8e3d4e508de971c287bc"
   integrity sha512-hguUA57BIKi6WY0kHvZp6PwPlWF87MCeB4B7Z7AbUpTxfFXFdn/3b0GmjZPagIHS+3yhcBJDnuEfU4Xz+Ks/8g==
@@ -1850,16 +1850,16 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.342":
-  version "1.0.342"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.342.tgz#be27eed9aba5a507b78517f5ce2884ff503cc75c"
-  integrity sha512-d+MrH9bYIZWEuhFaxsz2Q+sSo6sjPBcepo1n9HUnmYy3DSZJanq7B942dnL4qth8doEJsEFxklMtA+tvCK8Fyw==
+"@pollum-io/sysweb3-keyring@^1.0.347":
+  version "1.0.347"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.347.tgz#d673c856ec09b8383dee3b0fd424c5795f252ffa"
+  integrity sha512-xhDvcYaXjduvoMO/e4B9AO39uZQfGlyWHZYdyXlq/9uDo4X+WDYfJt17CqCXBHdxMJ7hUnF+kORwn781UVuVGA==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "^1.0.16"
     "@pollum-io/sysweb3-network" "^1.0.52"
-    "@pollum-io/sysweb3-utils" "^1.1.176"
+    "@pollum-io/sysweb3-utils" "^1.1.180"
     axios "^0.26.1"
     bip39 "^3.0.4"
     coinselectsyscoin "^1.0.77"
@@ -1933,11 +1933,12 @@
     syscointx-js "^1.0.101"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.176":
-  version "1.1.176"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.176.tgz#0b32d2fffeacc54249cc6c90b5f42e5a734cb4b8"
-  integrity sha512-EgMG6o5PBJN3Fx1mI6Dc7ZkVGE7WHqbquH2IoGGV2ptAWTv3O2tsZm9wU9/o2VBVUoVWUuVuMAgDiVVjqYqRmw==
+"@pollum-io/sysweb3-utils@^1.1.180":
+  version "1.1.180"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.180.tgz#d5b9e52fd24ff692099501e242b255b27ba60063"
+  integrity sha512-0rxGAyAM4TI3abrE5iKiVsqKME9rHwxLbCfe0zioDI/+vOMvJU5HYvuQhNnNmYiwCreWj0IZjoCLm1Aad1riDQ==
   dependencies:
+    "@ethersproject/contracts" "^5.6.2"
     "@pollum-io/sysweb3-core" "^1.0.16"
     "@pollum-io/sysweb3-network" "^1.0.51"
     axios "^0.26.1"

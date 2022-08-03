@@ -17,12 +17,13 @@ export const AssetDetails = ({
   const [loadingImage, setLoadingImage] = useState(false);
 
   const { activeNetwork, networks } = useStore();
-
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();
 
-  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+  const isSyscoinChain =
+    Boolean(networks.syscoin[activeNetwork.chainId]) &&
+    activeNetwork.url.includes('blockbook');
 
   const {
     assetGuid,
@@ -40,18 +41,18 @@ export const AssetDetails = ({
     thumb: tokenThumb,
   } = assetData;
 
+  const getImageLink = async () => {
+    if (description && description.startsWith('https://ipfs.io/ipfs/')) {
+      setLoadingImage(true);
+
+      const response = await axios.get(description);
+
+      setImageLink(response.data.image);
+      setLoadingImage(false);
+    }
+  };
+
   useEffect(() => {
-    const getImageLink = async () => {
-      if (description && description.startsWith('https://ipfs.io/ipfs/')) {
-        setLoadingImage(true);
-
-        const response = await axios.get(description);
-
-        setImageLink(response.data.image);
-        setLoadingImage(false);
-      }
-    };
-
     if (isSyscoinChain) getImageLink();
   }, [activeNetwork, description]);
 

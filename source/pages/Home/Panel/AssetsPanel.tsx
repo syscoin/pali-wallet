@@ -12,14 +12,15 @@ export const AssetsPanel: FC = () => {
     Boolean(networks.syscoin[activeNetwork.chainId]) &&
     activeNetwork.url.includes('blockbook');
 
+  const assets = Object.values(activeAccount.assets);
+
   return (
     <>
       <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
-        {activeAccount.assets &&
-        Object.values(activeAccount.assets).length > 0 ? (
+        {assets.length > 0 ? (
           <PanelList
             isSyscoinChain={isSyscoinChain}
-            data={Object.values(activeAccount.assets)}
+            data={assets}
             activity={false}
             assets
           />
