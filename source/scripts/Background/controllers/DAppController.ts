@@ -69,7 +69,6 @@ const DAppController = (): IDAppController => {
     // after disconnecting, the event would not be sent
     _dispatchEvent(host, 'disconnect');
 
-    delete _dapps[host];
     store.dispatch(removeDApp(host));
   };
 
