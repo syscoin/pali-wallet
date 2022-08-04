@@ -38,8 +38,6 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
 
   useEffect(() => {
     setTx();
-
-    console.log({ rawTransaction, hash });
   }, [hash]);
 
   useEffect(() => {
@@ -87,8 +85,6 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
             }
           }
         }
-
-        console.log({ senders, recipients });
 
         setNewRecipients(recipients);
         setNewSenders(senders);

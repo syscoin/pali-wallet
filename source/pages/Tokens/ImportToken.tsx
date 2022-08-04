@@ -53,12 +53,8 @@ export const ImportToken: FC = () => {
         const validate =
           !!name.includes(typedValue) && tokenData.contractAddress;
 
-        console.log({ typedValue, validate, tokenData });
-
         return validate;
       });
-
-      console.log({ newList, coins });
 
       setTokens(newList);
 
@@ -88,10 +84,6 @@ export const ImportToken: FC = () => {
     alert.removeAll();
     alert.success('Token address successfully copied');
   }, [copied]);
-
-  useEffect(() => {
-    console.log({ tokens });
-  }, [tokens]);
 
   const handleSelectToken = async (token: ICoingeckoSearchResultToken) => {
     setIsLoading(true);

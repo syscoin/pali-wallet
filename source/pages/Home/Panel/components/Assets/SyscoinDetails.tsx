@@ -23,14 +23,6 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
     alert.success('Successfully copied');
   }, [copied]);
 
-  useEffect(() => {
-    console.log({ assets });
-
-    const selected = assets.find((asset: any) => asset.assetGuid === id);
-
-    console.log({ selected });
-  }, [assets]);
-
   const formattedAsset = [];
 
   assets.find((asset: any) => {
