@@ -1,3 +1,4 @@
+import { uniqueId } from 'lodash';
 import React, { Fragment, useEffect } from 'react';
 
 import { Icon } from 'components/Icon';
@@ -58,30 +59,24 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
   const RenderAsset = () => (
     <>
       {formattedAsset.map(({ label, isNft, value, canCopy }: any) => (
-        <Fragment key={id}>
+        <Fragment key={uniqueId(id)}>
           {label === 'Image' && isNft && <NftImage imageLink={value} />}
 
-          {label && value && label !== 'Image' && (
+          {label.length > 0 && value !== undefined && label !== 'Image' && (
             <li className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
               <p>{label}</p>
-              <b>
-                {value}
+              <span>
+                <b>{value}</b>
 
                 {canCopy && (
-                  <IconButton
-                    onClick={() => copy(value ?? '')}
-                    type="primary"
-                    shape="circle"
-                    className="mt-1"
-                  >
+                  <IconButton onClick={() => copy(value ?? '')}>
                     <Icon
                       name="copy"
-                      className="text-xs"
-                      id="copy-address-btn"
+                      className="px-1 text-brand-white hover:text-fields-input-borderfocus"
                     />
                   </IconButton>
                 )}
-              </b>
+              </span>
             </li>
           )}
         </Fragment>

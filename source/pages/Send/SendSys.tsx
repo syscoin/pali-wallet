@@ -1,6 +1,7 @@
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Form, Input } from 'antd';
+import { uniqueId } from 'lodash';
 import * as React from 'react';
 import { useState, useEffect, Fragment, useCallback } from 'react';
 
@@ -206,8 +207,8 @@ export const SendSys = () => {
                           <>
                             {hasAccountAssets &&
                               Object.values(activeAccount.assets).map(
-                                (item: any, index: number) => (
-                                  <Menu.Item key={index}>
+                                (item: any) => (
+                                  <Menu.Item key={uniqueId()}>
                                     <Menu.Item>
                                       <button
                                         onClick={() => handleSelectedAsset(-1)}
