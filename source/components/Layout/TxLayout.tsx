@@ -11,7 +11,7 @@ import {
 import { useStore, useQueryData } from 'hooks/index';
 import { getController } from 'utils/browser';
 
-import { TxConfirmLayout } from './TxConfirmLayout';
+import { TxConfirm } from './TxConfirmLayout';
 
 interface IFee {
   onFinish: (fee: number) => any;
@@ -153,13 +153,45 @@ const titleResolver = (txType: string) => {
     case 'UpdateToken':
       return 'Update Token';
 
-    case 'Sign':
-    case 'SignAndSend':
-      return 'Signature Request';
+    default:
+      throw new Error('Unknown transaction type');
+  }
+};
+
+const callbackResolver = (txType: string) => {
+  let callbackName;
+
+  switch (txType) {
+    case 'CreateToken':
+      callbackName = 'confirmTokenCreation';
+      break;
+
+    case 'CreateNFT':
+      callbackName = 'confirmNftCreation';
+      break;
+
+    case 'MintToken':
+      callbackName = 'confirmTokenMint';
+      break;
+
+    case 'MintNFT':
+      callbackName = 'confirmMintNFT';
+      break;
+
+    // TODO TransferToken
+    // case 'TransferToken':
+    //   callbackName = 'confirmAssetTransfer';
+    //   break;
+
+    case 'UpdateToken':
+      callbackName = 'confirmUpdateToken';
+      break;
 
     default:
       throw new Error('Unknown transaction type');
   }
+
+  return getController().wallet.account.sys.tx[callbackName];
 };
 
 interface ITxLayout {
@@ -176,15 +208,18 @@ export const TxLayout: FC<ITxLayout> = ({ txType }) => {
   };
 
   const title = titleResolver(txType);
+  const callback = callbackResolver(txType);
 
-  if (hasFee)
-    return (
-      <TxConfirmLayout
+  if (!hasFee) return <_Fee title={title} onFinish={setFee} />;
+
+  return (
+    <Layout canGoBack={false} title={title}>
+      <TxConfirm
         title={title}
         txType={txType}
         transaction={transaction}
+        callback={callback}
       />
-    );
-
-  return <_Fee title={title} onFinish={setFee} />;
+    </Layout>
+  );
 };

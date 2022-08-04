@@ -2,13 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { useAlert } from 'react-alert';
 
 import {
-  Layout,
   PrimaryButton,
   ErrorModal,
   DefaultModal,
   SecondaryButton,
+  Layout,
 } from 'components/index';
-import { useStore } from 'hooks/index';
+import { useQueryData, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
 import {
   base64Regex,
@@ -31,7 +31,7 @@ interface ITxData {
   value: any;
 }
 
-const TxConfirm: React.FC<ITxConfirm> = ({
+export const TxConfirm: React.FC<ITxConfirm> = ({
   callback,
   transaction,
   txType,
@@ -186,18 +186,12 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   );
 };
 
-interface ITxConfirmSign {
-  psbt: any;
-  signAndSend?: boolean;
-  title?: string;
+interface ITxSign {
+  send?: boolean;
 }
 
-const TxConfirmSign: React.FC<ITxConfirmSign> = ({
-  psbt,
-  signAndSend = false,
-  title = 'SIGNATURE REQUEST',
-}) => {
-  if (!psbt) throw new Error('No psbt');
+export const TxSign: React.FC<ITxSign> = ({ send = false }) => {
+  const { host, ...psbt } = useQueryData();
 
   const alert = useAlert();
   const accountCtlr = getController().wallet.account;
@@ -222,10 +216,7 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
     }
 
     try {
-      const response = await accountCtlr.sys.tx.signTransaction(
-        psbt,
-        signAndSend
-      );
+      const response = await accountCtlr.sys.tx.signTransaction(psbt, send);
 
       setConfirmed(true);
       setLoading(false);
@@ -242,11 +233,11 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
   };
 
   return (
-    <>
+    <Layout canGoBack={false} title={'Signature Request'}>
       <DefaultModal
         onClose={window.close}
         show={!failed && confirmed}
-        title={`${title.toLowerCase()} request successfully submitted`}
+        title={'Signature request successfully submitted'}
         description="You can check your request under activity on your home screen."
         buttonText="Got it"
       />
@@ -287,79 +278,6 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
             </PrimaryButton>
           </div>
         </div>
-      )}
-    </>
-  );
-};
-
-const callbackResolver = (txType: string) => {
-  let callbackName;
-
-  switch (txType) {
-    case 'CreateToken':
-      callbackName = 'confirmTokenCreation';
-      break;
-
-    case 'CreateNFT':
-      callbackName = 'confirmNftCreation';
-      break;
-
-    case 'MintToken':
-      callbackName = 'confirmTokenMint';
-      break;
-
-    case 'MintNFT':
-      callbackName = 'confirmMintNFT';
-      break;
-
-    // TODO TransferToken
-    // case 'TransferToken':
-    //   callbackName = 'confirmAssetTransfer';
-    //   break;
-
-    case 'UpdateToken':
-      callbackName = 'confirmUpdateToken';
-      break;
-
-    default:
-      throw new Error('Unknown transaction type');
-  }
-
-  return getController().wallet.account.sys.tx[callbackName];
-};
-
-interface ITxConfirmLayout {
-  sign?: boolean;
-  signAndSend?: boolean;
-  title: string;
-  transaction?: any;
-  txType: string;
-}
-
-export const TxConfirmLayout: React.FC<ITxConfirmLayout> = ({
-  sign = false,
-  signAndSend = false,
-  title,
-  transaction,
-  txType,
-}) => {
-  const callback = callbackResolver(txType);
-
-  return (
-    <Layout canGoBack={false} title={title}>
-      {sign ? (
-        <TxConfirmSign
-          psbt={transaction}
-          signAndSend={signAndSend}
-          title="SIGNATURE REQUEST"
-        />
-      ) : (
-        <TxConfirm
-          callback={callback}
-          transaction={transaction}
-          txType={txType}
-          title={title}
-        />
       )}
     </Layout>
   );
