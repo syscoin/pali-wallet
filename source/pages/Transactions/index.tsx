@@ -1,27 +1,28 @@
 import React from 'react';
 
-import { TxLayout, TxSign } from 'components/Layout';
+import Sign from './Sign';
+import Transaction from './Transaction';
 
 //* CreateToken
-export const Create = () => <TxLayout txType="CreateToken" />;
+export const Create = () => <Transaction type="CreateToken" />;
 
 //* CreateAndIssueNFT
-export const CreateAndIssueNFT = () => <TxLayout txType="CreateNFT" />;
+export const CreateAndIssueNFT = () => <Transaction type="CreateNFT" />;
 
 //* MintNFT
-export const MintNFT = () => <TxLayout txType="MintNFT" />;
+export const MintNFT = () => <Transaction type="MintNFT" />;
 
 //* SignAndSend
-export const SignAndSend = () => <TxSign send />;
+export const SignAndSend = () => <Sign send />;
 
 //* SignPSBT
-export const SignPSBT = () => <TxSign />;
+export const SignPSBT = () => <Sign />;
 
 //* TransferOwnership
-export const TransferOwnership = () => <TxLayout txType="TransferToken" />;
+export const TransferOwnership = () => <Transaction type="TransferToken" />;
 
 //* UpdateAsset
-export const UpdateAsset = () => <TxLayout txType="UpdateToken" />;
+export const UpdateAsset = () => <Transaction type="UpdateToken" />;
 
 //* MintToken
-export const MintToken = () => <TxLayout txType="MintToken" />;
+export const MintToken = () => <Transaction type="MintToken" />;
