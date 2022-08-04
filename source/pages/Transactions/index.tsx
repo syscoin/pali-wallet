@@ -1,28 +1,18 @@
 import React from 'react';
 
-import Sign from './Sign';
+import Sign_ from './Sign';
 import Transaction from './Transaction';
 
-//* CreateToken
-export const Create = () => <Transaction type="CreateToken" />;
+//* Token
+export const CreateToken = () => <Transaction type="CreateToken" />;
+export const MintToken = () => <Transaction type="MintToken" />;
+export const TransferToken = () => <Transaction type="TransferToken" />;
+export const UpdateToken = () => <Transaction type="UpdateToken" />;
 
-//* CreateAndIssueNFT
-export const CreateAndIssueNFT = () => <Transaction type="CreateNFT" />;
-
-//* MintNFT
+//* NFT
+export const CreateNFT = () => <Transaction type="CreateNFT" />;
 export const MintNFT = () => <Transaction type="MintNFT" />;
 
-//* SignAndSend
-export const SignAndSend = () => <Sign send />;
-
-//* SignPSBT
-export const SignPSBT = () => <Sign />;
-
-//* TransferOwnership
-export const TransferOwnership = () => <Transaction type="TransferToken" />;
-
-//* UpdateAsset
-export const UpdateAsset = () => <Transaction type="UpdateToken" />;
-
-//* MintToken
-export const MintToken = () => <Transaction type="MintToken" />;
+//* Sign
+export const Sign = () => <Sign_ />;
+export const SignAndSend = () => <Sign_ send />;

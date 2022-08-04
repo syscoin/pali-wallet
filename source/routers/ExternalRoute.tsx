@@ -5,8 +5,8 @@ import {
   ChangeAccount,
   ConfirmPhrase,
   ConnectWallet,
-  Create,
-  CreateAndIssueNFT,
+  CreateToken,
+  CreateNFT,
   CreatePass,
   CreatePhrase,
   Import,
@@ -14,10 +14,10 @@ import {
   MintToken,
   SendConfirm,
   SignAndSend,
-  SignPSBT,
+  Sign,
   Start,
-  TransferOwnership,
-  UpdateAsset,
+  TransferToken,
+  UpdateToken,
 } from '../pages';
 import { useQuery, useUtils, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
@@ -81,7 +81,7 @@ export const ExternalRoute = () => {
         <Route path="tx">
           <Route
             path="create"
-            element={<ProtectedRoute element={<Create />} />}
+            element={<ProtectedRoute element={<CreateToken />} />}
           />
           <Route
             path="send/confirm"
@@ -93,7 +93,7 @@ export const ExternalRoute = () => {
           />
           <Route
             path="sign-psbt"
-            element={<ProtectedRoute element={<SignPSBT />} />}
+            element={<ProtectedRoute element={<Sign />} />}
           />
 
           {/* /tx/asset */}
@@ -104,18 +104,18 @@ export const ExternalRoute = () => {
             />
             <Route
               path="transfer"
-              element={<ProtectedRoute element={<TransferOwnership />} />}
+              element={<ProtectedRoute element={<TransferToken />} />}
             />
             <Route
               path="update"
-              element={<ProtectedRoute element={<UpdateAsset />} />}
+              element={<ProtectedRoute element={<UpdateToken />} />}
             />
 
             {/* /tx/asset/nft */}
             <Route path="nft">
               <Route
                 path="issue"
-                element={<ProtectedRoute element={<CreateAndIssueNFT />} />}
+                element={<ProtectedRoute element={<CreateNFT />} />}
               />
               <Route
                 path="mint"
