@@ -17,7 +17,10 @@ export const EthProvider = (host: string) => {
   // const getAccounts = async () => web3Provider.eth.getAccounts();
 
   const getTokens = async (address: string) =>
-    Web3Accounts().getTokens(address);
+    Web3Accounts().getAssetsByAddress(
+      address,
+      store.getState().vault.activeNetwork
+    );
 
   // const getChainId = async () => web3Provider.eth.getChainId();
 

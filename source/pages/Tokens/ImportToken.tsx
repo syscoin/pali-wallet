@@ -30,9 +30,10 @@ export const ImportToken: FC = () => {
   const [copied, copy] = useCopyClipboard();
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  const [tokens, setTokens] = useState<ICoingeckoSearchResultToken[]>(
-    activeAccount.assets
-  );
+  const erc20Tokens = activeAccount.assets.filter((asset: any) => !asset.isNFT);
+
+  const [tokens, setTokens] =
+    useState<ICoingeckoSearchResultToken[]>(erc20Tokens);
   const [selected, setSelected] = useState<ICoingeckoToken | null>(null);
 
   const handleSearch = async (query: string) => {
@@ -52,8 +53,12 @@ export const ImportToken: FC = () => {
         const validate =
           !!name.includes(typedValue) && tokenData.contractAddress;
 
+        console.log({ typedValue, validate, tokenData });
+
         return validate;
       });
+
+      console.log({ newList, coins });
 
       setTokens(newList);
 
@@ -72,6 +77,8 @@ export const ImportToken: FC = () => {
     } catch (error) {
       alert.removeAll();
       alert.error(`Can't add ${token.symbol} to your wallet. Try again later.`);
+
+      throw new Error(error);
     }
   };
 
@@ -81,6 +88,10 @@ export const ImportToken: FC = () => {
     alert.removeAll();
     alert.success('Token address successfully copied');
   }, [copied]);
+
+  useEffect(() => {
+    console.log({ tokens });
+  }, [tokens]);
 
   const handleSelectToken = async (token: ICoingeckoSearchResultToken) => {
     setIsLoading(true);
