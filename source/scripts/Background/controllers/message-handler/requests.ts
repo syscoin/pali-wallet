@@ -1,7 +1,29 @@
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
+import store from 'state/store';
 
 import { popupPromise } from './popup-promise';
+
+/**
+ * Checks if the current pali network matches the params.
+ * If it doesn't, change to specified network
+ */
+const _checkAndChangeNetwork = async (chain: string, chainId: number) => {
+  const { wallet } = window.controller;
+  const {
+    vault: { activeNetwork, networks },
+  } = store.getState();
+  const isSysCore = activeNetwork.url.includes('blockbook');
+  const activeChain = isSysCore ? 'syscoin' : 'ethereum';
+
+  const isSameChain = chain === activeChain;
+  const isSameChainId = activeNetwork.chainId === chainId;
+
+  if (isSameChain && isSameChainId) return;
+
+  const network = networks[chain][chainId];
+  await wallet.setActiveNetwork(network);
+};
 
 /**
  * Handles methods request.
@@ -45,4 +67,19 @@ export const methodRequest = async (
   if (data.args) return await method(...data.args);
 
   return await method();
+};
+
+export const enable = async (host: string, data: any) => {
+  const { dapp } = window.controller;
+  if (dapp.isConnected(host)) return { success: true };
+
+  const { chain, chainId } = data;
+  await _checkAndChangeNetwork(chain, chainId);
+
+  return popupPromise({
+    host,
+    route: 'connect-wallet',
+    eventName: 'connect',
+    data: { chain, chainId },
+  });
 };
