@@ -167,11 +167,7 @@ const TxConfirm: React.FC<ITxConfirm> = ({
         </ul>
 
         <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
-          <SecondaryButton
-            type="button"
-            action
-            // onClick={() => rejectTransaction(browser, transaction, navigate)}
-          >
+          <SecondaryButton type="button" action onClick={window.close}>
             Cancel
           </SecondaryButton>
 
