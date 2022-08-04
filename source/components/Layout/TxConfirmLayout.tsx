@@ -11,6 +11,7 @@ import {
 import { useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
 import {
+  base64Regex,
   ellipsis,
   formatUrl,
   capitalizeFirstLetter,
@@ -205,10 +206,6 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
   const alert = useAlert();
   const accountCtlr = getController().wallet.account;
 
-  // TODO move to utils
-  const base64 =
-    /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
-
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -217,7 +214,7 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
   const handleConfirmSignature = async () => {
     setLoading(true);
 
-    if (!base64.test(psbt.psbt) || typeof psbt.assets !== 'string') {
+    if (!base64Regex.test(psbt.psbt) || typeof psbt.assets !== 'string') {
       alert.removeAll();
       alert.error(
         'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.'
