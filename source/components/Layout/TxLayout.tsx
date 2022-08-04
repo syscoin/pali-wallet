@@ -11,16 +11,16 @@ import {
 import { useStore, useQueryData } from 'hooks/index';
 import { getController } from 'utils/browser';
 
-interface ITxLayout {
-  confirmRoute: string;
+import { TxConfirmLayout } from './TxConfirmLayout';
+
+interface IFee {
+  onFinish: (fee: number) => any;
   title: string;
-  txType: string;
 }
 
-export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
+const _Fee: FC<IFee> = ({ title, onFinish }) => {
   const { getRecommendedFee } = getController().wallet.account.sys.tx;
 
-  const { host, ...transaction } = useQueryData();
   const { activeNetwork } = useStore();
   const [form] = Form.useForm();
 
@@ -35,10 +35,6 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
   useEffect(() => {
     updateFee();
   }, []);
-
-  const onFinish = ({ fee: _fee }) => {
-    transaction.fee = _fee;
-  };
 
   const disabledFee =
     activeNetwork.chainId === 57 || activeNetwork.chainId === 5700;
@@ -135,4 +131,30 @@ export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
       </div>
     </Layout>
   );
+};
+
+interface ITxLayout {
+  title: string;
+  txType: string;
+}
+
+export const TxLayout: FC<ITxLayout> = ({ txType, title }) => {
+  const { host, ...transaction } = useQueryData();
+  const [hasFee, setHasFee] = useState(false);
+
+  const setFee = (fee: number) => {
+    transaction.fee = fee;
+    setHasFee(true);
+  };
+
+  if (hasFee)
+    return (
+      <TxConfirmLayout
+        title={title}
+        txType={txType}
+        transaction={transaction}
+      />
+    );
+
+  return <_Fee title={title} onFinish={setFee} />;
 };

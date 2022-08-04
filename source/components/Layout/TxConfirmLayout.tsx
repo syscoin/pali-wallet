@@ -321,7 +321,7 @@ interface ITxConfirmLayout {
   sign?: boolean;
   signAndSend?: boolean;
   title: string;
-  // transaction: any;
+  transaction?: any;
   txType: string;
 }
 
@@ -329,11 +329,9 @@ export const TxConfirmLayout: React.FC<ITxConfirmLayout> = ({
   sign = false,
   signAndSend = false,
   title,
-  // transaction,
+  transaction,
   txType,
 }) => {
-  const transaction = null; // temporary
-
   const walletCtlr = getController().wallet;
 
   const callbackName = callbackNameResolver(txType);
