@@ -2,6 +2,7 @@ import {
   KeyringManager,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
+import { validateSysRpc } from '@pollum-io/sysweb3-network';
 import { getSymbolByChain, INetwork } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
@@ -25,7 +26,7 @@ import { IMainController } from 'types/controllers';
 import { ICustomRpcParams } from 'types/transactions';
 
 import WalletController from './account';
-import { validateEthRpc, validateSysRpc } from './utils';
+import { validateEthRpc } from './utils';
 
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();

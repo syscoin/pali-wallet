@@ -19,11 +19,13 @@ import {
   CreatePhrase,
   Currency,
   CustomRPC,
+  CustomToken,
   ForgetWallet,
   DetailsView,
   ManageNetwork,
   Home,
   Import,
+  ImportToken,
   Phrase,
   PrivateKey,
   Receive,
@@ -112,6 +114,18 @@ export const Router = () => {
           <ProtectedRoute element={<Send initAddress={params.address} />} />
         }
       />
+
+      {/* /tokens/add */}
+      <Route path="tokens/add">
+        <Route
+          path="import"
+          element={<ProtectedRoute element={<ImportToken />} />}
+        />
+        <Route
+          path="custom"
+          element={<ProtectedRoute element={<CustomToken />} />}
+        />
+      </Route>
 
       {/* /settings */}
       <Route path="settings">

@@ -1,55 +1,47 @@
 import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
-import { ICoingeckoToken } from '@pollum-io/sysweb3-utils';
+import { ICoingeckoToken, IEthereumNftDetails } from '@pollum-io/sysweb3-utils';
 
 import { EthTransactionController } from '../transaction';
 import store from 'state/store';
 import { setActiveAccountProperty } from 'state/vault';
 
 const EthAccountController = () => {
-  const getErc20TokenBalance = async (
-    tokenAddress: string,
-    walletAddress: string
+  const saveTokenInfo = async (
+    token: ICoingeckoToken | IEthereumNftDetails
   ) => {
     try {
-      const balance = await Web3Accounts().getBalanceOfAnyToken(
-        tokenAddress,
-        walletAddress
+      const { activeAccount } = store.getState().vault;
+
+      const tokenExists = activeAccount.assets.find(
+        (asset: any) => asset.contractAddress === token.contractAddress
       );
 
-      return balance;
+      if (tokenExists) throw new Error('Token already exists');
+
+      const balance = await getErc20TokenBalance(
+        String(token.contractAddress),
+        activeAccount.address
+      );
+
+      const web3Token = {
+        ...token,
+        balance,
+      };
+
+      store.dispatch(
+        setActiveAccountProperty({
+          property: 'assets',
+          value: [...activeAccount.assets, web3Token],
+        })
+      );
     } catch (error) {
-      return 0;
+      throw new Error(`Could not save token info. Error: ${error}`);
     }
   };
 
-  const saveTokenInfo = async (token: ICoingeckoToken) => {
-    const { activeAccount } = store.getState().vault;
-
-    const tokenExists = activeAccount.assets.find(
-      (asset: any) => asset.id === token.id
-    );
-
-    if (tokenExists) throw new Error('Token already exists');
-
-    const balance = await getErc20TokenBalance(
-      String(token.contractAddress),
-      activeAccount.address
-    );
-
-    const web3Token = {
-      ...token,
-      balance,
-    };
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'assets',
-        value: [...activeAccount.assets, web3Token],
-      })
-    );
-  };
-
   const tx = EthTransactionController();
+
+  const { getErc20TokenBalance } = Web3Accounts();
 
   return {
     saveTokenInfo,

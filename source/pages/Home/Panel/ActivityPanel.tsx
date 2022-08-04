@@ -1,34 +1,33 @@
-import React, { FC } from 'react';
+import React from 'react';
 
 import { Fullscreen } from 'components/Fullscreen';
-import { useStore } from 'hooks/useStore';
+import { useStore } from 'hooks/index';
 
-import { PanelList } from './components/PanelList';
+import { TransactionsList } from './components/Transactions';
 
-export const ActivityPanel: FC = () => {
-  const { activeAccount, activeNetwork, networks } = useStore();
-
+export const TransactionsPanel = () => {
+  const { activeNetwork, networks, activeAccount } = useStore();
   const isSyscoinChain =
     Boolean(networks.syscoin[activeNetwork.chainId]) &&
     activeNetwork.url.includes('blockbook');
 
-  return (
+  const transactions = Object.values(activeAccount.transactions);
+
+  const NoTransactionsComponent = () => (
+    <div className="flex items-center justify-center text-brand-white text-sm">
+      <p>You have no transaction history.</p>
+    </div>
+  );
+
+  return transactions.length === 0 ? (
+    <>
+      <NoTransactionsComponent />
+      <Fullscreen />
+    </>
+  ) : (
     <>
       <div className="p-4 w-full h-full text-white text-base bg-bkg-3">
-        {activeAccount &&
-        activeAccount.transactions &&
-        activeAccount.transactions.length > 0 ? (
-          <PanelList
-            data={activeAccount.transactions}
-            activity
-            assets={false}
-            isSyscoinChain={isSyscoinChain}
-          />
-        ) : (
-          <p className="flex items-center justify-center text-brand-white text-sm">
-            You have no transaction history.
-          </p>
-        )}
+        <TransactionsList isSyscoinChain={isSyscoinChain} />
       </div>
 
       <Fullscreen />
