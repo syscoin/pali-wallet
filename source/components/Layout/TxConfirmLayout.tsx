@@ -1,6 +1,5 @@
-/* import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { browser } from 'webextension-polyfill-ts';
+import React, { useEffect, useState } from 'react';
+import { useAlert } from 'react-alert';
 
 import {
   Layout,
@@ -9,14 +8,12 @@ import {
   DefaultModal,
   SecondaryButton,
 } from 'components/index';
-import { useUtils, useStore } from 'hooks/index';
+import { useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
 import {
   ellipsis,
   formatUrl,
   capitalizeFirstLetter,
-  rejectTransaction,
-  cancelTransaction,
   camelCaseToText,
 } from 'utils/index';
 
@@ -39,8 +36,9 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   txType,
   title,
 }) => {
-  const navigate = useNavigate();
-  const accountController = getController().wallet.account;
+  if (!transaction) throw new Error('No transaction');
+
+  const { getRecommendedFee } = getController().wallet.account.sys.tx;
   const { activeAccount, activeNetwork } = useStore();
 
   const [data, setData] = useState<ITxData[]>([]);
@@ -60,8 +58,6 @@ const TxConfirm: React.FC<ITxConfirm> = ({
   ];
 
   useEffect(() => {
-    if (!transaction) return;
-
     const txData: ITxData[] = [];
     for (const [key, value] of Object.entries(transaction)) {
       txData.push({
@@ -74,147 +70,121 @@ const TxConfirm: React.FC<ITxConfirm> = ({
     setData(txData);
   }, [transaction]);
 
-  const handleConfirmSiteTransaction = async () => {
-    const recommendedFee = await accountController.tx.getRecommendedFee(
-      activeNetwork.url
-    );
-
-    let isPending = false;
+  const onSubmit = async () => {
+    // let isPending = false;
 
     setLoading(true);
 
-    if ((activeAccount ? activeAccount.balances.syscoin : -1) > 0) {
-      isPending = true;
+    if (activeAccount.balances.syscoin <= 0) return;
 
-      try {
-        if (txType === 'newNFT') {
-          setConfirmed(true);
-          setLoading(false);
-          setSubmitted(true);
-        }
+    // isPending = true;
 
-        const response = await accountController.tx.sendTransaction({
-          type: txType,
-          callback,
-        });
+    if (txType === 'newNFT') {
+      setConfirmed(true);
+      setLoading(false);
+      setSubmitted(true);
+    }
 
-        isPending = false;
+    try {
+      const response = await callback(transaction);
 
-        setConfirmed(true);
-        setLoading(false);
-        setSubmitted(true);
+      // isPending = false;
+      setConfirmed(true);
+      setLoading(false);
+      setSubmitted(true);
 
-        if (response) {
-          browser.runtime.sendMessage({
-            type: 'TRANSACTION_RESPONSE',
-            target: 'background',
-            response,
-          });
-        }
-      } catch (error: any) {
-        setFailed(true);
-        setLogError(error.message);
+      if (response) {
+        // TODO dispatch background event
+      }
+    } catch (error: any) {
+      setFailed(true);
+      setLogError(error.message);
 
-        if (error && transaction.fee > recommendedFee) {
-          setLogError(
-            `${formatUrl(
-              String(error.message),
-              166
-            )} Please, reduce fees to send transaction.`
-          );
-        }
+      const fee = await getRecommendedFee(activeNetwork.url);
 
-        if (error && transaction.fee < recommendedFee) {
-          setLogError(error.message);
-        }
-
-        browser.runtime.sendMessage({
-          type: 'WALLET_ERROR',
-          target: 'background',
-          transactionError: true,
-          invalidParams: false,
-          message: 'Sorry, we could not submit your request. Try again later.',
-        });
+      if (transaction.fee > fee) {
+        const shortError = formatUrl(String(error.message), 166);
+        setLogError(`${shortError} Please, reduce fees to send transaction.`);
       }
 
-      setTimeout(() => {
-        if (isPending && !confirmed) {
-          setSubmitted(true);
-          setFailed(false);
-          setLogError('');
-
-          setTimeout(() => {
-            cancelTransaction(browser, txType);
-          }, 4000);
-        }
-      }, 8 * 60 * 1000);
+      if (transaction.fee < fee) {
+        setLogError(error.message);
+      }
     }
+
+    /* setTimeout(() => {
+      if (isPending && !confirmed) {
+        setSubmitted(true);
+        setFailed(false);
+        setLogError('');
+
+        setTimeout(() => {
+          // cancelTransaction(browser, txType);
+        }, 4000);
+      }
+    }, 8 * 60 * 1000); */
   };
 
   return (
     <>
-      {failed ? (
-        <ErrorModal
-          onClose={() => window.close()}
-          title={`${capitalizeFirstLetter(title.toLowerCase())} request failed`}
-          description="Sorry, we could not submit your request. Try again later."
-          log={logError || 'No description provided'}
-          buttonText="Ok"
-        />
-      ) : (
-        <DefaultModal
-          show={submitted}
-          onClose={() => window.close()}
-          title={`${capitalizeFirstLetter(
-            title.toLowerCase()
-          )} request successfully submitted`}
-          description="You can check your request under activity on your home screen."
-          buttonText="Got it"
-        />
-      )}
+      <ErrorModal
+        show={failed}
+        onClose={window.close}
+        title={`${capitalizeFirstLetter(title.toLowerCase())} request failed`}
+        description="Sorry, we could not submit your request. Try again later."
+        log={logError || 'No description provided'}
+        buttonText="Ok"
+      />
+      <DefaultModal
+        show={!failed && submitted}
+        onClose={window.close}
+        title={`${capitalizeFirstLetter(
+          title.toLowerCase()
+        )} request successfully submitted`}
+        description="You can check your request under activity on your home screen."
+        buttonText="Got it"
+      />
 
-      {transaction && (
-        <div className="flex flex-col items-center justify-center w-full">
-          <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
-            {data.map(
-              (item) =>
-                !item.advanced && (
-                  <li
-                    key={item.label}
-                    className="flex items-center justify-between my-2 p-2 w-full text-xs border-b border-dashed border-brand-royalblue"
-                  >
-                    <p>{camelCaseToText(item.label)}</p>
-                    <p>
-                      {typeof item.value === 'string' && item.value.length > 10
-                        ? ellipsis(item.value)
-                        : item.value}
-                    </p>
-                  </li>
-                )
-            )}
-          </ul>
+      <div className="flex flex-col items-center justify-center w-full">
+        <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
+          {data.map(
+            (item) =>
+              !item.advanced && (
+                <li
+                  key={item.label}
+                  className="flex items-center justify-between my-2 p-2 w-full text-xs border-b border-dashed border-brand-royalblue"
+                >
+                  <p>{camelCaseToText(item.label)}</p>
+                  <p>
+                    {typeof item.value === 'string' && item.value.length > 10
+                      ? ellipsis(item.value)
+                      : item.value}
+                  </p>
+                </li>
+              )
+          )}
+        </ul>
 
-          <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
-            <SecondaryButton
-              type="button"
-              action
-              onClick={() => rejectTransaction(browser, transaction, navigate)}
-            >
-              Cancel
-            </SecondaryButton>
+        <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
+          <SecondaryButton
+            type="button"
+            action
+            // onClick={() => rejectTransaction(browser, transaction, navigate)}
+          >
+            Cancel
+          </SecondaryButton>
 
-            <PrimaryButton
-              type="submit"
-              action
-              disabled={submitted}
-              loading={loading && !failed && !submitted}
-              onClick={handleConfirmSiteTransaction}
-            >
-              Confirm
-            </PrimaryButton>
-          </div>
+          <PrimaryButton
+            type="submit"
+            action
+            disabled={submitted}
+            loading={loading && !failed && !submitted}
+            onClick={onSubmit}
+          >
+            Confirm
+          </PrimaryButton>
         </div>
-      )}
+      </div>
     </>
   );
 };
@@ -230,11 +200,14 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
   signAndSend = false,
   title = 'SIGNATURE REQUEST',
 }) => {
+  if (!psbt) throw new Error('No psbt');
+
+  const alert = useAlert();
   const accountCtlr = getController().wallet.account;
+
+  // TODO move to utils
   const base64 =
     /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
-
-  const { navigate, alert } = useUtils();
 
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -250,83 +223,63 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
         'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.'
       );
 
-      setTimeout(() => {
-        cancelTransaction(browser, psbt);
-      }, 10000);
+      window.close();
 
       return;
     }
 
     try {
-      const response = await accountCtlr.signTransaction(psbt, signAndSend);
-      if (response) {
-        setConfirmed(true);
-        setLoading(false);
+      const response = await accountCtlr.sys.tx.signTransaction(
+        psbt,
+        signAndSend
+      );
 
-        setTimeout(() => {
-          cancelTransaction(browser, psbt);
-        }, 4000);
+      setConfirmed(true);
+      setLoading(false);
 
-        browser.runtime.sendMessage({
-          type: 'TRANSACTION_RESPONSE',
-          target: 'background',
-          response,
-        });
-      }
+      // setTimeout(() => cancelTransaction(browser, psbt), 4000);
+
+      // TODO dispatch background event
     } catch (error: any) {
       setFailed(true);
       setLogError(error.message);
 
-      browser.runtime.sendMessage({
-        type: 'WALLET_ERROR',
-        target: 'background',
-        transactionError: true,
-        invalidParams: false,
-        message: "Can't sign transaction. Try again later.",
-      });
-
-      setTimeout(() => {
-        cancelTransaction(browser, psbt);
-      }, 4000);
+      setTimeout(window.close, 4000);
     }
   };
 
   return (
     <>
-      {confirmed && (
-        <DefaultModal
-          onClose={() => window.close()}
-          show={!failed}
-          title={`${title.toLowerCase()} request successfully submitted`}
-          description="You can check your request under activity on your home screen."
-          buttonText="Got it"
-        />
-      )}
+      <DefaultModal
+        onClose={window.close}
+        show={!failed && confirmed}
+        title={`${title.toLowerCase()} request successfully submitted`}
+        description="You can check your request under activity on your home screen."
+        buttonText="Got it"
+      />
 
-      {failed && (
-        <ErrorModal
-          onClose={() => window.close()}
-          title="Token creation request failed"
-          description="Sorry, we could not submit your request. Try again later."
-          log={logError || '...'}
-          buttonText="Ok"
-        />
-      )}
+      <ErrorModal
+        show={failed}
+        onClose={window.close}
+        title="Token creation request failed"
+        description="Sorry, we could not submit your request. Try again later."
+        log={logError || '...'}
+        buttonText="Ok"
+      />
 
-      {psbt && !loading && (
+      {!loading && (
         <div className="flex flex-col items-center justify-center w-full">
           <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
             <pre>
-              {`${JSON.stringify(accountCtlr.importPsbt(psbt), null, 2)}`}
+              {
+                // TODO importPsbt
+              }
+              {/* {`${JSON.stringify(accountCtlr.importPsbt(psbt), null, 2)}`} */}
             </pre>
           </ul>
 
           <div className="absolute bottom-10 flex gap-3 items-center justify-between">
-            <SecondaryButton
-              type="button"
-              action
-              onClick={() => rejectTransaction(browser, psbt, navigate)}
-            >
+            <SecondaryButton type="button" action onClick={window.close}>
               Cancel
             </SecondaryButton>
 
@@ -349,50 +302,49 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
 const callbackNameResolver = (txType: string) => {
   switch (txType) {
     case 'newAsset':
-      return 'confirmSPTCreation';
+      return 'confirmTokenCreation';
 
     case 'newNFT':
-      return 'confirmCreateNFT';
+      return 'confirmNftCreation';
 
     case 'mintAsset':
-      return 'confirmMintSPT';
+      return 'confirmTokenMint';
 
     case 'mintNFT':
       return 'confirmMintNFT';
 
-    case 'transferAsset':
-      return 'confirmAssetTransfer';
+    // case 'transferAsset':
+    //   return 'confirmAssetTransfer';
 
     case 'updateAsset':
-      return 'confirmUpdateAsset';
+      return 'confirmUpdateToken';
 
     default:
       throw new Error('Unknown transaction type');
   }
-}; */
-
-import React from 'react';
+};
 
 interface ITxConfirmLayout {
   sign?: boolean;
   signAndSend?: boolean;
   title: string;
+  // transaction: any;
   txType: string;
 }
 
-/* export const TxConfirmLayout: React.FC<ITxConfirmLayout> = ({
+export const TxConfirmLayout: React.FC<ITxConfirmLayout> = ({
   sign = false,
   signAndSend = false,
   title,
+  // transaction,
   txType,
 }) => {
-  const walletCtlr = getController().wallet;
-  const { getTemporaryTransaction } = walletCtlr.account.tx;
+  const transaction = null; // temporary
 
-  const transaction = getTemporaryTransaction(txType);
+  const walletCtlr = getController().wallet;
 
   const callbackName = callbackNameResolver(txType);
-  const callback = walletCtlr.account[callbackName];
+  const callback = walletCtlr.account.sys.tx[callbackName];
 
   return (
     <Layout canGoBack={false} title={title}>
@@ -412,6 +364,4 @@ interface ITxConfirmLayout {
       )}
     </Layout>
   );
-}; */
-
-export const TxConfirmLayout: React.FC<ITxConfirmLayout> = () => <div></div>;
+};
