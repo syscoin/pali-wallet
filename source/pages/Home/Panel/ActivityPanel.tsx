@@ -14,7 +14,7 @@ export const TransactionsPanel = () => {
   const transactions = Object.values(activeAccount.transactions);
 
   const NoTransactionsComponent = () => (
-    <div className="flex items-center justify-center text-brand-white text-sm">
+    <div className="flex items-center justify-center p-3 text-brand-white text-sm">
       <p>You have no transaction history.</p>
     </div>
   );

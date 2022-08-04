@@ -53,7 +53,7 @@ export const Router = () => {
     if (isUnlocked) {
       window.addEventListener('mousemove', () => {
         browser.runtime.sendMessage({
-          type: 'SET_MOUSE_MOVE',
+          type: 'autolock',
           target: 'background',
         });
       });

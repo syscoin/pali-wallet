@@ -14,7 +14,7 @@ export const AssetsPanel = () => {
   const assets = Object.values(activeAccount.assets);
 
   const NoAssetsComponent = () => (
-    <div className="flex items-center justify-center text-brand-white text-sm">
+    <div className="flex items-center justify-center p-3 text-brand-white text-sm">
       {/* {isSyscoinChain ? (
         'You have no tokens or NFTs.'
       ) : (
@@ -32,16 +32,17 @@ export const AssetsPanel = () => {
     </div>
   );
 
-  return assets.length === 0 ? (
+  return (
     <>
-      <NoAssetsComponent />
+      {assets.length === 0 ? (
+        <NoAssetsComponent />
+      ) : (
+        <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
+          {isSyscoinChain ? <SyscoinAssetsList /> : <EvmAssetsList />}
+        </ul>
+      )}
+
       <Fullscreen />
-    </>
-  ) : (
-    <>
-      <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
-        {isSyscoinChain ? <SyscoinAssetsList /> : <EvmAssetsList />}
-      </ul>
     </>
   );
 };
