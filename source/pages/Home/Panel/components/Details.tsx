@@ -1,112 +1,52 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useLocation } from 'react-router-dom';
 
-import { Layout, Icon, Button } from 'components/index';
+import { Layout, Button, Icon } from 'components/index';
 import { useStore } from 'hooks/index';
-import { getController } from 'utils/browser';
 
 import { AssetDetails } from './AssetDetails';
 import { TransactionDetails } from './TransactionDetails';
 
 export const DetailsView = () => {
-  const controller = getController();
+  const { activeNetwork, networks } = useStore();
 
   const {
-    activeNetwork,
-    activeAccount: { assets, transactions },
-    networks,
-  } = useStore();
-
-  const {
-    state: { assetGuid, tx, assetType, type },
+    state: { id, hash },
   }: any = useLocation();
 
-  const [transactionDetails, setTransactionDetails] = useState<any>(null);
-  const [hash, setHash] = useState<any>();
+  const isSyscoinChain =
+    Boolean(networks.syscoin[activeNetwork.chainId]) &&
+    activeNetwork.url.includes('blockbook');
 
-  const isSysNetwork = activeNetwork.currency === 'sys';
-  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+  const isAsset = id && !hash;
 
-  const isAsset = assetGuid && !tx;
-
-  const getWeb3TokenData = async (symbol: string) => {
-    const tokenData = await assets.filter(
-      (coin: any) =>
-        coin.symbol.toString().toUpperCase() === symbol.toUpperCase()
-    );
-
-    return tokenData[0];
-  };
-
-  useEffect(() => {
-    const getTransactionData = async () => {
-      if (assetGuid) {
-        const assetData: any = isSysNetwork
-          ? await controller.utils.getAsset(activeNetwork.url, assetGuid)
-          : await getWeb3TokenData(assetGuid);
-
-        const description =
-          assetData.pubData && assetData.pubData.desc
-            ? atob(String(assetData.pubData.desc))
-            : '';
-
-        setTransactionDetails(
-          Object.assign(assetData, isSysNetwork && { description })
-        );
-
-        return;
-      }
-
-      const txData = await controller.utils.getRawTransaction(
-        activeNetwork.url,
-        tx.txid
-      );
-
-      if (isSyscoinChain) {
-        setTransactionDetails(txData);
-
-        return;
-      }
-
-      setTransactionDetails(transactions);
-    };
-
-    getTransactionData();
-  }, [tx || assetGuid]);
   const openEthExplorer = () => {
-    const { label } = activeNetwork;
+    const { explorer } = activeNetwork;
 
-    const explorer = label.includes('Ethereum')
-      ? 'https://etherscan.io'
-      : `https://${label.toLowerCase()}.etherscan.io`;
-
-    window.open(`${explorer}/tx/${hash}`);
+    window.open(
+      `${explorer}/${isAsset ? 'asset' : 'tx'}/${isAsset ? id : hash}`
+    );
   };
 
   const openSysExplorer = () => {
     window.open(
-      `${activeNetwork.url}/${isAsset ? 'asset' : 'tx'}/${
-        isAsset ? transactionDetails.assetGuid : transactionDetails.txid
-      }`
+      `${activeNetwork.url}/${isAsset ? 'asset' : 'tx'}/${isAsset ? id : hash}`
     );
   };
+
+  const isLoading = (isAsset && !id) || (!isAsset && !hash);
+
   return (
-    <Layout title={`${assetGuid ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}>
-      {transactionDetails ? (
+    <Layout title={`${isAsset ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}>
+      {isLoading ? (
+        <Icon name="loading" className="absolute left-1/2 top-1/2 w-3" />
+      ) : (
         <>
           <ul className="scrollbar-styled mt-4 w-full h-96 text-sm overflow-auto md:h-bigmenu">
             {isAsset ? (
-              <AssetDetails
-                assetType={assetType}
-                assetData={transactionDetails}
-              />
+              <AssetDetails id={id} />
             ) : (
-              <TransactionDetails
-                transactionType={type}
-                transactionDetails={transactionDetails}
-                txAddress={tx}
-                setTransactionHash={setHash}
-              />
+              <TransactionDetails hash={hash} />
             )}
           </ul>
 
@@ -125,8 +65,6 @@ export const DetailsView = () => {
             </Button>
           </div>
         </>
-      ) : (
-        <Icon name="loading" className="absolute left-1/2 top-1/2 w-3" />
       )}
     </Layout>
   );

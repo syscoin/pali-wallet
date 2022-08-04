@@ -36,25 +36,6 @@ export const SendConfirm = () => {
 
       try {
         if (isSyscoinChain) {
-          // TODO trezor send
-          /* if (activeAccount.isTrezorWallet) {
-            const value = new sys.utils.BN(tx.amount * 1e8);
-            const feeRate = new sys.utils.BN(tx.fee * 1e8);
-
-            const outputs = [
-              {
-                address: tx.receiver,
-                value,
-              },
-            ];
-
-            return controller.wallet.account.sys.trezor.confirmNativeTokenSend({
-              txOptions: { rbf: true },
-              outputs,
-              feeRate,
-            });
-          } */
-
           const response =
             await controller.wallet.account.sys.tx.sendTransaction(tx);
 
@@ -79,7 +60,7 @@ export const SendConfirm = () => {
         logError('error', 'Transaction', error);
 
         if (activeAccount) {
-          if (error && tx.fee > 0.00001) {
+          if (isSyscoinChain && error && tx.fee > 0.00001) {
             alert.removeAll();
             alert.error(
               `${formatUrl(
@@ -94,7 +75,7 @@ export const SendConfirm = () => {
 
             if (tx.amount >= (max * tx.amount) / 100) {
               alert.removeAll();
-              alert.error(error.message);
+              alert.error('Amount not allowed.');
 
               setLoading(false);
 

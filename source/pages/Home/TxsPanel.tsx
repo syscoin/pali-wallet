@@ -3,7 +3,7 @@ import { FC, useState } from 'react';
 
 import { Button } from 'components/index';
 
-import { ActivityPanel, AssetsPanel } from './Panel/index';
+import { AssetsPanel, TransactionsPanel } from './Panel/index';
 
 export const TxsPanel: FC = () => {
   const [isActivity, setActivity] = useState<boolean>(true);
@@ -30,7 +30,7 @@ export const TxsPanel: FC = () => {
         </Button>
       </div>
 
-      {isActivity ? <ActivityPanel /> : <AssetsPanel />}
+      {isActivity ? <TransactionsPanel /> : <AssetsPanel />}
     </div>
   );
 };

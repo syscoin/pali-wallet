@@ -27,12 +27,32 @@ browser.runtime.onInstalled.addListener(() => {
   console.emoji('🤩', 'Pali extension enabled');
 });
 
+let timeout: any;
+
+const restartLockTimeout = () => {
+  const { timer } = store.getState().vault;
+
+  if (timeout) {
+    clearTimeout(timeout);
+  }
+
+  timeout = setTimeout(() => {
+    if (window.controller.wallet.isUnlocked()) {
+      window.controller.wallet.lock();
+    }
+  }, timer * 60 * 1000);
+};
+
 browser.runtime.onConnect.addListener((port: Runtime.Port) => {
   if (port.name === 'pali-inject') {
     window.controller.dapp.setup(port);
 
     return;
   }
+
+  browser.runtime.onMessage.addListener(({ type, target }) => {
+    if (type === 'autolock' && target === 'background') restartLockTimeout();
+  });
 
   const senderUrl = port.sender.url;
   if (
