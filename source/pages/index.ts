@@ -8,3 +8,4 @@ export * from './Send';
 export * from './Settings';
 export * from './Start';
 export * from './Transactions';
+export * from './Tokens';

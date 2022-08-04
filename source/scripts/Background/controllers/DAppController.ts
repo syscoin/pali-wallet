@@ -15,12 +15,6 @@ import { IDAppController } from 'types/controllers';
 import { onDisconnect, onMessage } from './message-handler';
 import { DAppEvents } from './message-handler/types';
 
-export interface ISigRequest {
-  address: string;
-  host: string;
-  message: string;
-}
-
 interface IDappUtils {
   [host: string]: {
     hasWindow: boolean;
@@ -34,8 +28,6 @@ interface IDappUtils {
  * DApps connections use the site host as id
  */
 const DAppController = (): IDAppController => {
-  let request: ISigRequest;
-
   const _dapps: IDappUtils = {};
 
   const isConnected = (host: string) => {
@@ -69,7 +61,6 @@ const DAppController = (): IDAppController => {
     // after disconnecting, the event would not be sent
     _dispatchEvent(host, 'disconnect');
 
-    delete _dapps[host];
     store.dispatch(removeDApp(host));
   };
 
@@ -119,17 +110,8 @@ const DAppController = (): IDAppController => {
     const dapp = store.getState().dapp.dapps[host];
     const { accounts } = store.getState().vault;
 
-    if (dapp?.accountId === null) return;
-
     return accounts[dapp.accountId];
   };
-
-  // TODO review sig request
-  const setSigRequest = (req: ISigRequest) => {
-    request = req;
-  };
-
-  const getSigRequest = () => request;
 
   const hasWindow = (host: string) => _dapps[host].hasWindow;
 
@@ -144,8 +126,6 @@ const DAppController = (): IDAppController => {
     setup,
     connect,
     changeAccount,
-    setSigRequest,
-    getSigRequest,
     disconnect,
     addListener,
     removeListener,

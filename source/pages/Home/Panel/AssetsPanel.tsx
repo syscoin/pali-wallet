@@ -1,45 +1,46 @@
-import React, { FC } from 'react';
+import React from 'react';
 
 import { Fullscreen } from 'components/Fullscreen';
-import { useStore, useUtils } from 'hooks/index';
+import { useStore } from 'hooks/index';
 
-import { PanelList } from './components/PanelList';
+import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
 
-export const AssetsPanel: FC = () => {
-  const { navigate } = useUtils();
+export const AssetsPanel = () => {
   const { activeNetwork, networks, activeAccount } = useStore();
   const isSyscoinChain =
     Boolean(networks.syscoin[activeNetwork.chainId]) &&
     activeNetwork.url.includes('blockbook');
 
+  const assets = Object.values(activeAccount.assets);
+
+  const NoAssetsComponent = () => (
+    <div className="flex items-center justify-center p-3 text-brand-white text-sm">
+      {/* {isSyscoinChain ? (
+        'You have no tokens or NFTs.'
+      ) : (
+        <>
+          <p
+            className="hover:text-brand-royalbluemedium cursor-pointer"
+            onClick={() => navigate('/tokens/add/import')}
+          >
+            Import token
+          </p>
+        </>
+      )} */}
+
+      <p>You have no tokens or NFTs.</p>
+    </div>
+  );
+
   return (
     <>
-      <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
-        {activeAccount.assets &&
-        Object.values(activeAccount.assets).length > 0 ? (
-          <PanelList
-            isSyscoinChain={isSyscoinChain}
-            data={Object.values(activeAccount.assets)}
-            activity={false}
-            assets
-          />
-        ) : (
-          <div className="flex items-center justify-center text-brand-white text-sm">
-            {isSyscoinChain ? (
-              'You have no tokens or NFTs.'
-            ) : (
-              <>
-                <p
-                  className="hover:text-brand-royalbluemedium cursor-pointer"
-                  onClick={() => navigate('/import-token')}
-                >
-                  Import token
-                </p>
-              </>
-            )}
-          </div>
-        )}
-      </ul>
+      {assets.length === 0 ? (
+        <NoAssetsComponent />
+      ) : (
+        <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
+          {isSyscoinChain ? <SyscoinAssetsList /> : <EvmAssetsList />}
+        </ul>
+      )}
 
       <Fullscreen />
     </>

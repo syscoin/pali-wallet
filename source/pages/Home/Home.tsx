@@ -1,8 +1,6 @@
 import { chains } from 'eth-chains';
 import React, { useEffect, useState } from 'react';
 
-import { validateSysRpc } from '@pollum-io/sysweb3-utils';
-
 import { Header, Icon, Button, Loading } from 'components/index';
 import { useStore, usePrice, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
@@ -45,8 +43,13 @@ export const Home = () => {
     setSymbol(nativeCurrency.symbol);
   };
 
-  const setMainOrTestNetwork = async () => {
-    const { isTestnet: _isTestnet } = await validateSysRpc(activeNetwork.url);
+  const setMainOrTestNetwork = () => {
+    const { chain } = chains.getById(activeNetwork.chainId);
+
+    if (chain !== 'SYS') return;
+
+    const _isTestnet = activeNetwork.chainId === 5700;
+    // const { isTestnet: _isTestnet } = await validateSysRpc(activeNetwork.url);
 
     setIsTestnet(_isTestnet);
   };
