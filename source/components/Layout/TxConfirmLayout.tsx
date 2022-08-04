@@ -292,29 +292,40 @@ const TxConfirmSign: React.FC<ITxConfirmSign> = ({
   );
 };
 
-const callbackNameResolver = (txType: string) => {
+const callbackResolver = (txType: string) => {
+  let callbackName;
+
   switch (txType) {
-    case 'newAsset':
-      return 'confirmTokenCreation';
+    case 'CreateToken':
+      callbackName = 'confirmTokenCreation';
+      break;
 
-    case 'newNFT':
-      return 'confirmNftCreation';
+    case 'CreateNFT':
+      callbackName = 'confirmNftCreation';
+      break;
 
-    case 'mintAsset':
-      return 'confirmTokenMint';
+    case 'MintToken':
+      callbackName = 'confirmTokenMint';
+      break;
 
-    case 'mintNFT':
-      return 'confirmMintNFT';
+    case 'MintNFT':
+      callbackName = 'confirmMintNFT';
+      break;
 
-    // case 'transferAsset':
-    //   return 'confirmAssetTransfer';
+    // TODO TransferToken
+    // case 'TransferToken':
+    //   callbackName = 'confirmAssetTransfer';
+    //   break;
 
-    case 'updateAsset':
-      return 'confirmUpdateToken';
+    case 'UpdateToken':
+      callbackName = 'confirmUpdateToken';
+      break;
 
     default:
       throw new Error('Unknown transaction type');
   }
+
+  return getController().wallet.account.sys.tx[callbackName];
 };
 
 interface ITxConfirmLayout {
@@ -332,10 +343,7 @@ export const TxConfirmLayout: React.FC<ITxConfirmLayout> = ({
   transaction,
   txType,
 }) => {
-  const walletCtlr = getController().wallet;
-
-  const callbackName = callbackNameResolver(txType);
-  const callback = walletCtlr.account.sys.tx[callbackName];
+  const callback = callbackResolver(txType);
 
   return (
     <Layout canGoBack={false} title={title}>

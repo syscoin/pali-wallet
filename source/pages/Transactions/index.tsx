@@ -3,66 +3,34 @@ import React from 'react';
 import { TxConfirmLayout, TxLayout } from 'components/Layout';
 
 //* CreateToken
-export const CreateTokenConfirm = () => (
-  <TxConfirmLayout title="TOKEN CREATION" txType="newAsset" />
-);
-
-export const Create = () => <TxLayout txType="newAsset" title="Create token" />;
+export const Create = () => <TxLayout txType="CreateToken" />;
 
 //* CreateAndIssueNFT
-export const CreateAndIssueNFTConfirm = () => (
-  <TxConfirmLayout title="NFT CREATION" txType="newNFT" />
-);
+export const CreateAndIssueNFT = () => <TxLayout txType="CreateNFT" />;
 
-export const CreateAndIssueNFT = () => (
-  <TxLayout txType="newNFT" title="Create NFT" />
-);
-
-//* confirmAssetTransfer
-export const MintNFTConfirm = () => (
-  <TxConfirmLayout title="MINT NFT" txType="mintNFT" />
-);
-
-export const MintNFT = () => <TxLayout txType="mintNFT" title="Mint NFT" />;
+//* MintNFT
+export const MintNFT = () => <TxLayout txType="MintNFT" />;
 
 //* SignAndSend
 export const SignAndSend = () => (
   <TxConfirmLayout
     sign
     signAndSend
-    title="SIGNATURE REQUEST"
-    txType="signAndSendPSBT"
+    txType="SignAndSend"
+    title="Signature Request"
   />
 );
 
 //* SignPSBT
 export const SignPSBT = () => (
-  <TxConfirmLayout sign title="SIGNATURE REQUEST" txType="signPSBT" />
+  <TxConfirmLayout sign txType="Sign" title="Signature Request" />
 );
 
 //* TransferOwnership
-export const TransferOwnershipConfirm = () => (
-  <TxConfirmLayout title="TRANSFER ASSET" txType="transferAsset" />
-);
-
-export const TransferOwnership = () => (
-  <TxLayout txType="transferAsset" title="Transfer Asset" />
-);
+export const TransferOwnership = () => <TxLayout txType="TransferToken" />;
 
 //* UpdateAsset
-export const UpdateAssetConfirm = () => (
-  <TxConfirmLayout title="UPDATE ASSET" txType="updateAsset" />
-);
-
-export const UpdateAsset = () => (
-  <TxLayout txType="updateAsset" title="Update Asset" />
-);
+export const UpdateAsset = () => <TxLayout txType="UpdateToken" />;
 
 //* MintToken
-export const MintTokenConfirm = () => (
-  <TxConfirmLayout title="TOKEN MINT" txType="mintAsset" />
-);
-
-export const MintToken = () => (
-  <TxLayout txType="mintAsset" title="Mint Token" />
-);
+export const MintToken = () => <TxLayout txType="MintToken" />;

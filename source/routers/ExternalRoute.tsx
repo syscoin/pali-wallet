@@ -7,23 +7,17 @@ import {
   ConnectWallet,
   Create,
   CreateAndIssueNFT,
-  CreateAndIssueNFTConfirm,
   CreatePass,
   CreatePhrase,
-  CreateTokenConfirm,
   Import,
   MintNFT,
-  MintNFTConfirm,
   MintToken,
-  MintTokenConfirm,
   SendConfirm,
   SignAndSend,
   SignPSBT,
   Start,
   TransferOwnership,
-  TransferOwnershipConfirm,
   UpdateAsset,
-  UpdateAssetConfirm,
 } from '../pages';
 import { useQuery, useUtils, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
@@ -90,10 +84,6 @@ export const ExternalRoute = () => {
             element={<ProtectedRoute element={<Create />} />}
           />
           <Route
-            path="create/confirm"
-            element={<ProtectedRoute element={<CreateTokenConfirm />} />}
-          />
-          <Route
             path="send/confirm"
             element={<ProtectedRoute element={<SendConfirm />} />}
           />
@@ -113,26 +103,12 @@ export const ExternalRoute = () => {
               element={<ProtectedRoute element={<MintToken />} />}
             />
             <Route
-              path="issue/confirm"
-              element={<ProtectedRoute element={<MintTokenConfirm />} />}
-            />
-            <Route
               path="transfer"
               element={<ProtectedRoute element={<TransferOwnership />} />}
             />
             <Route
-              path="transfer/confirm"
-              element={
-                <ProtectedRoute element={<TransferOwnershipConfirm />} />
-              }
-            />
-            <Route
               path="update"
               element={<ProtectedRoute element={<UpdateAsset />} />}
-            />
-            <Route
-              path="update/confirm"
-              element={<ProtectedRoute element={<UpdateAssetConfirm />} />}
             />
 
             {/* /tx/asset/nft */}
@@ -142,18 +118,8 @@ export const ExternalRoute = () => {
                 element={<ProtectedRoute element={<CreateAndIssueNFT />} />}
               />
               <Route
-                path="issue/confirm"
-                element={
-                  <ProtectedRoute element={<CreateAndIssueNFTConfirm />} />
-                }
-              />
-              <Route
                 path="mint"
                 element={<ProtectedRoute element={<MintNFT />} />}
-              />
-              <Route
-                path="mint/confirm"
-                element={<ProtectedRoute element={<MintNFTConfirm />} />}
               />
             </Route>
           </Route>

@@ -133,12 +133,40 @@ const _Fee: FC<IFee> = ({ title, onFinish }) => {
   );
 };
 
+const titleResolver = (txType: string) => {
+  switch (txType) {
+    case 'CreateToken':
+      return 'Create Token';
+
+    case 'CreateNFT':
+      return 'Create NFT';
+
+    case 'MintToken':
+      return 'Mint Token';
+
+    case 'MintNFT':
+      return 'Mint NFT';
+
+    case 'TransferToken':
+      return 'Transfer Token';
+
+    case 'UpdateToken':
+      return 'Update Token';
+
+    case 'Sign':
+    case 'SignAndSend':
+      return 'Signature Request';
+
+    default:
+      throw new Error('Unknown transaction type');
+  }
+};
+
 interface ITxLayout {
-  title: string;
   txType: string;
 }
 
-export const TxLayout: FC<ITxLayout> = ({ txType, title }) => {
+export const TxLayout: FC<ITxLayout> = ({ txType }) => {
   const { host, ...transaction } = useQueryData();
   const [hasFee, setHasFee] = useState(false);
 
@@ -146,6 +174,8 @@ export const TxLayout: FC<ITxLayout> = ({ txType, title }) => {
     transaction.fee = fee;
     setHasFee(true);
   };
+
+  const title = titleResolver(txType);
 
   if (hasFee)
     return (
