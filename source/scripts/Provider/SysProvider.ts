@@ -11,6 +11,7 @@ export const SysProvider = (host: string) => {
 
   const getAccount = () => {
     const account = window.controller.dapp.getAccount(host);
+
     if (!account) throw new Error('No connected account');
 
     return account;
@@ -20,7 +21,7 @@ export const SysProvider = (host: string) => {
 
   const estimateFee = () => txs.getRecommendedFee(getNetwork().url);
 
-  const sendTransaction = (tx) => {
+  const sendTransaction = (tx: any) => {
     window.controller.createPopup('tx/send/confirm', tx);
   };
 
@@ -74,5 +75,6 @@ export const SysProvider = (host: string) => {
     getTokens: () => getAccount().assets,
     estimateFee,
     sendTransaction,
+    ...txs,
   };
 };
