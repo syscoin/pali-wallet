@@ -36,7 +36,10 @@ export const SendConfirm = () => {
       try {
         if (isSyscoinChain) {
           const response =
-            await controller.wallet.account.sys.tx.sendTransaction(tx);
+            await controller.wallet.account.sys.tx.sendTransaction({
+              ...tx,
+              token: tx.token ? tx.token.assetGuid : null,
+            });
 
           setConfirmed(true);
           setLoading(false);

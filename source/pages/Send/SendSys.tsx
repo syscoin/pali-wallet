@@ -87,7 +87,9 @@ export const SendSys = () => {
             receivingAddress: receiver,
             amount: Number(amount),
             fee,
-            token: selectedAsset ? selectedAsset.assetGuid : null,
+            token: selectedAsset
+              ? { symbol: selectedAsset.symbol, guid: selectedAsset.assetGuid }
+              : null,
             isToken: !!selectedAsset,
             rbf: !ZDAG,
           },

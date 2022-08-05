@@ -1,5 +1,4 @@
 import { Input, Form } from 'antd';
-import CryptoJS from 'crypto-js';
 import React, { useState, useEffect } from 'react';
 
 import {
@@ -15,7 +14,7 @@ import { ellipsis } from 'utils/index';
 
 const PrivateKeyView = () => {
   const controller = getController();
-  const { activeAccount, activeNetwork, networks } = useStore();
+  const { activeAccount, activeNetwork } = useStore();
 
   const { navigate, useCopyClipboard, alert } = useUtils();
 
@@ -23,12 +22,12 @@ const PrivateKeyView = () => {
   const [valid, setValid] = useState<boolean>(false);
   const [form] = Form.useForm();
 
-  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
+  const getDecryptedPrivateKey = (key: string) => {
+    const decryptedXprv = controller.wallet.getDecryptedPrivateKey(key);
 
-  const decrypt = (value: string, key: string) => {
-    if (!isSyscoinChain) return value;
+    console.log({ decryptedXprv });
 
-    return CryptoJS.AES.decrypt(value, key).toString();
+    return decryptedXprv;
   };
 
   useEffect(() => {
@@ -82,8 +81,9 @@ const PrivateKeyView = () => {
               },
               () => ({
                 validator(_, value) {
-                  if (controller.wallet.getSeed(value)) {
+                  if (controller.wallet.checkPassword(value)) {
                     setValid(true);
+
                     return Promise.resolve();
                   }
 
@@ -105,16 +105,16 @@ const PrivateKeyView = () => {
             valid
               ? () =>
                   copyText(
-                    decrypt(activeAccount?.xprv, form.getFieldValue('password'))
+                    getDecryptedPrivateKey(form.getFieldValue('password'))
                   )
               : undefined
           }
           label="Your private key"
         >
           <p>
-            {valid
+            {valid && activeAccount.xprv
               ? ellipsis(
-                  decrypt(activeAccount?.xprv, form.getFieldValue('password')),
+                  getDecryptedPrivateKey(form.getFieldValue('password')),
                   4,
                   16
                 )
