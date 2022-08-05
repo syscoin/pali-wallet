@@ -288,14 +288,14 @@ export const SendEth = () => {
                 () => ({
                   validator(_, value) {
                     const balance = selectedAsset
-                      ? selectedAsset.balance / 10 ** selectedAsset.decimals
+                      ? selectedAsset.balance
                       : Number(activeAccount?.balances.ethereum);
 
-                    if (value > balance) {
-                      return Promise.reject();
+                    if (value <= balance) {
+                      return Promise.resolve();
                     }
 
-                    return Promise.resolve();
+                    return Promise.reject();
                   },
                 }),
               ]}

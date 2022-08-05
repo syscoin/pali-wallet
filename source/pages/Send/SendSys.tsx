@@ -87,7 +87,9 @@ export const SendSys = () => {
             receivingAddress: receiver,
             amount: Number(amount),
             fee,
-            token: selectedAsset ? selectedAsset.assetGuid : null,
+            token: selectedAsset
+              ? { symbol: selectedAsset.symbol, guid: selectedAsset.assetGuid }
+              : null,
             isToken: !!selectedAsset,
             rbf: !ZDAG,
           },
@@ -342,14 +344,14 @@ export const SendSys = () => {
             () => ({
               validator(_, value) {
                 const balance = selectedAsset
-                  ? selectedAsset.balance / 10 ** selectedAsset.decimals
+                  ? selectedAsset.balance
                   : Number(activeAccount?.balances.syscoin);
 
-                if (value > balance) {
-                  return Promise.reject();
+                if (value <= balance) {
+                  return Promise.resolve();
                 }
 
-                return Promise.resolve();
+                return Promise.reject();
               },
             }),
           ]}
