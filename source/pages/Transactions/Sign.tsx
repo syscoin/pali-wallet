@@ -9,29 +9,27 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useQueryData } from 'hooks/index';
-import { getController } from 'utils/browser';
+import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { base64Regex } from 'utils/index';
 
-interface ITxSign {
+interface ISign {
   send?: boolean;
 }
 
-const Sign: React.FC<ITxSign> = ({ send = false }) => {
+const Sign: React.FC<ISign> = ({ send = false }) => {
   const { host, ...psbt } = useQueryData();
 
   const alert = useAlert();
-  const accountCtlr = getController().wallet.account;
+  const { signTransaction } = getController().wallet.account.sys.tx;
 
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [logError, setLogError] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleConfirmSignature = async () => {
+  const onSubmit = async () => {
     setLoading(true);
 
     if (!base64Regex.test(psbt.psbt) || typeof psbt.assets !== 'string') {
-      alert.removeAll();
       alert.error(
         'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.'
       );
@@ -42,17 +40,15 @@ const Sign: React.FC<ITxSign> = ({ send = false }) => {
     }
 
     try {
-      const response = await accountCtlr.sys.tx.signTransaction(psbt, send);
+      const response = await signTransaction(psbt, send);
 
       setConfirmed(true);
       setLoading(false);
 
-      // setTimeout(() => cancelTransaction(browser, psbt), 4000);
-
-      // TODO dispatch background event
+      const type = send ? 'SignAndSend' : 'Sign';
+      dispatchBackgroundEvent(`tx${type}`, { host, data: response });
     } catch (error: any) {
-      setFailed(true);
-      setLogError(error.message);
+      setErrorMsg(error.message);
 
       setTimeout(window.close, 4000);
     }
@@ -61,19 +57,19 @@ const Sign: React.FC<ITxSign> = ({ send = false }) => {
   return (
     <Layout canGoBack={false} title={'Signature Request'}>
       <DefaultModal
+        show={confirmed}
         onClose={window.close}
-        show={!failed && confirmed}
         title={'Signature request successfully submitted'}
         description="You can check your request under activity on your home screen."
         buttonText="Got it"
       />
 
       <ErrorModal
-        show={failed}
+        show={Boolean(errorMsg)}
         onClose={window.close}
-        title="Token creation request failed"
+        title="Signature request failed"
         description="Sorry, we could not submit your request. Try again later."
-        log={logError || '...'}
+        log={errorMsg || '...'}
         buttonText="Ok"
       />
 
@@ -97,8 +93,8 @@ const Sign: React.FC<ITxSign> = ({ send = false }) => {
               type="submit"
               action
               disabled={confirmed}
-              loading={loading && !failed && !confirmed}
-              onClick={handleConfirmSignature}
+              loading={loading}
+              onClick={onSubmit}
             >
               Confirm
             </PrimaryButton>
