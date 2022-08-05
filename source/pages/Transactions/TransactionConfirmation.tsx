@@ -7,7 +7,7 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useStore } from 'hooks/index';
-import { getController } from 'utils/browser';
+import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import {
   camelCaseToText,
   capitalizeFirstLetter,
@@ -17,6 +17,7 @@ import {
 
 interface ITransactionConfirmation {
   callback: any;
+  host: string;
   title: string;
   transaction: any;
   type: string;
@@ -30,6 +31,7 @@ interface ITxData {
 
 const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
   callback,
+  host,
   transaction,
   type,
   title,
@@ -41,9 +43,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 
   const [data, setData] = useState<ITxData[]>([]);
   const [loading, setLoading] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [logError, setLogError] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
   const advancedOptionsArray = [
@@ -69,16 +69,12 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
   }, [transaction]);
 
   const onSubmit = async () => {
-    // let isPending = false;
-
     setLoading(true);
 
     if (activeAccount.balances.syscoin <= 0) return;
 
-    // isPending = true;
-
+    // TODO check this
     if (type === 'CreateNFT') {
-      setConfirmed(true);
       setLoading(false);
       setSubmitted(true);
     }
@@ -86,55 +82,38 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
     try {
       const response = await callback(transaction);
 
-      // isPending = false;
-      setConfirmed(true);
       setLoading(false);
       setSubmitted(true);
 
-      if (response) {
-        // TODO dispatch background event
-      }
+      dispatchBackgroundEvent(`tx${type}`, { host, data: response });
     } catch (error: any) {
-      setFailed(true);
-      setLogError(error.message);
+      setErrorMsg(error.message);
 
       const fee = await getRecommendedFee(activeNetwork.url);
 
       if (transaction.fee > fee) {
         const shortError = formatUrl(String(error.message), 166);
-        setLogError(`${shortError} Please, reduce fees to send transaction.`);
+        setErrorMsg(`${shortError} Please, reduce fees to send transaction.`);
       }
 
       if (transaction.fee < fee) {
-        setLogError(error.message);
+        setErrorMsg(error.message);
       }
     }
-
-    /* setTimeout(() => {
-        if (isPending && !confirmed) {
-          setSubmitted(true);
-          setFailed(false);
-          setLogError('');
-  
-          setTimeout(() => {
-            // cancelTransaction(browser, txType);
-          }, 4000);
-        }
-      }, 8 * 60 * 1000); */
   };
 
   return (
     <>
       <ErrorModal
-        show={failed}
+        show={Boolean(errorMsg)}
         onClose={window.close}
         title={`${capitalizeFirstLetter(title.toLowerCase())} request failed`}
         description="Sorry, we could not submit your request. Try again later."
-        log={logError || 'No description provided'}
+        log={errorMsg || 'No description provided'}
         buttonText="Ok"
       />
       <DefaultModal
-        show={!failed && submitted}
+        show={submitted}
         onClose={window.close}
         title={`${capitalizeFirstLetter(
           title.toLowerCase()
@@ -172,7 +151,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
             type="submit"
             action
             disabled={submitted}
-            loading={loading && !failed && !submitted}
+            loading={loading}
             onClick={onSubmit}
           >
             Confirm

@@ -87,6 +87,7 @@ const Transaction: React.FC<ITransaction> = ({ type }) => {
   return (
     <Layout canGoBack={false} title={title}>
       <TransactionConfirmation
+        host={host}
         title={title}
         type={type}
         transaction={{ ...transaction, fee }}
