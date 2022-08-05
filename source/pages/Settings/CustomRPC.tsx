@@ -78,7 +78,7 @@ const CustomRPCView = ({
                     label: '',
                     url: '',
                     chainId: '',
-                    tokenContractAddress: '',
+                    apiUrl: '',
                   }
             }
             onFinish={onSubmit}
@@ -128,7 +128,11 @@ const CustomRPCView = ({
                 },
               ]}
             >
-              <Input type="text" placeholder="Label" className="large" />
+              <Input
+                type="text"
+                placeholder="Label (optional)"
+                className="large"
+              />
             </Form.Item>
 
             <Form.Item
@@ -172,7 +176,7 @@ const CustomRPCView = ({
             <Form.Item
               hasFeedback
               className="md:w-full"
-              name="tokenContractAddress"
+              name="apiUrl"
               rules={[
                 {
                   required: false,
@@ -182,7 +186,7 @@ const CustomRPCView = ({
             >
               <Input
                 type="text"
-                placeholder="Token Contract Address (optional)"
+                placeholder="API URL (optional)"
                 className={`${isSyscoinRpc ? 'hidden' : 'block'} large`}
               />
             </Form.Item>
