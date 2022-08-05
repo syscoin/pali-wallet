@@ -1,5 +1,6 @@
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { Badge } from 'antd';
+import { uniqueId } from 'lodash';
 import React, { useEffect, useState } from 'react';
 import { browser } from 'webextension-polyfill-ts';
 
@@ -170,9 +171,9 @@ export const NormalHeader: React.FC = () => {
 
                         <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
                           {Object.values(networks.syscoin).map(
-                            (currentNetwork: any, index: number) => (
+                            (currentNetwork: INetwork) => (
                               <li
-                                key={index}
+                                key={uniqueId()}
                                 className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                                 onClick={() =>
                                   handleChangeNetwork(currentNetwork)
@@ -222,9 +223,9 @@ export const NormalHeader: React.FC = () => {
 
                         <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
                           {Object.values(networks.ethereum).map(
-                            (currentNetwork: any, index: number) => (
+                            (currentNetwork: any) => (
                               <li
-                                key={index}
+                                key={uniqueId()}
                                 className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                                 onClick={() =>
                                   handleChangeNetwork(currentNetwork)

@@ -2,18 +2,22 @@ import {
   ISyscoinTransactions,
   KeyringManager,
 } from '@pollum-io/sysweb3-keyring';
+import { feeUtils } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
 
 export interface ISysTransactionController extends ISyscoinTransactions {
   clearTemporaryTransaction: (item: string) => void;
   confirmTemporaryTransaction: ({ type, callback }) => Promise<any>;
+  getRecommendedFee: (explorerUrl: string) => Promise<number>;
   getTemporaryTransaction: (type: string) => any;
   updateTemporaryTransaction: ({ tx, type }) => void;
 }
 
 export const SysTransactionController = (): ISysTransactionController => {
   const { txs } = KeyringManager();
+
+  const { getRecommendedFee } = feeUtils();
 
   const temporaryTransaction = {
     newAsset: null,
@@ -78,6 +82,7 @@ export const SysTransactionController = (): ISysTransactionController => {
     clearTemporaryTransaction,
     updateTemporaryTransaction,
     confirmTemporaryTransaction,
+    getRecommendedFee,
     ...txs,
   };
 };
