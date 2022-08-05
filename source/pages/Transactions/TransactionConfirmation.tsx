@@ -19,7 +19,7 @@ interface ITransactionConfirmation {
   callback: any;
   title: string;
   transaction: any;
-  txType: string;
+  type: string;
 }
 
 interface ITxData {
@@ -31,7 +31,7 @@ interface ITxData {
 const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
   callback,
   transaction,
-  txType,
+  type,
   title,
 }) => {
   if (!transaction) throw new Error('No transaction');
@@ -77,7 +77,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 
     // isPending = true;
 
-    if (txType === 'newNFT') {
+    if (type === 'CreateNFT') {
       setConfirmed(true);
       setLoading(false);
       setSubmitted(true);

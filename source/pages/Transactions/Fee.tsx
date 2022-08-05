@@ -49,7 +49,7 @@ const Fee: React.FC<IFee> = ({ title, onFinish }) => {
           labelCol={{ span: 8 }}
           initialValues={{ fee: fee }}
           wrapperCol={{ span: 8 }}
-          onFinish={onFinish}
+          onFinish={(data) => onFinish(data.fee)}
           autoComplete="off"
           className="standard flex flex-col gap-3 items-center justify-center mt-4 text-center"
         >

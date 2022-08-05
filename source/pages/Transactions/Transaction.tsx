@@ -75,26 +75,21 @@ interface ITransaction {
 /**
  * Alternates between Fee and Confirmation page
  */
-const Transaction: React.FC<ITransaction> = ({ type: txType }) => {
+const Transaction: React.FC<ITransaction> = ({ type }) => {
   const { host, ...transaction } = useQueryData();
-  const [hasFee, setHasFee] = useState(Boolean(transaction?.fee));
+  const [fee, setFee] = useState(transaction?.fee);
 
-  const setFee = (fee: number) => {
-    transaction.fee = fee;
-    setHasFee(true);
-  };
+  const title = titleResolver(type);
+  const callback = callbackResolver(type);
 
-  const title = titleResolver(txType);
-  const callback = callbackResolver(txType);
-
-  if (!hasFee) return <Fee title={title} onFinish={setFee} />;
+  if (!fee) return <Fee title={title} onFinish={setFee} />;
 
   return (
     <Layout canGoBack={false} title={title}>
       <TransactionConfirmation
         title={title}
-        txType={txType}
-        transaction={transaction}
+        type={type}
+        transaction={{ ...transaction, fee }}
         callback={callback}
       />
     </Layout>
