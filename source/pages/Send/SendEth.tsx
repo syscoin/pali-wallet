@@ -185,11 +185,14 @@ export const SendEth = () => {
                         leaveTo="transform opacity-0 scale-95"
                       >
                         {hasAccountAssets && (
-                          <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
+                          <Menu.Items
+                            as="div"
+                            className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right"
+                          >
                             {activeAccount &&
                               Object.values(activeAccount.assets).map(
                                 (item: any) => (
-                                  <Menu.Item key={item.id}>
+                                  <Menu.Item as="div" key={item.id}>
                                     <button
                                       onClick={() =>
                                         handleSelectedAsset(
