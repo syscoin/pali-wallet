@@ -17,7 +17,7 @@ export const SendEth = () => {
   const controller = getController();
 
   const { alert, navigate } = useUtils();
-  const { activeAccount } = useStore();
+  const { activeAccount, activeNetwork } = useStore();
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [recommendedGasPrice, setRecommendedGasPrice] = useState(0);
   const [recommendedGasLimit, setRecommendedGasLimit] = useState(0);
@@ -184,6 +184,16 @@ export const SendEth = () => {
                         leaveFrom="transform opacity-100 scale-100"
                         leaveTo="transform opacity-0 scale-95"
                       >
+                        <Menu.Item>
+                          <button
+                            onClick={() => handleSelectedAsset('-1')}
+                            className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                          >
+                            <p>{activeNetwork.currency || 'ETH'}</p>
+                            <small>Native</small>
+                          </button>
+                        </Menu.Item>
+
                         {hasAccountAssets && (
                           <Menu.Items
                             as="div"

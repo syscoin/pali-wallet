@@ -66,19 +66,6 @@ export const SendConfirm = () => {
             );
           }
 
-          if (isSyscoinChain && error && tx.fee <= 0.00001) {
-            const max = (100 * tx.amount) / activeAccount?.balances.syscoin;
-
-            if (tx.amount >= (max * tx.amount) / 100) {
-              alert.removeAll();
-              alert.error('Amount not allowed.');
-
-              setLoading(false);
-
-              return;
-            }
-          }
-
           alert.removeAll();
           alert.error("Can't complete transaction. Try again later.");
 
