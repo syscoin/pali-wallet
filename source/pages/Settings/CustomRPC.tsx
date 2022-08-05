@@ -68,11 +68,18 @@ const CustomRPCView = ({
             labelCol={{ span: 8 }}
             wrapperCol={{ span: 8 }}
             initialValues={
-              selectedToEdit && {
-                label: selectedToEdit.label ?? '',
-                url: selectedToEdit.url ?? '',
-                chainId: selectedToEdit.chainId ?? '',
-              }
+              selectedToEdit
+                ? {
+                    label: selectedToEdit.label ?? '',
+                    url: selectedToEdit.url ?? '',
+                    chainId: selectedToEdit.chainId ?? '',
+                  }
+                : {
+                    label: '',
+                    url: '',
+                    chainId: '',
+                    tokenContractAddress: '',
+                  }
             }
             onFinish={onSubmit}
             autoComplete="off"
@@ -116,7 +123,7 @@ const CustomRPCView = ({
               hasFeedback
               rules={[
                 {
-                  required: true,
+                  required: false,
                   message: '',
                 },
               ]}

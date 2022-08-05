@@ -1,5 +1,9 @@
-import { chains } from 'eth-chains';
 import React, { useEffect, useState } from 'react';
+
+import {
+  getBip44NetworkDetails,
+  validateEthRpc,
+} from '@pollum-io/sysweb3-network';
 
 import { Header, Icon, Button, Loading } from 'components/index';
 import { useStore, usePrice, useUtils } from 'hooks/index';
@@ -19,37 +23,33 @@ export const Home = () => {
     isPendingBalances,
   } = useStore();
   const [fiatPriceValue, setFiatPriceValue] = useState('');
-  const [symbol, setSymbol] = useState('SYS');
   const [balance, setBalance] = useState(0);
   const [isTestnet, setIsTestnet] = useState(false);
+  const [isSyscoinChain, setIsSyscoinChain] = useState(false);
 
   const { getFiatAmount } = usePrice();
 
   const { navigate } = useUtils();
 
   useEffect(() => {
-    const isSyscoinChain =
+    setIsSyscoinChain(
       Boolean(networks.syscoin[activeNetwork.chainId]) &&
-      activeNetwork.url.includes('blockbook');
+        activeNetwork.url.includes('blockbook')
+    );
+  }, [activeNetwork.chainId]);
 
+  useEffect(() => {
     const { syscoin, ethereum } = activeAccount.balances;
 
     setBalance(isSyscoinChain ? syscoin : ethereum);
   }, [activeNetwork]);
 
-  const setChainSymbol = async () => {
-    const { nativeCurrency } = chains.getById(activeNetwork.chainId);
+  const setMainOrTestNetwork = async () => {
+    const { chainId, url } = activeNetwork;
 
-    setSymbol(nativeCurrency.symbol);
-  };
-
-  const setMainOrTestNetwork = () => {
-    const { chain } = chains.getById(activeNetwork.chainId);
-
-    if (chain !== 'SYS') return;
-
-    const _isTestnet = activeNetwork.chainId === 5700;
-    // const { isTestnet: _isTestnet } = await validateSysRpc(activeNetwork.url);
+    const { isTestnet: _isTestnet } = isSyscoinChain
+      ? await getBip44NetworkDetails(url)
+      : await validateEthRpc(chainId, url);
 
     setIsTestnet(_isTestnet);
   };
@@ -69,10 +69,9 @@ export const Home = () => {
     controller.wallet.isUnlocked() && activeAccount.address !== '';
 
   useEffect(() => {
-    setChainSymbol();
     setFiatPrice();
     setMainOrTestNetwork();
-  }, [isUnlocked, activeNetwork]);
+  }, [isUnlocked && activeNetwork]);
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
@@ -90,7 +89,9 @@ export const Home = () => {
                   {formatNumber(balance || 0)}{' '}
                 </p>
 
-                <p className="mt-4 font-poppins">{symbol.toUpperCase()}</p>
+                <p className="mt-4 font-poppins">
+                  {activeNetwork.currency.toUpperCase()}
+                </p>
               </div>
 
               <p id="fiat-ammount">{isTestnet ? null : fiatPriceValue}</p>

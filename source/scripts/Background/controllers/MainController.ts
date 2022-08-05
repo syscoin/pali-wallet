@@ -2,7 +2,7 @@ import {
   KeyringManager,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
-import { validateSysRpc } from '@pollum-io/sysweb3-network';
+import { validateSysRpc, validateEthRpc } from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
@@ -25,7 +25,6 @@ import { IMainController } from 'types/controllers';
 import { ICustomRpcParams } from 'types/transactions';
 
 import WalletController from './account';
-import { validateEthRpc } from './utils';
 
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
@@ -146,27 +145,26 @@ const MainController = (): IMainController => {
     label,
     url,
     isSyscoinRpc,
-    tokenContractAddress,
+    apiUrl,
   }: ICustomRpcParams): Promise<INetwork> => {
-    const { valid, data: _data } = isSyscoinRpc
-      ? await validateSysRpc(url)
-      : await validateEthRpc(chainId, url, tokenContractAddress);
+    const { valid, formattedNetwork } = isSyscoinRpc
+      ? await validateSysRpc(url, label)
+      : await validateEthRpc(chainId, url, apiUrl, label);
 
     if (!valid)
-      throw new Error('Invalid chainID. Please, verify the current RPC URL.');
+      throw new Error('Invalid RPC. Please, verify the current RPC URL.');
 
-    return {
-      ..._data,
-      label,
-    };
+    return formattedNetwork;
   };
 
   const addCustomRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
     const network = await validateAndBuildRpc(data);
 
+    console.log({ network, data });
+
     const chain = data.isSyscoinRpc ? 'syscoin' : 'ethereum';
 
-    store.dispatch(setNetworks({ chain, network, chainId: network.chainId }));
+    store.dispatch(setNetworks({ chain, network }));
 
     return network;
   };
