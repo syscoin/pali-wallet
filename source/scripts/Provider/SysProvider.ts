@@ -27,6 +27,14 @@ export const SysProvider = (host: string) => {
       eventName: 'txSend',
     });
 
+  const mintToken = (tx: { amount: number; assetGuid: string; fee: number }) =>
+    popupPromise({
+      host,
+      route: 'tx/asset/issue',
+      data: tx,
+      eventName: 'txMintToken',
+    });
+
   return {
     getAccount: () => getAccount(),
     getAddress: () => getAccount().address,
@@ -35,5 +43,6 @@ export const SysProvider = (host: string) => {
     getTokens: () => getAccount().assets,
     estimateFee,
     sendTransaction,
+    mintToken,
   };
 };
