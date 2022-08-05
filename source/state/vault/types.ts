@@ -7,7 +7,6 @@ export interface IVaultState {
   };
   activeAccount: IKeyringAccountState;
   activeNetwork: INetwork;
-  activeToken: string;
   encryptedMnemonic: string;
   error: boolean;
   isPendingBalances: boolean;
