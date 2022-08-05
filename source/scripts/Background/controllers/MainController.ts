@@ -3,7 +3,7 @@ import {
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
 import { validateSysRpc } from '@pollum-io/sysweb3-network';
-import { getSymbolByChain, INetwork } from '@pollum-io/sysweb3-utils';
+import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
 import {
@@ -18,7 +18,6 @@ import {
   setIsPendingBalances,
   setNetworks,
   removeNetwork as removeNetworkFromStore,
-  setActiveToken,
   removeNetwork,
   setStoreError,
 } from 'state/vault';
@@ -200,17 +199,6 @@ const MainController = (): IMainController => {
     store.dispatch(removeNetworkFromStore({ prefix: chain, chainId }));
   };
 
-  const setActiveTokenForWallet = async () => {
-    const { networks, activeNetwork } = store.getState().vault;
-
-    const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
-
-    const chain = isSyscoinChain ? 'syscoin' : 'ethereum';
-    const symbol = await getSymbolByChain(chain);
-
-    store.dispatch(setActiveToken(String(symbol) || ''));
-  };
-
   return {
     createWallet,
     forgetWallet,
@@ -224,7 +212,6 @@ const MainController = (): IMainController => {
     addCustomRpc,
     editCustomRpc,
     removeKeyringNetwork,
-    setActiveTokenForWallet,
     resolveError,
     ...keyringManager,
   };

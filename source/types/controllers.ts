@@ -35,7 +35,6 @@ export interface IMainController extends IKeyringManager {
   resolveError: () => void;
   setAccount: (id: number) => void;
   setActiveNetwork: (network: INetwork) => Promise<IKeyringAccountState>;
-  setActiveTokenForWallet: () => Promise<void>;
   setAutolockTimer: (minutes: number) => void;
   unlock: (pwd: string) => Promise<void>;
 }

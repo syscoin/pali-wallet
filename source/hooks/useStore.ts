@@ -19,7 +19,6 @@ export const useStore = () => {
     networks,
     activeAccount,
     accounts,
-    activeToken,
     error,
   }: IVaultState = useSelector((state: RootState) => state.vault);
 
@@ -36,7 +35,6 @@ export const useStore = () => {
     coins,
     timer,
     encryptedMnemonic,
-    activeToken,
     error,
   };
 };
