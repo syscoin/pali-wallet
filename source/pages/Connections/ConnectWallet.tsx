@@ -10,20 +10,9 @@ import {
   Loading,
 } from 'components/index';
 import { useQueryData, useStore } from 'hooks/index';
-import store from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
-
-const _isActiveNetwork = (chain: string, chainId: number) => {
-  const { activeNetwork } = store.getState().vault;
-  const isSysCore = activeNetwork.url.includes('blockbook');
-  const activeChain = isSysCore ? 'syscoin' : 'ethereum';
-
-  const isSameChain = chain === activeChain;
-  const isSameChainId = activeNetwork.chainId === chainId;
-
-  return isSameChain && isSameChainId;
-};
+import { isActiveNetwork } from 'utils/network';
 
 export const ConnectWallet = () => {
   const { dapp, wallet, refresh } = getController();
@@ -60,8 +49,7 @@ export const ConnectWallet = () => {
   };
 
   useEffect(() => {
-    const isActiveNetwork = _isActiveNetwork(chain, chainId);
-    if (!isActiveNetwork) changeNetwork();
+    if (!isActiveNetwork(chain, chainId)) changeNetwork();
   }, []);
 
   if (isLoading) return <Loading />;

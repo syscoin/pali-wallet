@@ -1,28 +1,19 @@
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
+import { isActiveNetwork } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
 
-/**
- * Checks if the current pali network matches the params.
- * If it doesn't, change to specified network
- */
-const _checkAndChangeNetwork = async (chain: string, chainId: number) => {
-  const { wallet } = window.controller;
-  const {
-    vault: { activeNetwork, networks },
-  } = store.getState();
-  const isSysCore = activeNetwork.url.includes('blockbook');
-  const activeChain = isSysCore ? 'syscoin' : 'ethereum';
+const _changeNetwork = async (chain: string, chainId: number) => {
+  console.log('[DApp] Changing pali network');
 
-  const isSameChain = chain === activeChain;
-  const isSameChainId = activeNetwork.chainId === chainId;
-
-  if (isSameChain && isSameChainId) return;
-
+  const { networks } = store.getState().vault;
   const network = networks[chain][chainId];
+
+  const { wallet, refresh } = window.controller;
   await wallet.setActiveNetwork(network);
+  await refresh(true);
 };
 
 /**
@@ -40,6 +31,11 @@ export const methodRequest = async (
   const { dapp } = window.controller;
 
   const [prefix, methodName] = data.method.split('_');
+
+  const { chain, chainId } = dapp.get(host);
+  if (!isActiveNetwork(chain, chainId)) {
+    await _changeNetwork(chain, chainId);
+  }
 
   //* Wallet methods
   if (prefix === 'wallet') {
