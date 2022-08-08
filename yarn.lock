@@ -1901,20 +1901,7 @@
     ethers "^5.6.9"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-network@^1.0.55":
-  version "1.0.55"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.55.tgz#5f973f1af54634c8560ad778cbb4cfd5cf1b73b1"
-  integrity sha512-vLKgHTj/WR+FD6CnU2fyeu6j442clniG/m3m3Lv07QGo5LW1Pj6CYt9x8+cR3tE0TmpsP+EWOHriOAEamIyB5w==
-  dependencies:
-    "@pollum-io/sysweb3-core" "^1.0.18"
-    "@pollum-io/sysweb3-utils" "^1.1.190"
-    axios "^0.26.1"
-    bip44-constants "^114.0.0"
-    eth-chains "^1.0.0"
-    ethers "^5.6.9"
-    web3 "^1.7.1"
-
-"@pollum-io/sysweb3-network@^1.0.55":
+"@pollum-io/sysweb3-network@^1.0.54", "@pollum-io/sysweb3-network@^1.0.55":
   version "1.0.55"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.55.tgz#5f973f1af54634c8560ad778cbb4cfd5cf1b73b1"
   integrity sha512-vLKgHTj/WR+FD6CnU2fyeu6j442clniG/m3m3Lv07QGo5LW1Pj6CYt9x8+cR3tE0TmpsP+EWOHriOAEamIyB5w==
