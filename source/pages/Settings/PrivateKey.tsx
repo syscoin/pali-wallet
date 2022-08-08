@@ -22,13 +22,8 @@ const PrivateKeyView = () => {
   const [valid, setValid] = useState<boolean>(false);
   const [form] = Form.useForm();
 
-  const getDecryptedPrivateKey = (key: string) => {
-    const decryptedXprv = controller.wallet.getDecryptedPrivateKey(key);
-
-    console.log({ decryptedXprv });
-
-    return decryptedXprv;
-  };
+  const getDecryptedPrivateKey = (key: string) =>
+    controller.wallet.getDecryptedPrivateKey(key);
 
   useEffect(() => {
     if (!copied) return;

@@ -1,10 +1,11 @@
 import { Menu, Transition } from '@headlessui/react';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Form, Input } from 'antd';
+import { uniqueId } from 'lodash';
 import * as React from 'react';
 import { useState, useEffect, Fragment, useCallback } from 'react';
 
-import { isValidEthereumAddress, feeUtils } from '@pollum-io/sysweb3-utils';
+import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
 import { SecondaryButton, Tooltip, Icon } from 'components/index';
 import { useStore, useUtils } from 'hooks/index';
@@ -25,20 +26,22 @@ export const SendEth = () => {
   const [editGas, setEditGas] = useState(false);
   const [form] = Form.useForm();
 
-  const { convertGasFee } = feeUtils();
-
   const getRecomendedFees = useCallback(async () => {
     const { getGasLimit, getRecommendedGasPrice } =
       controller.wallet.account.eth.tx;
 
-    const gasPrice = await getRecommendedGasPrice(false);
-    const gasLimit = await getGasLimit(undefined);
+    const gasPrice = await getRecommendedGasPrice(true);
+    const gasLimit = await getGasLimit(form.getFieldValue('receiver'));
 
-    setRecommendedGasPrice(Number(gasPrice));
+    setRecommendedGasPrice(Number(gasPrice.gwei));
     setRecommendedGasLimit(Number(gasLimit));
-    setFeeValue(Number(gasPrice));
+    setFeeValue(Number(gasPrice.gwei));
 
-    form.setFieldsValue({ baseFee: recommendedGasPrice, gasLimit, gasPrice });
+    form.setFieldsValue({
+      baseFee: recommendedGasPrice,
+      gasLimit,
+      gasPrice: gasPrice.gwei,
+    });
   }, [controller.wallet.account]);
 
   useEffect(() => {
@@ -69,17 +72,17 @@ export const SendEth = () => {
         state: {
           tx: {
             sender: activeAccount.address,
-            senderXprv: activeAccount.xprv,
             receivingAddress: receiver,
             amount,
             gasPrice,
             gasLimit,
-            fee: Number(convertGasFee(String(feeValue))),
-            token: selectedAsset,
-            // token: {
-            //   decimals: 18,
-            //   contractAddress: '0x6B175474E89094C44Da98b954EedeAC495271d0F',
-            // },
+            fee: String(feeValue),
+            token: selectedAsset
+              ? {
+                  ...selectedAsset,
+                  symbol: selectedAsset.tokenSymbol,
+                }
+              : null,
           },
         },
       });
@@ -106,8 +109,8 @@ export const SendEth = () => {
             </span>
 
             {selectedAsset
-              ? getAssetBalance(selectedAsset, activeAccount)
-              : activeAccount.balances.ethereum}
+              ? getAssetBalance(selectedAsset, activeAccount, false)
+              : `${activeAccount.balances.ethereum} ${activeNetwork.currency}`}
           </p>
 
           <Form
@@ -164,11 +167,17 @@ export const SendEth = () => {
                     <div className="relative inline-block text-left">
                       <Menu.Button
                         disabled={!hasAccountAssets}
-                        className="inline-flex justify-center mt-3 py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+                        className="inline-flex justify-center py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
                       >
-                        {selectedAsset?.symbol
-                          ? formatUrl(String(selectedAsset?.symbol), 2)
-                          : 'ETH'}
+                        {formatUrl(
+                          String(
+                            selectedAsset?.tokenSymbol
+                              ? selectedAsset?.tokenSymbol
+                              : activeNetwork.currency
+                          ),
+                          2
+                        )}
+
                         <ChevronDoubleDownIcon
                           className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
                           aria-hidden="true"
@@ -184,35 +193,40 @@ export const SendEth = () => {
                         leaveFrom="transform opacity-100 scale-100"
                         leaveTo="transform opacity-0 scale-95"
                       >
-                        <Menu.Item>
-                          <button
-                            onClick={() => handleSelectedAsset('-1')}
-                            className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                          >
-                            <p>{activeNetwork.currency || 'ETH'}</p>
-                            <small>Native</small>
-                          </button>
-                        </Menu.Item>
-
                         {hasAccountAssets && (
                           <Menu.Items
                             as="div"
                             className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right"
                           >
-                            {activeAccount &&
+                            <Menu.Item>
+                              <button
+                                onClick={() => handleSelectedAsset('-1')}
+                                className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                              >
+                                <p>
+                                  {formatUrl(String(activeNetwork.currency), 2)}
+                                </p>
+                                <small>Native</small>
+                              </button>
+                            </Menu.Item>
+
+                            {hasAccountAssets &&
                               Object.values(activeAccount.assets).map(
                                 (item: any) => (
-                                  <Menu.Item as="div" key={item.id}>
-                                    <button
-                                      onClick={() =>
-                                        handleSelectedAsset(
-                                          item.contractAddress
-                                        )
-                                      }
-                                      className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                                    >
-                                      <p>{item.symbol}</p>
-                                    </button>
+                                  <Menu.Item as="div" key={uniqueId()}>
+                                    <Menu.Item>
+                                      <button
+                                        onClick={() =>
+                                          handleSelectedAsset(item.id)
+                                        }
+                                        className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                                      >
+                                        <p>{item.tokenSymbol}</p>
+                                        <small>
+                                          {item.isNft ? 'NFT' : 'Token'}
+                                        </small>
+                                      </button>
+                                    </Menu.Item>
                                   </Menu.Item>
                                 )
                               )}
