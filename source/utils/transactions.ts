@@ -1,20 +1,25 @@
-import { IAssets } from 'types/transactions';
+import { isInteger } from 'lodash';
+
+import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 
 export const getAssetBalance = (
-  selectedAsset: IAssets | null,
-  activeAccount
+  asset: any,
+  activeAccount: IKeyringAccountState,
+  isSyscoinChain: boolean
 ) => {
-  if (selectedAsset) {
+  if (!isSyscoinChain) {
     const value = Number(
-      selectedAsset.symbol === 'ETH'
+      asset.tokenSymbol === 'ETH'
         ? activeAccount.balances.ethereum
-        : selectedAsset.balance
+        : asset.balance
     );
 
-    return `${value.toFixed(8)} ${selectedAsset.symbol}`;
+    return `${isInteger(value) ? value : value.toFixed(2)} ${
+      asset.tokenSymbol
+    }`;
   }
 
-  return `${activeAccount?.balance.toFixed(8)} SYS`;
+  return `${asset.balance.toFixed(8)} ${asset.symbol}`;
 };
 
 export const cancelTransaction = (browser: any, tempTx: any) => {
