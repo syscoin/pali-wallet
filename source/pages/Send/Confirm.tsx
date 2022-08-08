@@ -10,7 +10,7 @@ import { formatUrl, logError, ellipsis } from 'utils/index';
 export const SendConfirm = () => {
   const controller = getController();
   const { activeAccount, networks, activeNetwork } = useStore();
-  const { alert, navigate, handleRefresh } = useUtils();
+  const { alert, navigate } = useUtils();
 
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
@@ -86,7 +86,7 @@ export const SendConfirm = () => {
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
           navigate('/home');
-          handleRefresh(false);
+          controller.refresh(false);
         }}
       />
       {tx && (

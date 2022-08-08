@@ -41,9 +41,9 @@ import { ProtectedRoute } from './ProtectedRoute';
 
 export const Router = () => {
   const params = useParams();
-  const { wallet, appRoute } = getController();
+  const { wallet, appRoute, refresh: handleRefresh } = getController();
 
-  const { alert, navigate, handleRefresh } = useUtils();
+  const { alert, navigate } = useUtils();
   const { accounts, activeAccount } = useStore();
   const { pathname } = useLocation();
 

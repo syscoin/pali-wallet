@@ -1,5 +1,6 @@
 import { browser, Windows } from 'webextension-polyfill-ts';
 
+import store from 'state/store';
 import {
   IControllerUtils,
   IDAppController,
@@ -14,7 +15,7 @@ export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
   createPopup: (route?: string, data?: object) => Promise<Windows.Window>;
   dapp: Readonly<IDAppController>;
-  stateUpdater: () => void;
+  refresh: (silent?: boolean) => Promise<void>;
   utils: Readonly<IControllerUtils>;
   wallet: Readonly<IMainController>;
 }
@@ -24,7 +25,12 @@ const MasterController = (): IMasterController => {
   const utils = Object.freeze(ControllerUtils());
   const dapp = Object.freeze(DAppController());
 
-  const stateUpdater = () => {
+  const refresh = async (silent?: boolean) => {
+    const { activeAccount } = store.getState().vault;
+    if (!activeAccount.address) return;
+
+    await wallet.account.sys.getLatestUpdate(silent);
+    wallet.account.sys.watchMemPool();
     utils.setFiat();
   };
 
@@ -53,7 +59,7 @@ const MasterController = (): IMasterController => {
     appRoute: utils.appRoute,
     createPopup,
     dapp,
-    stateUpdater,
+    refresh,
     utils,
     wallet,
   };

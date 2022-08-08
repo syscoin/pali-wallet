@@ -9,7 +9,7 @@ import {
   Modal,
   Loading,
 } from 'components/index';
-import { useQueryData, useStore, useUtils } from 'hooks/index';
+import { useQueryData, useStore } from 'hooks/index';
 import store from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
@@ -26,8 +26,7 @@ const _isActiveNetwork = (chain: string, chainId: number) => {
 };
 
 export const ConnectWallet = () => {
-  const { dapp, wallet } = getController();
-  const { handleRefresh } = useUtils();
+  const { dapp, wallet, refresh } = getController();
   const { accounts, trustedApps, networks } = useStore();
   const { host, chain, chainId } = useQueryData();
 
@@ -55,7 +54,7 @@ export const ConnectWallet = () => {
 
     const network = networks[chain][chainId];
     await wallet.setActiveNetwork(network);
-    await handleRefresh(true);
+    await refresh(true);
 
     setIsLoading(false);
   };

@@ -12,7 +12,7 @@ import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const NormalHeader: React.FC = () => {
-  const { wallet } = getController();
+  const { wallet, refresh } = getController();
 
   const {
     activeNetwork,
@@ -21,7 +21,7 @@ export const NormalHeader: React.FC = () => {
     isPendingBalances,
     error,
   } = useStore();
-  const { handleRefresh, navigate } = useUtils();
+  const { navigate } = useUtils();
 
   const [currentTabURL, setCurrentTabURL] = useState<string>('');
   const [networkErrorStatus, setNetworkErrorStatus] = useState({
@@ -307,7 +307,7 @@ export const NormalHeader: React.FC = () => {
           </Tooltip>
 
           <div
-            onClick={() => handleRefresh(false)}
+            onClick={() => refresh(false)}
             className="mx-1.5 hover:text-brand-royalblue text-brand-white cursor-pointer"
           >
             <Icon name="reload" />
