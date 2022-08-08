@@ -122,8 +122,8 @@ export const SendSys = () => {
         </span>
 
         {selectedAsset
-          ? getAssetBalance(selectedAsset, activeAccount)
-          : activeAccount.balances.syscoin}
+          ? getAssetBalance(selectedAsset, activeAccount, true)
+          : `${activeAccount.balances.syscoin} ${activeNetwork.currency}`}
       </p>
 
       <Form
@@ -185,9 +185,15 @@ export const SendSys = () => {
                     disabled={!hasAccountAssets}
                     className="inline-flex justify-center py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
                   >
-                    {selectedAsset?.symbol
-                      ? formatUrl(String(selectedAsset?.symbol), 2)
-                      : 'SYS'}
+                    {formatUrl(
+                      String(
+                        selectedAsset?.symbol
+                          ? selectedAsset?.symbol
+                          : activeNetwork.currency
+                      ),
+                      2
+                    )}
+
                     <ChevronDoubleDownIcon
                       className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
                       aria-hidden="true"

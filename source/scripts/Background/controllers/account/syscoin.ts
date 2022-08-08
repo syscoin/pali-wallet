@@ -60,8 +60,6 @@ const SysAccountController = (): ISysAccountController => {
         )
     );
 
-    console.log({ filteredAssets, ass: activeAccount.assets });
-
     const currentAccount = {
       ...activeAccount,
       ...accountLatestUpdate,

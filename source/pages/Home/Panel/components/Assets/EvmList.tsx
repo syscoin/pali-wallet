@@ -7,21 +7,19 @@ import { useStore, useUtils } from 'hooks/index';
 
 export const EvmAssetsList = () => {
   const {
-    activeAccount: { assets, balances },
+    activeAccount: { assets },
   } = useStore();
   const { navigate } = useUtils();
 
   return (
     <>
       <ul className="pb-24 md:pb-8">
-        {assets.map(({ tokenSymbol, id }: any) => (
+        {assets.map(({ tokenSymbol, id, balance }: any) => (
           <Fragment key={uniqueId(id)}>
             <li className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark">
               <p className="font-rubik">
-                {tokenSymbol === 'ETH' && balances?.ethereum}
-
                 <span className="text-button-secondary font-poppins">
-                  {`  ${tokenSymbol}`}
+                  {`${balance}  ${tokenSymbol}`}
                 </span>
               </p>
 
