@@ -77,8 +77,6 @@ export const enable = async (host: string, data: any) => {
   if (dapp.isConnected(host)) return { success: true };
 
   const { chain, chainId } = data;
-  await _checkAndChangeNetwork(chain, chainId);
-
   return popupPromise({
     host,
     route: 'connect-wallet',

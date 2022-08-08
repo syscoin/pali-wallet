@@ -12,10 +12,10 @@ export const useUtils = () => {
   const controller = getController();
   const { activeAccount } = useStore();
 
-  const handleRefresh = (silent?: boolean): void => {
+  const handleRefresh = async (silent?: boolean) => {
     if (!activeAccount.address) return;
 
-    controller.wallet.account.sys.getLatestUpdate(silent);
+    await controller.wallet.account.sys.getLatestUpdate(silent);
     controller.wallet.account.sys.watchMemPool();
     controller.stateUpdater();
   };
