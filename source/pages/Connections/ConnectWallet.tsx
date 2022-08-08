@@ -9,6 +9,7 @@ import {
   Modal,
   Loading,
 } from 'components/index';
+import trustedApps from 'constants/trustedApps.json';
 import { useQueryData, useStore } from 'hooks/index';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
@@ -16,7 +17,7 @@ import { isActiveNetwork } from 'utils/network';
 
 export const ConnectWallet = () => {
   const { dapp, wallet, refresh } = getController();
-  const { accounts, trustedApps, networks } = useStore();
+  const { accounts, networks } = useStore();
   const { host, chain, chainId } = useQueryData();
 
   const currentAccountId = dapp.get(host)?.accountId;
@@ -31,9 +32,7 @@ export const ConnectWallet = () => {
   };
 
   const onConfirm = () => {
-    // TODO review trustedApps
-    const isTrusted = trustedApps[host] !== '';
-
+    const isTrusted = trustedApps.includes(host);
     if (isTrusted) handleConnect();
     else setConfirmUntrusted(true);
   };
