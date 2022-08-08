@@ -1,3 +1,4 @@
+import { uniqueId } from 'lodash';
 import React, { Fragment } from 'react';
 
 import { Icon } from 'components/Icon';
@@ -14,7 +15,7 @@ export const EvmAssetsList = () => {
     <>
       <ul className="pb-24 md:pb-8">
         {assets.map(({ tokenSymbol, id }: any) => (
-          <Fragment key={id}>
+          <Fragment key={uniqueId(id)}>
             <li className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark">
               <p className="font-rubik">
                 {tokenSymbol === 'ETH' && balances?.ethereum}

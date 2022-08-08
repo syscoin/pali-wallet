@@ -58,6 +58,9 @@ export const methodRequest = async (
     }
   }
 
+  if (!dapp.isConnected(host))
+    throw new Error('Restricted method. Connect before requesting');
+
   //* Providers methods
   const provider = prefix === 'sys' ? SysProvider(host) : EthProvider(host);
   const method = provider[methodName];

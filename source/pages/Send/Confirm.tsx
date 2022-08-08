@@ -36,7 +36,10 @@ export const SendConfirm = () => {
       try {
         if (isSyscoinChain) {
           const response =
-            await controller.wallet.account.sys.tx.sendTransaction(tx);
+            await controller.wallet.account.sys.tx.sendTransaction({
+              ...tx,
+              token: tx.token ? tx.token.assetGuid : null,
+            });
 
           setConfirmed(true);
           setLoading(false);
@@ -64,19 +67,6 @@ export const SendConfirm = () => {
                 166
               )} Please, reduce fees to send transaction.`
             );
-          }
-
-          if (isSyscoinChain && error && tx.fee <= 0.00001) {
-            const max = (100 * tx.amount) / activeAccount?.balances.syscoin;
-
-            if (tx.amount >= (max * tx.amount) / 100) {
-              alert.removeAll();
-              alert.error('Amount not allowed.');
-
-              setLoading(false);
-
-              return;
-            }
           }
 
           alert.removeAll();

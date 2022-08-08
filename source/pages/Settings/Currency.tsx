@@ -140,9 +140,12 @@ const CurrencyView = () => {
             leaveTo="transform opacity-0 scale-95"
           >
             {fiat && coins && (
-              <Menu.Items className="scrollbar-styled absolute z-10 mt-2 py-3 w-full h-44 text-brand-white font-poppins bg-bkg-4 border border-fields-input-border rounded-xl shadow-2xl overflow-auto origin-top-right">
+              <Menu.Items
+                as="div"
+                className="scrollbar-styled absolute z-10 mt-2 py-3 w-full h-44 text-brand-white font-poppins bg-bkg-4 border border-fields-input-border rounded-xl shadow-2xl overflow-auto origin-top-right"
+              >
                 {Object.entries(coins).map(([key]) => (
-                  <Menu.Item key={key}>
+                  <Menu.Item as="div" key={key}>
                     <button
                       key={key}
                       onClick={() => setSelectedCoin(key)}
@@ -266,9 +269,12 @@ const CurrencyView = () => {
                 leaveTo="transform opacity-0 scale-95"
               >
                 {fiat && coins && (
-                  <Menu.Items className="scrollbar-styled absolute z-10 bottom-10 right-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-bkg-4 border border-fields-input-border rounded-xl shadow-2xl overflow-auto origin-bottom-right">
+                  <Menu.Items
+                    as="div"
+                    className="scrollbar-styled absolute z-10 bottom-10 right-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-bkg-4 border border-fields-input-border rounded-xl shadow-2xl overflow-auto origin-bottom-right"
+                  >
                     {Object.entries(coins).map(([key]) => (
-                      <Menu.Item key={key}>
+                      <Menu.Item as="div" key={key}>
                         <button
                           key={key}
                           onClick={() => {

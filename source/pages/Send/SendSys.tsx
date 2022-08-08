@@ -1,6 +1,7 @@
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Form, Input } from 'antd';
+import { uniqueId } from 'lodash';
 import * as React from 'react';
 import { useState, useEffect, Fragment, useCallback } from 'react';
 
@@ -30,9 +31,9 @@ export const SendSys = () => {
         activeNetwork.url
       );
 
-    setRecommend(recommendFee);
+    setRecommend(recommendFee || Number(0.00001));
 
-    form.setFieldsValue({ fee: recommendFee });
+    form.setFieldsValue({ fee: recommendFee || Number(0.00001) });
   }, [controller.wallet.account, form]);
 
   useEffect(() => {
@@ -86,7 +87,9 @@ export const SendSys = () => {
             receivingAddress: receiver,
             amount: Number(amount),
             fee,
-            token: selectedAsset ? selectedAsset.assetGuid : null,
+            token: selectedAsset
+              ? { symbol: selectedAsset.symbol, guid: selectedAsset.assetGuid }
+              : null,
             isToken: !!selectedAsset,
             rbf: !ZDAG,
           },
@@ -201,43 +204,40 @@ export const SendSys = () => {
                     leaveTo="transform opacity-0 scale-95"
                   >
                     {hasAccountAssets && (
-                      <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
-                        {activeAccount && (
-                          <>
-                            {hasAccountAssets &&
-                              Object.values(activeAccount.assets).map(
-                                (item: any, index: number) => (
-                                  <Menu.Item key={index}>
-                                    <Menu.Item>
-                                      <button
-                                        onClick={() => handleSelectedAsset(-1)}
-                                        className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                                      >
-                                        <p>SYS</p>
-                                        <small>Native</small>
-                                      </button>
-                                    </Menu.Item>
+                      <Menu.Items
+                        as="div"
+                        className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right"
+                      >
+                        <Menu.Item>
+                          <button
+                            onClick={() => handleSelectedAsset(-1)}
+                            className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                          >
+                            <p>SYS</p>
+                            <small>Native</small>
+                          </button>
+                        </Menu.Item>
 
-                                    <Menu.Item>
-                                      <button
-                                        onClick={() =>
-                                          handleSelectedAsset(item.assetGuid)
-                                        }
-                                        className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                                      >
-                                        <p>{item.symbol}</p>
-                                        <small>
-                                          {isNFT(item.assetGuid)
-                                            ? 'NFT'
-                                            : 'SPT'}
-                                        </small>
-                                      </button>
-                                    </Menu.Item>
-                                  </Menu.Item>
-                                )
-                              )}
-                          </>
-                        )}
+                        {hasAccountAssets &&
+                          Object.values(activeAccount.assets).map(
+                            (item: any) => (
+                              <Menu.Item as="div" key={uniqueId()}>
+                                <Menu.Item>
+                                  <button
+                                    onClick={() =>
+                                      handleSelectedAsset(item.assetGuid)
+                                    }
+                                    className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                                  >
+                                    <p>{item.symbol}</p>
+                                    <small>
+                                      {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
+                                    </small>
+                                  </button>
+                                </Menu.Item>
+                              </Menu.Item>
+                            )
+                          )}
                       </Menu.Items>
                     )}
                   </Transition>
@@ -344,14 +344,14 @@ export const SendSys = () => {
             () => ({
               validator(_, value) {
                 const balance = selectedAsset
-                  ? selectedAsset.balance / 10 ** selectedAsset.decimals
+                  ? selectedAsset.balance
                   : Number(activeAccount?.balances.syscoin);
 
-                if (value > balance) {
-                  return Promise.reject();
+                if (value <= balance) {
+                  return Promise.resolve();
                 }
 
-                return Promise.resolve();
+                return Promise.reject();
               },
             }),
           ]}

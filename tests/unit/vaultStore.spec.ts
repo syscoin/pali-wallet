@@ -15,7 +15,6 @@ import reducer, {
   setActiveAccount,
   setActiveAccountProperty,
   setActiveNetwork,
-  setActiveToken,
   setEncryptedMnemonic,
   setIsPendingBalances,
   setLastLogin,
@@ -165,14 +164,6 @@ describe('Vault store actions', () => {
 
     const { activeAccount } = newState;
     expect(activeAccount[payload.property]).toEqual(payload.value);
-  });
-
-  //* setActiveToken
-  it('should set the active token)', () => {
-    const payload = 'ETH';
-    const newState = reducer(initialState, setActiveToken(payload));
-
-    expect(newState.activeToken).toEqual(payload);
   });
 
   //* setAccountLabel

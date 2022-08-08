@@ -17,7 +17,7 @@ export const SendEth = () => {
   const controller = getController();
 
   const { alert, navigate } = useUtils();
-  const { activeAccount } = useStore();
+  const { activeAccount, activeNetwork } = useStore();
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [recommendedGasPrice, setRecommendedGasPrice] = useState(0);
   const [recommendedGasLimit, setRecommendedGasLimit] = useState(0);
@@ -184,12 +184,25 @@ export const SendEth = () => {
                         leaveFrom="transform opacity-100 scale-100"
                         leaveTo="transform opacity-0 scale-95"
                       >
+                        <Menu.Item>
+                          <button
+                            onClick={() => handleSelectedAsset('-1')}
+                            className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                          >
+                            <p>{activeNetwork.currency || 'ETH'}</p>
+                            <small>Native</small>
+                          </button>
+                        </Menu.Item>
+
                         {hasAccountAssets && (
-                          <Menu.Items className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right">
+                          <Menu.Items
+                            as="div"
+                            className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right"
+                          >
                             {activeAccount &&
                               Object.values(activeAccount.assets).map(
                                 (item: any) => (
-                                  <Menu.Item key={item.id}>
+                                  <Menu.Item as="div" key={item.id}>
                                     <button
                                       onClick={() =>
                                         handleSelectedAsset(
@@ -275,14 +288,14 @@ export const SendEth = () => {
                 () => ({
                   validator(_, value) {
                     const balance = selectedAsset
-                      ? selectedAsset.balance / 10 ** selectedAsset.decimals
+                      ? selectedAsset.balance
                       : Number(activeAccount?.balances.ethereum);
 
-                    if (value > balance) {
-                      return Promise.reject();
+                    if (value <= balance) {
+                      return Promise.resolve();
                     }
 
-                    return Promise.resolve();
+                    return Promise.reject();
                   },
                 }),
               ]}

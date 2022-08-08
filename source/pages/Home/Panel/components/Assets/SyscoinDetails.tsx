@@ -1,6 +1,5 @@
+import { uniqueId } from 'lodash';
 import React, { Fragment, useEffect } from 'react';
-
-import { isNFT } from '@pollum-io/sysweb3-utils';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
@@ -21,7 +20,7 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success('Guid successfully copied');
+    alert.success('Successfully copied');
   }, [copied]);
 
   const formattedAsset = [];
@@ -32,16 +31,20 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
     for (const [key, value] of Object.entries(asset)) {
       const formattedKey = camelCaseToText(key);
       const formattedBoolean = Boolean(value) ? 'Yes' : 'No';
+      const formattedAndStringValue =
+        typeof value === 'boolean' ? formattedBoolean : value;
 
       const formattedValue = {
-        value: typeof value === 'boolean' ? formattedBoolean : value,
+        value: {
+          formatted: formattedAndStringValue,
+          stringValue: formattedAndStringValue,
+        },
         label: formattedKey,
         canCopy: false,
-        isNft: isNFT(Number(id)),
       };
 
-      if (String(value).length >= 20 && key !== 'image') {
-        formattedValue.value = formatUrl(String(value), 20);
+      if (String(value).length >= 20) {
+        formattedValue.value.formatted = formatUrl(String(value), 20);
         formattedValue.canCopy = true;
       }
 
@@ -55,35 +58,37 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
 
   const RenderAsset = () => (
     <>
-      {formattedAsset.map(({ label, isNft, value, canCopy }: any) => (
-        <Fragment key={id}>
-          {label === 'Image' && isNft && <NftImage imageLink={value} />}
+      {formattedAsset.map(({ label, value, canCopy }: any) => {
+        const { formatted, stringValue } = value;
+        const canRender =
+          label.length > 0 && stringValue.length > 0 && formatted.length > 0;
 
-          {label && value && label !== 'Image' && (
-            <li className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
-              <p>{label}</p>
-              <b>
-                {value}
+        return (
+          <Fragment key={uniqueId(id)}>
+            {label === 'Image' && canRender && (
+              <NftImage imageLink={stringValue} />
+            )}
 
-                {canCopy && (
-                  <IconButton
-                    onClick={() => copy(value ?? '')}
-                    type="primary"
-                    shape="circle"
-                    className="mt-1"
-                  >
-                    <Icon
-                      name="copy"
-                      className="text-xs"
-                      id="copy-address-btn"
-                    />
-                  </IconButton>
-                )}
-              </b>
-            </li>
-          )}
-        </Fragment>
-      ))}
+            {canRender && (
+              <li className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
+                <p>{label}</p>
+                <span>
+                  <b>{formatted}</b>
+
+                  {canCopy && (
+                    <IconButton onClick={() => copy(stringValue ?? '')}>
+                      <Icon
+                        name="copy"
+                        className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+                      />
+                    </IconButton>
+                  )}
+                </span>
+              </li>
+            )}
+          </Fragment>
+        );
+      })}
     </>
   );
 
