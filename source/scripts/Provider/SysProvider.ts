@@ -15,25 +15,66 @@ export const SysProvider = (host: string) => {
 
   const estimateFee = () => txs.getRecommendedFee(getNetwork().url);
 
-  const sendTransaction = (tx: {
+  const sendTransaction = (data: {
     amount: number;
     fee: number;
     receivingAddress: string;
   }) =>
     popupPromise({
       host,
+      data,
       route: 'tx/send/confirm',
-      data: tx,
       eventName: 'txSend',
     });
 
-  const mintToken = (tx: { amount: number; assetGuid: string; fee: number }) =>
+  //* ----- Token -----
+  // ? send/transfer token ?
+  const createToken = (data) =>
     popupPromise({
       host,
+      data,
+      route: 'tx/create',
+      eventName: 'txCreateToken',
+    });
+
+  const updateToken = (data) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/asset/update',
+      eventName: 'txUpdateToken',
+    });
+
+  const mintToken = (data: {
+    amount: number;
+    assetGuid: string;
+    fee: number;
+  }) =>
+    popupPromise({
+      host,
+      data,
       route: 'tx/asset/issue',
-      data: tx,
       eventName: 'txMintToken',
     });
+
+  //* ----- NFT -----
+  const createNft = (data) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/asset/nft/issue',
+      eventName: 'txCreateNFT',
+    });
+
+  const mintNft = (data) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/asset/nft/mint',
+      eventName: 'txMintNFT',
+    });
+
+  // TODO sign
 
   return {
     getAccount: () => getAccount(),
@@ -43,6 +84,10 @@ export const SysProvider = (host: string) => {
     getTokens: () => getAccount().assets,
     estimateFee,
     sendTransaction,
+    createToken,
+    updateToken,
     mintToken,
+    createNft,
+    mintNft,
   };
 };
