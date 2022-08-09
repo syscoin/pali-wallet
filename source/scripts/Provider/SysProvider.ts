@@ -8,7 +8,10 @@ export const SysProvider = (host: string) => {
     const account = window.controller.dapp.getAccount(host);
     if (!account) throw new Error('No connected account');
 
-    return account;
+    const _account = { ...account };
+    delete _account.xprv;
+
+    return _account;
   };
 
   const getNetwork = () => store.getState().vault.activeNetwork;
