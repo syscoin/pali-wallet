@@ -29,7 +29,6 @@ export const initialState: IVaultState = {
   timer: 5,
   networks: initialNetworksState,
   trustedApps,
-  activeToken: 'SYS',
   encryptedMnemonic: '',
   error: false,
 };
@@ -130,7 +129,6 @@ const VaultState = createSlice({
     },
     setIsPendingBalances(state: IVaultState, action: PayloadAction<boolean>) {
       state.isPendingBalances = action.payload;
-      state.activeToken = '';
       state.activeAccount.transactions = [];
     },
     setActiveAccountProperty(
@@ -151,9 +149,6 @@ const VaultState = createSlice({
         activeAccount: { id },
       } = state;
       state.accounts[id][property] = value;
-    },
-    setActiveToken(state: IVaultState, action: PayloadAction<string>) {
-      state.activeToken = action.payload;
     },
     setEncryptedMnemonic(state: IVaultState, action: PayloadAction<string>) {
       state.encryptedMnemonic = action.payload;
@@ -190,7 +185,6 @@ export const {
   setActiveAccount,
   setActiveAccountProperty,
   setActiveNetwork,
-  setActiveToken,
   setIsPendingBalances,
   setLastLogin,
   setNetworks,

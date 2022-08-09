@@ -24,7 +24,7 @@ export const DetailsView = () => {
     const { explorer } = activeNetwork;
 
     window.open(
-      `${explorer}/${isAsset ? 'asset' : 'tx'}/${isAsset ? id : hash}`
+      `${explorer}/${isAsset ? 'address' : 'tx'}/${isAsset ? id : hash}`
     );
   };
 
