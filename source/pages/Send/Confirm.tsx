@@ -45,8 +45,7 @@ export const SendConfirm = () => {
           setConfirmed(true);
           setLoading(false);
 
-          if (isExternal)
-            dispatchBackgroundEvent('txSend', { host, data: response });
+          if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
 
           return response;
         }

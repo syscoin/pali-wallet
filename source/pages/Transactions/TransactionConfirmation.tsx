@@ -85,7 +85,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
       setLoading(false);
       setSubmitted(true);
 
-      dispatchBackgroundEvent(`tx${type}`, { host, data: response });
+      dispatchBackgroundEvent(`tx${type}.${host}`, response);
     } catch (error: any) {
       setErrorMsg(error.message);
 
