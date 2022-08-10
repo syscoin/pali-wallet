@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAlert } from 'react-alert';
+import sys from 'syscoinjs-lib';
 
 import {
   DefaultModal,
@@ -77,10 +78,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
         <div className="flex flex-col items-center justify-center w-full">
           <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
             <pre>
-              {
-                // TODO importPsbt
-              }
-              {/* {`${JSON.stringify(accountCtlr.importPsbt(psbt), null, 2)}`} */}
+              {`${JSON.stringify(sys.utils.importPsbtFromJson(psbt), null, 2)}`}
             </pre>
           </ul>
 
