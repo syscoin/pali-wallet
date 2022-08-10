@@ -1,8 +1,12 @@
 import { chains } from 'eth-chains';
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Header, Icon, Button, Loading } from 'components/index';
-import { useStore, usePrice, useUtils } from 'hooks/index';
+import { usePrice, useUtils } from 'hooks/index';
+import { IPriceState } from 'state/price/types';
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { formatNumber } from 'utils/index';
 
@@ -10,14 +14,15 @@ import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = getController();
+  const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
+
   const {
-    networks,
-    activeNetwork,
-    fiat,
-    activeAccount,
     lastLogin,
+    activeNetwork,
     isPendingBalances,
-  } = useStore();
+    networks,
+    activeAccount,
+  }: IVaultState = useSelector((state: RootState) => state.vault);
   const [fiatPriceValue, setFiatPriceValue] = useState('');
   const [symbol, setSymbol] = useState('SYS');
   const [balance, setBalance] = useState(0);

@@ -1,9 +1,12 @@
 import { uniqueId } from 'lodash';
 import React, { Fragment, useEffect } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
-import { useUtils, useStore } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 import { camelCaseToText, formatUrl } from 'utils/format';
 
 import { NftImage } from './NftImage';
@@ -12,7 +15,7 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
   const { useCopyClipboard, alert } = useUtils();
   const {
     activeAccount: { assets },
-  } = useStore();
+  }: IVaultState = useSelector((state: RootState) => state.vault);
 
   const [copied, copy] = useCopyClipboard();
 

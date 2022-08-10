@@ -1,5 +1,6 @@
 import { Input, Form } from 'antd';
 import React, { useState, useEffect } from 'react';
+import { useSelector } from 'react-redux';
 
 import {
   Layout,
@@ -8,13 +9,17 @@ import {
   Card,
   CopyCard,
 } from 'components/index';
-import { useUtils, useStore } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 const PrivateKeyView = () => {
   const controller = getController();
-  const { activeAccount, activeNetwork } = useStore();
+  const { activeNetwork, activeAccount }: IVaultState = useSelector(
+    (state: RootState) => state.vault
+  );
 
   const { navigate, useCopyClipboard, alert } = useUtils();
 

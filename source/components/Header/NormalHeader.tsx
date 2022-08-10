@@ -2,12 +2,15 @@ import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { Badge } from 'antd';
 import { uniqueId } from 'lodash';
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import { Icon, Tooltip, ErrorModal } from 'components/index';
-import { useStore, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
@@ -15,12 +18,13 @@ export const NormalHeader: React.FC = () => {
   const { wallet } = getController();
 
   const {
-    activeNetwork,
     encryptedMnemonic,
-    networks,
+    activeNetwork,
     isPendingBalances,
+    networks,
     error,
-  } = useStore();
+  }: IVaultState = useSelector((state: RootState) => state.vault);
+
   const { handleRefresh, navigate } = useUtils();
 
   const [currentTabURL, setCurrentTabURL] = useState<string>('');

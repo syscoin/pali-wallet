@@ -2,9 +2,13 @@ import { Menu, Transition } from '@headlessui/react';
 import { Input } from 'antd';
 import getSymbolFromCurrency from 'currency-symbol-map';
 import React, { useEffect, Fragment, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Layout, SecondaryButton, Icon, DefaultModal } from 'components/index';
-import { usePrice, useStore, useUtils } from 'hooks/index';
+import { usePrice, useUtils } from 'hooks/index';
+import { IPriceState } from 'state/price/types';
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { formatNumber } from 'utils/index';
 
@@ -12,12 +16,13 @@ const CurrencyView = () => {
   const controller = getController();
   const { navigate, handleRefresh } = useUtils();
   const { getFiatAmount } = usePrice();
-  const { activeAccount } = useStore();
+  const { activeNetwork, networks, activeAccount, accounts }: IVaultState =
+    useSelector((state: RootState) => state.vault);
+  const { fiat, coins }: IPriceState = useSelector(
+    (state: RootState) => state.price
+  );
 
   if (!activeAccount) throw new Error('No account');
-
-  const { accounts, activeAccountId, coins, fiat, activeNetwork, networks } =
-    useStore();
 
   const { asset } = fiat;
 

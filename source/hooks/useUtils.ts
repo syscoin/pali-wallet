@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAlert } from 'react-alert';
+import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
-
-import { useStore } from '.';
 
 export const useUtils = () => {
   const alert = useAlert();
   const navigate = useNavigate();
   const controller = getController();
-  const { activeAccount } = useStore();
+  const { activeAccount }: IVaultState = useSelector(
+    (state: RootState) => state.vault
+  );
 
   const handleRefresh = (silent?: boolean): void => {
     if (!activeAccount.address) return;

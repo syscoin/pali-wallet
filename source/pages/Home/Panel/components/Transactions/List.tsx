@@ -1,9 +1,12 @@
 import { uniqueId } from 'lodash';
 import React, { Fragment, useCallback } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
-import { useStore, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 import { ellipsis, formatDate } from 'utils/index';
 
 export const TransactionsList = ({
@@ -13,7 +16,7 @@ export const TransactionsList = ({
 }) => {
   const {
     activeAccount: { transactions },
-  } = useStore();
+  }: IVaultState = useSelector((state: RootState) => state.vault);
 
   const { navigate } = useUtils();
 

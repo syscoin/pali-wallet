@@ -1,12 +1,16 @@
 import React, { FC } from 'react';
+import { useSelector } from 'react-redux';
 import { BrowserRouter } from 'react-router-dom';
 
 import { Container, Loading } from 'components/index';
-import { useStore } from 'hooks/index';
 import { Router } from 'routers/index';
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 
 const App: FC = () => {
-  const { isPendingBalances } = useStore();
+  const { isPendingBalances }: IVaultState = useSelector(
+    (state: RootState) => state.vault
+  );
 
   return (
     <section className="mx-auto min-w-popup h-full min-h-popup bg-bkg-2 md:max-w-2xl">

@@ -1,9 +1,11 @@
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
+import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
-import { useStore } from 'hooks/index';
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 
 const AutolockView = () => {
@@ -13,7 +15,7 @@ const AutolockView = () => {
   const controller = getController();
   const navigate = useNavigate();
 
-  const { timer } = useStore();
+  const { timer }: IVaultState = useSelector((state: RootState) => state.vault);
 
   const onSubmit = (data: any) => {
     setLoading(true);

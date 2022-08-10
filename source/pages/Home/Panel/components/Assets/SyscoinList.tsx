@@ -1,14 +1,17 @@
 import { uniqueId } from 'lodash';
 import React, { Fragment } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Fullscreen, IconButton, Icon } from 'components/index';
-import { useStore, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 import { formatCurrency } from 'utils/index';
 
 export const SyscoinAssetsList = () => {
   const {
     activeAccount: { assets },
-  } = useStore();
+  }: IVaultState = useSelector((state: RootState) => state.vault);
   const { navigate } = useUtils();
 
   return (

@@ -1,16 +1,21 @@
 import { Form, Input } from 'antd';
 import TextArea from 'antd/lib/input/TextArea';
 import React, { useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Layout, SecondaryButton, PrimaryButton, Card } from 'components/index';
-import { useUtils, useStore } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 
 const ForgetWalletView = () => {
   const { navigate } = useUtils();
 
   const controller = getController();
-  const { activeAccount, networks, activeNetwork } = useStore();
+  const { activeNetwork, networks, activeAccount }: IVaultState = useSelector(
+    (state: RootState) => state.vault
+  );
 
   if (!activeAccount) throw new Error('No active account');
 

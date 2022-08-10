@@ -1,8 +1,11 @@
 import { QRCodeSVG } from 'qrcode.react';
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Layout, SecondaryButton, Icon } from 'components/index';
-import { useUtils, useStore } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
@@ -11,7 +14,9 @@ export const Receive = () => {
   const [isCopied, copyText] = useCopyClipboard();
 
   const controller = getController();
-  const { activeAccount, activeNetwork, networks } = useStore();
+  const { activeNetwork, networks, activeAccount }: IVaultState = useSelector(
+    (state: RootState) => state.vault
+  );
 
   const [loaded, setLoaded] = useState<boolean>(false);
 

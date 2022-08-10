@@ -1,13 +1,18 @@
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Layout, SecondaryButton } from 'components/index';
-import { useUtils, useStore } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 import { formatUrl } from 'utils/index';
 
 const TrustedSitesView = () => {
   const { navigate } = useUtils();
-  const { trustedApps } = useStore();
+  const { trustedApps }: IVaultState = useSelector(
+    (state: RootState) => state.vault
+  );
 
   const [filteredSearch, setFilteredSearch] = useState<string[]>(trustedApps);
 

@@ -1,12 +1,16 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 
 import { Fullscreen } from 'components/Fullscreen';
-import { useStore } from 'hooks/index';
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 
 import { TransactionsList } from './components/Transactions';
 
 export const TransactionsPanel = () => {
-  const { activeNetwork, networks, activeAccount } = useStore();
+  const { activeNetwork, networks, activeAccount }: IVaultState = useSelector(
+    (state: RootState) => state.vault
+  );
   const isSyscoinChain =
     Boolean(networks.syscoin[activeNetwork.chainId]) &&
     activeNetwork.url.includes('blockbook');

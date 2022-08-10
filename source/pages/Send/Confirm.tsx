@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
+import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 // import sys from 'syscoinjs-lib';
 
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
-import { useQueryData, useStore, useUtils } from 'hooks/index';
+import { useQueryData, useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { formatUrl, logError, ellipsis } from 'utils/index';
 
 export const SendConfirm = () => {
   const controller = getController();
-  const { activeAccount, networks, activeNetwork } = useStore();
+  const { activeNetwork, networks, activeAccount }: IVaultState = useSelector(
+    (state: RootState) => state.vault
+  );
   const { alert, navigate, handleRefresh } = useUtils();
 
   // when using the default routing, state will have the tx data

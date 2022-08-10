@@ -1,14 +1,18 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { Layout, Button, Icon } from 'components/index';
-import { useStore } from 'hooks/index';
+import { RootState } from 'state/store';
+import { IVaultState } from 'state/vault/types';
 
 import { AssetDetails } from './AssetDetails';
 import { TransactionDetails } from './TransactionDetails';
 
 export const DetailsView = () => {
-  const { activeNetwork, networks } = useStore();
+  const { activeNetwork, networks }: IVaultState = useSelector(
+    (state: RootState) => state.vault
+  );
 
   const {
     state: { id, hash },
