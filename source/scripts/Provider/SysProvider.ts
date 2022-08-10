@@ -18,14 +18,15 @@ export const SysProvider = (host: string) => {
 
   const estimateFee = () => txs.getRecommendedFee(getNetwork().url);
 
-  const sendTransaction = (data: {
+  const send = (data: {
     amount: number;
     fee: number;
     receivingAddress: string;
+    tokenGuid?: string;
   }) =>
     popupPromise({
       host,
-      data,
+      data: { isToken: data.tokenGuid !== undefined, ...data },
       route: 'tx/send/confirm',
       eventName: 'txSend',
     });
@@ -86,7 +87,7 @@ export const SysProvider = (host: string) => {
     getPublicKey: () => getAccount().xpub,
     getTokens: () => getAccount().assets,
     estimateFee,
-    sendTransaction,
+    send,
     createToken,
     updateToken,
     mintToken,
