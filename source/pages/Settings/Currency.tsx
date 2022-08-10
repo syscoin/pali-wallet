@@ -18,6 +18,7 @@ const CurrencyView = () => {
   const { getFiatAmount } = usePrice();
   const { activeNetwork, networks, activeAccount, accounts }: IVaultState =
     useSelector((state: RootState) => state.vault);
+  const activeAccountId = activeAccount.id;
   const { fiat, coins }: IPriceState = useSelector(
     (state: RootState) => state.price
   );

@@ -10,6 +10,7 @@ import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
 import { SecondaryButton, Tooltip, Icon } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
+import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
 import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
@@ -23,6 +24,7 @@ export const SendSys = () => {
   const { activeNetwork, activeAccount }: IVaultState = useSelector(
     (state: RootState) => state.vault
   );
+  const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
