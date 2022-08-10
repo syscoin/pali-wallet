@@ -32,7 +32,6 @@ export const SysProvider = (host: string) => {
     });
 
   //* ----- Token -----
-  // ? send/transfer token ?
   const createToken = (data) =>
     popupPromise({
       host,
@@ -78,7 +77,21 @@ export const SysProvider = (host: string) => {
       eventName: 'txMintNFT',
     });
 
-  // TODO sign
+  const sign = (data) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/sign-psbt',
+      eventName: 'txSign',
+    });
+
+  const signAndSend = (data) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/sign',
+      eventName: 'txSignAndSend',
+    });
 
   return {
     getAccount: () => getAccount(),
@@ -93,5 +106,7 @@ export const SysProvider = (host: string) => {
     mintToken,
     createNft,
     mintNft,
+    sign,
+    signAndSend,
   };
 };
