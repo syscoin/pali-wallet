@@ -21,9 +21,6 @@ const titleResolver = (txType: string) => {
     case 'MintNFT':
       return 'Mint NFT';
 
-    case 'TransferToken':
-      return 'Transfer Token';
-
     case 'UpdateToken':
       return 'Update Token';
 
@@ -51,11 +48,6 @@ const callbackResolver = (txType: string) => {
     case 'MintNFT':
       callbackName = 'confirmMintNFT';
       break;
-
-    // TODO TransferToken
-    // case 'TransferToken':
-    //   callbackName = 'confirmAssetTransfer';
-    //   break;
 
     case 'UpdateToken':
       callbackName = 'confirmUpdateToken';

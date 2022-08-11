@@ -77,6 +77,7 @@ export const SysProvider = (host: string) => {
       eventName: 'txMintNFT',
     });
 
+  //* ----- Sign -----
   const sign = (data) =>
     popupPromise({
       host,
