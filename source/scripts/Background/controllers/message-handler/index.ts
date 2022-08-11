@@ -21,7 +21,7 @@ const _messageHandler = async (host: string, message: Message) => {
     case 'EVENT_DEREG':
       return dapp.removeListener(host, message.data.eventName);
     case 'ENABLE':
-      return enable(host, message.data);
+      return enable(host, message.data.chain, message.data.chainId);
     case 'DISABLE':
       return dapp.disconnect(host);
     case 'METHOD_REQUEST':

@@ -68,11 +68,10 @@ export const methodRequest = async (
   return await method();
 };
 
-export const enable = async (host: string, data: any) => {
+export const enable = async (host: string, chain: string, chainId: number) => {
   const { dapp } = window.controller;
   if (dapp.isConnected(host)) return { success: true };
 
-  const { chain, chainId } = data;
   return popupPromise({
     host,
     route: 'connect-wallet',
