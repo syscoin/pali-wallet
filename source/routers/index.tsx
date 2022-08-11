@@ -41,7 +41,7 @@ import { ProtectedRoute } from './ProtectedRoute';
 
 export const Router = () => {
   const params = useParams();
-  const { wallet, appRoute, refresh: handleRefresh } = getController();
+  const { wallet, appRoute, refresh } = getController();
 
   const { alert, navigate } = useUtils();
   const { accounts, activeAccount } = useStore();
@@ -73,9 +73,7 @@ export const Router = () => {
   }, [isUnlocked]);
 
   useEffect(() => {
-    if (isUnlocked) {
-      handleRefresh(true);
-    }
+    if (isUnlocked) refresh(true);
   }, [isUnlocked]);
 
   useEffect(() => {
