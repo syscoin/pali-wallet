@@ -1,7 +1,7 @@
 import { provider } from '../Provider/index';
 import { DAppMethods } from 'scripts/Background/controllers/message-handler/types';
 
-import { pali } from './inject';
+import { inject as _inject } from './inject';
 
 provider.start();
 
@@ -16,4 +16,4 @@ const inject = (content: string) => {
 };
 
 inject(`window.SUPPORTED_WALLET_METHODS = ${JSON.stringify(DAppMethods)}`);
-inject(pali);
+inject(_inject);
