@@ -16,6 +16,11 @@ const _changeNetwork = async (chain: string, chainId: number) => {
   await refresh(true);
 };
 
+const _isActiveAccount = (accounId: number) => {
+  const { activeAccount } = store.getState().vault;
+  return activeAccount.id === accounId;
+};
+
 /**
  * Handles methods request.
  *
@@ -28,13 +33,17 @@ export const methodRequest = async (
   host: string,
   data: { args?: any[]; method: string; network?: string }
 ) => {
-  const { dapp } = window.controller;
+  const { dapp, wallet } = window.controller;
 
   const [prefix, methodName] = data.method.split('_');
 
-  const { chain, chainId } = dapp.get(host);
+  const { chain, chainId, accountId } = dapp.get(host);
   if (!isActiveNetwork(chain, chainId)) {
     await _changeNetwork(chain, chainId);
+  }
+  if (!_isActiveAccount(accountId)) {
+    wallet.setAccount(accountId);
+    wallet.account.sys.watchMemPool();
   }
 
   //* Wallet methods
