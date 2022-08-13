@@ -102,10 +102,14 @@ const MainController = (): IMainController => {
 
     const chain = isSyscoinChain ? 'syscoin' : 'ethereum';
 
+    console.log({ isSyscoinChain, chain, network });
+
     try {
       const networkAccount = await keyringManager.setSignerNetwork(
         network,
-        chain
+        chain,
+        //@ts-ignore
+        isSyscoinChain ? await validateSysRpc(network.url, network.label) : null
       );
 
       store.dispatch(setNetwork(network));
@@ -132,9 +136,11 @@ const MainController = (): IMainController => {
 
       return networkAccount;
     } catch (error) {
-      setActiveNetwork(activeNetwork);
+      // setActiveNetwork(activeNetwork);
 
-      store.dispatch(setStoreError(true));
+      console.log({ error });
+
+      // store.dispatch(setStoreError(true));
     }
   };
 
@@ -147,20 +153,32 @@ const MainController = (): IMainController => {
     isSyscoinRpc,
     apiUrl,
   }: ICustomRpcParams): Promise<INetwork> => {
-    const { valid, formattedNetwork } = isSyscoinRpc
-      ? await validateSysRpc(url, label)
-      : await validateEthRpc(chainId, url, apiUrl, label);
+    //@ts-ignore
+    const { valid, formattedNetwork, formattedBitcoinLikeNetwork } =
+      isSyscoinRpc
+        ? await validateSysRpc(url, label)
+        : await validateEthRpc(chainId, url, apiUrl, label);
 
     if (!valid)
       throw new Error('Invalid RPC. Please, verify the current RPC URL.');
+
+    console.log({
+      network: formattedNetwork,
+      formattedBitcoinLikeNetwork,
+      params: {
+        chainId,
+        label,
+        url,
+        isSyscoinRpc,
+        apiUrl,
+      },
+    });
 
     return formattedNetwork;
   };
 
   const addCustomRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
     const network = await validateAndBuildRpc(data);
-
-    console.log({ network, data });
 
     const chain = data.isSyscoinRpc ? 'syscoin' : 'ethereum';
 

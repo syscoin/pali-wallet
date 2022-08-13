@@ -1901,13 +1901,26 @@
     ethers "^5.6.9"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-network@^1.0.54", "@pollum-io/sysweb3-network@^1.0.55":
+"@pollum-io/sysweb3-network@^1.0.55":
   version "1.0.55"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.55.tgz#5f973f1af54634c8560ad778cbb4cfd5cf1b73b1"
   integrity sha512-vLKgHTj/WR+FD6CnU2fyeu6j442clniG/m3m3Lv07QGo5LW1Pj6CYt9x8+cR3tE0TmpsP+EWOHriOAEamIyB5w==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.18"
     "@pollum-io/sysweb3-utils" "^1.1.190"
+    axios "^0.26.1"
+    bip44-constants "^114.0.0"
+    eth-chains "^1.0.0"
+    ethers "^5.6.9"
+    web3 "^1.7.1"
+
+"@pollum-io/sysweb3-network@^1.0.56":
+  version "1.0.56"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.56.tgz#4b0dddb058500f7cc78c9e94c4a86f9c792bbe78"
+  integrity sha512-inYJAgLbqG035zhKa9inuFcReFq4NmvG741UTewkXO+S2Y6UAFoUBcM2VgFWvGzW1lzuoaCYa6xMdet9GZ4Atw==
+  dependencies:
+    "@pollum-io/sysweb3-core" "^1.0.18"
+    "@pollum-io/sysweb3-utils" "^1.1.195"
     axios "^0.26.1"
     bip44-constants "^114.0.0"
     eth-chains "^1.0.0"
@@ -1965,6 +1978,28 @@
     "@pollum-io/sysweb3-network" "^1.0.55"
     axios "^0.26.1"
     bech32 "^2.0.0"
+    bip44-constants "^114.0.0"
+    bip84 "^0.2.7"
+    bitcoinjs-lib "^6.0.1"
+    camelcase-keys "^7.0.2"
+    coinselectsyscoin "^1.0.77"
+    crypto-js "^4.1.1"
+    ethers "^5.6.4"
+    syscoinjs-lib "^1.0.214"
+    syscointx-js "^1.0.101"
+    web3 "^1.7.1"
+
+"@pollum-io/sysweb3-utils@^1.1.195":
+  version "1.1.195"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.195.tgz#8ae1674857e9f2cf7b92c4c945612402efc40151"
+  integrity sha512-o33lsYQJDGqu30Jd7bYDaTzqqlHtNcEheuAOfm4B2aGPse2/wGLRe5344KrgiOJD2YXzuKJyWc7EeShSpBrR/g==
+  dependencies:
+    "@ethersproject/contracts" "^5.6.2"
+    "@pollum-io/sysweb3-core" "^1.0.16"
+    "@pollum-io/sysweb3-network" "^1.0.55"
+    axios "^0.26.1"
+    bech32 "^2.0.0"
+    bip32 "^3.0.1"
     bip44-constants "^114.0.0"
     bip84 "^0.2.7"
     bitcoinjs-lib "^6.0.1"
@@ -3792,6 +3827,18 @@ bip32@^2.0.4:
     create-hash "^1.2.0"
     create-hmac "^1.1.7"
     tiny-secp256k1 "^1.1.3"
+    typeforce "^1.11.5"
+    wif "^2.0.6"
+
+bip32@^3.0.1:
+  version "3.0.1"
+  resolved "https://registry.yarnpkg.com/bip32/-/bip32-3.0.1.tgz#1d1121469cce6e910e0ec3a5a1990dd62687e2a3"
+  integrity sha512-Uhpp9aEx3iyiO7CpbNGFxv9WcMIVdGoHG04doQ5Ln0u60uwDah7jUSc3QMV/fSZGm/Oo01/OeAmYevXV+Gz5jQ==
+  dependencies:
+    "@types/node" "10.12.18"
+    bs58check "^2.1.1"
+    create-hash "^1.2.0"
+    create-hmac "^1.1.7"
     typeforce "^1.11.5"
     wif "^2.0.6"
 
