@@ -5,13 +5,12 @@ import { useSelector } from 'react-redux';
 import { Fullscreen, IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { formatCurrency } from 'utils/index';
 
 export const SyscoinAssetsList = () => {
-  const {
-    activeAccount: { assets },
-  }: IVaultState = useSelector((state: RootState) => state.vault);
+  const assets = useSelector(
+    (state: RootState) => state.vault.activeAccount.assets
+  );
   const { navigate } = useUtils();
 
   return (

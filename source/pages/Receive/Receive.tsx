@@ -5,7 +5,6 @@ import { useSelector } from 'react-redux';
 import { Layout, SecondaryButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
@@ -14,8 +13,13 @@ export const Receive = () => {
   const [isCopied, copyText] = useCopyClipboard();
 
   const controller = getController();
-  const { activeNetwork, networks, activeAccount }: IVaultState = useSelector(
-    (state: RootState) => state.vault
+
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const networks = useSelector((state: RootState) => state.vault.networks);
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
   );
 
   const [loaded, setLoaded] = useState<boolean>(false);

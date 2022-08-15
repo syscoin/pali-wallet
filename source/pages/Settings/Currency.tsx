@@ -6,9 +6,7 @@ import { useSelector } from 'react-redux';
 
 import { Layout, SecondaryButton, Icon, DefaultModal } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
-import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { formatNumber } from 'utils/index';
 
@@ -16,12 +14,20 @@ const CurrencyView = () => {
   const controller = getController();
   const { navigate, handleRefresh } = useUtils();
   const { getFiatAmount } = usePrice();
-  const { activeNetwork, networks, activeAccount, accounts }: IVaultState =
-    useSelector((state: RootState) => state.vault);
-  const activeAccountId = activeAccount.id;
-  const { fiat, coins }: IPriceState = useSelector(
-    (state: RootState) => state.price
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
   );
+  const networks = useSelector((state: RootState) => state.vault.networks);
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const activeAccountId = useSelector(
+    (state: RootState) => state.vault.activeAccount.id
+  );
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+
+  const fiat = useSelector((state: RootState) => state.price.fiat);
+  const coins = useSelector((state: RootState) => state.price.coins);
 
   if (!activeAccount) throw new Error('No account');
 

@@ -7,16 +7,17 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { camelCaseToText, ellipsis, formatUrl } from 'utils/index';
 
 export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const controller = getController();
-  const {
-    activeAccount: { transactions },
-    activeNetwork,
-  }: IVaultState = useSelector((state: RootState) => state.vault);
+  const transactions = useSelector(
+    (state: RootState) => state.vault.activeAccount.transactions
+  );
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
   const { useCopyClipboard, alert } = useUtils();
 
   const [newRecipients, setNewRecipients] = useState<any>({});

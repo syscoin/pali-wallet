@@ -37,7 +37,6 @@ import {
 } from '../pages';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
@@ -47,9 +46,10 @@ export const Router = () => {
   const { wallet, appRoute } = getController();
 
   const { alert, navigate, handleRefresh } = useUtils();
-  const { activeAccount, accounts }: IVaultState = useSelector(
-    (state: RootState) => state.vault
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
   );
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { pathname } = useLocation();
 
   const isUnlocked = wallet.isUnlocked() && activeAccount.address !== '';

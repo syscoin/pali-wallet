@@ -5,13 +5,12 @@ import { useSelector } from 'react-redux';
 import { Layout, SecondaryButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { formatUrl } from 'utils/index';
 
 const TrustedSitesView = () => {
   const { navigate } = useUtils();
-  const { trustedApps }: IVaultState = useSelector(
-    (state: RootState) => state.vault
+  const trustedApps = useSelector(
+    (state: RootState) => state.vault.trustedApps
   );
 
   const [filteredSearch, setFilteredSearch] = useState<string[]>(trustedApps);

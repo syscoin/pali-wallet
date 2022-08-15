@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router-dom';
 
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 
 const AutolockView = () => {
@@ -15,7 +14,7 @@ const AutolockView = () => {
   const controller = getController();
   const navigate = useNavigate();
 
-  const { timer }: IVaultState = useSelector((state: RootState) => state.vault);
+  const timer = useSelector((state: RootState) => state.vault.timer);
 
   const onSubmit = (data: any) => {
     setLoading(true);

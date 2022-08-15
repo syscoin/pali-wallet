@@ -10,20 +10,27 @@ import { INetwork } from '@pollum-io/sysweb3-utils';
 import { Icon, Tooltip, ErrorModal } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const NormalHeader: React.FC = () => {
   const { wallet } = getController();
 
-  const {
-    encryptedMnemonic,
-    activeNetwork,
-    isPendingBalances,
-    networks,
-    error,
-  }: IVaultState = useSelector((state: RootState) => state.vault);
+  const error = useSelector((state: RootState) => state.vault.error);
+
+  const networks = useSelector((state: RootState) => state.vault.networks);
+
+  const encryptedMnemonic = useSelector(
+    (state: RootState) => state.vault.encryptedMnemonic
+  );
+
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+
+  const isPendingBalances = useSelector(
+    (state: RootState) => state.vault.isPendingBalances
+  );
 
   const { handleRefresh, navigate } = useUtils();
 

@@ -6,15 +6,14 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { camelCaseToText, formatUrl } from 'utils/index';
 
 import { NftImage } from './NftImage';
 
 export const EvmAssetDetais = ({ id }: { id: string }) => {
-  const {
-    activeAccount: { assets },
-  }: IVaultState = useSelector((state: RootState) => state.vault);
+  const assets = useSelector(
+    (state: RootState) => state.vault.activeAccount.assets
+  );
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();

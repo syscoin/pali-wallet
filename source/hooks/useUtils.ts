@@ -4,15 +4,14 @@ import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 
 export const useUtils = () => {
   const alert = useAlert();
   const navigate = useNavigate();
   const controller = getController();
-  const { activeAccount }: IVaultState = useSelector(
-    (state: RootState) => state.vault
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
   );
 
   const handleRefresh = (silent?: boolean): void => {

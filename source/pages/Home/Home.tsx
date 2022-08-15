@@ -4,9 +4,7 @@ import { useSelector } from 'react-redux';
 
 import { Header, Icon, Button, Loading } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
-import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { formatNumber } from 'utils/index';
 
@@ -14,15 +12,20 @@ import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = getController();
-  const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
+  const fiat = useSelector((state: RootState) => state.price.fiat);
 
-  const {
-    lastLogin,
-    activeNetwork,
-    isPendingBalances,
-    networks,
-    activeAccount,
-  }: IVaultState = useSelector((state: RootState) => state.vault);
+  const lastLogin = useSelector((state: RootState) => state.vault.lastLogin);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const isPendingBalances = useSelector(
+    (state: RootState) => state.vault.isPendingBalances
+  );
+  const networks = useSelector((state: RootState) => state.vault.networks);
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+
   const [fiatPriceValue, setFiatPriceValue] = useState('');
   const [symbol, setSymbol] = useState('SYS');
   const [balance, setBalance] = useState(0);

@@ -11,13 +11,13 @@ import {
 } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ConnectWallet = () => {
-  const { trustedApps, accounts }: IVaultState = useSelector(
-    (state: RootState) => state.vault
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const trustedApps = useSelector(
+    (state: RootState) => state.vault.trustedApps
   );
   const { dapp } = getController();
   const { host } = useQueryData();

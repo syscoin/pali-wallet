@@ -6,7 +6,6 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { ellipsis, formatDate } from 'utils/index';
 
 export const TransactionsList = ({
@@ -14,10 +13,9 @@ export const TransactionsList = ({
 }: {
   isSyscoinChain: boolean;
 }) => {
-  const {
-    activeAccount: { transactions },
-  }: IVaultState = useSelector((state: RootState) => state.vault);
-
+  const transactions = useSelector(
+    (state: RootState) => state.vault.activeAccount.transactions
+  );
   const { navigate } = useUtils();
 
   const getTxType = (tx: any) => {

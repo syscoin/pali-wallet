@@ -7,7 +7,6 @@ import LogoImage from 'assets/images/logo-s.svg';
 import { PrimaryButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 
 export const Start = () => {
@@ -15,8 +14,8 @@ export const Start = () => {
   const {
     wallet: { unlock, checkPassword },
   } = getController();
-  const { encryptedMnemonic }: IVaultState = useSelector(
-    (state: RootState) => state.vault
+  const encryptedMnemonic = useSelector(
+    (state: RootState) => state.vault.encryptedMnemonic
   );
 
   const getStarted = (

@@ -11,14 +11,17 @@ import {
 } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 const PrivateKeyView = () => {
   const controller = getController();
-  const { activeNetwork, activeAccount }: IVaultState = useSelector(
-    (state: RootState) => state.vault
+
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
   );
 
   const { navigate, useCopyClipboard, alert } = useUtils();

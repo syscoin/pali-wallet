@@ -19,7 +19,6 @@ import {
 } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { formatUrl, ellipsis } from 'utils/index';
 
@@ -28,8 +27,8 @@ export const ImportToken: FC = () => {
 
   const [form] = Form.useForm();
   const { navigate, alert, useCopyClipboard } = useUtils();
-  const { activeAccount }: IVaultState = useSelector(
-    (state: RootState) => state.vault
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
   );
 
   const [copied, copy] = useCopyClipboard();

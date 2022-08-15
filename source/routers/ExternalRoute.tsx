@@ -28,7 +28,6 @@ import {
 } from '../pages';
 import { useQuery, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
@@ -36,9 +35,7 @@ import { ProtectedRoute } from './ProtectedRoute';
 export const ExternalRoute = () => {
   const { wallet, appRoute } = getController();
   const { navigate, alert } = useUtils();
-  const { accounts }: IVaultState = useSelector(
-    (state: RootState) => state.vault
-  );
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { pathname, search } = useLocation();
 
   // defaultRoute stores info from createPopup

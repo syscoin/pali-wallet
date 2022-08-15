@@ -7,14 +7,11 @@ import { CustomRPC } from '..';
 import { IconButton, Layout, SecondaryButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { formatUrl } from 'utils/index';
 
 const ManageNetworkView = () => {
-  const { networks }: IVaultState = useSelector(
-    (state: RootState) => state.vault
-  );
+  const networks = useSelector((state: RootState) => state.vault.networks);
   const { navigate } = useUtils();
   const { wallet } = getController();
 

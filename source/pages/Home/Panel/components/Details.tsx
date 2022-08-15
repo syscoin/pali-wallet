@@ -4,15 +4,15 @@ import { useLocation } from 'react-router-dom';
 
 import { Layout, Button, Icon } from 'components/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 
 import { AssetDetails } from './AssetDetails';
 import { TransactionDetails } from './TransactionDetails';
 
 export const DetailsView = () => {
-  const { activeNetwork, networks }: IVaultState = useSelector(
-    (state: RootState) => state.vault
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
   );
+  const networks = useSelector((state: RootState) => state.vault.networks);
 
   const {
     state: { id, hash },

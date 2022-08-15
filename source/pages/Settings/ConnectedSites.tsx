@@ -6,14 +6,13 @@ import { browser } from 'webextension-polyfill-ts';
 import { Layout, Icon, IconButton, SecondaryButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { formatUrl, ellipsis } from 'utils/index';
 
 const ConnectedSites = (): any => {
   const { navigate } = useUtils();
 
-  const { activeAccount }: IVaultState = useSelector(
-    (state: RootState) => state.vault
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
   );
 
   const [selected, setSelected] = useState<string>('');

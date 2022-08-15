@@ -3,7 +3,6 @@ import { useSelector } from 'react-redux';
 
 import { Layout } from 'components/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 
 import { SendEth } from './SendEth';
 import { SendSys } from './SendSys';
@@ -12,9 +11,10 @@ interface ISend {
   initAddress?: string;
 }
 export const Send: React.FC<ISend> = () => {
-  const { activeNetwork, networks }: IVaultState = useSelector(
-    (state: RootState) => state.vault
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
   );
+  const networks = useSelector((state: RootState) => state.vault.networks);
 
   const isSyscoinChain =
     networks.syscoin[activeNetwork.chainId] &&

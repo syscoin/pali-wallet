@@ -6,13 +6,12 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { camelCaseToText, formatUrl } from 'utils/index';
 
 export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
-  const {
-    activeAccount: { transactions },
-  }: IVaultState = useSelector((state: RootState) => state.vault);
+  const transactions = useSelector(
+    (state: RootState) => state.vault.activeAccount.transactions
+  );
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();

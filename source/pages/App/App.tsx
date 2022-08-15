@@ -5,11 +5,10 @@ import { BrowserRouter } from 'react-router-dom';
 import { Container, Loading } from 'components/index';
 import { Router } from 'routers/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 
 const App: FC = () => {
-  const { isPendingBalances }: IVaultState = useSelector(
-    (state: RootState) => state.vault
+  const isPendingBalances = useSelector(
+    (state: RootState) => state.vault.isPendingBalances
   );
 
   return (

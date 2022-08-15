@@ -4,14 +4,11 @@ import { useSelector } from 'react-redux';
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ChangeAccount = () => {
-  const { accounts }: IVaultState = useSelector(
-    (state: RootState) => state.vault
-  );
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { dapp } = getController();
   const { host } = useQueryData();
 

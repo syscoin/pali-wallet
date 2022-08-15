@@ -6,14 +6,17 @@ import { useLocation } from 'react-router-dom';
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { formatUrl, logError, ellipsis } from 'utils/index';
 
 export const SendConfirm = () => {
   const controller = getController();
-  const { activeNetwork, networks, activeAccount }: IVaultState = useSelector(
-    (state: RootState) => state.vault
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const networks = useSelector((state: RootState) => state.vault.networks);
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
   );
   const { alert, navigate, handleRefresh } = useUtils();
 

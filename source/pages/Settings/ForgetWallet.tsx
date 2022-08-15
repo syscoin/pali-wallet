@@ -6,15 +6,18 @@ import { useSelector } from 'react-redux';
 import { Layout, SecondaryButton, PrimaryButton, Card } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 
 const ForgetWalletView = () => {
   const { navigate } = useUtils();
 
   const controller = getController();
-  const { activeNetwork, networks, activeAccount }: IVaultState = useSelector(
-    (state: RootState) => state.vault
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const networks = useSelector((state: RootState) => state.vault.networks);
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
   );
 
   if (!activeAccount) throw new Error('No active account');

@@ -11,7 +11,6 @@ import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 import { SecondaryButton, Tooltip, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { formatUrl, getAssetBalance } from 'utils/index';
 
@@ -21,8 +20,11 @@ export const SendEth = () => {
   const controller = getController();
 
   const { alert, navigate } = useUtils();
-  const { activeNetwork, activeAccount }: IVaultState = useSelector(
-    (state: RootState) => state.vault
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
   );
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [recommendedGasPrice, setRecommendedGasPrice] = useState(0);
