@@ -1,6 +1,7 @@
 import { Form, Input } from 'antd';
 import * as React from 'react';
 import { useState, FC, useEffect } from 'react';
+import { useSelector } from 'react-redux';
 
 import {
   getToken,
@@ -16,7 +17,8 @@ import {
   Loading,
   Tooltip,
 } from 'components/index';
-import { useUtils, useStore } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { formatUrl, ellipsis } from 'utils/index';
 
@@ -25,7 +27,9 @@ export const ImportToken: FC = () => {
 
   const [form] = Form.useForm();
   const { navigate, alert, useCopyClipboard } = useUtils();
-  const { activeAccount } = useStore();
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
 
   const [copied, copy] = useCopyClipboard();
   const [isLoading, setIsLoading] = useState<boolean>(false);
