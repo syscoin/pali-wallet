@@ -1,12 +1,19 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 
 import { Fullscreen } from 'components/Fullscreen';
-import { useStore } from 'hooks/index';
+import { RootState } from 'state/store';
 
 import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
 
 export const AssetsPanel = () => {
-  const { activeNetwork, networks, activeAccount } = useStore();
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const networks = useSelector((state: RootState) => state.vault.networks);
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
   const isSyscoinChain =
     Boolean(networks.syscoin[activeNetwork.chainId]) &&
     activeNetwork.url.includes('blockbook');

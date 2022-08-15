@@ -1,17 +1,19 @@
 import { uniqueId } from 'lodash';
 import React, { Fragment, useEffect } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
-import { useStore, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { camelCaseToText, formatUrl } from 'utils/index';
 
 import { NftImage } from './NftImage';
 
 export const EvmAssetDetais = ({ id }: { id: string }) => {
-  const {
-    activeAccount: { assets },
-  } = useStore();
+  const assets = useSelector(
+    (state: RootState) => state.vault.activeAccount.assets
+  );
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();

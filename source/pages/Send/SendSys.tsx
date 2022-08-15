@@ -4,11 +4,14 @@ import { Form, Input } from 'antd';
 import { uniqueId } from 'lodash';
 import * as React from 'react';
 import { useState, useEffect, Fragment, useCallback } from 'react';
+import { useSelector } from 'react-redux';
 
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
 import { SecondaryButton, Tooltip, Icon } from 'components/index';
-import { usePrice, useStore, useUtils } from 'hooks/index';
+import { usePrice, useUtils } from 'hooks/index';
+import { IPriceState } from 'state/price/types';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { formatUrl, isNFT, getAssetBalance } from 'utils/index';
 
@@ -17,7 +20,13 @@ export const SendSys = () => {
   const controller = getController();
 
   const { alert, navigate } = useUtils();
-  const { activeNetwork, fiat, activeAccount } = useStore();
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+  const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);

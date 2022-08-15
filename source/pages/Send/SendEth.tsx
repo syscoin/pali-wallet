@@ -4,11 +4,13 @@ import { Form, Input } from 'antd';
 import { uniqueId } from 'lodash';
 import * as React from 'react';
 import { useState, useEffect, Fragment, useCallback } from 'react';
+import { useSelector } from 'react-redux';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
 import { SecondaryButton, Tooltip, Icon } from 'components/index';
-import { useStore, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { formatUrl, getAssetBalance } from 'utils/index';
 
@@ -18,7 +20,12 @@ export const SendEth = () => {
   const controller = getController();
 
   const { alert, navigate } = useUtils();
-  const { activeAccount, activeNetwork } = useStore();
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [recommendedGasPrice, setRecommendedGasPrice] = useState(0);
   const [recommendedGasLimit, setRecommendedGasLimit] = useState(0);

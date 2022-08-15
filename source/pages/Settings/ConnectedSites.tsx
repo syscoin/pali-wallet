@@ -1,15 +1,19 @@
 import { Dialog, Transition } from '@headlessui/react';
 import React, { Fragment, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
 import { Layout, Icon, IconButton, SecondaryButton } from 'components/index';
-import { useUtils, useStore } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { formatUrl, ellipsis } from 'utils/index';
 
 const ConnectedSites = (): any => {
   const { navigate } = useUtils();
 
-  const { activeAccount } = useStore();
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
 
   const [selected, setSelected] = useState<string>('');
 
