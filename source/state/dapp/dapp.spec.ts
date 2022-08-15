@@ -52,7 +52,6 @@ describe('dapp store actions', () => {
     });
   });
 
-  // TODO update dapp tests
   describe('Dapp tests', () => {
     const FAKE_DAPP: IDApp = {
       host: 'fakehost.net',
