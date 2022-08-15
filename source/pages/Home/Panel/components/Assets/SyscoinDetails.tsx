@@ -50,7 +50,7 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
 
       const isValid = typeof value !== 'object';
 
-      if (isValid) formattedAsset.push(formattedValue);
+      if (isValid) formattedAsset.unshift(formattedValue);
     }
 
     return formattedAsset;
