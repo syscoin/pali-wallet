@@ -12,7 +12,6 @@ import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = getController();
-  const fiat = useSelector((state: RootState) => state.price.fiat);
 
   const lastLogin = useSelector((state: RootState) => state.vault.lastLogin);
   const activeNetwork = useSelector(
@@ -24,6 +23,10 @@ export const Home = () => {
   const networks = useSelector((state: RootState) => state.vault.networks);
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
+  );
+
+  const currentFiatCurrency = useSelector(
+    (state: RootState) => state.price.fiat.asset
   );
 
   const [fiatPriceValue, setFiatPriceValue] = useState('');
@@ -62,25 +65,28 @@ export const Home = () => {
     setIsTestnet(_isTestnet);
   };
 
-  const setFiatPrice = () => {
-    const amount = getFiatAmount(
-      balance || 0,
-      4,
-      String(fiat.asset).toUpperCase(),
-      true
-    );
-
-    setFiatPriceValue(String(amount));
-  };
-
   const isUnlocked =
     controller.wallet.isUnlocked() && activeAccount.address !== '';
 
   useEffect(() => {
+    if (!isUnlocked || !currentFiatCurrency) return;
+
+    const amount = getFiatAmount(
+      balance || 0,
+      4,
+      currentFiatCurrency.toUpperCase(),
+      true
+    );
+
+    setFiatPriceValue(String(amount));
+  }, [isUnlocked, activeNetwork.chainId, currentFiatCurrency, balance]);
+
+  useEffect(() => {
+    if (!isUnlocked) return;
+
     setChainSymbol();
-    setFiatPrice();
     setMainOrTestNetwork();
-  }, [isUnlocked, activeNetwork]);
+  }, [isUnlocked, activeNetwork.chainId]);
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
