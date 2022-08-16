@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useAlert } from 'react-alert';
-import sys from 'syscoinjs-lib';
+
+import { isBase64, txUtils } from '@pollum-io/sysweb3-utils';
+const { getPsbtFromJson } = txUtils();
 
 import {
   DefaultModal,
@@ -11,7 +13,6 @@ import {
 } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
-import { base64Regex } from 'utils/index';
 
 interface ISign {
   send?: boolean;
@@ -30,7 +31,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
   const onSubmit = async () => {
     setLoading(true);
 
-    if (!base64Regex.test(psbt.psbt) || typeof psbt.assets !== 'string') {
+    if (!isBase64(psbt.psbt) || typeof psbt.assets !== 'string') {
       alert.error(
         'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.'
       );
@@ -77,9 +78,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
       {!loading && (
         <div className="flex flex-col items-center justify-center w-full">
           <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
-            <pre>
-              {`${JSON.stringify(sys.utils.importPsbtFromJson(psbt), null, 2)}`}
-            </pre>
+            <pre>{`${JSON.stringify(getPsbtFromJson(psbt), null, 2)}`}</pre>
           </ul>
 
           <div className="absolute bottom-10 flex gap-3 items-center justify-between">
