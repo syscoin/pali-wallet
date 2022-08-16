@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useSelector } from 'react-redux';
 import {
   Routes,
   Route,
@@ -34,7 +35,8 @@ import {
   Start,
   TrustedSites,
 } from '../pages';
-import { useUtils, useStore } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
@@ -42,10 +44,13 @@ import { ProtectedRoute } from './ProtectedRoute';
 export const Router = () => {
   const params = useParams();
   const { wallet, appRoute, refresh } = getController();
-
   const { alert, navigate } = useUtils();
-  const { accounts, activeAccount } = useStore();
   const { pathname } = useLocation();
+
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
 
   const isUnlocked = wallet.isUnlocked() && activeAccount.address !== '';
 

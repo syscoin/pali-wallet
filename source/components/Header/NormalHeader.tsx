@@ -2,26 +2,36 @@ import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { Badge } from 'antd';
 import { uniqueId } from 'lodash';
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import { Icon, Tooltip, ErrorModal } from 'components/index';
-import { useStore, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { formatUrl, getHost } from 'utils/index';
 
 export const NormalHeader: React.FC = () => {
   const { wallet, dapp, refresh } = getController();
-
-  const {
-    activeNetwork,
-    encryptedMnemonic,
-    networks,
-    isPendingBalances,
-    error,
-  } = useStore();
   const { navigate } = useUtils();
+
+  const error = useSelector((state: RootState) => state.vault.error);
+
+  const networks = useSelector((state: RootState) => state.vault.networks);
+
+  const encryptedMnemonic = useSelector(
+    (state: RootState) => state.vault.encryptedMnemonic
+  );
+
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+
+  const isPendingBalances = useSelector(
+    (state: RootState) => state.vault.isPendingBalances
+  );
 
   const [currentTab, setCurrentTab] = useState({
     host: '',

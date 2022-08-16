@@ -43,16 +43,16 @@ const restartLockTimeout = () => {
   }, timer * 60 * 1000);
 };
 
+browser.runtime.onMessage.addListener(({ type, target }) => {
+  if (type === 'autolock' && target === 'background') restartLockTimeout();
+});
+
 browser.runtime.onConnect.addListener((port: Runtime.Port) => {
   if (port.name === 'pali-inject') {
     window.controller.dapp.setup(port);
 
     return;
   }
-
-  browser.runtime.onMessage.addListener(({ type, target }) => {
-    if (type === 'autolock' && target === 'background') restartLockTimeout();
-  });
 
   const senderUrl = port.sender.url;
   if (

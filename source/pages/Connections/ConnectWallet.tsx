@@ -1,5 +1,6 @@
 import { Dialog } from '@headlessui/react';
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import {
   Layout,
@@ -10,15 +11,17 @@ import {
   Loading,
 } from 'components/index';
 import trustedApps from 'constants/trustedApps.json';
-import { useQueryData, useStore } from 'hooks/index';
+import { useQueryData } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 import { isActiveNetwork } from 'utils/network';
 
 export const ConnectWallet = () => {
   const { dapp, wallet, refresh } = getController();
-  const { accounts, networks } = useStore();
   const { host, chain, chainId } = useQueryData();
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const networks = useSelector((state: RootState) => state.vault.networks);
 
   const currentAccountId = dapp.get(host)?.accountId;
 

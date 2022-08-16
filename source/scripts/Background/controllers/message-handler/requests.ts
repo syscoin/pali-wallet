@@ -51,6 +51,8 @@ export const methodRequest = async (
     switch (methodName) {
       case 'isConnected':
         return dapp.isConnected(host);
+      case 'isLocked':
+        return !wallet.isUnlocked();
       case 'changeAccount':
         return popupPromise({
           host,
