@@ -1,6 +1,3 @@
-import { validateCustomEthRpc } from '@pollum-io/sysweb3-network';
-import { getTokenByContract } from '@pollum-io/sysweb3-utils';
-
 export const countDecimals = (x: number) => {
   if (Math.floor(x) === x) return 0;
   return x.toString().split('.')[1].length || 0;
@@ -17,30 +14,3 @@ export const sortList = (list: object[]) =>
 
 export const base64 =
   /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
-
-export const validateEthRpc = async (
-  chainId: number,
-  rpcUrl: string,
-  tokenContractAddress?: string
-): Promise<{ data: any; valid: boolean }> => {
-  const { valid } = await validateCustomEthRpc(chainId, rpcUrl);
-
-  let symbol = 'eth';
-
-  if (tokenContractAddress) {
-    const tokenData = await getTokenByContract(tokenContractAddress);
-    symbol = tokenData.symbol;
-  }
-
-  const data = {
-    chainId,
-    url: rpcUrl,
-    default: false,
-    currency: symbol.toString().toLowerCase(),
-  };
-
-  return {
-    valid,
-    data,
-  };
-};
