@@ -41,7 +41,7 @@ const PrivateKeyView = () => {
   }, [copied]);
 
   return (
-    <Layout title="YOUR KEYS" titleOnly={false}>
+    <Layout title="YOUR KEYS">
       <div className="scrollbar-styled px-2 py-5 h-96 overflow-auto md:h-full">
         <Card type="info">
           <p>

@@ -41,10 +41,7 @@ export const DetailsView = () => {
   const isLoading = (isAsset && !id) || (!isAsset && !hash);
 
   return (
-    <Layout
-      title={`${isAsset ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}
-      titleOnly={false}
-    >
+    <Layout title={`${isAsset ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}>
       {isLoading ? (
         <Icon name="loading" className="absolute left-1/2 top-1/2 w-3" />
       ) : (

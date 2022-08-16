@@ -42,7 +42,7 @@ const ForgetWalletView = () => {
   const [form] = Form.useForm();
 
   return (
-    <Layout title="FORGET WALLET" titleOnly={false}>
+    <Layout title="FORGET WALLET">
       <Card type="info" className="md:mt-8">
         <p>
           <b className="text-warning-info">WARNING:</b> This will forget the

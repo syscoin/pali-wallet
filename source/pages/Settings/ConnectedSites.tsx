@@ -29,7 +29,7 @@ const ConnectedSites = (): any => {
   };
 
   return (
-    <Layout title="CONNECTED SITES" titleOnly={false}>
+    <Layout title="CONNECTED SITES">
       <p className="m-4 max-w-xs text-white text-xs md:max-w-md">
         {`${activeAccount?.label} is not connected to any sites. To connect to a SYS platform site, find the connect button on their site.`}
       </p>

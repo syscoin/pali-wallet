@@ -27,7 +27,7 @@ export const ChangeAccount = () => {
   };
 
   return (
-    <Layout canGoBack={false} title="CONNECTED ACCOUNT" titleOnly={false}>
+    <Layout canGoBack={false} title="CONNECTED ACCOUNT">
       <div className="flex flex-col items-center justify-center w-full">
         <h1 className="mt-4 text-sm">PALI WALLET</h1>
 

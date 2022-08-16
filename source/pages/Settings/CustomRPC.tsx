@@ -60,7 +60,7 @@ const CustomRPCView = ({
       {edit ? (
         <ManageNetwork />
       ) : (
-        <Layout title="CUSTOM RPC" titleOnly={false}>
+        <Layout title="CUSTOM RPC">
           <Form
             validateMessages={{ default: '' }}
             id="rpc"

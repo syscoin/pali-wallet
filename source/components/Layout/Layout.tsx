@@ -9,7 +9,7 @@ interface ILayout {
   children: React.ReactNode;
   id?: string;
   title: string;
-  titleOnly: boolean;
+  titleOnly?: boolean;
 }
 
 export const Layout: FC<ILayout> = ({
@@ -17,7 +17,7 @@ export const Layout: FC<ILayout> = ({
   children,
   id = '',
   title,
-  titleOnly = false,
+  titleOnly,
 }) => {
   const navigate = useNavigate();
 

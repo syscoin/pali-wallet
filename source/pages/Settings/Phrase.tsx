@@ -26,7 +26,7 @@ const PhraseView = () => {
   }, [copied]);
 
   return (
-    <Layout title="WALLET SEED PHRASE" id="seed-phrase-title" titleOnly={false}>
+    <Layout title="WALLET SEED PHRASE" id="seed-phrase-title">
       <p className="px-10 py-3 text-white text-sm">
         Please input your wallet password
       </p>
