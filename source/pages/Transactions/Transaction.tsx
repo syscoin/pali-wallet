@@ -69,7 +69,7 @@ interface ITransaction {
  */
 const Transaction: React.FC<ITransaction> = ({ type }) => {
   const { host, ...transaction } = useQueryData();
-  const [fee, setFee] = useState(transaction?.fee);
+  const [fee, setFee] = useState<number>();
 
   const title = titleResolver(type);
   const callback = callbackResolver(type);

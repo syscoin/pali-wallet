@@ -18,6 +18,7 @@ export const SysProvider = (host: string) => {
 
   const estimateFee = () => txs.getRecommendedFee(getNetwork().url);
 
+  // TODO display fee page before confirmation
   const send = (data: {
     amount: number;
     fee: number;
