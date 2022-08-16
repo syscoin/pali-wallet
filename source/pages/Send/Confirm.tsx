@@ -87,7 +87,7 @@ export const SendConfirm = () => {
   };
 
   return (
-    <Layout title="SEND">
+    <Layout title="SEND" titleOnly={false}>
       <DefaultModal
         show={confirmed}
         title="Transaction successful"

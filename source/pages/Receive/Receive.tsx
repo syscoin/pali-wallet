@@ -53,6 +53,7 @@ export const Receive = () => {
     <Layout
       title={`RECEIVE ${activeNetwork.currency?.toUpperCase()}`}
       id="receiveSYS-title"
+      titleOnly={false}
     >
       {loaded && activeAccount ? (
         <div className="flex flex-col items-center justify-center pt-8 w-full">

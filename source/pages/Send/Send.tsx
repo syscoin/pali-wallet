@@ -24,6 +24,7 @@ export const Send: React.FC<ISend> = () => {
     <Layout
       title={`SEND ${activeNetwork.currency?.toUpperCase()}`}
       id="sendSYS-title"
+      titleOnly={false}
     >
       {isSyscoinChain ? <SendSys /> : <SendEth />}
     </Layout>

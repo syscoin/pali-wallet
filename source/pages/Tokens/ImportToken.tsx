@@ -98,7 +98,7 @@ export const ImportToken: FC = () => {
   };
 
   return (
-    <Layout title="IMPORT TOKEN">
+    <Layout title="IMPORT TOKEN" titleOnly={false}>
       <Form
         validateMessages={{ default: '' }}
         form={form}

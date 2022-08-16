@@ -25,7 +25,7 @@ const CreateAccount = () => {
   };
 
   return (
-    <Layout title="CREATE ACCOUNT" id="create-account-title">
+    <Layout title="CREATE ACCOUNT" id="create-account-title" titleOnly={false}>
       {address ? (
         <DefaultModal
           show={address !== ''}

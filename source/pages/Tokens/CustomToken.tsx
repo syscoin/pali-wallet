@@ -64,7 +64,7 @@ export const CustomToken = () => {
   };
 
   return (
-    <Layout title="CUSTOM TOKEN">
+    <Layout title="CUSTOM TOKEN" titleOnly={false}>
       <Form
         validateMessages={{ default: '' }}
         form={form}

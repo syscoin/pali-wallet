@@ -26,7 +26,11 @@ const AutolockView = () => {
   };
 
   return (
-    <Layout title="AUTO LOCK TIMER" id="auto-lock-timer-title">
+    <Layout
+      title="AUTO LOCK TIMER"
+      id="auto-lock-timer-title"
+      titleOnly={false}
+    >
       <p className="mx-auto py-6 max-w-xs text-white text-sm md:pb-10 md:max-w-md">
         You can set auto lock timer. Default is 5 minutes after no activity.
         Maximum is 30 minutes.

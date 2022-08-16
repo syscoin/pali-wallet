@@ -111,7 +111,7 @@ const CurrencyView = () => {
   }, [selectedCoin, getFiatAmountValue]);
 
   return (
-    <Layout title="FIAT CURRENCY" id="fiat-currency-title">
+    <Layout title="FIAT CURRENCY" id="fiat-currency-title" titleOnly={false}>
       <DefaultModal
         show={confirmed}
         onClose={() => navigate('/home')}

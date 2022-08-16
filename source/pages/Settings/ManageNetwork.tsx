@@ -37,7 +37,7 @@ const ManageNetworkView = () => {
           isSyscoinToEdit={Boolean(networks.syscoin[selected.chainId])}
         />
       ) : (
-        <Layout title="MANAGE NETWORKS">
+        <Layout title="MANAGE NETWORKS" titleOnly={false}>
           <p className="mt-4 text-left text-brand-white font-poppins text-sm">
             Click on network to manage
           </p>

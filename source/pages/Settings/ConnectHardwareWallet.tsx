@@ -27,7 +27,11 @@ const ConnectHardwareWalletView: FC = () => {
   }, [activeNetwork]);
 
   return (
-    <Layout title="HARDWARE WALLET" id="hardware-wallet-title">
+    <Layout
+      title="HARDWARE WALLET"
+      id="hardware-wallet-title"
+      titleOnly={false}
+    >
       <div className="flex flex-col items-center justify-center w-full md:max-w-md">
         <div className="scrollbar-styled px-4 h-85 text-sm overflow-y-auto md:px-0 md:w-full md:max-w-md md:h-3/4">
           <p className="mb-1 mt-8 mx-2.5 w-80 text-white text-sm md:mx-0 md:w-full">
