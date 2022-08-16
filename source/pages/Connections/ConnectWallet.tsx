@@ -1,5 +1,6 @@
 import { Dialog } from '@headlessui/react';
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import {
   Layout,
@@ -8,12 +9,16 @@ import {
   Icon,
   Modal,
 } from 'components/index';
-import { useQueryData, useStore } from 'hooks/index';
+import { useQueryData } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ConnectWallet = () => {
-  const { accounts, trustedApps } = useStore();
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const trustedApps = useSelector(
+    (state: RootState) => state.vault.trustedApps
+  );
   const { dapp } = getController();
   const { host } = useQueryData();
 

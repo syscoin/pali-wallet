@@ -148,17 +148,14 @@ const MainController = (): IMainController => {
     isSyscoinRpc,
     tokenContractAddress,
   }: ICustomRpcParams): Promise<INetwork> => {
-    const { valid, data: _data } = isSyscoinRpc
+    const { valid } = isSyscoinRpc
       ? await validateSysRpc(url)
       : await validateEthRpc(chainId, url, tokenContractAddress);
 
     if (!valid)
       throw new Error('Invalid chainID. Please, verify the current RPC URL.');
 
-    return {
-      ..._data,
-      label,
-    };
+    return { label } as INetwork;
   };
 
   const addCustomRpc = async (data: ICustomRpcParams): Promise<INetwork> => {

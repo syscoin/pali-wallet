@@ -1,19 +1,23 @@
 import { Disclosure } from '@headlessui/react';
 import { uniqueId } from 'lodash';
 import React, { Fragment, useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
-import { useStore, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { camelCaseToText, ellipsis, formatUrl } from 'utils/index';
 
 export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const controller = getController();
-  const {
-    activeAccount: { transactions },
-    activeNetwork,
-  } = useStore();
+  const transactions = useSelector(
+    (state: RootState) => state.vault.activeAccount.transactions
+  );
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
   const { useCopyClipboard, alert } = useUtils();
 
   const [newRecipients, setNewRecipients] = useState<any>({});
