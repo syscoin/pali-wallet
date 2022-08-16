@@ -40,7 +40,7 @@ export const ConnectWallet = () => {
   });
 
   return (
-    <Layout canGoBack={false} title="CONNECT WITH">
+    <Layout canGoBack={false} title="CONNECT WITH" titleOnly={true}>
       <div className="flex flex-col items-center justify-center w-full">
         <h1 className="mt-4 text-sm">PALI WALLET</h1>
 

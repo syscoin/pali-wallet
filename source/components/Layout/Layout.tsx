@@ -25,7 +25,7 @@ export const Layout: FC<ILayout> = ({
 
   return (
     <div className="relative w-full min-w-popup h-full min-h-popup text-brand-white bg-bkg-2">
-      {!titleOnly && <Header />}
+      {!titleOnly && canGoBack && <Header />}
 
       <div className="relative flex items-center justify-center pt-6 w-full text-brand-white bg-bkg-3">
         {!titleOnly && url && canGoBack && (
