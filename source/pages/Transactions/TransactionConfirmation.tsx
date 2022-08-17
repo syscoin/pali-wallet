@@ -7,13 +7,8 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useStore } from 'hooks/index';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
-import {
-  camelCaseToText,
-  capitalizeFirstLetter,
-  ellipsis,
-  formatUrl,
-} from 'utils/format';
+import { dispatchBackgroundEvent } from 'utils/browser';
+import { camelCaseToText, capitalizeFirstLetter, ellipsis } from 'utils/format';
 
 interface ITransactionConfirmation {
   callback: any;
@@ -38,8 +33,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 }) => {
   if (!transaction) throw new Error('No transaction');
 
-  const { getRecommendedFee } = getController().wallet.account.sys.tx;
-  const { activeAccount, activeNetwork } = useStore();
+  const { activeAccount } = useStore();
 
   const [data, setData] = useState<ITxData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -88,17 +82,6 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
       dispatchBackgroundEvent(`tx${type}.${host}`, response);
     } catch (error: any) {
       setErrorMsg(error.message);
-
-      const fee = await getRecommendedFee(activeNetwork.url);
-
-      if (transaction.fee > fee) {
-        const shortError = formatUrl(String(error.message), 166);
-        setErrorMsg(`${shortError} Please, reduce fees to send transaction.`);
-      }
-
-      if (transaction.fee < fee) {
-        setErrorMsg(error.message);
-      }
     }
   };
 
