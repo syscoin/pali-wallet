@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import {
@@ -19,7 +20,8 @@ import {
   TransferToken,
   UpdateToken,
 } from '../pages';
-import { useQuery, useUtils, useStore } from 'hooks/index';
+import { useQuery, useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
@@ -27,7 +29,7 @@ import { ProtectedRoute } from './ProtectedRoute';
 export const ExternalRoute = () => {
   const { wallet, appRoute } = getController();
   const { navigate, alert } = useUtils();
-  const { accounts } = useStore();
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { pathname, search } = useLocation();
 
   // defaultRoute stores info from createPopup

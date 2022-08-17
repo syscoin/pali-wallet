@@ -1,9 +1,9 @@
 import { Disclosure } from '@headlessui/react';
 import React, { FC, useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Layout, SecondaryButton, Icon, Tooltip } from 'components/index';
-import { useStore } from 'hooks/index';
-// import { getController } from 'utils/browser';
+import { RootState } from 'state/store';
 
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
@@ -16,7 +16,9 @@ const ConnectHardwareWalletView: FC = () => {
     // await controller.wallet.trezor.connectHardware();
   };
 
-  const { activeNetwork } = useStore();
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
 
   useEffect(() => {
     setIsTestnet(
