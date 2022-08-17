@@ -10,19 +10,19 @@ import TransactionConfirmation from './TransactionConfirmation';
 const titleResolver = (txType: string) => {
   switch (txType) {
     case 'CreateToken':
-      return 'Create Token';
+      return 'CREATE TOKEN';
 
     case 'CreateNFT':
-      return 'Create NFT';
+      return 'CREATE NFT';
 
     case 'MintToken':
-      return 'Mint Token';
+      return 'MINT TOKEN';
 
     case 'MintNFT':
-      return 'Mint NFT';
+      return 'MINT NFT';
 
     case 'UpdateToken':
-      return 'Update Token';
+      return 'UPDATE TOKEN';
 
     default:
       throw new Error('Unknown transaction type');
