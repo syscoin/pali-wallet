@@ -1,5 +1,6 @@
 import { Form, Input } from 'antd';
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import {
   Layout,
@@ -8,7 +9,7 @@ import {
   Tooltip,
   Icon,
 } from 'components/index';
-import { useStore } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 interface IFee {
@@ -19,7 +20,10 @@ interface IFee {
 const Fee: React.FC<IFee> = ({ title, onFinish }) => {
   const { getRecommendedFee } = getController().wallet.account.sys.tx;
 
-  const { activeNetwork } = useStore();
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+
   const [form] = Form.useForm();
 
   const [fee, setFee] = useState(0.00001);

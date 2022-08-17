@@ -14,7 +14,9 @@ export const useStore = () => {
   const trustedApps = useSelector(
     (state: RootState) => state.vault.trustedApps
   );
-  const activeNetwork = useSelector((state: RootState) => state.vault.networks);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
   const isPendingBalances = useSelector(
     (state: RootState) => state.vault.isPendingBalances
   );

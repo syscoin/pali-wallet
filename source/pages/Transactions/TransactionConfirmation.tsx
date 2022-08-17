@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import {
   DefaultModal,
@@ -6,7 +7,7 @@ import {
   PrimaryButton,
   SecondaryButton,
 } from 'components/index';
-import { useStore } from 'hooks/index';
+import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { camelCaseToText, capitalizeFirstLetter, ellipsis } from 'utils/format';
 
@@ -33,7 +34,9 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 }) => {
   if (!transaction) throw new Error('No transaction');
 
-  const { activeAccount } = useStore();
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
 
   const [data, setData] = useState<ITxData[]>([]);
   const [loading, setLoading] = useState(false);
