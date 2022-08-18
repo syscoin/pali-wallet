@@ -9,6 +9,7 @@ interface ILayout {
   children: React.ReactNode;
   id?: string;
   title: string;
+  titleOnly?: boolean;
 }
 
 export const Layout: FC<ILayout> = ({
@@ -16,6 +17,7 @@ export const Layout: FC<ILayout> = ({
   children,
   id = '',
   title,
+  titleOnly,
 }) => {
   const navigate = useNavigate();
 
@@ -23,10 +25,10 @@ export const Layout: FC<ILayout> = ({
 
   return (
     <div className="relative w-full min-w-popup h-full min-h-popup text-brand-white bg-bkg-2">
-      <Header />
+      {!titleOnly && canGoBack && <Header />}
 
       <div className="relative flex items-center justify-center pt-6 w-full text-brand-white bg-bkg-3">
-        {url && canGoBack && (
+        {!titleOnly && url && canGoBack && (
           <Tooltip content="Fullscreen mode">
             <IconButton onClick={() => window.open(url)}>
               <Icon
@@ -41,7 +43,7 @@ export const Layout: FC<ILayout> = ({
           {title}
         </p>
 
-        {canGoBack && (
+        {!titleOnly && canGoBack && (
           <IconButton onClick={() => navigate('/home')}>
             <Icon wrapperClassname="absolute bottom-1 right-4" name="close" />
           </IconButton>
@@ -53,7 +55,9 @@ export const Layout: FC<ILayout> = ({
           size={36}
           name="select-up"
           wrapperClassname="w-8"
-          className="fixed top-24 text-bkg-2 md:top-36"
+          className={`fixed ${
+            titleOnly ? 'top-12' : 'top-24'
+          } text-bkg-2 md:top-36`}
           color="#111E33"
         />
       </div>
