@@ -15,7 +15,7 @@ export const methodRequest = async (
   host: string,
   data: { args?: any[]; method: string; network?: string }
 ) => {
-  const { dapp } = window.controller;
+  const { dapp, wallet } = window.controller;
 
   const [prefix, methodName] = data.method.split('_');
 
@@ -24,6 +24,8 @@ export const methodRequest = async (
     switch (methodName) {
       case 'isConnected':
         return dapp.isConnected(host);
+      case 'isLocked':
+        return !wallet.isUnlocked();
       case 'changeAccount':
         return popupPromise({
           host,

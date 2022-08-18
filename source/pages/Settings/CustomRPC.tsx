@@ -2,6 +2,7 @@ import { Switch } from '@headlessui/react';
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
 
+import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import { Layout, SecondaryButton } from 'components/index';
@@ -25,6 +26,18 @@ const CustomRPCView = ({
   const { alert } = useUtils();
   const controller = getController();
 
+  const validateRpcUrl = async (url: string, chainId: number | undefined) => {
+    try {
+      const { valid } = isSyscoinRpc
+        ? await validateSysRpc(url)
+        : await validateEthRpc(chainId, url);
+
+      return valid;
+    } catch (error) {
+      return false;
+    }
+  };
+
   const onSubmit = async (data: ICustomRpcParams) => {
     setLoading(true);
 
@@ -35,9 +48,12 @@ const CustomRPCView = ({
 
     try {
       if (!selectedToEdit) {
+        console.log({ customRpc, data });
         await controller.wallet.addCustomRpc(customRpc);
 
         alert.success('RPC successfully added.');
+
+        setLoading(false);
 
         return;
       }
@@ -47,12 +63,14 @@ const CustomRPCView = ({
       setEdit(true);
 
       alert.success('RPC successfully edited.');
+
+      setLoading(false);
     } catch (error: any) {
       alert.removeAll();
       alert.error(error.message);
-    }
 
-    setLoading(false);
+      setLoading(false);
+    }
   };
 
   return (
@@ -144,6 +162,18 @@ const CustomRPCView = ({
                   required: true,
                   message: '',
                 },
+                ({ getFieldValue }) => ({
+                  async validator(_, value) {
+                    const valid = await validateRpcUrl(
+                      value,
+                      getFieldValue('chainId') || undefined
+                    );
+
+                    if (!value || valid) return Promise.resolve();
+
+                    return Promise.reject();
+                  },
+                }),
               ]}
             >
               <Input

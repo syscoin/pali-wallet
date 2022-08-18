@@ -2,7 +2,12 @@ import {
   KeyringManager,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
-import { validateSysRpc, validateEthRpc } from '@pollum-io/sysweb3-network';
+import {
+  validateSysRpc,
+  validateEthRpc,
+  getSysRpc,
+  getEthRpc,
+} from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
@@ -95,10 +100,9 @@ const MainController = (): IMainController => {
   const setActiveNetwork = async (network: INetwork) => {
     store.dispatch(setIsPendingBalances(true));
 
-    const { networks, activeNetwork } = store.getState().vault;
+    const { networks } = store.getState().vault;
 
-    const isSyscoinChain =
-      networks.syscoin[network.chainId] && network.url.includes('blockbook');
+    const isSyscoinChain = networks.syscoin[network.chainId];
 
     const chain = isSyscoinChain ? 'syscoin' : 'ethereum';
 
@@ -107,9 +111,7 @@ const MainController = (): IMainController => {
     try {
       const networkAccount = await keyringManager.setSignerNetwork(
         network,
-        chain,
-        //@ts-ignore
-        isSyscoinChain ? await validateSysRpc(network.url, network.label) : null
+        chain
       );
 
       store.dispatch(setNetwork(network));
@@ -146,32 +148,17 @@ const MainController = (): IMainController => {
 
   const resolveError = () => store.dispatch(setStoreError(false));
 
-  const validateAndBuildRpc = async ({
-    chainId,
-    label,
-    url,
-    isSyscoinRpc,
-    apiUrl,
-  }: ICustomRpcParams): Promise<INetwork> => {
-    //@ts-ignore
-    const { valid, formattedNetwork, formattedBitcoinLikeNetwork } =
-      isSyscoinRpc
-        ? await validateSysRpc(url, label)
-        : await validateEthRpc(chainId, url, apiUrl, label);
-
-    if (!valid)
-      throw new Error('Invalid RPC. Please, verify the current RPC URL.');
+  const validateAndBuildRpc = async (
+    data: ICustomRpcParams
+  ): Promise<INetwork> => {
+    const { formattedNetwork, formattedBitcoinLikeNetwork } = data.isSyscoinRpc
+      ? await getSysRpc(data)
+      : await getEthRpc(data);
 
     console.log({
-      network: formattedNetwork,
+      formattedNetwork,
       formattedBitcoinLikeNetwork,
-      params: {
-        chainId,
-        label,
-        url,
-        isSyscoinRpc,
-        apiUrl,
-      },
+      data,
     });
 
     return formattedNetwork;

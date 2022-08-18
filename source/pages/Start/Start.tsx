@@ -1,10 +1,12 @@
 import { Form, Input } from 'antd';
 import React from 'react';
+import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
 import LogoImage from 'assets/images/logo-s.svg';
 import { PrimaryButton } from 'components/index';
-import { useStore, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 export const Start = () => {
@@ -12,7 +14,9 @@ export const Start = () => {
   const {
     wallet: { unlock, checkPassword },
   } = getController();
-  const { encryptedMnemonic } = useStore();
+  const encryptedMnemonic = useSelector(
+    (state: RootState) => state.vault.encryptedMnemonic
+  );
 
   const getStarted = (
     <>
@@ -56,7 +60,7 @@ export const Start = () => {
             },
             () => ({
               async validator(_, value) {
-                if (await checkPassword(value)) {
+                if (checkPassword(value)) {
                   return Promise.resolve().then(
                     async () => await onSubmit({ password: value })
                   );

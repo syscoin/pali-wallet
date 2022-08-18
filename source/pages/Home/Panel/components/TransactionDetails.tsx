@@ -1,6 +1,7 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 
-import { useStore } from 'hooks/index';
+import { RootState } from 'state/store';
 
 import {
   EvmTransactionDetails,
@@ -8,7 +9,11 @@ import {
 } from './Transactions';
 
 export const TransactionDetails = ({ hash }: { hash: string }) => {
-  const { activeNetwork, networks } = useStore();
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const networks = useSelector((state: RootState) => state.vault.networks);
+
   const isSyscoinChain =
     Boolean(networks.syscoin[activeNetwork.chainId]) &&
     activeNetwork.url.includes('blockbook');

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import {
   getBip44NetworkDetails,
@@ -6,7 +7,8 @@ import {
 } from '@pollum-io/sysweb3-network';
 
 import { Header, Icon, Button, Loading } from 'components/index';
-import { useStore, usePrice, useUtils } from 'hooks/index';
+import { usePrice, useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { formatNumber } from 'utils/index';
 
@@ -14,14 +16,20 @@ import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = getController();
-  const {
-    networks,
-    activeNetwork,
-    fiat,
-    activeAccount,
-    lastLogin,
-    isPendingBalances,
-  } = useStore();
+  const fiat = useSelector((state: RootState) => state.price.fiat);
+
+  const lastLogin = useSelector((state: RootState) => state.vault.lastLogin);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const isPendingBalances = useSelector(
+    (state: RootState) => state.vault.isPendingBalances
+  );
+  const networks = useSelector((state: RootState) => state.vault.networks);
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+
   const [fiatPriceValue, setFiatPriceValue] = useState('');
   const [balance, setBalance] = useState(0);
   const [isTestnet, setIsTestnet] = useState(false);
@@ -71,7 +79,7 @@ export const Home = () => {
   useEffect(() => {
     setFiatPrice();
     setMainOrTestNetwork();
-  }, [isUnlocked && activeNetwork]);
+  }, [isUnlocked && activeNetwork.chainId]);
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">

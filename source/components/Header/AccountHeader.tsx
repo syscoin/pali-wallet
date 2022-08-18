@@ -1,16 +1,26 @@
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { toSvg } from 'jdenticon';
 import React, { useEffect } from 'react';
+import { useSelector } from 'react-redux';
 
 import { IconButton, Icon } from 'components/index';
-import { useStore, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 const AccountMenu: React.FC = () => {
   const { navigate } = useUtils();
   const { wallet } = getController();
-  const { encryptedMnemonic, accounts, activeAccount } = useStore();
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+
+  const encryptedMnemonic = useSelector(
+    (state: RootState) => state.vault.encryptedMnemonic
+  );
 
   const numberOfAccounts = Object.keys(accounts).length;
 
@@ -183,7 +193,9 @@ const AccountMenu: React.FC = () => {
 };
 
 export const AccountHeader: React.FC = () => {
-  const { activeAccount } = useStore();
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();

@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
-import { useQueryData, useStore } from 'hooks/index';
+import { useQueryData } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ChangeAccount = () => {
-  const { accounts } = useStore();
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { dapp } = getController();
   const { host } = useQueryData();
 
