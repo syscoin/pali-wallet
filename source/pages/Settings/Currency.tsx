@@ -12,7 +12,7 @@ import { formatNumber } from 'utils/index';
 
 const CurrencyView = () => {
   const controller = getController();
-  const { navigate, handleRefresh } = useUtils();
+  const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -94,7 +94,7 @@ const CurrencyView = () => {
 
   useEffect(() => {
     if (isUnlocked && accounts && accounts[activeAccountId]) {
-      handleRefresh(true);
+      controller.refresh(true);
     }
   }, [isUnlocked, activeAccountId]);
 

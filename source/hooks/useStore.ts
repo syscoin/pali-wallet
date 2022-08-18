@@ -11,9 +11,6 @@ export const useStore = () => {
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
   );
-  const trustedApps = useSelector(
-    (state: RootState) => state.vault.trustedApps
-  );
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -34,7 +31,6 @@ export const useStore = () => {
     activeNetwork,
     isPendingBalances,
     networks,
-    trustedApps,
     lastLogin,
     fiat,
     coins,

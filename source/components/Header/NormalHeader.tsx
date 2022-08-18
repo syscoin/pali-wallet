@@ -15,11 +15,13 @@ import { formatUrl, getHost } from 'utils/index';
 
 const NetworkMenu: React.FC = () => {
   const { wallet } = getController();
+
   const networks = useSelector((state: RootState) => state.vault.networks);
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+
   const { navigate } = useUtils();
 
   const handleChangeNetwork = (network: INetwork) => {
@@ -235,13 +237,13 @@ const NetworkMenu: React.FC = () => {
 };
 
 const GeneralMenu: React.FC = () => {
-  const { wallet, dapp } = getController();
+  const { wallet, dapp, refresh } = getController();
 
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
   );
 
-  const { handleRefresh, navigate } = useUtils();
+  const { navigate } = useUtils();
 
   const [currentTab, setCurrentTab] = useState({
     host: '',
@@ -303,7 +305,7 @@ const GeneralMenu: React.FC = () => {
       </Tooltip>
 
       <div
-        onClick={() => handleRefresh(false)}
+        onClick={() => refresh(false)}
         className="mx-1.5 hover:text-brand-royalblue text-brand-white cursor-pointer"
       >
         <Icon name="reload" />

@@ -10,6 +10,8 @@ import { formatUrl, logError, ellipsis } from 'utils/index';
 
 export const SendConfirm = () => {
   const controller = getController();
+  const { alert, navigate } = useUtils();
+
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -17,7 +19,6 @@ export const SendConfirm = () => {
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
-  const { alert, navigate, handleRefresh } = useUtils();
 
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
@@ -95,7 +96,7 @@ export const SendConfirm = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          handleRefresh(false);
+          controller.refresh(false);
           if (isExternal) window.close();
           else navigate('/home');
         }}

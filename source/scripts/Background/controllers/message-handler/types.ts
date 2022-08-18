@@ -7,7 +7,7 @@ export type Message = {
 
 export enum DAppEvents {
   accountChange = 'accountChange',
-  chainChange = 'chainChange',
+  chainChange = 'chainChange', // TODO
   connect = 'connect',
   disconnect = 'disconnect',
 }
