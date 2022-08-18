@@ -49,7 +49,7 @@ export const TransactionsList = ({
   );
 
   return (
-    <ul className="pb-24 md:pb-8">
+    <ul className="pb-14 md:pb-4">
       {transactions.map((tx: any, idx: number) => {
         const isConfirmed = tx.confirmations > 0;
         const timestamp =

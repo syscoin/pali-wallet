@@ -75,7 +75,7 @@ export const Home = () => {
   }, [isUnlocked, activeNetwork]);
 
   return (
-    <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
+    <div className="scrollbar-styled bg-bkg-3 overflow-auto">
       {activeAccount && lastLogin && isUnlocked && !isPendingBalances ? (
         <>
           <Header accountHeader />

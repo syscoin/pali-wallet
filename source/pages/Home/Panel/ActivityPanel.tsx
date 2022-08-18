@@ -12,7 +12,6 @@ export const TransactionsPanel = () => {
     activeNetwork.url.includes('blockbook');
 
   const transactions = Object.values(activeAccount.transactions);
-  const size = window.innerWidth <= 375;
 
   const NoTransactionsComponent = () => (
     <div className="flex items-center justify-center p-3 text-brand-white text-sm">
@@ -27,9 +26,8 @@ export const TransactionsPanel = () => {
     </>
   ) : (
     <>
-      <div className="p-4 w-full h-full text-white text-base bg-bkg-3">
+      <div className="p-4 w-full text-white text-base bg-bkg-3">
         <TransactionsList isSyscoinChain={isSyscoinChain} />
-        {size && <div className="pt-7">.</div>}
       </div>
 
       <Fullscreen />

@@ -22,7 +22,7 @@ export const Layout: FC<ILayout> = ({
   const url = browser.runtime.getURL('app.html');
 
   return (
-    <div className="relative w-full min-w-popup h-full min-h-popup text-brand-white bg-bkg-2">
+    <div className="relative w-full min-w-popup min-h-popup text-brand-white bg-bkg-2">
       <Header />
 
       <div className="relative flex items-center justify-center pt-6 w-full text-brand-white bg-bkg-3">
