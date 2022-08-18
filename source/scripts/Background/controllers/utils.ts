@@ -15,9 +15,6 @@ export const isNFT = (guid: number) => {
 export const sortList = (list: object[]) =>
   list.sort((a: any, b: any) => a.symbol.localeCompare(b.symbol));
 
-export const base64 =
-  /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/;
-
 export const validateEthRpc = async (
   chainId: number,
   rpcUrl: string,

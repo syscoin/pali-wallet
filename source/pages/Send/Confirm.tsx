@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-// import sys from 'syscoinjs-lib';
 
 import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
+import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { formatUrl, logError, ellipsis } from 'utils/index';
 
 export const SendConfirm = () => {
@@ -24,8 +23,9 @@ export const SendConfirm = () => {
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
-  const externalTx = useQueryData();
-  const tx = state ? state.tx : externalTx;
+  const { host, ...externalTx } = useQueryData();
+  const isExternal = Boolean(externalTx);
+  const tx = isExternal ? externalTx : state.tx;
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -52,6 +52,8 @@ export const SendConfirm = () => {
 
           setConfirmed(true);
           setLoading(false);
+
+          if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
 
           return response;
         }
@@ -94,8 +96,9 @@ export const SendConfirm = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          navigate('/home');
           controller.refresh(false);
+          if (isExternal) window.close();
+          else navigate('/home');
         }}
       />
       {tx && (
