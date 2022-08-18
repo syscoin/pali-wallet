@@ -7,3 +7,8 @@ export const getController = () => {
   browser.runtime.reload();
   return controller;
 };
+
+export const dispatchBackgroundEvent = (eventName: string, data: any) => {
+  const background = browser.extension.getBackgroundPage();
+  background.dispatchEvent(new CustomEvent(eventName, { detail: data }));
+};
