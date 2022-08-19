@@ -2,12 +2,7 @@ import {
   KeyringManager,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
-import {
-  validateSysRpc,
-  validateEthRpc,
-  getSysRpc,
-  getEthRpc,
-} from '@pollum-io/sysweb3-network';
+import { getSysRpc, getEthRpc } from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
@@ -100,13 +95,11 @@ const MainController = (): IMainController => {
   const setActiveNetwork = async (network: INetwork) => {
     store.dispatch(setIsPendingBalances(true));
 
-    const { networks } = store.getState().vault;
+    const { networks, activeNetwork } = store.getState().vault;
 
     const isSyscoinChain = networks.syscoin[network.chainId];
 
     const chain = isSyscoinChain ? 'syscoin' : 'ethereum';
-
-    console.log({ isSyscoinChain, chain, network });
 
     try {
       const networkAccount = await keyringManager.setSignerNetwork(
@@ -138,34 +131,24 @@ const MainController = (): IMainController => {
 
       return networkAccount;
     } catch (error) {
-      // setActiveNetwork(activeNetwork);
+      setActiveNetwork(activeNetwork);
 
-      console.log({ error });
-
-      // store.dispatch(setStoreError(true));
+      store.dispatch(setStoreError(true));
     }
   };
 
   const resolveError = () => store.dispatch(setStoreError(false));
 
-  const validateAndBuildRpc = async (
-    data: ICustomRpcParams
-  ): Promise<INetwork> => {
-    const { formattedNetwork, formattedBitcoinLikeNetwork } = data.isSyscoinRpc
+  const getRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
+    const { formattedNetwork } = data.isSyscoinRpc
       ? await getSysRpc(data)
       : await getEthRpc(data);
-
-    console.log({
-      formattedNetwork,
-      formattedBitcoinLikeNetwork,
-      data,
-    });
 
     return formattedNetwork;
   };
 
   const addCustomRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
-    const network = await validateAndBuildRpc(data);
+    const network = await getRpc(data);
 
     const chain = data.isSyscoinRpc ? 'syscoin' : 'ethereum';
 
@@ -179,7 +162,7 @@ const MainController = (): IMainController => {
     oldRpc: ICustomRpcParams
   ): Promise<INetwork> => {
     const changedChainId = oldRpc.chainId !== newRpc.chainId;
-    const network = await validateAndBuildRpc(newRpc);
+    const network = await getRpc(newRpc);
 
     const chain = newRpc.isSyscoinRpc ? 'syscoin' : 'ethereum';
 

@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import {
   getBip44NetworkDetails,
   validateEthRpc,
+  validateSysRpc,
 } from '@pollum-io/sysweb3-network';
 
 import { Header, Icon, Button, Loading } from 'components/index';
@@ -55,11 +56,11 @@ export const Home = () => {
   const setMainOrTestNetwork = async () => {
     const { chainId, url } = activeNetwork;
 
-    const { isTestnet: _isTestnet } = isSyscoinChain
-      ? await getBip44NetworkDetails(url)
+    const { chain } = isSyscoinChain
+      ? await validateSysRpc(url)
       : await validateEthRpc(chainId, url);
 
-    setIsTestnet(_isTestnet);
+    setIsTestnet(chain === 'test' || chain === 'testnet');
   };
 
   const setFiatPrice = () => {
