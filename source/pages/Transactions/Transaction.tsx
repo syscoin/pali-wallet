@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { Layout } from 'components/index';
 import { useQueryData } from 'hooks/index';
@@ -20,6 +21,9 @@ const titleResolver = (txType: string) => {
     case 'MintNFT':
       return 'MINT NFT';
 
+    case 'Send':
+      return 'SEND';
+
     case 'UpdateToken':
       return 'UPDATE TOKEN';
 
@@ -37,9 +41,19 @@ interface ITransaction {
  */
 const Transaction: React.FC<ITransaction> = ({ type }) => {
   const { host, ...transaction } = useQueryData();
+  const navigate = useNavigate();
+
   const [fee, setFee] = useState<number>();
 
   const title = titleResolver(type);
+
+  useEffect(() => {
+    if (!fee) return;
+    if (type !== 'Send') return;
+
+    const data = { host, ...transaction, fee };
+    navigate('/external/tx/send/confirm?data=' + JSON.stringify(data));
+  }, [fee]);
 
   if (!fee) return <Fee title={title} onFinish={setFee} />;
 
