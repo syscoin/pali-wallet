@@ -8,11 +8,10 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { RootState } from 'state/store';
-import { dispatchBackgroundEvent } from 'utils/browser';
+import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { camelCaseToText, capitalizeFirstLetter, ellipsis } from 'utils/format';
 
 interface ITransactionConfirmation {
-  callback: any;
   host: string;
   title: string;
   transaction: any;
@@ -25,8 +24,38 @@ interface ITxData {
   value: any;
 }
 
+const callbackResolver = (txType: string) => {
+  let callbackName;
+
+  switch (txType) {
+    case 'CreateToken':
+      callbackName = 'confirmTokenCreation';
+      break;
+
+    case 'CreateNFT':
+      callbackName = 'confirmNftCreation';
+      break;
+
+    case 'MintToken':
+      callbackName = 'confirmTokenMint';
+      break;
+
+    case 'MintNFT':
+      callbackName = 'confirmMintNFT';
+      break;
+
+    case 'UpdateToken':
+      callbackName = 'confirmUpdateToken';
+      break;
+
+    default:
+      throw new Error('Unknown transaction type');
+  }
+
+  return getController().wallet.account.sys.tx[callbackName];
+};
+
 const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
-  callback,
   host,
   transaction,
   type,
@@ -77,6 +106,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
     }
 
     try {
+      const callback = callbackResolver(type);
       const response = await callback(transaction);
 
       setLoading(false);
