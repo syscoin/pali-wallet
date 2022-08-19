@@ -113,12 +113,12 @@ export interface IDAppController {
    */
   changeAccount: (host: string, accountId: number) => void;
   /**
-   * Complete a connection with a DApp. Adds the account
+   * Completes a connection with a DApp
    * @emits connect
    */
-  connect: (host: string, accountId: number) => void;
+  connect: (dapp: IDApp) => void;
   /**
-   * Removes a connection with a DApp. Removes the account
+   * Removes a connection with a DApp
    * @emits disconnect
    */
   disconnect: (host: string) => void;
@@ -129,7 +129,7 @@ export interface IDAppController {
   /**
    * Retrieves the connected account
    */
-  getAccount: (host: string) => IKeyringAccountState | undefined;
+  getAccount: (host: string) => IKeyringAccountState;
   /**
    * Checks if listener exists
    */
@@ -139,7 +139,7 @@ export interface IDAppController {
    */
   hasWindow: (host: string) => boolean;
   /**
-   * Checks if DApp has a connected account
+   * Checks if DApp is listed
    */
   isConnected: (host: string) => boolean;
   /**
@@ -150,6 +150,9 @@ export interface IDAppController {
    * Removes all listeners from a DApp
    */
   removeListeners: (host: string) => void;
+  /**
+   * Sets whether a DApp has an open popup
+   */
   setHasWindow: (host: string, hasWindow: boolean) => void;
   /**
    * Setup communication

@@ -1,10 +1,5 @@
-// import { browser } from 'webextension-polyfill-ts';
-
-// import { SyscoinTransactions } from '@pollum-io/sysweb3-keyring';
-
-// import { listNewDapp } from 'state/dapp';
+import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import store from 'state/store';
-// import { removeSensitiveDataFromVault, log, getHost } from 'utils/index';
 
 export const SysProvider = (host: string) => {
   const txs = window.controller.wallet.account.sys.tx;
@@ -13,58 +8,92 @@ export const SysProvider = (host: string) => {
     const account = window.controller.dapp.getAccount(host);
     if (!account) throw new Error('No connected account');
 
-    return account;
+    const _account = { ...account };
+    delete _account.xprv;
+
+    return _account;
   };
 
   const getNetwork = () => store.getState().vault.activeNetwork;
 
   const estimateFee = () => txs.getRecommendedFee(getNetwork().url);
 
-  const sendTransaction = (tx) => {
-    window.controller.createPopup('tx/send/confirm', tx);
-  };
+  // TODO display fee page before confirmation
+  const send = (data: {
+    amount: number;
+    fee: number;
+    receivingAddress: string;
+    tokenGuid?: string;
+  }) =>
+    popupPromise({
+      host,
+      data: { isToken: data.tokenGuid !== undefined, ...data },
+      route: 'tx/send/confirm',
+      eventName: 'txSend',
+    });
 
-  /* const getState = () => removeSensitiveDataFromVault(store.getState().vault);
+  //* ----- Token -----
+  const createToken = (data) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/create',
+      eventName: 'txCreateToken',
+    });
 
-  const notifyWalletChanges = async (): Promise<void> => {
-    const { vault } = store.getState();
-    const { activeNetwork, networks } = vault;
+  const updateToken = (data) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/asset/update',
+      eventName: 'txUpdateToken',
+    });
 
-    const isEthereumChain = Boolean(networks.ethereum[activeNetwork.chainId]);
-    if (isEthereumChain) {
-      store.subscribe(async () => {
-        const background = await browser.runtime.getBackgroundPage();
+  const mintToken = (data: {
+    amount: number;
+    assetGuid: string;
+    fee: number;
+  }) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/asset/issue',
+      eventName: 'txMintToken',
+    });
 
-        background.dispatchEvent(
-          new CustomEvent('walletChanged', {
-            detail: {
-              data: removeSensitiveDataFromVault(vault),
-              chain: 'ethereum',
-            },
-          })
-        );
-      });
-    }
+  //* ----- NFT -----
+  const createNft = (data) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/asset/nft/issue',
+      eventName: 'txCreateNFT',
+    });
 
-    log('could not notify wallet changes, network is not web3', 'System');
-  };
+  const mintNft = (data) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/asset/nft/mint',
+      eventName: 'txMintNFT',
+    });
 
-  const setAccount = (accountId: number) => {
-    const { accounts } = store.getState().vault;
-    if (!accounts[accountId]) throw new Error('Account not found');
+  //* ----- Sign -----
+  const sign = (data) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/sign-psbt',
+      eventName: 'txSign',
+    });
 
-    const { origin } = window.controller.dapp.getCurrent();
-    const id = getHost(origin);
-    const currentDapp = store.getState().dapp.whitelist[id];
-
-    store.dispatch(
-      listNewDapp({
-        id,
-        accountId,
-        dapp: currentDapp,
-      })
-    );
-  }; */
+  const signAndSend = (data) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/sign',
+      eventName: 'txSignAndSend',
+    });
 
   return {
     getAccount: () => getAccount(),
@@ -73,6 +102,13 @@ export const SysProvider = (host: string) => {
     getPublicKey: () => getAccount().xpub,
     getTokens: () => getAccount().assets,
     estimateFee,
-    sendTransaction,
+    send,
+    createToken,
+    updateToken,
+    mintToken,
+    createNft,
+    mintNft,
+    sign,
+    signAndSend,
   };
 };

@@ -1,9 +1,8 @@
-import { KeyringManager } from '@pollum-io/sysweb3-keyring';
-
 import {
-  ISysTransactionController,
-  SysTransactionController,
-} from '../transaction';
+  KeyringManager,
+  ISyscoinTransactions,
+} from '@pollum-io/sysweb3-keyring';
+
 import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
 import {
@@ -17,7 +16,7 @@ export interface ISysAccountController {
   getLatestUpdate: (silent?: boolean) => Promise<void>;
   setAddress: () => Promise<string>;
   trezor: ISysTrezorController;
-  tx: ISysTransactionController;
+  tx: ISyscoinTransactions;
   watchMemPool: () => void;
 }
 
@@ -115,7 +114,7 @@ const SysAccountController = (): ISysAccountController => {
   };
 
   const trezor = SysTrezorController();
-  const tx = SysTransactionController();
+  const tx = keyringManager.txs;
 
   return {
     watchMemPool,

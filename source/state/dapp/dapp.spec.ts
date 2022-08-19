@@ -3,6 +3,7 @@ import reducer, {
   removeListener,
   addDApp,
   removeDApp,
+  updateDAppAccount,
   initialState,
   removeListeners,
 } from '.';
@@ -53,8 +54,9 @@ describe('dapp store actions', () => {
 
   describe('Dapp tests', () => {
     const FAKE_DAPP: IDApp = {
-      host: 'fake host',
-      title: 'fake title',
+      host: 'fakehost.net',
+      chain: 'syscoin',
+      chainId: 57,
       accountId: 0,
     };
 
@@ -71,6 +73,17 @@ describe('dapp store actions', () => {
       const newState = reducer(customState, removeDApp(FAKE_DAPP.host));
 
       expect(newState.dapps).toEqual(initialState.dapps);
+    });
+
+    //* updateDAppAccount
+    it('should remove a dapp', () => {
+      const payload = { host: FAKE_DAPP.host, accountId: 1 };
+
+      const customState = reducer(initialState, addDApp(FAKE_DAPP));
+      const newState = reducer(customState, updateDAppAccount(payload));
+
+      const dapp = newState.dapps[FAKE_DAPP.host];
+      expect(dapp.accountId).toEqual(payload.accountId);
     });
   });
 });
