@@ -1,8 +1,10 @@
 import { Switch } from '@headlessui/react';
 import { Form, Input } from 'antd';
+import { useForm } from 'antd/lib/form/Form';
 import React, { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
-import { INetwork } from '@pollum-io/sysweb3-utils';
+import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import { Layout, SecondaryButton } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -11,19 +13,23 @@ import { getController } from 'utils/browser';
 
 import { ManageNetwork } from '.';
 
-const CustomRPCView = ({
-  selectedToEdit,
-  isSyscoinToEdit,
-}: {
-  isSyscoinToEdit?: boolean;
-  selectedToEdit?: INetwork;
-}) => {
+const CustomRPCView = () => {
+  const { state }: { state: any } = useLocation();
+
+  const isSyscoinSelected = state && state.chain && state.chain === 'syscoin';
   const [loading, setLoading] = useState(false);
-  const [edit, setEdit] = useState(false);
-  const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinToEdit));
+  const [success, setSuccess] = useState(false);
+  const [isUrlValid, setIsUrlValid] = useState(false);
+  const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinSelected));
 
   const { alert } = useUtils();
   const controller = getController();
+
+  const [form] = useForm();
+
+  const populateForm = (field: string, value: number | string) => {
+    if (!form.getFieldValue(field)) form.setFieldsValue({ [field]: value });
+  };
 
   const onSubmit = async (data: ICustomRpcParams) => {
     setLoading(true);
@@ -34,46 +40,51 @@ const CustomRPCView = ({
     };
 
     try {
-      if (!selectedToEdit) {
+      if (!state) {
         await controller.wallet.addCustomRpc(customRpc);
 
         alert.success('RPC successfully added.');
 
+        setSuccess(true);
+        setLoading(false);
+
         return;
       }
 
-      await controller.wallet.editCustomRpc(customRpc, selectedToEdit);
-
-      setEdit(true);
+      await controller.wallet.editCustomRpc(customRpc, state.selected);
 
       alert.success('RPC successfully edited.');
+
+      setSuccess(true);
+      setLoading(false);
     } catch (error: any) {
       alert.removeAll();
       alert.error(error.message);
-    }
 
-    setLoading(false);
+      setLoading(false);
+    }
+  };
+
+  const initialValues = {
+    label: (state && state.selected && state.selected.label) ?? '',
+    url: (state && state.selected && state.selected.url) ?? '',
+    chainId: (state && state.selected && state.selected.chainId) ?? '',
   };
 
   return (
     <>
-      {edit ? (
+      {success ? (
         <ManageNetwork />
       ) : (
         <Layout title="CUSTOM RPC">
           <Form
+            form={form}
             validateMessages={{ default: '' }}
             id="rpc"
             name="rpc"
             labelCol={{ span: 8 }}
             wrapperCol={{ span: 8 }}
-            initialValues={
-              selectedToEdit && {
-                label: selectedToEdit.label ?? '',
-                url: selectedToEdit.url ?? '',
-                chainId: selectedToEdit.chainId ?? '',
-              }
-            }
+            initialValues={initialValues}
             onFinish={onSubmit}
             autoComplete="off"
             className="standard flex flex-col gap-2 items-center justify-center text-center"
@@ -116,12 +127,16 @@ const CustomRPCView = ({
               hasFeedback
               rules={[
                 {
-                  required: true,
+                  required: false,
                   message: '',
                 },
               ]}
             >
-              <Input type="text" placeholder="Label" className="large" />
+              <Input
+                type="text"
+                placeholder="Label (optional)"
+                className="large"
+              />
             </Form.Item>
 
             <Form.Item
@@ -133,6 +148,34 @@ const CustomRPCView = ({
                   required: true,
                   message: '',
                 },
+                () => ({
+                  async validator(_, value) {
+                    if (isSyscoinRpc) {
+                      const { valid, coin } = await validateSysRpc(value);
+
+                      if (valid || !value) {
+                        populateForm('label', String(coin));
+
+                        return Promise.resolve();
+                      }
+
+                      return Promise.reject();
+                    }
+
+                    const { valid, details } = await validateEthRpc(value);
+
+                    setIsUrlValid(valid);
+
+                    if (valid || !value) {
+                      populateForm('label', String(details.name));
+                      populateForm('chainId', String(details.chainId));
+
+                      return Promise.resolve();
+                    }
+
+                    return Promise.reject();
+                  },
+                }),
               ]}
             >
               <Input
@@ -157,6 +200,7 @@ const CustomRPCView = ({
             >
               <Input
                 type="text"
+                disabled={!form.getFieldValue('url') || isUrlValid}
                 placeholder="Chain ID"
                 className={`${isSyscoinRpc ? 'hidden' : 'block'} large`}
               />
@@ -165,7 +209,7 @@ const CustomRPCView = ({
             <Form.Item
               hasFeedback
               className="md:w-full"
-              name="tokenContractAddress"
+              name="apiUrl"
               rules={[
                 {
                   required: false,
@@ -175,7 +219,7 @@ const CustomRPCView = ({
             >
               <Input
                 type="text"
-                placeholder="Token Contract Address (optional)"
+                placeholder="API URL (optional)"
                 className={`${isSyscoinRpc ? 'hidden' : 'block'} large`}
               />
             </Form.Item>
