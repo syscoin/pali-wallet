@@ -43,14 +43,14 @@ import { ProtectedRoute } from './ProtectedRoute';
 
 export const Router = () => {
   const params = useParams();
-  const { wallet, appRoute } = getController();
+  const { wallet, appRoute, refresh } = getController();
+  const { alert, navigate } = useUtils();
+  const { pathname } = useLocation();
 
-  const { alert, navigate, handleRefresh } = useUtils();
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const { pathname } = useLocation();
 
   const isUnlocked = wallet.isUnlocked() && activeAccount.address !== '';
 
@@ -78,9 +78,7 @@ export const Router = () => {
   }, [isUnlocked]);
 
   useEffect(() => {
-    if (isUnlocked) {
-      handleRefresh(true);
-    }
+    if (isUnlocked) refresh(true);
   }, [isUnlocked]);
 
   useEffect(() => {

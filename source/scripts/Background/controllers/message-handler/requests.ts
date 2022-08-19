@@ -1,7 +1,25 @@
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
+import store from 'state/store';
+import { isActiveNetwork } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
+
+const _changeNetwork = async (chain: string, chainId: number) => {
+  console.log('[DApp] Changing pali network');
+
+  const { networks } = store.getState().vault;
+  const network = networks[chain][chainId];
+
+  const { wallet, refresh } = window.controller;
+  await wallet.setActiveNetwork(network);
+  await refresh(true);
+};
+
+const _isActiveAccount = (accounId: number) => {
+  const { activeAccount } = store.getState().vault;
+  return activeAccount.id === accounId;
+};
 
 /**
  * Handles methods request.
@@ -18,6 +36,15 @@ export const methodRequest = async (
   const { dapp, wallet } = window.controller;
 
   const [prefix, methodName] = data.method.split('_');
+
+  const { chain, chainId, accountId } = dapp.get(host);
+  if (!isActiveNetwork(chain, chainId)) {
+    await _changeNetwork(chain, chainId);
+  }
+  if (!_isActiveAccount(accountId)) {
+    wallet.setAccount(accountId);
+    wallet.account.sys.watchMemPool();
+  }
 
   //* Wallet methods
   if (prefix === 'wallet') {
@@ -50,4 +77,16 @@ export const methodRequest = async (
   if (data.args) return await method(...data.args);
 
   return await method();
+};
+
+export const enable = async (host: string, chain: string, chainId: number) => {
+  const { dapp } = window.controller;
+  if (dapp.isConnected(host)) return { success: true };
+
+  return popupPromise({
+    host,
+    route: 'connect-wallet',
+    eventName: 'connect',
+    data: { chain, chainId },
+  });
 };

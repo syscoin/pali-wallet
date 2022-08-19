@@ -20,7 +20,6 @@ export interface IVaultState {
     };
   };
   timer: number;
-  trustedApps: string[];
 }
 
 export interface IHolding {

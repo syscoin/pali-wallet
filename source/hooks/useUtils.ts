@@ -1,26 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAlert } from 'react-alert';
-import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-
-import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 export const useUtils = () => {
   const alert = useAlert();
   const navigate = useNavigate();
-  const controller = getController();
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
-
-  const handleRefresh = (silent?: boolean): void => {
-    if (!activeAccount.address) return;
-
-    controller.wallet.account.sys.getLatestUpdate(silent);
-    controller.wallet.account.sys.watchMemPool();
-    controller.stateUpdater();
-  };
 
   const useCopyClipboard = (
     timeout = 1000
@@ -51,6 +35,5 @@ export const useUtils = () => {
     useCopyClipboard,
     alert,
     navigate,
-    handleRefresh,
   };
 };

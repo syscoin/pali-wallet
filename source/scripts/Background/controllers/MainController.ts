@@ -141,15 +141,13 @@ const MainController = (): IMainController => {
   const resolveError = () => store.dispatch(setStoreError(false));
 
   const validateAndBuildRpc = async ({
-    chainId,
     label,
     url,
     isSyscoinRpc,
-    tokenContractAddress,
   }: ICustomRpcParams): Promise<INetwork> => {
     const { valid } = isSyscoinRpc
       ? await validateSysRpc(url)
-      : await validateEthRpc(chainId, url, tokenContractAddress);
+      : await validateEthRpc(url);
 
     if (!valid)
       throw new Error('Invalid chainID. Please, verify the current RPC URL.');
