@@ -50,7 +50,7 @@ export const DetailsView = () => {
             )}
           </ul>
 
-          <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-3 md:bottom-24 md:max-w-2xl">
+          <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-3 md:bottom-8 md:max-w-2xl">
             <p>
               Would you like to go to view {isAsset ? 'asset' : 'transaction'}{' '}
               on {isSyscoinChain ? 'SYS Block' : 'Etherscan'} Explorer?

@@ -9,10 +9,10 @@ const App: FC = () => {
   const { isPendingBalances } = useStore();
 
   return (
-    <section className="mx-auto min-w-popup min-h-popup bg-bkg-2 md:max-w-2xl">
+    <section className="mx-auto min-w-popup h-full min-h-popup bg-bkg-2 md:max-w-2xl">
       <Container>
         <BrowserRouter>
-          <div className="w-full min-w-popup min-h-popup">
+          <div className="w-full min-w-popup h-full min-h-popup">
             {!isPendingBalances ? <Router /> : <Loading />}
           </div>
         </BrowserRouter>
