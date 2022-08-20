@@ -1,14 +1,18 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { Layout, Button, Icon } from 'components/index';
-import { useStore } from 'hooks/index';
+import { RootState } from 'state/store';
 
 import { AssetDetails } from './AssetDetails';
 import { TransactionDetails } from './TransactionDetails';
 
 export const DetailsView = () => {
-  const { activeNetwork, networks } = useStore();
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const networks = useSelector((state: RootState) => state.vault.networks);
 
   const {
     state: { id, hash },
@@ -42,7 +46,7 @@ export const DetailsView = () => {
         <Icon name="loading" className="absolute left-1/2 top-1/2 w-3" />
       ) : (
         <>
-          <ul className="scrollbar-styled mt-4 w-full h-96 text-sm overflow-auto md:h-bigmenu">
+          <ul className="scrollbar-styled md:max-h-max mt-4 w-full h-96 text-sm overflow-auto">
             {isAsset ? (
               <AssetDetails id={id} />
             ) : (
@@ -50,7 +54,7 @@ export const DetailsView = () => {
             )}
           </ul>
 
-          <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-3 md:max-w-2xl">
+          <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-3 md:bottom-8 md:max-w-2xl">
             <p>
               Would you like to go to view {isAsset ? 'asset' : 'transaction'}{' '}
               on {isSyscoinChain ? 'SYS Block' : 'Etherscan'} Explorer?

@@ -1,48 +1,48 @@
 import { uniqueId } from 'lodash';
 import React, { Fragment } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
-import { useStore, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 
 export const EvmAssetsList = () => {
-  const {
-    activeAccount: { assets },
-  } = useStore();
+  const assets = useSelector(
+    (state: RootState) => state.vault.activeAccount.assets
+  );
   const { navigate } = useUtils();
 
   return (
     <>
-      <ul className="pb-24 md:pb-8">
-        {assets.map(({ tokenSymbol, id, balance }: any) => (
-          <Fragment key={uniqueId(id)}>
-            <li className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark">
-              <p className="font-rubik">
-                <span className="text-button-secondary font-poppins">
-                  {`${balance}  ${tokenSymbol}`}
-                </span>
-              </p>
+      {assets.map(({ tokenSymbol, id, balance }: any) => (
+        <Fragment key={uniqueId(id)}>
+          <li className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark">
+            <p className="font-rubik">
+              <span className="text-button-secondary font-poppins">
+                {`${balance}  ${tokenSymbol}`}
+              </span>
+            </p>
 
-              <IconButton
-                onClick={() =>
-                  navigate('/home/details', {
-                    state: { id, hash: null },
-                  })
-                }
-              >
-                <Icon name="select" className="w-4 text-brand-white" />
-              </IconButton>
-            </li>
-          </Fragment>
-        ))}
+            <IconButton
+              onClick={() =>
+                navigate('/home/details', {
+                  state: { id, hash: null },
+                })
+              }
+            >
+              <Icon name="select" className="w-4 text-brand-white" />
+            </IconButton>
+          </li>
+        </Fragment>
+      ))}
 
-        {/* <p
+      {/* <p
           className="mb-8 mt-4 text-center hover:text-brand-royalbluemedium cursor-pointer"
           onClick={() => navigate('/tokens/add/import')}
         >
           Import token
         </p> */}
-      </ul>
     </>
   );
 };

@@ -1,8 +1,6 @@
-import React from 'react';
-
-/* import { Form, Input } from 'antd';
-import React, { useState, FC, useEffect } from 'react';
-import { browser } from 'webextension-polyfill-ts';
+import { Form, Input } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import {
   Layout,
@@ -11,50 +9,34 @@ import {
   Tooltip,
   Icon,
 } from 'components/index';
-import { useUtils, useStore } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { rejectTransaction } from 'utils/index'; */
 
-interface ITxLayout {
-  confirmRoute: string;
+interface IFee {
+  onFinish: (fee: number) => any;
   title: string;
-  txType: string;
 }
 
-export const TxLayout: React.FC<ITxLayout> = () => <div></div>;
-/* export const TxLayout: FC<ITxLayout> = ({ confirmRoute, txType, title }) => {
-  const { account } = getController().wallet;
-  const transaction = account.tx.getTemporaryTransaction(txType);
+const Fee: React.FC<IFee> = ({ title, onFinish }) => {
+  const { getRecommendedFee } = getController().wallet.account.sys.tx;
 
-  const { navigate } = useUtils();
-  const { activeNetwork } = useStore();
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
 
-  const [loading, setLoading] = useState(false);
-  const [recommend, setRecommend] = useState(0.00001);
   const [form] = Form.useForm();
 
-  const getFee = async () => {
-    const recommendFee = await account.tx.getRecommendedFee(activeNetwork.url);
-    setRecommend(recommendFee);
-    form.setFieldsValue({ fee: recommendFee });
+  const [fee, setFee] = useState(0.00001);
+
+  const updateFee = async () => {
+    const _fee = await getRecommendedFee(activeNetwork.url);
+    form.setFieldsValue({ fee: _fee });
+    setFee(_fee);
   };
 
   useEffect(() => {
-    getFee();
-  });
-
-  const updateTemporaryTransaction = ({ fee }) => {
-    account.tx.updateTemporaryTransaction({
-      tx: {
-        ...transaction,
-        fee,
-      },
-      type: txType,
-    });
-
-    setLoading(true);
-    navigate(confirmRoute);
-  };
+    updateFee();
+  }, []);
 
   const disabledFee =
     activeNetwork.chainId === 57 || activeNetwork.chainId === 5700;
@@ -69,9 +51,9 @@ export const TxLayout: React.FC<ITxLayout> = () => <div></div>;
           form={form}
           id="site"
           labelCol={{ span: 8 }}
-          initialValues={{ fee: recommend }}
+          initialValues={{ fee: fee }}
           wrapperCol={{ span: 8 }}
-          onFinish={updateTemporaryTransaction}
+          onFinish={(data) => onFinish(data.fee)}
           autoComplete="off"
           className="standard flex flex-col gap-3 items-center justify-center mt-4 text-center"
         >
@@ -95,7 +77,7 @@ export const TxLayout: React.FC<ITxLayout> = () => <div></div>;
                     : 'Click to use the recommended fee'
                 }`}
               >
-                <div onClick={getFee}>
+                <div onClick={updateFee}>
                   <Icon
                     wrapperClassname="w-6 ml-5 mb-1"
                     name="verified"
@@ -128,27 +110,22 @@ export const TxLayout: React.FC<ITxLayout> = () => <div></div>;
                   } border border-fields-input-border bg-fields-input-primary rounded-r-full w-full md:max-w-2xl outline-none py-3 pr-24 pl-4 text-sm`}
                   type="number"
                   placeholder="Fee network"
-                  value={recommend}
+                  value={fee}
                 />
               </Tooltip>
             </Form.Item>
           </div>
 
           <p className="mt-4 mx-6 p-4 max-w-xs text-left text-xs bg-transparent border border-dashed border-gray-600 rounded-lg md:max-w-2xl">
-            With current network conditions, we recommend a fee of {recommend}{' '}
-            SYS.
+            With current network conditions, we recommend a fee of {fee} SYS.
           </p>
 
           <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
-            <SecondaryButton
-              type="button"
-              action
-              onClick={() => rejectTransaction(browser, transaction, navigate)}
-            >
+            <SecondaryButton type="button" action onClick={window.close}>
               Cancel
             </SecondaryButton>
 
-            <PrimaryButton action type="submit" loading={loading}>
+            <PrimaryButton action type="submit">
               Next
             </PrimaryButton>
           </div>
@@ -156,4 +133,6 @@ export const TxLayout: React.FC<ITxLayout> = () => <div></div>;
       </div>
     </Layout>
   );
-};*/
+};
+
+export default Fee;

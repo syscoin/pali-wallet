@@ -1,26 +1,28 @@
 import { useSelector } from 'react-redux';
 
-import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
-import { IVaultState } from 'state/vault/types';
 
 export const useStore = () => {
-  const { fiat, coins }: IPriceState = useSelector(
-    (state: RootState) => state.price
-  );
+  const fiat = useSelector((state: RootState) => state.price.fiat);
+  const coins = useSelector((state: RootState) => state.price.coins);
 
-  const {
-    lastLogin,
-    timer,
-    encryptedMnemonic,
-    trustedApps,
-    activeNetwork,
-    isPendingBalances,
-    networks,
-    activeAccount,
-    accounts,
-    error,
-  }: IVaultState = useSelector((state: RootState) => state.vault);
+  const lastLogin = useSelector((state: RootState) => state.vault.lastLogin);
+  const timer = useSelector((state: RootState) => state.vault.timer);
+  const encryptedMnemonic = useSelector(
+    (state: RootState) => state.vault.encryptedMnemonic
+  );
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const isPendingBalances = useSelector(
+    (state: RootState) => state.vault.isPendingBalances
+  );
+  const networks = useSelector((state: RootState) => state.vault.networks);
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const error = useSelector((state: RootState) => state.vault.error);
 
   return {
     accounts,
@@ -29,7 +31,6 @@ export const useStore = () => {
     activeNetwork,
     isPendingBalances,
     networks,
-    trustedApps,
     lastLogin,
     fiat,
     coins,

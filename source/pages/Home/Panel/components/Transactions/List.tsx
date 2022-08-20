@@ -1,9 +1,11 @@
 import { uniqueId } from 'lodash';
 import React, { Fragment, useCallback } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
-import { useStore, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { ellipsis, formatDate } from 'utils/index';
 
 export const TransactionsList = ({
@@ -11,10 +13,9 @@ export const TransactionsList = ({
 }: {
   isSyscoinChain: boolean;
 }) => {
-  const {
-    activeAccount: { transactions },
-  } = useStore();
-
+  const transactions = useSelector(
+    (state: RootState) => state.vault.activeAccount.transactions
+  );
   const { navigate } = useUtils();
 
   const getTxType = (tx: any) => {
@@ -49,7 +50,7 @@ export const TransactionsList = ({
   );
 
   return (
-    <ul className="pb-24 md:pb-8">
+    <ul className="pb-14 md:pb-4">
       {transactions.map((tx: any, idx: number) => {
         const isConfirmed = tx.confirmations > 0;
         const timestamp =

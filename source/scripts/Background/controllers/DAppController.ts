@@ -8,6 +8,7 @@ import {
   removeListeners as removeListenersAction,
   updateDAppAccount,
 } from 'state/dapp';
+import { IDApp } from 'state/dapp/types';
 import store from 'state/store';
 import { IDAppController } from 'types/controllers';
 
@@ -44,11 +45,10 @@ const DAppController = (): IDAppController => {
     port.onDisconnect.addListener(onDisconnect);
   };
 
-  const connect = (host: string, accountId: number) => {
-    const title = _dapps[host].port.sender.tab.title;
-    store.dispatch(addDApp({ host, title, accountId }));
+  const connect = (dapp: IDApp) => {
+    store.dispatch(addDApp(dapp));
 
-    _dispatchEvent(host, 'connect');
+    _dispatchEvent(dapp.host, 'connect');
   };
 
   const changeAccount = (host: string, accountId: number) => {
@@ -73,7 +73,7 @@ const DAppController = (): IDAppController => {
     if (!isConnected(host)) return;
 
     // dispatch the event locally
-    const event = new CustomEvent(eventName, { detail: { host, data } });
+    const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
     window.dispatchEvent(event);
 
     // post the event to the DApp

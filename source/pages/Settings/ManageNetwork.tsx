@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import { CustomRPC } from '..';
 import { IconButton, Layout, SecondaryButton, Icon } from 'components/index';
-import { useStore, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { formatUrl } from 'utils/index';
 
 const ManageNetworkView = () => {
-  const { networks } = useStore();
+  const networks = useSelector((state: RootState) => state.vault.networks);
   const { navigate } = useUtils();
   const { wallet } = getController();
 

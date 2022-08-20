@@ -20,7 +20,7 @@ declare global {
 
 if (!window.controller) {
   window.controller = Object.freeze(MasterController());
-  setInterval(window.controller.stateUpdater, 3 * 60 * 1000);
+  setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
 }
 
 browser.runtime.onInstalled.addListener(() => {
@@ -43,16 +43,16 @@ const restartLockTimeout = () => {
   }, timer * 60 * 1000);
 };
 
+browser.runtime.onMessage.addListener(({ type, target }) => {
+  if (type === 'autolock' && target === 'background') restartLockTimeout();
+});
+
 browser.runtime.onConnect.addListener((port: Runtime.Port) => {
   if (port.name === 'pali-inject') {
     window.controller.dapp.setup(port);
 
     return;
   }
-
-  browser.runtime.onMessage.addListener(({ type, target }) => {
-    if (type === 'autolock' && target === 'background') restartLockTimeout();
-  });
 
   const senderUrl = port.sender.url;
   if (
@@ -63,7 +63,7 @@ browser.runtime.onConnect.addListener((port: Runtime.Port) => {
     sysweb3Di.useFetchHttpClient(window.fetch.bind(window));
     sysweb3Di.useLocalStorageClient(window.localStorage);
 
-    window.controller.stateUpdater();
+    window.controller.utils.setFiat();
 
     port.onDisconnect.addListener(() => {
       log('pali disconnecting port', 'System');
