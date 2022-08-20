@@ -2,12 +2,12 @@ import { Form, Input } from 'antd';
 import React, { useState } from 'react';
 
 import { Layout, SecondaryButton } from 'components/index';
-import { useUtils, useStore } from 'hooks/index';
+import trustedApps from 'constants/trustedApps.json';
+import { useUtils } from 'hooks/index';
 import { formatUrl } from 'utils/index';
 
 const TrustedSitesView = () => {
   const { navigate } = useUtils();
-  const { trustedApps } = useStore();
 
   const [filteredSearch, setFilteredSearch] = useState<string[]>(trustedApps);
 

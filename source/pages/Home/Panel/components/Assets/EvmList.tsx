@@ -1,14 +1,16 @@
 import { uniqueId } from 'lodash';
 import React, { Fragment } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
-import { useStore, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 
 export const EvmAssetsList = () => {
-  const {
-    activeAccount: { assets },
-  } = useStore();
+  const assets = useSelector(
+    (state: RootState) => state.vault.activeAccount.assets
+  );
   const { navigate } = useUtils();
 
   return (

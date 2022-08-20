@@ -1,31 +1,27 @@
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import {
   ChangeAccount,
   ConfirmPhrase,
   ConnectWallet,
-  Create,
-  CreateAndIssueNFT,
-  CreateAndIssueNFTConfirm,
+  CreateToken,
+  CreateNFT,
   CreatePass,
   CreatePhrase,
-  CreateTokenConfirm,
   Import,
   MintNFT,
-  MintNFTConfirm,
   MintToken,
-  MintTokenConfirm,
   SendConfirm,
   SignAndSend,
-  SignPSBT,
+  Sign,
   Start,
-  TransferOwnership,
-  TransferOwnershipConfirm,
-  UpdateAsset,
-  UpdateAssetConfirm,
+  TransferToken,
+  UpdateToken,
 } from '../pages';
-import { useQuery, useUtils, useStore } from 'hooks/index';
+import { useQuery, useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
@@ -33,7 +29,7 @@ import { ProtectedRoute } from './ProtectedRoute';
 export const ExternalRoute = () => {
   const { wallet, appRoute } = getController();
   const { navigate, alert } = useUtils();
-  const { accounts } = useStore();
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { pathname, search } = useLocation();
 
   // defaultRoute stores info from createPopup
@@ -87,11 +83,7 @@ export const ExternalRoute = () => {
         <Route path="tx">
           <Route
             path="create"
-            element={<ProtectedRoute element={<Create />} />}
-          />
-          <Route
-            path="create/confirm"
-            element={<ProtectedRoute element={<CreateTokenConfirm />} />}
+            element={<ProtectedRoute element={<CreateToken />} />}
           />
           <Route
             path="send/confirm"
@@ -103,7 +95,7 @@ export const ExternalRoute = () => {
           />
           <Route
             path="sign-psbt"
-            element={<ProtectedRoute element={<SignPSBT />} />}
+            element={<ProtectedRoute element={<Sign />} />}
           />
 
           {/* /tx/asset */}
@@ -113,47 +105,23 @@ export const ExternalRoute = () => {
               element={<ProtectedRoute element={<MintToken />} />}
             />
             <Route
-              path="issue/confirm"
-              element={<ProtectedRoute element={<MintTokenConfirm />} />}
-            />
-            <Route
               path="transfer"
-              element={<ProtectedRoute element={<TransferOwnership />} />}
-            />
-            <Route
-              path="transfer/confirm"
-              element={
-                <ProtectedRoute element={<TransferOwnershipConfirm />} />
-              }
+              element={<ProtectedRoute element={<TransferToken />} />}
             />
             <Route
               path="update"
-              element={<ProtectedRoute element={<UpdateAsset />} />}
-            />
-            <Route
-              path="update/confirm"
-              element={<ProtectedRoute element={<UpdateAssetConfirm />} />}
+              element={<ProtectedRoute element={<UpdateToken />} />}
             />
 
             {/* /tx/asset/nft */}
             <Route path="nft">
               <Route
                 path="issue"
-                element={<ProtectedRoute element={<CreateAndIssueNFT />} />}
-              />
-              <Route
-                path="issue/confirm"
-                element={
-                  <ProtectedRoute element={<CreateAndIssueNFTConfirm />} />
-                }
+                element={<ProtectedRoute element={<CreateNFT />} />}
               />
               <Route
                 path="mint"
                 element={<ProtectedRoute element={<MintNFT />} />}
-              />
-              <Route
-                path="mint/confirm"
-                element={<ProtectedRoute element={<MintNFTConfirm />} />}
               />
             </Route>
           </Route>

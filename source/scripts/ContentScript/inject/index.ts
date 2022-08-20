@@ -1,6 +1,6 @@
 // @ts-nocheck
 // Read files in as strings
-import pali from './pali.txt';
+import inject from './inject.txt';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -12,4 +12,4 @@ declare global {
 
 export const { SUPPORTED_WALLET_METHODS } = window;
 
-export { pali };
+export { inject };

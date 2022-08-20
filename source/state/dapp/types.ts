@@ -1,7 +1,8 @@
 export interface IDApp {
   accountId: number;
+  chain: string;
+  chainId: number;
   host: string;
-  title: string;
 }
 
 export interface IDAppState {

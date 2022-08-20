@@ -7,7 +7,6 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
-import trustedApps from './trustedApps.json';
 import { IVaultState } from './types';
 
 export const initialState: IVaultState = {
@@ -28,7 +27,6 @@ export const initialState: IVaultState = {
   isPendingBalances: false,
   timer: 5,
   networks: initialNetworksState,
-  trustedApps,
   encryptedMnemonic: '',
   error: false,
 };

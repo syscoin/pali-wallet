@@ -1,6 +1,8 @@
 import React, { FC } from 'react';
+import { useSelector } from 'react-redux';
 
-import { usePrice, useStore } from 'hooks/index';
+import { usePrice } from 'hooks/index';
+import { RootState } from 'state/store';
 import { formatTransactionValue } from 'utils/index';
 
 interface IFiatComponent {
@@ -8,7 +10,10 @@ interface IFiatComponent {
 }
 
 export const FiatComponent: FC<IFiatComponent> = ({ transactionValue }) => {
-  const { activeNetwork, fiat } = useStore();
+  const fiat = useSelector((state: RootState) => state.price.fiat);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
   const { getFiatAmount } = usePrice();
 
   const { crypto, formattedFiatAmount } = formatTransactionValue(

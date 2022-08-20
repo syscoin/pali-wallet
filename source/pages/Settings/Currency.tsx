@@ -2,22 +2,34 @@ import { Menu, Transition } from '@headlessui/react';
 import { Input } from 'antd';
 import getSymbolFromCurrency from 'currency-symbol-map';
 import React, { useEffect, Fragment, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Layout, SecondaryButton, Icon, DefaultModal } from 'components/index';
-import { usePrice, useStore, useUtils } from 'hooks/index';
+import { usePrice, useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { formatNumber } from 'utils/index';
 
 const CurrencyView = () => {
   const controller = getController();
-  const { navigate, handleRefresh } = useUtils();
+  const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
-  const { activeAccount } = useStore();
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const networks = useSelector((state: RootState) => state.vault.networks);
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const activeAccountId = useSelector(
+    (state: RootState) => state.vault.activeAccount.id
+  );
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+
+  const fiat = useSelector((state: RootState) => state.price.fiat);
+  const coins = useSelector((state: RootState) => state.price.coins);
 
   if (!activeAccount) throw new Error('No account');
-
-  const { accounts, activeAccountId, coins, fiat, activeNetwork, networks } =
-    useStore();
 
   const { asset } = fiat;
 
@@ -82,7 +94,7 @@ const CurrencyView = () => {
 
   useEffect(() => {
     if (isUnlocked && accounts && accounts[activeAccountId]) {
-      handleRefresh(true);
+      controller.refresh(true);
     }
   }, [isUnlocked, activeAccountId]);
 

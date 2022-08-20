@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
-import { useQueryData, useStore } from 'hooks/index';
+import { useQueryData } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ChangeAccount = () => {
-  const { accounts } = useStore();
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { dapp } = getController();
   const { host } = useQueryData();
 
@@ -25,7 +27,7 @@ export const ChangeAccount = () => {
   };
 
   return (
-    <Layout canGoBack={false} title="CONNECTED ACCOUNT">
+    <Layout canGoBack={false} title="CONNECTED ACCOUNT" titleOnly={true}>
       <div className="flex flex-col items-center justify-center w-full">
         <h1 className="mt-4 text-sm">PALI WALLET</h1>
 

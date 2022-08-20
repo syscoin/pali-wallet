@@ -1,5 +1,6 @@
 import { Dialog } from '@headlessui/react';
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import {
   Layout,
@@ -7,35 +8,56 @@ import {
   SecondaryButton,
   Icon,
   Modal,
+  Loading,
 } from 'components/index';
-import { useQueryData, useStore } from 'hooks/index';
+import trustedApps from 'constants/trustedApps.json';
+import { useQueryData } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
+import { isActiveNetwork } from 'utils/network';
 
 export const ConnectWallet = () => {
-  const { accounts, trustedApps } = useStore();
-  const { dapp } = getController();
-  const { host } = useQueryData();
+  const { dapp, wallet, refresh } = getController();
+  const { host, chain, chainId } = useQueryData();
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const networks = useSelector((state: RootState) => state.vault.networks);
 
   const currentAccountId = dapp.get(host)?.accountId;
 
-  const [accountId, setAccountId] = useState<number>(currentAccountId);
-  const [isInTrustedList, setIsInTrustedList] = useState<boolean>(false);
-  const [openExtraConfirmation, setOpenExtraConfirmation] =
-    useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [accountId, setAccountId] = useState(currentAccountId);
+  const [confirmUntrusted, setConfirmUntrusted] = useState(false);
 
   const handleConnect = () => {
-    dapp.connect(host, accountId);
+    dapp.connect({ host, chain, chainId, accountId });
     window.close();
   };
 
+  const onConfirm = () => {
+    const isTrusted = trustedApps.includes(host);
+    if (isTrusted) handleConnect();
+    else setConfirmUntrusted(true);
+  };
+
+  const changeNetwork = async () => {
+    setIsLoading(true);
+
+    const network = networks[chain][chainId];
+    await wallet.setActiveNetwork(network);
+    await refresh(true);
+
+    setIsLoading(false);
+  };
+
   useEffect(() => {
-    const trustedApp = trustedApps[host] !== '';
-    setIsInTrustedList(trustedApp);
-  });
+    if (!isActiveNetwork(chain, chainId)) changeNetwork();
+  }, []);
+
+  if (isLoading) return <Loading />;
 
   return (
-    <Layout canGoBack={false} title="CONNECT WITH">
+    <Layout canGoBack={false} title="CONNECT WITH" titleOnly={true}>
       <div className="flex flex-col items-center justify-center w-full">
         <h1 className="mt-4 text-sm">PALI WALLET</h1>
 
@@ -87,20 +109,13 @@ export const ConnectWallet = () => {
             type="button"
             action
             disabled={accountId === undefined}
-            onClick={
-              !isInTrustedList
-                ? () => setOpenExtraConfirmation(true)
-                : () => handleConnect()
-            }
+            onClick={onConfirm}
           >
             Confirm
           </PrimaryButton>
         </div>
 
-        <Modal
-          show={openExtraConfirmation}
-          onClose={() => setOpenExtraConfirmation(false)}
-        >
+        <Modal show={confirmUntrusted}>
           <div className="inline-block align-middle my-8 p-6 w-full max-w-2xl text-center font-poppins bg-bkg-4 border border-brand-royalblue rounded-2xl shadow-xl overflow-hidden transform transition-all">
             <Dialog.Title
               as="h3"
