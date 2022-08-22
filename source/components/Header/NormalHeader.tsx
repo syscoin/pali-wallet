@@ -11,7 +11,7 @@ import { Icon, Tooltip, ErrorModal } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { formatUrl, getHost } from 'utils/index';
+import { truncate, getHost } from 'utils/index';
 
 const NetworkMenu: React.FC = () => {
   const { wallet } = getController();
@@ -288,7 +288,7 @@ const GeneralMenu: React.FC = () => {
       as="div"
       className="absolute right-2 top-2 flex items-center justify-evenly"
     >
-      <Tooltip content={formatUrl(currentTab.host)}>
+      <Tooltip content={truncate(currentTab.host)}>
         <div
           onClick={() => navigate('/settings/networks/connected-sites')}
           className="relative mx-1.5 text-brand-white cursor-pointer"

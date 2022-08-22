@@ -6,7 +6,7 @@ import { browser } from 'webextension-polyfill-ts';
 import { Layout, Icon, IconButton, SecondaryButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { formatUrl, ellipsis } from 'utils/index';
+import { truncate, ellipsis } from 'utils/index';
 
 const ConnectedSites = (): any => {
   const { navigate } = useUtils();
@@ -100,7 +100,7 @@ const ConnectedSites = (): any => {
                       </p>
 
                       <div className="flex items-center justify-between m-3 text-brand-white">
-                        <p>{formatUrl(selected, 20)}</p>
+                        <p>{truncate(selected, 20)}</p>
 
                         <IconButton
                           onClick={() => disconnectSite(activeAccount?.id)}

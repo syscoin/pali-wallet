@@ -6,7 +6,7 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { camelCaseToText, formatUrl } from 'utils/format';
+import { camelCaseToText, truncate } from 'utils/format';
 
 import { NftImage } from './NftImage';
 
@@ -46,7 +46,7 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
       };
 
       if (String(value).length >= 20) {
-        formattedValue.value.formatted = formatUrl(String(value), 20);
+        formattedValue.value.formatted = truncate(String(value), 20);
         formattedValue.canCopy = true;
       }
 

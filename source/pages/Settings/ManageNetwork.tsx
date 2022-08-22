@@ -8,7 +8,7 @@ import { IconButton, Layout, SecondaryButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { formatUrl } from 'utils/index';
+import { truncate } from 'utils/index';
 
 const ManageNetworkView = () => {
   const networks = useSelector((state: RootState) => state.vault.networks);
@@ -64,13 +64,13 @@ const ManageNetworkView = () => {
                     'hover:text-brand-royalblue cursor-pointer'
                   }`}
                 >
-                  {formatUrl(network.label, 25)}
+                  {truncate(network.label, 25)}
                 </span>
 
                 <small className="flex items-center justify-between">
                   <div className="flex gap-x-3 items-center justify-start">
                     <span>Blockbook URL:</span>
-                    <span>{formatUrl(String(network.url), 30)}</span>
+                    <span>{truncate(String(network.url), 30)}</span>
                   </div>
 
                   {!network.default && (
@@ -110,13 +110,13 @@ const ManageNetworkView = () => {
                     'hover:text-brand-royalblue cursor-pointer'
                   }`}
                 >
-                  {formatUrl(network.label, 25)}
+                  {truncate(network.label, 25)}
                 </span>
 
                 <small className="flex items-center justify-between">
                   <div className="flex gap-x-3 items-center justify-start">
                     <span>RPC URL:</span>
-                    <span>{formatUrl(String(network.url), 30)}</span>
+                    <span>{truncate(String(network.url), 30)}</span>
                   </div>
 
                   {!network.default && (
