@@ -1,7 +1,5 @@
 import { AES } from 'crypto-js';
 
-import { INetwork } from '@pollum-io/sysweb3-utils';
-
 import { MOCK_ACCOUNT, STATE_W_ACCOUNT } from '../mocks';
 import reducer, {
   createAccount,
@@ -18,7 +16,6 @@ import reducer, {
   setEncryptedMnemonic,
   setIsPendingBalances,
   setLastLogin,
-  setNetworks,
   setTimer,
 } from 'state/vault';
 import { IVaultState } from 'state/vault/types';
@@ -26,39 +23,6 @@ import { IVaultState } from 'state/vault/types';
 describe('Vault store actions', () => {
   it('should return the initial state', () => {
     expect(reducer(undefined, { type: undefined })).toEqual(initialState);
-  });
-
-  //* setNetworks
-  describe('setNetworks methods', () => {
-    it('should create a network', () => {
-      const payloadNetwork: INetwork = {
-        chainId: 25,
-        url: 'https://evm-cronos.crypto.org/',
-        label: 'Cronos',
-        currency: 'CRO',
-        default: false,
-      };
-      const payload = { chain: 'ethereum', network: payloadNetwork };
-
-      const newState = reducer(initialState, setNetworks(payload));
-
-      const network = newState.networks[payload.chain][payloadNetwork.chainId];
-      expect(network).toEqual(payloadNetwork);
-    });
-
-    it('should update an existing network', () => {
-      const sysMain = initialState.networks.syscoin[57];
-      const payloadNetwork: INetwork = {
-        ...sysMain,
-        label: 'New Label',
-      };
-      const payload = { chain: 'syscoin', network: payloadNetwork };
-
-      const newState = reducer(initialState, setNetworks(payload));
-
-      const network = newState.networks[payload.chain][payloadNetwork.chainId];
-      expect(network).toEqual(payloadNetwork);
-    });
   });
 
   //* setTimer

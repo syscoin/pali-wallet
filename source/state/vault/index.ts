@@ -58,17 +58,18 @@ const VaultState = createSlice({
       state: IVaultState,
       action: PayloadAction<{
         chain: string;
-        chainId?: number;
         network: INetwork;
       }>
     ) {
-      const { chain, network, chainId } = action.payload;
+      const { chain, network } = action.payload;
 
       const replaceNetworkName = `${network.label
         .replace(/\s/g, '')
         .toLocaleLowerCase()}-${network.chainId}`;
 
-      const alreadyExist = Boolean(state.networks[chain][Number(chainId)]);
+      const alreadyExist = Boolean(
+        state.networks[chain][Number(network.chainId)]
+      );
 
       if (alreadyExist) {
         const verifyIfRpcOrNameExists = Object.values(
