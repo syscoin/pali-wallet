@@ -33,7 +33,7 @@ export const TransactionsPanel = () => {
     </>
   ) : (
     <>
-      <div className="p-4 w-full h-full text-white text-base bg-bkg-3">
+      <div className="p-4 w-full text-white text-base bg-bkg-3">
         <TransactionsList isSyscoinChain={isSyscoinChain} />
       </div>
 

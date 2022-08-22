@@ -2,7 +2,7 @@ import { uniqueId } from 'lodash';
 import React, { Fragment } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Fullscreen, IconButton, Icon } from 'components/index';
+import { IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ellipsis, formatCurrency, formatUrl } from 'utils/index';
@@ -58,8 +58,6 @@ export const SyscoinAssetsList = () => {
           </Fragment>
         ))}
       </ul>
-
-      <Fullscreen />
     </>
   );
 };

@@ -44,7 +44,7 @@ export const AssetsPanel = () => {
       {assets.length === 0 ? (
         <NoAssetsComponent />
       ) : (
-        <ul className="p-4 w-full h-full text-white text-base bg-bkg-3">
+        <ul className="pb-14 pt-4 px-4 w-full text-center text-white text-base bg-bkg-3">
           {isSyscoinChain ? <SyscoinAssetsList /> : <EvmAssetsList />}
         </ul>
       )}
