@@ -1,5 +1,4 @@
 import { Dialog, Transition } from '@headlessui/react';
-import _ from 'lodash';
 import React, { Fragment, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
