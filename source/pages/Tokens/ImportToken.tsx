@@ -1,100 +1,82 @@
 import { Form, Input } from 'antd';
-import * as React from 'react';
-import { useState, FC, useEffect } from 'react';
-import { useSelector } from 'react-redux';
+import { uniqueId } from 'lodash';
+import React from 'react';
+import { useState, FC } from 'react';
 
-import {
-  getToken,
-  getSearch,
-  ICoingeckoSearchResultToken,
-  ICoingeckoToken,
-} from '@pollum-io/sysweb3-utils';
+import { getTokenJson } from '@pollum-io/sysweb3-utils';
 
-import {
-  SecondaryButton,
-  Layout,
-  Icon,
-  Loading,
-  Tooltip,
-} from 'components/index';
+import { SecondaryButton, Layout } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { formatUrl, ellipsis } from 'utils/index';
 
 export const ImportToken: FC = () => {
   const controller = getController();
 
   const [form] = Form.useForm();
-  const { navigate, alert, useCopyClipboard } = useUtils();
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
+  const { navigate, alert } = useUtils();
 
-  const [copied, copy] = useCopyClipboard();
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [list, setList] = useState([]);
+  const [selected, setSelected] = useState(null);
 
-  const erc20Tokens = activeAccount.assets.filter((asset: any) => !asset.isNFT);
-
-  const [tokens, setTokens] =
-    useState<ICoingeckoSearchResultToken[]>(erc20Tokens);
-  const [selected, setSelected] = useState<ICoingeckoToken | null>(null);
-
-  const handleSearch = async (query: string) => {
+  const handleSearch = (query: string) => {
     setSelected(null);
 
-    const { coins } = await getSearch(query);
+    const erc20Tokens = getTokenJson();
 
-    let newList: ICoingeckoSearchResultToken[] = [];
+    if (!query) return setList(erc20Tokens);
 
-    if (query) {
-      newList = coins.filter(async (item) => {
-        const name = item.symbol.toLowerCase();
-        const typedValue = query.toLowerCase();
+    const filtered = Object.values(erc20Tokens).filter((token) => {
+      if (!query) return token;
 
-        const tokenData = await getToken(item.id);
+      return token.name.toLowerCase().includes(query.toLowerCase());
+    });
 
-        const validate =
-          !!name.includes(typedValue) && tokenData.contractAddress;
-
-        return validate;
-      });
-
-      setTokens(newList);
-
-      return;
-    }
-
-    setTokens(coins);
+    setList(filtered);
   };
 
-  const addToken = async (token: ICoingeckoToken) => {
+  const renderTokens = () => {
+    const tokensList = list || getTokenJson();
+
+    for (const [key, value] of Object.entries(tokensList)) {
+      tokensList[key] = {
+        ...value,
+        contractAddress: key,
+      };
+    }
+
+    return Object.values(tokensList).map((token) => (
+      <li
+        onClick={() => setSelected(token)}
+        key={uniqueId()}
+        className={`p-3 hover:text-brand-royalblue flex items-center justify-between text-xs border-b border-dashed cursor-pointer ${
+          selected && selected.tokenSymbol === token.tokenSymbol
+            ? 'text-brand-royalblue'
+            : 'text-brand-white'
+        }`}
+      >
+        <p className="font-rubik text-xl font-bold">{token.tokenSymbol}</p>
+
+        {token.erc20 && <p>ERC-20</p>}
+      </li>
+    ));
+  };
+
+  const addToken = async (token: any) => {
     try {
       await controller.wallet.account.eth.saveTokenInfo(token);
 
       alert.removeAll();
-      alert.success(`${token.symbol} successfully added to your assets list.`);
+      alert.success(
+        `${token.tokenSymbol} successfully added to your assets list.`
+      );
     } catch (error) {
       alert.removeAll();
-      alert.error(`Can't add ${token.symbol} to your wallet. Try again later.`);
+      alert.error(
+        `Can't add ${token.tokenSymbol} to your wallet. Try again later.`
+      );
 
       throw new Error(error);
     }
-  };
-
-  useEffect(() => {
-    if (!copied) return;
-
-    alert.removeAll();
-    alert.success('Token address successfully copied');
-  }, [copied]);
-
-  const handleSelectToken = async (token: ICoingeckoSearchResultToken) => {
-    setIsLoading(true);
-
-    setSelected(await getToken(token.id));
-
-    setIsLoading(false);
   };
 
   return (
@@ -130,82 +112,18 @@ export const ImportToken: FC = () => {
 
       <div className="flex flex-col items-center justify-center w-full">
         <ul className="scrollbar-styled my-1 p-4 w-full h-72 overflow-auto">
-          {tokens ? (
-            !selected &&
-            tokens.map((token) => (
-              <li
-                onClick={() => handleSelectToken(token)}
-                key={token.id}
-                className="p-2 hover:text-brand-royalblue text-brand-white text-xs border-b border-dashed cursor-pointer"
-              >
-                <p>{formatUrl(token.symbol, 40)}</p>
-              </li>
-            ))
-          ) : (
-            <li className="p-2 text-brand-royalblue hover:text-brand-royalblue text-xs border-b border-dashed cursor-pointer">
-              <p>{formatUrl(selected?.symbol || '', 40)}</p>
-            </li>
-          )}
-
-          {selected && (
-            <div className="flex flex-col gap-y-4 items-start justify-start mx-auto my-6 p-4 max-w-xs text-left text-sm bg-bkg-3 border border-brand-royalblue rounded-lg">
-              <div className="flex gap-x-2 justify-start w-full">
-                {selected.image.thumb && (
-                  <img src={selected.image.thumb} alt="token thumb" />
-                )}
-
-                <p className="font-rubik text-2xl font-bold">
-                  {formatUrl(selected.symbol)}
-                </p>
-              </div>
-
-              {selected.contractAddress && (
-                <div
-                  onClick={() => copy(selected.contractAddress)}
-                  className="flex gap-x-0.5 items-center justify-center hover:text-brand-royalblue text-brand-white"
-                >
-                  <p className="cursor-pointer">
-                    Address: {ellipsis(selected.contractAddress)}
-                  </p>
-
-                  <Icon name="copy" className="mb-1.5" />
-                </div>
-              )}
-
-              <p>Name: {formatUrl(selected.name)}</p>
-
-              <p>Market cap rank: {selected.marketCapRank}</p>
-
-              <p className="max-w-xs break-all text-xs">
-                {/* @ts-ignore */}
-                {formatUrl(selected.description.en, 140)}
-              </p>
-            </div>
-          )}
+          {renderTokens()}
         </ul>
 
-        <div className="absolute bottom-12 md:static">
-          <Tooltip
-            content={`${
-              selected && selected.contractAddress
-                ? ''
-                : 'Pali could not find the contract address for this token'
-            }`}
-          >
-            <SecondaryButton
-              type="button"
-              disabled={Boolean(selected && !selected.contractAddress)}
-              onClick={
-                selected ? () => addToken(selected) : () => navigate('/home')
-              }
-            >
-              {selected ? 'Import' : 'Done'}
-            </SecondaryButton>
-          </Tooltip>
-        </div>
+        <SecondaryButton
+          type="button"
+          onClick={
+            selected ? () => addToken(selected) : () => navigate('/home')
+          }
+        >
+          {selected ? `Import ${selected.tokenSymbol}` : 'Done'}
+        </SecondaryButton>
       </div>
-
-      {isLoading && <Loading />}
     </Layout>
   );
 };
