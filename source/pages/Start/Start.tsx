@@ -60,7 +60,7 @@ export const Start = () => {
             },
             () => ({
               async validator(_, value) {
-                if (await checkPassword(value)) {
+                if (checkPassword(value)) {
                   return Promise.resolve().then(
                     async () => await onSubmit({ password: value })
                   );

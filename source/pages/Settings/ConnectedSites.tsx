@@ -1,32 +1,50 @@
 import { Dialog, Transition } from '@headlessui/react';
-import React, { Fragment, useState } from 'react';
+import React, { Fragment, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { browser } from 'webextension-polyfill-ts';
 
 import { Layout, Icon, IconButton, SecondaryButton } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { IDApp } from 'state/dapp/types';
 import { RootState } from 'state/store';
-import { truncate, ellipsis } from 'utils/index';
+import { getController } from 'utils/browser';
+import { truncate, ellipsis, networkChain } from 'utils/index';
 
-const ConnectedSites = (): any => {
+const ConnectedSites = () => {
+  const { dapp } = getController();
   const { navigate } = useUtils();
 
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
 
-  const [selected, setSelected] = useState<string>('');
+  const [selected, setSelected] = useState<IDApp>();
+  const [connectedDapps, setConnectedDapps] = useState<IDApp[]>([]);
 
-  const disconnectSite = (id: any) => {
-    browser.runtime.sendMessage({
-      type: 'RESET_CONNECTION_INFO',
-      target: 'background',
-      id,
-      url: selected,
+  const disconnectSelected = () => {
+    dapp.disconnect(selected.host);
+
+    setSelected(undefined);
+
+    const _connectedDapps = connectedDapps.filter(
+      (_dapp) => _dapp.host !== selected.host
+    );
+    setConnectedDapps(_connectedDapps);
+  };
+
+  useEffect(() => {
+    const dapps = Object.values(dapp.getAll());
+    const _activeNetworkChain = networkChain(activeNetwork);
+    const _connectedDapps = dapps.filter((_dapp) => {
+      const sameChain = _dapp.chain === _activeNetworkChain;
+      const sameAccount = _dapp.accountId === activeAccount.id;
+      return sameChain && sameAccount;
     });
 
-    setSelected('');
-  };
+    setConnectedDapps(_connectedDapps);
+  }, []);
 
   return (
     <Layout title="CONNECTED SITES">
@@ -35,27 +53,26 @@ const ConnectedSites = (): any => {
       </p>
 
       <div className="flex flex-col items-center justify-center w-full">
-        {/* {activeAccount?.connectedTo &&
-          activeAccount.connectedTo.map((url: string) => (
-            <ul
-              key={url}
-              className="scrollbar-styled px-4 py-2 w-full h-80 overflow-auto"
-            >
-              <li className="flex items-center justify-between my-2 py-3 w-full text-xs border-b border-dashed border-gray-500">
-                <p>{formatUrl(url, 25)}</p>
-                <IconButton onClick={() => setSelected(url)}>
-                  <Icon name="edit" wrapperClassname="w-4" />
-                </IconButton>
-              </li>
-            </ul>
-          ))} */}
+        {connectedDapps.map((_dapp) => (
+          <ul
+            key={_dapp.host}
+            className="scrollbar-styled px-4 py-2 w-full h-80 overflow-auto"
+          >
+            <li className="flex items-center justify-between my-2 py-3 w-full text-xs border-b border-dashed border-gray-500">
+              <p>{truncate(_dapp.host, 25)}</p>
+              <IconButton onClick={() => setSelected(_dapp)}>
+                <Icon name="edit" wrapperClassname="w-4" />
+              </IconButton>
+            </li>
+          </ul>
+        ))}
 
         {selected && (
-          <Transition appear show={selected !== ''} as={Fragment}>
+          <Transition appear show={selected !== undefined} as={Fragment}>
             <Dialog
               as="div"
               className="fixed z-10 inset-0 text-center overflow-y-auto"
-              onClose={() => setSelected('')}
+              onClose={() => setSelected(undefined)}
             >
               <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
 
@@ -100,11 +117,8 @@ const ConnectedSites = (): any => {
                       </p>
 
                       <div className="flex items-center justify-between m-3 text-brand-white">
-                        <p>{truncate(selected, 20)}</p>
-
-                        <IconButton
-                          onClick={() => disconnectSite(activeAccount?.id)}
-                        >
+                        <p>{truncate(selected.host, 20)}</p>
+                        <IconButton onClick={disconnectSelected}>
                           <Icon name="delete" />
                         </IconButton>
                       </div>
@@ -136,7 +150,7 @@ const ConnectedSites = (): any => {
                       <button
                         type="button"
                         className="transparent inline-flex justify-center px-12 py-2 hover:text-bkg-4 text-brand-white text-sm font-medium hover:bg-white bg-repeat border border-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
-                        onClick={() => setSelected('')}
+                        onClick={() => setSelected(undefined)}
                       >
                         Close
                       </button>

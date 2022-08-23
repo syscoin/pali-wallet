@@ -130,6 +130,7 @@ export interface IDAppController {
    * Retrieves the connected account
    */
   getAccount: (host: string) => IKeyringAccountState;
+  getAll: () => { [host: string]: IDApp };
   /**
    * Checks if listener exists
    */

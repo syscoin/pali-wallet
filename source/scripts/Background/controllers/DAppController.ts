@@ -106,6 +106,8 @@ const DAppController = (): IDAppController => {
 
   const get = (host: string) => store.getState().dapp.dapps[host];
 
+  const getAll = () => store.getState().dapp.dapps;
+
   const getAccount = (host: string) => {
     const dapp = store.getState().dapp.dapps[host];
     const { accounts } = store.getState().vault;
@@ -121,6 +123,7 @@ const DAppController = (): IDAppController => {
 
   return {
     get,
+    getAll,
     getAccount,
     isConnected,
     setup,

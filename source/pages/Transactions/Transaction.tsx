@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { Layout } from 'components/index';
 import { useQueryData } from 'hooks/index';
-import { getController } from 'utils/browser';
 
 import Fee from './Fee';
 import TransactionConfirmation from './TransactionConfirmation';
@@ -21,43 +21,15 @@ const titleResolver = (txType: string) => {
     case 'MintNFT':
       return 'MINT NFT';
 
+    case 'Send':
+      return 'SEND';
+
     case 'UpdateToken':
       return 'UPDATE TOKEN';
 
     default:
       throw new Error('Unknown transaction type');
   }
-};
-
-const callbackResolver = (txType: string) => {
-  let callbackName;
-
-  switch (txType) {
-    case 'CreateToken':
-      callbackName = 'confirmTokenCreation';
-      break;
-
-    case 'CreateNFT':
-      callbackName = 'confirmNftCreation';
-      break;
-
-    case 'MintToken':
-      callbackName = 'confirmTokenMint';
-      break;
-
-    case 'MintNFT':
-      callbackName = 'confirmMintNFT';
-      break;
-
-    case 'UpdateToken':
-      callbackName = 'confirmUpdateToken';
-      break;
-
-    default:
-      throw new Error('Unknown transaction type');
-  }
-
-  return getController().wallet.account.sys.tx[callbackName];
 };
 
 interface ITransaction {
@@ -69,10 +41,19 @@ interface ITransaction {
  */
 const Transaction: React.FC<ITransaction> = ({ type }) => {
   const { host, ...transaction } = useQueryData();
+  const navigate = useNavigate();
+
   const [fee, setFee] = useState<number>();
 
   const title = titleResolver(type);
-  const callback = callbackResolver(type);
+
+  useEffect(() => {
+    if (!fee) return;
+    if (type !== 'Send') return;
+
+    const data = { host, ...transaction, fee };
+    navigate('/external/tx/send/confirm?data=' + JSON.stringify(data));
+  }, [fee]);
 
   if (!fee) return <Fee title={title} onFinish={setFee} />;
 
@@ -83,7 +64,6 @@ const Transaction: React.FC<ITransaction> = ({ type }) => {
         title={title}
         type={type}
         transaction={{ ...transaction, fee }}
-        callback={callback}
       />
     </Layout>
   );
