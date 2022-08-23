@@ -7,7 +7,7 @@ import { IconButton, Layout, SecondaryButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { formatUrl } from 'utils/index';
+import { truncate } from 'utils/index';
 
 const ManageNetworkView = () => {
   const networks = useSelector((state: RootState) => state.vault.networks);
@@ -51,9 +51,9 @@ const ManageNetworkView = () => {
             `}
           >
             <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
-              <span>{formatUrl(network.label, 25)}</span>
+              <span>{truncate(network.label, 25)}</span>
 
-              <span>Blockbook URL: {formatUrl(String(network.url), 30)}</span>
+              <span>Blockbook URL: {truncate(String(network.url), 30)}</span>
             </div>
 
             {!network.default && (
@@ -101,9 +101,9 @@ const ManageNetworkView = () => {
             `}
           >
             <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
-              <span>{formatUrl(network.label, 25)}</span>
+              <span>{truncate(network.label, 25)}</span>
 
-              <span>RPC URL: {formatUrl(String(network.url), 30)}</span>
+              <span>RPC URL: {truncate(String(network.url), 30)}</span>
             </div>
 
             {!network.default && (

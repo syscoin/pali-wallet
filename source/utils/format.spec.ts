@@ -4,7 +4,7 @@ import {
   formatCurrency,
   formatDate,
   formatSeedPhrase,
-  formatUrl,
+  truncate,
 } from './format';
 
 describe('Format', () => {
@@ -48,10 +48,10 @@ describe('Format', () => {
     );
   });
 
-  //* formatUrl
-  it('should format an URL', () => {
+  //* truncate
+  it('should truncate a string', () => {
     const input = 'www.testusingjest.com/users/values';
-    const output = formatUrl(input);
+    const output = truncate(input);
 
     expect(input.length).toBeGreaterThanOrEqual(output.length);
     expect(output.endsWith('...')).toBe(true);

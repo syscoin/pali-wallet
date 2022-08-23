@@ -20,7 +20,7 @@ import {
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { formatUrl, ellipsis } from 'utils/index';
+import { truncate, ellipsis } from 'utils/index';
 
 export const ImportToken: FC = () => {
   const controller = getController();
@@ -138,12 +138,12 @@ export const ImportToken: FC = () => {
                 key={token.id}
                 className="p-2 hover:text-brand-royalblue text-brand-white text-xs border-b border-dashed cursor-pointer"
               >
-                <p>{formatUrl(token.symbol, 40)}</p>
+                <p>{truncate(token.symbol, 40)}</p>
               </li>
             ))
           ) : (
             <li className="p-2 text-brand-royalblue hover:text-brand-royalblue text-xs border-b border-dashed cursor-pointer">
-              <p>{formatUrl(selected?.symbol || '', 40)}</p>
+              <p>{truncate(selected?.symbol || '', 40)}</p>
             </li>
           )}
 
@@ -155,7 +155,7 @@ export const ImportToken: FC = () => {
                 )}
 
                 <p className="font-rubik text-2xl font-bold">
-                  {formatUrl(selected.symbol)}
+                  {truncate(selected.symbol)}
                 </p>
               </div>
 
@@ -172,13 +172,13 @@ export const ImportToken: FC = () => {
                 </div>
               )}
 
-              <p>Name: {formatUrl(selected.name)}</p>
+              <p>Name: {truncate(selected.name)}</p>
 
               <p>Market cap rank: {selected.marketCapRank}</p>
 
               <p className="max-w-xs break-all text-xs">
                 {/* @ts-ignore */}
-                {formatUrl(selected.description.en, 140)}
+                {truncate(selected.description.en, 140)}
               </p>
             </div>
           )}

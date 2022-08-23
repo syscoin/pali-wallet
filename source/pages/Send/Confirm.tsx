@@ -6,7 +6,7 @@ import { Layout, SecondaryButton, DefaultModal } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
-import { formatUrl, logError, ellipsis } from 'utils/index';
+import { truncate, logError, ellipsis } from 'utils/index';
 
 export const SendConfirm = () => {
   const controller = getController();
@@ -73,7 +73,7 @@ export const SendConfirm = () => {
           if (isSyscoinChain && error && tx.fee > 0.00001) {
             alert.removeAll();
             alert.error(
-              `${formatUrl(
+              `${truncate(
                 String(error.message),
                 166
               )} Please, reduce fees to send transaction.`

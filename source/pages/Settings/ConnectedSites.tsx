@@ -7,8 +7,7 @@ import { useUtils } from 'hooks/index';
 import { IDApp } from 'state/dapp/types';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { formatUrl, ellipsis } from 'utils/index';
-import { networkChain } from 'utils/network';
+import { truncate, ellipsis, networkChain } from 'utils/index';
 
 const ConnectedSites = () => {
   const { dapp } = getController();
@@ -60,7 +59,7 @@ const ConnectedSites = () => {
             className="scrollbar-styled px-4 py-2 w-full h-80 overflow-auto"
           >
             <li className="flex items-center justify-between my-2 py-3 w-full text-xs border-b border-dashed border-gray-500">
-              <p>{formatUrl(_dapp.host, 25)}</p>
+              <p>{truncate(_dapp.host, 25)}</p>
               <IconButton onClick={() => setSelected(_dapp)}>
                 <Icon name="edit" wrapperClassname="w-4" />
               </IconButton>
@@ -118,8 +117,7 @@ const ConnectedSites = () => {
                       </p>
 
                       <div className="flex items-center justify-between m-3 text-brand-white">
-                        <p>{formatUrl(selected.host, 20)}</p>
-
+                        <p>{truncate(selected.host, 20)}</p>
                         <IconButton onClick={disconnectSelected}>
                           <Icon name="delete" />
                         </IconButton>

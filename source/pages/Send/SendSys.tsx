@@ -13,7 +13,7 @@ import { usePrice, useUtils } from 'hooks/index';
 import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { formatUrl, isNFT, getAssetBalance } from 'utils/index';
+import { truncate, isNFT, getAssetBalance } from 'utils/index';
 
 export const SendSys = () => {
   const { getFiatAmount } = usePrice();
@@ -194,7 +194,7 @@ export const SendSys = () => {
                     disabled={!hasAccountAssets}
                     className="inline-flex justify-center py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
                   >
-                    {formatUrl(
+                    {truncate(
                       String(
                         selectedAsset?.symbol
                           ? selectedAsset?.symbol

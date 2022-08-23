@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Layout, SecondaryButton } from 'components/index';
 import trustedApps from 'constants/trustedApps.json';
 import { useUtils } from 'hooks/index';
-import { formatUrl } from 'utils/index';
+import { truncate } from 'utils/index';
 
 const TrustedSitesView = () => {
   const { navigate } = useUtils();
@@ -72,7 +72,7 @@ const TrustedSitesView = () => {
                 key={url}
                 className="my-2 py-2 w-full text-xs border-b border-dashed border-gray-500"
               >
-                <p>{formatUrl(url, 40)}</p>
+                <p>{truncate(url, 40)}</p>
               </li>
             ))}
         </ul>
