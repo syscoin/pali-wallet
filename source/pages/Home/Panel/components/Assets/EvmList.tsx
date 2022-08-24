@@ -37,12 +37,12 @@ export const EvmAssetsList = () => {
         </Fragment>
       ))}
 
-      {/* <p
-          className="mb-8 mt-4 text-center hover:text-brand-royalbluemedium cursor-pointer"
-          onClick={() => navigate('/tokens/add/import')}
-        >
-          Import token
-        </p> */}
+      <p
+        className="my-4 hover:text-brand-royalblue text-brand-royalbluemedium text-xs cursor-pointer"
+        onClick={() => navigate('/tokens/add/import')}
+      >
+        Import token
+      </p>
     </>
   );
 };

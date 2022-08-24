@@ -22,19 +22,6 @@ export const AssetsPanel = () => {
 
   const NoAssetsComponent = () => (
     <div className="flex items-center justify-center p-3 text-brand-white text-sm">
-      {/* {isSyscoinChain ? (
-        'You have no tokens or NFTs.'
-      ) : (
-        <>
-          <p
-            className="hover:text-brand-royalbluemedium cursor-pointer"
-            onClick={() => navigate('/tokens/add/import')}
-          >
-            Import token
-          </p>
-        </>
-      )} */}
-
       <p>You have no tokens or NFTs.</p>
     </div>
   );
