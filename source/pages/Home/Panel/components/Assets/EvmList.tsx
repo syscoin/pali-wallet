@@ -39,7 +39,7 @@ export const EvmAssetsList = () => {
 
       <p
         className="my-4 hover:text-brand-royalblue text-brand-royalbluemedium text-xs cursor-pointer"
-        onClick={() => navigate('/tokens/add/import')}
+        onClick={() => navigate('/tokens/add')}
       >
         Import token
       </p>

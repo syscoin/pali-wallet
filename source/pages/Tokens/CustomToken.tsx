@@ -8,12 +8,7 @@ import {
   validateToken,
 } from '@pollum-io/sysweb3-utils';
 
-import {
-  SecondaryButton,
-  DefaultModal,
-  Layout,
-  ErrorModal,
-} from 'components/index';
+import { SecondaryButton, DefaultModal, ErrorModal } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
@@ -64,11 +59,11 @@ export const CustomToken = () => {
   };
 
   return (
-    <Layout title="CUSTOM TOKEN">
+    <>
       <Form
         validateMessages={{ default: '' }}
         form={form}
-        id="send-form"
+        id="token-form"
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         onFinish={nextStep}
@@ -95,11 +90,7 @@ export const CustomToken = () => {
             }),
           ]}
         >
-          <Input
-            type="text"
-            placeholder="Contract address"
-            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
-          />
+          <Input type="text" className="large" placeholder="Contract address" />
         </Form.Item>
 
         <Form.Item
@@ -113,11 +104,7 @@ export const CustomToken = () => {
             },
           ]}
         >
-          <Input
-            type="text"
-            placeholder="Token symbol"
-            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
-          />
+          <Input type="text" className="large" placeholder="Token symbol" />
         </Form.Item>
 
         <Form.Item
@@ -131,11 +118,7 @@ export const CustomToken = () => {
             },
           ]}
         >
-          <Input
-            type="number"
-            placeholder="Token decimal"
-            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
-          />
+          <Input type="number" className="large" placeholder="Token decimal" />
         </Form.Item>
 
         <div className="flex flex-col items-center justify-center w-full">
@@ -165,6 +148,6 @@ export const CustomToken = () => {
           onClose={() => setError(false)}
         />
       )}
-    </Layout>
+    </>
   );
 };

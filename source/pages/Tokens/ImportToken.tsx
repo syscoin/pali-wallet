@@ -5,7 +5,7 @@ import { useState, FC } from 'react';
 
 import { getTokenJson } from '@pollum-io/sysweb3-utils';
 
-import { SecondaryButton, Layout } from 'components/index';
+import { SecondaryButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
@@ -82,11 +82,11 @@ export const ImportToken: FC = () => {
   };
 
   return (
-    <Layout title="IMPORT TOKEN">
+    <>
       <Form
         validateMessages={{ default: '' }}
         form={form}
-        id="send-form"
+        id="token-form"
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         autoComplete="off"
@@ -126,6 +126,6 @@ export const ImportToken: FC = () => {
           {selected ? `Import ${selected.tokenSymbol}` : 'Done'}
         </SecondaryButton>
       </div>
-    </Layout>
+    </>
   );
 };
