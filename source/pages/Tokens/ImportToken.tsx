@@ -113,7 +113,7 @@ export const ImportToken: FC = () => {
       </Form>
 
       <div className="flex flex-col items-center justify-center w-full">
-        <ul className="scrollbar-styled my-1 p-4 w-full h-72 overflow-auto">
+        <ul className="scrollbar-styled my-4 p-4 w-full h-60 overflow-auto">
           {renderTokens()}
         </ul>
 
