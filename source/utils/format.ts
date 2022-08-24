@@ -70,14 +70,14 @@ export const formatCurrency = (number: string, precision: number) => {
 };
 
 /**
- * Truncate the `url` if length is greater than `size`
+ * Truncate the `input` if length is greater than `size`
  *
  * Default `size` is 30
  */
-export const formatUrl = (url: string, size = 30) => {
-  if (url.length < size) return url;
+export const truncate = (input: string, size = 30) => {
+  if (input.length < size) return input;
 
-  return `${url.slice(0, size)}...`;
+  return `${input.slice(0, size)}...`;
 };
 
 /**

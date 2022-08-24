@@ -4,6 +4,7 @@ export * from './formatTransactionValue';
 export * from './getHost';
 export * from './isNft';
 export * from './logger';
+export * from './network';
 export * from './notifications';
 export * from './tokens';
 export * from './formatTransactionValue';

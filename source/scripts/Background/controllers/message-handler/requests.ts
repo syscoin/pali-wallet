@@ -37,6 +37,12 @@ export const methodRequest = async (
 
   const [prefix, methodName] = data.method.split('_');
 
+  if (prefix === 'wallet' && methodName === 'isConnected')
+    return dapp.isConnected(host);
+
+  if (!dapp.isConnected(host))
+    throw new Error('Restricted method. Connect before requesting');
+
   const { chain, chainId, accountId } = dapp.get(host);
   if (!isActiveNetwork(chain, chainId)) {
     await _changeNetwork(chain, chainId);
@@ -49,8 +55,6 @@ export const methodRequest = async (
   //* Wallet methods
   if (prefix === 'wallet') {
     switch (methodName) {
-      case 'isConnected':
-        return dapp.isConnected(host);
       case 'isLocked':
         return !wallet.isUnlocked();
       case 'changeAccount':
@@ -64,9 +68,6 @@ export const methodRequest = async (
         throw new Error('Unknown method');
     }
   }
-
-  if (!dapp.isConnected(host))
-    throw new Error('Restricted method. Connect before requesting');
 
   //* Providers methods
   const provider = prefix === 'sys' ? SysProvider(host) : EthProvider(host);

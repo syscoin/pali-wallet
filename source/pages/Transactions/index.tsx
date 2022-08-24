@@ -3,6 +3,8 @@ import React from 'react';
 import Sign_ from './Sign';
 import Transaction from './Transaction';
 
+export const SendToken = () => <Transaction type="Send" />;
+
 //* Token
 export const CreateToken = () => <Transaction type="CreateToken" />;
 export const MintToken = () => <Transaction type="MintToken" />;

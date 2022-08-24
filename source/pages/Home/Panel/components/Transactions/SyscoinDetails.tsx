@@ -8,7 +8,7 @@ import { IconButton } from 'components/IconButton';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { camelCaseToText, ellipsis, formatUrl } from 'utils/index';
+import { camelCaseToText, ellipsis, truncate } from 'utils/index';
 
 export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const controller = getController();
@@ -107,8 +107,8 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
 
         <div>
           <small>
-            {formatUrl(String(Number(addressValue) / 10 ** 8), 18)
-              ? formatUrl(String(Number(addressValue) / 10 ** 8), 18)
+            {truncate(String(Number(addressValue) / 10 ** 8), 18)
+              ? truncate(String(Number(addressValue) / 10 ** 8), 18)
               : 0}{' '}
             {activeNetwork.chainId === 57 ? 'SYS' : 'tSYS'}
           </small>
@@ -175,7 +175,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
       };
 
       if (String(value).length >= 20) {
-        formattedValue.value = formatUrl(String(value), 20);
+        formattedValue.value = truncate(String(value), 20);
         formattedValue.canCopy = true;
       }
 

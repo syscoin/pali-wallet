@@ -11,7 +11,7 @@ import { Icon, Tooltip, ErrorModal } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { formatUrl, getHost } from 'utils/index';
+import { truncate, getHost, isActiveNetwork } from 'utils/index';
 
 const NetworkMenu: React.FC = () => {
   const { wallet } = getController();
@@ -239,6 +239,9 @@ const NetworkMenu: React.FC = () => {
 const GeneralMenu: React.FC = () => {
   const { wallet, dapp, refresh } = getController();
 
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
   );
@@ -274,8 +277,22 @@ const GeneralMenu: React.FC = () => {
       if (!isMounted) return;
 
       const host = getHost(url);
-      const isConnected = dapp.isConnected(host);
-      setCurrentTab({ host, isConnected });
+      const hasConnection = dapp.isConnected(host);
+
+      if (!hasConnection) {
+        setCurrentTab({ host, isConnected: false });
+
+        return;
+      }
+
+      const _dapp = dapp.get(host);
+      const isSameAccount = _dapp.accountId === activeAccount.id;
+      const isSameNetwork = isActiveNetwork(_dapp.chain, _dapp.chainId);
+
+      setCurrentTab({
+        host,
+        isConnected: isSameAccount && isSameNetwork,
+      });
     });
 
     return () => {
@@ -288,7 +305,7 @@ const GeneralMenu: React.FC = () => {
       as="div"
       className="absolute right-2 top-2 flex items-center justify-evenly"
     >
-      <Tooltip content={formatUrl(currentTab.host)}>
+      <Tooltip content={truncate(currentTab.host)}>
         <div
           onClick={() => navigate('/settings/networks/connected-sites')}
           className="relative mx-1.5 text-brand-white cursor-pointer"

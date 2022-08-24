@@ -13,6 +13,7 @@ import {
   Import,
   MintNFT,
   MintToken,
+  SendToken,
   SendConfirm,
   SignAndSend,
   Sign,
@@ -84,6 +85,10 @@ export const ExternalRoute = () => {
           <Route
             path="create"
             element={<ProtectedRoute element={<CreateToken />} />}
+          />
+          <Route
+            path="send"
+            element={<ProtectedRoute element={<SendToken />} />}
           />
           <Route
             path="send/confirm"

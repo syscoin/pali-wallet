@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux';
 import { IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { ellipsis, formatCurrency, formatUrl } from 'utils/index';
+import { ellipsis, formatCurrency, truncate } from 'utils/index';
 
 export const SyscoinAssetsList = () => {
   const assets = useSelector(
@@ -21,14 +21,14 @@ export const SyscoinAssetsList = () => {
             <li className="relative flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark">
               <p className="font-rubik">
                 <span>
-                  {formatUrl(
+                  {truncate(
                     formatCurrency(String(balance / 10 ** decimals), decimals),
                     14
                   )}
                 </span>
 
                 <span className="text-button-secondary font-poppins">
-                  {`  ${formatUrl(symbol, 10)}`}
+                  {`  ${truncate(symbol, 10)}`}
                 </span>
               </p>
 

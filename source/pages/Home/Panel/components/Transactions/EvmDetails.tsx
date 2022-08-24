@@ -6,7 +6,7 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { camelCaseToText, formatUrl } from 'utils/index';
+import { camelCaseToText, truncate } from 'utils/index';
 
 export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   const transactions = useSelector(
@@ -39,7 +39,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
       };
 
       if (String(value).length >= 20 && key !== 'image') {
-        formattedValue.value = formatUrl(String(value), 20);
+        formattedValue.value = truncate(String(value), 20);
         formattedValue.canCopy = true;
       }
 
