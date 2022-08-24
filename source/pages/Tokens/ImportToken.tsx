@@ -25,8 +25,8 @@ export const ImportToken: FC = () => {
 
     if (!query) return setList(erc20Tokens);
 
-    const filtered = Object.values(erc20Tokens).filter((token) => {
-      if (!query) return token;
+    const filtered = Object.values(erc20Tokens).filter((token: any) => {
+      if (!query || !token.name) return token;
 
       return token.name.toLowerCase().includes(query.toLowerCase());
     });
@@ -38,13 +38,15 @@ export const ImportToken: FC = () => {
     const tokensList = list || getTokenJson();
 
     for (const [key, value] of Object.entries(tokensList)) {
+      const tokenValue: any = value;
+
       tokensList[key] = {
-        ...value,
+        ...tokenValue,
         contractAddress: key,
       };
     }
 
-    return Object.values(tokensList).map((token) => (
+    return Object.values(tokensList).map((token: any) => (
       <li
         onClick={() => setSelected(token)}
         key={uniqueId()}
