@@ -1997,6 +1997,28 @@
     syscointx-js "^1.0.101"
     web3 "^1.7.1"
 
+"@pollum-io/sysweb3-utils@^1.1.211":
+  version "1.1.211"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.211.tgz#ee173eb767520f59ffe546a7c076ed4cf097f16c"
+  integrity sha512-u+7m47o+zxg1I5eE2hD+P5XcVEF6qOflZiuugOgneGKMgy29SzvpepRwfIW/OyMQYmBaYwAYTlAGW8xRrqIYog==
+  dependencies:
+    "@ethersproject/contracts" "^5.6.2"
+    "@pollum-io/sysweb3-core" "^1.0.16"
+    "@pollum-io/sysweb3-network" "^1.0.66"
+    axios "^0.26.1"
+    bech32 "^2.0.0"
+    bip32 "^3.0.1"
+    bip44-constants "^114.0.0"
+    bip84 "^0.2.7"
+    bitcoinjs-lib "^6.0.1"
+    camelcase-keys "^7.0.2"
+    coinselectsyscoin "^1.0.77"
+    crypto-js "^4.1.1"
+    ethers "^5.6.4"
+    syscoinjs-lib "^1.0.214"
+    syscointx-js "^1.0.101"
+    web3 "^1.7.1"
+
 "@popperjs/core@^2.9.0":
   version "2.11.6"
   resolved "https://registry.yarnpkg.com/@popperjs/core/-/core-2.11.6.tgz#cee20bd55e68a1720bdab363ecf0c821ded4cd45"
