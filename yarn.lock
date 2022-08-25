@@ -1997,10 +1997,10 @@
     syscointx-js "^1.0.101"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.211":
-  version "1.1.211"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.211.tgz#ee173eb767520f59ffe546a7c076ed4cf097f16c"
-  integrity sha512-u+7m47o+zxg1I5eE2hD+P5XcVEF6qOflZiuugOgneGKMgy29SzvpepRwfIW/OyMQYmBaYwAYTlAGW8xRrqIYog==
+"@pollum-io/sysweb3-utils@^1.1.212":
+  version "1.1.212"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.212.tgz#1d7e5247bc850536adbb26e7c42840ec847de472"
+  integrity sha512-HNT97DAXwznm2HuLVvjVvDieEG/6XjoKzox6ETdkY7nrfR8Mr5d1iJtUGBHNuC0DUFFJqBCeQss+6GN39uvgjA==
   dependencies:
     "@ethersproject/contracts" "^5.6.2"
     "@pollum-io/sysweb3-core" "^1.0.16"
