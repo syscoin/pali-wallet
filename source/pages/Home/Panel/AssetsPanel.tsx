@@ -2,6 +2,7 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 
 import { Fullscreen } from 'components/Fullscreen';
+import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 
 import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
@@ -20,6 +21,8 @@ export const AssetsPanel = () => {
 
   const assets = Object.values(activeAccount.assets);
 
+  const { navigate } = useUtils();
+
   const NoAssetsComponent = () => (
     <div className="flex items-center justify-center p-3 text-brand-white text-sm">
       <p>You have no tokens or NFTs.</p>
@@ -35,6 +38,13 @@ export const AssetsPanel = () => {
           {isSyscoinChain ? <SyscoinAssetsList /> : <EvmAssetsList />}
         </ul>
       )}
+
+      <p
+        className="my-4 hover:text-brand-royalblue text-brand-royalbluemedium text-xs cursor-pointer"
+        onClick={() => navigate('/tokens/add')}
+      >
+        Import token
+      </p>
 
       <Fullscreen />
     </>

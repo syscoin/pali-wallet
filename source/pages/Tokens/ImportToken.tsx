@@ -5,7 +5,7 @@ import { useState, FC } from 'react';
 
 import { getTokenJson } from '@pollum-io/sysweb3-utils';
 
-import { SecondaryButton, Layout } from 'components/index';
+import { DefaultModal, ErrorModal, SecondaryButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
@@ -13,10 +13,12 @@ export const ImportToken: FC = () => {
   const controller = getController();
 
   const [form] = Form.useForm();
-  const { navigate, alert } = useUtils();
+  const { navigate } = useUtils();
 
   const [list, setList] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [added, setAdded] = useState(false);
+  const [error, setError] = useState(false);
 
   const handleSearch = (query: string) => {
     setSelected(null);
@@ -67,26 +69,18 @@ export const ImportToken: FC = () => {
     try {
       await controller.wallet.account.eth.saveTokenInfo(token);
 
-      alert.removeAll();
-      alert.success(
-        `${token.tokenSymbol} successfully added to your assets list.`
-      );
-    } catch (error) {
-      alert.removeAll();
-      alert.error(
-        `Can't add ${token.tokenSymbol} to your wallet. Try again later.`
-      );
-
-      throw new Error(error);
+      setAdded(true);
+    } catch (_error) {
+      setError(Boolean(_error));
     }
   };
 
   return (
-    <Layout title="IMPORT TOKEN">
+    <>
       <Form
         validateMessages={{ default: '' }}
         form={form}
-        id="send-form"
+        id="token-form"
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         autoComplete="off"
@@ -113,7 +107,7 @@ export const ImportToken: FC = () => {
       </Form>
 
       <div className="flex flex-col items-center justify-center w-full">
-        <ul className="scrollbar-styled my-1 p-4 w-full h-72 overflow-auto">
+        <ul className="scrollbar-styled my-4 p-4 w-full h-60 overflow-auto">
           {renderTokens()}
         </ul>
 
@@ -126,6 +120,25 @@ export const ImportToken: FC = () => {
           {selected ? `Import ${selected.tokenSymbol}` : 'Done'}
         </SecondaryButton>
       </div>
-    </Layout>
+
+      {added && (
+        <DefaultModal
+          show={added}
+          title="Token successfully added"
+          description={`${selected.tokenSymbol} was successfully added to your wallet.`}
+          onClose={() => navigate('/home')}
+        />
+      )}
+
+      {error && (
+        <ErrorModal
+          show={error}
+          title="Verify the current network"
+          description="This token probably is not available in the current network. Verify the token network and try again."
+          log="Token network probably is different from current network."
+          onClose={() => setError(false)}
+        />
+      )}
+    </>
   );
 };

@@ -1,20 +1,17 @@
 import { Form, Input } from 'antd';
 import * as React from 'react';
 import { useState } from 'react';
+import { useSelector } from 'react-redux';
 
+import { setActiveNetwork, web3Provider } from '@pollum-io/sysweb3-network';
 import {
-  getSearch,
+  getTokenStandardMetadata,
   isValidEthereumAddress,
-  validateToken,
 } from '@pollum-io/sysweb3-utils';
 
-import {
-  SecondaryButton,
-  DefaultModal,
-  Layout,
-  ErrorModal,
-} from 'components/index';
+import { SecondaryButton, DefaultModal, ErrorModal } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 export const CustomToken = () => {
@@ -26,49 +23,54 @@ export const CustomToken = () => {
   const [added, setAdded] = useState(false);
   const [error, setError] = useState(false);
 
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+
   const nextStep = async ({
-    contract,
-    symbol,
-    decimal,
+    contractAddress,
+    decimals,
   }: {
-    contract: string;
-    decimal: number;
-    symbol: string;
+    contractAddress: string;
+    decimals: number;
   }) => {
-    const tokenIsValid = await validateToken(contract);
+    try {
+      setActiveNetwork(activeNetwork);
 
-    if (tokenIsValid) {
-      const { coins } = await getSearch(tokenIsValid.symbol);
+      const metadata = await getTokenStandardMetadata(
+        contractAddress,
+        activeAccount.address,
+        web3Provider
+      );
 
-      const { id, marketCapRank, name, thumb } = coins[0];
+      if (metadata) {
+        form.setFieldValue('symbol', metadata.tokenSymbol.toUpperCase());
 
-      await controller.wallet.account.eth.saveTokenInfo({
-        symbol: symbol.toUpperCase(),
-        contract,
-        decimal,
-        marketCapRank,
-        id,
-        explorer: '',
-        description: '',
-        image: thumb,
-        links: '',
-        name,
-      });
+        await controller.wallet.account.eth.saveTokenInfo({
+          tokenSymbol: metadata.tokenSymbol.toUpperCase(),
+          contractAddress,
+          decimals,
+        });
 
-      setAdded(true);
+        setAdded(true);
 
-      return;
+        return;
+      }
+    } catch (_error) {
+      setError(Boolean(_error));
     }
-
-    setError(true);
   };
 
   return (
-    <Layout title="CUSTOM TOKEN">
+    <>
       <Form
         validateMessages={{ default: '' }}
         form={form}
-        id="send-form"
+        id="token-form"
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         onFinish={nextStep}
@@ -76,7 +78,7 @@ export const CustomToken = () => {
         className="standard flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
       >
         <Form.Item
-          name="contract"
+          name="contractAddress"
           className="md:w-full md:max-w-md"
           hasFeedback
           rules={[
@@ -95,11 +97,7 @@ export const CustomToken = () => {
             }),
           ]}
         >
-          <Input
-            type="text"
-            placeholder="Contract address"
-            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
-          />
+          <Input type="text" className="large" placeholder="Contract address" />
         </Form.Item>
 
         <Form.Item
@@ -113,15 +111,11 @@ export const CustomToken = () => {
             },
           ]}
         >
-          <Input
-            type="text"
-            placeholder="Token symbol"
-            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
-          />
+          <Input type="text" className="large" placeholder="Token symbol" />
         </Form.Item>
 
         <Form.Item
-          name="decimal"
+          name="decimals"
           className="md:w-full md:max-w-md"
           hasFeedback
           rules={[
@@ -131,11 +125,7 @@ export const CustomToken = () => {
             },
           ]}
         >
-          <Input
-            type="number"
-            placeholder="Token decimal"
-            className="pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none md:w-full"
-          />
+          <Input type="number" className="large" placeholder="Token decimal" />
         </Form.Item>
 
         <div className="flex flex-col items-center justify-center w-full">
@@ -159,12 +149,12 @@ export const CustomToken = () => {
       {error && (
         <ErrorModal
           show={error}
-          title="Verify the current token"
+          title="Verify the current network"
           description="This token probably is not available in the current network. Verify the token network and try again."
           log="Token network probably is different from current network."
           onClose={() => setError(false)}
         />
       )}
-    </Layout>
+    </>
   );
 };

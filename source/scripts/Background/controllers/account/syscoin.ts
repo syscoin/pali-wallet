@@ -52,20 +52,25 @@ const SysAccountController = (): ISysAccountController => {
         )
     );
 
-    const filteredAssets = accountLatestUpdate.assets.filter(
-      (latestUpdateAsset: any) =>
-        store
-          .getState()
-          .vault.activeAccount.assets.filter(
-            (asset: any) => latestUpdateAsset[assetId] === asset[assetId]
-          )
-    );
+    const filteredAssets = store
+      .getState()
+      .vault.activeAccount.assets.reduce((asset: any, current: any) => {
+        const sameAsset = accountLatestUpdate.assets.find(
+          (same: any) => same[assetId] === current[assetId]
+        );
+
+        if (sameAsset) return sameAsset;
+
+        asset[current[assetId]] = current;
+
+        return asset;
+      }, {});
 
     const currentAccount = {
       ...activeAccount,
       ...accountLatestUpdate,
       transactions: [...activeAccount.transactions, ...filteredTxs],
-      assets: filteredAssets,
+      assets: Object.values(filteredAssets),
     };
 
     store.dispatch(setActiveAccount(currentAccount));

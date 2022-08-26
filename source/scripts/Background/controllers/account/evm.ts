@@ -1,14 +1,12 @@
 import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
-import { ICoingeckoToken, IEthereumNftDetails } from '@pollum-io/sysweb3-utils';
+import { getSearch } from '@pollum-io/sysweb3-utils';
 
 import { EthTransactionController } from '../transaction';
 import store from 'state/store';
 import { setActiveAccountProperty } from 'state/vault';
 
 const EthAccountController = () => {
-  const saveTokenInfo = async (
-    token: ICoingeckoToken | IEthereumNftDetails
-  ) => {
+  const saveTokenInfo = async (token: any) => {
     try {
       const { activeAccount } = store.getState().vault;
 
@@ -23,9 +21,17 @@ const EthAccountController = () => {
         activeAccount.address
       );
 
+      const { coins } = await getSearch(token.tokenSymbol);
+
+      const { name, thumb } = coins[0];
+
       const web3Token = {
         ...token,
         balance,
+        name,
+        id: token.contractAddress,
+        logo: thumb,
+        isNft: false,
       };
 
       store.dispatch(
