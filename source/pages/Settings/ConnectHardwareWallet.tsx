@@ -4,16 +4,16 @@ import { useSelector } from 'react-redux';
 
 import { Layout, SecondaryButton, Icon, Tooltip } from 'components/index';
 import { RootState } from 'state/store';
+import { getController } from 'utils/browser';
 
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
   const [isTestnet, setIsTestnet] = useState<boolean>(false);
 
-  // const controller = getController();
+  const controller = getController();
 
   const handleCreateHardwareWallet = async () => {
-    // TODO connectHardware
-    // await controller.wallet.trezor.connectHardware();
+    await controller.wallet.account.sys.trezor.createAccount();
   };
 
   const activeNetwork = useSelector(
