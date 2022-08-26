@@ -10,7 +10,7 @@ export interface ISysTrezorController {
 const SysTrezorController = (): ISysTrezorController => {
   const { trezor } = KeyringManager();
 
-  const createAccount = () => trezor.createWallet();
+  const createAccount = async () => await trezor.createHardwareWallet();
 
   return {
     createAccount,
