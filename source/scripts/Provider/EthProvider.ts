@@ -1,5 +1,7 @@
+// import { ethers } from 'ethers';
+
 import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
-// import { web3Provider } from '@pollum-io/sysweb3-network';
+import { web3Provider } from '@pollum-io/sysweb3-network';
 
 import store from 'state/store';
 import { removeSensitiveDataFromVault } from 'utils/account';
@@ -40,6 +42,8 @@ export const EthProvider = (host: string) => {
 
   const getState = () => removeSensitiveDataFromVault(store.getState().vault);
 
+  const send = (method: string, args: any[]) => web3Provider.send(method, args);
+
   return {
     isConnected: () => Boolean(getAccount()),
     // getAccounts,
@@ -53,5 +57,6 @@ export const EthProvider = (host: string) => {
     // handleUnlockAccount,
     getAccount,
     getState,
+    send,
   };
 };

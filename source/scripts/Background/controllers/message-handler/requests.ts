@@ -70,9 +70,13 @@ export const methodRequest = async (
   }
 
   //* Providers methods
-  const provider = prefix === 'sys' ? SysProvider(host) : EthProvider(host);
-  const method = provider[methodName];
+  if (prefix !== 'sys') {
+    const provider = EthProvider(host);
+    return await provider.send(data.method, data.args);
+  }
 
+  const provider = SysProvider(host);
+  const method = provider[methodName];
   if (!method) throw new Error('Unknown method');
 
   if (data.args) return await method(...data.args);
