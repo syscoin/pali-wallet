@@ -45,32 +45,31 @@ const SysAccountController = (): ISysAccountController => {
     const hash = isSyscoinChain ? 'txid' : 'hash';
     const assetId = isSyscoinChain ? 'assetGuid' : 'contractAddress';
 
-    const filteredTxs = accountLatestUpdate.transactions.filter(
-      (tx: any) =>
-        !activeAccount.transactions.some(
-          (transaction: any) => transaction[hash] === tx[hash]
-        )
+    const transactions = [
+      ...accountLatestUpdate.assets,
+      ...store.getState().vault.activeAccount.assets,
+    ];
+
+    const filteredTxs = transactions.filter(
+      (value, index, self) =>
+        index === self.findIndex((tx) => tx[hash] === value[hash])
     );
 
-    const filteredAssets = store
-      .getState()
-      .vault.activeAccount.assets.reduce((asset: any, current: any) => {
-        const sameAsset = accountLatestUpdate.assets.find(
-          (same: any) => same[assetId] === current[assetId]
-        );
+    const assets = [
+      ...accountLatestUpdate.assets,
+      ...store.getState().vault.activeAccount.assets,
+    ];
 
-        if (sameAsset) return sameAsset;
-
-        asset[current[assetId]] = current;
-
-        return asset;
-      }, {});
+    const filteredAssets = assets.filter(
+      (value, index, self) =>
+        index === self.findIndex((asset) => asset[assetId] === value[assetId])
+    );
 
     const currentAccount = {
       ...activeAccount,
       ...accountLatestUpdate,
       transactions: [...activeAccount.transactions, ...filteredTxs],
-      assets: Object.values(filteredAssets),
+      assets: filteredAssets,
     };
 
     store.dispatch(setActiveAccount(currentAccount));
