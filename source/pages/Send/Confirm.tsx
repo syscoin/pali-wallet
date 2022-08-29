@@ -42,30 +42,28 @@ export const SendConfirm = () => {
     if (activeAccount && balance > 0) {
       setLoading(true);
 
+      const { sys, eth } = controller.wallet.account;
+
       try {
+        let response;
         if (isSyscoinChain) {
-          const response =
-            await controller.wallet.account.sys.tx.sendTransaction({
-              ...tx,
-              token: tx.token ? tx.token.assetGuid : null,
-            });
-
-          setConfirmed(true);
-          setLoading(false);
-
-          if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
-
-          return response;
+          const txData = {
+            ...tx,
+            token: tx.token ? tx.token.assetGuid : null,
+          };
+          response = await sys.tx.sendTransaction(txData);
+        } else {
+          const txData = {
+            ...tx,
+            amount: Number(tx.amount),
+          };
+          response = await eth.tx.sendAndSaveTransaction(txData);
         }
-
-        await controller.wallet.account.eth.tx.sendAndSaveTransaction({
-          ...tx,
-          amount: Number(tx.amount),
-          chainId: activeNetwork.chainId,
-        });
 
         setConfirmed(true);
         setLoading(false);
+
+        if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
       } catch (error: any) {
         logError('error', 'Transaction', error);
 

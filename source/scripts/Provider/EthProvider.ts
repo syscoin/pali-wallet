@@ -3,6 +3,7 @@
 import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import { web3Provider } from '@pollum-io/sysweb3-network';
 
+import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import store from 'state/store';
 import { removeSensitiveDataFromVault } from 'utils/account';
 
@@ -42,7 +43,25 @@ export const EthProvider = (host: string) => {
 
   const getState = () => removeSensitiveDataFromVault(store.getState().vault);
 
-  const send = (method: string, args: any[]) => web3Provider.send(method, args);
+  const _send = (data: { to: string; value: number }) => {
+    const from = getAccount().address;
+    const tx = {
+      sender: from,
+      receivingAddress: data.to,
+      amount: data.value,
+    };
+    return popupPromise({
+      host,
+      data: tx,
+      route: 'tx/send/confirm',
+      eventName: 'txSend',
+    });
+  };
+
+  const send = (method: string, args: any[]) => {
+    if (method === 'eth_sendTransaction') return _send(args[0]);
+    return web3Provider.send(method, args);
+  };
 
   return {
     isConnected: () => Boolean(getAccount()),
