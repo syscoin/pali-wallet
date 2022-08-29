@@ -20,13 +20,11 @@ import {
   CreatePhrase,
   Currency,
   CustomRPC,
-  CustomToken,
   ForgetWallet,
   DetailsView,
   ManageNetwork,
   Home,
   Import,
-  ImportToken,
   Phrase,
   PrivateKey,
   Receive,
@@ -34,6 +32,7 @@ import {
   SendConfirm,
   Start,
   TrustedSites,
+  AddToken,
 } from '../pages';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -119,16 +118,10 @@ export const Router = () => {
       />
 
       {/* /tokens/add */}
-      <Route path="tokens/add">
-        <Route
-          path="import"
-          element={<ProtectedRoute element={<ImportToken />} />}
-        />
-        <Route
-          path="custom"
-          element={<ProtectedRoute element={<CustomToken />} />}
-        />
-      </Route>
+      <Route
+        path="tokens/add"
+        element={<ProtectedRoute element={<AddToken />} />}
+      />
 
       {/* /settings */}
       <Route path="settings">

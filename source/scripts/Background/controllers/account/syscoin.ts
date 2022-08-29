@@ -43,27 +43,33 @@ const SysAccountController = (): ISysAccountController => {
       activeNetwork.url.includes('blockbook');
 
     const hash = isSyscoinChain ? 'txid' : 'hash';
-    const assetId = isSyscoinChain ? 'assetGuid' : 'id';
+    const assetId = isSyscoinChain ? 'assetGuid' : 'contractAddress';
 
-    const filteredTxs = accountLatestUpdate.transactions.filter(
-      (tx: any) =>
-        !activeAccount.transactions.some(
-          (transaction: any) => transaction[hash] === tx[hash]
-        )
+    const transactions = [
+      ...accountLatestUpdate.assets,
+      ...store.getState().vault.activeAccount.assets,
+    ];
+
+    const filteredTxs = transactions.filter(
+      (value, index, self) =>
+        index === self.findIndex((tx) => tx[hash] === value[hash])
     );
 
-    const filteredAssets = accountLatestUpdate.assets.filter(
-      (latestUpdateAsset: any) =>
-        !activeAccount.assets.some(
-          (asset: any) => latestUpdateAsset[assetId] === asset[assetId]
-        )
+    const assets = [
+      ...accountLatestUpdate.assets,
+      ...store.getState().vault.activeAccount.assets,
+    ];
+
+    const filteredAssets = assets.filter(
+      (value, index, self) =>
+        index === self.findIndex((asset) => asset[assetId] === value[assetId])
     );
 
     const currentAccount = {
       ...activeAccount,
       ...accountLatestUpdate,
       transactions: [...activeAccount.transactions, ...filteredTxs],
-      assets: [...activeAccount.assets, ...filteredAssets],
+      assets: filteredAssets,
     };
 
     store.dispatch(setActiveAccount(currentAccount));

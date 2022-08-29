@@ -49,7 +49,7 @@ export const Button: React.FC<IButton> = ({
 );
 
 const disabledStyle =
-  'text-button-disabled cursor-not-allowed font-light border-2 border-button-disabled';
+  'text-button-disabled cursor-not-allowed font-light border-2 border-button-disabled text-brand-white';
 
 export const PrimaryButton: React.FC<IPrimaryButton> = ({
   action = false,
@@ -114,13 +114,17 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
   const loadingIcon = <Icon name="loading" className="text-brand-white" />;
 
   const closeIcon = (
-    <Icon name="close" wrapperClassname="mb-0.5" className="font-bold" />
+    <Icon
+      name="close"
+      wrapperClassname="mb-0.5"
+      className="text-brand-white font-bold"
+    />
   );
 
   return (
     <button
       className={`
-      flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal text-sm leading-4 w-36 h-10
+      flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal text-sm leading-4 w-36 h-10 text-brand-white
       ${disabled || loading ? disabledStyle : actionStyle}`}
       disabled={disabled || loading}
       onClick={onClick}

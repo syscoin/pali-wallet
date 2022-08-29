@@ -1,3 +1,4 @@
+import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 import {
   getSearch,
   isValidEthereumAddress,
@@ -38,13 +39,52 @@ const ControllerUtils = (): IControllerUtils => {
     try {
       const { activeNetwork, networks } = store.getState().vault;
 
-      const chain =
+      const id =
         networks.syscoin[activeNetwork.chainId] &&
         activeNetwork.url.includes('blockbook')
           ? 'syscoin'
           : 'ethereum';
 
-      const price = await getFiatValueByToken(chain, currency);
+      if (id === 'ethereum') {
+        const { chain } = await validateEthRpc(activeNetwork.url);
+
+        if (chain === 'testnet') {
+          store.dispatch(
+            setPrices({
+              asset: currency,
+              price: 0,
+            })
+          );
+
+          return;
+        }
+
+        const coins = await (
+          await fetch(
+            `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${currency}&order=market_cap_desc&per_page=100&page=1&sparkline=false`
+          )
+        ).json();
+
+        const currentNetworkCoinMarket = coins.find(
+          (coin) => coin.symbol === activeNetwork.currency
+        );
+
+        store.dispatch(
+          setPrices({
+            asset: currency,
+            price: currentNetworkCoinMarket
+              ? currentNetworkCoinMarket.current_price
+              : 0,
+          })
+        );
+
+        return;
+      }
+
+      const { chain } = await validateSysRpc(activeNetwork.url);
+
+      const price =
+        chain === 'test' ? 0 : await getFiatValueByToken(id, currency);
 
       const currencies = await (
         await fetch(`${ASSET_PRICE_API}/currency`)

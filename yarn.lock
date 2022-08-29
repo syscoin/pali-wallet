@@ -1834,16 +1834,16 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.385":
-  version "1.0.385"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.385.tgz#1b4359f051699ee0e258ecc7331ebed8d7633241"
-  integrity sha512-KhTUnUKXzdAlg+fJ5sH68tGw+vlum727y+MW1VZ7trUmf4eZR6zRi25m9fRB7q3WwL5RAY7st3Yrk6GOgHmelQ==
+"@pollum-io/sysweb3-keyring@^1.0.392":
+  version "1.0.392"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.392.tgz#0009a71a754ffe4a20689734d453f4885f7b934b"
+  integrity sha512-vjmQhSqw+Y7kgQvRQVzIZCcVfwa3Yq9luHmrASiR6p7d4wpvi9tJCR4jih8jmn6uzOq9TEygLGbHRuLyRdKi0Q==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "^1.0.16"
-    "@pollum-io/sysweb3-network" "^1.0.64"
-    "@pollum-io/sysweb3-utils" "^1.1.207"
+    "@pollum-io/sysweb3-network" "^1.0.66"
+    "@pollum-io/sysweb3-utils" "^1.1.211"
     axios "^0.26.1"
     bip39 "^3.0.4"
     coinselectsyscoin "^1.0.77"
@@ -1898,10 +1898,10 @@
     ethers "^5.6.9"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-network@^1.0.64":
-  version "1.0.64"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.64.tgz#3512db9dff11c3dc51ba0ac90400dea565aed01d"
-  integrity sha512-9mA/u98M76B50r0f7Q2Pkyapn+7JkciHeK0vXsKLkT0t0uPKnu0YcHWKx36wzjjuJYP4FFWo787SpcmHAYbpVg==
+"@pollum-io/sysweb3-network@^1.0.66":
+  version "1.0.66"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.66.tgz#b09d31ea6af36aa7ed044a11a041ad016aa311d5"
+  integrity sha512-kUGWoDEnidL/+ENtE1wi8vZuj4pZkUjMNL9VdidTnAC+oEt3hDLMq7mZdkBU9/fkpGUNCmrDWVObVam8A2sVVw==
   dependencies:
     "@pollum-io/sysweb3-core" "^1.0.18"
     "@pollum-io/sysweb3-utils" "^1.1.195"
@@ -1975,14 +1975,14 @@
     syscointx-js "^1.0.101"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.207":
-  version "1.1.207"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.207.tgz#e83ae65888928d725c4cbce638296ece3271b93e"
-  integrity sha512-AMc9HZsK+zYbASlUswq+CpIXsVdihRPmfOLXvgdahWG9bm2U+4yYgOHk3G8jwwKFDv4fkHY0XMN5Z5B8+AbAvw==
+"@pollum-io/sysweb3-utils@^1.1.211", "@pollum-io/sysweb3-utils@^1.1.212":
+  version "1.1.212"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.212.tgz#1d7e5247bc850536adbb26e7c42840ec847de472"
+  integrity sha512-HNT97DAXwznm2HuLVvjVvDieEG/6XjoKzox6ETdkY7nrfR8Mr5d1iJtUGBHNuC0DUFFJqBCeQss+6GN39uvgjA==
   dependencies:
     "@ethersproject/contracts" "^5.6.2"
     "@pollum-io/sysweb3-core" "^1.0.16"
-    "@pollum-io/sysweb3-network" "^1.0.64"
+    "@pollum-io/sysweb3-network" "^1.0.66"
     axios "^0.26.1"
     bech32 "^2.0.0"
     bip32 "^3.0.1"
@@ -6239,15 +6239,8 @@ eth-lib@^0.1.26:
     ws "^3.0.0"
     xhr-request-promise "^0.1.2"
 
-eth-object@^1.0.3:
+eth-object@^1.0.3, "eth-object@https://github.com/syscoin/eth-object.git":
   version "1.0.3"
-  resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
-  dependencies:
-    eth-util-lite "^1.0.1"
-
-"eth-object@https://github.com/syscoin/eth-object.git":
-  version "1.0.3"
-  uid b5ff300f57c136138b31d6e570c816a147e0f1c9
   resolved "https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
     eth-util-lite "^1.0.1"

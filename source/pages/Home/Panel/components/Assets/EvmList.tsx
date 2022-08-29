@@ -15,14 +15,18 @@ export const EvmAssetsList = () => {
 
   return (
     <>
-      {assets.map(({ tokenSymbol, id, balance }: any) => (
+      {assets.map(({ tokenSymbol, id, balance, logo, isNft }: any) => (
         <Fragment key={uniqueId(id)}>
           <li className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark">
-            <p className="font-rubik">
-              <span className="text-button-secondary font-poppins">
-                {`${balance}  ${tokenSymbol}`}
-              </span>
-            </p>
+            <div className="flex gap-3 items-center justify-start">
+              {!isNft && logo && <img src={`${logo}`} alt="token logo" />}
+
+              <p className="font-rubik">
+                <span className="text-button-secondary font-poppins">
+                  {`${balance}  ${tokenSymbol}`}
+                </span>
+              </p>
+            </div>
 
             <IconButton
               onClick={() =>
@@ -36,13 +40,6 @@ export const EvmAssetsList = () => {
           </li>
         </Fragment>
       ))}
-
-      {/* <p
-          className="mb-8 mt-4 text-center hover:text-brand-royalbluemedium cursor-pointer"
-          onClick={() => navigate('/tokens/add/import')}
-        >
-          Import token
-        </p> */}
     </>
   );
 };
