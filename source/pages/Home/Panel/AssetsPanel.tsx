@@ -30,23 +30,22 @@ export const AssetsPanel = () => {
   );
 
   return (
-    <>
+    <div className="pb-14 w-full">
       {assets.length === 0 ? (
         <NoAssetsComponent />
       ) : (
-        <ul className="pb-14 pt-4 px-4 w-full text-center text-white text-base bg-bkg-3">
+        <ul className="pt-4 px-4 w-full text-center text-white text-base bg-bkg-3">
           {isSyscoinChain ? <SyscoinAssetsList /> : <EvmAssetsList />}
         </ul>
       )}
 
       <p
-        className="my-4 hover:text-brand-royalblue text-brand-royalbluemedium text-xs cursor-pointer"
+        className="mb-3 mt-4 text-center hover:text-brand-deepPink100 text-brand-white text-xs cursor-pointer transition-all duration-300"
         onClick={() => navigate('/tokens/add')}
       >
         Import token
       </p>
-
       <Fullscreen />
-    </>
+    </div>
   );
 };

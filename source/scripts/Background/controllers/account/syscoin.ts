@@ -1,3 +1,5 @@
+import axios from 'axios';
+
 import {
   KeyringManager,
   ISyscoinTransactions,
@@ -14,6 +16,7 @@ import {
 
 export interface ISysAccountController {
   getLatestUpdate: (silent?: boolean) => Promise<void>;
+  saveTokenInfo: (token: any) => Promise<void>;
   setAddress: () => Promise<string>;
   trezor: ISysTrezorController;
   tx: ISyscoinTransactions;
@@ -119,6 +122,45 @@ const SysAccountController = (): ISysAccountController => {
     return address;
   };
 
+  const saveTokenInfo = async (token: any) => {
+    try {
+      const { activeAccount } = store.getState().vault;
+
+      const tokenExists = activeAccount.assets.find(
+        (asset: any) => asset.assetGuid === token.assetGuid
+      );
+
+      if (tokenExists) throw new Error('Token already exists');
+
+      const description =
+        token.pubData && token.pubData.desc ? atob(token.pubData.desc) : '';
+
+      const ipfsUrl = description.startsWith('https://ipfs.io/ipfs/')
+        ? description
+        : '';
+
+      const { data } = await axios.get(ipfsUrl);
+
+      const image = data && data.image ? data.image : '';
+
+      const asset = {
+        ...token,
+        description,
+        image,
+        balance: Number(token.balance) / 10 ** Number(token.decimals),
+      };
+
+      store.dispatch(
+        setActiveAccountProperty({
+          property: 'assets',
+          value: [...activeAccount.assets, asset],
+        })
+      );
+    } catch (error) {
+      throw new Error(`Could not save token info. Error: ${error}`);
+    }
+  };
+
   const trezor = SysTrezorController();
   const tx = keyringManager.txs;
 
@@ -128,6 +170,7 @@ const SysAccountController = (): ISysAccountController => {
     tx,
     setAddress,
     getLatestUpdate,
+    saveTokenInfo,
   };
 };
 
