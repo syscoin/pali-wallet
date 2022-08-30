@@ -42,7 +42,7 @@ export const SendEth = () => {
 
     setRecommendedGasPrice(Number(gasPrice.gwei));
     setRecommendedGasLimit(Number(gasLimit));
-    setFeeValue(Number(gasPrice.gwei));
+    setFeeValue(Number(gasPrice.gwei) * Number(gasLimit));
 
     form.setFieldsValue({
       baseFee: recommendedGasPrice,
@@ -53,7 +53,7 @@ export const SendEth = () => {
 
   useEffect(() => {
     getRecomendedFees();
-  }, [getRecomendedFees]);
+  }, [getRecomendedFees, form.getFieldValue('receiver')]);
 
   const hasAccountAssets = activeAccount && activeAccount.assets.length > 0;
 
