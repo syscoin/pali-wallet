@@ -69,12 +69,12 @@ const DAppController = (): IDAppController => {
     eventName: string,
     data?: any
   ) => {
-    if (!hasListener(host, eventName)) return;
-    if (!isConnected(host)) return;
-
     // dispatch the event locally
     const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
     window.dispatchEvent(event);
+
+    if (!hasListener(host, eventName)) return;
+    if (!isConnected(host)) return;
 
     // post the event to the DApp
     const id = `${host}.${eventName}`;
