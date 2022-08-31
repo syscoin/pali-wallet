@@ -23,8 +23,7 @@ export const SendConfirm = () => {
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
-  const { ...externalTx } = useQueryData();
-  const host = useQueryData()?.host;
+  const { host, ...externalTx } = useQueryData();
   const isExternal = Boolean(externalTx.amount);
   const tx = isExternal ? externalTx : state.tx;
 
