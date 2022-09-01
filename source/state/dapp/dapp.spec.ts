@@ -32,7 +32,7 @@ describe('dapp store actions', () => {
   });
 
   //* updateDAppAccount
-  it('should remove a dapp', () => {
+  it('should update the dapp account', () => {
     const payload = { host: FAKE_DAPP.host, accountId: 1 };
 
     const customState = reducer(initialState, addDApp(FAKE_DAPP));
