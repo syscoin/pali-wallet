@@ -80,6 +80,7 @@ const DAppController = (): IDAppController => {
     _dapps[host].port.postMessage({ id, data });
   };
 
+  //* ----- Event listeners -----
   const addListener = (host: string, eventName: string) => {
     if (!DAppEvents[eventName]) return;
 
@@ -99,6 +100,7 @@ const DAppController = (): IDAppController => {
   const hasListener = (host: string, eventName: string) =>
     _dapps[host] && _dapps[host].listens.includes(eventName);
 
+  //* ----- Getters/Setters -----
   const get = (host: string) => store.getState().dapp.dapps[host];
 
   const getAll = () => store.getState().dapp.dapps;
