@@ -1,5 +1,5 @@
 import { Menu, Transition } from '@headlessui/react';
-import { Input } from 'antd';
+import { Input, Form } from 'antd';
 import getSymbolFromCurrency from 'currency-symbol-map';
 import React, { useEffect, Fragment, useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -127,7 +127,7 @@ const CurrencyView = () => {
         <Menu as="div" className="relative inline-block text-left">
           <Menu.Button
             disabled={!fiat || !coins}
-            className="inline-flex justify-center py-2 w-80 text-white text-sm font-medium bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
+            className="inline-flex justify-center py-3 w-80 text-white text-sm font-medium bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
           >
             <p className="ml-2">
               {selectedCoin ? selectedCoin.toUpperCase() : fiatCurrency}
@@ -136,7 +136,7 @@ const CurrencyView = () => {
             <Icon
               name="select-down"
               className="text-brand-royalblue"
-              wrapperClassname="w-8 absolute right-28 bottom-3"
+              wrapperClassname="w-8 absolute right-28 bottom-4"
             />
           </Menu.Button>
 
@@ -207,104 +207,147 @@ const CurrencyView = () => {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 flex flex-col gap-y-3 items-center justify-center w-full max-w-2xl h-44 bg-bkg-4 md:bottom-8 md:left-auto">
-        <p className="mb-2 text-left text-white text-sm">
+      <div className="h-max flex flex-col items-center justify-center mt-6 py-4 w-full max-w-2xl bg-bkg-4">
+        <p className="text-left text-white text-sm">
           Check your balance in different currencies
         </p>
 
-        <div className="standard relative text-brand-royalblue text-sm font-medium">
-          <Input
-            type="number"
-            onChange={(event) =>
-              handleConvert(Number(event.target.value), checkValueCoin)
-            }
-            maxLength={20}
-            value={Number(conversorValues.crypto)}
-            className="flex items-center justify-between px-4 py-2 w-80 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none"
-          />
+        <Form
+          validateMessages={{ default: '' }}
+          id="currency-form"
+          labelCol={{ span: 8 }}
+          wrapperCol={{ span: 8 }}
+          onFinish={() => undefined}
+          autoComplete="off"
+          className="standard flex flex-col gap-3 items-center justify-center mt-4 text-center text-base md:w-full"
+        >
+          <Form.Item
+            name="receiver"
+            className="relative md:w-full md:max-w-md"
+            hasFeedback
+            rules={[
+              {
+                required: true,
+                message: '',
+              },
+            ]}
+          >
+            <Input
+              type="number"
+              onChange={(event) =>
+                handleConvert(Number(event.target.value), checkValueCoin)
+              }
+              maxLength={20}
+              value={Number(conversorValues.crypto)}
+              className="large"
+            />
 
-          <div className="absolute bottom-1.5 right-4 flex gap-x-3 items-center justify-center">
-            <p
-              className="cursor-pointer"
-              onClick={() => handleConvert(Number(balance), checkValueCoin)}
-            >
-              MAX
-            </p>
-
-            <div className="flex gap-x-3 items-center justify-center border-l border-dashed border-gray-700">
-              <Icon
-                name="dolar"
-                wrapperClassname="w-2 ml-4 mb-1.5"
-                className="text-brand-royalblue"
-              />
-
-              <p>SYS</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="standard relative text-brand-royalblue text-sm font-medium">
-          <Input
-            type="number"
-            maxLength={20}
-            onChange={(event) => {
-              handleReverseConvert(Number(event.target.value), checkValueCoin);
-            }}
-            value={Number(conversorValues.fiat)}
-            className="flex items-center justify-between px-4 py-2 w-80 bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full outline-none"
-          />
-          <div className="absolute bottom-2 right-2 flex gap-x-3 items-center justify-center">
-            <Menu as="div" className="relative inline-block text-left">
-              <Menu.Button
-                disabled={!fiat || !coins}
-                className="flex gap-x-1 justify-center mr-5 text-brand-royalblue text-sm font-medium bg-fields-input-primary rounded-full"
+            <div className="absolute bottom-2 right-4 flex gap-x-3 items-center justify-center">
+              <p
+                className="cursor-pointer"
+                onClick={() => handleConvert(Number(balance), checkValueCoin)}
               >
-                {getSymbolFromCurrency(checkValueCoin.toUpperCase())}
-                {checkValueCoin.toUpperCase()}
+                MAX
+              </p>
 
+              <div className="flex gap-x-3 items-center justify-center border-l border-dashed border-gray-700">
                 <Icon
-                  name="select-down"
+                  name="dolar"
+                  wrapperClassname="w-2 ml-4 mb-1.5"
                   className="text-brand-royalblue"
-                  wrapperClassname="w-8 absolute -right-1 bottom-1"
                 />
-              </Menu.Button>
 
-              <Transition
-                as={Fragment}
-                enter="transition ease-out duration-100"
-                enterFrom="transform opacity-0 scale-95"
-                enterTo="transform opacity-100 scale-100"
-                leave="transition ease-in duration-75"
-                leaveFrom="transform opacity-100 scale-100"
-                leaveTo="transform opacity-0 scale-95"
-              >
-                {fiat && coins && (
-                  <Menu.Items
-                    as="div"
-                    className="scrollbar-styled absolute z-10 bottom-10 right-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-bkg-4 border border-fields-input-border rounded-xl shadow-2xl overflow-auto origin-bottom-right"
-                  >
-                    {Object.entries(coins).map(([key]) => (
-                      <Menu.Item as="div" key={key}>
-                        <button
-                          key={key}
-                          onClick={() => {
-                            setCheckValueCoin(key);
-                            handleConvert(conversorValues.crypto, key);
-                          }}
-                          className="group flex gap-x-1 items-center justify-start px-4 py-2 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-brand-royalblue border-transparent border-opacity-30 transition-all duration-300"
-                        >
-                          {getSymbolFromCurrency(key.toUpperCase())}
+                <p>SYS</p>
+              </div>
+            </div>
+          </Form.Item>
 
-                          <p>{key.toUpperCase()}</p>
-                        </button>
-                      </Menu.Item>
-                    ))}
-                  </Menu.Items>
-                )}
-              </Transition>
-            </Menu>
-          </div>
-        </div>
+          <Form.Item
+            name="receiver"
+            className="relative md:w-full md:max-w-md"
+            hasFeedback
+            rules={[
+              {
+                required: true,
+                message: '',
+              },
+              () => ({
+                validator(_, value) {
+                  if (!value) {
+                    return Promise.resolve();
+                  }
+
+                  return Promise.reject();
+                },
+              }),
+            ]}
+          >
+            <Input
+              type="number"
+              maxLength={20}
+              onChange={(event) => {
+                handleReverseConvert(
+                  Number(event.target.value),
+                  checkValueCoin
+                );
+              }}
+              value={Number(conversorValues.fiat)}
+              className="large"
+            />
+
+            <div className="absolute bottom-3 right-2 flex gap-x-3 items-center justify-center">
+              <Menu as="div" className="relative inline-block text-left">
+                <Menu.Button
+                  disabled={!fiat || !coins}
+                  className="flex gap-x-1 justify-center mr-5 text-brand-royalblue text-sm font-medium bg-fields-input-primary rounded-full"
+                >
+                  {getSymbolFromCurrency(checkValueCoin.toUpperCase())}
+                  {checkValueCoin.toUpperCase()}
+
+                  <Icon
+                    name="select-down"
+                    className="text-brand-royalblue"
+                    wrapperClassname="w-8 absolute -right-1 bottom-1"
+                  />
+                </Menu.Button>
+
+                <Transition
+                  as={Fragment}
+                  enter="transition ease-out duration-100"
+                  enterFrom="transform opacity-0 scale-95"
+                  enterTo="transform opacity-100 scale-100"
+                  leave="transition ease-in duration-75"
+                  leaveFrom="transform opacity-100 scale-100"
+                  leaveTo="transform opacity-0 scale-95"
+                >
+                  {fiat && coins && (
+                    <Menu.Items
+                      as="div"
+                      className="scrollbar-styled absolute z-10 bottom-10 right-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-bkg-4 border border-fields-input-border rounded-xl shadow-2xl overflow-auto origin-bottom-right"
+                    >
+                      {Object.entries(coins).map(([key]) => (
+                        <Menu.Item as="div" key={key}>
+                          <button
+                            key={key}
+                            onClick={() => {
+                              setCheckValueCoin(key);
+                              handleConvert(conversorValues.crypto, key);
+                            }}
+                            className="group flex gap-x-1 items-center justify-start px-4 py-2 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-brand-royalblue border-transparent border-opacity-30 transition-all duration-300"
+                          >
+                            {getSymbolFromCurrency(key.toUpperCase())}
+
+                            <p>{key.toUpperCase()}</p>
+                          </button>
+                        </Menu.Item>
+                      ))}
+                    </Menu.Items>
+                  )}
+                </Transition>
+              </Menu>
+            </div>
+          </Form.Item>
+        </Form>
       </div>
     </Layout>
   );
