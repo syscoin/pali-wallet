@@ -1,6 +1,3 @@
-// import { ethers } from 'ethers';
-
-import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import { web3Provider } from '@pollum-io/sysweb3-network';
 
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
@@ -19,11 +16,13 @@ export const EthProvider = (host: string) => {
 
   // const getAccounts = async () => web3Provider.eth.getAccounts();
 
-  const getTokens = async (address: string) =>
-    Web3Accounts().getAssetsByAddress(
+  const getTokens = async (address: string) => {
+    const { activeNetwork } = store.getState().vault;
+    return window.controller.wallet.account.eth.getAssetsByAddress(
       address,
-      store.getState().vault.activeNetwork
+      activeNetwork
     );
+  };
 
   // const getChainId = async () => web3Provider.eth.getChainId();
 
