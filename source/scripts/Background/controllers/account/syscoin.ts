@@ -71,6 +71,8 @@ const SysAccountController = (): ISysAccountController => {
       assets: filteredAssets,
     };
 
+    if (currentAccount === activeAccount) return;
+
     store.dispatch(setActiveAccount(currentAccount));
 
     store.dispatch(
