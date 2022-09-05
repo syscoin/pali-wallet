@@ -24,7 +24,7 @@ export const SendConfirm = () => {
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
   const { host, ...externalTx } = useQueryData();
-  const isExternal = Boolean(externalTx);
+  const isExternal = Boolean(externalTx.amount);
   const tx = isExternal ? externalTx : state.tx;
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
@@ -135,7 +135,7 @@ export const SendConfirm = () => {
             <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               Fee
               <span className="text-brand-white">
-                {!isSyscoinChain ? tx.fee * 10 ** 9 : tx.fee}
+                {!isSyscoinChain ? tx.fee * 10 ** 9 : tx.fee} GWEI
               </span>
             </p>
 
