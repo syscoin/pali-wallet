@@ -133,7 +133,9 @@ export const SendConfirm = () => {
             <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               Fee
               <span className="text-brand-white">
-                {!isBitcoinBased ? tx.fee * 10 ** 9 : tx.fee} GWEI
+                {!isBitcoinBased
+                  ? `${tx.fee * 10 ** 9} GWEI`
+                  : `${tx.fee} ${activeNetwork.currency}`}
               </span>
             </p>
 
