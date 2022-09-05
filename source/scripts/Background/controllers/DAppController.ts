@@ -1,13 +1,7 @@
+import _ from 'lodash';
 import { Runtime } from 'webextension-polyfill-ts';
 
-import {
-  addDApp,
-  removeDApp,
-  addListener as addListenerAction,
-  removeListener as removeListenerAction,
-  removeListeners as removeListenersAction,
-  updateDAppAccount,
-} from 'state/dapp';
+import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
 import store from 'state/store';
 import { IDAppController } from 'types/controllers';
@@ -15,9 +9,10 @@ import { IDAppController } from 'types/controllers';
 import { onDisconnect, onMessage } from './message-handler';
 import { DAppEvents } from './message-handler/types';
 
-interface IDappUtils {
+interface IDappsSession {
   [host: string]: {
     hasWindow: boolean;
+    listens: string[];
     port: Runtime.Port;
   };
 }
@@ -28,7 +23,7 @@ interface IDappUtils {
  * DApps connections use the site host as id
  */
 const DAppController = (): IDAppController => {
-  const _dapps: IDappUtils = {};
+  const _dapps: IDappsSession = {};
 
   const isConnected = (host: string) => {
     const { dapps } = store.getState().dapp;
@@ -39,7 +34,11 @@ const DAppController = (): IDAppController => {
   const setup = (port: Runtime.Port) => {
     const { host } = new URL(port.sender.url);
 
-    _dapps[host] = { port, hasWindow: false };
+    _dapps[host] = {
+      hasWindow: false,
+      listens: [],
+      port,
+    };
 
     port.onMessage.addListener(onMessage);
     port.onDisconnect.addListener(onDisconnect);
@@ -69,41 +68,39 @@ const DAppController = (): IDAppController => {
     eventName: string,
     data?: any
   ) => {
-    if (!hasListener(host, eventName)) return;
-    if (!isConnected(host)) return;
-
     // dispatch the event locally
     const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
     window.dispatchEvent(event);
+
+    if (!hasListener(host, eventName)) return;
+    if (!isConnected(host)) return;
 
     // post the event to the DApp
     const id = `${host}.${eventName}`;
     _dapps[host].port.postMessage({ id, data });
   };
 
+  //* ----- Event listeners -----
   const addListener = (host: string, eventName: string) => {
     if (!DAppEvents[eventName]) return;
 
-    store.dispatch(addListenerAction({ host, eventName }));
+    _dapps[host].listens.push(eventName);
   };
 
   const removeListener = (host: string, eventName: string) => {
     if (!DAppEvents[eventName]) return;
 
-    store.dispatch(removeListenerAction({ host, eventName }));
+    _.remove(_dapps[host].listens, (e) => e === eventName);
   };
 
   const removeListeners = (host: string) => {
-    const listeners = store.getState().dapp.listeners[host];
-    if (listeners) store.dispatch(removeListenersAction(host));
+    _dapps[host].listens = [];
   };
 
-  const hasListener = (host: string, eventName: string) => {
-    const { dapp } = store.getState();
+  const hasListener = (host: string, eventName: string) =>
+    _dapps[host] && _dapps[host].listens.includes(eventName);
 
-    return dapp.listeners[host] && dapp.listeners[host].includes(eventName);
-  };
-
+  //* ----- Getters/Setters -----
   const get = (host: string) => store.getState().dapp.dapps[host];
 
   const getAll = () => store.getState().dapp.dapps;

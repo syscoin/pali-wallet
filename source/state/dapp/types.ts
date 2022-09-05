@@ -13,11 +13,4 @@ export interface IDAppState {
   dapps: {
     [host: string]: IDApp;
   };
-
-  /**
-   * Dapps that are currently listening for updates
-   */
-  listeners: {
-    [host: string]: Array<string>;
-  };
 }
