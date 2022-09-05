@@ -24,6 +24,7 @@ export const initialState: IVaultState = {
     default: true,
     currency: 'sys',
   },
+  isBitcoinBased: true,
   isPendingBalances: false,
   timer: 5,
   networks: initialNetworksState,
@@ -100,7 +101,7 @@ const VaultState = createSlice({
         ...state.networks[chain],
         [network.chainId]: network,
       };
-      // eslint-disable-next-line
+
       return;
     },
     removeNetwork(
@@ -176,6 +177,9 @@ const VaultState = createSlice({
     setStoreError(state: IVaultState, action: PayloadAction<boolean>) {
       state.error = action.payload;
     },
+    setIsBitcoinBased(state: IVaultState, action: PayloadAction<boolean>) {
+      state.isBitcoinBased = action.payload;
+    },
   },
 });
 
@@ -197,6 +201,7 @@ export const {
   setAccountLabel,
   setAccountTransactions,
   setStoreError,
+  setIsBitcoinBased,
 } = VaultState.actions;
 
 export default VaultState.reducer;

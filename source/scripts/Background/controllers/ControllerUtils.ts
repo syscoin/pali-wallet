@@ -37,13 +37,9 @@ const ControllerUtils = (): IControllerUtils => {
     }
 
     try {
-      const { activeNetwork, networks } = store.getState().vault;
+      const { activeNetwork, isBitcoinBased } = store.getState().vault;
 
-      const id =
-        networks.syscoin[activeNetwork.chainId] &&
-        activeNetwork.url.includes('blockbook')
-          ? 'syscoin'
-          : 'ethereum';
+      const id = isBitcoinBased ? 'syscoin' : 'ethereum';
 
       if (id === 'ethereum') {
         const { chain } = await validateEthRpc(activeNetwork.url);

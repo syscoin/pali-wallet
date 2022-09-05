@@ -20,9 +20,11 @@ import {
   removeNetwork as removeNetworkFromStore,
   removeNetwork,
   setStoreError,
+  setIsBitcoinBased,
 } from 'state/vault';
 import { IMainController } from 'types/controllers';
 import { ICustomRpcParams } from 'types/transactions';
+import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
 import WalletController from './account';
 
@@ -92,14 +94,15 @@ const MainController = (): IMainController => {
     walletController.account.sys.getLatestUpdate(false);
   };
 
-  const setActiveNetwork = async (network: INetwork) => {
+  const setActiveNetwork = async (network: INetwork, chain: string) => {
     store.dispatch(setIsPendingBalances(true));
 
-    const { networks, activeNetwork } = store.getState().vault;
+    const { activeNetwork } = store.getState().vault;
 
-    const isSyscoinChain = networks.syscoin[network.chainId];
+    const isBitcoinBased =
+      chain === 'syscoin' && (await isBitcoinBasedNetwork(network));
 
-    const chain = isSyscoinChain ? 'syscoin' : 'ethereum';
+    store.dispatch(setIsBitcoinBased(isBitcoinBased));
 
     try {
       const networkAccount = await keyringManager.setSignerNetwork(
@@ -111,7 +114,7 @@ const MainController = (): IMainController => {
       store.dispatch(setIsPendingBalances(false));
       store.dispatch(setActiveAccount(networkAccount));
 
-      if (isSyscoinChain) {
+      if (isBitcoinBased) {
         store.dispatch(
           setActiveAccountProperty({
             property: 'xpub',
@@ -131,7 +134,9 @@ const MainController = (): IMainController => {
 
       return networkAccount;
     } catch (error) {
-      setActiveNetwork(activeNetwork);
+      const activeNetworkChain = await networkChain(activeNetwork);
+
+      setActiveNetwork(activeNetwork, activeNetworkChain);
 
       store.dispatch(setStoreError(true));
     }

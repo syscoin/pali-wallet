@@ -13,6 +13,7 @@ import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = getController();
+  const fiat = useSelector((state: RootState) => state.price.fiat);
 
   const lastLogin = useSelector((state: RootState) => state.vault.lastLogin);
   const activeNetwork = useSelector(
@@ -22,9 +23,6 @@ export const Home = () => {
     (state: RootState) => state.vault.isPendingBalances
   );
   const networks = useSelector((state: RootState) => state.vault.networks);
-  const currentFiatCurrency = useSelector(
-    (state: RootState) => state.price.fiat.asset
-  );
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -61,25 +59,19 @@ export const Home = () => {
     setIsTestnet(chain === 'test' || chain === 'testnet');
   };
 
-  const isUnlocked =
-    controller.wallet.isUnlocked() && activeAccount.address !== '';
-
   const setFiatPrice = () => {
     const amount = getFiatAmount(
       balance || 0,
       4,
-      String(currentFiatCurrency).toUpperCase(),
+      String(fiat.asset).toUpperCase(),
       true
     );
 
     setFiatPriceValue(String(amount));
   };
 
-  useEffect(() => {
-    if (!isUnlocked || !currentFiatCurrency) return;
-
-    setFiatPrice();
-  }, [isUnlocked, activeNetwork.chainId, currentFiatCurrency, balance]);
+  const isUnlocked =
+    controller.wallet.isUnlocked() && activeAccount.address !== '';
 
   useEffect(() => {
     setFiatPrice();

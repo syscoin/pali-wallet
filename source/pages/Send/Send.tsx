@@ -14,18 +14,16 @@ export const Send: React.FC<ISend> = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const networks = useSelector((state: RootState) => state.vault.networks);
-
-  const isSyscoinChain =
-    networks.syscoin[activeNetwork.chainId] &&
-    activeNetwork.url.includes('blockbook');
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
 
   return (
     <Layout
       title={`SEND ${activeNetwork.currency?.toUpperCase()}`}
       id="sendSYS-title"
     >
-      {isSyscoinChain ? <SendSys /> : <SendEth />}
+      {isBitcoinBased ? <SendSys /> : <SendEth />}
     </Layout>
   );
 };

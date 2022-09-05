@@ -30,7 +30,7 @@ const SysAccountController = (): ISysAccountController => {
   let intervalId: NodeJS.Timer;
 
   const getLatestUpdate = async (silent?: boolean) => {
-    const { activeAccount, activeNetwork, networks } = store.getState().vault;
+    const { activeAccount, isBitcoinBased } = store.getState().vault;
 
     if (!activeAccount.address) return;
 
@@ -41,12 +41,8 @@ const SysAccountController = (): ISysAccountController => {
 
     store.dispatch(setIsPendingBalances(false));
 
-    const isSyscoinChain =
-      networks.syscoin[activeNetwork.chainId] &&
-      activeNetwork.url.includes('blockbook');
-
-    const hash = isSyscoinChain ? 'txid' : 'hash';
-    const assetId = isSyscoinChain ? 'assetGuid' : 'contractAddress';
+    const hash = isBitcoinBased ? 'txid' : 'hash';
+    const assetId = isBitcoinBased ? 'assetGuid' : 'contractAddress';
 
     const transactions = [
       ...accountLatestUpdate.assets,
