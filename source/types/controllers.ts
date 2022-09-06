@@ -24,7 +24,7 @@ export interface IMainController extends IKeyringManager {
   };
   addCustomRpc: (rpc: ICustomRpcParams) => Promise<INetwork>;
   createAccount: (label?: string) => Promise<IKeyringAccountState>;
-  createWallet: () => Promise<IKeyringAccountState>;
+  createWallet: (password: string) => Promise<void>;
   editCustomRpc: (
     newRpc: ICustomRpcParams,
     oldRpc: ICustomRpcParams

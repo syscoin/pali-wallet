@@ -3,7 +3,6 @@ import React, {
   useState,
   // useMemo
 } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 import {
   Button,
@@ -11,25 +10,27 @@ import {
   PrimaryButton,
   OnboardingLayout,
 } from 'components/index';
-import { getController } from 'utils/browser';
 // import isEqual from 'lodash/isEqual';
 
-export const ConfirmPhrase = () => {
-  const navigate = useNavigate();
-  const controller = getController();
-  const phrases = controller.wallet.createSeed();
-
+export const ConfirmPhrase = ({
+  passed,
+  confirmPassed,
+  seed,
+}: {
+  confirmPassed: any;
+  passed: boolean;
+  seed: string;
+}) => {
   const [orgList, setOrgList] = useState<Array<string>>(
-    shuffle((phrases || '').split(' '))
+    shuffle((seed || '').split(' '))
   );
 
   const [newList, setNewList] = useState<Array<string>>([]);
-  const [passed, setPassed] = useState<boolean>(false);
 
   // const isNotEqualArrays = useMemo((): boolean => {
-  //   if (!phrases) return true;
-  //   return !isEqual(phrases.split(' '), newList);
-  // }, [phrases, newList]);
+  //   if (!seed) return true;
+  //   return !isEqual(seed.split(' '), newList);
+  // }, [seed, newList]);
 
   const handleOrgPhrase = (idx: number) => {
     const tempList = [...orgList];
@@ -43,14 +44,6 @@ export const ConfirmPhrase = () => {
     setOrgList([...orgList, newList[idx]]);
     tempList.splice(idx, 1);
     setNewList([...tempList]);
-  };
-
-  const handleConfirm = async () => {
-    await controller.wallet.createWallet();
-
-    navigate('/home');
-
-    setPassed(true);
   };
 
   return (
@@ -85,7 +78,7 @@ export const ConfirmPhrase = () => {
           </section>
 
           <div className="absolute bottom-12">
-            <PrimaryButton type="button" onClick={handleConfirm}>
+            <PrimaryButton type="button" onClick={confirmPassed}>
               Validate
             </PrimaryButton>
           </div>
@@ -95,7 +88,7 @@ export const ConfirmPhrase = () => {
           show={passed}
           title="YOUR WALLET IS READY"
           description="You should now have your recovery phrase and your wallet password written down for future reference."
-          onClose={handleConfirm}
+          onClose={confirmPassed}
         />
       </div>
     </OnboardingLayout>

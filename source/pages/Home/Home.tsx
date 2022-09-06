@@ -16,13 +16,15 @@ export const Home = () => {
   const fiat = useSelector((state: RootState) => state.price.fiat);
 
   const lastLogin = useSelector((state: RootState) => state.vault.lastLogin);
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
   const isPendingBalances = useSelector(
     (state: RootState) => state.vault.isPendingBalances
   );
-  const networks = useSelector((state: RootState) => state.vault.networks);
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -30,29 +32,21 @@ export const Home = () => {
   const [fiatPriceValue, setFiatPriceValue] = useState('');
   const [balance, setBalance] = useState(0);
   const [isTestnet, setIsTestnet] = useState(false);
-  const [isSyscoinChain, setIsSyscoinChain] = useState(false);
 
   const { getFiatAmount } = usePrice();
 
   const { navigate } = useUtils();
 
   useEffect(() => {
-    setIsSyscoinChain(
-      Boolean(networks.syscoin[activeNetwork.chainId]) &&
-        activeNetwork.url.includes('blockbook')
-    );
-  }, [activeNetwork.chainId]);
-
-  useEffect(() => {
     const { syscoin, ethereum } = activeAccount.balances;
 
-    setBalance(isSyscoinChain ? syscoin : ethereum);
+    setBalance(isBitcoinBased ? syscoin : ethereum);
   }, [activeNetwork]);
 
   const setMainOrTestNetwork = async () => {
     const { url } = activeNetwork;
 
-    const { chain } = isSyscoinChain
+    const { chain } = isBitcoinBased
       ? await validateSysRpc(url)
       : await validateEthRpc(url);
 

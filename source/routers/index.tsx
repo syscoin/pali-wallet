@@ -12,12 +12,10 @@ import { browser } from 'webextension-polyfill-ts';
 import {
   About,
   AutoLock,
-  ConfirmPhrase,
   ConnectedSites,
   ConnectHardwareWallet,
   CreateAccount,
   CreatePass,
-  CreatePhrase,
   Currency,
   CustomRPC,
   ForgetWallet,
@@ -25,7 +23,6 @@ import {
   ManageNetwork,
   Home,
   Import,
-  Phrase,
   PrivateKey,
   Receive,
   Send,
@@ -33,6 +30,7 @@ import {
   Start,
   TrustedSites,
   AddToken,
+  SeedConfirm,
 } from '../pages';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -92,8 +90,7 @@ export const Router = () => {
 
       <Route path="create-password" element={<CreatePass />} />
       <Route path="import" element={<Import />} />
-      <Route path="phrase/create" element={<CreatePhrase />} />
-      <Route path="phrase/confirm" element={<ConfirmPhrase />} />
+      <Route path="phrase" element={<SeedConfirm />} />
 
       <Route path="home" element={<ProtectedRoute element={<Home />} />} />
       <Route
@@ -141,7 +138,7 @@ export const Router = () => {
         />
         <Route
           path="phrase"
-          element={<ProtectedRoute element={<Phrase />} />}
+          element={<ProtectedRoute element={<SeedConfirm />} />}
         />
 
         {/* /settings/account */}

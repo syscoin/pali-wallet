@@ -56,16 +56,19 @@ const MainController = (): IMainController => {
     store.dispatch(setActiveAccount(account));
   };
 
-  const createWallet = async (): Promise<IKeyringAccountState> => {
+  const createWallet = async (password: string): Promise<void> => {
+    store.dispatch(setIsPendingBalances(true));
+
+    keyringManager.setWalletPassword(password);
+
     const account =
       (await keyringManager.createKeyringVault()) as IKeyringAccountState;
 
     store.dispatch(addAccountToStore(account));
     store.dispatch(setEncryptedMnemonic(keyringManager.getEncryptedMnemonic()));
+    store.dispatch(setIsPendingBalances(false));
     store.dispatch(setActiveAccount(account));
     store.dispatch(setLastLogin());
-
-    return account;
   };
 
   const lock = () => {
