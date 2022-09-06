@@ -46,12 +46,12 @@ export const Router = () => {
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
 
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const encryptedMnemonic = useSelector(
+    (state: RootState) => state.vault.encryptedMnemonic
   );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
 
-  const isUnlocked = wallet.isUnlocked() && activeAccount.address !== '';
+  const isUnlocked = wallet.isUnlocked() && encryptedMnemonic;
 
   useEffect(() => {
     if (isUnlocked) {
@@ -65,7 +65,8 @@ export const Router = () => {
   }, [isUnlocked]);
 
   useEffect(() => {
-    const canProceed = isUnlocked && accounts && activeAccount.address;
+    const canProceed = isUnlocked && accounts && encryptedMnemonic;
+
     if (canProceed) {
       navigate('/home');
 
