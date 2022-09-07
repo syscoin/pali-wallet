@@ -50,7 +50,7 @@ const MasterController = (): IMasterController => {
     return browser.windows.create({
       url: '/external.html?' + params.toString(),
       width: 372,
-      height: 600,
+      height: 560,
       type: 'popup',
     });
   };

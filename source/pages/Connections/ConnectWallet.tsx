@@ -19,7 +19,7 @@ import { isActiveNetwork } from 'utils/network';
 
 export const ConnectWallet = () => {
   const { dapp, wallet, refresh } = getController();
-  const { host, chain, chainId } = useQueryData();
+  const { host, chain, chainId, logo } = useQueryData();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const networks = useSelector((state: RootState) => state.vault.networks);
 
@@ -30,7 +30,7 @@ export const ConnectWallet = () => {
   const [confirmUntrusted, setConfirmUntrusted] = useState(false);
 
   const handleConnect = () => {
-    dapp.connect({ host, chain, chainId, accountId });
+    dapp.connect({ host, chain, chainId, accountId, logo });
     window.close();
   };
 

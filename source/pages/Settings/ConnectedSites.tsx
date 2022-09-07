@@ -50,18 +50,21 @@ const ConnectedSites = () => {
 
   return (
     <Layout title="CONNECTED SITES">
-      <p className="m-4 max-w-xs text-white text-xs md:max-w-md">
-        {`${activeAccount?.label} is not connected to any sites. To connect to a SYS platform site, find the connect button on their site.`}
+      <p className="m-2 max-w-xs text-white text-xs md:max-w-md">
+        {connectedDapps
+          ? `${activeAccount.label} is connected to these sites. They can view your account public information.`
+          : `${activeAccount.label} is not connected to any sites. To connect to a Pali compatible dApp, find the connect button on their site.`}
       </p>
 
       <div className="flex flex-col items-center justify-center w-full">
         {connectedDapps.map((_dapp) => (
           <ul
             key={_dapp.host}
-            className="scrollbar-styled px-4 py-2 w-full h-80 overflow-auto"
+            className="scrollbar-styled w-full max-w-xs h-80 overflow-auto md:max-w-md"
           >
             <li className="flex items-center justify-between my-2 py-3 w-full text-xs border-b border-dashed border-gray-500">
-              <p>{truncate(_dapp.host, 25)}</p>
+              <p>{truncate(_dapp.host, 40)}</p>
+
               <IconButton onClick={() => setSelected(_dapp)}>
                 <Icon name="edit" wrapperClassname="w-4" />
               </IconButton>
@@ -106,7 +109,7 @@ const ConnectedSites = () => {
                   leaveFrom="opacity-100 scale-100"
                   leaveTo="opacity-0 scale-95"
                 >
-                  <div className="inline-block align-middle my-8 py-6 w-full max-w-2xl text-left font-poppins bg-bkg-2 rounded-2xl shadow-xl overflow-hidden transform transition-all">
+                  <div className="inline-block align-middle my-8 py-6 w-full max-w-2xl text-left font-poppins bg-bkg-4 rounded-2xl shadow-xl overflow-hidden transform transition-all">
                     <Dialog.Title
                       as="h3"
                       className="pb-3 text-center text-brand-white text-lg font-medium leading-6 border-b border-dashed border-brand-white"
@@ -119,13 +122,14 @@ const ConnectedSites = () => {
                       </p>
 
                       <div className="flex items-center justify-between m-3 text-brand-white">
-                        <p>{truncate(selected.host, 20)}</p>
+                        <p>{truncate(selected.host, 35)}</p>
+
                         <IconButton onClick={disconnectSelected}>
                           <Icon name="delete" />
                         </IconButton>
                       </div>
 
-                      <div className="p-4 bg-bkg-1">
+                      <div className="p-4 bg-bkg-3">
                         <p className="mb-3 text-brand-white">Permissions</p>
 
                         <div className="flex items-center justify-between">

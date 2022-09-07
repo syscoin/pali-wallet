@@ -3,6 +3,7 @@ export interface IDApp {
   chain: string;
   chainId: number;
   host: string;
+  logo?: string;
 }
 
 export interface IDAppState {
