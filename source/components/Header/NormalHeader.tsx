@@ -391,7 +391,7 @@ const GeneralMenu: React.FC = () => {
 
           <Menu.Item>
             <li
-              onClick={() => navigate('/settings/phrase')}
+              onClick={() => navigate('/settings/seed')}
               className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
             >
               <Icon name="wallet" className="ml-1 mr-4 text-brand-white" />

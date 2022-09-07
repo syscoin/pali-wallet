@@ -31,6 +31,7 @@ import {
   TrustedSites,
   AddToken,
   SeedConfirm,
+  Phrase,
 } from '../pages';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -136,10 +137,7 @@ export const Router = () => {
           path="forget-wallet"
           element={<ProtectedRoute element={<ForgetWallet />} />}
         />
-        <Route
-          path="phrase"
-          element={<ProtectedRoute element={<SeedConfirm />} />}
-        />
+        <Route path="seed" element={<ProtectedRoute element={<Phrase />} />} />
 
         {/* /settings/account */}
         <Route path="account">
