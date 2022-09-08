@@ -7,17 +7,9 @@ import { RootState } from 'state/store';
 import { TransactionsList } from './components/Transactions';
 
 export const TransactionsPanel = () => {
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-  const networks = useSelector((state: RootState) => state.vault.networks);
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
-  const isSyscoinChain =
-    Boolean(networks.syscoin[activeNetwork.chainId]) &&
-    activeNetwork.url.includes('blockbook');
-
   const transactions = Object.values(activeAccount.transactions);
 
   const NoTransactionsComponent = () => (
@@ -34,7 +26,7 @@ export const TransactionsPanel = () => {
   ) : (
     <>
       <div className="p-4 w-full text-white text-base bg-bkg-3">
-        <TransactionsList isSyscoinChain={isSyscoinChain} />
+        <TransactionsList />
       </div>
 
       <Fullscreen />

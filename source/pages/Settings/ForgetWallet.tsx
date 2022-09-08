@@ -12,20 +12,17 @@ const ForgetWalletView = () => {
   const { navigate } = useUtils();
 
   const controller = getController();
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
   );
-  const networks = useSelector((state: RootState) => state.vault.networks);
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
 
   if (!activeAccount) throw new Error('No active account');
 
-  const isSyscoinChain = Boolean(networks.syscoin[activeNetwork.chainId]);
-
   const hasAccountFunds =
-    (isSyscoinChain
+    (isBitcoinBased
       ? activeAccount.balances.syscoin
       : activeAccount.balances.ethereum) > 0;
 

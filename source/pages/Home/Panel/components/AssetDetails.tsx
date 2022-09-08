@@ -6,16 +6,11 @@ import { RootState } from 'state/store';
 import { EvmAssetDetais, SyscoinAssetDetais } from './Assets/index';
 
 export const AssetDetails = ({ id }: { id: string }) => {
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
   );
-  const networks = useSelector((state: RootState) => state.vault.networks);
 
-  const isSyscoinChain =
-    Boolean(networks.syscoin[activeNetwork.chainId]) &&
-    activeNetwork.url.includes('blockbook');
-
-  return !isSyscoinChain ? (
+  return !isBitcoinBased ? (
     <EvmAssetDetais id={id} />
   ) : (
     <SyscoinAssetDetais id={id} />

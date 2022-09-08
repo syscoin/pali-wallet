@@ -17,13 +17,15 @@ const CurrencyView = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const networks = useSelector((state: RootState) => state.vault.networks);
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const activeAccountId = useSelector(
     (state: RootState) => state.vault.activeAccount.id
   );
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
+  );
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
   );
 
   const fiat = useSelector((state: RootState) => state.price.fiat);
@@ -50,15 +52,11 @@ const CurrencyView = () => {
     controller.wallet.isUnlocked() && activeAccount.address !== '';
 
   useEffect(() => {
-    const isSyscoinChain =
-      Boolean(networks.syscoin[activeNetwork.chainId]) &&
-      activeNetwork.url.includes('blockbook');
-
-    setChain(isSyscoinChain ? 'syscoin' : 'ethereum');
+    setChain(isBitcoinBased ? 'syscoin' : 'ethereum');
 
     const { syscoin, ethereum } = activeAccount.balances;
 
-    setBalance(isSyscoinChain ? syscoin : ethereum);
+    setBalance(isBitcoinBased ? syscoin : ethereum);
   }, [activeNetwork]);
 
   const [conversorValues, setConversorValues] = useState({

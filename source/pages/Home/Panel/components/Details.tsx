@@ -12,15 +12,13 @@ export const DetailsView = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const networks = useSelector((state: RootState) => state.vault.networks);
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
 
   const {
     state: { id, hash },
   }: any = useLocation();
-
-  const isSyscoinChain =
-    Boolean(networks.syscoin[activeNetwork.chainId]) &&
-    activeNetwork.url.includes('blockbook');
 
   const isAsset = id && !hash;
 
@@ -57,12 +55,12 @@ export const DetailsView = () => {
           <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-3 md:bottom-8 md:max-w-2xl">
             <p>
               Would you like to go to view {isAsset ? 'asset' : 'transaction'}{' '}
-              on {isSyscoinChain ? 'SYS Block' : 'Etherscan'} Explorer?
+              on {isBitcoinBased ? 'SYS Block' : 'Etherscan'} Explorer?
             </p>
 
             <Button
               type="button"
-              onClick={isSyscoinChain ? openSysExplorer : openEthExplorer}
+              onClick={isBitcoinBased ? openSysExplorer : openEthExplorer}
               className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
             >
               Go

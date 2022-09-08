@@ -20,11 +20,9 @@ export const AddToken: FC = () => {
   const [isTestnet, setIsTestnet] = useState(false);
 
   const network = useSelector((state: RootState) => state.vault.activeNetwork);
-  const networks = useSelector((state: RootState) => state.vault.networks);
-
-  const isSyscoinChain =
-    Boolean(networks.syscoin[network.chainId]) &&
-    network.url.includes('blockbook');
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
 
   const setTestnet = async () => {
     const { chain } = await validateEthRpc(network.url);
@@ -38,7 +36,7 @@ export const AddToken: FC = () => {
 
   return (
     <Layout title="IMPORT TOKEN">
-      {isSyscoinChain ? (
+      {isBitcoinBased ? (
         <SyscoinImportToken />
       ) : (
         <>

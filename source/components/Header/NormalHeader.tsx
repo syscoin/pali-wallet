@@ -17,6 +17,9 @@ const NetworkMenu: React.FC = () => {
   const { wallet } = getController();
 
   const networks = useSelector((state: RootState) => state.vault.networks);
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -24,9 +27,9 @@ const NetworkMenu: React.FC = () => {
 
   const { navigate } = useUtils();
 
-  const handleChangeNetwork = (network: INetwork) => {
+  const handleChangeNetwork = (network: INetwork, chain: string) => {
     try {
-      wallet.setActiveNetwork(network);
+      wallet.setActiveNetwork(network, chain);
     } catch (networkError) {
       navigate('/home');
     }
@@ -126,14 +129,14 @@ const NetworkMenu: React.FC = () => {
                                 key={uniqueId()}
                                 className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                                 onClick={() =>
-                                  handleChangeNetwork(currentNetwork)
+                                  handleChangeNetwork(currentNetwork, 'syscoin')
                                 }
                               >
                                 <span className="ml-8 text-left">
                                   {currentNetwork.label}
                                 </span>
 
-                                {activeNetwork.url.includes('blockbook') &&
+                                {isBitcoinBased &&
                                   activeNetwork.chainId ===
                                     currentNetwork.chainId && (
                                     <Icon
@@ -178,14 +181,17 @@ const NetworkMenu: React.FC = () => {
                                 key={uniqueId()}
                                 className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                                 onClick={() =>
-                                  handleChangeNetwork(currentNetwork)
+                                  handleChangeNetwork(
+                                    currentNetwork,
+                                    'ethereum'
+                                  )
                                 }
                               >
                                 <span className="ml-8 text-left">
                                   {currentNetwork.label}
                                 </span>
 
-                                {!activeNetwork.url.includes('blockbook') &&
+                                {!isBitcoinBased &&
                                   activeNetwork.chainId ===
                                     currentNetwork.chainId && (
                                     <Icon
@@ -273,7 +279,7 @@ const GeneralMenu: React.FC = () => {
   useEffect(() => {
     let isMounted = true;
 
-    getTabUrl().then((url: string) => {
+    getTabUrl().then(async (url: string) => {
       if (!isMounted) return;
 
       const host = getHost(url);
@@ -287,7 +293,7 @@ const GeneralMenu: React.FC = () => {
 
       const _dapp = dapp.get(host);
       const isSameAccount = _dapp.accountId === activeAccount.id;
-      const isSameNetwork = isActiveNetwork(_dapp.chain, _dapp.chainId);
+      const isSameNetwork = await isActiveNetwork(_dapp.chain, _dapp.chainId);
 
       setCurrentTab({
         host,
@@ -385,7 +391,7 @@ const GeneralMenu: React.FC = () => {
 
           <Menu.Item>
             <li
-              onClick={() => navigate('/settings/phrase')}
+              onClick={() => navigate('/settings/seed')}
               className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
             >
               <Icon name="wallet" className="ml-1 mr-4 text-brand-white" />

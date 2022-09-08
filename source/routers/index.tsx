@@ -12,12 +12,10 @@ import { browser } from 'webextension-polyfill-ts';
 import {
   About,
   AutoLock,
-  ConfirmPhrase,
   ConnectedSites,
   ConnectHardwareWallet,
   CreateAccount,
   CreatePass,
-  CreatePhrase,
   Currency,
   CustomRPC,
   ForgetWallet,
@@ -25,7 +23,6 @@ import {
   ManageNetwork,
   Home,
   Import,
-  Phrase,
   PrivateKey,
   Receive,
   Send,
@@ -33,6 +30,8 @@ import {
   Start,
   TrustedSites,
   AddToken,
+  SeedConfirm,
+  Phrase,
 } from '../pages';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -46,12 +45,12 @@ export const Router = () => {
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
 
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const encryptedMnemonic = useSelector(
+    (state: RootState) => state.vault.encryptedMnemonic
   );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
 
-  const isUnlocked = wallet.isUnlocked() && activeAccount.address !== '';
+  const isUnlocked = wallet.isUnlocked() && encryptedMnemonic;
 
   useEffect(() => {
     if (isUnlocked) {
@@ -65,7 +64,8 @@ export const Router = () => {
   }, [isUnlocked]);
 
   useEffect(() => {
-    const canProceed = isUnlocked && accounts && activeAccount.address;
+    const canProceed = isUnlocked && accounts && encryptedMnemonic;
+
     if (canProceed) {
       navigate('/home');
 
@@ -91,8 +91,7 @@ export const Router = () => {
 
       <Route path="create-password" element={<CreatePass />} />
       <Route path="import" element={<Import />} />
-      <Route path="phrase/create" element={<CreatePhrase />} />
-      <Route path="phrase/confirm" element={<ConfirmPhrase />} />
+      <Route path="phrase" element={<SeedConfirm />} />
 
       <Route path="home" element={<ProtectedRoute element={<Home />} />} />
       <Route
@@ -138,10 +137,7 @@ export const Router = () => {
           path="forget-wallet"
           element={<ProtectedRoute element={<ForgetWallet />} />}
         />
-        <Route
-          path="phrase"
-          element={<ProtectedRoute element={<Phrase />} />}
-        />
+        <Route path="seed" element={<ProtectedRoute element={<Phrase />} />} />
 
         {/* /settings/account */}
         <Route path="account">

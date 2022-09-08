@@ -1,4 +1,4 @@
-import { EthProvider } from 'scripts/Provider/EthProvider';
+// import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
 import { isActiveNetwork } from 'utils/network';
@@ -12,7 +12,7 @@ const _changeNetwork = async (chain: string, chainId: number) => {
   const network = networks[chain][chainId];
 
   const { wallet, refresh } = window.controller;
-  await wallet.setActiveNetwork(network);
+  await wallet.setActiveNetwork(network, chain);
   await refresh(true);
 };
 
@@ -44,7 +44,7 @@ export const methodRequest = async (
     throw new Error('Restricted method. Connect before requesting');
 
   const { chain, chainId, accountId } = dapp.get(host);
-  if (!isActiveNetwork(chain, chainId)) {
+  if (!(await isActiveNetwork(chain, chainId))) {
     await _changeNetwork(chain, chainId);
   }
   if (!_isActiveAccount(accountId)) {
@@ -70,9 +70,13 @@ export const methodRequest = async (
   }
 
   //* Providers methods
-  const provider = prefix === 'sys' ? SysProvider(host) : EthProvider(host);
-  const method = provider[methodName];
+  if (prefix !== 'sys') {
+    // const provider = EthProvider(host);
+    // return await provider.send(data.method, data.args);
+  }
 
+  const provider = SysProvider(host);
+  const method = provider[methodName];
   if (!method) throw new Error('Unknown method');
 
   if (data.args) return await method(...data.args);

@@ -24,7 +24,7 @@ export interface IMainController extends IKeyringManager {
   };
   addCustomRpc: (rpc: ICustomRpcParams) => Promise<INetwork>;
   createAccount: (label?: string) => Promise<IKeyringAccountState>;
-  createWallet: () => Promise<IKeyringAccountState>;
+  createWallet: (password: string) => Promise<void>;
   editCustomRpc: (
     newRpc: ICustomRpcParams,
     oldRpc: ICustomRpcParams
@@ -34,7 +34,10 @@ export interface IMainController extends IKeyringManager {
   removeKeyringNetwork: (chain: string, chainId: number) => void;
   resolveError: () => void;
   setAccount: (id: number) => void;
-  setActiveNetwork: (network: INetwork) => Promise<IKeyringAccountState>;
+  setActiveNetwork: (
+    network: INetwork,
+    chain: string
+  ) => Promise<IKeyringAccountState>;
   setAutolockTimer: (minutes: number) => void;
   unlock: (pwd: string) => Promise<void>;
 }

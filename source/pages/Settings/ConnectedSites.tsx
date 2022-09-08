@@ -36,14 +36,16 @@ const ConnectedSites = () => {
 
   useEffect(() => {
     const dapps = Object.values(dapp.getAll());
-    const _activeNetworkChain = networkChain(activeNetwork);
-    const _connectedDapps = dapps.filter((_dapp) => {
-      const sameChain = _dapp.chain === _activeNetworkChain;
-      const sameAccount = _dapp.accountId === activeAccount.id;
-      return sameChain && sameAccount;
-    });
+    networkChain(activeNetwork).then((chain) => {
+      const _connectedDapps = dapps.filter((_dapp) => {
+        const sameChain = _dapp.chain === chain;
+        const sameAccount = _dapp.accountId === activeAccount.id;
 
-    setConnectedDapps(_connectedDapps);
+        return sameChain && sameAccount;
+      });
+
+      setConnectedDapps(_connectedDapps);
+    });
   }, []);
 
   return (

@@ -8,16 +8,12 @@ import { RootState } from 'state/store';
 import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
 
 export const AssetsPanel = () => {
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-  const networks = useSelector((state: RootState) => state.vault.networks);
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
-  const isSyscoinChain =
-    Boolean(networks.syscoin[activeNetwork.chainId]) &&
-    activeNetwork.url.includes('blockbook');
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
 
   const assets = Object.values(activeAccount.assets);
 
@@ -35,7 +31,7 @@ export const AssetsPanel = () => {
         <NoAssetsComponent />
       ) : (
         <ul className="pt-4 px-4 w-full text-center text-white text-base bg-bkg-3">
-          {isSyscoinChain ? <SyscoinAssetsList /> : <EvmAssetsList />}
+          {isBitcoinBased ? <SyscoinAssetsList /> : <EvmAssetsList />}
         </ul>
       )}
 

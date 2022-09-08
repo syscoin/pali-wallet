@@ -9,16 +9,11 @@ import {
 } from './Transactions';
 
 export const TransactionDetails = ({ hash }: { hash: string }) => {
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
   );
-  const networks = useSelector((state: RootState) => state.vault.networks);
 
-  const isSyscoinChain =
-    Boolean(networks.syscoin[activeNetwork.chainId]) &&
-    activeNetwork.url.includes('blockbook');
-
-  return isSyscoinChain ? (
+  return isBitcoinBased ? (
     <SyscoinTransactionDetails hash={hash} />
   ) : (
     <EvmTransactionDetails hash={hash} />

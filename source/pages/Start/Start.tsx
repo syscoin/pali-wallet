@@ -23,6 +23,7 @@ export const Start = () => {
       <PrimaryButton type="submit" onClick={() => navigate('/create-password')}>
         Get started
       </PrimaryButton>
+
       <Link
         className="mt-20 hover:text-brand-graylight text-brand-royalbluemedium font-poppins text-base font-light transition-all duration-300"
         to="/import"
