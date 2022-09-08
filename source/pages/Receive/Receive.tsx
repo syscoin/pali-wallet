@@ -14,13 +14,9 @@ export const Receive = () => {
 
   const controller = getController();
 
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-  const networks = useSelector((state: RootState) => state.vault.networks);
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
+  const {
+    vault: { networks, activeNetwork, activeAccount },
+  } = useSelector((state: RootState) => state);
 
   const [loaded, setLoaded] = useState<boolean>(false);
 

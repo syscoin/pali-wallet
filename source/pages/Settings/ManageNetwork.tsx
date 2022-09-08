@@ -10,7 +10,7 @@ import { getController } from 'utils/browser';
 import { truncate } from 'utils/index';
 
 const ManageNetworkView = () => {
-  const networks = useSelector((state: RootState) => state.vault.networks);
+  const { networks } = useSelector((state: RootState) => state.vault);
   const { navigate } = useUtils();
   const { wallet } = getController();
 

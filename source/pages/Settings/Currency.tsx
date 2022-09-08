@@ -14,22 +14,10 @@ const CurrencyView = () => {
   const controller = getController();
   const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-  const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const activeAccountId = useSelector(
-    (state: RootState) => state.vault.activeAccount.id
-  );
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
-
-  const fiat = useSelector((state: RootState) => state.price.fiat);
-  const coins = useSelector((state: RootState) => state.price.coins);
+  const {
+    vault: { activeAccount, activeNetwork, accounts, isBitcoinBased },
+    price: { fiat, coins },
+  } = useSelector((state: RootState) => state);
 
   if (!activeAccount) throw new Error('No account');
 
@@ -91,10 +79,10 @@ const CurrencyView = () => {
   };
 
   useEffect(() => {
-    if (isUnlocked && accounts && accounts[activeAccountId]) {
+    if (isUnlocked && accounts && accounts[activeAccount.id]) {
       controller.refresh(true);
     }
-  }, [isUnlocked, activeAccountId]);
+  }, [isUnlocked, activeAccount.id]);
 
   useEffect(() => {
     if (selectedCoin) {

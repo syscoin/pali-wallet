@@ -44,11 +44,9 @@ export const Router = () => {
   const { wallet, appRoute, refresh } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
-
-  const encryptedMnemonic = useSelector(
-    (state: RootState) => state.vault.encryptedMnemonic
-  );
-  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const {
+    vault: { accounts, encryptedMnemonic },
+  } = useSelector((state: RootState) => state);
 
   const isUnlocked = wallet.isUnlocked() && encryptedMnemonic;
 

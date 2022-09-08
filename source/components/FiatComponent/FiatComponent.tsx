@@ -10,10 +10,11 @@ interface IFiatComponent {
 }
 
 export const FiatComponent: FC<IFiatComponent> = ({ transactionValue }) => {
-  const fiat = useSelector((state: RootState) => state.price.fiat);
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
+  const {
+    vault: { activeNetwork },
+    price: { fiat },
+  } = useSelector((state: RootState) => state);
+
   const { getFiatAmount } = usePrice();
 
   const { crypto, formattedFiatAmount } = formatTransactionValue(

@@ -12,15 +12,9 @@ import { ellipsis } from 'utils/index';
 const AccountMenu: React.FC = () => {
   const { navigate } = useUtils();
   const { wallet } = getController();
-  const accounts = useSelector((state: RootState) => state.vault.accounts);
-
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
-
-  const encryptedMnemonic = useSelector(
-    (state: RootState) => state.vault.encryptedMnemonic
-  );
+  const {
+    vault: { accounts, activeAccount, encryptedMnemonic },
+  } = useSelector((state: RootState) => state);
 
   const numberOfAccounts = Object.keys(accounts).length;
 
@@ -193,9 +187,10 @@ const AccountMenu: React.FC = () => {
 };
 
 export const AccountHeader: React.FC = () => {
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
+  const {
+    vault: { activeAccount },
+  } = useSelector((state: RootState) => state);
+
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();

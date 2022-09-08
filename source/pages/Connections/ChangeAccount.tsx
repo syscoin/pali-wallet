@@ -9,6 +9,7 @@ import { ellipsis } from 'utils/index';
 
 export const ChangeAccount = () => {
   const accounts = useSelector((state: RootState) => state.vault.accounts);
+
   const { dapp } = getController();
   const { host } = useQueryData();
 

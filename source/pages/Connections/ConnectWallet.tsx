@@ -20,8 +20,10 @@ import { isActiveNetwork } from 'utils/network';
 export const ConnectWallet = () => {
   const { dapp, wallet, refresh } = getController();
   const { host, chain, chainId } = useQueryData();
-  const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const networks = useSelector((state: RootState) => state.vault.networks);
+
+  const {
+    vault: { accounts, networks },
+  } = useSelector((state: RootState) => state);
 
   const currentAccountId = dapp.get(host)?.accountId;
 

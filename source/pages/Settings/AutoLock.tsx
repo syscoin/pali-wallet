@@ -14,7 +14,7 @@ const AutolockView = () => {
   const controller = getController();
   const navigate = useNavigate();
 
-  const timer = useSelector((state: RootState) => state.vault.timer);
+  const { timer } = useSelector((state: RootState) => state.vault);
 
   const onSubmit = (data: any) => {
     setLoading(true);

@@ -19,20 +19,20 @@ export const AddToken: FC = () => {
   const [importCustom, setImportCustom] = useState(false);
   const [isTestnet, setIsTestnet] = useState(false);
 
-  const network = useSelector((state: RootState) => state.vault.activeNetwork);
+  const { activeNetwork } = useSelector((state: RootState) => state.vault);
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
 
   const setTestnet = async () => {
-    const { chain } = await validateEthRpc(network.url);
+    const { chain } = await validateEthRpc(activeNetwork.url);
 
     setIsTestnet(chain === 'testnet');
   };
 
   useEffect(() => {
     setTestnet();
-  }, [network]);
+  }, [activeNetwork]);
 
   return (
     <Layout title="IMPORT TOKEN">

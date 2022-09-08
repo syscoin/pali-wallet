@@ -16,14 +16,9 @@ import { truncate, getHost, isActiveNetwork } from 'utils/index';
 const NetworkMenu: React.FC = () => {
   const { wallet } = getController();
 
-  const networks = useSelector((state: RootState) => state.vault.networks);
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
-
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
+  const {
+    vault: { activeNetwork, networks, isBitcoinBased },
+  } = useSelector((state: RootState) => state);
 
   const { navigate } = useUtils();
 
@@ -245,12 +240,9 @@ const NetworkMenu: React.FC = () => {
 const GeneralMenu: React.FC = () => {
   const { wallet, dapp, refresh } = getController();
 
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
-  const encryptedMnemonic = useSelector(
-    (state: RootState) => state.vault.encryptedMnemonic
-  );
+  const {
+    vault: { activeAccount, encryptedMnemonic },
+  } = useSelector((state: RootState) => state);
 
   const { navigate } = useUtils();
 
@@ -440,11 +432,9 @@ const GeneralMenu: React.FC = () => {
 export const NormalHeader: React.FC = () => {
   const { wallet } = getController();
 
-  const error = useSelector((state: RootState) => state.vault.error);
-
-  const isPendingBalances = useSelector(
-    (state: RootState) => state.vault.isPendingBalances
-  );
+  const {
+    vault: { error, isPendingBalances },
+  } = useSelector((state: RootState) => state);
 
   const [networkErrorStatus, setNetworkErrorStatus] = useState({
     error: false,

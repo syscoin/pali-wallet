@@ -13,21 +13,17 @@ import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
   const controller = getController();
-  const fiat = useSelector((state: RootState) => state.price.fiat);
 
-  const lastLogin = useSelector((state: RootState) => state.vault.lastLogin);
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-  const isPendingBalances = useSelector(
-    (state: RootState) => state.vault.isPendingBalances
-  );
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
+  const {
+    vault: {
+      activeNetwork,
+      lastLogin,
+      isBitcoinBased,
+      activeAccount,
+      isPendingBalances,
+    },
+    price: { fiat },
+  } = useSelector((state: RootState) => state);
 
   const [fiatPriceValue, setFiatPriceValue] = useState('');
   const [balance, setBalance] = useState(0);

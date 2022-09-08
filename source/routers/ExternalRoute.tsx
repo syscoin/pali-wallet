@@ -29,7 +29,7 @@ import { ProtectedRoute } from './ProtectedRoute';
 export const ExternalRoute = () => {
   const { wallet, appRoute } = getController();
   const { navigate, alert } = useUtils();
-  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const { accounts } = useSelector((state: RootState) => state.vault);
   const { pathname, search } = useLocation();
 
   // defaultRoute stores info from createPopup

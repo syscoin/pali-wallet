@@ -11,7 +11,7 @@ export type IGetFiatAmount = (
 ) => string;
 
 export const usePrice = () => {
-  const fiat = useSelector((state: RootState) => state.price.fiat);
+  const { fiat } = useSelector((state: RootState) => state.price);
 
   const getFiatAmount: IGetFiatAmount = (
     amount: number,
