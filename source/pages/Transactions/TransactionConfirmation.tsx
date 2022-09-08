@@ -99,12 +99,6 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 
     if (activeAccount.balances.syscoin <= 0) return;
 
-    // TODO check this
-    if (type === 'CreateNFT') {
-      setLoading(false);
-      setSubmitted(true);
-    }
-
     try {
       const callback = callbackResolver(type);
       const response = await callback(transaction);
@@ -118,6 +112,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
         error.message =
           "Inputs or outputs are empty. Maybe you don't have enough funds for this transaction.";
 
+      setLoading(false);
       setErrorMsg(error.message);
     }
   };
@@ -132,6 +127,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
         log={errorMsg || 'No description provided'}
         buttonText="Ok"
       />
+
       <DefaultModal
         show={submitted}
         onClose={window.close}

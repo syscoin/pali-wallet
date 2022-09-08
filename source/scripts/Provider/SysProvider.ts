@@ -1,3 +1,5 @@
+import { txUtils } from '@pollum-io/sysweb3-utils';
+
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import store from 'state/store';
 
@@ -13,6 +15,8 @@ export const SysProvider = (host: string) => {
 
     return _account;
   };
+
+  const { getPsbtFromJson, setPsbtToJson } = txUtils();
 
   const getNetwork = () => store.getState().vault.activeNetwork;
 
@@ -101,6 +105,8 @@ export const SysProvider = (host: string) => {
     getPublicKey: () => getAccount().xpub,
     getTokens: () => getAccount().assets,
     estimateFee,
+    getPsbtFromJson,
+    setPsbtToJson,
     send,
     createToken,
     updateToken,

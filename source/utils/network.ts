@@ -2,9 +2,9 @@ import { validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import store from 'state/store';
 
-export const isActiveNetwork = async (chain: string, chainId: number) => {
+export const isActiveNetwork = (chain: string, chainId: number) => {
   const { activeNetwork } = store.getState().vault;
-  const activeChain = await networkChain(activeNetwork);
+  const activeChain = networkChain();
 
   const isSameChain = chain === activeChain;
   const isSameChainId = activeNetwork.chainId === chainId;
@@ -15,8 +15,8 @@ export const isActiveNetwork = async (chain: string, chainId: number) => {
 /**
  * `{ chaindId, url }` is compatible with `INetwork`
  */
-export const networkChain = async (network: { chainId: number; url: string }) =>
-  (await isBitcoinBasedNetwork(network)) ? 'syscoin' : 'ethereum';
+export const networkChain = () =>
+  store.getState().vault.isBitcoinBased ? 'syscoin' : 'ethereum';
 
 /**
  * `{ chaindId, url }` is compatible with `INetwork`

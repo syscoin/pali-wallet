@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useAlert } from 'react-alert';
 
 import { isBase64, txUtils } from '@pollum-io/sysweb3-utils';
-const { getPsbtFromJson } = txUtils();
 
 import {
   DefaultModal,
@@ -11,7 +10,7 @@ import {
   PrimaryButton,
   SecondaryButton,
 } from 'components/index';
-import { useQueryData } from 'hooks/index';
+import { useQueryData, useUtils } from 'hooks/index';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 
 interface ISign {
@@ -21,7 +20,9 @@ interface ISign {
 const Sign: React.FC<ISign> = ({ send = false }) => {
   const { host, ...psbt } = useQueryData();
 
-  const alert = useAlert();
+  const { alert } = useUtils();
+
+  const { setPsbtToJson, getPsbtFromJson } = txUtils();
   const { signTransaction } = getController().wallet.account.sys.tx;
 
   const [loading, setLoading] = useState(false);
@@ -31,17 +32,20 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
   const onSubmit = async () => {
     setLoading(true);
 
-    if (!isBase64(psbt.psbt) || typeof psbt.assets !== 'string') {
-      alert.error(
-        'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.'
-      );
+    console.log({ psbt });
 
-      window.close();
+    // if (!isBase64(psbt.psbt) || typeof psbt.assets !== 'string') {
+    //   alert.error(
+    //     'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.'
+    //   );
 
-      return;
-    }
+    //   // window.close();
+
+    //   return;
+    // }
 
     try {
+      // const data = getPsbtFromJson(JSON.stringify(psbt));
       const response = await signTransaction(psbt, send);
 
       setConfirmed(true);
@@ -78,7 +82,8 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
       {!loading && (
         <div className="flex flex-col items-center justify-center w-full">
           <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
-            <pre>{`${JSON.stringify(getPsbtFromJson(psbt), null, 2)}`}</pre>
+            <pre>{`${JSON.stringify(psbt, null, 2)}`}</pre>
+            psbt
           </ul>
 
           <div className="absolute bottom-10 flex gap-3 items-center justify-between">

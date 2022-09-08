@@ -44,9 +44,9 @@ export const methodRequest = async (
     throw new Error('Restricted method. Connect before requesting');
 
   const { chain, chainId, accountId } = dapp.get(host);
-  if (!(await isActiveNetwork(chain, chainId))) {
-    await _changeNetwork(chain, chainId);
-  }
+  // if (!(await isActiveNetwork(chain, chainId))) {
+  //   await _changeNetwork(chain, chainId);
+  // }
   if (!_isActiveAccount(accountId)) {
     wallet.setAccount(accountId);
     wallet.account.sys.watchMemPool();

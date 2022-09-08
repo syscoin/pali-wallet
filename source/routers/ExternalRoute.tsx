@@ -118,7 +118,7 @@ export const ExternalRoute = () => {
             {/* /tx/asset/nft */}
             <Route path="nft">
               <Route
-                path="mint"
+                path="create"
                 element={<ProtectedRoute element={<CreateNFT />} />}
               />
               <Route
