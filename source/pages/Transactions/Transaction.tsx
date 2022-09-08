@@ -30,9 +30,13 @@ const Transaction: React.FC<ITransaction> = ({ type }) => {
 
   const [fee, setFee] = useState<number>();
 
-  const {
-    vault: { isBitcoinBased, activeNetwork },
-  } = useSelector((state: RootState) => state);
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
+  
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
 
   const title = titleResolver(type);
 
