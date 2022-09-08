@@ -10,8 +10,9 @@ export const useQuery = (): {
   const { search } = useLocation();
 
   return React.useMemo(() => {
-    const obj = <any>{};
+    const obj: any = {};
     const params = new URLSearchParams(search);
+
     params.forEach((value, key) => (obj[key] = value));
 
     return obj;
@@ -26,6 +27,7 @@ export const useQueryData = () => {
 
   return React.useMemo(() => {
     if (!params.data) return {};
+
     return JSON.parse(params.data);
   }, [params]);
 };

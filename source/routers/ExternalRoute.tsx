@@ -80,10 +80,6 @@ export const ExternalRoute = () => {
         {/* /tx/ */}
         <Route path="tx">
           <Route
-            path="create"
-            element={<ProtectedRoute element={<CreateToken />} />}
-          />
-          <Route
             path="send"
             element={<ProtectedRoute element={<SendToken />} />}
           />
@@ -103,7 +99,11 @@ export const ExternalRoute = () => {
           {/* /tx/asset */}
           <Route path="asset">
             <Route
-              path="issue"
+              path="create"
+              element={<ProtectedRoute element={<CreateToken />} />}
+            />
+            <Route
+              path="mint"
               element={<ProtectedRoute element={<MintToken />} />}
             />
             <Route
@@ -118,7 +118,7 @@ export const ExternalRoute = () => {
             {/* /tx/asset/nft */}
             <Route path="nft">
               <Route
-                path="issue"
+                path="mint"
                 element={<ProtectedRoute element={<CreateNFT />} />}
               />
               <Route

@@ -114,6 +114,10 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 
       dispatchBackgroundEvent(`tx${type}.${host}`, response);
     } catch (error: any) {
+      if (error.message.includes('txVersion'))
+        error.message =
+          "Inputs or outputs are empty. Maybe you don't have enough funds for this transaction.";
+
       setErrorMsg(error.message);
     }
   };

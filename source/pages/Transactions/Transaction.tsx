@@ -1,36 +1,18 @@
 import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import { Layout } from 'components/index';
 import { useQueryData } from 'hooks/index';
+import { RootState } from 'state/store';
+import { getController } from 'utils/browser';
+import { camelCaseToText } from 'utils/format';
 
 import Fee from './Fee';
 import TransactionConfirmation from './TransactionConfirmation';
 
-const titleResolver = (txType: string) => {
-  switch (txType) {
-    case 'CreateToken':
-      return 'CREATE TOKEN';
-
-    case 'CreateNFT':
-      return 'CREATE NFT';
-
-    case 'MintToken':
-      return 'MINT TOKEN';
-
-    case 'MintNFT':
-      return 'MINT NFT';
-
-    case 'Send':
-      return 'SEND';
-
-    case 'UpdateToken':
-      return 'UPDATE TOKEN';
-
-    default:
-      throw new Error('Unknown transaction type');
-  }
-};
+const titleResolver = (txType: string) =>
+  camelCaseToText(txType).toUpperCase() || 'TRANSACTION';
 
 interface ITransaction {
   type: string;
@@ -42,16 +24,29 @@ interface ITransaction {
 const Transaction: React.FC<ITransaction> = ({ type }) => {
   const { host, ...transaction } = useQueryData();
   const navigate = useNavigate();
+  const {
+    wallet: { txs },
+  } = getController();
 
   const [fee, setFee] = useState<number>();
+
+  const {
+    vault: { isBitcoinBased, activeNetwork },
+  } = useSelector((state: RootState) => state);
 
   const title = titleResolver(type);
 
   useEffect(() => {
     if (!fee) return;
+
+    const recommended = isBitcoinBased
+      ? txs.getRecommendedFee(activeNetwork.url)
+      : fee;
+
+    const data = { host, ...transaction, fee: recommended };
+
     if (type !== 'Send') return;
 
-    const data = { host, ...transaction, fee };
     navigate('/external/tx/send/confirm?data=' + JSON.stringify(data));
   }, [fee]);
 

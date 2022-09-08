@@ -36,7 +36,7 @@ export const SysProvider = (host: string) => {
     popupPromise({
       host,
       data,
-      route: 'tx/create',
+      route: 'tx/asset/create',
       eventName: 'txCreateToken',
     });
 
@@ -56,7 +56,7 @@ export const SysProvider = (host: string) => {
     popupPromise({
       host,
       data,
-      route: 'tx/asset/issue',
+      route: 'tx/asset/mint',
       eventName: 'txMintToken',
     });
 
@@ -65,7 +65,7 @@ export const SysProvider = (host: string) => {
     popupPromise({
       host,
       data,
-      route: 'tx/asset/nft/issue',
+      route: 'tx/asset/nft/create',
       eventName: 'txCreateNFT',
     });
 
