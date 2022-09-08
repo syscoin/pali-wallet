@@ -50,9 +50,9 @@ export const ConnectWallet = () => {
     setIsLoading(false);
   };
 
-  // useEffect(() => {
-  //   if (!isActiveNetwork(chain, chainId)) changeNetwork();
-  // }, []);
+  useEffect(() => {
+    if (!isActiveNetwork(chain, chainId)) changeNetwork();
+  }, []);
 
   if (isLoading) return <Loading />;
 

@@ -16,9 +16,6 @@ const ConnectedSites = () => {
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
 
   const [selected, setSelected] = useState<IDApp>();
   const [connectedDapps, setConnectedDapps] = useState<IDApp[]>([]);
