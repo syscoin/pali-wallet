@@ -1,3 +1,5 @@
+import { txUtils } from '@pollum-io/sysweb3-utils';
+
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import store from 'state/store';
 
@@ -13,6 +15,8 @@ export const SysProvider = (host: string) => {
 
     return _account;
   };
+
+  const { getPsbtFromJson, setPsbtToJson } = txUtils();
 
   const getNetwork = () => store.getState().vault.activeNetwork;
 
@@ -36,7 +40,7 @@ export const SysProvider = (host: string) => {
     popupPromise({
       host,
       data,
-      route: 'tx/create',
+      route: 'tx/asset/create',
       eventName: 'txCreateToken',
     });
 
@@ -56,7 +60,7 @@ export const SysProvider = (host: string) => {
     popupPromise({
       host,
       data,
-      route: 'tx/asset/issue',
+      route: 'tx/asset/mint',
       eventName: 'txMintToken',
     });
 
@@ -65,7 +69,7 @@ export const SysProvider = (host: string) => {
     popupPromise({
       host,
       data,
-      route: 'tx/asset/nft/issue',
+      route: 'tx/asset/nft/create',
       eventName: 'txCreateNFT',
     });
 
@@ -101,6 +105,8 @@ export const SysProvider = (host: string) => {
     getPublicKey: () => getAccount().xpub,
     getTokens: () => getAccount().assets,
     estimateFee,
+    getPsbtFromJson,
+    setPsbtToJson,
     send,
     createToken,
     updateToken,

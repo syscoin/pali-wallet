@@ -16,9 +16,6 @@ const ConnectedSites = () => {
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
 
   const [selected, setSelected] = useState<IDApp>();
   const [connectedDapps, setConnectedDapps] = useState<IDApp[]>([]);
@@ -36,16 +33,16 @@ const ConnectedSites = () => {
 
   useEffect(() => {
     const dapps = Object.values(dapp.getAll());
-    networkChain(activeNetwork).then((chain) => {
-      const _connectedDapps = dapps.filter((_dapp) => {
-        const sameChain = _dapp.chain === chain;
-        const sameAccount = _dapp.accountId === activeAccount.id;
+    const chain = networkChain();
 
-        return sameChain && sameAccount;
-      });
+    const _connectedDapps = dapps.filter((_dapp) => {
+      const sameChain = _dapp.chain === chain;
+      const sameAccount = _dapp.accountId === activeAccount.id;
 
-      setConnectedDapps(_connectedDapps);
+      return sameChain && sameAccount;
     });
+
+    setConnectedDapps(_connectedDapps);
   }, []);
 
   return (
@@ -57,20 +54,21 @@ const ConnectedSites = () => {
       </p>
 
       <div className="flex flex-col items-center justify-center w-full">
-        {connectedDapps.map((_dapp) => (
-          <ul
-            key={_dapp.host}
-            className="scrollbar-styled w-full max-w-xs h-80 overflow-auto md:max-w-md"
-          >
-            <li className="flex items-center justify-between my-2 py-3 w-full text-xs border-b border-dashed border-gray-500">
+        <ul className="scrollbar-styled w-full max-w-xs h-80 overflow-auto md:max-w-md">
+          {' '}
+          {connectedDapps.map((_dapp) => (
+            <li
+              key={_dapp.host}
+              className="flex items-center justify-between my-2 py-3 w-full text-xs border-b border-dashed border-gray-500"
+            >
               <p>{truncate(_dapp.host, 40)}</p>
 
               <IconButton onClick={() => setSelected(_dapp)}>
                 <Icon name="edit" wrapperClassname="w-4" />
               </IconButton>
             </li>
-          </ul>
-        ))}
+          ))}
+        </ul>
 
         {selected && (
           <Transition appear show={selected !== undefined} as={Fragment}>

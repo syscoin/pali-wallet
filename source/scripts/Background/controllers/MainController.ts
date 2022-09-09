@@ -137,9 +137,7 @@ const MainController = (): IMainController => {
 
       return networkAccount;
     } catch (error) {
-      const activeNetworkChain = await networkChain(activeNetwork);
-
-      setActiveNetwork(activeNetwork, activeNetworkChain);
+      setActiveNetwork(activeNetwork, networkChain());
 
       store.dispatch(setStoreError(true));
     }

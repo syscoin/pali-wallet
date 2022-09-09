@@ -1,20 +1,20 @@
 // import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
-import { isActiveNetwork } from 'utils/network';
+// import { isActiveNetwork } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
 
-const _changeNetwork = async (chain: string, chainId: number) => {
-  console.log('[DApp] Changing pali network');
+// const _changeNetwork = async (chain: string, chainId: number) => {
+//   console.log('[DApp] Changing pali network');
 
-  const { networks } = store.getState().vault;
-  const network = networks[chain][chainId];
+//   const { networks } = store.getState().vault;
+//   const network = networks[chain][chainId];
 
-  const { wallet, refresh } = window.controller;
-  await wallet.setActiveNetwork(network, chain);
-  await refresh(true);
-};
+//   const { wallet, refresh } = window.controller;
+//   await wallet.setActiveNetwork(network, chain);
+//   await refresh(true);
+// };
 
 const _isActiveAccount = (accounId: number) => {
   const { activeAccount } = store.getState().vault;
@@ -43,10 +43,12 @@ export const methodRequest = async (
   if (!dapp.isConnected(host))
     throw new Error('Restricted method. Connect before requesting');
 
-  const { chain, chainId, accountId } = dapp.get(host);
-  if (!(await isActiveNetwork(chain, chainId))) {
-    await _changeNetwork(chain, chainId);
-  }
+  // discomment when network issue is solved
+
+  const { /* chain, chainId, */ accountId } = dapp.get(host);
+  // if (!(await isActiveNetwork(chain, chainId))) {
+  //   await _changeNetwork(chain, chainId);
+  // }
   if (!_isActiveAccount(accountId)) {
     wallet.setAccount(accountId);
     wallet.account.sys.watchMemPool();
