@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAlert } from 'react-alert';
+import { useSelector } from 'react-redux';
 
 import { isBase64, txUtils } from '@pollum-io/sysweb3-utils';
 const { getPsbtFromJson } = txUtils();
@@ -12,6 +13,7 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useQueryData } from 'hooks/index';
+import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 
 interface ISign {
@@ -19,19 +21,31 @@ interface ISign {
 }
 
 const Sign: React.FC<ISign> = ({ send = false }) => {
-  const { host, ...psbt } = useQueryData();
+  // `toSign` is a psbt if is sys: { psbt, assets }
+  // otherwise it is { params: [from, msg], from }
+  const { host, ...toSign } = useQueryData();
 
   const alert = useAlert();
-  const { signTransaction } = getController().wallet.account.sys.tx;
 
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isSyscoinChain, setIsSycoinChain] = useState(false);
 
-  const onSubmit = async () => {
-    setLoading(true);
+  const networks = useSelector((state: RootState) => state.vault.networks);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
 
-    if (!isBase64(psbt.psbt) || typeof psbt.assets !== 'string') {
+  useEffect(() => {
+    const _isSyscoinChain =
+      Boolean(networks.syscoin[activeNetwork.chainId]) &&
+      activeNetwork.url.includes('blockbook');
+    setIsSycoinChain(_isSyscoinChain);
+
+    if (!_isSyscoinChain) return;
+
+    if (!isBase64(toSign.psbt) || typeof toSign.assets !== 'string') {
       alert.error(
         'PSBT must be in Base64 format and assets must be a JSON string. Please check the documentation to see the correct formats.'
       );
@@ -40,9 +54,26 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
 
       return;
     }
+  }, []);
 
+  const onSubmit = async () => {
+    setLoading(true);
+
+    const { eth, sys } = getController().wallet.account;
     try {
-      const response = await signTransaction(psbt, send);
+      let response;
+      if (isSyscoinChain) {
+        response = await sys.tx.signTransaction(toSign, send);
+      } else {
+        console.log('toSign', toSign);
+        // setActiveNetwork(networks.ethereum[4]);
+        response = await eth.tx.signTypedDataV4(
+          toSign.params[1]
+          // toSign.from,
+          // activeNetwork.url
+        );
+        console.log('response', response);
+      }
 
       setConfirmed(true);
       setLoading(false);
@@ -52,7 +83,9 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
     } catch (error: any) {
       setErrorMsg(error.message);
 
-      setTimeout(window.close, 4000);
+      // setTimeout(window.close, 4000);
+
+      throw error;
     }
   };
 
@@ -75,29 +108,31 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
         buttonText="Ok"
       />
 
-      {!loading && (
-        <div className="flex flex-col items-center justify-center w-full">
-          <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
-            <pre>{`${JSON.stringify(getPsbtFromJson(psbt), null, 2)}`}</pre>
-          </ul>
+      <div className="flex flex-col items-center justify-center w-full">
+        <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
+          <pre>{`${JSON.stringify(
+            isSyscoinChain ? getPsbtFromJson(toSign) : toSign.params[1],
+            null,
+            2
+          )}`}</pre>
+        </ul>
 
-          <div className="absolute bottom-10 flex gap-3 items-center justify-between">
-            <SecondaryButton type="button" action onClick={window.close}>
-              Cancel
-            </SecondaryButton>
+        <div className="absolute bottom-10 flex gap-3 items-center justify-between">
+          <SecondaryButton type="button" action onClick={window.close}>
+            Cancel
+          </SecondaryButton>
 
-            <PrimaryButton
-              type="submit"
-              action
-              disabled={confirmed}
-              loading={loading}
-              onClick={onSubmit}
-            >
-              Confirm
-            </PrimaryButton>
-          </div>
+          <PrimaryButton
+            type="submit"
+            action
+            disabled={confirmed}
+            loading={loading}
+            onClick={onSubmit}
+          >
+            Confirm
+          </PrimaryButton>
         </div>
-      )}
+      </div>
     </Layout>
   );
 };

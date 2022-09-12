@@ -1,4 +1,7 @@
-import { web3Provider } from '@pollum-io/sysweb3-network';
+import {
+  web3Provider,
+  setActiveNetwork as setProviderNetwork,
+} from '@pollum-io/sysweb3-network';
 
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import store from 'state/store';
@@ -57,8 +60,22 @@ export const EthProvider = (host: string) => {
     });
   };
 
-  const send = (method: string, args: any[]) => {
+  const _signTypedDataV4 = (params: [string, any], from: string) => {
+    console.log('_signTypedDataV4 data:', [params, from]);
+    return popupPromise({
+      host,
+      data: { params, from },
+      route: 'tx/sign',
+      eventName: 'txSign',
+    });
+  };
+
+  const send = async (method: string, args: any[]) => {
+    setProviderNetwork(store.getState().vault.activeNetwork);
+
     if (method === 'eth_sendTransaction') return _send(args[0]);
+    if (method === 'eth_signTypedData_v4')
+      return _signTypedDataV4(args[0], args[1]);
     return web3Provider.send(method, args);
   };
 
