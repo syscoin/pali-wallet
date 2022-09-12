@@ -152,6 +152,8 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
                     {typeof item.value === 'string' && item.value.length > 10
                       ? ellipsis(item.value)
                       : item.value}
+                    {typeof item.value === 'boolean' && `${item.value}`}
+                    {!item.value && '-'}
                   </p>
                 </li>
               )
