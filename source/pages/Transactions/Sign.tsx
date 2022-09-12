@@ -42,7 +42,9 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
     }
 
     try {
+      // @ts-ignore
       const data = getPsbtFromJson(JSON.stringify(psbt));
+      // @ts-ignore
       const response = await signTransaction(data, send);
 
       setConfirmed(true);
