@@ -15,7 +15,7 @@ export const SysProvider = (host: string) => {
 
     return _account;
   };
-
+  // @ts-ignore
   const { getPsbtFromJson, setPsbtToJson } = txUtils();
 
   const getNetwork = () => store.getState().vault.activeNetwork;
