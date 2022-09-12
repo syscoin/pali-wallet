@@ -271,6 +271,7 @@ const GeneralMenu: React.FC = () => {
           active: true,
           currentWindow: true,
         });
+
         return String(tabs[0].url);
       }
     }
