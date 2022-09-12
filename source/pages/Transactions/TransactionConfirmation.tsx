@@ -32,7 +32,7 @@ const callbackResolver = (txType: string) => {
       callbackName = 'confirmTokenCreation';
       break;
 
-    case 'CreateNFT':
+    case 'CreateNft':
       callbackName = 'confirmNftCreation';
       break;
 
@@ -40,7 +40,7 @@ const callbackResolver = (txType: string) => {
       callbackName = 'confirmTokenMint';
       break;
 
-    case 'MintNFT':
+    case 'MintNft':
       callbackName = 'confirmMintNFT';
       break;
 
@@ -106,7 +106,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
       setLoading(false);
       setSubmitted(true);
 
-      dispatchBackgroundEvent(`tx${type}.${host}`, response);
+      dispatchBackgroundEvent('tx', { ...response, type: `tx${type}.${host}` });
     } catch (error: any) {
       if (error.message.includes('txVersion'))
         error.message =

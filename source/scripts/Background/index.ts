@@ -36,8 +36,16 @@ const restartLockTimeout = () => {
     clearTimeout(timeout);
   }
 
-  timeout = setTimeout(() => {
-    if (window.controller.wallet.isUnlocked()) {
+  let canLock = true;
+
+  const txEventRegex = /tx/g;
+
+  window.addEventListener('tx', ({ type }) => {
+    if (txEventRegex.test(type)) canLock = false;
+  });
+
+  timeout = setTimeout(async () => {
+    if (window.controller.wallet.isUnlocked() && canLock) {
       window.controller.wallet.lock();
     }
   }, timer * 60 * 1000);
