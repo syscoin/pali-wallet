@@ -31,7 +31,7 @@ const AboutView: FC = () => {
         <p>Version: {version}</p>
 
         <p
-          className="hover:text-brand-royalblue transition-all duration-200"
+          className="hover:text-brand-royalblue cursor-pointer transition-all duration-200"
           onClick={() => handleRedirect('https://docs.paliwallet.com/')}
         >
           Pali API

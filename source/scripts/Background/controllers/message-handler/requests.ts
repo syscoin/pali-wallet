@@ -1,20 +1,20 @@
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
-import { isActiveNetwork } from 'utils/network';
+// import { isActiveNetwork } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
 
-const _changeNetwork = async (chain: string, chainId: number) => {
-  console.log('[DApp] Changing pali network');
+// const _changeNetwork = async (chain: string, chainId: number) => {
+//   console.log('[DApp] Changing pali network');
 
-  const { networks } = store.getState().vault;
-  const network = networks[chain][chainId];
+//   const { networks } = store.getState().vault;
+//   const network = networks[chain][chainId];
 
-  const { wallet, refresh } = window.controller;
-  await wallet.setActiveNetwork(network);
-  await refresh(true);
-};
+//   const { wallet, refresh } = window.controller;
+//   await wallet.setActiveNetwork(network, chain);
+//   await refresh(true);
+// };
 
 const _isActiveAccount = (accounId: number) => {
   const { activeAccount } = store.getState().vault;
@@ -43,10 +43,12 @@ export const methodRequest = async (
   if (!dapp.isConnected(host))
     throw new Error('Restricted method. Connect before requesting');
 
-  const { chain, chainId, accountId } = dapp.get(host);
-  if (!isActiveNetwork(chain, chainId)) {
-    await _changeNetwork(chain, chainId);
-  }
+  // discomment when network issue is solved
+
+  const { /* chain, chainId, */ accountId } = dapp.get(host);
+  // if (!(await isActiveNetwork(chain, chainId))) {
+  //   await _changeNetwork(chain, chainId);
+  // }
   if (!_isActiveAccount(accountId)) {
     wallet.setAccount(accountId);
     wallet.account.sys.watchMemPool();
@@ -72,11 +74,13 @@ export const methodRequest = async (
   //* Providers methods
   if (prefix !== 'sys') {
     const provider = EthProvider(host);
+
     return await provider.send(data.method, data.args);
   }
 
   const provider = SysProvider(host);
   const method = provider[methodName];
+
   if (!method) throw new Error('Unknown method');
 
   if (data.args) return await method(...data.args);
@@ -86,6 +90,7 @@ export const methodRequest = async (
 
 export const enable = async (host: string, chain: string, chainId: number) => {
   const { dapp } = window.controller;
+
   if (dapp.isConnected(host)) return { success: true };
 
   return popupPromise({

@@ -4,12 +4,10 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import {
   ChangeAccount,
-  ConfirmPhrase,
   ConnectWallet,
   CreateToken,
   CreateNFT,
   CreatePass,
-  CreatePhrase,
   Import,
   MintNFT,
   MintToken,
@@ -20,6 +18,7 @@ import {
   Start,
   TransferToken,
   UpdateToken,
+  SeedConfirm,
 } from '../pages';
 import { useQuery, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -62,13 +61,11 @@ export const ExternalRoute = () => {
       <Route path="start" element={<Start />} />
       <Route path="create-password" element={<CreatePass />} />
       <Route path="import" element={<Import />} />
-      <Route path="phrase/create" element={<CreatePhrase />} />
-      <Route path="phrase/confirm" element={<ConfirmPhrase />} />
+      <Route path="phrase" element={<SeedConfirm />} />
 
       <Route path="external">
         <Route path="import" element={<Import />} />
-        <Route path="phrase/create" element={<CreatePhrase />} />
-        <Route path="phrase/confirm" element={<ConfirmPhrase />} />
+        <Route path="phrase" element={<SeedConfirm />} />
 
         <Route
           path="connect-wallet"
@@ -82,10 +79,6 @@ export const ExternalRoute = () => {
 
         {/* /tx/ */}
         <Route path="tx">
-          <Route
-            path="create"
-            element={<ProtectedRoute element={<CreateToken />} />}
-          />
           <Route
             path="send"
             element={<ProtectedRoute element={<SendToken />} />}
@@ -106,7 +99,11 @@ export const ExternalRoute = () => {
           {/* /tx/asset */}
           <Route path="asset">
             <Route
-              path="issue"
+              path="create"
+              element={<ProtectedRoute element={<CreateToken />} />}
+            />
+            <Route
+              path="mint"
               element={<ProtectedRoute element={<MintToken />} />}
             />
             <Route
@@ -121,7 +118,7 @@ export const ExternalRoute = () => {
             {/* /tx/asset/nft */}
             <Route path="nft">
               <Route
-                path="issue"
+                path="create"
                 element={<ProtectedRoute element={<CreateNFT />} />}
               />
               <Route

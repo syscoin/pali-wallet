@@ -1,8 +1,10 @@
+import { validateSysRpc } from '@pollum-io/sysweb3-network';
+
 import store from 'state/store';
 
 export const isActiveNetwork = (chain: string, chainId: number) => {
   const { activeNetwork } = store.getState().vault;
-  const activeChain = networkChain(activeNetwork);
+  const activeChain = networkChain();
 
   const isSameChain = chain === activeChain;
   const isSameChainId = activeNetwork.chainId === chainId;
@@ -13,19 +15,30 @@ export const isActiveNetwork = (chain: string, chainId: number) => {
 /**
  * `{ chaindId, url }` is compatible with `INetwork`
  */
-export const isSysNetwork = ({
+export const networkChain = () =>
+  store.getState().vault.isBitcoinBased ? 'syscoin' : 'ethereum';
+
+/**
+ * `{ chaindId, url }` is compatible with `INetwork`
+ */
+export const isBitcoinBasedNetwork = async ({
   chainId,
   url,
 }: {
   chainId: number;
   url: string;
 }) => {
-  const { networks } = store.getState().vault;
-  return Boolean(networks.syscoin[chainId]) && url.includes('blockbook');
-};
+  try {
+    const { networks } = store.getState().vault;
 
-/**
- * `{ chaindId, url }` is compatible with `INetwork`
- */
-export const networkChain = (network: { chainId: number; url: string }) =>
-  isSysNetwork(network) ? 'syscoin' : 'ethereum';
+    const isSyscoinChain = Boolean(networks.syscoin[chainId]);
+
+    if (!isSyscoinChain) return false;
+
+    const { valid } = await validateSysRpc(url);
+
+    return isSyscoinChain && valid;
+  } catch (error) {
+    return false;
+  }
+};

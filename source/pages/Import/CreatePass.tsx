@@ -11,9 +11,8 @@ const CreatePass = () => {
 
   const next = () => navigate('/home');
 
-  const onSubmit = (data: any) => {
-    controller.wallet.setWalletPassword(data.password);
-    controller.wallet.createWallet();
+  const onSubmit = async ({ password }: { password: string }) => {
+    await controller.wallet.createWallet(password);
 
     next();
   };

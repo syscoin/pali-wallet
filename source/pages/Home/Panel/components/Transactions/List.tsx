@@ -8,18 +8,17 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ellipsis, formatDate } from 'utils/index';
 
-export const TransactionsList = ({
-  isSyscoinChain,
-}: {
-  isSyscoinChain: boolean;
-}) => {
+export const TransactionsList = () => {
   const transactions = useSelector(
     (state: RootState) => state.vault.activeAccount.transactions
+  );
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
   );
   const { navigate } = useUtils();
 
   const getTxType = (tx: any) => {
-    if (isSyscoinChain) {
+    if (isBitcoinBased) {
       if (tx.tokenType === 'SPTAssetActivate') {
         return 'SPT creation';
       }
@@ -38,8 +37,8 @@ export const TransactionsList = ({
     return `Type: ${tx.type}`;
   };
 
-  const txid = isSyscoinChain ? 'txid' : 'hash';
-  const blocktime = isSyscoinChain ? 'blockTime' : 'timestamp';
+  const txid = isBitcoinBased ? 'txid' : 'hash';
+  const blocktime = isBitcoinBased ? 'blockTime' : 'timestamp';
 
   const isShowedGroupBar = useCallback(
     (tx: any, idx: number) =>
@@ -88,7 +87,7 @@ export const TransactionsList = ({
 
                   <div
                     className={`absolute flex ${
-                      isSyscoinChain ? 'right-20 w-20' : 'right-32 w-14'
+                      isBitcoinBased ? 'right-20 w-20' : 'right-32 w-14'
                     }`}
                   >
                     <div className="max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis">

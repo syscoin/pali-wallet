@@ -1,14 +1,15 @@
-import React, { FC } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { OnboardingLayout, PrimaryButton } from 'components/index';
 import { getController } from 'utils/browser';
 
-export const CreatePhrase: FC = () => {
-  const navigate = useNavigate();
+export const CreatePhrase = ({ password }: { password: string }) => {
   const controller = getController();
 
-  const phrases = controller.wallet.createSeed();
+  const navigate = useNavigate();
+
+  const seed = controller.wallet.createSeed();
 
   return (
     <OnboardingLayout
@@ -16,9 +17,9 @@ export const CreatePhrase: FC = () => {
       tooltipText="A recovery phrase is a series of 12 words in a specific order. This word combination is unique to your wallet. Make sure to have pen and paper ready so you can write it down."
     >
       <div className="flex flex-col gap-4 items-center justify-center max-w-xs md:max-w-lg">
-        {phrases && (
+        {seed && (
           <ul className="grid gap-x-12 grid-cols-2 m-0 p-0 w-full list-none">
-            {phrases.split(' ').map((phrase: string, index: number) => (
+            {seed.split(' ').map((phrase: string, index: number) => (
               <li
                 className="w-32 text-left text-brand-graylight font-poppins text-sm font-light tracking-normal leading-8 border-b border-dashed border-brand-graylight md:w-56"
                 key={phrase}
@@ -35,10 +36,14 @@ export const CreatePhrase: FC = () => {
 
         <div className="absolute bottom-12 md:bottom-32">
           <PrimaryButton
-            disabled={!phrases}
+            disabled={!seed}
             type="button"
             width="56 px-6"
-            onClick={() => navigate('/phrase/confirm')}
+            onClick={() =>
+              navigate('/phrase', {
+                state: { password, next: true, createdSeed: seed },
+              })
+            }
           >
             I've written it down
           </PrimaryButton>

@@ -5,9 +5,9 @@ import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 export const getAssetBalance = (
   asset: any,
   activeAccount: IKeyringAccountState,
-  isSyscoinChain: boolean
+  isBitcoinBased: boolean
 ) => {
-  if (!isSyscoinChain) {
+  if (!isBitcoinBased) {
     const value = Number(
       asset.tokenSymbol === 'ETH'
         ? activeAccount.balances.ethereum

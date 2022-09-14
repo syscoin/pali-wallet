@@ -9,13 +9,19 @@ import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { truncate, logError, ellipsis } from 'utils/index';
 
 export const SendConfirm = () => {
-  const controller = getController();
+  const {
+    refresh,
+    wallet: { account },
+  } = getController();
+
   const { alert, navigate } = useUtils();
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const networks = useSelector((state: RootState) => state.vault.networks);
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -30,59 +36,44 @@ export const SendConfirm = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
-  const isSyscoinChain =
-    networks.syscoin[activeNetwork.chainId] &&
-    activeNetwork.url.includes('blockbook');
-
   const handleConfirm = async () => {
-    const balance = isSyscoinChain
-      ? activeAccount.balances.syscoin
-      : activeAccount.balances.ethereum;
+    const {
+      balances: { syscoin, ethereum },
+    } = activeAccount;
+
+    const balance = isBitcoinBased ? syscoin : ethereum;
 
     if (activeAccount && balance > 0) {
       setLoading(true);
 
-      const { sys, eth } = controller.wallet.account;
+      const txs = isBitcoinBased ? account.sys.tx : account.eth.tx;
 
       try {
-        let response;
-        if (isSyscoinChain) {
-          const txData = {
-            ...tx,
-            token: tx.token ? tx.token.assetGuid : null,
-          };
-          response = await sys.tx.sendTransaction(txData);
-        } else {
-          const txData = {
-            ...tx,
-            amount: Number(tx.amount),
-          };
-          response = await eth.tx.sendAndSaveTransaction(txData);
-        }
+        const response = await txs.sendTransaction(tx);
 
         setConfirmed(true);
         setLoading(false);
 
         if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
+
+        return response;
       } catch (error: any) {
         logError('error', 'Transaction', error);
 
-        if (activeAccount) {
-          if (isSyscoinChain && error && tx.fee > 0.00001) {
-            alert.removeAll();
-            alert.error(
-              `${truncate(
-                String(error.message),
-                166
-              )} Please, reduce fees to send transaction.`
-            );
-          }
-
+        if (isBitcoinBased && error && tx.fee > 0.00001) {
           alert.removeAll();
-          alert.error("Can't complete transaction. Try again later.");
-
-          setLoading(false);
+          alert.error(
+            `${truncate(
+              String(error.message),
+              166
+            )} Please, reduce fees to send transaction.`
+          );
         }
+
+        alert.removeAll();
+        alert.error("Can't complete transaction. Try again later.");
+
+        setLoading(false);
       }
     }
   };
@@ -94,7 +85,7 @@ export const SendConfirm = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          controller.refresh(false);
+          refresh(false);
           if (isExternal) window.close();
           else navigate('/home');
         }}
@@ -133,7 +124,9 @@ export const SendConfirm = () => {
             <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
               Fee
               <span className="text-brand-white">
-                {!isSyscoinChain ? tx.fee * 10 ** 9 : tx.fee} GWEI
+                {!isBitcoinBased
+                  ? `${tx.fee * 10 ** 9} GWEI`
+                  : `${tx.fee} ${activeNetwork.currency}`}
               </span>
             </p>
 

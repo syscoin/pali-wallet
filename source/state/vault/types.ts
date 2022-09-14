@@ -9,6 +9,7 @@ export interface IVaultState {
   activeNetwork: INetwork;
   encryptedMnemonic: string;
   error: boolean;
+  isBitcoinBased: boolean;
   isPendingBalances: boolean;
   lastLogin: number;
   networks: {

@@ -44,15 +44,15 @@ export const ConnectWallet = () => {
     setIsLoading(true);
 
     const network = networks[chain][chainId];
-    await wallet.setActiveNetwork(network);
+    await wallet.setActiveNetwork(network, chain);
     await refresh(true);
 
     setIsLoading(false);
   };
 
-  useEffect(() => {
-    if (!isActiveNetwork(chain, chainId)) changeNetwork();
-  }, []);
+  // useEffect(() => {
+  //   if (!isActiveNetwork(chain, chainId)) changeNetwork();
+  // }, []);
 
   if (isLoading) return <Loading />;
 
