@@ -35,7 +35,6 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
       const type = send ? 'SignAndSend' : 'Sign';
 
       dispatchBackgroundEvent(`tx${type}.${host}`, response);
-
     } catch (error: any) {
       setErrorMsg(error.message);
 
