@@ -25,7 +25,7 @@ const Transaction: React.FC<ITransaction> = ({ type }) => {
   const { host, ...transaction } = useQueryData();
   const navigate = useNavigate();
   const {
-    wallet: { txs },
+    wallet: { account },
   } = getController();
 
   const [fee, setFee] = useState<number>();
@@ -44,7 +44,7 @@ const Transaction: React.FC<ITransaction> = ({ type }) => {
     if (!fee) return;
 
     const recommended = isBitcoinBased
-      ? txs.getRecommendedFee(activeNetwork.url)
+      ? account.sys.tx.getRecommendedFee(activeNetwork.url)
       : fee;
 
     const data = { host, ...transaction, fee: recommended };
