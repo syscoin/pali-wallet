@@ -115,9 +115,11 @@ const DAppController = (): IDAppController => {
 
     if (!dapp || !account) return null;
 
-    delete account.xprv;
+    const _account = { ...account };
 
-    return account;
+    delete _account.xprv;
+
+    return _account;
   };
 
   const getState = (): IOmittedVault =>
