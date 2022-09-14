@@ -7,32 +7,10 @@ import {
 
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import store from 'state/store';
-import { removeSensitiveDataFromVault } from 'utils/account';
 
 export const EthProvider = (host: string) => {
-  const getAccount = () => {
-    const account = window.controller.dapp.getAccount(host);
-
-    if (!account) throw new Error('No connected account');
-
-    return account;
-  };
-
-  const getTokens = async (address: string) => {
-    const { activeNetwork } = store.getState().vault;
-
-    return window.controller.wallet.account.eth.getAssetsByAddress(
-      address,
-      activeNetwork
-    );
-  };
-
-  const getBalance = async () => getAccount().balances.ethereum;
-
-  const getState = () => removeSensitiveDataFromVault(store.getState().vault);
-
   const _send = (data: { to: string; value: number }) => {
-    const from = getAccount().address;
+    const from = window.controller.dapp.getAccount(host).address;
 
     const tx = {
       sender: from,
@@ -48,13 +26,16 @@ export const EthProvider = (host: string) => {
     });
   };
 
-  const signTypedDataV4 = (data: TypedData) =>
-    popupPromise({
+  const signTypedDataV4 = (data: TypedData) => {
+    console.log({ data });
+
+    return popupPromise({
       host,
       data,
       route: 'tx/sign',
       eventName: 'txSign',
     });
+  };
 
   const send = async (method: string, args: any[]) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
@@ -65,11 +46,6 @@ export const EthProvider = (host: string) => {
   };
 
   return {
-    isConnected: () => Boolean(getAccount()),
-    getTokens,
-    getBalance,
-    getAccount,
-    getState,
     send,
     signTypedDataV4,
   };

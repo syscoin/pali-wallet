@@ -18,6 +18,7 @@ import { popupPromise } from './popup-promise';
 
 const _isActiveAccount = (accounId: number) => {
   const { activeAccount } = store.getState().vault;
+
   return activeAccount.id === accounId;
 };
 
@@ -35,30 +36,52 @@ export const methodRequest = async (
 ) => {
   const { dapp, wallet } = window.controller;
 
+  console.log({ data });
+
   const [prefix, methodName] = data.method.split('_');
 
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
 
-  if (!dapp.isConnected(host))
+  const account = dapp.getAccount(host);
+
+  const isRequestAllowed = dapp.isConnected(host) && account;
+
+  if (!isRequestAllowed)
     throw new Error('Restricted method. Connect before requesting');
 
-  // discomment when network issue is solved
+  const { accountId, chain } = dapp.get(host);
 
-  const { /* chain, chainId, */ accountId } = dapp.get(host);
   // if (!(await isActiveNetwork(chain, chainId))) {
   //   await _changeNetwork(chain, chainId);
   // }
+
   if (!_isActiveAccount(accountId)) {
     wallet.setAccount(accountId);
     wallet.account.sys.watchMemPool();
   }
+
+  const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
 
   //* Wallet methods
   if (prefix === 'wallet') {
     switch (methodName) {
       case 'isLocked':
         return !wallet.isUnlocked();
+      case 'getAccount':
+        return account;
+      case 'getBalance':
+        return Boolean(account) && account.balances[chain];
+      case 'getNetwork':
+        return dapp.getNetwork();
+      case 'getPublicKey':
+        return account.xpub;
+      case 'getAddress':
+        return account.address;
+      case 'getTokens':
+        return account.assets;
+      case 'estimateFee':
+        return estimateFee();
       case 'changeAccount':
         return popupPromise({
           host,
