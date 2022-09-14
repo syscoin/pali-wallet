@@ -90,6 +90,7 @@
     "eth-sig-util": "^3.0.1",
     "ethereum-input-data-decoder": "^0.4.1",
     "ethers": "^5.6.4",
+    "ethers-eip712": "^0.2.0",
     "fs-extra": "^10.0.0",
     "graphql": "^16.3.0",
     "graphql-request": "^4.2.0",
