@@ -106,7 +106,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
       setLoading(false);
       setSubmitted(true);
 
-      dispatchBackgroundEvent('tx', { ...response, type: `tx${type}.${host}` });
+      dispatchBackgroundEvent(`tx${type}.${host}`, response);
     } catch (error: any) {
       if (error.message.includes('txVersion'))
         error.message =
