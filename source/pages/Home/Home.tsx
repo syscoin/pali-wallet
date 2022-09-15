@@ -131,7 +131,7 @@ export const Home = () => {
           <TxsPanel />
         </>
       ) : (
-        <Loading opacity={100} />
+        <Loading />
       )}
     </div>
   );

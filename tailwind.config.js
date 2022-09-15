@@ -69,6 +69,9 @@ module.exports = {
       screens: {
         small: { min: '640px', max: '1280px' },
       },
+      animation: {
+        'spin-slow': 'spin 3s linear infinite',
+      }
     },
   },
   variants: {

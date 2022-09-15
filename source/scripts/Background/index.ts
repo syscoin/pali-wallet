@@ -38,7 +38,7 @@ const restartLockTimeout = () => {
 
   timeout = setTimeout(() => {
     if (window.controller.wallet.isUnlocked()) {
-      window.controller.wallet.lock();
+      // window.controller.wallet.lock();
     }
   }, timer * 60 * 1000);
 };
