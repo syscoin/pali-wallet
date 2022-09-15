@@ -9,7 +9,9 @@ import { popupPromise } from 'scripts/Background/controllers/message-handler/pop
 import store from 'state/store';
 
 export const EthProvider = (host: string) => {
-  const _send = (data: { to: string; value: number }) => {
+  const sendTransaction = (data: { to: string; value: number }) => {
+    setProviderNetwork(store.getState().vault.activeNetwork);
+
     const from = window.controller.dapp.getAccount(host).address;
 
     const tx = {
@@ -37,16 +39,15 @@ export const EthProvider = (host: string) => {
     });
   };
 
-  const send = async (method: string, args: any[]) => {
+  const send = async (args: any[]) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
 
-    if (method === 'eth_sendTransaction') return _send(args[0]);
-
-    return web3Provider.send(method, args);
+    return web3Provider.send(args[0], args);
   };
 
   return {
     send,
+    sendTransaction,
     signTypedDataV4,
   };
 };

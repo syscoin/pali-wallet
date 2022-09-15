@@ -18,10 +18,14 @@ interface IFee {
 }
 
 const Fee: React.FC<IFee> = ({ title, onFinish }) => {
-  const { getRecommendedFee } = getController().wallet.account.sys.tx;
+  const { getRecommendedFee } = getController().wallet;
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
+  );
+
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
   );
 
   const [form] = Form.useForm();
@@ -37,9 +41,6 @@ const Fee: React.FC<IFee> = ({ title, onFinish }) => {
   useEffect(() => {
     updateFee();
   }, []);
-
-  const disabledFee =
-    activeNetwork.chainId === 57 || activeNetwork.chainId === 5700;
 
   return (
     <Layout canGoBack={false} title={title.toUpperCase()}>
@@ -61,7 +62,7 @@ const Fee: React.FC<IFee> = ({ title, onFinish }) => {
             <Form.Item
               name="recommend"
               className={`${
-                disabledFee && 'opacity-50 cursor-not-allowed'
+                isBitcoinBased && 'opacity-50 cursor-not-allowed'
               } bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus w-16 py-1.5 rounded-l-full text-center`}
               rules={[
                 {
@@ -72,7 +73,7 @@ const Fee: React.FC<IFee> = ({ title, onFinish }) => {
             >
               <Tooltip
                 content={`${
-                  disabledFee
+                  isBitcoinBased
                     ? 'Use recommended fee. Disabled for SYS networks because the fee used in transactions is always the recommended for current SYS network conditions.'
                     : 'Click to use the recommended fee'
                 }`}
@@ -82,7 +83,7 @@ const Fee: React.FC<IFee> = ({ title, onFinish }) => {
                     wrapperClassname="w-6 ml-5 mb-1"
                     name="verified"
                     className={`${
-                      disabledFee
+                      isBitcoinBased
                         ? 'cursor-not-allowed text-button-disabled'
                         : 'text-warning-success'
                     }`}
@@ -101,11 +102,11 @@ const Fee: React.FC<IFee> = ({ title, onFinish }) => {
                 },
               ]}
             >
-              <Tooltip content={disabledFee ? 'Fee network' : ''}>
+              <Tooltip content={isBitcoinBased ? 'Fee network' : ''}>
                 <Input
-                  disabled={disabledFee}
+                  disabled={isBitcoinBased}
                   className={`${
-                    disabledFee &&
+                    isBitcoinBased &&
                     'opacity-50 cursor-not-allowed text-button-disabled'
                   } block pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full outline-none md:w-full`}
                   type="number"

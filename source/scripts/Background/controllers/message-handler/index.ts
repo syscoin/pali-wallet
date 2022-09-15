@@ -1,5 +1,7 @@
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
+import store from 'state/store';
+
 import { methodRequest, enable } from './requests';
 import { Message } from './types';
 
@@ -14,14 +16,19 @@ const _messageHandler = async (host: string, message: Message) => {
     throw new Error('Runtime last error');
   }
 
+  const { activeNetwork, isBitcoinBased } = store.getState().vault;
+
+  const chain = isBitcoinBased ? 'syscoin' : 'ethereum';
+
   const { dapp } = window.controller;
+
   switch (message.type) {
     case 'EVENT_REG':
       return dapp.addListener(host, message.data.eventName);
     case 'EVENT_DEREG':
       return dapp.removeListener(host, message.data.eventName);
     case 'ENABLE':
-      return enable(host, message.data.chain, message.data.chainId);
+      return enable(host, chain, activeNetwork.chainId);
     case 'DISABLE':
       return dapp.disconnect(host);
     case 'METHOD_REQUEST':

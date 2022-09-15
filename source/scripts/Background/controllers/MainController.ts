@@ -200,7 +200,7 @@ const MainController = (): IMainController => {
 
     if (isBitcoinBased) return tx.getRecommendedFee(activeNetwork.url);
 
-    return tx.getRecommendedGasPrice(true);
+    return tx.getRecommendedGasPrice(true).gwei;
   };
 
   return {

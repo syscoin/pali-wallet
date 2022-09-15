@@ -125,7 +125,14 @@ const DAppController = (): IDAppController => {
   const getState = (): IOmittedVault =>
     removeSensitiveDataFromVault(store.getState().vault);
 
-  const getNetwork = () => store.getState().vault.activeNetwork;
+  const getNetwork = () => {
+    const { activeNetwork, isBitcoinBased } = store.getState().vault;
+
+    return {
+      ...activeNetwork,
+      isBitcoinBased,
+    };
+  };
 
   const hasWindow = (host: string) => _dapps[host].hasWindow;
 
