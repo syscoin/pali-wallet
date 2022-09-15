@@ -12,8 +12,8 @@ export const TransferToken = () => <Transaction type="TransferToken" />;
 export const UpdateToken = () => <Transaction type="UpdateToken" />;
 
 //* NFT
-export const CreateNFT = () => <Transaction type="CreateNFT" />;
-export const MintNFT = () => <Transaction type="MintNFT" />;
+export const CreateNFT = () => <Transaction type="CreateNft" />;
+export const MintNFT = () => <Transaction type="MintNft" />;
 
 //* Sign
 export const Sign = () => <Sign_ />;
