@@ -23,92 +23,76 @@ export const SysProvider = (host: string) => {
     fee: number;
     receivingAddress: string;
     tokenGuid?: string;
-  }) => {
-    const parsedData = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
-    return popupPromise({
+  }) =>
+    popupPromise({
       host,
-      data: { isToken: parsedData.tokenGuid !== undefined, ...parsedData },
+      data: { isToken: data.tokenGuid !== undefined, ...data },
       route: 'tx/send',
       eventName: 'txSend',
     });
-  };
 
   //* ----- Token -----
-  const createToken = (data) => {
-    const parsedData = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
-    return popupPromise({
+  const createToken = (data) =>
+    popupPromise({
       host,
-      data: parsedData,
+      data,
       route: 'tx/asset/create',
       eventName: 'txCreateToken',
     });
-  };
 
-  const updateToken = (data) => {
-    const parsedData = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
-    return popupPromise({
+  const updateToken = (data) =>
+    popupPromise({
       host,
-      data: parsedData,
+      data,
       route: 'tx/asset/update',
       eventName: 'txUpdateToken',
     });
-  };
 
   const mintToken = (data: {
     amount: number;
     assetGuid: string;
     fee: number;
-  }) => {
-    const parsedData = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
-    return popupPromise({
+  }) =>
+    popupPromise({
       host,
-      data: parsedData,
+      data,
       route: 'tx/asset/mint',
       eventName: 'txMintToken',
     });
-  };
 
   //* ----- NFT -----
-  const createNft = (data) => {
-    const parsedData = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
-    return popupPromise({
+  const createNft = (data) =>
+    popupPromise({
       host,
-      data: parsedData,
+      data,
       route: 'tx/asset/nft/create',
       eventName: 'txCreateNFT',
     });
-  };
 
-  const mintNft = (data) => {
-    const parsedData = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
-    return popupPromise({
+  const mintNft = (data) =>
+    popupPromise({
       host,
-      data: parsedData,
+      data,
       route: 'tx/asset/nft/mint',
       eventName: 'txMintNFT',
     });
-  };
 
   //* ----- Sign -----
-  const sign = (data) => {
-    const parsedData = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
-    return popupPromise({
+  const sign = (data) =>
+    popupPromise({
       host,
-      data: parsedData,
+      data,
       route: 'tx/sign-psbt',
       eventName: 'txSign',
     });
-  };
 
-  const signAndSend = (data) => {
-    const parsedData = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
-    return popupPromise({
+  const signAndSend = (data) =>
+    popupPromise({
       host,
-      data: parsedData,
+      data,
       route: 'tx/sign',
       eventName: 'txSignAndSend',
     });
-  };
 
   return {
     getAccount: () => getAccount(),
