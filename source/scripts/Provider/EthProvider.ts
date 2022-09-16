@@ -28,16 +28,13 @@ export const EthProvider = (host: string) => {
     });
   };
 
-  const signTypedDataV4 = (data: TypedData) => {
-    console.log({ data });
-
-    return popupPromise({
+  const signTypedDataV4 = (data: TypedData) =>
+    popupPromise({
       host,
       data,
       route: 'tx/sign',
       eventName: 'txSign',
     });
-  };
 
   const send = async (args: any[]) => {
     setProviderNetwork(store.getState().vault.activeNetwork);

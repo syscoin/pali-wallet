@@ -36,8 +36,6 @@ export const methodRequest = async (
 ) => {
   const { dapp, wallet } = window.controller;
 
-  console.log({ data });
-
   const [prefix, methodName] = data.method.split('_');
 
   if (prefix === 'wallet' && methodName === 'isConnected')

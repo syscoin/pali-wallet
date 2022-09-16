@@ -2,6 +2,7 @@ import * as AntIcons from '@ant-design/icons';
 import React, { FC } from 'react';
 
 import { ForgetWalletIcon } from './ForgetWalletIcon';
+import { LoaderIcon } from './LoaderIcon';
 
 const icons = {
   appstoreadd: AntIcons.AppstoreAddOutlined,
@@ -27,7 +28,7 @@ const icons = {
   home: AntIcons.HomeOutlined,
   key: AntIcons.KeyOutlined,
   link: AntIcons.LinkOutlined,
-  loading: AntIcons.LoadingOutlined,
+  loading: LoaderIcon,
   lock: AntIcons.LockOutlined,
   message: AntIcons.MessageOutlined,
   partition: AntIcons.PartitionOutlined,
