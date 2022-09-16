@@ -1,9 +1,8 @@
-import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
+import { EthereumTransactions, Web3Accounts } from '@pollum-io/sysweb3-keyring';
 import { getSearch } from '@pollum-io/sysweb3-utils';
 
-import { EthTransactionController } from '../transaction';
 import store from 'state/store';
-import { setActiveAccountProperty } from 'state/vault';
+import { setAccountTransactions, setActiveAccountProperty } from 'state/vault';
 
 const EthAccountController = () => {
   const saveTokenInfo = async (token: any) => {
@@ -45,15 +44,25 @@ const EthAccountController = () => {
     }
   };
 
-  const tx = EthTransactionController();
+  const txs = EthereumTransactions();
+  const ethManager = Web3Accounts();
 
-  const { getErc20TokenBalance } = Web3Accounts();
+  const sendAndSaveTransaction = async (tx: any) => {
+    store.dispatch(setAccountTransactions(await txs.sendTransaction(tx)));
+  };
+
+  const tx = {
+    sendAndSaveTransaction,
+    ...txs,
+  };
+
+  const { getErc20TokenBalance } = ethManager;
 
   return {
     saveTokenInfo,
     getErc20TokenBalance,
-    ...Web3Accounts(),
     tx,
+    ...ethManager,
   };
 };
 

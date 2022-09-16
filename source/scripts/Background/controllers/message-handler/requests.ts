@@ -1,4 +1,4 @@
-// import { EthProvider } from 'scripts/Provider/EthProvider';
+import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
 // import { isActiveNetwork } from 'utils/network';
@@ -73,12 +73,14 @@ export const methodRequest = async (
 
   //* Providers methods
   if (prefix !== 'sys') {
-    // const provider = EthProvider(host);
-    // return await provider.send(data.method, data.args);
+    const provider = EthProvider(host);
+
+    return await provider.send(data.method, data.args);
   }
 
   const provider = SysProvider(host);
   const method = provider[methodName];
+
   if (!method) throw new Error('Unknown method');
 
   if (data.args) return await method(...data.args);
@@ -88,6 +90,7 @@ export const methodRequest = async (
 
 export const enable = async (host: string, chain: string, chainId: number) => {
   const { dapp } = window.controller;
+
   if (dapp.isConnected(host)) return { success: true };
 
   return popupPromise({

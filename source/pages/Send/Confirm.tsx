@@ -9,7 +9,11 @@ import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { truncate, logError, ellipsis } from 'utils/index';
 
 export const SendConfirm = () => {
-  const controller = getController();
+  const {
+    refresh,
+    wallet: { account },
+  } = getController();
+
   const { alert, navigate } = useUtils();
 
   const activeNetwork = useSelector(
@@ -33,56 +37,43 @@ export const SendConfirm = () => {
   const [loading, setLoading] = useState<boolean>(false);
 
   const handleConfirm = async () => {
-    const balance = isBitcoinBased
-      ? activeAccount.balances.syscoin
-      : activeAccount.balances.ethereum;
+    const {
+      balances: { syscoin, ethereum },
+    } = activeAccount;
+
+    const balance = isBitcoinBased ? syscoin : ethereum;
 
     if (activeAccount && balance > 0) {
       setLoading(true);
 
+      const txs = isBitcoinBased ? account.sys.tx : account.eth.tx;
+
       try {
-        if (isBitcoinBased) {
-          const response =
-            await controller.wallet.account.sys.tx.sendTransaction({
-              ...tx,
-              token: tx.token ? tx.token.assetGuid : null,
-            });
-
-          setConfirmed(true);
-          setLoading(false);
-
-          if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
-
-          return response;
-        }
-
-        await controller.wallet.account.eth.tx.sendAndSaveTransaction({
-          ...tx,
-          amount: Number(tx.amount),
-          chainId: activeNetwork.chainId,
-        });
+        const response = await txs.sendTransaction(tx);
 
         setConfirmed(true);
         setLoading(false);
+
+        if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
+
+        return response;
       } catch (error: any) {
         logError('error', 'Transaction', error);
 
-        if (activeAccount) {
-          if (isBitcoinBased && error && tx.fee > 0.00001) {
-            alert.removeAll();
-            alert.error(
-              `${truncate(
-                String(error.message),
-                166
-              )} Please, reduce fees to send transaction.`
-            );
-          }
-
+        if (isBitcoinBased && error && tx.fee > 0.00001) {
           alert.removeAll();
-          alert.error("Can't complete transaction. Try again later.");
-
-          setLoading(false);
+          alert.error(
+            `${truncate(
+              String(error.message),
+              166
+            )} Please, reduce fees to send transaction.`
+          );
         }
+
+        alert.removeAll();
+        alert.error("Can't complete transaction. Try again later.");
+
+        setLoading(false);
       }
     }
   };
@@ -94,7 +85,7 @@ export const SendConfirm = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          controller.refresh(false);
+          refresh(false);
           if (isExternal) window.close();
           else navigate('/home');
         }}
