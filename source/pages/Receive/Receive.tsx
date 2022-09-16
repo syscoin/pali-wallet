@@ -55,7 +55,7 @@ export const Receive = () => {
       id="receiveSYS-title"
     >
       {loaded && activeAccount ? (
-        <div className="flex flex-col items-center justify-center pt-8 w-full">
+        <div className="flex flex-col items-center justify-center w-full">
           <div id="qr-code">
             <QRCodeSVG
               value={activeAccount.address}

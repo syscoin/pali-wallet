@@ -124,7 +124,7 @@ export const SendSys = () => {
   }, [selectedAsset]);
 
   return (
-    <div className="mt-4">
+    <div>
       <p className="flex flex-col items-center justify-center text-center font-rubik">
         <span className="text-brand-royalblue font-poppins font-thin">
           Balance
@@ -148,7 +148,7 @@ export const SendSys = () => {
         }}
         onFinish={nextStep}
         autoComplete="off"
-        className="standard flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
+        className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
       >
         <Form.Item
           name="receiver"
@@ -173,10 +173,10 @@ export const SendSys = () => {
             }),
           ]}
         >
-          <Input type="text" placeholder="Receiver" className="large" />
+          <Input type="text" placeholder="Receiver" className="input-medium" />
         </Form.Item>
 
-        <div className="flex items-center justify-center md:w-full md:max-w-md">
+        <div className="flex items-center justify-center w-full md:max-w-md">
           {hasAccountAssets && (
             <Form.Item
               name="asset"
@@ -192,7 +192,7 @@ export const SendSys = () => {
                 <div className="relative inline-block text-left">
                   <Menu.Button
                     disabled={!hasAccountAssets}
-                    className="inline-flex justify-center py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+                    className="inline-flex justify-center py-3 w-28 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
                   >
                     {truncate(
                       String(
@@ -200,7 +200,7 @@ export const SendSys = () => {
                           ? selectedAsset?.symbol
                           : activeNetwork.currency
                       ),
-                      2
+                      4
                     )}
 
                     <ChevronDoubleDownIcon
@@ -226,7 +226,7 @@ export const SendSys = () => {
                         <Menu.Item>
                           <button
                             onClick={() => handleSelectedAsset(-1)}
-                            className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                            className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                           >
                             <p>SYS</p>
                             <small>Native</small>
@@ -263,13 +263,13 @@ export const SendSys = () => {
 
           <div
             className={`${
-              hasAccountAssets ? 'w-48 ml-4' : 'w-72'
+              hasAccountAssets ? 'w-full' : 'w-72'
             } flex gap-x-0.5 items-center justify-center md:w-full`}
           >
             <Form.Item
               id="verify-address-switch"
               name="verify"
-              className="flex-1 w-32 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full md:w-full"
+              className="flex-1 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full md:w-full"
               rules={[
                 {
                   required: false,
@@ -308,7 +308,7 @@ export const SendSys = () => {
 
             <Form.Item
               name="ZDAG"
-              className="flex-1 w-32 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full"
+              className="flex-1 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full"
               rules={[
                 {
                   required: false,
@@ -371,13 +371,13 @@ export const SendSys = () => {
             }),
           ]}
         >
-          <Input className="large" type="number" placeholder="Amount" />
+          <Input className="input-medium" type="number" placeholder="Amount" />
         </Form.Item>
 
-        <div className="flex gap-x-0.5 items-center justify-center mx-2 md:w-full md:max-w-md">
+        <div className="flex gap-x-0.5 items-center justify-center w-full opacity-60 cursor-not-allowed md:max-w-md">
           <Form.Item
             name="recommend"
-            className="py-1.5 w-12 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full opacity-50"
+            className="py-1.5 w-12 text-center bg-fields-input-primary border border-disabled rounded-l-full"
             rules={[
               {
                 required: false,
@@ -390,7 +390,7 @@ export const SendSys = () => {
                 <Icon
                   wrapperClassname="w-6 ml-3 mb-1"
                   name="verified"
-                  className="text-warning-success opacity-50 cursor-not-allowed"
+                  className="text-disabled cursor-not-allowed"
                 />
               </div>
             </Tooltip>
@@ -398,7 +398,7 @@ export const SendSys = () => {
 
           <Form.Item
             name="fee"
-            className="md:w-full"
+            className="w-full"
             hasFeedback
             rules={[
               {
@@ -410,7 +410,7 @@ export const SendSys = () => {
             <Tooltip content="Network fee">
               <Input
                 disabled
-                className="block pl-4 pr-8 py-3 w-60 text-brand-white text-sm bg-fields-input-primary border border-fields-input-border rounded-r-full outline-none opacity-50 cursor-not-allowed md:w-full"
+                className="block p-3 w-full text-disabled text-sm bg-fields-input-primary border border-disabled rounded-r-full outline-none cursor-not-allowed md:w-full"
                 id="fee-input"
                 type="number"
                 placeholder="Fee network"

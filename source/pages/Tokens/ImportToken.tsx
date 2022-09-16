@@ -84,7 +84,7 @@ export const ImportToken: FC = () => {
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         autoComplete="off"
-        className="standard flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
+        className="flex flex-col gap-3 items-center justify-center text-center md:w-full"
       >
         <Form.Item
           name="search"
@@ -100,7 +100,7 @@ export const ImportToken: FC = () => {
           <Input
             type="text"
             placeholder="Search by symbol"
-            className="large"
+            className="input-small relative"
             onChange={(event) => handleSearch(event.target.value)}
           />
         </Form.Item>

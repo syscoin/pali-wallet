@@ -100,7 +100,7 @@ export const SendConfirm = () => {
         }}
       />
       {tx && (
-        <div className="flex flex-col items-center justify-center mt-4 w-full">
+        <div className="flex flex-col items-center justify-center w-full">
           <p className="flex flex-col items-center justify-center text-center font-rubik">
             <span className="text-brand-royalblue font-poppins font-thin">
               Send

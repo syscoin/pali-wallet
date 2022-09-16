@@ -109,7 +109,7 @@ export const SendEth = () => {
           setFee={setFeeValue}
         />
       ) : (
-        <div className="mt-4">
+        <div>
           <p className="flex flex-col items-center justify-center text-center font-rubik">
             <span className="text-brand-royalblue font-poppins font-thin">
               Balance
@@ -133,7 +133,7 @@ export const SendEth = () => {
             }}
             onFinish={nextStep}
             autoComplete="off"
-            className="standard flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
+            className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
           >
             <Form.Item
               name="receiver"
@@ -155,7 +155,11 @@ export const SendEth = () => {
                 }),
               ]}
             >
-              <Input type="text" placeholder="Receiver" className="large" />
+              <Input
+                type="text"
+                placeholder="Receiver"
+                className="input-medium"
+              />
             </Form.Item>
 
             <div className="flex items-center justify-center md:w-full md:max-w-md">
@@ -321,7 +325,11 @@ export const SendEth = () => {
                 }),
               ]}
             >
-              <Input className="large" type="number" placeholder="Amount" />
+              <Input
+                className="input-medium"
+                type="number"
+                placeholder="Amount"
+              />
             </Form.Item>
 
             <div className="flex gap-x-0.5 items-center justify-center mx-2 md:w-full md:max-w-md">

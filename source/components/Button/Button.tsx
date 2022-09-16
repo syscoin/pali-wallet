@@ -48,9 +48,6 @@ export const Button: React.FC<IButton> = ({
   </button>
 );
 
-const disabledStyle =
-  'text-button-disabled cursor-not-allowed font-light border-2 border-button-disabled text-brand-white';
-
 export const PrimaryButton: React.FC<IPrimaryButton> = ({
   action = false,
   children,
@@ -72,14 +69,14 @@ export const PrimaryButton: React.FC<IPrimaryButton> = ({
     <Icon
       name="check-outlined"
       wrapperClassname="mb-0.5"
-      className={disabled ? 'text-button-disabled' : 'text-brand-white'}
+      className={disabled ? 'text-disabled' : 'text-brand-white'}
     />
   );
 
   return (
     <button
       className={`tracking-normal cursor-pointer border-2 text-sm leading-4 w-${width} transition-all duration-300 h-10 rounded-full flex justify-center items-center gap-x-2 font-bold 
-        ${disabled || loading ? disabledStyle : enabledStyle}`}
+        ${disabled || loading ? 'button-disabled' : enabledStyle}`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
@@ -125,7 +122,7 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
     <button
       className={`
       flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal text-sm leading-4 w-36 h-10 text-brand-white
-      ${disabled || loading ? disabledStyle : actionStyle}`}
+      ${disabled || loading ? 'button-disabled' : actionStyle}`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}

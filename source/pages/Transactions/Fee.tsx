@@ -55,7 +55,7 @@ const Fee: React.FC<IFee> = ({ title, onFinish }) => {
           wrapperCol={{ span: 8 }}
           onFinish={(data) => onFinish(data.fee)}
           autoComplete="off"
-          className="standard flex flex-col gap-3 items-center justify-center mt-4 text-center"
+          className="flex flex-col gap-3 items-center justify-center mt-4 text-center"
         >
           <div className="flex gap-x-0.5 items-center justify-center mx-2 max-w-sm md:max-w-md">
             <Form.Item
@@ -83,7 +83,7 @@ const Fee: React.FC<IFee> = ({ title, onFinish }) => {
                     name="verified"
                     className={`${
                       disabledFee
-                        ? 'cursor-not-allowed text-button-disabled'
+                        ? 'cursor-not-allowed text-disabled'
                         : 'text-warning-success'
                     }`}
                   />
@@ -105,8 +105,7 @@ const Fee: React.FC<IFee> = ({ title, onFinish }) => {
                 <Input
                   disabled={disabledFee}
                   className={`${
-                    disabledFee &&
-                    'opacity-50 cursor-not-allowed text-button-disabled'
+                    disabledFee && 'opacity-50 cursor-not-allowed text-disabled'
                   } block pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full outline-none md:w-full`}
                   type="number"
                   placeholder="Fee network"

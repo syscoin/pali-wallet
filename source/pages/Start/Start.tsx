@@ -73,7 +73,7 @@ export const Start = () => {
           ]}
         >
           <Input.Password
-            className="password"
+            className="input-small relative"
             placeholder="Enter your password"
           />
         </Form.Item>

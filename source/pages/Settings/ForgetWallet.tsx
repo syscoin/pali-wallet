@@ -40,7 +40,7 @@ const ForgetWalletView = () => {
 
   return (
     <Layout title="FORGET WALLET">
-      <Card type="info" className="md:mt-8">
+      <Card type="info">
         <p>
           <b className="text-warning-info">WARNING:</b> This will forget the
           wallet created with your current seed phrase. If in the future you
@@ -49,15 +49,12 @@ const ForgetWalletView = () => {
         </p>
       </Card>
 
-      <div className="flex flex-col items-center justify-center px-5 w-full">
-        <p className="my-3 w-full max-w-xs text-left text-white text-xs md:max-w-md">
-          Please input your wallet password
-        </p>
+      <div className="flex flex-col items-center justify-center w-full">
         <Form
           validateMessages={{ default: '' }}
           form={form}
           onFinish={onSubmit}
-          className="password flex flex-col gap-6 items-center justify-center w-full max-w-xs text-center md:max-w-md"
+          className="password flex flex-col gap-5 items-center justify-center my-5 w-full max-w-xs text-center md:max-w-md"
           name="forget"
           autoComplete="off"
         >
@@ -88,7 +85,7 @@ const ForgetWalletView = () => {
             ]}
           >
             <Input.Password
-              className="password"
+              className="input-small relative"
               placeholder="Enter your password"
               id="forget_password"
             />
@@ -143,17 +140,17 @@ const ForgetWalletView = () => {
           )}
 
           <div className="absolute bottom-12 flex gap-x-8 justify-between md:static md:gap-x-40">
-            <PrimaryButton type="button" onClick={() => navigate('/home')}>
+            <SecondaryButton type="button" onClick={() => navigate('/home')}>
               Cancel
-            </PrimaryButton>
+            </SecondaryButton>
 
-            <SecondaryButton
+            <PrimaryButton
               type="submit"
               disabled={!isPasswordValid || !isSeedValid}
               id="forget-btn"
             >
               Forget
-            </SecondaryButton>
+            </PrimaryButton>
           </div>
         </Form>
       </div>

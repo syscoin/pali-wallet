@@ -16,10 +16,10 @@ module.exports = {
     secondary: '#4CA1CF',
     secondaryhover: '#4D76B8',
 
-    disabled: '#4F4F4F',
-
     popuphover: '#fff',
   },
+
+  disabled: '#4F4F4F',
 
   alert: {
     lightsuccess: '#079C31',
@@ -41,8 +41,8 @@ module.exports = {
     input: {
       primary: '#07152B',
       placeholder: '#85B6FF99',
-      border: '#1E365C',
-      borderfocus: '#85B6FF',
+      border: '#07152B',
+      borderfocus: '#1E365C',
     },
   },
 

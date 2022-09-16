@@ -39,7 +39,7 @@ const CreateAccount = () => {
       ) : (
         <Form
           validateMessages={{ default: '' }}
-          className="standard flex flex-col gap-8 items-center justify-center pt-4 text-center md:w-full"
+          className="flex flex-col gap-8 items-center justify-center text-center md:w-full"
           name="newaccount"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
@@ -59,7 +59,7 @@ const CreateAccount = () => {
           >
             <Input
               type="text"
-              className="large"
+              className="input-small"
               placeholder="Name your new account (optional)"
               id="account-name-input"
             />
