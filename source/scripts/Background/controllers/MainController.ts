@@ -191,6 +191,18 @@ const MainController = (): IMainController => {
     store.dispatch(removeNetworkFromStore({ prefix: chain, chainId }));
   };
 
+  const getRecommendedFee = () => {
+    const { isBitcoinBased, activeNetwork } = store.getState().vault;
+
+    const { tx } = isBitcoinBased
+      ? walletController.account.sys
+      : walletController.account.eth;
+
+    if (isBitcoinBased) return tx.getRecommendedFee(activeNetwork.url);
+
+    return tx.getRecommendedGasPrice(true).gwei;
+  };
+
   return {
     createWallet,
     forgetWallet,
@@ -205,6 +217,7 @@ const MainController = (): IMainController => {
     editCustomRpc,
     removeKeyringNetwork,
     resolveError,
+    getRecommendedFee,
     ...keyringManager,
   };
 };

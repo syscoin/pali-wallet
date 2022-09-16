@@ -1,23 +1,6 @@
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
-import store from 'state/store';
 
 export const SysProvider = (host: string) => {
-  const txs = window.controller.wallet.account.sys.tx;
-
-  const getAccount = () => {
-    const account = window.controller.dapp.getAccount(host);
-    if (!account) throw new Error('No connected account');
-
-    const _account = { ...account };
-    delete _account.xprv;
-
-    return _account;
-  };
-
-  const getNetwork = () => store.getState().vault.activeNetwork;
-
-  const estimateFee = () => txs.getRecommendedFee(getNetwork().url);
-
   const send = (data: {
     amount: number;
     fee: number;
@@ -95,13 +78,6 @@ export const SysProvider = (host: string) => {
     });
 
   return {
-    getAccount: () => getAccount(),
-    getAddress: () => getAccount().address,
-    getBalance: () => getAccount().balances.syscoin,
-    getPublicKey: () => getAccount().xpub,
-    getTokens: () => getAccount().assets,
-    getNetwork,
-    estimateFee,
     send,
     createToken,
     updateToken,

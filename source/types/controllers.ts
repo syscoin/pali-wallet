@@ -30,6 +30,7 @@ export interface IMainController extends IKeyringManager {
     oldRpc: ICustomRpcParams
   ) => Promise<INetwork>;
   forgetWallet: (pwd: string) => void;
+  getRecommendedFee: (data?: string | boolean) => Promise<number>;
   lock: () => void;
   removeKeyringNetwork: (chain: string, chainId: number) => void;
   resolveError: () => void;
@@ -134,6 +135,8 @@ export interface IDAppController {
    */
   getAccount: (host: string) => IKeyringAccountState;
   getAll: () => { [host: string]: IDApp };
+  getNetwork: () => INetwork;
+  getState: () => any;
   /**
    * Checks if listener exists
    */
