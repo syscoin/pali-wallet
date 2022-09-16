@@ -58,8 +58,8 @@ export const SendEth = () => {
   const hasAccountAssets = activeAccount && activeAccount.assets.length > 0;
 
   const handleSelectedAsset = (item: string) => {
-    if (activeAccount?.assets) {
-      const getAsset = activeAccount?.assets.find(
+    if (activeAccount.assets) {
+      const getAsset = activeAccount.assets.find(
         (asset: any) => asset.contractAddress === item
       );
 

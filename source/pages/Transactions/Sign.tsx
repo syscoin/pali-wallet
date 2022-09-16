@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import {
   DefaultModal,
@@ -8,6 +9,7 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useQueryData } from 'hooks/index';
+import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 
 interface ISign {
@@ -15,9 +17,19 @@ interface ISign {
 }
 
 const Sign: React.FC<ISign> = ({ send = false }) => {
-  const { host, ...psbt } = useQueryData();
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
 
-  const { signTransaction } = getController().wallet.account.sys.tx;
+  const {
+    wallet: { account },
+  } = getController();
+
+  const txs = isBitcoinBased ? account.sys.tx : account.eth.tx;
+
+  const { host, ...data } = useQueryData();
+
+  const { signTransaction } = txs;
 
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -27,12 +39,14 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
     setLoading(true);
 
     try {
-      const response = await signTransaction(psbt, send);
+      const response = await signTransaction(data, send);
 
       setConfirmed(true);
       setLoading(false);
 
-      const type = send ? 'SignAndSend' : 'Sign';
+      const psbtSign = send ? 'SignAndSend' : 'Sign';
+
+      const type = isBitcoinBased ? psbtSign : 'SignTypedDataV4';
 
       dispatchBackgroundEvent(`tx${type}.${host}`, response);
     } catch (error: any) {
@@ -64,7 +78,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
       {!loading && (
         <div className="flex flex-col items-center justify-center w-full">
           <ul className="scrollbar-styled mt-8 px-4 w-full h-80 text-xs overflow-auto">
-            <pre>{`${JSON.stringify(psbt, null, 2)}`}</pre>
+            <pre>{`${JSON.stringify(data, null, 2)}`}</pre>
           </ul>
 
           <div className="absolute bottom-10 flex gap-3 items-center justify-between">

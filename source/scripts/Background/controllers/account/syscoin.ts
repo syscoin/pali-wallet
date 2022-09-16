@@ -3,6 +3,7 @@ import axios from 'axios';
 import {
   KeyringManager,
   ISyscoinTransactions,
+  SyscoinTransactions,
 } from '@pollum-io/sysweb3-keyring';
 
 import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
@@ -160,7 +161,7 @@ const SysAccountController = (): ISysAccountController => {
   };
 
   const trezor = SysTrezorController();
-  const tx = keyringManager.txs;
+  const tx = SyscoinTransactions();
 
   return {
     watchMemPool,

@@ -129,8 +129,8 @@ window.ethereum = Object.freeze({
   on,
   removeListener,
   isConnected: () => request({ method: 'wallet_isConnected' }),
-  enable: (chainId) =>
-    proxy('ENABLE', { chain: 'ethereum', chainId: chainId ?? 1 }),
+  enable: () =>
+    proxy('ENABLE', { chain: 'ethereum', chainId: 1 }),
   disable: () => proxy('DISABLE'),
   _listeners: {},
 });

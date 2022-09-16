@@ -1834,10 +1834,10 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.407":
-  version "1.0.407"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.407.tgz#f86dcf5538c2bb59920be43766db33490bbaec9b"
-  integrity sha512-BAtIMs+xLytK7k1IxhOgD07YMqKNZ6aOpES+FGA4H5udYgmNY6+DSet67F8ZZwHg3eqeIxfy4gRhn6hHhVuQ+Q==
+"@pollum-io/sysweb3-keyring@^1.0.409":
+  version "1.0.409"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.409.tgz#d8bb43164cc09998f3b46d5f89c714edeacc8dd9"
+  integrity sha512-jwguQ9FA2RwaPuxaDXLrKfnodgONdGNkBSLcfoxHGN3creuO3Bdj5gI8i0z02PYcMjgMZtiZa5XHD8SuMTyTNA==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
@@ -1850,9 +1850,10 @@
     crypto-js "^4.1.1"
     eth-chains "^1.0.0"
     eth-sig-util "^3.0.1"
-    ethereumjs-util "^7.1.4"
+    ethereumjs-util "^7.1.5"
     ethereumjs-wallet "^1.0.2"
     ethers "^5.6.4"
+    ethers-eip712 "^0.2.0"
     graphql "^16.3.0"
     graphql-request "^4.1.0"
     lodash "^4.17.21"
@@ -6351,7 +6352,7 @@ ethereumjs-util@^6.0.0:
     ethjs-util "0.1.6"
     rlp "^2.2.3"
 
-ethereumjs-util@^7.0.10, ethereumjs-util@^7.1.0, ethereumjs-util@^7.1.2, ethereumjs-util@^7.1.4, ethereumjs-util@^7.1.5:
+ethereumjs-util@^7.0.10, ethereumjs-util@^7.1.0, ethereumjs-util@^7.1.2, ethereumjs-util@^7.1.5:
   version "7.1.5"
   resolved "https://registry.yarnpkg.com/ethereumjs-util/-/ethereumjs-util-7.1.5.tgz#9ecf04861e4fbbeed7465ece5f23317ad1129181"
   integrity sha512-SDl5kKrQAudFBUe5OJM9Ac6WmMyYmXX/6sTmLZ3ffG2eY6ZIGBes3pEDxNN6V72WyOw4CPD5RomKdsa8DAAwLg==
@@ -6375,6 +6376,11 @@ ethereumjs-wallet@^1.0.2:
     scrypt-js "^3.0.1"
     utf8 "^3.0.0"
     uuid "^8.3.2"
+
+ethers-eip712@^0.2.0:
+  version "0.2.0"
+  resolved "https://registry.yarnpkg.com/ethers-eip712/-/ethers-eip712-0.2.0.tgz#52973b3a9a22638f7357283bf66624994c6e91ed"
+  integrity sha512-fgS196gCIXeiLwhsWycJJuxI9nL/AoUPGSQ+yvd+8wdWR+43G+J1n69LmWVWvAON0M6qNaf2BF4/M159U8fujQ==
 
 ethers@^5.5.4, ethers@^5.6.4, ethers@^5.6.9:
   version "5.6.9"

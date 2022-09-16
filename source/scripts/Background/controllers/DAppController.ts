@@ -4,7 +4,9 @@ import { Runtime } from 'webextension-polyfill-ts';
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
 import store from 'state/store';
+import { IOmittedVault } from 'state/vault/types';
 import { IDAppController } from 'types/controllers';
+import { removeSensitiveDataFromVault } from 'utils/account';
 
 import { onDisconnect, onMessage } from './message-handler';
 import { DAppEvents } from './message-handler/types';
@@ -109,7 +111,27 @@ const DAppController = (): IDAppController => {
     const dapp = store.getState().dapp.dapps[host];
     const { accounts } = store.getState().vault;
 
-    return accounts[dapp.accountId];
+    const account = accounts[dapp.accountId];
+
+    if (!dapp || !account) return null;
+
+    const _account = { ...account };
+
+    delete _account.xprv;
+
+    return _account;
+  };
+
+  const getState = (): IOmittedVault =>
+    removeSensitiveDataFromVault(store.getState().vault);
+
+  const getNetwork = () => {
+    const { activeNetwork, isBitcoinBased } = store.getState().vault;
+
+    return {
+      ...activeNetwork,
+      isBitcoinBased,
+    };
   };
 
   const hasWindow = (host: string) => _dapps[host].hasWindow;
@@ -132,6 +154,8 @@ const DAppController = (): IDAppController => {
     removeListeners,
     hasListener,
     hasWindow,
+    getState,
+    getNetwork,
     setHasWindow,
   };
 };

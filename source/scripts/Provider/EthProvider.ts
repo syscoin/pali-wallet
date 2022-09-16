@@ -1,57 +1,53 @@
-import { Web3Accounts } from '@pollum-io/sysweb3-keyring';
-// import { web3Provider } from '@pollum-io/sysweb3-network';
+import { TypedData } from 'ethers-eip712';
 
+import {
+  web3Provider,
+  setActiveNetwork as setProviderNetwork,
+} from '@pollum-io/sysweb3-network';
+
+import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import store from 'state/store';
-import { removeSensitiveDataFromVault } from 'utils/account';
 
 export const EthProvider = (host: string) => {
-  const getAccount = () => {
-    const account = window.controller.dapp.getAccount(host);
-    if (!account) throw new Error('No connected account');
+  const sendTransaction = (data: { to: string; value: number }) => {
+    setProviderNetwork(store.getState().vault.activeNetwork);
 
-    return account;
+    const from = window.controller.dapp.getAccount(host).address;
+
+    const tx = {
+      sender: from,
+      receivingAddress: data.to,
+      amount: data.value,
+    };
+
+    return popupPromise({
+      host,
+      data: tx,
+      route: 'tx/send/confirm',
+      eventName: 'txSend',
+    });
   };
 
-  // const getNetwork = async () => web3Provider.eth.net.getNetworkType();
+  const signTypedDataV4 = (data: TypedData) => {
+    console.log({ data });
 
-  // const getAccounts = async () => web3Provider.eth.getAccounts();
+    return popupPromise({
+      host,
+      data,
+      route: 'tx/sign',
+      eventName: 'txSign',
+    });
+  };
 
-  const getTokens = async (address: string) =>
-    Web3Accounts().getAssetsByAddress(
-      address,
-      store.getState().vault.activeNetwork
-    );
+  const send = async (args: any[]) => {
+    setProviderNetwork(store.getState().vault.activeNetwork);
 
-  // const getChainId = async () => web3Provider.eth.getChainId();
-
-  // const getAddress = async () => await web3Provider.eth.getAccounts()[0];
-
-  const getBalance = async () => getAccount().balances.ethereum;
-
-  // const handleLockAccount = async (walletAddress: string) =>
-  //   web3Provider.eth.personal.lockAccount(walletAddress);
-
-  // const handleUnlockAccount = async (
-  //   address: string,
-  //   password: string,
-  //   unlockDuration: number
-  // ) =>
-  //   web3Provider.eth.personal.unlockAccount(address, password, unlockDuration);
-
-  const getState = () => removeSensitiveDataFromVault(store.getState().vault);
+    return web3Provider.send(args[0], args);
+  };
 
   return {
-    isConnected: () => Boolean(getAccount()),
-    // getAccounts,
-    // getNetwork,
-    // getChainId,
-    // getXpub, // TODO getXpub
-    getTokens,
-    // getAddress,
-    getBalance,
-    // handleLockAccount,
-    // handleUnlockAccount,
-    getAccount,
-    getState,
+    send,
+    sendTransaction,
+    signTypedDataV4,
   };
 };
