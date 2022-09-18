@@ -79,7 +79,7 @@ export const SendConfirm = () => {
   };
 
   return (
-    <Layout title="SEND">
+    <Layout title="SEND" canGoBack={!window.location.href.includes('external')}>
       <DefaultModal
         show={confirmed}
         title="Transaction successful"
