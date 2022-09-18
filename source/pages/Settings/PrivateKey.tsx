@@ -55,7 +55,6 @@ const PrivateKeyView = () => {
 
       <Form
         validateMessages={{ default: '' }}
-        className="mb-3 w-full text-center md:max-w-xl"
         name="phraseview"
         form={form}
         labelCol={{ span: 8 }}
@@ -65,7 +64,7 @@ const PrivateKeyView = () => {
         <Form.Item
           name="password"
           hasFeedback
-          className="w-full"
+          className="md:w-full"
           rules={[
             {
               required: true,

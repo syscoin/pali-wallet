@@ -8,7 +8,7 @@ import { useSelector } from 'react-redux';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
-import { SecondaryButton, Tooltip, Icon } from 'components/index';
+import { SecondaryButton, Icon, IconButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -45,7 +45,7 @@ export const SendEth = () => {
     setFeeValue(Number(gasPrice.gwei) * Number(gasLimit));
 
     form.setFieldsValue({
-      baseFee: recommendedGasPrice,
+      fee: recommendedGasPrice,
       gasLimit,
       gasPrice: gasPrice.gwei,
     });
@@ -127,9 +127,10 @@ export const SendEth = () => {
             labelCol={{ span: 8 }}
             wrapperCol={{ span: 8 }}
             initialValues={{
-              baseFee: recommendedGasPrice,
+              fee: recommendedGasPrice,
               gasLimit: recommendedGasLimit,
               gasPrice: recommendedGasPrice,
+              amount: 0,
             }}
             onFinish={nextStep}
             autoComplete="off"
@@ -249,142 +250,58 @@ export const SendEth = () => {
                 </Form.Item>
               )}
 
-              <div className="flex flex-col">
-                <div className="flex w-full">
-                  <label className="flex-1 mr-4 text-xs" htmlFor="gasPrice">
-                    Gas Price
-                  </label>
-                  <label className="flex-1 mr-6 text-xs" htmlFor="gasLimit">
-                    Gas Limit
-                  </label>
-                </div>
-
-                <div
-                  className={`${
-                    hasAccountAssets ? 'w-48 ml-4' : 'w-72'
-                  } flex gap-x-0.5 items-center justify-center md:w-full`}
-                >
-                  <Form.Item
-                    name="gasPrice"
-                    className="flex-1 w-32 text-center bg-fields-input-primary rounded-l-full md:w-full"
-                    rules={[
-                      {
-                        required: false,
-                        message: '',
-                      },
-                    ]}
-                  >
-                    <Input
-                      type="text"
-                      placeholder="Gas Price (GWEI)"
-                      className="p-3 w-full text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full outline-none md:w-full"
-                    />
-                  </Form.Item>
-
-                  <Form.Item
-                    name="gasLimit"
-                    className="flex-1 w-32 text-center bg-fields-input-primary rounded-r-full"
-                    rules={[
-                      {
-                        required: false,
-                        message: '',
-                      },
-                    ]}
-                  >
-                    <Input
-                      type="text"
-                      placeholder="Gas Limit"
-                      className="p-3 w-full text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full outline-none md:w-full"
-                    />
-                  </Form.Item>
-                </div>
-              </div>
-            </div>
-
-            <Form.Item
-              name="amount"
-              className="md:w-full md:max-w-md"
-              hasFeedback
-              rules={[
-                {
-                  required: true,
-                  message: '',
-                },
-                () => ({
-                  validator(_, value) {
-                    const balance = selectedAsset
-                      ? selectedAsset.balance
-                      : Number(activeAccount?.balances.ethereum);
-
-                    if (value <= balance) {
-                      return Promise.resolve();
-                    }
-
-                    return Promise.reject();
-                  },
-                }),
-              ]}
-            >
-              <Input
-                className="input-medium"
-                type="number"
-                placeholder="Amount"
-              />
-            </Form.Item>
-
-            <div className="flex gap-x-0.5 items-center justify-center mx-2 md:w-full md:max-w-md">
               <Form.Item
-                name="edit"
-                className="w-12 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full opacity-70 cursor-pointer"
-                rules={[
-                  {
-                    required: false,
-                    message: '',
-                  },
-                ]}
-              >
-                <Tooltip content="Click to edit fee">
-                  <div onClick={() => setEditGas(true)}>
-                    <Icon
-                      wrapperClassname="w-6 ml-3 mt-1 h-10"
-                      name="edit"
-                      className="text-brand-royalbluemedium cursor-pointer"
-                    />
-                  </div>
-                </Tooltip>
-              </Form.Item>
-
-              <Form.Item
-                name="baseFee"
-                className="md:w-full"
+                name="amount"
+                className="md:w-full md:max-w-md"
                 hasFeedback
                 rules={[
                   {
                     required: true,
                     message: '',
                   },
+                  () => ({
+                    validator(_, value) {
+                      const balance = selectedAsset
+                        ? selectedAsset.balance
+                        : Number(activeAccount?.balances.ethereum);
+
+                      if (value <= balance) {
+                        return Promise.resolve();
+                      }
+
+                      return Promise.reject();
+                    },
+                  }),
                 ]}
               >
-                <Tooltip content="Recommended network base fee">
-                  <Input
-                    disabled
-                    className="block pl-4 pr-8 py-3 w-60 text-brand-white text-sm bg-fields-input-primary border border-fields-input-border rounded-r-full outline-none opacity-50 cursor-not-allowed md:w-full"
-                    id="baseFee-input"
-                    type="number"
-                    placeholder="Base fee"
-                    value={recommendedGasPrice}
-                  />
-                </Tooltip>
+                <Input
+                  className="input-medium"
+                  type="number"
+                  placeholder="Amount"
+                />
               </Form.Item>
             </div>
 
-            <p className="flex flex-col items-center justify-center p-0 max-w-xs text-center text-brand-royalblue sm:w-full md:my-4">
-              <span className="text-xs">Amount + fee</span>
+            <div className="border-graylight flex gap-3 items-center justify-center mt-4 py-4 w-full text-left text-base border-t border-dashed border-opacity-50">
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                Estimate fee
+                <span className="text-brand-royalblue text-xs">
+                  {`${feeValue * 10 ** 9} GWEI`}
+                </span>
+              </p>
 
-              <span className="mt-0.5 text-brand-white font-rubik text-xs">
-                {'≈ '}
-              </span>
-            </p>
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                Max total
+                <span className="text-brand-royalblue text-xs">
+                  {Number(feeValue) + Number(form.getFieldValue('amount'))}
+                  {`${activeNetwork.currency?.toUpperCase()}`}
+                </span>
+              </p>
+
+              <IconButton onClick={() => setEditGas(true)}>
+                <Icon name="edit" />
+              </IconButton>
+            </div>
 
             <SecondaryButton type="submit" id="next-btn">
               Next

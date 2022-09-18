@@ -116,32 +116,32 @@ export const SendConfirm = () => {
           </p>
 
           <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
-            <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
+            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
               From
-              <span className="text-brand-white">
+              <span className="text-brand-royalblue text-xs">
                 {ellipsis(tx.sender, 7, 15)}
               </span>
             </p>
 
-            <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
+            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
               To
-              <span className="text-brand-white">
+              <span className="text-brand-royalblue text-xs">
                 {ellipsis(tx.receivingAddress, 7, 15)}
               </span>
             </p>
 
-            <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
+            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
               Fee
-              <span className="text-brand-white">
+              <span className="text-brand-royalblue text-xs">
                 {!isBitcoinBased
                   ? `${tx.fee * 10 ** 9} GWEI`
                   : `${tx.fee} ${activeNetwork.currency}`}
               </span>
             </p>
 
-            <p className="flex flex-col pt-2 w-full text-brand-royalblue font-poppins font-thin">
+            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
               Max total
-              <span className="text-brand-white">
+              <span className="text-brand-royalblue text-xs">
                 {Number(tx.fee) + Number(tx.amount)}
                 {`${activeNetwork.currency?.toUpperCase()}`}
               </span>

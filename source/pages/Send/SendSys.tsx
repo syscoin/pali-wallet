@@ -8,7 +8,7 @@ import { useSelector } from 'react-redux';
 
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
-import { SecondaryButton, Tooltip, Icon } from 'components/index';
+import { SecondaryButton, Tooltip, Fee } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
@@ -148,7 +148,7 @@ export const SendSys = () => {
         }}
         onFinish={nextStep}
         autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
+        className="flex flex-col gap-2 items-center justify-center mt-4 text-center md:w-full"
       >
         <Form.Item
           name="receiver"
@@ -374,51 +374,7 @@ export const SendSys = () => {
           <Input className="input-medium" type="number" placeholder="Amount" />
         </Form.Item>
 
-        <div className="flex gap-x-0.5 items-center justify-center w-full opacity-60 cursor-not-allowed md:max-w-md">
-          <Form.Item
-            name="recommend"
-            className="py-1.5 w-12 text-center bg-fields-input-primary border border-disabled rounded-l-full"
-            rules={[
-              {
-                required: false,
-                message: '',
-              },
-            ]}
-          >
-            <Tooltip content="Use recommended fee. Disabled for SYS networks because the fee used in transactions is already the recommended with current network conditions.">
-              <div>
-                <Icon
-                  wrapperClassname="w-6 ml-3 mb-1"
-                  name="verified"
-                  className="text-disabled cursor-not-allowed"
-                />
-              </div>
-            </Tooltip>
-          </Form.Item>
-
-          <Form.Item
-            name="fee"
-            className="w-full"
-            hasFeedback
-            rules={[
-              {
-                required: true,
-                message: '',
-              },
-            ]}
-          >
-            <Tooltip content="Network fee">
-              <Input
-                disabled
-                className="block p-3 w-full text-disabled text-sm bg-fields-input-primary border border-disabled rounded-r-full outline-none cursor-not-allowed md:w-full"
-                id="fee-input"
-                type="number"
-                placeholder="Fee network"
-                value={recommend}
-              />
-            </Tooltip>
-          </Form.Item>
-        </div>
+        <Fee disabled={true} recommend={recommend} form={form} />
 
         <p className="flex flex-col items-center justify-center p-0 max-w-xs text-center text-brand-royalblue sm:w-full md:my-4">
           <span className="text-xs">

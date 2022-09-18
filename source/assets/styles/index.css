@@ -52,7 +52,7 @@ div[role='alert'] {
 /** BUTTONS **/
 
 .button-disabled {
-  @apply text-disabled cursor-not-allowed font-light border-2 border-disabled;
+  @apply cursor-not-allowed font-light opacity-60 bg-transparent text-brand-gray border-2 border-brand-gray;
 }
 
 /** INPUTS **/
@@ -67,7 +67,7 @@ div[role='alert'] {
 }
 
 .input-default {
-  @apply block w-80 placeholder-gray-500 md:w-96 bg-fields-input-primary outline-none text-brand-white relative input-default-border;
+  @apply block w-80 placeholder-gray-500 sm:w-96 bg-fields-input-primary border border-fields-input-primary focus:border-fields-input-borderfocus outline-none text-brand-white relative input-default-border;
 }
 
 /** input size small **/
@@ -83,7 +83,7 @@ div[role='alert'] {
 
 /** align eye invisible icon from password input suffix **/
 .input-small .ant-input-suffix .anticon-eye-invisible {
-  @apply mt-1.5;
+  @apply mt-1.5 text-brand-royalblue;
 }
 
 /** input size medium **/
@@ -93,6 +93,16 @@ div[role='alert'] {
 
 .input-medium .ant-input-suffix {
   @apply absolute right-2 top-2.5;
+}
+
+/** Group disabled input **/
+.disabled {
+  @apply opacity-60;
+}
+
+/** Mixed rounded border inputs **/
+.mixed-border-input .ant-input {
+  @apply block flex-1 p-3 w-full min-w-0 text-left text-sm bg-fields-input-primary border-2 border-fields-input-primary rounded-r-full;
 }
 
 /* Firefox */
@@ -109,38 +119,16 @@ input[type='number']::-webkit-inner-spin-button {
 
 /** Input Suffix **/
 
-/* ..ant-input-suffix {
-  @apply top-0.5;
-} */
-
-/* .ant-form-item-control-input-content {
-  @apply w-full;
-}
-
-.ant-input-suffix {
-  @apply absolute right-2 text-bkg-4;
-}
-
-.ant-form-item-feedback-icon {
-  @apply ml-2;
-}
-
-.ant-form-item-feedback-icon-error {
-  @apply ml-2;
-} */
-
-/* .ant-form-item-control-input {
-  @apply relative flex items-center justify-center;
-}
-
-.anticon.anticon-check-circle {
+.ant-input-suffix .anticon-check-circle {
   @apply text-warning-success;
 }
 
-.anticon.anticon-close-circle {
+.ant-input-suffix .anticon-close-circle {
   @apply text-warning-error;
 }
 
-.ant-tooltip-hidden {
-  @apply hidden;
+/** DISABLED **/
+
+/* .disabled {
+  @apply bg-disabled opacity-60;
 } */

@@ -10,16 +10,16 @@ module.exports = {
   },
 
   button: {
-    primary: '#FF3E91',
-    primaryhover: '#CB2C70',
+    secondary: '#FF3E91',
+    secondaryhover: '#CB2C70',
 
-    secondary: '#4CA1CF',
-    secondaryhover: '#4D76B8',
+    primary: '#4CA1CF',
+    primaryhover: '#4D76B8',
 
     popuphover: '#fff',
   },
 
-  disabled: '#4F4F4F',
+  disabled: '#f5f5f5',
 
   alert: {
     lightsuccess: '#079C31',
