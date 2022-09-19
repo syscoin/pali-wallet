@@ -11,7 +11,7 @@ import { Icon, Tooltip, ErrorModal } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { truncate, getHost, isActiveNetwork } from 'utils/index';
+import { truncate, getHost } from 'utils/index';
 
 const NetworkMenu: React.FC = () => {
   const { wallet } = getController();
@@ -245,9 +245,6 @@ const NetworkMenu: React.FC = () => {
 const GeneralMenu: React.FC = () => {
   const { wallet, dapp, refresh } = getController();
 
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
   );
