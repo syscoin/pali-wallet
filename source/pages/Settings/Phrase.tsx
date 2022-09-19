@@ -1,7 +1,7 @@
 import { Form, Input } from 'antd';
 import React, { useState, useEffect } from 'react';
 
-import { Layout, SecondaryButton, Card, CopyCard } from 'components/index';
+import { Layout, Card, CopyCard, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
@@ -91,9 +91,9 @@ const PhraseView = () => {
         </Card>
 
         <div className="absolute bottom-12 md:static md:mt-10">
-          <SecondaryButton type="button" onClick={() => navigate('/home')}>
+          <NeutralButton type="button" onClick={() => navigate('/home')}>
             Close
-          </SecondaryButton>
+          </NeutralButton>
         </div>
       </div>
     </Layout>

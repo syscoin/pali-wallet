@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
-import { IconButton, Layout, SecondaryButton, Icon } from 'components/index';
+import { IconButton, Layout, Icon, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -102,7 +102,7 @@ const ManageNetworkView = () => {
             <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
               <span>{truncate(network.label, 25)}</span>
 
-              <span className="text-brand-royalblue">
+              <span className="text-brand-white">
                 <b className="text-brand-royalblue">RPC URL:</b>
                 {truncate(String(network.url), 26)}
               </span>
@@ -139,9 +139,9 @@ const ManageNetworkView = () => {
         ))}
       </ul>
 
-      <SecondaryButton type="button" onClick={() => navigate('/home')}>
+      <NeutralButton type="button" onClick={() => navigate('/home')}>
         Close
-      </SecondaryButton>
+      </NeutralButton>
     </Layout>
   );
 };

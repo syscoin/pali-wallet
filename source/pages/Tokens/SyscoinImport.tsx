@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux';
 
 import { getAsset } from '@pollum-io/sysweb3-utils';
 
-import { SecondaryButton, DefaultModal, ErrorModal } from 'components/index';
+import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -112,9 +112,9 @@ export const SyscoinImportToken = () => {
 
         <div className="flex flex-col items-center justify-center w-full">
           <div className="absolute bottom-12 md:static">
-            <SecondaryButton loading={isLoading} type="submit">
+            <NeutralButton loading={isLoading} type="submit">
               Next
-            </SecondaryButton>
+            </NeutralButton>
           </div>
         </div>
       </Form>

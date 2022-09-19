@@ -2,7 +2,7 @@ import { Disclosure } from '@headlessui/react';
 import React, { FC, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Layout, SecondaryButton, Icon, Tooltip } from 'components/index';
+import { Layout, Icon, Tooltip, NeutralButton } from 'components/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
@@ -106,7 +106,7 @@ const ConnectHardwareWalletView: FC = () => {
         </div>
 
         <div className="absolute bottom-12 md:static md:mt-6">
-          <SecondaryButton
+          <NeutralButton
             type="button"
             onClick={handleCreateHardwareWallet}
             disabled={isTestnet || !selected}
@@ -120,7 +120,7 @@ const ConnectHardwareWalletView: FC = () => {
             >
               <p>Connect</p>
             </Tooltip>
-          </SecondaryButton>
+          </NeutralButton>
         </div>
       </div>
     </Layout>

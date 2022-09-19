@@ -67,14 +67,13 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
             <pre>{`${JSON.stringify(psbt, null, 2)}`}</pre>
           </ul>
 
-          <div className="absolute bottom-10 flex gap-3 items-center justify-between">
-            <SecondaryButton type="button" action onClick={window.close}>
+          <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
+            <SecondaryButton type="button" onClick={window.close}>
               Cancel
             </SecondaryButton>
 
             <PrimaryButton
               type="submit"
-              action
               disabled={confirmed}
               loading={loading}
               onClick={onSubmit}

@@ -2,7 +2,7 @@ import { Dialog, Transition } from '@headlessui/react';
 import React, { Fragment, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Layout, Icon, IconButton, SecondaryButton } from 'components/index';
+import { Layout, Icon, IconButton, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { IDApp } from 'state/dapp/types';
 import { RootState } from 'state/store';
@@ -167,9 +167,9 @@ const ConnectedSites = () => {
         )}
 
         <div className="absolute bottom-12 md:static">
-          <SecondaryButton type="button" onClick={() => navigate('/home')}>
+          <NeutralButton type="button" onClick={() => navigate('/home')}>
             Close
-          </SecondaryButton>
+          </NeutralButton>
         </div>
       </div>
     </Layout>

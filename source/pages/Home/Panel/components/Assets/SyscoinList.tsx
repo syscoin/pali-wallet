@@ -27,7 +27,7 @@ export const SyscoinAssetsList = () => {
                   )}
                 </span>
 
-                <span className="text-button-secondary font-poppins">
+                <span className="text-button-primary font-poppins">
                   {`  ${truncate(symbol, 10)}`}
                 </span>
               </p>

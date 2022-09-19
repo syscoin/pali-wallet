@@ -16,7 +16,7 @@ module.exports = {
     primary: '#4CA1CF',
     primaryhover: '#4D76B8',
 
-    popuphover: '#fff',
+    neutral: '#fff',
   },
 
   disabled: '#f5f5f5',

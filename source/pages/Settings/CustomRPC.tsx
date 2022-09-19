@@ -6,7 +6,7 @@ import { useLocation } from 'react-router-dom';
 
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
-import { Layout, SecondaryButton } from 'components/index';
+import { Layout, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { ICustomRpcParams } from 'types/transactions';
 import { getController } from 'utils/browser';
@@ -224,9 +224,9 @@ const CustomRPCView = () => {
         </p>
 
         <div className="absolute bottom-12 md:static">
-          <SecondaryButton type="submit" loading={loading}>
+          <NeutralButton type="submit" loading={loading}>
             Save
-          </SecondaryButton>
+          </NeutralButton>
         </div>
       </Form>
     </Layout>

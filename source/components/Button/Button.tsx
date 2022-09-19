@@ -59,10 +59,6 @@ export const PrimaryButton: React.FC<IPrimaryButton> = ({
   ref,
   width = '36',
 }) => {
-  const enabledStyle = action
-    ? 'border-warning-success bg-warning-success hover:bg-warning-successhover text-brand-white w-40'
-    : `border-button-primary bg-button-primary hover:bg-button-primaryhover text-brand-white w-${width}`;
-
   const loadingIcon = <Icon name="loading" className="text-brand-white" />;
 
   const checkIcon = (
@@ -76,7 +72,11 @@ export const PrimaryButton: React.FC<IPrimaryButton> = ({
   return (
     <button
       className={`tracking-normal cursor-pointer border-2 text-sm leading-4 w-${width} transition-all duration-300 h-10 rounded-full flex justify-center items-center gap-x-2 font-bold 
-        ${disabled || loading ? 'button-disabled' : enabledStyle}`}
+        ${
+          disabled || loading
+            ? 'opacity-60 cursor-not-allowed'
+            : 'opacity-100 hover:bg-button-primaryhover'
+        } border-button-primary bg-button-primary  text-brand-white w-${width}`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
@@ -104,10 +104,6 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
   onClick,
   type,
 }) => {
-  const actionStyle = action
-    ? 'bg-transparent border-2 border-brand-white hover:bg-warning-error hover:border-warning-error hover:text-brand-white w-40'
-    : 'border-button-secondary hover:bg-button-secondaryhover bg-button-secondary text-brand-white w-36 py-2.5';
-
   const loadingIcon = <Icon name="loading" className="text-brand-white" />;
 
   const closeIcon = (
@@ -122,7 +118,11 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
     <button
       className={`
       flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal text-sm leading-4 w-36 h-10 text-brand-white
-      ${disabled || loading ? 'button-disabled' : actionStyle}`}
+      ${
+        disabled || loading
+          ? 'opacity-60 cursor-not-allowed'
+          : 'opacity-100 hover:bg-button-secondaryhover'
+      } border-button-secondary  transition-all duration-300 bg-button-secondary text-brand-white w-36 py-2.5`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
@@ -136,6 +136,35 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
           {children}
         </>
       )}
+    </button>
+  );
+};
+
+export const NeutralButton: React.FC<IPrimaryButton> = ({
+  children,
+  disabled = false,
+  id = '',
+  loading = false,
+  onClick,
+  type = 'button',
+}) => {
+  const loadingIcon = <Icon name="loading" className="text-brand-white" />;
+
+  return (
+    <button
+      className={`
+      flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal text-sm leading-4 w-36 h-10 text-brand-royalblue
+      ${
+        disabled || loading
+          ? 'opacity-60 cursor-not-allowed'
+          : 'opacity-100 hover:opacity-90'
+      } border-button-neutral transition-all duration-300 bg-button-neutral w-36 py-2.5`}
+      disabled={disabled || loading}
+      onClick={onClick}
+      type={type}
+      id={id}
+    >
+      {loading ? loadingIcon : <>{children}</>}
     </button>
   );
 };

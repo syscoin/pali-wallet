@@ -2,7 +2,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Layout, SecondaryButton, Icon } from 'components/index';
+import { Layout, Icon, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -78,12 +78,12 @@ export const Receive = () => {
             className="absolute bottom-12 md:static md:mt-6"
             id="copy-address-receive-btn"
           >
-            <SecondaryButton
+            <NeutralButton
               type="button"
               onClick={() => copyText(activeAccount.address)}
             >
               <span className="text-xs">Copy</span>
-            </SecondaryButton>
+            </NeutralButton>
           </div>
         </div>
       ) : (

@@ -4,9 +4,9 @@ import { version } from '../../../package.json';
 import {
   Layout,
   Icon,
-  SecondaryButton,
   SimpleCard,
   IconButton,
+  NeutralButton,
 } from 'components/index';
 import { useUtils } from 'hooks/index';
 
@@ -79,9 +79,9 @@ const AboutView: FC = () => {
         </SimpleCard>
 
         <div className="absolute bottom-12 md:static md:mt-3">
-          <SecondaryButton type="button" onClick={() => navigate('/home')}>
+          <NeutralButton type="button" onClick={() => navigate('/home')}>
             Close
-          </SecondaryButton>
+          </NeutralButton>
         </div>
       </div>
     </Layout>

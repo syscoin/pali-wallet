@@ -140,17 +140,17 @@ const ForgetWalletView = () => {
           )}
 
           <div className="absolute bottom-12 flex gap-x-8 justify-between md:static md:gap-x-40">
-            <SecondaryButton type="button" onClick={() => navigate('/home')}>
+            <PrimaryButton type="button" onClick={() => navigate('/home')}>
               Cancel
-            </SecondaryButton>
+            </PrimaryButton>
 
-            <PrimaryButton
+            <SecondaryButton
               type="submit"
               disabled={!isPasswordValid || !isSeedValid}
               id="forget-btn"
             >
               Forget
-            </PrimaryButton>
+            </SecondaryButton>
           </div>
         </Form>
       </div>

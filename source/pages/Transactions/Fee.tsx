@@ -1,4 +1,4 @@
-import { Form, Input } from 'antd';
+import { Form } from 'antd';
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
@@ -6,8 +6,7 @@ import {
   Layout,
   PrimaryButton,
   SecondaryButton,
-  Tooltip,
-  Icon,
+  Fee as FeeFC,
 } from 'components/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -57,76 +56,18 @@ const Fee: React.FC<IFee> = ({ title, onFinish }) => {
           autoComplete="off"
           className="flex flex-col gap-3 items-center justify-center mt-4 text-center"
         >
-          <div className="flex gap-x-0.5 items-center justify-center mx-2 max-w-sm md:max-w-md">
-            <Form.Item
-              name="recommend"
-              className={`${
-                disabledFee && 'opacity-50 cursor-not-allowed'
-              } bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus w-16 py-1.5 rounded-l-full text-center`}
-              rules={[
-                {
-                  required: false,
-                  message: '',
-                },
-              ]}
-            >
-              <Tooltip
-                content={`${
-                  disabledFee
-                    ? 'Use recommended fee. Disabled for SYS networks because the fee used in transactions is always the recommended for current SYS network conditions.'
-                    : 'Click to use the recommended fee'
-                }`}
-              >
-                <div onClick={updateFee}>
-                  <Icon
-                    wrapperClassname="w-6 ml-5 mb-1"
-                    name="verified"
-                    className={`${
-                      disabledFee
-                        ? 'cursor-not-allowed text-disabled'
-                        : 'text-warning-success'
-                    }`}
-                  />
-                </div>
-              </Tooltip>
-            </Form.Item>
-
-            <Form.Item
-              name="fee"
-              hasFeedback
-              rules={[
-                {
-                  required: true,
-                  message: '',
-                },
-              ]}
-            >
-              <Tooltip content={disabledFee ? 'Fee network' : ''}>
-                <Input
-                  disabled={disabledFee}
-                  className={`${
-                    disabledFee && 'opacity-50 cursor-not-allowed text-disabled'
-                  } block pl-4 pr-8 py-3 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full outline-none md:w-full`}
-                  type="number"
-                  placeholder="Fee network"
-                  value={fee}
-                />
-              </Tooltip>
-            </Form.Item>
-          </div>
+          <FeeFC recommend={fee} disabled={disabledFee} form={form} />
 
           <p className="mt-4 mx-6 p-4 max-w-xs text-left text-xs bg-transparent border border-dashed border-gray-600 rounded-lg md:max-w-2xl">
             With current network conditions, we recommend a fee of {fee} SYS.
           </p>
 
-          <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
-            <SecondaryButton type="button" action onClick={window.close}>
+          <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
+            <SecondaryButton type="button" onClick={window.close}>
               Cancel
             </SecondaryButton>
 
-            <PrimaryButton action type="submit">
-              Next
-            </PrimaryButton>
+            <PrimaryButton type="submit">Next</PrimaryButton>
           </div>
         </Form>
       </div>

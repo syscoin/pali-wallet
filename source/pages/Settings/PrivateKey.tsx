@@ -2,7 +2,7 @@ import { Input, Form } from 'antd';
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Layout, SecondaryButton, Card, CopyCard } from 'components/index';
+import { Layout, Card, CopyCard, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -111,7 +111,7 @@ const PrivateKeyView = () => {
       </CopyCard>
 
       <div className="absolute bottom-8 md:static">
-        <SecondaryButton
+        <NeutralButton
           width="56 px-6"
           type="button"
           onClick={() =>
@@ -119,7 +119,7 @@ const PrivateKeyView = () => {
           }
         >
           See on explorer
-        </SecondaryButton>
+        </NeutralButton>
       </div>
     </Layout>
   );

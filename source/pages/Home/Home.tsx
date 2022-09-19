@@ -99,7 +99,7 @@ export const Home = () => {
             <div className="flex gap-x-0.5 items-center justify-center pt-8 w-3/4 max-w-md">
               <Button
                 type="button"
-                className="xl:p-18 flex flex-1 items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-l-full transition-all duration-300 xl:flex-none"
+                className="xl:p-18 flex flex-1 items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-l-full transition-all duration-300 xl:flex-none"
                 id="send-btn"
                 onClick={() => navigate('/send')}
               >
@@ -114,7 +114,7 @@ export const Home = () => {
 
               <Button
                 type="button"
-                className="xl:p-18 flex flex-1 items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-r-full transition-all duration-300 xl:flex-none"
+                className="xl:p-18 flex flex-1 items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-r-full transition-all duration-300 xl:flex-none"
                 id="receive-btn"
                 onClick={() => navigate('/receive')}
               >

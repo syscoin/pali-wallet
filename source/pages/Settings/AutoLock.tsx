@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
-import { Layout, SecondaryButton, DefaultModal } from 'components/index';
+import { Layout, DefaultModal, NeutralButton } from 'components/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
@@ -83,9 +83,9 @@ const AutolockView = () => {
         </Form.Item>
 
         <div className="absolute bottom-12 md:static">
-          <SecondaryButton type="submit" loading={loading}>
+          <NeutralButton type="submit" loading={loading}>
             Save
-          </SecondaryButton>
+          </NeutralButton>
         </div>
       </Form>
     </Layout>

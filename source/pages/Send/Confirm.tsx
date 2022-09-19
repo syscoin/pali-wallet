@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { Layout, SecondaryButton, DefaultModal } from 'components/index';
+import { Layout, DefaultModal, NeutralButton } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
@@ -149,14 +149,14 @@ export const SendConfirm = () => {
           </div>
 
           <div className="absolute bottom-12 md:static md:mt-10">
-            <SecondaryButton
+            <NeutralButton
               loading={loading}
               onClick={handleConfirm}
               type="button"
               id="confirm-btn"
             >
               Confirm
-            </SecondaryButton>
+            </NeutralButton>
           </div>
         </div>
       )}

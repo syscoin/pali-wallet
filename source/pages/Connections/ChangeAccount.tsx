@@ -57,8 +57,8 @@ export const ChangeAccount = () => {
           ))}
         </ul>
 
-        <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
-          <SecondaryButton type="button" onClick={() => window.close()} action>
+        <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
+          <SecondaryButton type="button" onClick={() => window.close()}>
             Cancel
           </SecondaryButton>
 

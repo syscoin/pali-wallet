@@ -50,9 +50,9 @@ export const ConnectWallet = () => {
     setIsLoading(false);
   };
 
-  // useEffect(() => {
-  //   if (!isActiveNetwork(chain, chainId)) changeNetwork();
-  // }, []);
+  useEffect(() => {
+    if (!isActiveNetwork(chain, chainId)) changeNetwork();
+  }, []);
 
   if (isLoading) return <Loading />;
 
@@ -100,14 +100,13 @@ export const ConnectWallet = () => {
           <a href="https://docs.syscoin.org/">Learn more.</a>
         </small>
 
-        <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
-          <SecondaryButton type="button" action onClick={() => window.close()}>
+        <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
+          <SecondaryButton type="button" onClick={() => window.close()}>
             Cancel
           </SecondaryButton>
 
           <PrimaryButton
             type="button"
-            action
             disabled={accountId === undefined}
             onClick={onConfirm}
           >
@@ -132,9 +131,8 @@ export const ConnectWallet = () => {
               </p>
             </div>
 
-            <div className="flex gap-5 items-center justify-between mt-8">
+            <div className="flex gap-3 items-center justify-between mt-8">
               <SecondaryButton
-                action
                 width="32"
                 type="button"
                 onClick={() => window.close()}
@@ -143,7 +141,6 @@ export const ConnectWallet = () => {
               </SecondaryButton>
 
               <PrimaryButton
-                action
                 width="32"
                 type="button"
                 onClick={() => handleConnect()}

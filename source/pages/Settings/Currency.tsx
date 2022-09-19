@@ -4,7 +4,7 @@ import getSymbolFromCurrency from 'currency-symbol-map';
 import React, { useEffect, Fragment, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Layout, SecondaryButton, Icon, DefaultModal } from 'components/index';
+import { Layout, Icon, DefaultModal, NeutralButton } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -200,9 +200,9 @@ const CurrencyView = () => {
           )}
         </div>
 
-        <SecondaryButton type="button" onClick={handleConfirmCurrencyChange}>
+        <NeutralButton type="button" onClick={handleConfirmCurrencyChange}>
           Save
-        </SecondaryButton>
+        </NeutralButton>
       </div>
 
       <div className="h-max absolute bottom-0 flex flex-col items-center justify-center mt-6 py-4 w-full max-w-2xl bg-bkg-4">

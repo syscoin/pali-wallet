@@ -8,7 +8,7 @@ import { useSelector } from 'react-redux';
 
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
-import { SecondaryButton, Tooltip, Fee } from 'components/index';
+import { Tooltip, Fee, NeutralButton } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
@@ -261,11 +261,7 @@ export const SendSys = () => {
             </Form.Item>
           )}
 
-          <div
-            className={`${
-              hasAccountAssets ? 'w-full' : 'w-72'
-            } flex gap-x-0.5 items-center justify-center md:w-full`}
-          >
+          <div className="flex gap-x-0.5 items-center justify-center w-full">
             <Form.Item
               id="verify-address-switch"
               name="verify"
@@ -284,7 +280,7 @@ export const SendSys = () => {
                 <p
                   className={`${
                     !hasAccountAssets && ' absolute top-0 left-8'
-                  } text-10px cursor-default`}
+                  } text-10px cursor-default text-brand-white`}
                 >
                   Verify address
                 </p>
@@ -323,7 +319,7 @@ export const SendSys = () => {
                 <p
                   className={`${
                     !hasAccountAssets && 'absolute top-0 right-14'
-                  } text-10px cursor-default`}
+                  } text-10px cursor-default text-brand-white`}
                 >
                   Z-DAG
                 </p>
@@ -387,9 +383,9 @@ export const SendSys = () => {
           </span>
         </p>
 
-        <SecondaryButton type="submit" id="next-btn">
+        <NeutralButton type="submit" id="next-btn">
           Next
-        </SecondaryButton>
+        </NeutralButton>
       </Form>
     </div>
   );

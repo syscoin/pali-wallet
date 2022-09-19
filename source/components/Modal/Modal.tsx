@@ -1,6 +1,8 @@
 import { Dialog, Transition } from '@headlessui/react';
 import React, { Fragment, ReactNode } from 'react';
 
+import { PrimaryButton, SecondaryButton, NeutralButton } from '..';
+
 interface IModal {
   children: ReactNode;
   className?: string;
@@ -90,14 +92,9 @@ export const DefaultModal = ({
       </div>
 
       <div className="mt-4">
-        <button
-          type="button"
-          className="inline-flex justify-center px-10 py-2 hover:text-bkg-4 text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
-          onClick={onClose}
-          id="got-it-btn"
-        >
+        <NeutralButton type="button" onClick={onClose} id="got-it-btn">
           {buttonText}
-        </button>
+        </NeutralButton>
       </div>
     </div>
   </Modal>
@@ -124,22 +121,17 @@ export const ErrorModal = ({
         <p className="text-gray-300 text-sm">{description}</p>
       </div>
 
-      <p className="my-4 text-button-primary text-sm">
+      <p className="my-4 text-button-secondary text-sm">
         Error description: {` ${log}`}
       </p>
 
       <div className="flex gap-x-8 items-center justify-between mt-8">
-        <button
-          type="button"
-          className="inline-flex justify-center py-2 w-40 text-brand-white text-sm font-medium bg-button-secondary border border-button-secondary rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
-          onClick={onClose}
-        >
+        <PrimaryButton type="button" onClick={onClose}>
           {buttonText}
-        </button>
+        </PrimaryButton>
 
-        <button
+        <SecondaryButton
           type="button"
-          className="inline-flex justify-center py-2 w-40 text-brand-white text-sm font-medium bg-button-primary hover:bg-opacity-70 border border-button-primary rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
           onClick={() =>
             window.open(
               `mailto:pali@pollum.io?subject="Pali Error Report: Token creation"&body=${log}`
@@ -147,7 +139,7 @@ export const ErrorModal = ({
           }
         >
           Report
-        </button>
+        </SecondaryButton>
       </div>
     </div>
   </Modal>

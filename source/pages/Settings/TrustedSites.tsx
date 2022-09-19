@@ -1,7 +1,7 @@
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
 
-import { Layout, SecondaryButton } from 'components/index';
+import { Layout, NeutralButton } from 'components/index';
 import trustedApps from 'constants/trustedApps.json';
 import { useUtils } from 'hooks/index';
 import { truncate } from 'utils/index';
@@ -83,9 +83,9 @@ const TrustedSitesView = () => {
         </ul>
 
         <div className="absolute bottom-12 md:static">
-          <SecondaryButton type="button" onClick={() => navigate('/home')}>
+          <NeutralButton type="button" onClick={() => navigate('/home')}>
             Close
-          </SecondaryButton>
+          </NeutralButton>
         </div>
       </div>
     </Layout>

@@ -8,7 +8,7 @@ import { useSelector } from 'react-redux';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
-import { SecondaryButton, Icon, IconButton } from 'components/index';
+import { Icon, IconButton, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -303,9 +303,9 @@ export const SendEth = () => {
               </IconButton>
             </div>
 
-            <SecondaryButton type="submit" id="next-btn">
+            <NeutralButton type="submit" id="next-btn">
               Next
-            </SecondaryButton>
+            </NeutralButton>
           </Form>
         </div>
       )}

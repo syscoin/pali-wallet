@@ -2,7 +2,7 @@ import { Form, Input } from 'antd';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { Layout, SecondaryButton, DefaultModal } from 'components/index';
+import { Layout, DefaultModal, NeutralButton } from 'components/index';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
@@ -66,14 +66,14 @@ const CreateAccount = () => {
           </Form.Item>
 
           <div className="absolute bottom-12 md:static">
-            <SecondaryButton
+            <NeutralButton
               type="submit"
               loading={loading}
               disabled={loading}
               id="create-btn"
             >
               Create
-            </SecondaryButton>
+            </NeutralButton>
           </div>
         </Form>
       )}
