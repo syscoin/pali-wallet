@@ -6,7 +6,10 @@ module.exports = {
     4: '#1E365C',
     5: '#222222',
     6: '#061120',
+    7: '#1E365CF7',
     disabled: '#FFFFFF4D',
+    blue200: '#4D76B8',
+    pink200: '#FF3E91',
   },
 
   button: {
