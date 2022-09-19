@@ -1,14 +1,8 @@
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
-import store from 'state/store';
+import { networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
-
-const _isActiveAccount = (accounId: number) => {
-  const { activeAccount } = store.getState().vault;
-
-  return activeAccount.id === accounId;
-};
 
 /**
  * Handles methods request.
@@ -36,13 +30,6 @@ export const methodRequest = async (
   if (!isRequestAllowed)
     throw new Error('Restricted method. Connect before requesting');
 
-  const { accountId, chain } = dapp.get(host);
-
-  if (accountId && !_isActiveAccount(accountId)) {
-    wallet.setAccount(accountId);
-    wallet.account.sys.watchMemPool();
-  }
-
   const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
 
   //* Wallet methods
@@ -53,7 +40,7 @@ export const methodRequest = async (
       case 'getAccount':
         return account;
       case 'getBalance':
-        return Boolean(account) && account.balances[chain];
+        return Boolean(account) && account.balances[networkChain()];
       case 'getNetwork':
         return dapp.getNetwork();
       case 'getPublicKey':
