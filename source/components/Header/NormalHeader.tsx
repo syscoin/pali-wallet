@@ -284,22 +284,9 @@ const GeneralMenu: React.FC = () => {
       if (!isMounted) return;
 
       const host = getHost(url);
-      const hasConnection = dapp.isConnected(host);
+      const isConnected = dapp.isConnected(host);
 
-      if (!hasConnection) {
-        setCurrentTab({ host, isConnected: false });
-
-        return;
-      }
-
-      const _dapp = dapp.get(host);
-      const isSameAccount = _dapp.accountId === activeAccount.id;
-      const isSameNetwork = await isActiveNetwork(_dapp.chain, _dapp.chainId);
-
-      setCurrentTab({
-        host,
-        isConnected: isSameAccount && isSameNetwork,
-      });
+      setCurrentTab({ host, isConnected });
     });
 
     return () => {
