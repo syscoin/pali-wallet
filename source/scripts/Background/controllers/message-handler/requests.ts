@@ -1,20 +1,8 @@
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
-import { isActiveNetwork } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
-
-const _changeNetwork = async (chain: string, chainId: number) => {
-  console.log('[DApp] Changing pali network');
-
-  const { networks } = store.getState().vault;
-  const network = networks[chain][chainId];
-
-  const { wallet, refresh } = window.controller;
-  await wallet.setActiveNetwork(network, chain);
-  await refresh(true);
-};
 
 const _isActiveAccount = (accounId: number) => {
   const { activeAccount } = store.getState().vault;
@@ -48,11 +36,7 @@ export const methodRequest = async (
   if (!isRequestAllowed)
     throw new Error('Restricted method. Connect before requesting');
 
-  const { accountId, chain, chainId } = dapp.get(host);
-
-  if (!isActiveNetwork(chain, chainId)) {
-    await _changeNetwork(chain, chainId);
-  }
+  const { accountId, chain } = dapp.get(host);
 
   if (accountId && !_isActiveAccount(accountId)) {
     wallet.setAccount(accountId);
