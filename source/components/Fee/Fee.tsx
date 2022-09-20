@@ -20,7 +20,7 @@ export const Fee = ({
     }
   >
     <div className="disabled flex w-80 cursor-not-allowed md:w-96">
-      <span className="inline-flex items-center mb-2 px-5 bg-fields-input-primary border-2 border-fields-input-primary rounded-l-full">
+      <span className="inline-flex items-center px-5 bg-fields-input-primary border-2 border-fields-input-primary rounded-l-full">
         <Icon name="verified" />
       </span>
 

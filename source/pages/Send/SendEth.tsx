@@ -8,13 +8,17 @@ import { useSelector } from 'react-redux';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
-import { Icon, IconButton, NeutralButton } from 'components/index';
+import {
+  Icon,
+  IconButton,
+  Layout,
+  NeutralButton,
+  Tooltip,
+} from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { truncate, getAssetBalance } from 'utils/index';
-
-import { EditGasFee } from './EditGasFee';
 
 export const SendEth = () => {
   const controller = getController();
@@ -30,7 +34,6 @@ export const SendEth = () => {
   const [recommendedGasPrice, setRecommendedGasPrice] = useState(0);
   const [recommendedGasLimit, setRecommendedGasLimit] = useState(0);
   const [feeValue, setFeeValue] = useState(0);
-  const [editGas, setEditGas] = useState(false);
   const [form] = Form.useForm();
 
   const getRecomendedFees = useCallback(async () => {
@@ -38,12 +41,21 @@ export const SendEth = () => {
       controller.wallet.account.eth.tx;
 
     const gasPrice = await getRecommendedGasPrice(true);
-    const gasLimit = await getGasLimit(form.getFieldValue('receiver'));
+    const gasLimit = await getGasLimit({
+      receiver: form.getFieldValue('receiver'),
+      sender: activeAccount.address,
+      amount: form.getFieldValue('amount') || 0,
+    });
 
     setRecommendedGasPrice(Number(gasPrice.gwei));
     setRecommendedGasLimit(Number(gasLimit));
     setFeeValue(Number(gasPrice.gwei) * Number(gasLimit));
 
+    console.log({
+      gasPrice,
+      gasLimit,
+      fee: Number(gasPrice.gwei) * Number(gasLimit),
+    });
     form.setFieldsValue({
       fee: recommendedGasPrice,
       gasLimit,
@@ -100,70 +112,67 @@ export const SendEth = () => {
   };
 
   return (
-    <>
-      {editGas ? (
-        <EditGasFee
-          setGasFee={setRecommendedGasPrice}
-          setEdit={setEditGas}
+    <Layout title={`SEND ${activeNetwork.currency?.toUpperCase()}`}>
+      <div>
+        <p className="flex flex-col items-center justify-center text-center font-rubik">
+          <span className="text-brand-royalblue font-poppins font-thin">
+            Balance
+          </span>
+
+          {selectedAsset
+            ? getAssetBalance(selectedAsset, activeAccount, false)
+            : `${activeAccount.balances.ethereum} ${activeNetwork.currency}`}
+        </p>
+
+        <Form
+          validateMessages={{ default: '' }}
           form={form}
-          setFee={setFeeValue}
-        />
-      ) : (
-        <div>
-          <p className="flex flex-col items-center justify-center text-center font-rubik">
-            <span className="text-brand-royalblue font-poppins font-thin">
-              Balance
-            </span>
+          id="send-form"
+          labelCol={{ span: 8 }}
+          wrapperCol={{ span: 8 }}
+          initialValues={{
+            fee: recommendedGasPrice,
+            gasLimit: recommendedGasLimit,
+            gasPrice: recommendedGasPrice,
+            amount: 0,
+          }}
+          onFinish={nextStep}
+          autoComplete="off"
+          className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
+        >
+          <Form.Item
+            name="receiver"
+            className="md:w-full md:max-w-md"
+            hasFeedback
+            rules={[
+              {
+                required: true,
+                message: '',
+              },
+              () => ({
+                validator(_, value) {
+                  if (!value || isValidEthereumAddress(value)) {
+                    return Promise.resolve();
+                  }
 
-            {selectedAsset
-              ? getAssetBalance(selectedAsset, activeAccount, false)
-              : `${activeAccount.balances.ethereum} ${activeNetwork.currency}`}
-          </p>
-
-          <Form
-            validateMessages={{ default: '' }}
-            form={form}
-            id="send-form"
-            labelCol={{ span: 8 }}
-            wrapperCol={{ span: 8 }}
-            initialValues={{
-              fee: recommendedGasPrice,
-              gasLimit: recommendedGasLimit,
-              gasPrice: recommendedGasPrice,
-              amount: 0,
-            }}
-            onFinish={nextStep}
-            autoComplete="off"
-            className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
-          >
-            <Form.Item
-              name="receiver"
-              className="md:w-full md:max-w-md"
-              hasFeedback
-              rules={[
-                {
-                  required: true,
-                  message: '',
+                  return Promise.reject();
                 },
-                () => ({
-                  validator(_, value) {
-                    if (!value || isValidEthereumAddress(value)) {
-                      return Promise.resolve();
-                    }
+              }),
+            ]}
+          >
+            <Input
+              type="text"
+              placeholder="Receiver"
+              className="input-medium"
+            />
+          </Form.Item>
 
-                    return Promise.reject();
-                  },
-                }),
-              ]}
+          <div className="flex w-80 md:w-96">
+            <span
+              className={`${
+                hasAccountAssets ? 'inline-flex' : 'hidden'
+              } items-center px-5 bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border rounded-l-full`}
             >
-              <Input
-                type="text"
-                placeholder="Receiver"
-                className="input-medium"
-              />
-            </Form.Item>
-
-            <div className="flex items-center justify-center md:w-full md:max-w-md">
               {hasAccountAssets && (
                 <Form.Item
                   name="asset"
@@ -179,7 +188,7 @@ export const SendEth = () => {
                     <div className="relative inline-block text-left">
                       <Menu.Button
                         disabled={!hasAccountAssets}
-                        className="inline-flex justify-center py-3 w-20 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
+                        className="inline-flex justify-center py-3 w-full text-white text-sm font-medium"
                       >
                         {truncate(
                           String(
@@ -208,16 +217,14 @@ export const SendEth = () => {
                         {hasAccountAssets && (
                           <Menu.Items
                             as="div"
-                            className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg shadow-2xl overflow-auto origin-top-right"
+                            className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-bkg-3 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right"
                           >
                             <Menu.Item>
                               <button
                                 onClick={() => handleSelectedAsset('-1')}
-                                className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                                className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                               >
-                                <p>
-                                  {truncate(String(activeNetwork.currency), 2)}
-                                </p>
+                                <p>MATIC</p>
                                 <small>Native</small>
                               </button>
                             </Menu.Item>
@@ -229,7 +236,7 @@ export const SendEth = () => {
                                     <Menu.Item>
                                       <button
                                         onClick={() =>
-                                          handleSelectedAsset(item.id)
+                                          handleSelectedAsset(item.assetGuid)
                                         }
                                         className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                                       >
@@ -249,66 +256,104 @@ export const SendEth = () => {
                   </Menu>
                 </Form.Item>
               )}
+            </span>
 
-              <Form.Item
-                name="amount"
-                className="md:w-full md:max-w-md"
-                hasFeedback
-                rules={[
-                  {
-                    required: true,
-                    message: '',
+            <Form.Item
+              name="amount"
+              className="w-full md:max-w-md"
+              hasFeedback
+              rules={[
+                {
+                  required: true,
+                  message: '',
+                },
+                () => ({
+                  validator(_, value) {
+                    const balance = selectedAsset
+                      ? selectedAsset.balance
+                      : Number(activeAccount?.balances.ethereum);
+
+                    if (value <= balance) {
+                      return Promise.resolve();
+                    }
+
+                    return Promise.reject();
                   },
-                  () => ({
-                    validator(_, value) {
-                      const balance = selectedAsset
-                        ? selectedAsset.balance
-                        : Number(activeAccount?.balances.ethereum);
+                }),
+              ]}
+            >
+              <Input
+                className={
+                  hasAccountAssets ? 'mixed-border-input' : 'input-medium'
+                }
+                type="number"
+                placeholder="Amount"
+              />
+            </Form.Item>
+          </div>
 
-                      if (value <= balance) {
-                        return Promise.resolve();
-                      }
+          <div className="flex-2 flex gap-3 items-center justify-center mt-4 px-4 py-2 w-full max-w-xs text-left text-brand-white font-poppins text-xs font-thin bg-bkg-3 bg-opacity-60 border border-t border-dashed border-brand-royalblue rounded-lg md:max-w-md">
+            <div className="flex flex-col w-full">
+              <div className="flex gap-1.5 items-center justify-start">
+                <p>Estimate fee</p>
 
-                      return Promise.reject();
-                    },
-                  }),
-                ]}
-              >
-                <Input
-                  className="input-medium"
-                  type="number"
-                  placeholder="Amount"
-                />
-              </Form.Item>
+                <Tooltip content="Gas fees are paid to crypto miners who process transactions on the network. Pali does not profit from gas fees. Gas fees are set by the network and fluctuate based on network traffic and transaction complexity.">
+                  <Icon className="mb-1" name="question" />
+                </Tooltip>
+              </div>
+
+              <span className="text-brand-royalblue">
+                {' '}
+                {Number(
+                  Number(feeValue) + Number(form.getFieldValue('amount'))
+                ).toFixed(5) || 0}
+                {`${activeNetwork.currency?.toUpperCase()}`}
+              </span>
             </div>
 
-            <div className="border-graylight flex gap-3 items-center justify-center mt-4 py-4 w-full text-left text-base border-t border-dashed border-opacity-50">
-              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                Estimate fee
-                <span className="text-brand-royalblue text-xs">
-                  {`${feeValue * 10 ** 9} GWEI`}
-                </span>
-              </p>
+            <div className="flex flex-col justify-end w-full text-right">
+              <span>Max Fee</span>
 
-              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                Max total
-                <span className="text-brand-royalblue text-xs">
-                  {Number(feeValue) + Number(form.getFieldValue('amount'))}
-                  {`${activeNetwork.currency?.toUpperCase()}`}
-                </span>
-              </p>
-
-              <IconButton onClick={() => setEditGas(true)}>
-                <Icon name="edit" />
-              </IconButton>
+              <span className="text-brand-royalblue">
+                {' '}
+                {Number(
+                  Number(feeValue) + Number(form.getFieldValue('amount'))
+                ).toFixed(5) || 0}
+                {`${activeNetwork.currency?.toUpperCase()}`}
+              </span>
             </div>
 
-            <NeutralButton type="submit" id="next-btn">
-              Next
-            </NeutralButton>
-          </Form>
-        </div>
-      )}
-    </>
+            <IconButton
+              className="flex flex-1 flex-col justify-end text-right hover:text-brand-royalbluemedium"
+              onClick={() =>
+                navigate('/send/edit/priority', {
+                  state: { tx: { ...form.getFieldsValue() } },
+                })
+              }
+            >
+              <Icon name="edit" />
+            </IconButton>
+          </div>
+
+          <div className="flex items-center justify-around my-2 w-full max-w-xs text-xs md:max-w-md">
+            <p className="text-brand-royalblue">Total</p>
+
+            <p className="text-brand-white">Amount + Gas fee</p>
+
+            <span className="text-brand-deepPink100 font-rubik">
+              -
+              {Number(
+                Number(feeValue) + Number(form.getFieldValue('amount'))
+              ).toFixed(5) || 0}
+              {`${activeNetwork.currency?.toUpperCase()}`}
+            </span>
+          </div>
+
+          <div className="absolute bottom-12 md:static md:mt-3">
+            <NeutralButton type="submit">Next</NeutralButton>
+          </div>
+        </Form>
+      </div>
+    </Layout>
   );
 };

@@ -91,7 +91,7 @@ export const DefaultModal = ({
         <p className="text-white text-sm">{description}</p>
       </div>
 
-      <div className="mt-4">
+      <div className="flex items-center justify-center mt-4">
         <NeutralButton type="button" onClick={onClose} id="got-it-btn">
           {buttonText}
         </NeutralButton>

@@ -41,7 +41,7 @@ module.exports = {
     input: {
       primary: '#07152B',
       placeholder: '#85B6FF99',
-      border: '#07152B',
+      border: '#314970',
       borderfocus: '#1E365C',
     },
   },

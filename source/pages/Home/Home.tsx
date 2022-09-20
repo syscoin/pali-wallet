@@ -101,7 +101,9 @@ export const Home = () => {
                 type="button"
                 className="xl:p-18 flex flex-1 items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-l-full transition-all duration-300 xl:flex-none"
                 id="send-btn"
-                onClick={() => navigate('/send')}
+                onClick={() =>
+                  isBitcoinBased ? navigate('/send/sys') : navigate('/send/eth')
+                }
               >
                 <Icon
                   name="arrow-up"
