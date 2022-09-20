@@ -18,37 +18,69 @@ export const SyscoinAssetsList = () => {
       {assets.map(({ decimals, balance, symbol, assetGuid }: any) => (
         <Fragment key={uniqueId(String(assetGuid))}>
           {balance > 0 && (
-            <li className="relative flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark">
-              <p className="font-rubik">
-                <span>
-                  {truncate(
-                    formatCurrency(String(balance / 10 ** decimals), decimals),
-                    14
-                  )}
-                </span>
+            <li
+              className="flex items-center py-3 text-xs border-b border-dashed"
+              style={{ borderColor: 'rgba(255,255,255, .2)' }}
+            >
+              <table className="table-auto w-full">
+                <tbody>
+                  <tr className="flex items-center justify-between">
+                    <td className="flex items-center">
+                      <p
+                        className="text-left font-poppins font-normal"
+                        style={{ width: '120px' }}
+                      >
+                        <span className="text-brand-white">
+                          {truncate(
+                            formatCurrency(
+                              String(balance / 10 ** decimals),
+                              decimals
+                            ),
+                            14
+                          )}
+                        </span>
 
-                <span className="text-button-primary font-poppins">
-                  {`  ${truncate(symbol, 10)}`}
-                </span>
-              </p>
+                        <span className="text-brand-blue100">
+                          {`  ${truncate(symbol, 10).toUpperCase()}`}
+                        </span>
+                      </p>
+                    </td>
 
-              <div className="absolute right-20 flex w-20">
-                <div className="max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis">
-                  <p className="text-blue-300">Asset Guid</p>
+                    <td className="flex items-center text-left">
+                      <span
+                        className="w-full text-brand-white font-poppins text-xs font-normal"
+                        style={{ width: '72px' }}
+                      >
+                        Asset Guid
+                      </span>
+                    </td>
 
-                  <p>{ellipsis(assetGuid, 4)}</p>
-                </div>
-              </div>
+                    <td className="flex items-center max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis">
+                      <span
+                        className="w-full text-brand-assetGuidText font-poppins text-xs font-normal"
+                        style={{ width: '75px' }}
+                      >
+                        {ellipsis(assetGuid, 4)}
+                      </span>
+                    </td>
 
-              <IconButton
-                onClick={() =>
-                  navigate('/home/details', {
-                    state: { id: assetGuid, hash: null },
-                  })
-                }
-              >
-                <Icon name="select" className="w-4 text-brand-white" />
-              </IconButton>
+                    <td className="flex items-center">
+                      <IconButton
+                        onClick={() =>
+                          navigate('/home/details', {
+                            state: { id: assetGuid, hash: null },
+                          })
+                        }
+                      >
+                        <Icon
+                          name="external-link"
+                          className="w-4 text-brand-white"
+                        />
+                      </IconButton>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </li>
           )}
         </Fragment>

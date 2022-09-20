@@ -64,6 +64,8 @@ module.exports = {
   brand: {
     royalblue: '#4d76b8',
     royalbluemedium: '#4ca1cf',
+    blue100: '#4CA1CF',
+    assetGuidText: 'rgba(133, 182, 255, 0.6)',
 
     black: '#000',
     white: '#fff',
