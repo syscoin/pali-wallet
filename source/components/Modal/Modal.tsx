@@ -3,6 +3,8 @@ import React, { Fragment, ReactNode } from 'react';
 import { ImWarning } from 'react-icons/im';
 
 import { PrimaryButton, SecondaryButton, NeutralButton } from '..';
+import CheckIcon from 'assets/icons/check_icon.png';
+import ErrorIcon from 'assets/icons/error_icon.png';
 
 interface IModal {
   children: ReactNode;
@@ -162,10 +164,12 @@ export const ErrorModal = ({
               )
             }
           >
+            <img src={ErrorIcon} alt="Error icon" />
             Report
           </SecondaryButton>
 
           <PrimaryButton type="button" onClick={onClose}>
+            <img src={CheckIcon} alt="Check icon" />
             {buttonText}
           </PrimaryButton>
         </div>
