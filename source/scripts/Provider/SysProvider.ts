@@ -6,10 +6,17 @@ export const SysProvider = (host: string) => {
     fee: number;
     receivingAddress: string;
     tokenGuid?: string;
+    verifyAddress?: boolean;
+    zDag?: boolean;
   }) =>
     popupPromise({
       host,
-      data: { isToken: data.tokenGuid !== undefined, ...data },
+      data: {
+        isToken: data.tokenGuid !== undefined,
+        verifyAddress: data.verifyAddress,
+        zDag: data.zDag,
+        ...data,
+      },
       route: 'tx/send',
       eventName: 'txSend',
     });
