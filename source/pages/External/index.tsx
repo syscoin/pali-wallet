@@ -8,7 +8,7 @@ import { Store } from 'webext-redux';
 import { ToastAlert } from 'components/index';
 import { STORE_PORT } from 'constants/index';
 import appStore from 'state/store';
-import 'assets/styles/tailwind.css';
+import 'assets/styles/index.css';
 import 'assets/fonts/index.css';
 import { log } from 'utils/index';
 

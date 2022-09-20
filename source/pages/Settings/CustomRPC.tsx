@@ -6,7 +6,7 @@ import { useLocation } from 'react-router-dom';
 
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
-import { Layout, SecondaryButton } from 'components/index';
+import { Layout, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { ICustomRpcParams } from 'types/transactions';
 import { getController } from 'utils/browser';
@@ -82,7 +82,7 @@ const CustomRPCView = () => {
         initialValues={initialValues}
         onFinish={onSubmit}
         autoComplete="off"
-        className="standard flex flex-col gap-2 items-center justify-center text-center"
+        className="flex flex-col gap-3 items-center justify-center text-center"
       >
         <Form.Item
           id="network-switch"
@@ -94,8 +94,8 @@ const CustomRPCView = () => {
             },
           ]}
         >
-          <div className="flex gap-x-2 my-4 text-xs">
-            <p>Ethereum</p>
+          <div className="flex gap-x-2 mb-4 text-xs">
+            <p className="text-brand-royalblue text-xs">Ethereum</p>
 
             <Switch
               checked={isSyscoinRpc}
@@ -112,7 +112,7 @@ const CustomRPCView = () => {
               />
             </Switch>
 
-            <p>Syscoin</p>
+            <p className="text-brand-deepPink100 text-xs">Syscoin</p>
           </div>
         </Form.Item>
 
@@ -127,7 +127,11 @@ const CustomRPCView = () => {
             },
           ]}
         >
-          <Input type="text" placeholder="Label (optional)" className="large" />
+          <Input
+            type="text"
+            placeholder="Label (optional)"
+            className="input-small relative"
+          />
         </Form.Item>
 
         <Form.Item
@@ -174,7 +178,7 @@ const CustomRPCView = () => {
             placeholder={`${
               isSyscoinRpc ? 'Trezor Block Explorer' : 'RPC URL'
             }`}
-            className="large"
+            className="input-small relative"
           />
         </Form.Item>
 
@@ -193,7 +197,7 @@ const CustomRPCView = () => {
             type="text"
             disabled={!form.getFieldValue('url') || isUrlValid}
             placeholder="Chain ID"
-            className={`${isSyscoinRpc ? 'hidden' : 'block'} large`}
+            className={`${isSyscoinRpc ? 'hidden' : 'block'} input-small`}
           />
         </Form.Item>
 
@@ -211,18 +215,18 @@ const CustomRPCView = () => {
           <Input
             type="text"
             placeholder="API URL (optional)"
-            className={`${isSyscoinRpc ? 'hidden' : 'block'} large`}
+            className={`${isSyscoinRpc ? 'hidden' : 'block'} input-small`}
           />
         </Form.Item>
 
-        <p className="px-8 py-4 text-center text-brand-white font-poppins text-sm">
+        <p className="px-8 py-4 text-center text-brand-royalblue font-poppins text-xs">
           You can edit this later if you need on network settings menu.
         </p>
 
         <div className="absolute bottom-12 md:static">
-          <SecondaryButton type="submit" loading={loading}>
+          <NeutralButton type="submit" loading={loading}>
             Save
-          </SecondaryButton>
+          </NeutralButton>
         </div>
       </Form>
     </Layout>

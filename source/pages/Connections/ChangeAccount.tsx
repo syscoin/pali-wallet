@@ -29,7 +29,7 @@ export const ChangeAccount = () => {
   return (
     <Layout canGoBack={false} title="CONNECTED ACCOUNT" titleOnly={true}>
       <div className="flex flex-col items-center justify-center w-full">
-        <h1 className="mt-4 text-sm">PALI WALLET</h1>
+        <h1 className="text-sm">PALI WALLET</h1>
 
         <ul className="scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-72 overflow-auto">
           {Object.values(accounts).map((account) => (
@@ -57,8 +57,8 @@ export const ChangeAccount = () => {
           ))}
         </ul>
 
-        <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
-          <SecondaryButton type="button" onClick={() => window.close()} action>
+        <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
+          <SecondaryButton type="button" onClick={() => window.close()}>
             Cancel
           </SecondaryButton>
 

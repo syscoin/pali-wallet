@@ -44,7 +44,7 @@ export const DetailsView = () => {
         <Icon name="loading" className="absolute left-1/2 top-1/2 w-3" />
       ) : (
         <>
-          <ul className="scrollbar-styled md:max-h-max mt-4 w-full h-96 text-sm overflow-auto">
+          <ul className="scrollbar-styled md:max-h-max w-full h-96 text-sm overflow-auto">
             {isAsset ? (
               <AssetDetails id={id} />
             ) : (
@@ -61,7 +61,7 @@ export const DetailsView = () => {
             <Button
               type="button"
               onClick={isBitcoinBased ? openSysExplorer : openEthExplorer}
-              className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
+              className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-brand-white bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
             >
               Go
             </Button>

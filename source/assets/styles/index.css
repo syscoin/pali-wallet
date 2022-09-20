@@ -1,0 +1,142 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/** ALERTS/TOASTS **/
+
+div[role='alert'] {
+  @apply absolute left-1/4 right-1/4 text-center text-brand-white text-base font-light;
+}
+
+/** IDENTICONS **/
+
+.add-identicon svg {
+  @apply rounded-full;
+}
+
+/** SCROLLBAR **/
+
+.remove-scrollbar::-webkit-scrollbar {
+  @apply hidden;
+}
+
+.scrollbar-styled::-webkit-scrollbar {
+  @apply w-1;
+}
+
+.scrollbar-styled::-webkit-scrollbar-track-piece {
+  @apply bg-transparent rounded-full;
+}
+
+.scrollbar-styled::-webkit-scrollbar-button {
+  @apply hidden;
+}
+
+.scrollbar-styled::-webkit-scrollbar-thumb {
+  @apply bg-brand-royalblue rounded-full transition-all duration-300;
+}
+
+.scrollbar-styled {
+  /* Firefox */
+  scrollbar-color: #4ca1cf #739dce;
+  scrollbar-width: thin;
+}
+
+.remove-scrollbar {
+  /* IE and Edge */
+  -ms-overflow-style: none;
+  /* Firefox */
+  scrollbar-width: none;
+}
+
+/** BUTTONS **/
+
+.button-disabled {
+  @apply cursor-not-allowed font-light opacity-60 bg-transparent text-brand-gray border-2 border-brand-gray;
+}
+
+/** INPUTS **/
+
+.input-default-disabled .ant-input {
+  @apply text-brand-white opacity-60 bg-brand-gray cursor-not-allowed outline-none font-light border border-brand-gray;
+}
+
+/** use default classes for input borders and background **/
+.input-default-border {
+  @apply border border-fields-input-border focus:border-fields-input-borderfocus rounded-full;
+}
+
+.input-default {
+  @apply block placeholder-gray-500 sm:w-96 bg-fields-input-primary border border-fields-input-primary focus:border-fields-input-borderfocus outline-none text-brand-white relative input-default-border;
+}
+
+/** input size small **/
+
+.input-small .ant-input {
+  @apply p-3 text-xs input-default w-80;
+}
+
+/** input size extra small **/
+
+.input-extra-small .ant-input {
+  @apply w-72 p-3 text-xs input-default;
+}
+
+/** align suffix from input to the right **/
+.input-small .ant-input-suffix, .input-extra-small .ant-input-suffix, .mixed-border-input .ant-input-suffix {
+  @apply absolute bottom-3 right-3 flex justify-center items-center gap-x-1.5;
+}
+
+/** align eye invisible icon from password input suffix **/
+.input-small .ant-input-suffix .anticon-eye-invisible, .input-small .ant-input-suffix .anticon-eye {
+  @apply mt-1.5 text-brand-royalblue;
+}
+
+/** input size medium **/
+.input-medium .ant-input {
+  @apply p-4 text-sm input-default w-80;
+}
+
+.input-medium .ant-input-suffix {
+  @apply absolute right-2 top-2.5;
+}
+
+/** Group disabled input **/
+.disabled {
+  @apply opacity-60;
+}
+
+/** Mixed rounded border inputs **/
+.mixed-border-input {
+  @apply relative;
+}
+
+.mixed-border-input .ant-input {
+  @apply block flex-1 p-3 w-full min-w-0 text-left text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus outline-none rounded-r-full;
+}
+
+/* Firefox */
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+/* put textfield appearance on number inputs by removing spin */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/** Input Suffix **/
+
+.ant-input-suffix .anticon-check-circle {
+  @apply text-warning-success;
+}
+
+.ant-input-suffix .anticon-close-circle {
+  @apply text-warning-error;
+}
+
+.ant-input-suffix .anticon-loading {
+  @apply text-brand-graylight;
+}

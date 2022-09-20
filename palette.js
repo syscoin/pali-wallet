@@ -13,16 +13,16 @@ module.exports = {
   },
 
   button: {
-    primary: '#FF3E91',
-    primaryhover: '#CB2C70',
+    secondary: '#FF3E91',
+    secondaryhover: '#CB2C70',
 
-    secondary: '#4CA1CF',
-    secondaryhover: '#4D76B8',
+    primary: '#4CA1CF',
+    primaryhover: '#4D76B8',
 
-    disabled: '#4F4F4F',
-
-    popuphover: '#fff',
+    neutral: '#fff',
   },
+
+  disabled: '#f5f5f5',
 
   alert: {
     lightsuccess: '#079C31',
@@ -44,8 +44,8 @@ module.exports = {
     input: {
       primary: '#07152B',
       placeholder: '#85B6FF99',
-      border: '#1E365C',
-      borderfocus: '#85B6FF',
+      border: '#314970',
+      borderfocus: '#1E365C',
     },
   },
 

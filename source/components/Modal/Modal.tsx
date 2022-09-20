@@ -2,8 +2,7 @@ import { Dialog, Transition } from '@headlessui/react';
 import React, { Fragment, ReactNode } from 'react';
 import { ImWarning } from 'react-icons/im';
 
-import CheckIcon from 'assets/icons/check_icon.png';
-import ErrorIcon from 'assets/icons/error_icon.png';
+import { PrimaryButton, SecondaryButton, NeutralButton } from '..';
 
 interface IModal {
   children: ReactNode;
@@ -93,15 +92,10 @@ export const DefaultModal = ({
         <p className="text-white text-sm">{description}</p>
       </div>
 
-      <div className="mt-4">
-        <button
-          type="button"
-          className="inline-flex justify-center px-10 py-2 hover:text-bkg-4 text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
-          onClick={onClose}
-          id="got-it-btn"
-        >
+      <div className="flex items-center justify-center mt-4">
+        <NeutralButton type="button" onClick={onClose} id="got-it-btn">
           {buttonText}
-        </button>
+        </NeutralButton>
       </div>
     </div>
   </Modal>
@@ -160,27 +154,20 @@ export const ErrorModal = ({
         </div>
 
         <div className="flex gap-x-1.5 items-center justify-between">
-          <button
+          <SecondaryButton
             type="button"
-            className="max-w-40 inline-flex items-center justify-center px-3.5 py-2 w-40 text-brand-white text-base font-normal bg-bkg-pink200 hover:bg-opacity-70 border border-bkg-pink200 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
             onClick={() =>
               window.open(
                 `mailto:pali@pollum.io?subject="Pali Error Report: Token creation"&body=${log}`
               )
             }
           >
-            <img src={ErrorIcon} className="mr-2.5" />
             Report
-          </button>
+          </SecondaryButton>
 
-          <button
-            type="button"
-            className="max-w-40 inline-flex items-center justify-center px-3.5 py-2 w-40 text-brand-white text-base font-normal bg-bkg-blue200 border border-bkg-blue200 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
-            onClick={onClose}
-          >
-            <img src={CheckIcon} className="mr-2.5" />
+          <PrimaryButton type="button" onClick={onClose}>
             {buttonText}
-          </button>
+          </PrimaryButton>
         </div>
       </div>
     </div>

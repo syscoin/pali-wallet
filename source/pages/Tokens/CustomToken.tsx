@@ -9,7 +9,7 @@ import {
   isValidEthereumAddress,
 } from '@pollum-io/sysweb3-utils';
 
-import { SecondaryButton, DefaultModal, ErrorModal } from 'components/index';
+import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -75,7 +75,7 @@ export const CustomToken = () => {
         wrapperCol={{ span: 8 }}
         onFinish={nextStep}
         autoComplete="off"
-        className="standard flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
+        className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
       >
         <Form.Item
           name="contractAddress"
@@ -97,7 +97,11 @@ export const CustomToken = () => {
             }),
           ]}
         >
-          <Input type="text" className="large" placeholder="Contract address" />
+          <Input
+            type="text"
+            className="input-small relative"
+            placeholder="Contract address"
+          />
         </Form.Item>
 
         <Form.Item
@@ -111,7 +115,11 @@ export const CustomToken = () => {
             },
           ]}
         >
-          <Input type="text" className="large" placeholder="Token symbol" />
+          <Input
+            type="text"
+            className="input-small relative"
+            placeholder="Token symbol"
+          />
         </Form.Item>
 
         <Form.Item
@@ -125,12 +133,16 @@ export const CustomToken = () => {
             },
           ]}
         >
-          <Input type="number" className="large" placeholder="Token decimal" />
+          <Input
+            type="number"
+            className="input-small relative"
+            placeholder="Token decimal"
+          />
         </Form.Item>
 
         <div className="flex flex-col items-center justify-center w-full">
           <div className="absolute bottom-12 md:static">
-            <SecondaryButton type="submit">Next</SecondaryButton>
+            <NeutralButton type="submit">Next</NeutralButton>
           </div>
         </div>
       </Form>

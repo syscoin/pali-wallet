@@ -4,7 +4,7 @@ import getSymbolFromCurrency from 'currency-symbol-map';
 import React, { useEffect, Fragment, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Layout, SecondaryButton, Icon, DefaultModal } from 'components/index';
+import { Layout, Icon, DefaultModal, NeutralButton } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -119,15 +119,15 @@ const CurrencyView = () => {
         }`}
       />
 
-      <p className="mx-4 my-3 max-w-xs text-left text-white text-sm md:max-w-full">
+      <p className="mb-2 text-left text-white text-sm md:max-w-full">
         You can choose and set your preferred currency to see in your wallet.
       </p>
 
-      <div className="flex flex-col items-center justify-center">
+      <div className="flex flex-col gap-y-5 items-center justify-center">
         <Menu as="div" className="relative inline-block text-left">
           <Menu.Button
             disabled={!fiat || !coins}
-            className="inline-flex justify-center py-3 w-80 text-white text-sm font-medium bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
+            className="inline-flex justify-center py-2 w-80 text-white text-sm font-medium bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full"
           >
             <p className="ml-2">
               {selectedCoin ? selectedCoin.toUpperCase() : fiatCurrency}
@@ -136,7 +136,7 @@ const CurrencyView = () => {
             <Icon
               name="select-down"
               className="text-brand-royalblue"
-              wrapperClassname="w-8 absolute right-28 bottom-4"
+              wrapperClassname="w-8 absolute right-28 bottom-3"
             />
           </Menu.Button>
 
@@ -174,7 +174,7 @@ const CurrencyView = () => {
 
         <div className="flex flex-col items-center justify-center text-center">
           {activeNetwork.chainId === 5700 ? (
-            <div className="flex gap-x-0.5 items-center justify-center mt-8">
+            <div className="flex gap-x-0.5 items-center justify-center">
               <p className="font-rubik text-5xl font-medium">
                 {formatNumber(Number(balance) || 0)}{' '}
               </p>
@@ -183,7 +183,7 @@ const CurrencyView = () => {
             </div>
           ) : (
             <>
-              <div className="flex gap-x-0.5 items-center justify-center mt-8">
+              <div className="flex gap-x-0.5 items-center justify-center">
                 <p className="font-rubik text-5xl font-medium">
                   {formatNumber(balance || 0)}{' '}
                 </p>
@@ -200,14 +200,12 @@ const CurrencyView = () => {
           )}
         </div>
 
-        <div className="mt-6 md:mt-8">
-          <SecondaryButton type="button" onClick={handleConfirmCurrencyChange}>
-            Save
-          </SecondaryButton>
-        </div>
+        <NeutralButton type="button" onClick={handleConfirmCurrencyChange}>
+          Save
+        </NeutralButton>
       </div>
 
-      <div className="h-max flex flex-col items-center justify-center mt-6 py-4 w-full max-w-2xl bg-bkg-4">
+      <div className="h-max absolute bottom-0 flex flex-col items-center justify-center mt-6 py-4 w-full max-w-2xl bg-bkg-4">
         <p className="text-left text-white text-sm">
           Check your balance in different currencies
         </p>
@@ -219,7 +217,7 @@ const CurrencyView = () => {
           wrapperCol={{ span: 8 }}
           onFinish={() => undefined}
           autoComplete="off"
-          className="standard flex flex-col gap-3 items-center justify-center mt-4 text-center text-base md:w-full"
+          className="flex flex-col gap-3 items-center justify-center mt-4 text-center text-base md:w-full"
         >
           <Form.Item
             name="receiver"
@@ -239,7 +237,7 @@ const CurrencyView = () => {
               }
               maxLength={20}
               value={Number(conversorValues.crypto)}
-              className="large"
+              className="input-small"
             />
 
             <div className="absolute bottom-2 right-4 flex gap-x-3 items-center justify-center">
@@ -292,7 +290,7 @@ const CurrencyView = () => {
                 );
               }}
               value={Number(conversorValues.fiat)}
-              className="large"
+              className="input-small"
             />
 
             <div className="absolute bottom-3 right-2 flex gap-x-3 items-center justify-center">

@@ -1,4 +1,4 @@
-import 'assets/styles/tailwind.css';
+import 'assets/styles/index.css';
 import 'assets/fonts/index.css';
 import React from 'react';
 import { transitions, positions, Provider as AlertProvider } from 'react-alert';
