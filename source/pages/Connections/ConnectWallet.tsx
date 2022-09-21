@@ -1,5 +1,5 @@
 import { Dialog } from '@headlessui/react';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import {
@@ -8,24 +8,20 @@ import {
   SecondaryButton,
   Icon,
   Modal,
-  Loading,
 } from 'components/index';
 import trustedApps from 'constants/trustedApps.json';
 import { useQueryData } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
-import { isActiveNetwork } from 'utils/network';
 
 export const ConnectWallet = () => {
-  const { dapp, wallet, refresh } = getController();
+  const { dapp } = getController();
   const { host, chain, chainId } = useQueryData();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const networks = useSelector((state: RootState) => state.vault.networks);
 
   const currentAccountId = dapp.get(host)?.accountId;
 
-  const [isLoading, setIsLoading] = useState(false);
   const [accountId, setAccountId] = useState(currentAccountId);
   const [confirmUntrusted, setConfirmUntrusted] = useState(false);
 
@@ -39,22 +35,6 @@ export const ConnectWallet = () => {
     if (isTrusted) handleConnect();
     else setConfirmUntrusted(true);
   };
-
-  const changeNetwork = async () => {
-    setIsLoading(true);
-
-    const network = networks[chain][chainId];
-    await wallet.setActiveNetwork(network, chain);
-    await refresh(true);
-
-    setIsLoading(false);
-  };
-
-  // useEffect(() => {
-  //   if (!isActiveNetwork(chain, chainId)) changeNetwork();
-  // }, []);
-
-  if (isLoading) return <Loading />;
 
   return (
     <Layout canGoBack={false} title="CONNECT WITH" titleOnly={true}>
