@@ -1,5 +1,5 @@
 import { Dialog } from '@headlessui/react';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import {
@@ -8,24 +8,20 @@ import {
   SecondaryButton,
   Icon,
   Modal,
-  Loading,
 } from 'components/index';
 import trustedApps from 'constants/trustedApps.json';
 import { useQueryData } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
-import { isActiveNetwork } from 'utils/network';
 
 export const ConnectWallet = () => {
-  const { dapp, wallet, refresh } = getController();
+  const { dapp } = getController();
   const { host, chain, chainId } = useQueryData();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const networks = useSelector((state: RootState) => state.vault.networks);
 
   const currentAccountId = dapp.get(host)?.accountId;
 
-  const [isLoading, setIsLoading] = useState(false);
   const [accountId, setAccountId] = useState(currentAccountId);
   const [confirmUntrusted, setConfirmUntrusted] = useState(false);
 
@@ -39,22 +35,6 @@ export const ConnectWallet = () => {
     if (isTrusted) handleConnect();
     else setConfirmUntrusted(true);
   };
-
-  const changeNetwork = async () => {
-    setIsLoading(true);
-
-    const network = networks[chain][chainId];
-    await wallet.setActiveNetwork(network, chain);
-    await refresh(true);
-
-    setIsLoading(false);
-  };
-
-  useEffect(() => {
-    if (!isActiveNetwork(chain, chainId)) changeNetwork();
-  }, []);
-
-  if (isLoading) return <Loading />;
 
   return (
     <Layout canGoBack={false} title="CONNECT WITH" titleOnly={true}>
@@ -100,13 +80,14 @@ export const ConnectWallet = () => {
           <a href="https://docs.syscoin.org/">Learn more.</a>
         </small>
 
-        <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
-          <SecondaryButton type="button" onClick={() => window.close()}>
+        <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
+          <SecondaryButton type="button" action onClick={() => window.close()}>
             Cancel
           </SecondaryButton>
 
           <PrimaryButton
             type="button"
+            action
             disabled={accountId === undefined}
             onClick={onConfirm}
           >
@@ -131,8 +112,9 @@ export const ConnectWallet = () => {
               </p>
             </div>
 
-            <div className="flex gap-3 items-center justify-between mt-8">
+            <div className="flex gap-5 items-center justify-between mt-8">
               <SecondaryButton
+                action
                 width="32"
                 type="button"
                 onClick={() => window.close()}
@@ -141,6 +123,7 @@ export const ConnectWallet = () => {
               </SecondaryButton>
 
               <PrimaryButton
+                action
                 width="32"
                 type="button"
                 onClick={() => handleConnect()}
