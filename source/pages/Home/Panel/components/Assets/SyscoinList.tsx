@@ -18,10 +18,7 @@ export const SyscoinAssetsList = () => {
       {assets.map(({ decimals, balance, symbol, assetGuid }: any) => (
         <Fragment key={uniqueId(String(assetGuid))}>
           {balance > 0 && (
-            <li
-              className="flex items-center py-3 text-xs border-b border-dashed"
-              style={{ borderColor: 'rgba(255,255,255, .2)' }}
-            >
+            <li className="flex items-center py-3 text-xs border-b border-dashed border-bkg-white200">
               <table className="table-auto w-full">
                 <tbody>
                   <tr className="flex items-center justify-between">

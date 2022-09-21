@@ -10,6 +10,8 @@ module.exports = {
     disabled: '#FFFFFF4D',
     blue200: '#4D76B8',
     pink200: '#FF3E91',
+    white200: 'rgba(255,255,255, .2)',
+    white850: 'rgba(255,255,255, .85)',
   },
 
   button: {
