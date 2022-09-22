@@ -65,23 +65,6 @@ const DAppController = (): IDAppController => {
     store.dispatch(removeDApp(host));
   };
 
-  const _dispatchEvent = async (
-    host: string,
-    eventName: string,
-    data?: any
-  ) => {
-    // dispatch the event locally
-    const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
-    window.dispatchEvent(event);
-
-    if (!hasListener(host, eventName)) return;
-    if (!isConnected(host)) return;
-
-    // post the event to the DApp
-    const id = `${host}.${eventName}`;
-    _dapps[host].port.postMessage({ id, data });
-  };
-
   //* ----- Event listeners -----
   const addListener = (host: string, eventName: string) => {
     if (!DAppEvents[eventName]) return;
@@ -102,6 +85,30 @@ const DAppController = (): IDAppController => {
 
   const hasListener = (host: string, eventName: string) =>
     _dapps[host] && _dapps[host].listens.includes(eventName);
+
+  const dispatchEvent = (event: DAppEvents, data: any) => {
+    const dapps = Object.values(store.getState().dapp.dapps);
+    for (const dapp of dapps) {
+      _dispatchEvent(dapp.host, event, data);
+    }
+  };
+
+  const _dispatchEvent = async (
+    host: string,
+    eventName: string,
+    data?: any
+  ) => {
+    // dispatch the event locally
+    const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
+    window.dispatchEvent(event);
+
+    if (!hasListener(host, eventName)) return;
+    if (!isConnected(host)) return;
+
+    // post the event to the DApp
+    const id = `${host}.${eventName}`;
+    _dapps[host].port.postMessage({ id, data });
+  };
 
   //* ----- Getters/Setters -----
   const get = (host: string) => store.getState().dapp.dapps[host];
@@ -153,6 +160,7 @@ const DAppController = (): IDAppController => {
     addListener,
     removeListener,
     removeListeners,
+    dispatchEvent,
     hasListener,
     hasWindow,
     getState,

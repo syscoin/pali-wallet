@@ -12,6 +12,7 @@ import {
 } from '@pollum-io/sysweb3-utils';
 
 import { ISysAccountController } from 'scripts/Background/controllers/account/syscoin';
+import { DAppEvents } from 'scripts/Background/controllers/message-handler/types';
 import { IDApp } from 'state/dapp/types';
 
 import { ICustomRpcParams } from './transactions';
@@ -126,6 +127,10 @@ export interface IDAppController {
    * @emits disconnect
    */
   disconnect: (host: string) => void;
+  /**
+   * Dispatch an event to all dapps
+   */
+  dispatchEvent: (event: DAppEvents, data: any) => void;
   /**
    * Retrieves a DApp
    */

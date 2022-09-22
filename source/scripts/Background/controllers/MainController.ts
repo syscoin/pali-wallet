@@ -27,6 +27,7 @@ import { ICustomRpcParams } from 'types/transactions';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
 import WalletController from './account';
+import { DAppEvents } from './message-handler/types';
 
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
@@ -134,6 +135,8 @@ const MainController = (): IMainController => {
 
         walletController.account.sys.setAddress();
       }
+
+      window.controller.dapp.dispatchEvent(DAppEvents.chainChange, network);
 
       return networkAccount;
     } catch (error) {
