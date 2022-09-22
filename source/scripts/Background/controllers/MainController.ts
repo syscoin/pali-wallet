@@ -86,6 +86,8 @@ const MainController = (): IMainController => {
     store.dispatch(addAccountToStore(newAccount));
     store.dispatch(setActiveAccount(newAccount));
 
+    window.controller.dapp.dispatchEvent(DAppEvents.accountChange, newAccount);
+
     return newAccount;
   };
 
@@ -96,6 +98,11 @@ const MainController = (): IMainController => {
     store.dispatch(setActiveAccount(accounts[id]));
 
     walletController.account.sys.getLatestUpdate(false);
+
+    window.controller.dapp.dispatchEvent(
+      DAppEvents.accountChange,
+      accounts[id]
+    );
   };
 
   const setActiveNetwork = async (network: INetwork, chain: string) => {
