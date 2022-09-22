@@ -24,6 +24,7 @@ import {
 } from 'state/vault';
 import { IMainController } from 'types/controllers';
 import { ICustomRpcParams } from 'types/transactions';
+import { removeXprv } from 'utils/account';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
 import WalletController from './account';
@@ -86,7 +87,10 @@ const MainController = (): IMainController => {
     store.dispatch(addAccountToStore(newAccount));
     store.dispatch(setActiveAccount(newAccount));
 
-    window.controller.dapp.dispatchEvent(DAppEvents.accountChange, newAccount);
+    window.controller.dapp.dispatchEvent(
+      DAppEvents.accountChange,
+      removeXprv(newAccount)
+    );
 
     return newAccount;
   };
@@ -101,7 +105,7 @@ const MainController = (): IMainController => {
 
     window.controller.dapp.dispatchEvent(
       DAppEvents.accountChange,
-      accounts[id]
+      removeXprv(accounts[id])
     );
   };
 

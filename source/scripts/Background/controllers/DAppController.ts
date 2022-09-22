@@ -6,7 +6,7 @@ import { IDApp } from 'state/dapp/types';
 import store from 'state/store';
 import { IOmittedVault } from 'state/vault/types';
 import { IDAppController } from 'types/controllers';
-import { removeSensitiveDataFromVault } from 'utils/account';
+import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 
 import { onDisconnect, onMessage } from './message-handler';
 import { DAppEvents } from './message-handler/types';
@@ -123,11 +123,7 @@ const DAppController = (): IDAppController => {
 
     if (!dapp || !account) return null;
 
-    const _account = { ...account };
-
-    delete _account.xprv;
-
-    return _account;
+    return removeXprv(account);
   };
 
   const getState = (): IOmittedVault =>
