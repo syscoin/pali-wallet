@@ -6,6 +6,7 @@ import {
   SyscoinTransactions,
 } from '@pollum-io/sysweb3-keyring';
 
+import { DAppEvents } from '../message-handler/types';
 import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
 import {
@@ -14,6 +15,7 @@ import {
   setActiveAccountProperty,
   setIsPendingBalances,
 } from 'state/vault';
+import { removeXprv } from 'utils/account';
 
 export interface ISysAccountController {
   getLatestUpdate: (silent?: boolean) => Promise<void>;
@@ -81,6 +83,11 @@ const SysAccountController = (): ISysAccountController => {
         ...walleAccountstLatestUpdate,
         [currentAccount.id]: currentAccount,
       })
+    );
+
+    window.controller.dapp.dispatchEvent(
+      DAppEvents.accountUpdate,
+      removeXprv(currentAccount)
     );
   };
 
