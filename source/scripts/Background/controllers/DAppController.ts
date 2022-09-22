@@ -85,6 +85,7 @@ const DAppController = (): IDAppController => {
   //* ----- Event listeners -----
   const addListener = (host: string, eventName: string) => {
     if (!DAppEvents[eventName]) return;
+    if (_dapps[host].listens.includes(eventName)) return;
 
     _dapps[host].listens.push(eventName);
   };
