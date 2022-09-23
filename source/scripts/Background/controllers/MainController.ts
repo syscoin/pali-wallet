@@ -24,9 +24,11 @@ import {
 } from 'state/vault';
 import { IMainController } from 'types/controllers';
 import { ICustomRpcParams } from 'types/transactions';
+import { removeXprv } from 'utils/account';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
 import WalletController from './account';
+import { DAppEvents } from './message-handler/types';
 
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
@@ -85,6 +87,11 @@ const MainController = (): IMainController => {
     store.dispatch(addAccountToStore(newAccount));
     store.dispatch(setActiveAccount(newAccount));
 
+    window.controller.dapp.dispatchEvent(
+      DAppEvents.accountChange,
+      removeXprv(newAccount)
+    );
+
     return newAccount;
   };
 
@@ -95,6 +102,11 @@ const MainController = (): IMainController => {
     store.dispatch(setActiveAccount(accounts[id]));
 
     walletController.account.sys.getLatestUpdate(false);
+
+    window.controller.dapp.dispatchEvent(
+      DAppEvents.accountChange,
+      removeXprv(accounts[id])
+    );
   };
 
   const setActiveNetwork = async (network: INetwork, chain: string) => {
@@ -134,6 +146,8 @@ const MainController = (): IMainController => {
 
         walletController.account.sys.setAddress();
       }
+
+      window.controller.dapp.dispatchEvent(DAppEvents.chainChange, network);
 
       return networkAccount;
     } catch (error) {

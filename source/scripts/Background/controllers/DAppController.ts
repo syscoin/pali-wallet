@@ -6,7 +6,7 @@ import { IDApp } from 'state/dapp/types';
 import store from 'state/store';
 import { IOmittedVault } from 'state/vault/types';
 import { IDAppController } from 'types/controllers';
-import { removeSensitiveDataFromVault } from 'utils/account';
+import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 
 import { onDisconnect, onMessage } from './message-handler';
 import { DAppEvents } from './message-handler/types';
@@ -65,26 +65,10 @@ const DAppController = (): IDAppController => {
     store.dispatch(removeDApp(host));
   };
 
-  const _dispatchEvent = async (
-    host: string,
-    eventName: string,
-    data?: any
-  ) => {
-    // dispatch the event locally
-    const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
-    window.dispatchEvent(event);
-
-    if (!hasListener(host, eventName)) return;
-    if (!isConnected(host)) return;
-
-    // post the event to the DApp
-    const id = `${host}.${eventName}`;
-    _dapps[host].port.postMessage({ id, data });
-  };
-
   //* ----- Event listeners -----
   const addListener = (host: string, eventName: string) => {
     if (!DAppEvents[eventName]) return;
+    if (_dapps[host].listens.includes(eventName)) return;
 
     _dapps[host].listens.push(eventName);
   };
@@ -102,6 +86,30 @@ const DAppController = (): IDAppController => {
   const hasListener = (host: string, eventName: string) =>
     _dapps[host] && _dapps[host].listens.includes(eventName);
 
+  const dispatchEvent = (event: DAppEvents, data: any) => {
+    const dapps = Object.values(store.getState().dapp.dapps);
+    for (const dapp of dapps) {
+      _dispatchEvent(dapp.host, event, data);
+    }
+  };
+
+  const _dispatchEvent = async (
+    host: string,
+    eventName: string,
+    data?: any
+  ) => {
+    // dispatch the event locally
+    const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
+    window.dispatchEvent(event);
+
+    if (!hasListener(host, eventName)) return;
+    if (!isConnected(host)) return;
+
+    // post the event to the DApp
+    const id = `${host}.${eventName}`;
+    _dapps[host].port.postMessage({ id, data });
+  };
+
   //* ----- Getters/Setters -----
   const get = (host: string) => store.getState().dapp.dapps[host];
 
@@ -115,11 +123,7 @@ const DAppController = (): IDAppController => {
 
     if (!dapp || !account) return null;
 
-    const _account = { ...account };
-
-    delete _account.xprv;
-
-    return _account;
+    return removeXprv(account);
   };
 
   const getState = (): IOmittedVault =>
@@ -152,6 +156,7 @@ const DAppController = (): IDAppController => {
     addListener,
     removeListener,
     removeListeners,
+    dispatchEvent,
     hasListener,
     hasWindow,
     getState,
