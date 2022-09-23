@@ -37,7 +37,10 @@ export const SendEth = () => {
     const { getGasLimit, getRecommendedGasPrice } =
       controller.wallet.account.eth.tx;
 
-    const gasPrice = await getRecommendedGasPrice(true);
+    const gasPrice = (await getRecommendedGasPrice(true)) as {
+      ethers: string;
+      gwei: string;
+    };
     const gasLimit = await getGasLimit(form.getFieldValue('receiver'));
 
     setRecommendedGasPrice(Number(gasPrice.gwei));

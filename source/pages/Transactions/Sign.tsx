@@ -21,25 +21,22 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
     (state: RootState) => state.vault.isBitcoinBased
   );
 
-  const {
-    wallet: { account },
-  } = getController();
-
-  const txs = isBitcoinBased ? account.sys.tx : account.eth.tx;
-
   const { host, ...data } = useQueryData();
-
-  const { signTransaction } = txs;
 
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const onSubmit = async () => {
+    const { account } = getController().wallet;
+    const sign = isBitcoinBased
+      ? account.sys.tx.signTransaction
+      : account.eth.tx.signTypedDataV4;
+
     setLoading(true);
 
     try {
-      const response = await signTransaction(data, send);
+      const response = await sign(data, send);
 
       setConfirmed(true);
       setLoading(false);
