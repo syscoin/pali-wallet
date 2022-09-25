@@ -1,7 +1,7 @@
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 
 export const SysProvider = (host: string) => {
-  const send = (data: {
+  const sendTransaction = (data: {
     amount: number;
     fee: number;
     receivingAddress: string;
@@ -85,7 +85,7 @@ export const SysProvider = (host: string) => {
     });
 
   return {
-    send,
+    sendTransaction,
     createToken,
     updateToken,
     mintToken,
