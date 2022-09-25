@@ -73,13 +73,14 @@ export const SendConfirm = () => {
         alert.removeAll();
         alert.error("Can't complete transaction. Try again later.");
 
-        setLoading(false);
+        if (isExternal) setTimeout(window.close, 4000);
+        else setLoading(false);
       }
     }
   };
 
   return (
-    <Layout title="SEND" canGoBack={!window.location.href.includes('external')}>
+    <Layout title="SEND" canGoBack={!isExternal}>
       <DefaultModal
         show={confirmed}
         title="Transaction successful"

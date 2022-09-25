@@ -19,7 +19,7 @@ import { logError } from 'utils/index';
 
 const ControllerUtils = (): IControllerUtils => {
   let route = '/';
-  let externalRoute = '/start';
+  let externalRoute = '/';
 
   const appRoute = (newRoute?: string, external = false) => {
     if (newRoute) {

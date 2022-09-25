@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { useSelector } from 'react-redux';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import {
@@ -21,7 +20,6 @@ import {
   SeedConfirm,
 } from '../pages';
 import { useQuery, useUtils } from 'hooks/index';
-import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
@@ -29,7 +27,6 @@ import { ProtectedRoute } from './ProtectedRoute';
 export const ExternalRoute = () => {
   const { wallet, appRoute } = getController();
   const { navigate, alert } = useUtils();
-  const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { pathname, search } = useLocation();
 
   // defaultRoute stores info from createPopup
@@ -40,16 +37,15 @@ export const ExternalRoute = () => {
   const isUnlocked = wallet.isUnlocked();
 
   useEffect(() => {
-    const externalRoute = appRoute(null, true);
-
-    if (isUnlocked && accounts && defaultRoute) {
+    if (isUnlocked && defaultRoute) {
       navigate(`/external/${defaultRoute}`);
 
       return;
     }
 
-    if (externalRoute !== '/start') navigate(externalRoute);
-  }, [isUnlocked, accounts]);
+    const externalRoute = appRoute(null, true);
+    if (externalRoute !== '/') navigate(externalRoute);
+  }, [isUnlocked]);
 
   useEffect(() => {
     alert.removeAll();
@@ -58,7 +54,7 @@ export const ExternalRoute = () => {
 
   return (
     <Routes>
-      <Route path="start" element={<Start />} />
+      <Route path="/" element={<Start />} />
       <Route path="create-password" element={<CreatePass />} />
       <Route path="import" element={<Import />} />
       <Route path="phrase" element={<SeedConfirm />} />
@@ -132,7 +128,7 @@ export const ExternalRoute = () => {
 
       <Route
         path="external.html"
-        element={<Navigate to={{ pathname: '/start' }} />}
+        element={<Navigate to={{ pathname: '/' }} />}
       />
     </Routes>
   );
