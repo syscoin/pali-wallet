@@ -22,7 +22,7 @@ export const EvmAssetsList = () => {
               {!isNft && logo && <img src={`${logo}`} alt="token logo" />}
 
               <p className="font-rubik">
-                <span className="text-button-secondary font-poppins">
+                <span className="text-button-primary font-poppins">
                   {`${balance}  ${tokenSymbol}`}
                 </span>
               </p>

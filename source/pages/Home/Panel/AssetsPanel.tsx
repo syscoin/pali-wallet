@@ -1,4 +1,5 @@
 import React from 'react';
+import { CgImport as ImportIcon } from 'react-icons/cg';
 import { useSelector } from 'react-redux';
 
 import { Fullscreen } from 'components/Fullscreen';
@@ -34,13 +35,20 @@ export const AssetsPanel = () => {
           {isBitcoinBased ? <SyscoinAssetsList /> : <EvmAssetsList />}
         </ul>
       )}
+      <div className="flex items-center justify-center mb-9 mt-6 w-full hover:text-brand-deepPink100 text-brand-white font-normal cursor-pointer transition-all duration-300">
+        <ImportIcon
+          size={12}
+          color="text-brand-white"
+          style={{ marginRight: '6px' }}
+        />
+        <p
+          className="underline text-sm"
+          onClick={() => navigate('/tokens/add')}
+        >
+          Import Token
+        </p>
+      </div>
 
-      <p
-        className="mb-3 mt-4 text-center hover:text-brand-deepPink100 text-brand-white text-xs cursor-pointer transition-all duration-300"
-        onClick={() => navigate('/tokens/add')}
-      >
-        Import token
-      </p>
       <Fullscreen />
     </div>
   );

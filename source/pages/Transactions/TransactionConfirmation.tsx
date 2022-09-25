@@ -4,7 +4,6 @@ import { useSelector } from 'react-redux';
 import {
   DefaultModal,
   ErrorModal,
-  Loading,
   PrimaryButton,
   SecondaryButton,
 } from 'components/index';
@@ -70,7 +69,6 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 
   const [data, setData] = useState<ITxData[]>([]);
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
@@ -96,12 +94,6 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
     setData(txData);
   }, [transaction]);
 
-  const nftSteps = {
-    0: 'Creating',
-    1: 'Minting',
-    2: 'Updating',
-  };
-
   const onSubmit = async () => {
     setLoading(true);
 
@@ -109,30 +101,6 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 
     try {
       const callback = callbackResolver(type);
-
-      if (type === 'CreateNft') {
-        const { create, mint, update } = callback();
-
-        const { parent } = await create(transaction);
-
-        setStep(step + 1);
-        const minted = await mint(transaction, parent.guid);
-
-        setStep(step + 1);
-        const updated = await update(transaction, parent.guid);
-
-        setLoading(false);
-        setSubmitted(true);
-
-        dispatchBackgroundEvent(`tx${type}.${host}`, {
-          parent,
-          minted,
-          updated,
-        });
-
-        return;
-      }
-
       const response = await callback(transaction);
 
       setLoading(false);
@@ -151,87 +119,63 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 
   return (
     <>
-      {loading ? (
-        <div className="my-20 text-center">
-          <h1 className="my-8 text-center text-brand-royalblue font-poppins text-lg font-normal tracking-wider">
-            LOADING
-          </h1>
+      <ErrorModal
+        show={Boolean(errorMsg)}
+        onClose={window.close}
+        title={`${capitalizeFirstLetter(title.toLowerCase())} request failed`}
+        description="Sorry, we could not submit your request. Try again later."
+        log={errorMsg || 'No description provided'}
+        buttonText="Ok"
+      />
 
-          <Loading usePopupSize={false} />
+      <DefaultModal
+        show={submitted}
+        onClose={window.close}
+        title={`${capitalizeFirstLetter(
+          title.toLowerCase()
+        )} request successfully submitted`}
+        description="You can check your request under activity on your home screen."
+        buttonText="Got it"
+      />
 
-          <p className="my-4 text-brand-white font-poppins text-base font-bold">
-            {nftSteps[step]} token...
-          </p>
+      <div className="flex flex-col items-center justify-center w-full">
+        <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
+          {data.map(
+            (item) =>
+              !item.advanced && (
+                <li
+                  key={item.label}
+                  className="flex items-center justify-between my-2 p-2 w-full text-xs border-b border-dashed border-brand-royalblue"
+                >
+                  <p>{camelCaseToText(item.label)}</p>
+                  <p>
+                    {typeof item.value === 'string' && item.value.length > 10
+                      ? ellipsis(item.value)
+                      : item.value}
+                    {typeof item.value === 'boolean' &&
+                      (item.value ? 'Yes' : 'No')}
+                    {!item.value && '-'}
+                  </p>
+                </li>
+              )
+          )}
+        </ul>
 
-          <p className="text-brand-white font-poppins text-xs">
-            This action may take a few minutes
-          </p>
+        <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
+          <SecondaryButton type="button" onClick={window.close}>
+            Cancel
+          </SecondaryButton>
+
+          <PrimaryButton
+            type="submit"
+            disabled={submitted}
+            loading={loading}
+            onClick={onSubmit}
+          >
+            Confirm
+          </PrimaryButton>
         </div>
-      ) : (
-        <>
-          <ErrorModal
-            show={Boolean(errorMsg)}
-            onClose={window.close}
-            title={`${capitalizeFirstLetter(
-              title.toLowerCase()
-            )} request failed`}
-            description="Sorry, we could not submit your request. Try again later."
-            log={errorMsg || 'No description provided'}
-            buttonText="Ok"
-          />
-
-          <DefaultModal
-            show={submitted}
-            onClose={window.close}
-            title={`${capitalizeFirstLetter(
-              title.toLowerCase()
-            )} request successfully submitted`}
-            description="You can check your request under activity on your home screen."
-            buttonText="Got it"
-          />
-
-          <div className="flex flex-col items-center justify-center w-full">
-            <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
-              {data.map(
-                (item) =>
-                  !item.advanced && (
-                    <li
-                      key={item.label}
-                      className="flex items-center justify-between my-2 p-2 w-full text-xs border-b border-dashed border-brand-royalblue"
-                    >
-                      <p>{camelCaseToText(item.label)}</p>
-                      <p>
-                        {typeof item.value === 'string' &&
-                        item.value.length > 10
-                          ? ellipsis(item.value)
-                          : item.value}
-                        {typeof item.value === 'boolean' &&
-                          (item.value ? 'Yes' : 'No')}
-                        {!item.value && '-'}
-                      </p>
-                    </li>
-                  )
-              )}
-            </ul>
-
-            <div className="absolute bottom-10 flex gap-3 items-center justify-between w-full max-w-xs md:max-w-2xl">
-              <SecondaryButton type="button" action onClick={window.close}>
-                Cancel
-              </SecondaryButton>
-
-              <PrimaryButton
-                type="submit"
-                action
-                disabled={submitted}
-                loading={loading}
-                onClick={onSubmit}
-              >
-                Confirm
-              </PrimaryButton>
-            </div>
-          </div>
-        </>
-      )}
+      </div>
     </>
   );
 };

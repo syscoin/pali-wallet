@@ -1,12 +1,6 @@
 import React, { useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import {
-  Routes,
-  Route,
-  useLocation,
-  useParams,
-  Navigate,
-} from 'react-router-dom';
+import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { browser } from 'webextension-polyfill-ts';
 
 import {
@@ -25,7 +19,9 @@ import {
   Import,
   PrivateKey,
   Receive,
-  Send,
+  SendEth,
+  SendSys,
+  EditPriorityFee,
   SendConfirm,
   Start,
   TrustedSites,
@@ -40,7 +36,6 @@ import { getController } from 'utils/browser';
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const Router = () => {
-  const params = useParams();
   const { wallet, appRoute, refresh } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
@@ -104,16 +99,26 @@ export const Router = () => {
         element={<ProtectedRoute element={<Receive />} />}
       />
 
-      <Route path="send" element={<ProtectedRoute element={<Send />} />} />
+      <Route
+        path="send/eth"
+        element={<ProtectedRoute element={<SendEth />} />}
+      />
+
+      <Route
+        path="send/sys"
+        element={<ProtectedRoute element={<SendSys />} />}
+      />
       <Route
         path="send/confirm"
         element={<ProtectedRoute element={<SendConfirm />} />}
       />
       <Route
-        path="send/:address"
-        element={
-          <ProtectedRoute element={<Send initAddress={params.address} />} />
-        }
+        path="send/edit/priority"
+        element={<ProtectedRoute element={<EditPriorityFee />} />}
+      />
+      <Route
+        path="send/edit/gas"
+        element={<ProtectedRoute element={<SendConfirm />} />}
       />
 
       {/* /tokens/add */}

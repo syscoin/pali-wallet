@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
-import { Layout, SecondaryButton, DefaultModal } from 'components/index';
+import { Layout, DefaultModal, NeutralButton } from 'components/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
@@ -27,7 +27,7 @@ const AutolockView = () => {
 
   return (
     <Layout title="AUTO LOCK TIMER" id="auto-lock-timer-title">
-      <p className="mx-auto py-6 max-w-xs text-white text-sm md:pb-10 md:max-w-md">
+      <p className="mb-8 text-white text-sm">
         You can set auto lock timer. Default is 5 minutes after no activity.
         Maximum is 30 minutes.
       </p>
@@ -44,7 +44,7 @@ const AutolockView = () => {
 
       <Form
         validateMessages={{ default: '' }}
-        className="standard flex flex-col gap-8 items-center justify-center text-center"
+        className="flex flex-col gap-8 items-center justify-center text-center"
         name="autolock"
         id="autolock"
         onFinish={onSubmit}
@@ -75,13 +75,17 @@ const AutolockView = () => {
             }),
           ]}
         >
-          <Input type="number" placeholder="Minutes" className="small" />
+          <Input
+            type="number"
+            placeholder="Minutes"
+            className="input-small relative"
+          />
         </Form.Item>
 
         <div className="absolute bottom-12 md:static">
-          <SecondaryButton type="submit" loading={loading}>
+          <NeutralButton type="submit" loading={loading}>
             Save
-          </SecondaryButton>
+          </NeutralButton>
         </div>
       </Form>
     </Layout>

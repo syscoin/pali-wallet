@@ -12,3 +12,4 @@ export * from './ToastAlert';
 export * from './Tooltip';
 export * from './Loading';
 export * from './FiatComponent';
+export * from './Fee';

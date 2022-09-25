@@ -6,20 +6,25 @@ module.exports = {
     4: '#1E365C',
     5: '#222222',
     6: '#061120',
+    7: '#1E365CF7',
     disabled: '#FFFFFF4D',
+    blue200: '#4D76B8',
+    pink200: '#FF3E91',
+    white200: 'rgba(255,255,255, .2)',
+    white850: 'rgba(255,255,255, .85)',
   },
 
   button: {
-    primary: '#FF3E91',
-    primaryhover: '#CB2C70',
+    secondary: '#FF3E91',
+    secondaryhover: '#CB2C70',
 
-    secondary: '#4CA1CF',
-    secondaryhover: '#4D76B8',
+    primary: '#4CA1CF',
+    primaryhover: '#4D76B8',
 
-    disabled: '#4F4F4F',
-
-    popuphover: '#fff',
+    neutral: '#fff',
   },
+
+  disabled: '#f5f5f5',
 
   alert: {
     lightsuccess: '#079C31',
@@ -41,8 +46,8 @@ module.exports = {
     input: {
       primary: '#07152B',
       placeholder: '#85B6FF99',
-      border: '#1E365C',
-      borderfocus: '#85B6FF',
+      border: '#314970',
+      borderfocus: '#1E365C',
     },
   },
 
@@ -61,6 +66,8 @@ module.exports = {
   brand: {
     royalblue: '#4d76b8',
     royalbluemedium: '#4ca1cf',
+    blue100: '#4CA1CF',
+    assetGuidText: 'rgba(133, 182, 255, 0.6)',
 
     black: '#000',
     white: '#fff',

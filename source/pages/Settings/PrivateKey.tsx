@@ -2,13 +2,7 @@ import { Input, Form } from 'antd';
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 
-import {
-  Layout,
-  Icon,
-  SecondaryButton,
-  Card,
-  CopyCard,
-} from 'components/index';
+import { Layout, Card, CopyCard, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -24,7 +18,7 @@ const PrivateKeyView = () => {
     (state: RootState) => state.vault.activeAccount
   );
 
-  const { navigate, useCopyClipboard, alert } = useUtils();
+  const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copyText] = useCopyClipboard();
   const [valid, setValid] = useState<boolean>(false);
@@ -42,104 +36,90 @@ const PrivateKeyView = () => {
 
   return (
     <Layout title="YOUR KEYS">
-      <div className="scrollbar-styled px-2 py-5 h-96 overflow-auto">
-        <Card type="info">
-          <p>
-            <b className="text-warning-info">WARNING: </b>
-            This is your account root indexer to check your full balance for{' '}
-            {activeAccount?.label}, it isn't a receiving address. DO NOT SEND
-            FUNDS TO THESE ADDRESSES, YOU WILL LOOSE THEM!
-          </p>
-        </Card>
-
-        <CopyCard
-          className="my-4"
-          onClick={() => copyText(String(activeAccount?.xpub))}
-          label="Your XPUB"
-        >
-          <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>
-        </CopyCard>
-
-        <p className="my-5 max-w-xs text-xs sm:text-center md:text-left">
-          To see your private key, input your password
+      <Card type="info">
+        <p>
+          <b className="text-warning-info">WARNING: </b>
+          This is your account root indexer to check your full balance for{' '}
+          {activeAccount?.label}, it isn't a receiving address. DO NOT SEND
+          FUNDS TO THESE ADDRESSES, YOU WILL LOOSE THEM!
         </p>
+      </Card>
 
-        <Form
-          validateMessages={{ default: '' }}
-          className="standard password mx-auto my-3 w-full max-w-xs text-center md:max-w-xl"
-          name="phraseview"
-          form={form}
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 16 }}
-          autoComplete="off"
-        >
-          <Form.Item
-            name="password"
-            hasFeedback
-            className="w-full"
-            rules={[
-              {
-                required: true,
-                message: '',
+      <CopyCard
+        className="my-4"
+        onClick={() => copyText(String(activeAccount?.xpub))}
+        label="Your XPUB"
+      >
+        <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>
+      </CopyCard>
+
+      <Form
+        validateMessages={{ default: '' }}
+        name="phraseview"
+        form={form}
+        labelCol={{ span: 8 }}
+        wrapperCol={{ span: 16 }}
+        autoComplete="off"
+      >
+        <Form.Item
+          name="password"
+          hasFeedback
+          className="md:w-full"
+          rules={[
+            {
+              required: true,
+              message: '',
+            },
+            () => ({
+              validator(_, value) {
+                if (controller.wallet.checkPassword(value)) {
+                  setValid(true);
+
+                  return Promise.resolve();
+                }
+
+                return Promise.reject();
               },
-              () => ({
-                validator(_, value) {
-                  if (controller.wallet.checkPassword(value)) {
-                    setValid(true);
-
-                    return Promise.resolve();
-                  }
-
-                  return Promise.reject();
-                },
-              }),
-            ]}
-          >
-            <Input.Password
-              className="password"
-              placeholder="Enter your password"
-            />
-          </Form.Item>
-        </Form>
-
-        <CopyCard
-          className="my-3"
-          onClick={
-            valid
-              ? () =>
-                  copyText(
-                    getDecryptedPrivateKey(form.getFieldValue('password'))
-                  )
-              : undefined
-          }
-          label="Your private key"
+            }),
+          ]}
         >
-          <p>
-            {valid && activeAccount.xprv
-              ? ellipsis(
-                  getDecryptedPrivateKey(form.getFieldValue('password')),
-                  4,
-                  16
-                )
-              : '********...************'}
-          </p>
-        </CopyCard>
+          <Input.Password
+            className="input-small relative"
+            placeholder="Enter your password"
+          />
+        </Form.Item>
+      </Form>
 
-        <div
-          className="flex gap-2 items-center justify-center mt-4 hover:text-brand-royalblue text-xs cursor-pointer"
+      <CopyCard
+        onClick={
+          valid
+            ? () =>
+                copyText(getDecryptedPrivateKey(form.getFieldValue('password')))
+            : undefined
+        }
+        label="Your private key"
+      >
+        <p>
+          {valid && activeAccount.xprv
+            ? ellipsis(
+                getDecryptedPrivateKey(form.getFieldValue('password')),
+                4,
+                16
+              )
+            : '********...************'}
+        </p>
+      </CopyCard>
+
+      <div className="absolute bottom-8 md:static">
+        <NeutralButton
+          width="56 px-6"
+          type="button"
           onClick={() =>
             window.open(`${activeNetwork.url}/xpub/${activeAccount?.xpub}`)
           }
         >
-          <p>View account on explorer</p>
-          <Icon name="select" className="mb-1" />
-        </div>
-      </div>
-
-      <div className="absolute bottom-8 md:static">
-        <SecondaryButton type="button" onClick={() => navigate('/home')}>
-          Close
-        </SecondaryButton>
+          See on explorer
+        </NeutralButton>
       </div>
     </Layout>
   );

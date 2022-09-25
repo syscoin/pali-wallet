@@ -4,9 +4,9 @@ import { version } from '../../../package.json';
 import {
   Layout,
   Icon,
-  SecondaryButton,
   SimpleCard,
   IconButton,
+  NeutralButton,
 } from 'components/index';
 import { useUtils } from 'hooks/index';
 
@@ -26,7 +26,7 @@ const AboutView: FC = () => {
 
   return (
     <Layout title="INFO & HELP" id="info-help-title">
-      <div className="flex flex-col gap-y-4 mt-4 pl-8 w-full text-brand-white text-sm md:pl-20">
+      <div className="flex flex-col gap-y-4 w-full text-brand-white text-sm">
         <p>Pali Wallet Browser Extension v2.0</p>
         <p>Version: {version}</p>
 
@@ -38,7 +38,7 @@ const AboutView: FC = () => {
         </p>
       </div>
 
-      <div className="flex flex-col items-center justify-center w-full max-w-xs md:max-w-full">
+      <div className="flex flex-col items-center justify-center w-full md:max-w-full">
         <SimpleCard className="mt-4">
           <div className="flex items-center justify-start mb-4 font-poppins text-base font-bold">
             <Icon
@@ -79,9 +79,9 @@ const AboutView: FC = () => {
         </SimpleCard>
 
         <div className="absolute bottom-12 md:static md:mt-3">
-          <SecondaryButton type="button" onClick={() => navigate('/home')}>
+          <NeutralButton type="button" onClick={() => navigate('/home')}>
             Close
-          </SecondaryButton>
+          </NeutralButton>
         </div>
       </div>
     </Layout>

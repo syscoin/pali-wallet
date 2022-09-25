@@ -1,7 +1,7 @@
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
 
-import { Layout, SecondaryButton } from 'components/index';
+import { Layout, NeutralButton } from 'components/index';
 import trustedApps from 'constants/trustedApps.json';
 import { useUtils } from 'hooks/index';
 import { truncate } from 'utils/index';
@@ -11,13 +11,13 @@ const TrustedSitesView = () => {
 
   const [filteredSearch, setFilteredSearch] = useState<string[]>(trustedApps);
 
-  const handleSearch = (event) => {
+  const handleSearch = (typed) => {
     let newList: string[] = [];
 
-    if (event.target.value) {
+    if (typed && typed.length >= 2) {
       newList = trustedApps.filter((item: string) => {
         const url = item.toLowerCase();
-        const typedValue = event.target.value.toLowerCase();
+        const typedValue = typed.toLowerCase();
 
         return url.includes(typedValue);
       });
@@ -32,10 +32,6 @@ const TrustedSitesView = () => {
 
   return (
     <Layout title="TRUSTED WEBSITES">
-      <p className="m-4 max-w-xs text-center text-white text-xs">
-        Check all sites included on our trusted list.
-      </p>
-
       <Form
         validateMessages={{ default: '' }}
         id="trusted"
@@ -43,29 +39,38 @@ const TrustedSitesView = () => {
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         autoComplete="off"
-        className="flex flex-col gap-4 items-center justify-center mx-auto text-center md:w-full"
       >
         <Form.Item
           name="search"
           className="md:w-full"
+          hasFeedback
           rules={[
             {
-              required: false,
+              required: true,
               message: '',
             },
+            () => ({
+              validator(_, value) {
+                if (!value || value.length <= 2) {
+                  return Promise.resolve();
+                }
+
+                return Promise.reject();
+              },
+            }),
           ]}
         >
           <Input
-            onChange={(event) => handleSearch(event)}
+            onChange={(event) => handleSearch(event.target.value)}
             type="text"
+            className="input-small relative"
             placeholder="Search"
-            className="px-4 py-2 w-72 text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full md:w-full md:max-w-md"
           />
         </Form.Item>
       </Form>
 
       <div className="flex flex-col items-center justify-center w-full">
-        <ul className="scrollbar-styled my-1 p-4 w-full h-72 overflow-auto">
+        <ul className="scrollbar-styled mb-2 mt-6 w-full h-60 overflow-auto">
           {filteredSearch &&
             filteredSearch.map((url: string) => (
               <li
@@ -78,9 +83,9 @@ const TrustedSitesView = () => {
         </ul>
 
         <div className="absolute bottom-12 md:static">
-          <SecondaryButton type="button" onClick={() => navigate('/home')}>
+          <NeutralButton type="button" onClick={() => navigate('/home')}>
             Close
-          </SecondaryButton>
+          </NeutralButton>
         </div>
       </div>
     </Layout>

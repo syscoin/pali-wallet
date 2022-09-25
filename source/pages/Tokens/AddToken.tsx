@@ -50,7 +50,7 @@ export const AddToken: FC = () => {
                 labelCol={{ span: 8 }}
                 wrapperCol={{ span: 8 }}
                 autoComplete="off"
-                className="standard flex flex-col gap-2 items-center justify-center text-center"
+                className="flex flex-col gap-2 items-center justify-center text-center"
               >
                 <Form.Item
                   id="network-switch"
@@ -63,7 +63,7 @@ export const AddToken: FC = () => {
                   ]}
                 >
                   <div className="flex gap-x-2 my-4 text-xs">
-                    <p>Search</p>
+                    <p className="text-brand-royalblue">Search</p>
 
                     <Switch
                       checked={importCustom}
@@ -80,7 +80,7 @@ export const AddToken: FC = () => {
                       />
                     </Switch>
 
-                    <p>Custom token</p>
+                    <p className="text-brand-deepPink100">Custom token</p>
                   </div>
                 </Form.Item>
               </Form>

@@ -2,7 +2,7 @@ import { Disclosure } from '@headlessui/react';
 import React, { FC, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Layout, SecondaryButton, Icon, Tooltip } from 'components/index';
+import { Layout, Icon, Tooltip, NeutralButton } from 'components/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
@@ -29,8 +29,8 @@ const ConnectHardwareWalletView: FC = () => {
   return (
     <Layout title="HARDWARE WALLET" id="hardware-wallet-title">
       <div className="flex flex-col items-center justify-center w-full md:max-w-md">
-        <div className="scrollbar-styled px-4 h-85 text-sm overflow-y-auto md:px-0 md:w-full md:max-w-md md:h-3/4">
-          <p className="mb-1 mt-8 mx-2.5 w-80 text-white text-sm md:mx-0 md:w-full">
+        <div className="scrollbar-styled px-2 h-80 text-sm overflow-y-auto md:h-3/4">
+          <p className="text-white text-sm">
             Select the hardware wallet you'd like to connect to Pali
           </p>
 
@@ -106,7 +106,7 @@ const ConnectHardwareWalletView: FC = () => {
         </div>
 
         <div className="absolute bottom-12 md:static md:mt-6">
-          <SecondaryButton
+          <NeutralButton
             type="button"
             onClick={handleCreateHardwareWallet}
             disabled={isTestnet || !selected}
@@ -120,7 +120,7 @@ const ConnectHardwareWalletView: FC = () => {
             >
               <p>Connect</p>
             </Tooltip>
-          </SecondaryButton>
+          </NeutralButton>
         </div>
       </div>
     </Layout>
