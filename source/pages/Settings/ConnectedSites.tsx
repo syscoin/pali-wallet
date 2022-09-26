@@ -7,7 +7,7 @@ import { useUtils } from 'hooks/index';
 import { IDApp } from 'state/dapp/types';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { truncate, ellipsis, networkChain } from 'utils/index';
+import { truncate, ellipsis } from 'utils/index';
 
 const ConnectedSites = () => {
   const { dapp } = getController();
@@ -33,16 +33,7 @@ const ConnectedSites = () => {
 
   useEffect(() => {
     const dapps = Object.values(dapp.getAll());
-    const chain = networkChain();
-
-    const _connectedDapps = dapps.filter((_dapp) => {
-      const sameChain = _dapp.chain === chain;
-      const sameAccount = _dapp.accountId === activeAccount.id;
-
-      return sameChain && sameAccount;
-    });
-
-    setConnectedDapps(_connectedDapps);
+    setConnectedDapps(dapps);
   }, []);
 
   return (
