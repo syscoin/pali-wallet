@@ -1,8 +1,5 @@
 import shuffle from 'lodash/shuffle';
-import React, {
-  useState,
-  // useMemo
-} from 'react';
+import React, { useState } from 'react';
 
 import {
   Button,
@@ -10,7 +7,6 @@ import {
   PrimaryButton,
   OnboardingLayout,
 } from 'components/index';
-// import isEqual from 'lodash/isEqual';
 
 export const ConfirmPhrase = ({
   passed,
@@ -26,11 +22,6 @@ export const ConfirmPhrase = ({
   );
 
   const [newList, setNewList] = useState<Array<string>>([]);
-
-  // const isNotEqualArrays = useMemo((): boolean => {
-  //   if (!seed) return true;
-  //   return !isEqual(seed.split(' '), newList);
-  // }, [seed, newList]);
 
   const handleOrgPhrase = (idx: number) => {
     const tempList = [...orgList];
