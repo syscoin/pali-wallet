@@ -13,7 +13,9 @@ import {
 
 import { IEthAccountController } from 'scripts/Background/controllers/account/evm';
 import { ISysAccountController } from 'scripts/Background/controllers/account/syscoin';
+import { DAppEvents } from 'scripts/Background/controllers/message-handler/types';
 import { IDApp } from 'state/dapp/types';
+import { IOmmitedAccount } from 'state/vault/types';
 
 import { ICustomRpcParams } from './transactions';
 
@@ -127,13 +129,17 @@ export interface IDAppController {
    */
   disconnect: (host: string) => void;
   /**
+   * Dispatch an event to all dapps
+   */
+  dispatchEvent: (event: DAppEvents, data: any) => void;
+  /**
    * Retrieves a DApp
    */
   get: (host: string) => IDApp | undefined;
   /**
    * Retrieves the connected account
    */
-  getAccount: (host: string) => IKeyringAccountState;
+  getAccount: (host: string) => IOmmitedAccount;
   getAll: () => { [host: string]: IDApp };
   getNetwork: () => INetwork;
   getState: () => any;

@@ -2,27 +2,24 @@ import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 
 import { IVaultState, IOmittedVault, IOmmitedAccount } from 'state/vault/types';
 
-const _removeSensitiveDataFromAccounts = (accounts: {
-  [id: number]: IKeyringAccountState;
-}) => {
-  const fieldsToRemove = ['xprv'];
+export const removeXprv = (account: IKeyringAccountState): IOmmitedAccount => {
+  // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
+  const { xprv, ...remainingInfo } = account;
 
-  for (const account of Object.values(accounts)) {
-    for (const field of fieldsToRemove) {
-      delete account[field];
-    }
-  }
-
-  return accounts as { [id: number]: IOmmitedAccount };
+  return remainingInfo;
 };
 
-export const removeSensitiveDataFromVault = (vault: IVaultState) => {
-  const accounts = _removeSensitiveDataFromAccounts(vault.accounts);
+export const removeSensitiveDataFromVault = (
+  vault: IVaultState
+): IOmittedVault => {
+  const accounts = {};
 
-  const _vault = {
+  for (const account of Object.values(vault.accounts)) {
+    accounts[account.id] = removeXprv(account);
+  }
+
+  return {
     ...vault,
     accounts,
   };
-
-  return _vault as IOmittedVault;
 };

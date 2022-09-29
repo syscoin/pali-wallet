@@ -2,7 +2,7 @@ import { Form, Input } from 'antd';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { Layout, SecondaryButton, DefaultModal } from 'components/index';
+import { Layout, DefaultModal, NeutralButton } from 'components/index';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
@@ -39,7 +39,7 @@ const CreateAccount = () => {
       ) : (
         <Form
           validateMessages={{ default: '' }}
-          className="standard flex flex-col gap-8 items-center justify-center pt-4 text-center md:w-full"
+          className="flex flex-col gap-8 items-center justify-center text-center md:w-full"
           name="newaccount"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
@@ -59,21 +59,21 @@ const CreateAccount = () => {
           >
             <Input
               type="text"
-              className="large"
+              className="input-small"
               placeholder="Name your new account (optional)"
               id="account-name-input"
             />
           </Form.Item>
 
           <div className="absolute bottom-12 md:static">
-            <SecondaryButton
+            <NeutralButton
               type="submit"
               loading={loading}
               disabled={loading}
               id="create-btn"
             >
               Create
-            </SecondaryButton>
+            </NeutralButton>
           </div>
         </Form>
       )}

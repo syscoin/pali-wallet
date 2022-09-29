@@ -44,7 +44,7 @@ export const DetailsView = () => {
         <Icon name="loading" className="absolute left-1/2 top-1/2 w-3" />
       ) : (
         <>
-          <ul className="scrollbar-styled md:max-h-max mt-4 w-full h-96 text-sm overflow-auto">
+          <ul className="scrollbar-styled md:max-h-max w-full h-96 text-sm overflow-auto">
             {isAsset ? (
               <AssetDetails id={id} />
             ) : (
@@ -52,8 +52,8 @@ export const DetailsView = () => {
             )}
           </ul>
 
-          <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-3 md:bottom-8 md:max-w-2xl">
-            <p>
+          <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-4 md:bottom-8 md:max-w-2xl">
+            <p className="font-normal" style={{ lineHeight: '18px' }}>
               Would you like to go to view {isAsset ? 'asset' : 'transaction'}{' '}
               on {isBitcoinBased ? 'SYS Block' : 'Etherscan'} Explorer?
             </p>
@@ -61,9 +61,9 @@ export const DetailsView = () => {
             <Button
               type="button"
               onClick={isBitcoinBased ? openSysExplorer : openEthExplorer}
-              className="inline-flex justify-center px-6 py-1 hover:text-brand-royalblue text-brand-white text-sm font-medium hover:bg-button-popuphover bg-transparent border border-brand-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
+              className="inline-flex justify-center px-1.5 py-2 text-bkg-blue200 text-base font-semibold bg-bkg-white850 hover:bg-transparent border border-bkg-white850 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
             >
-              Go
+              Ok
             </Button>
           </div>
         </>

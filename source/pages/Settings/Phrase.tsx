@@ -1,7 +1,7 @@
 import { Form, Input } from 'antd';
 import React, { useState, useEffect } from 'react';
 
-import { Layout, SecondaryButton, Card, CopyCard } from 'components/index';
+import { Layout, Card, CopyCard, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
@@ -27,14 +27,10 @@ const PhraseView = () => {
 
   return (
     <Layout title="WALLET SEED PHRASE" id="seed-phrase-title">
-      <p className="px-10 py-3 text-white text-sm">
-        Please input your wallet password
-      </p>
-
       <div className="flex flex-col items-center justify-center md:w-full md:max-w-md">
         <Form
           validateMessages={{ default: '' }}
-          className="password flex flex-col gap-8 items-center justify-center my-6 w-full max-w-xs text-center md:max-w-md"
+          className="password flex flex-col gap-8 items-center justify-center mb-4 w-full max-w-xs text-center md:max-w-md"
           name="phraseview"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 16 }}
@@ -65,7 +61,7 @@ const PhraseView = () => {
             ]}
           >
             <Input.Password
-              className="password"
+              className="input-small relative"
               placeholder="Enter your password"
               id="phraseview_password"
             />
@@ -95,9 +91,9 @@ const PhraseView = () => {
         </Card>
 
         <div className="absolute bottom-12 md:static md:mt-10">
-          <SecondaryButton type="button" onClick={() => navigate('/home')}>
+          <NeutralButton type="button" onClick={() => navigate('/home')}>
             Close
-          </SecondaryButton>
+          </NeutralButton>
         </div>
       </div>
     </Layout>

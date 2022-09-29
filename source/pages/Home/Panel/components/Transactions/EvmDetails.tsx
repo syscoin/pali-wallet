@@ -56,7 +56,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
       {formattedTransaction.map(({ label, value, canCopy }: any) => (
         <Fragment key={uniqueId(hash)}>
           {label.length > 0 && value !== undefined && (
-            <li className="flex items-center justify-between my-1 px-6 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
+            <li className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
               <p>{label}</p>
               <span>
                 <b>{value}</b>

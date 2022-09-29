@@ -1,3 +1,5 @@
 export { SendConfirm } from './Confirm';
-export { Send } from './Send';
+export { SendEth } from './SendEth';
+export { SendSys } from './SendSys';
+export { EditPriorityFee } from './EditPriority';
 export { EditGasFee } from './EditGasFee';

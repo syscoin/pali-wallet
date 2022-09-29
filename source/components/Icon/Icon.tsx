@@ -1,6 +1,7 @@
 import * as AntIcons from '@ant-design/icons';
 import React, { FC } from 'react';
 
+import { ExternalLinkIcon } from './ExternalLinkIcon';
 import { ForgetWalletIcon } from './ForgetWalletIcon';
 import { LoaderIcon } from './LoaderIcon';
 
@@ -45,6 +46,7 @@ const icons = {
   wallet: AntIcons.WalletOutlined,
   warning: AntIcons.WarningOutlined,
   trash: AntIcons.DeleteOutlined,
+  'external-link': ExternalLinkIcon,
 };
 
 interface IIcon {

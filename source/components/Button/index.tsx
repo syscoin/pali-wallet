@@ -1,1 +1,6 @@
-export { Button, SecondaryButton, PrimaryButton } from './Button';
+export {
+  Button,
+  SecondaryButton,
+  PrimaryButton,
+  NeutralButton,
+} from './Button';

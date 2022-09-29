@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
-import { IconButton, Layout, SecondaryButton, Icon } from 'components/index';
+import { IconButton, Layout, Icon, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -31,12 +31,8 @@ const ManageNetworkView = () => {
 
   return (
     <Layout title="MANAGE NETWORKS">
-      <p className="mt-4 text-left text-brand-white font-poppins text-sm">
-        Click on network to manage
-      </p>
-
-      <ul className="scrollbar-styled mb-3 mt-2 px-4 py-2 w-full h-80 text-sm overflow-auto md:h-96">
-        <p className="py-1 text-brand-royalbluemedium text-xs font-bold bg-bkg-1">
+      <ul className="scrollbar-styled mb-4 w-full h-80 text-sm overflow-auto md:h-96">
+        <p className="py-1 text-center text-brand-white text-xs font-bold bg-bkg-4">
           Syscoin Networks
         </p>
         {Object.values(networks.syscoin).map((network: INetwork) => (
@@ -53,7 +49,10 @@ const ManageNetworkView = () => {
             <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
               <span>{truncate(network.label, 25)}</span>
 
-              <span>Blockbook URL: {truncate(String(network.url), 30)}</span>
+              <span>
+                <b className="text-brand-royalblue">Blockbook URL:</b>{' '}
+                {truncate(String(network.url), 26)}
+              </span>
             </div>
 
             {!network.default && (
@@ -86,7 +85,7 @@ const ManageNetworkView = () => {
           </li>
         ))}
 
-        <p className="py-1 text-brand-royalbluemedium text-xs font-bold bg-bkg-1">
+        <p className="py-1 text-center text-brand-white text-xs font-bold bg-bkg-4">
           Ethereum Networks
         </p>
         {Object.values(networks.ethereum).map((network: any) => (
@@ -103,11 +102,14 @@ const ManageNetworkView = () => {
             <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
               <span>{truncate(network.label, 25)}</span>
 
-              <span>RPC URL: {truncate(String(network.url), 30)}</span>
+              <span className="text-brand-white">
+                <b className="text-brand-royalblue">RPC URL:</b>
+                {truncate(String(network.url), 26)}
+              </span>
             </div>
 
             {!network.default && (
-              <div className="flex gap-x-3 items-center justify-between">
+              <div className="flex flex-col gap-y-3 items-end justify-end">
                 <IconButton
                   onClick={() =>
                     editNetwork({ selected: network, chain: 'ethereum' })
@@ -117,7 +119,7 @@ const ManageNetworkView = () => {
                 >
                   <Icon
                     name="edit"
-                    className="hover:text-brand-royalblue text-xl"
+                    className="hover:text-brand-royalblue text-xs"
                   />
                 </IconButton>
 
@@ -128,7 +130,7 @@ const ManageNetworkView = () => {
                 >
                   <Icon
                     name="trash"
-                    className="hover:text-brand-royalblue text-xl"
+                    className="hover:text-brand-royalblue text-xs"
                   />
                 </IconButton>
               </div>
@@ -137,9 +139,9 @@ const ManageNetworkView = () => {
         ))}
       </ul>
 
-      <SecondaryButton type="button" onClick={() => navigate('/home')}>
+      <NeutralButton type="button" onClick={() => navigate('/home')}>
         Close
-      </SecondaryButton>
+      </NeutralButton>
     </Layout>
   );
 };
