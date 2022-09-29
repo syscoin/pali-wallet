@@ -14,6 +14,8 @@ const CurrencyView = () => {
   const controller = getController();
   const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
+
+  //* Selectors
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -27,30 +29,41 @@ const CurrencyView = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-
   const fiat = useSelector((state: RootState) => state.price.fiat);
   const coins = useSelector((state: RootState) => state.price.coins);
 
   if (!activeAccount) throw new Error('No account');
 
-  const { asset } = fiat;
-
-  const [selectedCoin, setSelectedCoin] = useState(String(asset));
-  const [checkValueCoin, setCheckValueCoin] = useState('usd');
-  const [confirmed, setConfirmed] = useState(false);
-  const [fiatAmountValue, setFiatAmountValue] = useState('');
-  const [balance, setBalance] = useState(0);
-  const [chain, setChain] = useState('syscoin');
-
+  //* Functions
   const convertCurrency = (value: number, toCoin: string) =>
     value * coins[toCoin];
 
   const convertToCrypto = (value: number, fromCoin: string) =>
     value / coins[fromCoin];
 
+  const getFiatAmountValue = () => {
+    const value = getFiatAmount(balance || 0, 4, String(selectedCoin));
+    setFiatAmountValue(value);
+  };
+
+  //* States
+  const [selectedCoin, setSelectedCoin] = useState(String(fiat.asset));
+  const [checkValueCoin, setCheckValueCoin] = useState('usd');
+  const [confirmed, setConfirmed] = useState(false);
+  const [fiatAmountValue, setFiatAmountValue] = useState('');
+  const [balance, setBalance] = useState(0);
+  const [chain, setChain] = useState('syscoin');
+  const [conversorValues, setConversorValues] = useState({
+    crypto: balance,
+    fiat: convertCurrency(balance, checkValueCoin),
+  });
+
+  //* Constants
   const isUnlocked =
     controller.wallet.isUnlocked() && activeAccount.address !== '';
+  const fiatCurrency = fiat.asset ? String(fiat.asset).toUpperCase() : 'USD';
 
+  //* Effects
   useEffect(() => {
     setChain(isBitcoinBased ? 'syscoin' : 'ethereum');
 
@@ -58,37 +71,6 @@ const CurrencyView = () => {
 
     setBalance(isBitcoinBased ? syscoin : ethereum);
   }, [activeNetwork]);
-
-  const [conversorValues, setConversorValues] = useState({
-    crypto: balance,
-    fiat: convertCurrency(balance, checkValueCoin),
-  });
-
-  const handleConvert = (value: number, toCoin: string) => {
-    setConversorValues({
-      crypto: value,
-      fiat: convertCurrency(value, toCoin),
-    });
-  };
-
-  const handleReverseConvert = (value: number, fromCoin: string) => {
-    setConversorValues({
-      crypto: convertToCrypto(value, fromCoin),
-      fiat: value,
-    });
-  };
-
-  const handleConfirmCurrencyChange = () => {
-    setConfirmed(true);
-  };
-
-  const fiatCurrency = asset ? String(asset).toUpperCase() : 'USD';
-
-  const getFiatAmountValue = () => {
-    const value = getFiatAmount(balance || 0, 4, String(selectedCoin));
-
-    setFiatAmountValue(value);
-  };
 
   useEffect(() => {
     if (isUnlocked && accounts && accounts[activeAccountId]) {
@@ -107,6 +89,25 @@ const CurrencyView = () => {
   useEffect(() => {
     getFiatAmountValue();
   }, [selectedCoin, getFiatAmountValue]);
+
+  //* Handlers
+  const handleConvert = (value: number, toCoin: string) => {
+    setConversorValues({
+      crypto: value,
+      fiat: convertCurrency(value, toCoin),
+    });
+  };
+
+  const handleReverseConvert = (value: number, fromCoin: string) => {
+    setConversorValues({
+      crypto: convertToCrypto(value, fromCoin),
+      fiat: value,
+    });
+  };
+
+  const handleConfirmCurrencyChange = () => {
+    setConfirmed(true);
+  };
 
   return (
     <Layout title="FIAT CURRENCY" id="fiat-currency-title">
