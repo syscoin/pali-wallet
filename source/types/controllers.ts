@@ -11,6 +11,7 @@ import {
   ICoingeckoSearchResults,
 } from '@pollum-io/sysweb3-utils';
 
+import { IEthAccountController } from 'scripts/Background/controllers/account/evm';
 import { ISysAccountController } from 'scripts/Background/controllers/account/syscoin';
 import { DAppEvents } from 'scripts/Background/controllers/message-handler/types';
 import { IDApp } from 'state/dapp/types';
@@ -20,8 +21,7 @@ import { ICustomRpcParams } from './transactions';
 
 export interface IMainController extends IKeyringManager {
   account: {
-    // TODO eth acc ctlr interface
-    eth: any;
+    eth: IEthAccountController;
     sys: ISysAccountController;
   };
   addCustomRpc: (rpc: ICustomRpcParams) => Promise<INetwork>;
