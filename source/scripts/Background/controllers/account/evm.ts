@@ -1,10 +1,27 @@
-import { EthereumTransactions, Web3Accounts } from '@pollum-io/sysweb3-keyring';
+import {
+  IEthereumTransactions,
+  EthereumTransactions,
+  IWeb3Accounts,
+  Web3Accounts,
+} from '@pollum-io/sysweb3-keyring';
 import { getSearch } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
 import { setAccountTransactions, setActiveAccountProperty } from 'state/vault';
 
-const EthAccountController = () => {
+export interface IEthTransactions extends IEthereumTransactions {
+  sendAndSaveTransaction: (tx: any) => Promise<void>;
+}
+
+export interface IEthAccountController extends IWeb3Accounts {
+  saveTokenInfo: (token: any) => Promise<void>;
+  tx: IEthTransactions;
+}
+
+const EthAccountController = (): IEthAccountController => {
+  const txs = EthereumTransactions();
+  const web3Accounts = Web3Accounts();
+
   const saveTokenInfo = async (token: any) => {
     try {
       const { activeAccount } = store.getState().vault;
@@ -15,7 +32,7 @@ const EthAccountController = () => {
 
       if (tokenExists) throw new Error('Token already exists');
 
-      const balance = await getErc20TokenBalance(
+      const balance = await web3Accounts.getErc20TokenBalance(
         String(token.contractAddress),
         activeAccount.address
       );
@@ -44,25 +61,19 @@ const EthAccountController = () => {
     }
   };
 
-  const txs = EthereumTransactions();
-  const ethManager = Web3Accounts();
-
   const sendAndSaveTransaction = async (tx: any) => {
     store.dispatch(setAccountTransactions(await txs.sendTransaction(tx)));
   };
 
-  const tx = {
+  const tx: IEthTransactions = {
     sendAndSaveTransaction,
     ...txs,
   };
 
-  const { getErc20TokenBalance } = ethManager;
-
   return {
     saveTokenInfo,
-    getErc20TokenBalance,
     tx,
-    ...ethManager,
+    ...web3Accounts,
   };
 };
 
