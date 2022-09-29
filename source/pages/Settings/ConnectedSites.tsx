@@ -1,5 +1,5 @@
 import { Dialog, Transition } from '@headlessui/react';
-import React, { Fragment, useEffect, useState } from 'react';
+import React, { Fragment, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Layout, Icon, IconButton, NeutralButton } from 'components/index';
@@ -7,7 +7,7 @@ import { useUtils } from 'hooks/index';
 import { IDApp } from 'state/dapp/types';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { truncate, ellipsis, networkChain } from 'utils/index';
+import { truncate, ellipsis } from 'utils/index';
 
 const ConnectedSites = () => {
   const { dapp } = getController();
@@ -18,37 +18,18 @@ const ConnectedSites = () => {
   );
 
   const [selected, setSelected] = useState<IDApp>();
-  const [connectedDapps, setConnectedDapps] = useState<IDApp[]>([]);
+  const dapps = Object.values(dapp.getAll());
 
   const disconnectSelected = () => {
     dapp.disconnect(selected.host);
 
     setSelected(undefined);
-
-    const _connectedDapps = connectedDapps.filter(
-      (_dapp) => _dapp.host !== selected.host
-    );
-    setConnectedDapps(_connectedDapps);
   };
-
-  useEffect(() => {
-    const dapps = Object.values(dapp.getAll());
-    const chain = networkChain();
-
-    const _connectedDapps = dapps.filter((_dapp) => {
-      const sameChain = _dapp.chain === chain;
-      const sameAccount = _dapp.accountId === activeAccount.id;
-
-      return sameChain && sameAccount;
-    });
-
-    setConnectedDapps(_connectedDapps);
-  }, []);
 
   return (
     <Layout title="CONNECTED SITES">
       <p className="w-full text-white text-sm md:max-w-md">
-        {connectedDapps
+        {dapps.length > 0
           ? `${activeAccount.label} is connected to these sites. They can view your account public information.`
           : `${activeAccount.label} is not connected to any sites. To connect to a Pali compatible dApp, find the connect button on their site.`}
       </p>
@@ -56,7 +37,7 @@ const ConnectedSites = () => {
       <div className="flex flex-col items-center justify-center w-full">
         <ul className="scrollbar-styled w-full max-w-xs h-80 overflow-auto md:max-w-md">
           {' '}
-          {connectedDapps.map((_dapp) => (
+          {dapps.map((_dapp) => (
             <li
               key={_dapp.host}
               className="flex items-center justify-between my-2 py-3 w-full text-xs border-b border-dashed border-gray-500"
