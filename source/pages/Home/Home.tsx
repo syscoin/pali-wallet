@@ -12,9 +12,12 @@ import { formatNumber } from 'utils/index';
 import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
-  const controller = getController();
-  const fiat = useSelector((state: RootState) => state.price.fiat);
+  //* Hooks
+  const { getFiatAmount } = usePrice();
+  const { navigate } = useUtils();
 
+  //* Selectors
+  const fiat = useSelector((state: RootState) => state.price.fiat);
   const lastLogin = useSelector((state: RootState) => state.vault.lastLogin);
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
@@ -29,20 +32,29 @@ export const Home = () => {
     (state: RootState) => state.vault.activeAccount
   );
 
+  //* States
   const [fiatPriceValue, setFiatPriceValue] = useState('');
   const [balance, setBalance] = useState(0);
   const [isTestnet, setIsTestnet] = useState(false);
 
-  const { getFiatAmount } = usePrice();
+  //* Constants
+  const controller = getController();
+  const isUnlocked =
+    controller.wallet.isUnlocked() && activeAccount.address !== '';
 
-  const { navigate } = useUtils();
-
+  //* Effects
   useEffect(() => {
     const { syscoin, ethereum } = activeAccount.balances;
 
     setBalance(isBitcoinBased ? syscoin : ethereum);
   }, [activeNetwork]);
 
+  useEffect(() => {
+    setFiatPrice();
+    setMainOrTestNetwork();
+  }, [isUnlocked && activeNetwork.chainId]);
+
+  //* Functions
   const setMainOrTestNetwork = async () => {
     const { url } = activeNetwork;
 
@@ -63,14 +75,6 @@ export const Home = () => {
 
     setFiatPriceValue(String(amount));
   };
-
-  const isUnlocked =
-    controller.wallet.isUnlocked() && activeAccount.address !== '';
-
-  useEffect(() => {
-    setFiatPrice();
-    setMainOrTestNetwork();
-  }, [isUnlocked && activeNetwork.chainId]);
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">

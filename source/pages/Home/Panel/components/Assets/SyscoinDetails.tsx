@@ -3,7 +3,6 @@ import React, { Fragment, useEffect } from 'react';
 import { RiFileCopyLine } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
-import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
