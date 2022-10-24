@@ -122,8 +122,7 @@ window.pali = Object.freeze({
   disable: () => proxy('DISABLE'),
   _listeners: {},
 });
-
-window.ethereum = Object.freeze({
+window.ethereum = {
   wallet: 'pali-v2',
   request,
   on,
@@ -133,4 +132,5 @@ window.ethereum = Object.freeze({
     proxy('ENABLE', { chain: 'ethereum', chainId: 1 }),
   disable: () => proxy('DISABLE'),
   _listeners: {},
-});
+};
+

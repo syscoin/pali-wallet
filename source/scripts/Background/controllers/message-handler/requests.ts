@@ -3,7 +3,6 @@ import { SysProvider } from 'scripts/Provider/SysProvider';
 import { networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
-
 /**
  * Handles methods request.
  *
@@ -16,6 +15,7 @@ export const methodRequest = async (
   host: string,
   data: { args?: any[]; method: string; network?: string }
 ) => {
+  console.log('Requesting method');
   const { dapp, wallet } = window.controller;
 
   const [prefix, methodName] = data.method.split('_');
@@ -32,8 +32,11 @@ export const methodRequest = async (
 
   const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
 
+  console.log('Check data:', host);
+  console.log('data:', data);
   //* Wallet methods
   if (prefix === 'wallet') {
+    console.log('methodName', methodName);
     switch (methodName) {
       case 'isLocked':
         return !wallet.isUnlocked();
@@ -65,19 +68,20 @@ export const methodRequest = async (
 
   //* Providers methods
   const provider = prefix !== 'sys' ? EthProvider(host) : SysProvider(host);
-
+  console.log('Provider: ', provider);
   const method = provider[methodName];
-
+  console.log('Method: ', method);
   if (!method) throw new Error('Unknown method');
 
   if (data.args) return await method(...data.args);
-
+  console.log('Almost returning');
   return await method();
 };
 
 export const enable = async (host: string, chain: string, chainId: number) => {
+  console.log('trying to connect pali to dapp');
   const { dapp } = window.controller;
-
+  console.log('trying to connect pali to dapp', dapp.isConnected(host));
   if (dapp.isConnected(host)) return { success: true };
 
   return popupPromise({
