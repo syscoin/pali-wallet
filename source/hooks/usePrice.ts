@@ -23,11 +23,21 @@ export const usePrice = () => {
 
     currency = currency.toUpperCase();
 
+    const quantityOfZerosAfterDot = -Math.floor(
+      Math.log(value) / Math.log(10) + 1
+    );
+
+    const fractionValidation = quantityOfZerosAfterDot <= 6;
+
     const currencySymbol = getSymbolFromCurrency(currency);
 
     const formattedValue = value.toLocaleString(navigator.language, {
-      minimumFractionDigits: precision,
-      maximumFractionDigits: precision,
+      minimumFractionDigits: fractionValidation
+        ? quantityOfZerosAfterDot + 1
+        : precision,
+      maximumFractionDigits: fractionValidation
+        ? quantityOfZerosAfterDot + 2
+        : precision,
     });
 
     const symbol = withSymbol ? currencySymbol : '';
