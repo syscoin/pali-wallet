@@ -23,9 +23,7 @@ export const usePrice = () => {
 
     currency = currency.toUpperCase();
 
-    const quantityOfZerosAfterDot = -Math.floor(
-      Math.log(value) / Math.log(10) + 1
-    );
+    const quantityOfZerosAfterDot = -Math.floor(Math.log10(value) + 1);
 
     const fractionValidation = quantityOfZerosAfterDot <= 6;
 
