@@ -25,7 +25,8 @@ export const usePrice = () => {
 
     const quantityOfZerosAfterDot = -Math.floor(Math.log10(value) + 1);
 
-    const fractionValidation = quantityOfZerosAfterDot <= 6;
+    const fractionValidation =
+      quantityOfZerosAfterDot !== -0 && quantityOfZerosAfterDot <= 6;
 
     const currencySymbol = getSymbolFromCurrency(currency);
 
