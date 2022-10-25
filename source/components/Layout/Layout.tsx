@@ -23,6 +23,8 @@ export const Layout: FC<ILayout> = ({
 
   const url = browser.runtime.getURL('app.html');
 
+  const isConnectPage = title === 'CONNECT WITH';
+
   return (
     <div className="relative w-full min-w-popup min-h-popup text-brand-white bg-bkg-2">
       {!titleOnly && canGoBack && <Header />}
@@ -54,7 +56,11 @@ export const Layout: FC<ILayout> = ({
         />
       </div>
 
-      <div className="flex flex-col items-center justify-center mx-auto pt-8 px-4 w-full max-w-sm text-brand-white bg-bkg-2 sm:max-w-full">
+      <div
+        className={`flex flex-col items-center justify-center mx-auto pt-8 px-4 w-full ${
+          isConnectPage ? '' : 'max-w-sm'
+        } text-brand-white bg-bkg-2 sm:max-w-full`}
+      >
         {children}
       </div>
     </div>

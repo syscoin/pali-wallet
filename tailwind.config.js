@@ -27,21 +27,21 @@ module.exports = {
         0.8: '0.2rem',
       },
       maxWidth: {
-        popup: '600px',
+        popup: '620px',
         input: '18rem',
         '1/2': '50%',
         70: '70%',
         95: '95%',
       },
       minWidth: {
-        popup: '372px',
+        popup: '385px',
         xs: '1rem',
       },
       minHeight: {
-        popup: '600px',
+        popup: '620px',
       },
       height: {
-        popup: '600px',
+        popup: '620px',
         menu: '27rem',
         bigmenu: '31rem',
         85: '23rem',
