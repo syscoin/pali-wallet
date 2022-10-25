@@ -19,10 +19,22 @@ export const methodRequest = async (
   const { dapp, wallet } = window.controller;
 
   const [prefix, methodName] = data.method.split('_');
-
+  console.log('Checking prefix and methodName', prefix, methodName);
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
 
+  if (data.method) {
+    const provider = EthProvider(host);
+    const resp = await provider.unrestrictedRPCMethods(
+      data.method,
+      data.args,
+      data.network
+    );
+    if (resp !== false && resp !== undefined && resp !== null) {
+      console.log('Method is not restrictive');
+      return resp; //Sending back to Dapp non restrictive method response
+    }
+  }
   const account = dapp.getAccount(host);
 
   const isRequestAllowed = dapp.isConnected(host) && account;

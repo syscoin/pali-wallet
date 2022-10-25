@@ -118,7 +118,7 @@ const DAppController = (): IDAppController => {
   const getAccount = (host: string) => {
     const dapp = store.getState().dapp.dapps[host];
     const { accounts } = store.getState().vault;
-
+    if (!dapp) return null;
     const account = accounts[dapp.accountId];
 
     if (!dapp || !account) return null;

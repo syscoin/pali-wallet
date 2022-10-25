@@ -8,6 +8,7 @@ const proxy = (type, data) =>
     window.addEventListener(
       id,
       (event) => {
+        console.log('[Pali] EventListener method', event.detail);
         if (!event.detail) {
           resolve(undefined);
 
@@ -29,7 +30,7 @@ const proxy = (type, data) =>
         passive: true,
       }
     );
-
+    console.log('[Pali] PostMessage method', id, type, data);
     window.postMessage(
       {
         id,

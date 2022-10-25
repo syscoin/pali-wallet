@@ -32,6 +32,8 @@ const checkForPaliRegisterEvent = (type, id) => {
   }
 
   emitter.once(id, (result) => {
+    console.log('Checking pali response id', id);
+    console.log('Check pali response result', result);
     window.dispatchEvent(
       new CustomEvent(id, { detail: JSON.stringify(result) })
     );
@@ -45,6 +47,8 @@ const start = () => {
   window.addEventListener(
     'message',
     (event) => {
+      console.log('Incoming message  source', event.source);
+      console.log('Incoming message data', event.data);
       if (event.source !== window) return;
       if (!event.data) return;
 
