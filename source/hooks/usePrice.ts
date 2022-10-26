@@ -2,6 +2,7 @@ import getSymbolFromCurrency from 'currency-symbol-map';
 import { useSelector } from 'react-redux';
 
 import { RootState } from 'state/store';
+import { verifyZerosInBalanceAndFormat } from 'utils/verifyZerosInValueAndFormat';
 
 export type IGetFiatAmount = (
   amount: number,
@@ -23,21 +24,9 @@ export const usePrice = () => {
 
     currency = currency.toUpperCase();
 
-    const quantityOfZerosAfterDot = -Math.floor(Math.log10(value) + 1);
-
-    const fractionValidation =
-      quantityOfZerosAfterDot !== -0 && quantityOfZerosAfterDot <= 6;
-
     const currencySymbol = getSymbolFromCurrency(currency);
 
-    const formattedValue = value.toLocaleString(navigator.language, {
-      minimumFractionDigits: fractionValidation
-        ? quantityOfZerosAfterDot + 1
-        : precision,
-      maximumFractionDigits: fractionValidation
-        ? quantityOfZerosAfterDot + 2
-        : precision,
-    });
+    const formattedValue = verifyZerosInBalanceAndFormat(value, precision);
 
     const symbol = withSymbol ? currencySymbol : '';
 
