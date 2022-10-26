@@ -124,6 +124,7 @@ window.pali = Object.freeze({
   _listeners: {},
 });
 window.ethereum = {
+  isMetaMask: true, //Provisory just for make testing easier
   wallet: 'pali-v2',
   request,
   on,

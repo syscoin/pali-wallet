@@ -13,9 +13,8 @@ import { popupPromise } from './popup-promise';
  */
 export const methodRequest = async (
   host: string,
-  data: { args?: any[]; method: string; network?: string }
+  data: { method: string; network?: string; params?: any[] }
 ) => {
-  console.log('Requesting method');
   const { dapp, wallet } = window.controller;
 
   const [prefix, methodName] = data.method.split('_');
@@ -27,7 +26,7 @@ export const methodRequest = async (
     const provider = EthProvider(host);
     const resp = await provider.unrestrictedRPCMethods(
       data.method,
-      data.args,
+      data.params,
       data.network
     );
     if (resp !== false && resp !== undefined && resp !== null) {
@@ -85,7 +84,7 @@ export const methodRequest = async (
   console.log('Method: ', method);
   if (!method) throw new Error('Unknown method');
 
-  if (data.args) return await method(...data.args);
+  if (data.params) return await method(...data.params);
   console.log('Almost returning');
   return await method();
 };

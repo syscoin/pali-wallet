@@ -45,13 +45,12 @@ export const EthProvider = (host: string) => {
 
   const unrestrictedRPCMethods = async (
     method: string,
-    args: any[],
+    params: any[],
     network: any
   ) => {
-    console.log('checking requested args', args);
     console.log('checking requested network', network);
     if (!unrestrictedMethods.find((el) => el === method)) return false;
-    const resp = await web3Provider.send(method, args);
+    const resp = await web3Provider.send(method, params);
     return resp;
   };
 
