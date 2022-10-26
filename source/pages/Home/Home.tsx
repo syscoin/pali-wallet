@@ -17,7 +17,7 @@ export const Home = () => {
   const { navigate } = useUtils();
 
   //* Selectors
-  const { asset: fiatAsset } = useSelector(
+  const { asset: fiatAsset, price: fiatPrice } = useSelector(
     (state: RootState) => state.price.fiat
   );
   const lastLogin = useSelector((state: RootState) => state.vault.lastLogin);
@@ -76,7 +76,7 @@ export const Home = () => {
 
     setFiatPrice();
     setMainOrTestNetwork();
-  }, [isUnlocked, activeAccount.address, activeNetwork.chainId]);
+  }, [isUnlocked, activeAccount.address, activeNetwork.chainId, fiatPrice]);
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
