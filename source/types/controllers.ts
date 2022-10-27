@@ -152,6 +152,11 @@ export interface IDAppController {
    */
   hasWindow: (host: string) => boolean;
   /**
+   * If connected changes account granting permissions by EIP2255 reference
+   * @emits requestPermissions
+   */
+  requestPermissions: (host: string, accountId: number) => void;
+  /**
    * Checks if DApp is listed
    */
   isConnected: (host: string) => boolean;

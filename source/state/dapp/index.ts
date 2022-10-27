@@ -16,14 +16,15 @@ const DAppState = createSlice({
 
     updateDAppAccount(
       state: IDAppState,
-      action: PayloadAction<{ accountId: number; host: string }>
+      action: PayloadAction<{ accountId: number; date: number; host: string }>
     ) {
-      const { host, accountId } = action.payload;
+      const { host, accountId, date } = action.payload;
 
       if (!state.dapps[host])
         throw new Error('Unable to update account. DApp does not exist');
 
       state.dapps[host].accountId = accountId;
+      state.dapps[host].date = date;
     },
 
     removeDApp(state: IDAppState, action: PayloadAction<string>) {

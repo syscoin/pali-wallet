@@ -28,7 +28,7 @@ export const popupPromise = async ({
 
   data = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
 
-  const popup = await createPopup(route, { ...data, host });
+  const popup = await createPopup(route, { ...data, host, eventName });
   dapp.setHasWindow(host, true);
 
   return new Promise((resolve) => {

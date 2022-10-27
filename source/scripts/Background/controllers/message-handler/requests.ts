@@ -81,6 +81,23 @@ export const methodRequest = async (
           eventName: 'accountChange',
           data: { network: data.network },
         });
+      case 'requestPermissions':
+        return popupPromise({
+          host,
+          route: 'change-account',
+          eventName: 'requestPermissions',
+          data: { params: data.params },
+        });
+      case 'getPermissions':
+        //This implementation should be improved to integrate in a more appropriate way the EIP2255
+        const response: any = [{}];
+        response[0].caveats = [
+          { type: 'restrictReturnedAccounts', value: [dapp.getAccount(host)] },
+        ];
+        response[0].date = dapp.get(host).date;
+        response[0].invoker = host;
+        response[0].parentCapability = 'eth_accounts';
+        return response;
       default:
         throw new Error('Unknown method');
     }

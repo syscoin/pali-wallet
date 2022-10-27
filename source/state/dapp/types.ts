@@ -2,6 +2,7 @@ export interface IDApp {
   accountId: number;
   chain: string;
   chainId: number;
+  date: number;
   host: string;
   logo?: string;
 }
