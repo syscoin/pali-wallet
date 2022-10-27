@@ -54,10 +54,14 @@ export const EthProvider = (host: string) => {
     return resp;
   };
 
+  const restrictedRPCMethods = async (method: string, params: any[]) =>
+    await web3Provider.send(method, params);
+
   return {
     send,
     sendTransaction,
     signTypedDataV4,
     unrestrictedRPCMethods,
+    restrictedRPCMethods,
   };
 };

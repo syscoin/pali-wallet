@@ -37,11 +37,20 @@ export const methodRequest = async (
   const account = dapp.getAccount(host);
 
   const isRequestAllowed = dapp.isConnected(host) && account;
-
+  if (prefix === 'eth' && methodName === 'requestAccounts') {
+    console.log('Requisting to get eth accounts and connect wallet');
+    const acceptedRequest: any = await enable(host, undefined, undefined);
+    if (!acceptedRequest)
+      throw new Error('Restricted method. Connect before requesting');
+    console.log('AcceptedRequest data', acceptedRequest);
+    return acceptedRequest.connectedAccount.address;
+  }
   if (!isRequestAllowed)
     throw new Error('Restricted method. Connect before requesting');
-
   const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
+
+  if (prefix === 'eth' && methodName === 'accounts')
+    return [dapp.getAccount(host).address];
 
   console.log('Check data:', host);
   console.log('data:', data);
@@ -78,22 +87,28 @@ export const methodRequest = async (
   }
 
   //* Providers methods
-  const provider = prefix !== 'sys' ? EthProvider(host) : SysProvider(host);
-  console.log('Provider: ', provider);
-  const method = provider[methodName];
-  console.log('Method: ', method);
-  if (!method) throw new Error('Unknown method');
+  if (prefix !== 'sys') {
+    const provider = EthProvider(host);
+    const resp = await provider.restrictedRPCMethods(data.method, data.params);
+    if (!resp) throw new Error('Failure on RPC request');
+    return resp;
+  } else {
+    const provider = SysProvider(host);
+    const method = provider[methodName];
+    if (!method) throw new Error('Unknown method');
 
-  if (data.params) return await method(...data.params);
-  console.log('Almost returning');
-  return await method();
+    if (data.params) return await method(...data.params);
+    console.log('Almost returning');
+    return await method();
+  }
 };
 
 export const enable = async (host: string, chain: string, chainId: number) => {
   console.log('trying to connect pali to dapp');
   const { dapp } = window.controller;
   console.log('trying to connect pali to dapp', dapp.isConnected(host));
-  if (dapp.isConnected(host)) return { success: true };
+  if (dapp.isConnected(host))
+    return { connectedAccount: dapp.getAccount(host) };
 
   return popupPromise({
     host,

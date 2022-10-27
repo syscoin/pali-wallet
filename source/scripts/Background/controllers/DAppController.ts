@@ -49,7 +49,9 @@ const DAppController = (): IDAppController => {
   const connect = (dapp: IDApp) => {
     store.dispatch(addDApp(dapp));
 
-    _dispatchEvent(dapp.host, 'connect');
+    _dispatchEvent(dapp.host, 'connect', {
+      connectedAccount: getAccount(dapp.host),
+    });
   };
 
   const changeAccount = (host: string, accountId: number) => {
