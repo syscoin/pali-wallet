@@ -37,6 +37,12 @@ const PrivateKeyView = () => {
     alert.success('Successfully copied');
   }, [copied]);
 
+  const url = isBitcoinBased ? activeNetwork.url : activeNetwork.explorer;
+  const property = isBitcoinBased ? 'xpub' : 'address';
+  const value = isBitcoinBased ? activeAccount?.xpub : activeAccount.address;
+
+  const explorerLink = `${url}/${property}/${value}`;
+
   return (
     <Layout title="YOUR KEYS">
       <Card type="info">
@@ -48,13 +54,15 @@ const PrivateKeyView = () => {
         </p>
       </Card>
 
-      <CopyCard
-        className="my-4"
-        onClick={() => copyText(String(activeAccount?.xpub))}
-        label={isBitcoinBased ? 'Your XPUB' : 'Your Private Key'}
-      >
-        <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>
-      </CopyCard>
+      {isBitcoinBased && (
+        <CopyCard
+          className="my-4"
+          onClick={() => copyText(String(activeAccount?.xpub))}
+          label="Your XPUB"
+        >
+          <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>
+        </CopyCard>
+      )}
 
       <Form
         validateMessages={{ default: '' }}
@@ -67,15 +75,15 @@ const PrivateKeyView = () => {
         <Form.Item
           name="password"
           hasFeedback
-          className="md:w-full"
+          className="my-4 md:w-full"
           rules={[
             {
               required: true,
               message: '',
             },
             () => ({
-              validator(_, value) {
-                if (controller.wallet.checkPassword(value)) {
+              validator(_, pwd) {
+                if (controller.wallet.checkPassword(pwd)) {
                   setValid(true);
 
                   return Promise.resolve();
@@ -115,15 +123,9 @@ const PrivateKeyView = () => {
 
       <div className="absolute bottom-8 md:static">
         <NeutralButton
-          width="56 px-6"
+          width="56 px-8"
           type="button"
-          onClick={() =>
-            window.open(
-              `${isBitcoinBased ? activeNetwork.url : activeNetwork.explorer}/${
-                isBitcoinBased ? 'xpub' : 'address'
-              }/${activeAccount?.xpub}`
-            )
-          }
+          onClick={() => window.open(explorerLink)}
         >
           See on explorer
         </NeutralButton>
