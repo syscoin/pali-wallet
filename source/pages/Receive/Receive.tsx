@@ -89,8 +89,8 @@ export const Receive = () => {
       ) : (
         <Icon
           name="loading"
-          wrapperClassname="absolute top-1/2 left-1/2"
-          className="w-4 text-brand-white"
+          wrapperClassname="flex justify-center items-center w-screen h-80 animate-spin-slow"
+          className="w-12 text-brand-white"
         />
       )}
     </Layout>

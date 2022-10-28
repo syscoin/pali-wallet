@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
+import { browser } from 'webextension-polyfill-ts';
 
 import { Layout, Button, Icon } from 'components/index';
 import { RootState } from 'state/store';
@@ -23,17 +24,19 @@ export const DetailsView = () => {
   const isAsset = id && !hash;
 
   const openEthExplorer = () => {
-    const { explorer } = activeNetwork;
-
-    window.open(
-      `${explorer}/${isAsset ? 'address' : 'tx'}/${isAsset ? id : hash}`
-    );
+    browser.windows.create({
+      url: `${activeNetwork.explorer}/${isAsset ? 'address' : 'tx'}/${
+        isAsset ? id : hash
+      }`,
+    });
   };
 
   const openSysExplorer = () => {
-    window.open(
-      `${activeNetwork.url}/${isAsset ? 'asset' : 'tx'}/${isAsset ? id : hash}`
-    );
+    browser.windows.create({
+      url: `${activeNetwork.url}/${isAsset ? 'asset' : 'tx'}/${
+        isAsset ? id : hash
+      }`,
+    });
   };
 
   const isLoading = (isAsset && !id) || (!isAsset && !hash);
@@ -55,7 +58,7 @@ export const DetailsView = () => {
           <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-4 md:bottom-8 md:max-w-2xl">
             <p className="font-normal" style={{ lineHeight: '18px' }}>
               Would you like to go to view {isAsset ? 'asset' : 'transaction'}{' '}
-              on {isBitcoinBased ? 'SYS Block' : 'Etherscan'} Explorer?
+              on {isBitcoinBased ? 'Block' : 'Etherscan'} Explorer?
             </p>
 
             <Button
