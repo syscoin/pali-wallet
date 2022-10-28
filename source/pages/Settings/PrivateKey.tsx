@@ -17,6 +17,9 @@ const PrivateKeyView = () => {
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
 
   const { useCopyClipboard, alert } = useUtils();
 
@@ -48,7 +51,7 @@ const PrivateKeyView = () => {
       <CopyCard
         className="my-4"
         onClick={() => copyText(String(activeAccount?.xpub))}
-        label="Your XPUB"
+        label={isBitcoinBased ? 'Your XPUB' : 'Your Private Key'}
       >
         <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>
       </CopyCard>
@@ -100,7 +103,7 @@ const PrivateKeyView = () => {
         label="Your private key"
       >
         <p>
-          {valid && activeAccount.xprv
+          {valid && activeAccount.xpub
             ? ellipsis(
                 getDecryptedPrivateKey(form.getFieldValue('password')),
                 4,
@@ -115,7 +118,11 @@ const PrivateKeyView = () => {
           width="56 px-6"
           type="button"
           onClick={() =>
-            window.open(`${activeNetwork.url}/xpub/${activeAccount?.xpub}`)
+            window.open(
+              `${isBitcoinBased ? activeNetwork.url : activeNetwork.explorer}/${
+                isBitcoinBased ? 'xpub' : 'address'
+              }/${activeAccount?.xpub}`
+            )
           }
         >
           See on explorer
