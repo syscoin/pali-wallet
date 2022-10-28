@@ -41,7 +41,9 @@ const PrivateKeyView = () => {
   const property = isBitcoinBased ? 'xpub' : 'address';
   const value = isBitcoinBased ? activeAccount?.xpub : activeAccount.address;
 
-  const explorerLink = `${url}/${property}/${value}`;
+  const explorerLink = isBitcoinBased
+    ? `${url}/${property}/${value}`
+    : `${url}${property}/${value}`;
 
   return (
     <Layout title="YOUR KEYS">

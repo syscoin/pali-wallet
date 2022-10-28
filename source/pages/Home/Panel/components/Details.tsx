@@ -25,7 +25,7 @@ export const DetailsView = () => {
 
   const openEthExplorer = () => {
     browser.windows.create({
-      url: `${activeNetwork.explorer}/${isAsset ? 'address' : 'tx'}/${
+      url: `${activeNetwork.explorer}${isAsset ? 'address' : 'tx'}/${
         isAsset ? id : hash
       }`,
     });
