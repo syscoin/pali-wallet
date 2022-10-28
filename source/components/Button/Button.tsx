@@ -9,7 +9,6 @@ interface IPrimaryButton {
   id?: string;
   loading?: boolean;
   onClick?: () => any;
-  ref?: (any) => void;
   type: 'button' | 'submit' | 'reset' | undefined;
   width?: string;
 }
@@ -56,11 +55,8 @@ export const PrimaryButton: React.FC<IPrimaryButton> = ({
   loading = false,
   onClick,
   type = 'submit',
-  ref,
   width = '36',
 }) => {
-  const loadingIcon = <Icon name="loading" className="text-brand-white" />;
-
   const checkIcon = (
     <Icon
       name="check-outlined"
@@ -81,10 +77,13 @@ export const PrimaryButton: React.FC<IPrimaryButton> = ({
       onClick={onClick}
       type={type}
       id={id}
-      ref={ref}
     >
       {loading ? (
-        loadingIcon
+        <Icon
+          name="loading"
+          color="#4d76b8"
+          className="w-6 animate-spin-slow"
+        />
       ) : (
         <>
           {action && checkIcon}
@@ -104,8 +103,6 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
   onClick,
   type,
 }) => {
-  const loadingIcon = <Icon name="loading" className="text-brand-white" />;
-
   const closeIcon = (
     <Icon
       name="close"
@@ -129,7 +126,11 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
       id={id}
     >
       {loading ? (
-        loadingIcon
+        <Icon
+          name="loading"
+          color="#4d76b8"
+          className="w-6 animate-spin-slow"
+        />
       ) : (
         <>
           {action && closeIcon}
@@ -147,24 +148,24 @@ export const NeutralButton: React.FC<IPrimaryButton> = ({
   loading = false,
   onClick,
   type = 'button',
-}) => {
-  const loadingIcon = <Icon name="loading" className="text-brand-white" />;
-
-  return (
-    <button
-      className={`
+}) => (
+  <button
+    className={`
       flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal text-sm leading-4 w-36 h-10 text-brand-royalblue
       ${
         disabled || loading
           ? 'opacity-60 cursor-not-allowed'
           : 'opacity-100 hover:opacity-90'
       } border-button-neutral transition-all duration-300 bg-button-neutral w-36 py-2.5`}
-      disabled={disabled || loading}
-      onClick={onClick}
-      type={type}
-      id={id}
-    >
-      {loading ? loadingIcon : <>{children}</>}
-    </button>
-  );
-};
+    disabled={disabled || loading}
+    onClick={onClick}
+    type={type}
+    id={id}
+  >
+    {loading ? (
+      <Icon name="loading" color="#4d76b8" className="w-6 animate-spin-slow" />
+    ) : (
+      <>{children}</>
+    )}
+  </button>
+);
