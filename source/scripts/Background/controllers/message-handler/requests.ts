@@ -39,11 +39,11 @@ export const methodRequest = async (
   const isRequestAllowed = dapp.isConnected(host) && account;
   if (prefix === 'eth' && methodName === 'requestAccounts') {
     console.log('Requisting to get eth accounts and connect wallet');
-    const acceptedRequest: any = await enable(host, undefined, undefined);
-    if (!acceptedRequest)
-      throw new Error('Restricted method. Connect before requesting');
-    console.log('AcceptedRequest data', acceptedRequest);
-    return acceptedRequest.connectedAccount.address;
+    return await enable(host, undefined, undefined);
+    // if (!acceptedRequest)
+    //   throw new Error('Restricted method. Connect before requesting');
+    // console.log('AcceptedRequest data', acceptedRequest);
+    // return acceptedRequest.connectedAccount.address;
   }
   if (!isRequestAllowed)
     throw new Error('Restricted method. Connect before requesting');
@@ -124,13 +124,16 @@ export const enable = async (host: string, chain: string, chainId: number) => {
   console.log('trying to connect pali to dapp');
   const { dapp } = window.controller;
   console.log('trying to connect pali to dapp', dapp.isConnected(host));
-  if (dapp.isConnected(host))
-    return { connectedAccount: dapp.getAccount(host) };
+  if (dapp.isConnected(host)) return [dapp.getAccount(host).address];
 
-  return popupPromise({
+  const acceptedRequest: any = await popupPromise({
     host,
     route: 'connect-wallet',
     eventName: 'connect',
     data: { chain, chainId },
   });
+  if (!acceptedRequest)
+    throw new Error('Restricted method. Connect before requesting');
+  console.log('AcceptedRequest data', acceptedRequest);
+  return [acceptedRequest.connectedAccount.address];
 };

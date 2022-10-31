@@ -129,6 +129,8 @@ window.ethereum = {
   request,
   on,
   removeListener,
+  chainId: '0x89',
+  networkVersion: '137',
   isConnected: () => request({ method: 'wallet_isConnected' }),
   enable: () =>
     proxy('ENABLE', { chain: 'ethereum', chainId: 1 }),

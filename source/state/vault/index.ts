@@ -7,6 +7,8 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
+import { inject } from 'scripts/ContentScript/inject';
+
 import { IVaultState } from './types';
 
 export const initialState: IVaultState = {
@@ -126,6 +128,11 @@ const VaultState = createSlice({
     },
     setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload;
+      // inject.ethereum.chainId = action.payload.chainId.toString();
+      // inject.ethereum.networkVersion = parseInt(
+      //   action.payload.chainId.toString(),
+      //   16
+      // ).toString();
     },
     setIsPendingBalances(state: IVaultState, action: PayloadAction<boolean>) {
       state.isPendingBalances = action.payload;
