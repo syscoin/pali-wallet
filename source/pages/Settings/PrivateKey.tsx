@@ -17,6 +17,9 @@ const PrivateKeyView = () => {
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
 
   const { useCopyClipboard, alert } = useUtils();
 
@@ -34,6 +37,14 @@ const PrivateKeyView = () => {
     alert.success('Successfully copied');
   }, [copied]);
 
+  const url = isBitcoinBased ? activeNetwork.url : activeNetwork.explorer;
+  const property = isBitcoinBased ? 'xpub' : 'address';
+  const value = isBitcoinBased ? activeAccount?.xpub : activeAccount.address;
+
+  const explorerLink = isBitcoinBased
+    ? `${url}/${property}/${value}`
+    : `${url}${property}/${value}`;
+
   return (
     <Layout title="YOUR KEYS">
       <Card type="info">
@@ -45,13 +56,15 @@ const PrivateKeyView = () => {
         </p>
       </Card>
 
-      <CopyCard
-        className="my-4"
-        onClick={() => copyText(String(activeAccount?.xpub))}
-        label="Your XPUB"
-      >
-        <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>
-      </CopyCard>
+      {isBitcoinBased && (
+        <CopyCard
+          className="my-4"
+          onClick={() => copyText(String(activeAccount?.xpub))}
+          label="Your XPUB"
+        >
+          <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>
+        </CopyCard>
+      )}
 
       <Form
         validateMessages={{ default: '' }}
@@ -64,15 +77,15 @@ const PrivateKeyView = () => {
         <Form.Item
           name="password"
           hasFeedback
-          className="md:w-full"
+          className="my-4 md:w-full"
           rules={[
             {
               required: true,
               message: '',
             },
             () => ({
-              validator(_, value) {
-                if (controller.wallet.checkPassword(value)) {
+              validator(_, pwd) {
+                if (controller.wallet.checkPassword(pwd)) {
                   setValid(true);
 
                   return Promise.resolve();
@@ -100,7 +113,7 @@ const PrivateKeyView = () => {
         label="Your private key"
       >
         <p>
-          {valid && activeAccount.xprv
+          {valid && activeAccount.xpub
             ? ellipsis(
                 getDecryptedPrivateKey(form.getFieldValue('password')),
                 4,
@@ -112,11 +125,9 @@ const PrivateKeyView = () => {
 
       <div className="absolute bottom-8 md:static">
         <NeutralButton
-          width="56 px-6"
+          width="56 px-8"
           type="button"
-          onClick={() =>
-            window.open(`${activeNetwork.url}/xpub/${activeAccount?.xpub}`)
-          }
+          onClick={() => window.open(explorerLink)}
         >
           See on explorer
         </NeutralButton>
