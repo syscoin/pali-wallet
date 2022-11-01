@@ -7,14 +7,14 @@ export type Message = {
 
 export enum DAppEvents {
   /**
-   * A new account was selected
-   */
-  accountChange = 'accountChange',
-  /**
    * The active account received an update
    */
   accountUpdate = 'accountUpdate',
-  chainChange = 'chainChange',
+  /**
+   * A new account was selected
+   */
+  accountsChanged = 'accountsChanged',
+  chainChanged = 'chainChanged',
   connect = 'connect',
   disconnect = 'disconnect',
 }

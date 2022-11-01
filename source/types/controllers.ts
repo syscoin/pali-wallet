@@ -113,11 +113,16 @@ export interface IDAppController {
    * Adds an event listener
    */
   addListener: (host: string, eventName: string) => void;
+  chainId: number;
   /**
    * Changes the account
-   * @emits accountChange
+   * @emits accountsChanged
    */
   changeAccount: (host: string, accountId: number) => void;
+  /**
+   * Changes the active network
+   */
+  changeNetwork: (host: string, chainId: number) => void;
   /**
    * Completes a connection with a DApp
    * @emits connect
@@ -152,11 +157,6 @@ export interface IDAppController {
    */
   hasWindow: (host: string) => boolean;
   /**
-   * If connected changes account granting permissions by EIP2255 reference
-   * @emits requestPermissions
-   */
-  requestPermissions: (host: string, accountId: number) => void;
-  /**
    * Checks if DApp is listed
    */
   isConnected: (host: string) => boolean;
@@ -169,9 +169,15 @@ export interface IDAppController {
    */
   removeListeners: (host: string) => void;
   /**
+   * If connected changes account granting permissions by EIP2255 reference
+   * @emits requestPermissions
+   */
+  requestPermissions: (host: string, accountId: number) => void;
+  /**
    * Sets whether a DApp has an open popup
    */
   setHasWindow: (host: string, hasWindow: boolean) => void;
+
   /**
    * Setup communication
    */

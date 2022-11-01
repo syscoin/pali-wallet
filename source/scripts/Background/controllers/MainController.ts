@@ -88,7 +88,7 @@ const MainController = (): IMainController => {
     store.dispatch(setActiveAccount(newAccount));
 
     window.controller.dapp.dispatchEvent(
-      DAppEvents.accountChange,
+      DAppEvents.accountsChanged,
       removeXprv(newAccount)
     );
 
@@ -104,7 +104,7 @@ const MainController = (): IMainController => {
     walletController.account.sys.getLatestUpdate(false);
 
     window.controller.dapp.dispatchEvent(
-      DAppEvents.accountChange,
+      DAppEvents.accountsChanged,
       removeXprv(accounts[id])
     );
   };
@@ -147,7 +147,7 @@ const MainController = (): IMainController => {
         walletController.account.sys.setAddress();
       }
 
-      window.controller.dapp.dispatchEvent(DAppEvents.chainChange, network);
+      window.controller.dapp.dispatchEvent(DAppEvents.chainChanged, network);
 
       return networkAccount;
     } catch (error) {

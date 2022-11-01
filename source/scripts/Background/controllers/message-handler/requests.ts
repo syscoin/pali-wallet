@@ -78,7 +78,7 @@ export const methodRequest = async (
         return popupPromise({
           host,
           route: 'change-account',
-          eventName: 'accountChange',
+          eventName: 'accountsChanged',
           data: { network: data.network },
         });
       case 'requestPermissions':
@@ -98,6 +98,8 @@ export const methodRequest = async (
         response[0].invoker = host;
         response[0].parentCapability = 'eth_accounts';
         return response;
+      case 'chainId':
+        return dapp.chainId;
       default:
         throw new Error('Unknown method');
     }

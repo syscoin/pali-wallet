@@ -7,6 +7,7 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
   interface Window {
     SUPPORTED_WALLET_METHODS: any;
+    ethereum: Readonly<any>;
     pali: Readonly<any>;
   }
 }
