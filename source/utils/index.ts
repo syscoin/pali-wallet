@@ -9,3 +9,5 @@ export * from './notifications';
 export * from './tokens';
 export * from './formatTransactionValue';
 export * from './transactions';
+export * from './removeScientificNotation';
+export * from './verifyZerosInValueAndFormat';

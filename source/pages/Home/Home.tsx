@@ -17,7 +17,9 @@ export const Home = () => {
   const { navigate } = useUtils();
 
   //* Selectors
-  const fiat = useSelector((state: RootState) => state.price.fiat);
+  const { asset: fiatAsset, price: fiatPrice } = useSelector(
+    (state: RootState) => state.price.fiat
+  );
   const lastLogin = useSelector((state: RootState) => state.vault.lastLogin);
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
@@ -34,7 +36,6 @@ export const Home = () => {
 
   //* States
   const [fiatPriceValue, setFiatPriceValue] = useState('');
-  const [balance, setBalance] = useState(0);
   const [isTestnet, setIsTestnet] = useState(false);
 
   //* Constants
@@ -42,17 +43,10 @@ export const Home = () => {
   const isUnlocked =
     controller.wallet.isUnlocked() && activeAccount.address !== '';
 
-  //* Effects
-  useEffect(() => {
-    const { syscoin, ethereum } = activeAccount.balances;
+  const { syscoin: syscoinBalance, ethereum: ethereumBalance } =
+    activeAccount.balances;
 
-    setBalance(isBitcoinBased ? syscoin : ethereum);
-  }, [activeNetwork]);
-
-  useEffect(() => {
-    setFiatPrice();
-    setMainOrTestNetwork();
-  }, [isUnlocked && activeNetwork.chainId]);
+  const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
 
   //* Functions
   const setMainOrTestNetwork = async () => {
@@ -67,14 +61,22 @@ export const Home = () => {
 
   const setFiatPrice = () => {
     const amount = getFiatAmount(
-      balance || 0,
+      actualBalance || 0,
       4,
-      String(fiat.asset).toUpperCase(),
+      String(fiatAsset).toUpperCase(),
       true
     );
 
     setFiatPriceValue(String(amount));
   };
+
+  //* Effect
+  useEffect(() => {
+    if (!isUnlocked) return;
+
+    setFiatPrice();
+    setMainOrTestNetwork();
+  }, [isUnlocked, activeAccount.address, activeNetwork.chainId, fiatPrice]);
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
@@ -89,7 +91,7 @@ export const Home = () => {
                   id="home-balance"
                   className="font-rubik text-5xl font-medium"
                 >
-                  {formatNumber(balance || 0)}{' '}
+                  {formatNumber(actualBalance || 0)}{' '}
                 </p>
 
                 <p className="mt-4 font-poppins">
