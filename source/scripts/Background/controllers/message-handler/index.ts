@@ -1,5 +1,7 @@
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
+import { web3Provider } from '@pollum-io/sysweb3-network';
+
 import store from 'state/store';
 
 import { methodRequest, enable } from './requests';
@@ -22,6 +24,9 @@ const _messageHandler = async (host: string, message: Message) => {
 
   const { dapp } = window.controller;
 
+  const chainId = await web3Provider.send('eth_chainId', []);
+  const networkVersion = await web3Provider.send('net_version', []);
+
   switch (message.type) {
     case 'EVENT_REG':
       return dapp.addListener(host, message.data.eventName);
@@ -33,6 +38,10 @@ const _messageHandler = async (host: string, message: Message) => {
       return dapp.disconnect(host);
     case 'METHOD_REQUEST':
       return methodRequest(host, message.data);
+    case 'CHAIN_ID':
+      return chainId || 'Unknown';
+    case 'NETWORK_VERSION':
+      return networkVersion || 'Unknown';
     default:
       throw new Error('Unknown message type');
   }

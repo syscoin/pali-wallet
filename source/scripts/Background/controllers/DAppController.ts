@@ -57,19 +57,23 @@ const DAppController = (): IDAppController => {
 
   const requestPermissions = (host: string, accountId: number) => {
     const date = Date.now();
+
     store.dispatch(updateDAppAccount({ host, accountId, date }));
+
     const { accounts } = store.getState().vault;
     const account = accounts[accountId];
-    console.log('Checking account', account);
+
     if (!account) return null;
     const response: any = [{}];
+
     response[0].caveats = [
       { type: 'restrictReturnedAccounts', value: [account] },
     ];
+
     response[0].date = date;
     response[0].invoker = host;
     response[0].parentCapability = 'eth_accounts';
-    console.log('Checking reponse', response);
+
     _dispatchEvent(host, 'requestPermissions', response);
   };
 
@@ -172,8 +176,6 @@ const DAppController = (): IDAppController => {
     };
   };
 
-  const { chainId } = getNetwork();
-
   const hasWindow = (host: string) => _dapps[host].hasWindow;
 
   const setHasWindow = (host: string, has: boolean) => {
@@ -200,7 +202,6 @@ const DAppController = (): IDAppController => {
     getNetwork,
     setHasWindow,
     changeNetwork,
-    chainId,
   };
 };
 

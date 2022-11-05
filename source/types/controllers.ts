@@ -113,7 +113,6 @@ export interface IDAppController {
    * Adds an event listener
    */
   addListener: (host: string, eventName: string) => void;
-  chainId: number;
   /**
    * Changes the account
    * @emits accountsChanged

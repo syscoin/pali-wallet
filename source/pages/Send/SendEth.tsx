@@ -50,11 +50,6 @@ export const SendEth = () => {
     setRecommendedGasLimit(Number(gasLimit));
     setFeeValue(Number(gasPrice.gwei) * Number(gasLimit));
 
-    console.log({
-      gasPrice,
-      gasLimit,
-      fee: Number(gasPrice.gwei) * Number(gasLimit),
-    });
     form.setFieldsValue({
       fee: recommendedGasPrice,
       gasLimit,
