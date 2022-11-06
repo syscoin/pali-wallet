@@ -10,23 +10,27 @@ import { unrestrictedMethods } from 'scripts/Background/controllers/message-hand
 import store from 'state/store';
 
 export const EthProvider = (host: string) => {
-  const sendTransaction = (data: { to: string; value: number }) => {
+  const sendTransaction = async (params: {
+    data: string;
+    from: string;
+    gas: string;
+    to: string;
+    value: number;
+  }) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
 
-    const from = window.controller.dapp.getAccount(host).address;
+    // const from = window.controller.dapp.getAccount(host).address;
 
-    const tx = {
-      sender: from,
-      receivingAddress: data.to,
-      amount: data.value,
-    };
+    const tx = params;
 
-    return popupPromise({
+    const resp = await popupPromise({
       host,
       data: tx,
-      route: 'tx/send/confirm',
+      route: 'tx/send/ethTx',
       eventName: 'txSend',
     });
+    console.log('Checking final response', resp);
+    return resp;
   };
 
   const signTypedDataV4 = (data: TypedData) =>
@@ -48,14 +52,18 @@ export const EthProvider = (host: string) => {
     params: any[],
     network: any
   ) => {
-    console.log('checking requested network', network);
     if (!unrestrictedMethods.find((el) => el === method)) return false;
     const resp = await web3Provider.send(method, params);
     return resp;
   };
 
-  const restrictedRPCMethods = async (method: string, params: any[]) =>
-    await web3Provider.send(method, params);
+  const restrictedRPCMethods = async (method: string, params: any[]) => {
+    if (method === 'eth_sendTransaction') {
+      console.log('Sending transaction', params);
+      return await sendTransaction(params[0]);
+    }
+    return await web3Provider.send(method, params);
+  };
 
   return {
     send,

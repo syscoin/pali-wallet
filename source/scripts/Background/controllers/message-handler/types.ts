@@ -36,6 +36,18 @@ export enum DAppMethods {
 
 export const SUPPORTED_CHAINS = ['syscoin', 'ethereum'];
 
+export const restrictedMethods = Object.freeze([
+  'eth_sendRawTransaction',
+  'eth_sendTransaction',
+  'eth_sign',
+  'eth_signTypedData',
+  'eth_signTypedData_v1',
+  'eth_signTypedData_v3',
+  'eth_signTypedData_v4',
+  'personal_ecRecover',
+  'personal_sign',
+]);
+
 export const unrestrictedMethods = Object.freeze([
   'eth_blockNumber',
   'eth_call',
@@ -73,13 +85,6 @@ export const unrestrictedMethods = Object.freeze([
   'eth_newFilter',
   'eth_newPendingTransactionFilter',
   'eth_protocolVersion',
-  'eth_sendRawTransaction',
-  'eth_sendTransaction',
-  'eth_sign',
-  'eth_signTypedData',
-  'eth_signTypedData_v1',
-  'eth_signTypedData_v3',
-  'eth_signTypedData_v4',
   'eth_submitHashrate',
   'eth_submitWork',
   'eth_syncing',
@@ -89,8 +94,6 @@ export const unrestrictedMethods = Object.freeze([
   'net_listening',
   'net_peerCount',
   'net_version',
-  'personal_ecRecover',
-  'personal_sign',
   'wallet_watchAsset',
   'web3_clientVersion',
   'web3_sha3',

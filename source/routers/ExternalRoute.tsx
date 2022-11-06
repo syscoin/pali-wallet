@@ -12,6 +12,7 @@ import {
   MintToken,
   SendToken,
   SendConfirm,
+  SendTransaction,
   SignAndSend,
   Sign,
   Start,
@@ -82,6 +83,10 @@ export const ExternalRoute = () => {
           <Route
             path="send/confirm"
             element={<ProtectedRoute element={<SendConfirm />} />}
+          />
+          <Route
+            path="send/ethTx"
+            element={<ProtectedRoute element={<SendTransaction />} />}
           />
           <Route
             path="sign"
