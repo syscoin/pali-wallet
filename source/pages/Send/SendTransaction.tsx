@@ -19,9 +19,6 @@ export const SendTransaction = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -62,6 +59,7 @@ export const SendTransaction = () => {
           value: tx.value,
           maxPriorityFeePerGas: maxPriorityFeePerGas,
           maxFeePerGas: maxFeePerGas,
+          chainId: activeNetwork.chainId,
         };
         const response = await txs.sendFormattedTransaction(formTx);
         console.log('tx resp', response);
