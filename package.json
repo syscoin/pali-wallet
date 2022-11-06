@@ -70,6 +70,7 @@
     "babel-jest": "^27.5.1",
     "babel-plugin-transform-es2015-modules-commonjs": "^6.26.2",
     "bech32": "^2.0.0",
+    "bignumber.js": "^9.0.2",
     "bip174": "^2.0.1",
     "bip39": "^3.0.4",
     "bip44-constants": "^114.0.0",
