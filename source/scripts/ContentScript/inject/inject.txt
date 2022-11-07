@@ -5,7 +5,7 @@ const proxy = (type, data) =>
   new Promise((resolve, reject) => {
     const id = Date.now() + '.' + Math.random();
 
-    window.addEventListener(
+     window.addEventListener(
       id,
       (event) => {
         console.log('[Pali] EventListener method', event.detail);
@@ -24,14 +24,17 @@ const proxy = (type, data) =>
         }
 
         resolve(response);
+
+        return response;
       },
       {
         once: true,
         passive: true,
       }
     );
+    
     console.log('[Pali] PostMessage method', id, type, data);
-    window.postMessage(
+     window.postMessage(
       {
         id,
         type,
@@ -129,13 +132,12 @@ window.ethereum = {
   wallet: 'pali-v2',
   request,
   on,
-  chainId: proxy('CHAIN_ID'), 
-  networkVersion: proxy('NETWORK_VERSION'),
+  chainId: undefined, 
+  networkVersion: undefined,
   removeListener,
   isConnected: () => request({ method: 'wallet_isConnected' }),
   enable: () =>
     proxy('ENABLE', { chain: 'ethereum', chainId: 1 }),
   disable: () => proxy('DISABLE'),
   _listeners: {},
-};
-
+}

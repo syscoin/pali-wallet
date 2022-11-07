@@ -147,7 +147,10 @@ const MainController = (): IMainController => {
         walletController.account.sys.setAddress();
       }
 
-      window.controller.dapp.dispatchEvent(DAppEvents.chainChanged, network);
+      window.controller.dapp.dispatchEvent(
+        DAppEvents.chainChanged,
+        network.chainId
+      );
 
       return networkAccount;
     } catch (error) {

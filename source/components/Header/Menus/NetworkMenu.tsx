@@ -11,7 +11,7 @@ import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 export const NetworkMenu: React.FC = () => {
-  const { wallet } = getController();
+  const { wallet, dapp } = getController();
 
   const networks = useSelector((state: RootState) => state.vault.networks);
   const isBitcoinBased = useSelector(
@@ -27,6 +27,7 @@ export const NetworkMenu: React.FC = () => {
   const handleChangeNetwork = (network: INetwork, chain: string) => {
     try {
       wallet.setActiveNetwork(network, chain);
+      dapp.changeNetwork(network.chainId);
     } catch (networkError) {
       navigate('/home');
     }

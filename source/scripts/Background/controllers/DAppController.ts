@@ -91,9 +91,7 @@ const DAppController = (): IDAppController => {
     store.dispatch(removeDApp(host));
   };
 
-  const changeNetwork = (host: string, chainId: number) => {
-    _dispatchEvent(host, 'chainChanged', chainId);
-
+  const changeNetwork = (chainId: number) => {
     const { isBitcoinBased, networks } = store.getState().vault;
 
     const network = isBitcoinBased
@@ -101,6 +99,8 @@ const DAppController = (): IDAppController => {
       : networks.ethereum[chainId];
 
     store.dispatch(setActiveNetwork(network));
+
+    dispatchEvent(DAppEvents.chainChanged, chainId);
   };
 
   //* ----- Event listeners -----
@@ -143,8 +143,13 @@ const DAppController = (): IDAppController => {
     if (!hasListener(host, eventName)) return;
     if (!isConnected(host)) return;
 
+    console.log({ host, eventName, data, event });
+
     // post the event to the DApp
     const id = `${host}.${eventName}`;
+
+    console.log({ id });
+
     _dapps[host].port.postMessage({ id, data });
   };
 

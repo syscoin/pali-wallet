@@ -1,6 +1,8 @@
 import { EventEmitter } from 'events';
 import { browser } from 'webextension-polyfill-ts';
 
+import { web3Provider } from '@pollum-io/sysweb3-network';
+
 import { DAppMethods } from 'scripts/Background/controllers/message-handler/types';
 
 import { inject as _inject } from './inject';
@@ -12,11 +14,6 @@ const emitter = new EventEmitter();
 // Connect to pali
 const backgroundPort = browser.runtime.connect(undefined, {
   name: 'pali-inject',
-});
-
-// Every message from pali emits an event
-backgroundPort.onMessage.addListener(({ id, data }) => {
-  emitter.emit(id, data);
 });
 
 // Add listener for pali events
@@ -79,3 +76,27 @@ const inject = (content: string) => {
 
 inject(`window.SUPPORTED_WALLET_METHODS = ${JSON.stringify(DAppMethods)}`);
 inject(_inject);
+
+const setDappNetworkProvider = () => {
+  const chainId = web3Provider.send('eth_chainId', []);
+  const networkVersion = web3Provider.send('net_version', []);
+
+  Promise.all([chainId, networkVersion]).then(([id, version]) => {
+    console.log({ id, version });
+    inject(`window.ethereum.chainId = ${String(id)}`);
+    inject(`window.ethereum.networkVersion = ${version}`);
+  });
+};
+
+// Every message from pali emits an event
+backgroundPort.onMessage.addListener(({ id, data }) => {
+  emitter.emit(id, data);
+
+  console.log({ id, data });
+});
+
+emitter.on('chainChanged', () => {
+  setDappNetworkProvider();
+});
+
+setDappNetworkProvider();

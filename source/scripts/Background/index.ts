@@ -47,7 +47,7 @@ browser.runtime.onMessage.addListener(({ type, target }) => {
   if (type === 'autolock' && target === 'background') restartLockTimeout();
 });
 
-browser.runtime.onConnect.addListener((port: Runtime.Port) => {
+browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
   if (port.name === 'pali-inject') {
     window.controller.dapp.setup(port);
 

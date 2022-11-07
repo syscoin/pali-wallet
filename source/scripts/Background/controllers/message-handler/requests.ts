@@ -26,8 +26,7 @@ export const methodRequest = async (
     const provider = EthProvider(host);
     const resp = await provider.unrestrictedRPCMethods(
       data.method,
-      data.params,
-      data.network
+      data.params
     );
     if (resp !== false && resp !== undefined && resp !== null) {
       return resp; //Sending back to Dapp non restrictive method response

@@ -121,7 +121,7 @@ export interface IDAppController {
   /**
    * Changes the active network
    */
-  changeNetwork: (host: string, chainId: number) => void;
+  changeNetwork: (chainId: number) => void;
   /**
    * Completes a connection with a DApp
    * @emits connect
