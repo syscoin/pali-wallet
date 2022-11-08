@@ -32,18 +32,13 @@ const EthAccountController = (): IEthAccountController => {
 
       if (tokenExists) throw new Error('Token already exists');
 
-      const balance = await web3Accounts.getErc20TokenBalance(
-        String(token.contractAddress),
-        activeAccount.address
-      );
-
       const { coins } = await getSearch(token.tokenSymbol);
 
       const { name, thumb } = coins[0];
 
       const web3Token = {
         ...token,
-        balance,
+        balance: token.balance,
         name,
         id: token.contractAddress,
         logo: thumb,

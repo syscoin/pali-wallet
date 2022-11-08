@@ -112,7 +112,7 @@ const MainController = (): IMainController => {
   const setActiveNetwork = async (network: INetwork, chain: string) => {
     store.dispatch(setIsPendingBalances(true));
 
-    const { activeNetwork } = store.getState().vault;
+    const { activeNetwork, activeAccount } = store.getState().vault;
 
     const isBitcoinBased =
       chain === 'syscoin' && (await isBitcoinBasedNetwork(network));
@@ -125,9 +125,13 @@ const MainController = (): IMainController => {
         chain
       );
 
+      const { assets } = activeAccount;
+
+      const account = { ...networkAccount, assets };
+
       store.dispatch(setNetwork(network));
       store.dispatch(setIsPendingBalances(false));
-      store.dispatch(setActiveAccount(networkAccount));
+      store.dispatch(setActiveAccount(account));
 
       if (isBitcoinBased) {
         store.dispatch(

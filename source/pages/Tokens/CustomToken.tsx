@@ -1,4 +1,6 @@
 import { Form, Input } from 'antd';
+import { ethers } from 'ethers';
+import loadsh from 'lodash';
 import * as React from 'react';
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -47,6 +49,9 @@ export const CustomToken = () => {
         web3Provider
       );
 
+      const balance = ethers.utils.formatEther(metadata.balance);
+      const formattedBalance = loadsh.floor(parseFloat(balance), 4);
+
       if (metadata) {
         form.setFieldValue('symbol', metadata.tokenSymbol.toUpperCase());
 
@@ -54,6 +59,7 @@ export const CustomToken = () => {
           tokenSymbol: metadata.tokenSymbol.toUpperCase(),
           contractAddress,
           decimals,
+          balance: formattedBalance,
         });
 
         setAdded(true);
