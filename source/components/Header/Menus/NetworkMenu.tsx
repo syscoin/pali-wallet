@@ -2,6 +2,7 @@ import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { uniqueId } from 'lodash';
 import React from 'react';
 import { useSelector } from 'react-redux';
+import { browser } from 'webextension-polyfill-ts';
 
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
@@ -28,6 +29,10 @@ export const NetworkMenu: React.FC = () => {
     try {
       wallet.setActiveNetwork(network, chain);
       dapp.changeNetwork(network.chainId);
+
+      browser.runtime.sendMessage({
+        type: 'CHAIN_CHANGED',
+      });
     } catch (networkError) {
       navigate('/home');
     }

@@ -88,15 +88,13 @@ const setDappNetworkProvider = () => {
   });
 };
 
+browser.runtime.onMessage.addListener(({ type }) => {
+  if (type === 'CHAIN_CHANGED') setDappNetworkProvider();
+});
+
 // Every message from pali emits an event
 backgroundPort.onMessage.addListener(({ id, data }) => {
   emitter.emit(id, data);
-
-  console.log({ id, data });
-});
-
-emitter.on('chainChanged', () => {
-  setDappNetworkProvider();
 });
 
 setDappNetworkProvider();
