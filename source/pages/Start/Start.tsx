@@ -2,6 +2,7 @@ import { Form, Input } from 'antd';
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
+import { browser } from 'webextension-polyfill-ts';
 
 import LogoImage from 'assets/images/logo-s.svg';
 import { PrimaryButton } from 'components/index';
@@ -16,6 +17,9 @@ export const Start = () => {
   } = getController();
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
+  );
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
   );
 
   const getStarted = (
@@ -36,6 +40,8 @@ export const Start = () => {
 
   const onSubmit = async ({ password }: { password: string }) => {
     await unlock(password);
+
+    if (isBitcoinBased) browser.runtime.sendMessage({ type: 'CHAIN_CHANGED' });
 
     navigate('/home');
   };

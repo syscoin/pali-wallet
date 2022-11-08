@@ -2,7 +2,7 @@ import {
   KeyringManager,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
-import { getSysRpc, getEthRpc } from '@pollum-io/sysweb3-network';
+import { getSysRpc, getEthRpc, web3Provider } from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
@@ -147,12 +147,15 @@ const MainController = (): IMainController => {
         walletController.account.sys.setAddress();
       }
 
+      const chainId = await web3Provider.send('eth_chainId', []);
+      const networkVersion = await web3Provider.send('net_version', []);
+
       window.controller.dapp.dispatchEvent(
         DAppEvents.chainChanged,
         network.chainId
       );
 
-      return networkAccount;
+      return { chainId, networkVersion };
     } catch (error) {
       setActiveNetwork(activeNetwork, networkChain());
 

@@ -27,12 +27,16 @@ export const NetworkMenu: React.FC = () => {
 
   const handleChangeNetwork = (network: INetwork, chain: string) => {
     try {
-      wallet.setActiveNetwork(network, chain);
-      dapp.changeNetwork(network.chainId);
+      wallet
+        .setActiveNetwork(network, chain)
+        .then(({ networkVersion, chainId }: any) => {
+          dapp.changeNetwork(network.chainId);
 
-      browser.runtime.sendMessage({
-        type: 'CHAIN_CHANGED',
-      });
+          browser.runtime.sendMessage({
+            type: 'CHAIN_CHANGED',
+            data: { networkVersion, chainId },
+          });
+        });
     } catch (networkError) {
       navigate('/home');
     }

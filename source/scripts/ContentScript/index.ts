@@ -77,19 +77,27 @@ const inject = (content: string) => {
 inject(`window.SUPPORTED_WALLET_METHODS = ${JSON.stringify(DAppMethods)}`);
 inject(_inject);
 
-const setDappNetworkProvider = () => {
-  const chainId = web3Provider.send('eth_chainId', []);
-  const networkVersion = web3Provider.send('net_version', []);
+const setDappNetworkProvider = (networkVersion?: any, chainId?: any) => {
+  if (networkVersion && chainId) {
+    inject(`window.ethereum.chainId = ${chainId}`);
+    inject(`window.ethereum.networkVersion = ${networkVersion}`);
 
-  Promise.all([chainId, networkVersion]).then(([id, version]) => {
+    return;
+  }
+
+  const ethChainId = web3Provider.send('eth_chainId', []);
+  const ethNetworkVersion = web3Provider.send('net_version', []);
+
+  Promise.all([ethChainId, ethNetworkVersion]).then(([id, version]) => {
     console.log({ id, version });
     inject(`window.ethereum.chainId = ${String(id)}`);
     inject(`window.ethereum.networkVersion = ${version}`);
   });
 };
 
-browser.runtime.onMessage.addListener(({ type }) => {
-  if (type === 'CHAIN_CHANGED') setDappNetworkProvider();
+browser.runtime.onMessage.addListener(({ type, data }) => {
+  if (type === 'CHAIN_CHANGED')
+    setDappNetworkProvider(data.networkVersion, data.chainId);
 });
 
 // Every message from pali emits an event
