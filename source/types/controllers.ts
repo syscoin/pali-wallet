@@ -152,11 +152,6 @@ export interface IDAppController {
    */
   hasWindow: (host: string) => boolean;
   /**
-   * If connected changes account granting permissions by EIP2255 reference
-   * @emits requestPermissions
-   */
-  requestPermissions: (host: string, accountId: number) => void;
-  /**
    * Checks if DApp is listed
    */
   isConnected: (host: string) => boolean;
@@ -168,6 +163,11 @@ export interface IDAppController {
    * Removes all listeners from a DApp
    */
   removeListeners: (host: string) => void;
+  /**
+   * If connected changes account granting permissions by EIP2255 reference
+   * @emits requestPermissions
+   */
+  requestPermissions: (host: string, accountId: number) => void;
   /**
    * Sets whether a DApp has an open popup
    */

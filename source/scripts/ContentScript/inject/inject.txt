@@ -16,7 +16,10 @@ const proxy = (type, data) =>
         }
 
         const response = JSON.parse(event.detail);
-
+        if(response?.code === 4001){
+          reject(response);
+          return;
+        }
         if (response.error) {
           reject(new Error(response.error));
 

@@ -45,6 +45,9 @@ export const popupPromise = async ({
 
     browser.windows.onRemoved.addListener((id) => {
       if (id === popup.id) {
+        if (route === 'tx/send/ethTx') {
+          resolve({ code: 4001, message: 'Pali: User rejected transaction' });
+        }
         dapp.setHasWindow(host, false);
         resolve({ success: false });
       }

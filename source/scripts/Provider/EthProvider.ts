@@ -29,7 +29,6 @@ export const EthProvider = (host: string) => {
       route: 'tx/send/ethTx',
       eventName: 'txSend',
     });
-    console.log('Checking final response', resp);
     return resp;
   };
 
@@ -59,7 +58,7 @@ export const EthProvider = (host: string) => {
 
   const restrictedRPCMethods = async (method: string, params: any[]) => {
     if (method === 'eth_sendTransaction') {
-      console.log('Sending transaction', params);
+      // console.log('Sending transaction', params);
       return await sendTransaction(params[0]);
     }
     return await web3Provider.send(method, params);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
@@ -27,13 +27,13 @@ export const SendTransaction = () => {
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
   const { host, ...externalTx } = useQueryData();
-  const isExternal = Boolean(externalTx.value);
-  const tx = isExternal ? externalTx : state.tx;
-  console.log('Check tx', tx);
-  console.log('Check account', account.eth);
+  const isExternal = Boolean(externalTx.from);
+  const datatx = isExternal ? externalTx : state.tx;
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [tx, setTx] = useState<any>();
+  const [fee, setFee] = useState<any>();
 
   const handleConfirm = async () => {
     const {
@@ -46,29 +46,22 @@ export const SendTransaction = () => {
       setLoading(true);
 
       const txs = account.eth.tx;
-
+      setTx({
+        ...tx,
+        maxPriorityFeePerGas: txs.toBigNumber(
+          fee.maxPriorityFeePerGas * 10 ** 18
+        ),
+        maxFeePerGas: txs.toBigNumber(fee.maxFeePerGas * 10 ** 18),
+        gasLimit: txs.toBigNumber(fee.gasLimit),
+      });
       try {
-        console.log('Checking tx', tx);
-        const { maxFeePerGas, maxPriorityFeePerGas } =
-          await txs.getFeeDataWithDynamicMaxPriorityFeePerGas();
-        console.log('Just checking fees', maxFeePerGas, maxPriorityFeePerGas);
-        const formTx = {
-          data: tx.data,
-          from: tx.from,
-          to: tx.to,
-          value: tx.value,
-          maxPriorityFeePerGas: maxPriorityFeePerGas,
-          maxFeePerGas: maxFeePerGas,
-          chainId: activeNetwork.chainId,
-        };
-        const response = await txs.sendFormattedTransaction(formTx);
-        console.log('tx resp', response);
+        const response = await txs.sendFormattedTransaction(tx);
         setConfirmed(true);
         setLoading(false);
 
-        if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
-        // return false;
-        return response;
+        if (isExternal)
+          dispatchBackgroundEvent(`txSend.${host}`, response.hash);
+        return response.hash;
       } catch (error: any) {
         logError('error', 'Transaction', error);
 
@@ -81,9 +74,37 @@ export const SendTransaction = () => {
       }
     }
   };
-
+  useEffect(() => {
+    const fetchGasAndDecodeFunction = async () => {
+      const txs = account.eth.tx;
+      const { maxFeePerGas, maxPriorityFeePerGas } =
+        await txs.getFeeDataWithDynamicMaxPriorityFeePerGas(); // this details maxFeePerGas and maxPriorityFeePerGas need to be passed as an option
+      const nonce = await txs.getRecommendedNonce(datatx.from); // This also need possibility for customization
+      const formTx = {
+        data: datatx.data,
+        from: datatx.from,
+        to: datatx.to,
+        value: datatx?.value ? datatx.value : 0,
+        maxPriorityFeePerGas: maxPriorityFeePerGas,
+        maxFeePerGas: maxFeePerGas,
+        nonce: nonce,
+        chainId: activeNetwork.chainId,
+        gasLimit: txs.toBigNumber(0),
+      };
+      formTx.gasLimit = await txs.getTxGasLimit(formTx);
+      const feeDetails = {
+        maxFeePerGas: maxFeePerGas.toNumber() / 10 ** 18,
+        baseFee: maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 18,
+        maxPriorityFeePerGas: maxPriorityFeePerGas.toNumber() / 10 ** 18,
+        gasLimit: formTx.gasLimit.toNumber(),
+      };
+      setFee(feeDetails);
+      setTx(formTx);
+    };
+    fetchGasAndDecodeFunction().catch(console.error);
+  }, []); // TODO: add timer
   return (
-    <Layout title="SEND" canGoBack={!isExternal}>
+    <Layout title="Transaction" canGoBack={!isExternal}>
       <DefaultModal
         show={confirmed}
         title="Transaction successful"
@@ -94,45 +115,53 @@ export const SendTransaction = () => {
           else navigate('/home');
         }}
       />
-      {tx && (
+      {tx?.from && (
         <div className="flex flex-col items-center justify-center w-full">
           <p className="flex flex-col items-center justify-center text-center font-rubik">
             <span className="text-brand-royalblue font-poppins font-thin">
               Send
             </span>
 
-            <span>
-              {`${tx.value} ${' '} ${activeNetwork.currency?.toUpperCase()}`}
-            </span>
+            <span>{` ${'From: '} ${ellipsis(
+              tx.from,
+              7,
+              20
+            )} ${' --> '} ${' To: '} ${ellipsis(tx.to, 7, 20)}`}</span>
           </p>
 
           <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              From
+              EstimatedGasFee
+              <span className="text-brand-royalblue text-xs">`EDIT`</span>
               <span className="text-brand-royalblue text-xs">
-                {ellipsis(tx.from, 7, 15)}
+                `Max Fee: ${fee.maxFeePerGas} $
+                {activeNetwork.currency?.toUpperCase()}`
+              </span>
+              <span className="text-brand-royalblue text-xs">
+                `${fee.maxFeePerGas * 0.15} USD`
               </span>
             </p>
 
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              To
+              Value
               <span className="text-brand-royalblue text-xs">
-                {ellipsis(tx.to, 7, 15)}
+                {` ${'Amount: '} ${Number(tx.value) / 10 ** 18} `}
               </span>
             </p>
 
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              Fee
+              Custom Nonce
               <span className="text-brand-royalblue text-xs">
-                `${tx.gas * 10 ** 9} GWEI`
+                `${tx.nonce}`
               </span>
             </p>
 
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              Max total
+              Total
               <span className="text-brand-royalblue text-xs">
-                {Number(tx.gas) + Number(tx.value)}
-                {`${activeNetwork.currency?.toUpperCase()}`}
+                {` ${'Amount + gas fee'} ${
+                  Number(tx.value) / 10 ** 18 + fee.maxFeePerGas
+                } `}
               </span>
             </p>
           </div>
@@ -147,6 +176,16 @@ export const SendTransaction = () => {
               Confirm
             </NeutralButton>
           </div>
+          {/* Rejection button must be added <div className="absolute bottom-12 md:static md:mt-10">
+            <NeutralButton
+              loading={loading}
+              onClick={handleReject}
+              type="button"
+              id="confirm-btn"
+            >
+              Reject
+            </NeutralButton>
+          </div> */}
         </div>
       )}
     </Layout>
