@@ -41,7 +41,7 @@ export const Start = () => {
   const onSubmit = async ({ password }: { password: string }) => {
     await unlock(password);
 
-    if (isBitcoinBased) browser.runtime.sendMessage({ type: 'CHAIN_CHANGED' });
+    if (!isBitcoinBased) browser.runtime.sendMessage({ type: 'CHAIN_CHANGED' });
 
     navigate('/home');
   };

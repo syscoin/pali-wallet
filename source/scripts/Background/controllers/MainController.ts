@@ -1,3 +1,5 @@
+import { browser } from 'webextension-polyfill-ts';
+
 import {
   KeyringManager,
   IKeyringAccountState,
@@ -150,10 +152,22 @@ const MainController = (): IMainController => {
       const chainId = await web3Provider.send('eth_chainId', []);
       const networkVersion = await web3Provider.send('net_version', []);
 
-      window.controller.dapp.dispatchEvent(
-        DAppEvents.chainChanged,
-        network.chainId
-      );
+      window.controller.dapp.dispatchEvent(DAppEvents.chainChanged, {
+        chainId,
+        networkVersion,
+      });
+
+      const tabs = await browser.tabs.query({
+        active: true,
+        windowType: 'normal',
+      });
+
+      for (const tab of tabs) {
+        browser.tabs.sendMessage(Number(tab.id), {
+          type: 'CHAIN_CHANGED',
+          data: { networkVersion, chainId },
+        });
+      }
 
       return { chainId, networkVersion };
     } catch (error) {
