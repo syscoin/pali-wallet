@@ -51,11 +51,15 @@ const MainController = (): IMainController => {
 
   const unlock = async (pwd: string): Promise<void> => {
     if (!keyringManager.checkPassword(pwd)) throw new Error('Invalid password');
-
+    const { activeAccount } = store.getState().vault;
     const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
 
+    const { assets, ...keyringAccount } = account;
+
+    const mainAccount = { ...keyringAccount, assets: activeAccount.assets };
+
     store.dispatch(setLastLogin());
-    store.dispatch(setActiveAccount(account));
+    store.dispatch(setActiveAccount(mainAccount));
   };
 
   const createWallet = async (password: string): Promise<void> => {
