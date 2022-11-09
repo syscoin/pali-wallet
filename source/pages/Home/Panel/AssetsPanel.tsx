@@ -16,7 +16,19 @@ export const AssetsPanel = () => {
     (state: RootState) => state.vault.isBitcoinBased
   );
 
+  const { chainId } = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+
   const assets = Object.values(activeAccount.assets);
+
+  const filteredAssets = assets.filter(
+    (token: any) => token.chainId === chainId
+  );
+
+  const filterValidation = isBitcoinBased
+    ? assets.length === 0
+    : filteredAssets.length === 0;
 
   const { navigate } = useUtils();
 
@@ -28,7 +40,7 @@ export const AssetsPanel = () => {
 
   return (
     <div className="pb-14 w-full">
-      {assets.length === 0 ? (
+      {filterValidation ? (
         <NoAssetsComponent />
       ) : (
         <ul className="pt-4 px-4 w-full text-center text-white text-base bg-bkg-3">

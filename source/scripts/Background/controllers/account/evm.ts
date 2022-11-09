@@ -24,7 +24,8 @@ const EthAccountController = (): IEthAccountController => {
 
   const saveTokenInfo = async (token: any) => {
     try {
-      const { activeAccount } = store.getState().vault;
+      const { activeAccount, activeNetwork } = store.getState().vault;
+      const { chainId } = activeNetwork;
 
       const tokenExists = activeAccount.assets.find(
         (asset: any) => asset.contractAddress === token.contractAddress
@@ -43,6 +44,7 @@ const EthAccountController = (): IEthAccountController => {
         id: token.contractAddress,
         logo: thumb,
         isNft: false,
+        chainId,
       };
 
       store.dispatch(
