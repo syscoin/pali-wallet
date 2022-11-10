@@ -122,7 +122,7 @@ window.pali = Object.freeze({
   on,
   removeListener,
   isConnected: () => request({ method: 'wallet_isConnected' }),
-  enable: () => proxy('ENABLE', { chain: 'syscoin', chainId: 57 }),
+  enable: () => proxy('ENABLE', { chain: 'syscoin', chainId: '0x39' }),
   disable: () => proxy('DISABLE'),
   _listeners: {},
 });
@@ -137,7 +137,7 @@ window.ethereum = {
   removeListener,
   isConnected: () => request({ method: 'wallet_isConnected' }),
   enable: () =>
-    proxy('ENABLE', { chain: 'ethereum', chainId: 1 }),
+    proxy('ENABLE', { chain: 'ethereum', chainId: '0x01' }),
   disable: () => proxy('DISABLE'),
   _listeners: {},
 }

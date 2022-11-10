@@ -7,8 +7,6 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
-import { inject } from 'scripts/ContentScript/inject';
-
 import { IVaultState } from './types';
 
 export const initialState: IVaultState = {

@@ -79,7 +79,7 @@ inject(_inject);
 
 const setDappNetworkProvider = (networkVersion?: any, chainId?: any) => {
   if (networkVersion && chainId) {
-    inject(`window.ethereum.chainId = ${chainId}`);
+    inject(`window.ethereum.chainId = '${chainId}'`);
     inject(`window.ethereum.networkVersion = ${networkVersion}`);
 
     return;
@@ -90,7 +90,7 @@ const setDappNetworkProvider = (networkVersion?: any, chainId?: any) => {
 
   Promise.all([ethChainId, ethNetworkVersion]).then(([id, version]) => {
     console.log({ id, version });
-    inject(`window.ethereum.chainId = ${String(id)}`);
+    inject(`window.ethereum.chainId = '${String(id)}'`);
     inject(`window.ethereum.networkVersion = ${version}`);
   });
 };
@@ -104,5 +104,5 @@ browser.runtime.onMessage.addListener(({ type, data }) => {
 backgroundPort.onMessage.addListener(({ id, data }) => {
   emitter.emit(id, data);
 });
-
+console.log('I run after each refresh');
 setDappNetworkProvider();
