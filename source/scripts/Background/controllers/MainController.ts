@@ -40,6 +40,13 @@ const MainController = (): IMainController => {
     store.dispatch(setTimer(minutes));
   };
 
+  const getNetworkData = async () => {
+    const networkVersion = await web3Provider.send('net_version', []);
+    const chainId = await web3Provider.send('eth_chainId', []);
+
+    return { chainId: String(chainId), networkVersion: String(networkVersion) };
+  };
+
   /** forget your wallet created with pali and associated with your seed phrase,
    *  but don't delete seed phrase so it is possible to create a new
    *  account using the same seed
@@ -252,6 +259,7 @@ const MainController = (): IMainController => {
     removeKeyringNetwork,
     resolveError,
     getRecommendedFee,
+    getNetworkData,
     ...keyringManager,
   };
 };

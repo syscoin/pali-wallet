@@ -12,7 +12,7 @@ import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 export const NetworkMenu: React.FC = () => {
-  const { wallet, dapp } = getController();
+  const { wallet } = getController();
 
   const networks = useSelector((state: RootState) => state.vault.networks);
   const isBitcoinBased = useSelector(

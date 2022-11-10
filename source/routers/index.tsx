@@ -43,6 +43,9 @@ export const Router = () => {
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
   );
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
 
   const isUnlocked = wallet.isUnlocked() && encryptedMnemonic;
@@ -54,6 +57,11 @@ export const Router = () => {
           type: 'autolock',
           target: 'background',
         });
+      });
+
+      wallet.getNetworkData().then((data) => {
+        if (!isBitcoinBased)
+          browser.runtime.sendMessage({ type: 'CHAIN_CHANGED', data });
       });
     }
   }, [isUnlocked]);
