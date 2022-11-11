@@ -26,7 +26,8 @@ export const ConnectWallet = () => {
   const [confirmUntrusted, setConfirmUntrusted] = useState(false);
 
   const handleConnect = () => {
-    dapp.connect({ host, chain, chainId, accountId });
+    const date = Date.now();
+    dapp.connect({ host, chain, chainId, accountId, date });
     window.close();
   };
 

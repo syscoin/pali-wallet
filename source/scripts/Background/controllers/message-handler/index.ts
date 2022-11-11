@@ -44,16 +44,35 @@ const _messageHandler = async (host: string, message: Message) => {
 export const onMessage = async (message: Message, port: Runtime.Port) => {
   const { host } = new URL(port.sender.url);
   console.log(`[DApp] Message from ${host}`, message.type, message.data);
-  try {
-    const response = await _messageHandler(host, message);
-    if (response === undefined) return;
+  if (message.type === 'CHAIN_NET_REQUEST') {
+    const { activeNetwork } = store.getState().vault;
+    const networkVersion = String(activeNetwork.chainId);
+    const chainId = '0x' + activeNetwork.chainId.toString(16);
+    const tabs = await browser.tabs.query({
+      active: true,
+      windowType: 'normal',
+    });
 
-    console.log('[DApp] Response', response);
-    port.postMessage({ id: message.id, data: response });
-  } catch (error: any) {
-    console.error(error);
+    for (const tab of tabs) {
+      browser.tabs.sendMessage(Number(tab.id), {
+        type: 'CHAIN_CHANGED',
+        data: { networkVersion, chainId },
+      });
+    }
+  } else {
+    try {
+      const response = await _messageHandler(host, message);
+      if (response === undefined) return;
 
-    port.postMessage({ id: message.id, data: { error: error.message } });
+      console.log('message received', { message, port, response });
+
+      console.log('[DApp] Response', response);
+      port.postMessage({ id: message.id, data: response });
+    } catch (error: any) {
+      console.error(error);
+
+      port.postMessage({ id: message.id, data: { error: error.message } });
+    }
   }
 };
 
