@@ -18,7 +18,7 @@ export const methodRequest = async (
   const { dapp, wallet } = window.controller;
 
   const [prefix, methodName] = data.method.split('_');
-  console.log('Checking prefix and methodName', prefix, methodName);
+
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
 
@@ -26,11 +26,9 @@ export const methodRequest = async (
     const provider = EthProvider(host);
     const resp = await provider.unrestrictedRPCMethods(
       data.method,
-      data.params,
-      data.network
+      data.params
     );
     if (resp !== false && resp !== undefined && resp !== null) {
-      console.log('Method is not restrictive');
       return resp; //Sending back to Dapp non restrictive method response
     }
   }
@@ -38,13 +36,13 @@ export const methodRequest = async (
 
   const isRequestAllowed = dapp.isConnected(host) && account;
   if (prefix === 'eth' && methodName === 'requestAccounts') {
-    console.log('Requisting to get eth accounts and connect wallet');
     return await enable(host, undefined, undefined);
     // if (!acceptedRequest)
     //   throw new Error('Restricted method. Connect before requesting');
     // console.log('AcceptedRequest data', acceptedRequest);
     // return acceptedRequest.connectedAccount.address;
   }
+
   if (!isRequestAllowed)
     throw new Error('Restricted method. Connect before requesting');
   const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
@@ -52,8 +50,6 @@ export const methodRequest = async (
   if (prefix === 'eth' && methodName === 'accounts')
     return [dapp.getAccount(host).address];
 
-  console.log('Check data:', host);
-  console.log('data:', data);
   //* Wallet methods
   if (prefix === 'wallet') {
     console.log('methodName', methodName);
@@ -78,7 +74,7 @@ export const methodRequest = async (
         return popupPromise({
           host,
           route: 'change-account',
-          eventName: 'accountChange',
+          eventName: 'accountsChanged',
           data: { network: data.network },
         });
       case 'requestPermissions':
@@ -97,6 +93,7 @@ export const methodRequest = async (
         response[0].date = dapp.get(host).date;
         response[0].invoker = host;
         response[0].parentCapability = 'eth_accounts';
+
         return response;
       default:
         throw new Error('Unknown method');
@@ -107,23 +104,25 @@ export const methodRequest = async (
   if (prefix !== 'sys') {
     const provider = EthProvider(host);
     const resp = await provider.restrictedRPCMethods(data.method, data.params);
-    if (!resp) throw new Error('Failure on RPC request');
-    return resp;
-  } else {
-    const provider = SysProvider(host);
-    const method = provider[methodName];
-    if (!method) throw new Error('Unknown method');
 
-    if (data.params) return await method(...data.params);
-    console.log('Almost returning');
-    return await method();
+    if (!resp) throw new Error('Failure on RPC request');
+
+    return resp;
   }
+
+  const provider = SysProvider(host);
+  const method = provider[methodName];
+
+  if (!method) throw new Error('Unknown method');
+
+  if (data.params) return await method(...data.params);
+
+  return await method();
 };
 
 export const enable = async (host: string, chain: string, chainId: number) => {
-  console.log('trying to connect pali to dapp');
   const { dapp } = window.controller;
-  console.log('trying to connect pali to dapp', dapp.isConnected(host));
+
   if (dapp.isConnected(host)) return [dapp.getAccount(host).address];
 
   const acceptedRequest: any = await popupPromise({
@@ -132,8 +131,9 @@ export const enable = async (host: string, chain: string, chainId: number) => {
     eventName: 'connect',
     data: { chain, chainId },
   });
+
   if (!acceptedRequest)
     throw new Error('Restricted method. Connect before requesting');
-  console.log('AcceptedRequest data', acceptedRequest);
+
   return [acceptedRequest.connectedAccount.address];
 };

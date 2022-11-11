@@ -1,8 +1,10 @@
+import { browser } from 'webextension-polyfill-ts';
+
 import {
   KeyringManager,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
-import { getSysRpc, getEthRpc } from '@pollum-io/sysweb3-network';
+import { getSysRpc, getEthRpc, web3Provider } from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
@@ -36,6 +38,13 @@ const MainController = (): IMainController => {
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
+  };
+
+  const getNetworkData = async () => {
+    const networkVersion = await web3Provider.send('net_version', []);
+    const chainId = await web3Provider.send('eth_chainId', []);
+
+    return { chainId: String(chainId), networkVersion: String(networkVersion) };
   };
 
   /** forget your wallet created with pali and associated with your seed phrase,
@@ -88,7 +97,7 @@ const MainController = (): IMainController => {
     store.dispatch(setActiveAccount(newAccount));
 
     window.controller.dapp.dispatchEvent(
-      DAppEvents.accountChange,
+      DAppEvents.accountsChanged,
       removeXprv(newAccount)
     );
 
@@ -104,7 +113,7 @@ const MainController = (): IMainController => {
     walletController.account.sys.getLatestUpdate(false);
 
     window.controller.dapp.dispatchEvent(
-      DAppEvents.accountChange,
+      DAppEvents.accountsChanged,
       removeXprv(accounts[id])
     );
   };
@@ -147,9 +156,26 @@ const MainController = (): IMainController => {
         walletController.account.sys.setAddress();
       }
 
-      window.controller.dapp.dispatchEvent(DAppEvents.chainChange, network);
+      const chainId = await web3Provider.send('eth_chainId', []);
+      const networkVersion = await web3Provider.send('net_version', []);
 
-      return networkAccount;
+      window.controller.dapp.dispatchEvent(DAppEvents.chainChanged, {
+        chainId,
+        networkVersion,
+      });
+
+      const tabs = await browser.tabs.query({
+        windowType: 'normal',
+      });
+
+      for (const tab of tabs) {
+        browser.tabs.sendMessage(Number(tab.id), {
+          type: 'CHAIN_CHANGED',
+          data: { networkVersion, chainId },
+        });
+      }
+
+      return { chainId, networkVersion };
     } catch (error) {
       setActiveNetwork(activeNetwork, networkChain());
 
@@ -232,6 +258,7 @@ const MainController = (): IMainController => {
     removeKeyringNetwork,
     resolveError,
     getRecommendedFee,
+    getNetworkData,
     ...keyringManager,
   };
 };

@@ -14,11 +14,6 @@ const backgroundPort = browser.runtime.connect(undefined, {
   name: 'pali-inject',
 });
 
-// Every message from pali emits an event
-backgroundPort.onMessage.addListener(({ id, data }) => {
-  emitter.emit(id, data);
-});
-
 // Add listener for pali events
 const checkForPaliRegisterEvent = (type, id) => {
   if (type === 'EVENT_REG') {
@@ -32,8 +27,6 @@ const checkForPaliRegisterEvent = (type, id) => {
   }
 
   emitter.once(id, (result) => {
-    console.log('Checking pali response id', id);
-    console.log('Check pali response result', result);
     window.dispatchEvent(
       new CustomEvent(id, { detail: JSON.stringify(result) })
     );
@@ -47,8 +40,6 @@ const start = () => {
   window.addEventListener(
     'message',
     (event) => {
-      console.log('Incoming message  source', event.source);
-      console.log('Incoming message data', event.data);
       if (event.source !== window) return;
       if (!event.data) return;
 
@@ -67,9 +58,15 @@ const start = () => {
     },
     false
   );
+  const id = 'General';
+  const type = 'CHAIN_NET_REQUEST';
+  const data = {};
+  backgroundPort.postMessage({
+    id,
+    type,
+    data,
+  });
 };
-
-start();
 
 const inject = (content: string) => {
   const container = document.head || document.documentElement;
@@ -83,3 +80,27 @@ const inject = (content: string) => {
 
 inject(`window.SUPPORTED_WALLET_METHODS = ${JSON.stringify(DAppMethods)}`);
 inject(_inject);
+
+const setDappNetworkProvider = (networkVersion?: any, chainId?: any) => {
+  if (networkVersion && chainId) {
+    inject(`window.ethereum.chainId = '${chainId}'`);
+    inject(`window.ethereum.networkVersion = ${networkVersion}`);
+
+    return;
+  }
+  throw {
+    code: 500,
+    message: 'Couldnt fetch chainId and networkVersion',
+  };
+};
+
+browser.runtime.onMessage.addListener(({ type, data }) => {
+  if (type === 'CHAIN_CHANGED')
+    setDappNetworkProvider(data.networkVersion, data.chainId);
+});
+
+// Every message from pali emits an event
+backgroundPort.onMessage.addListener(({ id, data }) => {
+  emitter.emit(id, data);
+});
+start();

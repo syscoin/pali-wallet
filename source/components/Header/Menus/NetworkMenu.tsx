@@ -2,6 +2,7 @@ import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { uniqueId } from 'lodash';
 import React from 'react';
 import { useSelector } from 'react-redux';
+import { browser } from 'webextension-polyfill-ts';
 
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
@@ -26,7 +27,20 @@ export const NetworkMenu: React.FC = () => {
 
   const handleChangeNetwork = (network: INetwork, chain: string) => {
     try {
-      wallet.setActiveNetwork(network, chain);
+      wallet
+        .setActiveNetwork(network, chain)
+        .then(async ({ networkVersion, chainId }: any) => {
+          const tabs = await browser.tabs.query({
+            windowType: 'normal',
+          });
+
+          for (const tab of tabs) {
+            browser.tabs.sendMessage(Number(tab.id), {
+              type: 'CHAIN_CHANGED',
+              data: { networkVersion, chainId },
+            });
+          }
+        });
     } catch (networkError) {
       navigate('/home');
     }

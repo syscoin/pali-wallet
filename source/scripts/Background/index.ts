@@ -43,11 +43,20 @@ const restartLockTimeout = () => {
   }, timer * 60 * 1000);
 };
 
-browser.runtime.onMessage.addListener(({ type, target }) => {
+browser.runtime.onMessage.addListener(async ({ type, target, data }) => {
   if (type === 'autolock' && target === 'background') restartLockTimeout();
+  if (type === 'CHAIN_CHANGED') {
+    const tabs = await browser.tabs.query({
+      windowType: 'normal',
+    });
+
+    for (const tab of tabs) {
+      browser.tabs.sendMessage(Number(tab.id), { type, data });
+    }
+  }
 });
 
-browser.runtime.onConnect.addListener((port: Runtime.Port) => {
+browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
   if (port.name === 'pali-inject') {
     window.controller.dapp.setup(port);
 
