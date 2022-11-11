@@ -165,7 +165,6 @@ const MainController = (): IMainController => {
       });
 
       const tabs = await browser.tabs.query({
-        active: true,
         windowType: 'normal',
       });
 

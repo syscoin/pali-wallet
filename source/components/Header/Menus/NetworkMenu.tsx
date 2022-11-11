@@ -29,11 +29,17 @@ export const NetworkMenu: React.FC = () => {
     try {
       wallet
         .setActiveNetwork(network, chain)
-        .then(({ networkVersion, chainId }: any) => {
-          browser.runtime.sendMessage({
-            type: 'CHAIN_CHANGED',
-            data: { networkVersion, chainId },
+        .then(async ({ networkVersion, chainId }: any) => {
+          const tabs = await browser.tabs.query({
+            windowType: 'normal',
           });
+
+          for (const tab of tabs) {
+            browser.tabs.sendMessage(Number(tab.id), {
+              type: 'CHAIN_CHANGED',
+              data: { networkVersion, chainId },
+            });
+          }
         });
     } catch (networkError) {
       navigate('/home');

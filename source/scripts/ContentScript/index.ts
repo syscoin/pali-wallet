@@ -1,8 +1,6 @@
 import { EventEmitter } from 'events';
 import { browser } from 'webextension-polyfill-ts';
 
-import { web3Provider } from '@pollum-io/sysweb3-network';
-
 import { DAppMethods } from 'scripts/Background/controllers/message-handler/types';
 
 import { inject as _inject } from './inject';
@@ -60,9 +58,15 @@ const start = () => {
     },
     false
   );
+  const id = 'General';
+  const type = 'CHAIN_NET_REQUEST';
+  const data = {};
+  backgroundPort.postMessage({
+    id,
+    type,
+    data,
+  });
 };
-
-start();
 
 const inject = (content: string) => {
   const container = document.head || document.documentElement;
@@ -84,15 +88,10 @@ const setDappNetworkProvider = (networkVersion?: any, chainId?: any) => {
 
     return;
   }
-
-  const ethChainId = web3Provider.send('eth_chainId', []);
-  const ethNetworkVersion = web3Provider.send('net_version', []);
-
-  Promise.all([ethChainId, ethNetworkVersion]).then(([id, version]) => {
-    console.log({ id, version });
-    inject(`window.ethereum.chainId = '${String(id)}'`);
-    inject(`window.ethereum.networkVersion = ${version}`);
-  });
+  throw {
+    code: 500,
+    message: 'Couldnt fetch chainId and networkVersion',
+  };
 };
 
 browser.runtime.onMessage.addListener(({ type, data }) => {
@@ -104,5 +103,4 @@ browser.runtime.onMessage.addListener(({ type, data }) => {
 backgroundPort.onMessage.addListener(({ id, data }) => {
   emitter.emit(id, data);
 });
-console.log('I run after each refresh');
-setDappNetworkProvider();
+start();

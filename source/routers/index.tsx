@@ -60,8 +60,21 @@ export const Router = () => {
       });
 
       wallet.getNetworkData().then((data) => {
-        if (!isBitcoinBased)
-          browser.runtime.sendMessage({ type: 'CHAIN_CHANGED', data });
+        if (!isBitcoinBased) {
+          const dispatchChainMessage = async () => {
+            const tabs = await browser.tabs.query({
+              windowType: 'normal',
+            });
+
+            for (const tab of tabs) {
+              browser.tabs.sendMessage(Number(tab.id), {
+                type: 'CHAIN_CHANGED',
+                data,
+              });
+            }
+          };
+          dispatchChainMessage();
+        }
       });
     }
   }, [isUnlocked]);

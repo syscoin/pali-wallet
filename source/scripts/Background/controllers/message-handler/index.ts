@@ -1,7 +1,5 @@
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
-import { web3Provider } from '@pollum-io/sysweb3-network';
-
 import store from 'state/store';
 
 import { methodRequest, enable } from './requests';
@@ -24,9 +22,6 @@ const _messageHandler = async (host: string, message: Message) => {
 
   const { dapp } = window.controller;
 
-  const chainId = await web3Provider.send('eth_chainId', []);
-  const networkVersion = await web3Provider.send('net_version', []);
-
   switch (message.type) {
     case 'EVENT_REG':
       return dapp.addListener(host, message.data.eventName);
@@ -38,10 +33,6 @@ const _messageHandler = async (host: string, message: Message) => {
       return dapp.disconnect(host);
     case 'METHOD_REQUEST':
       return methodRequest(host, message.data);
-    case 'CHAIN_ID':
-      return chainId || 'Unknown';
-    case 'NETWORK_VERSION':
-      return networkVersion || 'Unknown';
     default:
       throw new Error('Unknown message type');
   }
@@ -53,18 +44,35 @@ const _messageHandler = async (host: string, message: Message) => {
 export const onMessage = async (message: Message, port: Runtime.Port) => {
   const { host } = new URL(port.sender.url);
   console.log(`[DApp] Message from ${host}`, message.type, message.data);
-  try {
-    const response = await _messageHandler(host, message);
-    if (response === undefined) return;
+  if (message.type === 'CHAIN_NET_REQUEST') {
+    const { activeNetwork } = store.getState().vault;
+    const networkVersion = String(activeNetwork.chainId);
+    const chainId = '0x' + activeNetwork.chainId.toString(16);
+    const tabs = await browser.tabs.query({
+      active: true,
+      windowType: 'normal',
+    });
 
-    console.log('message received', { message, port, response });
+    for (const tab of tabs) {
+      browser.tabs.sendMessage(Number(tab.id), {
+        type: 'CHAIN_CHANGED',
+        data: { networkVersion, chainId },
+      });
+    }
+  } else {
+    try {
+      const response = await _messageHandler(host, message);
+      if (response === undefined) return;
 
-    console.log('[DApp] Response', response);
-    port.postMessage({ id: message.id, data: response });
-  } catch (error: any) {
-    console.error(error);
+      console.log('message received', { message, port, response });
 
-    port.postMessage({ id: message.id, data: { error: error.message } });
+      console.log('[DApp] Response', response);
+      port.postMessage({ id: message.id, data: response });
+    } catch (error: any) {
+      console.error(error);
+
+      port.postMessage({ id: message.id, data: { error: error.message } });
+    }
   }
 };
 

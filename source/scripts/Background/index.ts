@@ -47,7 +47,6 @@ browser.runtime.onMessage.addListener(async ({ type, target, data }) => {
   if (type === 'autolock' && target === 'background') restartLockTimeout();
   if (type === 'CHAIN_CHANGED') {
     const tabs = await browser.tabs.query({
-      active: true,
       windowType: 'normal',
     });
 
