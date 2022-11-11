@@ -126,7 +126,9 @@ const MainController = (): IMainController => {
       );
 
       store.dispatch(setNetwork(network));
+
       store.dispatch(setIsPendingBalances(false));
+
       store.dispatch(setActiveAccount(networkAccount));
 
       if (isBitcoinBased) {
@@ -151,7 +153,24 @@ const MainController = (): IMainController => {
 
       return networkAccount;
     } catch (error) {
-      setActiveNetwork(activeNetwork, networkChain());
+      const statusCodeInError = ['401', '429', '500'];
+
+      const errorMessageValidate = statusCodeInError.some((message) =>
+        error.message.includes(message)
+      );
+
+      if (errorMessageValidate) {
+        const networkAccount = await keyringManager.setSignerNetwork(
+          activeNetwork,
+          networkChain()
+        );
+
+        store.dispatch(setNetwork(activeNetwork));
+
+        store.dispatch(setIsPendingBalances(false));
+
+        store.dispatch(setActiveAccount(networkAccount));
+      }
 
       store.dispatch(setStoreError(true));
     }
