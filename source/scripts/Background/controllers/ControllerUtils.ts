@@ -59,7 +59,7 @@ const ControllerUtils = (): IControllerUtils => {
           await fetch('https://api.coingecko.com/api/v3/coins/list')
         ).json();
 
-        if (getCoinList.length) {
+        if (getCoinList.length > 0 && !getCoinList?.status?.error_code) {
           const { id: findCoinSymbolByNetwork } = getCoinList?.find(
             (coin) => coin.symbol === activeNetwork.currency
           );
