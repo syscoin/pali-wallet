@@ -6,6 +6,7 @@ import {
 } from '@pollum-io/sysweb3-network';
 
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
+import { unrestrictedMethods } from 'scripts/Background/controllers/message-handler/types';
 import store from 'state/store';
 
 export const EthProvider = (host: string) => {
@@ -42,9 +43,21 @@ export const EthProvider = (host: string) => {
     return web3Provider.send(args[0], args);
   };
 
+  const unrestrictedRPCMethods = async (method: string, params: any[]) => {
+    if (!unrestrictedMethods.find((el) => el === method)) return false;
+    const resp = await web3Provider.send(method, params);
+
+    return resp;
+  };
+
+  const restrictedRPCMethods = async (method: string, params: any[]) =>
+    await web3Provider.send(method, params);
+
   return {
     send,
     sendTransaction,
     signTypedDataV4,
+    unrestrictedRPCMethods,
+    restrictedRPCMethods,
   };
 };

@@ -127,6 +127,11 @@ const VaultState = createSlice({
     },
     setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload;
+      // inject.ethereum.chainId = action.payload.chainId.toString();
+      // inject.ethereum.networkVersion = parseInt(
+      //   action.payload.chainId.toString(),
+      //   16
+      // ).toString();
     },
     setIsPendingBalances(state: IVaultState, action: PayloadAction<boolean>) {
       state.isPendingBalances = action.payload;

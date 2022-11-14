@@ -32,15 +32,13 @@ export interface IMainController extends IKeyringManager {
     oldRpc: ICustomRpcParams
   ) => Promise<INetwork>;
   forgetWallet: (pwd: string) => void;
+  getNetworkData: () => Promise<{ chainId: string; networkVersion: string }>;
   getRecommendedFee: (data?: string | boolean) => Promise<number>;
   lock: () => void;
   removeKeyringNetwork: (chain: string, chainId: number) => void;
   resolveError: () => void;
   setAccount: (id: number) => void;
-  setActiveNetwork: (
-    network: INetwork,
-    chain: string
-  ) => Promise<IKeyringAccountState>;
+  setActiveNetwork: (network: INetwork, chain: string) => Promise<any>;
   setAutolockTimer: (minutes: number) => void;
   unlock: (pwd: string) => Promise<void>;
 }
@@ -115,9 +113,13 @@ export interface IDAppController {
   addListener: (host: string, eventName: string) => void;
   /**
    * Changes the account
-   * @emits accountChange
+   * @emits accountsChanged
    */
   changeAccount: (host: string, accountId: number) => void;
+  /**
+   * Changes the active network
+   */
+  changeNetwork: (chainId: number) => void;
   /**
    * Completes a connection with a DApp
    * @emits connect
@@ -164,9 +166,15 @@ export interface IDAppController {
    */
   removeListeners: (host: string) => void;
   /**
+   * If connected changes account granting permissions by EIP2255 reference
+   * @emits requestPermissions
+   */
+  requestPermissions: (host: string, accountId: number) => void;
+  /**
    * Sets whether a DApp has an open popup
    */
   setHasWindow: (host: string, hasWindow: boolean) => void;
+
   /**
    * Setup communication
    */

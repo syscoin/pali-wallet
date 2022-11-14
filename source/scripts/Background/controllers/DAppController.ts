@@ -4,6 +4,7 @@ import { Runtime } from 'webextension-polyfill-ts';
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
 import store from 'state/store';
+import { setActiveNetwork } from 'state/vault';
 import { IOmittedVault } from 'state/vault/types';
 import { IDAppController } from 'types/controllers';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
@@ -49,13 +50,38 @@ const DAppController = (): IDAppController => {
   const connect = (dapp: IDApp) => {
     store.dispatch(addDApp(dapp));
 
-    _dispatchEvent(dapp.host, 'connect');
+    _dispatchEvent(dapp.host, 'connect', {
+      connectedAccount: getAccount(dapp.host),
+    });
+  };
+
+  const requestPermissions = (host: string, accountId: number) => {
+    const date = Date.now();
+
+    store.dispatch(updateDAppAccount({ host, accountId, date }));
+
+    const { accounts } = store.getState().vault;
+    const account = accounts[accountId];
+
+    if (!account) return null;
+    const response: any = [{}];
+
+    response[0].caveats = [
+      { type: 'restrictReturnedAccounts', value: [account] },
+    ];
+
+    response[0].date = date;
+    response[0].invoker = host;
+    response[0].parentCapability = 'eth_accounts';
+
+    _dispatchEvent(host, 'requestPermissions', response);
   };
 
   const changeAccount = (host: string, accountId: number) => {
-    store.dispatch(updateDAppAccount({ host, accountId }));
+    const date = Date.now();
+    store.dispatch(updateDAppAccount({ host, accountId, date }));
 
-    _dispatchEvent(host, 'accountChange');
+    _dispatchEvent(host, 'accountsChanged');
   };
 
   const disconnect = (host: string) => {
@@ -63,6 +89,18 @@ const DAppController = (): IDAppController => {
     _dispatchEvent(host, 'disconnect');
 
     store.dispatch(removeDApp(host));
+  };
+
+  const changeNetwork = (chainId: number) => {
+    const { isBitcoinBased, networks } = store.getState().vault;
+
+    const network = isBitcoinBased
+      ? networks.syscoin[chainId]
+      : networks.ethereum[chainId];
+
+    store.dispatch(setActiveNetwork(network));
+
+    dispatchEvent(DAppEvents.chainChanged, chainId);
   };
 
   //* ----- Event listeners -----
@@ -105,8 +143,13 @@ const DAppController = (): IDAppController => {
     if (!hasListener(host, eventName)) return;
     if (!isConnected(host)) return;
 
+    console.log({ host, eventName, data, event });
+
     // post the event to the DApp
     const id = `${host}.${eventName}`;
+
+    console.log({ id });
+
     _dapps[host].port.postMessage({ id, data });
   };
 
@@ -118,7 +161,7 @@ const DAppController = (): IDAppController => {
   const getAccount = (host: string) => {
     const dapp = store.getState().dapp.dapps[host];
     const { accounts } = store.getState().vault;
-
+    if (!dapp) return null;
     const account = accounts[dapp.accountId];
 
     if (!dapp || !account) return null;
@@ -154,6 +197,7 @@ const DAppController = (): IDAppController => {
     changeAccount,
     disconnect,
     addListener,
+    requestPermissions,
     removeListener,
     removeListeners,
     dispatchEvent,
@@ -162,6 +206,7 @@ const DAppController = (): IDAppController => {
     getState,
     getNetwork,
     setHasWindow,
+    changeNetwork,
   };
 };
 

@@ -5,9 +5,10 @@ const proxy = (type, data) =>
   new Promise((resolve, reject) => {
     const id = Date.now() + '.' + Math.random();
 
-    window.addEventListener(
+     window.addEventListener(
       id,
       (event) => {
+        console.log('[Pali] EventListener method', event.detail);
         if (!event.detail) {
           resolve(undefined);
 
@@ -23,14 +24,17 @@ const proxy = (type, data) =>
         }
 
         resolve(response);
+
+        return response;
       },
       {
         once: true,
         passive: true,
       }
     );
-
-    window.postMessage(
+    
+    console.log('[Pali] PostMessage method', id, type, data);
+     window.postMessage(
       {
         id,
         type,
@@ -118,19 +122,22 @@ window.pali = Object.freeze({
   on,
   removeListener,
   isConnected: () => request({ method: 'wallet_isConnected' }),
-  enable: () => proxy('ENABLE', { chain: 'syscoin', chainId: 57 }),
+  enable: () => proxy('ENABLE', { chain: 'syscoin', chainId: '0x39' }),
   disable: () => proxy('DISABLE'),
   _listeners: {},
 });
 
-window.ethereum = Object.freeze({
+window.ethereum = {
+  isMetaMask: true, //Provisory just for make testing easier
   wallet: 'pali-v2',
   request,
   on,
+  chainId: undefined, 
+  networkVersion: undefined,
   removeListener,
   isConnected: () => request({ method: 'wallet_isConnected' }),
   enable: () =>
-    proxy('ENABLE', { chain: 'ethereum', chainId: 1 }),
+    proxy('ENABLE', { chain: 'ethereum', chainId: '0x01' }),
   disable: () => proxy('DISABLE'),
   _listeners: {},
-});
+}
