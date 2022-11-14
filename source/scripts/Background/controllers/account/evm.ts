@@ -27,7 +27,7 @@ const EthAccountController = (): IEthAccountController => {
       const { activeAccount, activeNetwork } = store.getState().vault;
       const { chainId } = activeNetwork;
 
-      const tokenExists = activeAccount.assets.find(
+      const tokenExists = activeAccount.assets.ethereum?.find(
         (asset: any) => asset.contractAddress === token.contractAddress
       );
 
@@ -50,7 +50,10 @@ const EthAccountController = (): IEthAccountController => {
       store.dispatch(
         setActiveAccountProperty({
           property: 'assets',
-          value: [...activeAccount.assets, web3Token],
+          value: {
+            ...activeAccount.assets,
+            ethereum: [...activeAccount.assets.ethereum, web3Token],
+          },
         })
       );
     } catch (error) {

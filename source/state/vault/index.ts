@@ -15,7 +15,7 @@ export const initialState: IVaultState = {
   activeAccount: {
     ...initialActiveAccountState,
     transactions: [],
-    assets: [],
+    assets: { syscoin: [], ethereum: [] },
   },
   activeNetwork: {
     chainId: 57,
@@ -53,6 +53,7 @@ const VaultState = createSlice({
       state: IVaultState,
       action: PayloadAction<IKeyringAccountState>
     ) {
+      console.log({ account: action.payload });
       state.accounts[action.payload.id] = action.payload;
     },
     setNetworks(

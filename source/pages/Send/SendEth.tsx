@@ -66,7 +66,8 @@ export const SendEth = () => {
     getRecomendedFees();
   }, [getRecomendedFees, form.getFieldValue('receiver')]);
 
-  const hasAccountAssets = activeAccount && activeAccount.assets.length > 0;
+  const hasAccountAssets =
+    activeAccount && activeAccount.assets.ethereum?.length > 0;
 
   const handleSelectedAsset = (item: string) => {
     if (activeAccount.assets) {

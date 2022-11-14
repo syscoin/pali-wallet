@@ -46,23 +46,30 @@ const SysAccountController = (): ISysAccountController => {
 
     const hash = isBitcoinBased ? 'txid' : 'hash';
     const assetId = isBitcoinBased ? 'assetGuid' : 'contractAddress';
+    const label = isBitcoinBased ? 'syscoin' : 'ethereum';
 
     const transactions = [
-      ...accountLatestUpdate.assets,
-      ...store.getState().vault.activeAccount.assets,
+      ...accountLatestUpdate.transactions,
+      ...activeAccount.transactions,
     ];
+
+    const updatedAssets = isBitcoinBased
+      ? [...accountLatestUpdate.assets, ...activeAccount.assets.syscoin]
+      : [...accountLatestUpdate.assets, ...activeAccount.assets.ethereum];
 
     const filteredTxs = transactions.filter(
       (value, index, self) =>
         index === self.findIndex((tx) => tx[hash] === value[hash])
     );
 
-    const assets = [
-      ...accountLatestUpdate.assets,
-      ...store.getState().vault.activeAccount.assets,
-    ];
+    const assets: {
+      [k: string]: any[];
+    } = {
+      ...activeAccount.assets,
+      [label]: updatedAssets,
+    };
 
-    const filteredAssets = assets.filter(
+    const filteredAssets = assets[label].filter(
       (value, index, self) =>
         index === self.findIndex((asset) => asset[assetId] === value[assetId])
     );
@@ -71,7 +78,10 @@ const SysAccountController = (): ISysAccountController => {
       ...activeAccount,
       ...accountLatestUpdate,
       transactions: [...activeAccount.transactions, ...filteredTxs],
-      assets: filteredAssets,
+      assets: {
+        ...activeAccount.assets,
+        [label]: filteredAssets,
+      },
     };
 
     if (currentAccount === activeAccount) return;

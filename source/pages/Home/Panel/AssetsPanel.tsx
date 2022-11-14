@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { CgImport as ImportIcon } from 'react-icons/cg';
 import { useSelector } from 'react-redux';
 
@@ -9,7 +9,7 @@ import { RootState } from 'state/store';
 import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
 
 export const AssetsPanel = () => {
-  const activeAccount = useSelector(
+  const { assets } = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
   const isBitcoinBased = useSelector(
@@ -20,15 +20,13 @@ export const AssetsPanel = () => {
     (state: RootState) => state.vault.activeNetwork
   );
 
-  const assets = Object.values(activeAccount.assets);
-
-  const filteredAssets = assets.filter(
-    (token: any) => token.chainId === chainId
-  );
+  const ethTokensValidation =
+    assets.ethereum?.filter((token: any) => token.chainId === chainId)
+      ?.length === 0;
 
   const filterValidation = isBitcoinBased
-    ? assets.length === 0
-    : filteredAssets.length === 0;
+    ? assets.syscoin?.length === 0
+    : assets.ethereum?.length === 0 || ethTokensValidation;
 
   const { navigate } = useUtils();
 

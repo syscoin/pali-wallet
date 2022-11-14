@@ -53,10 +53,11 @@ const MainController = (): IMainController => {
     if (!keyringManager.checkPassword(pwd)) throw new Error('Invalid password');
     const { activeAccount } = store.getState().vault;
     const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
+    const { assets: currentAssets } = activeAccount;
 
     const { assets, ...keyringAccount } = account;
 
-    const mainAccount = { ...keyringAccount, assets: activeAccount.assets };
+    const mainAccount = { ...keyringAccount, assets: currentAssets };
 
     store.dispatch(setLastLogin());
     store.dispatch(setActiveAccount(mainAccount));
@@ -70,10 +71,18 @@ const MainController = (): IMainController => {
     const account =
       (await keyringManager.createKeyringVault()) as IKeyringAccountState;
 
-    store.dispatch(addAccountToStore(account));
+    const newAccountWithAssets = {
+      ...account,
+      assets: {
+        syscoin: account.assets,
+        ethereum: [],
+      },
+    };
+
+    store.dispatch(addAccountToStore(newAccountWithAssets));
     store.dispatch(setEncryptedMnemonic(keyringManager.getEncryptedMnemonic()));
     store.dispatch(setIsPendingBalances(false));
-    store.dispatch(setActiveAccount(account));
+    store.dispatch(setActiveAccount(newAccountWithAssets));
     store.dispatch(setLastLogin());
   };
 
@@ -88,15 +97,23 @@ const MainController = (): IMainController => {
   ): Promise<IKeyringAccountState> => {
     const newAccount = await walletController.addAccount(label);
 
-    store.dispatch(addAccountToStore(newAccount));
-    store.dispatch(setActiveAccount(newAccount));
+    const newAccountWithAssets = {
+      ...newAccount,
+      assets: {
+        syscoin: newAccount.assets,
+        ethereum: [],
+      },
+    };
+
+    store.dispatch(addAccountToStore(newAccountWithAssets));
+    store.dispatch(setActiveAccount(newAccountWithAssets));
 
     window.controller.dapp.dispatchEvent(
       DAppEvents.accountChange,
-      removeXprv(newAccount)
+      removeXprv(newAccountWithAssets)
     );
 
-    return newAccount;
+    return newAccountWithAssets;
   };
 
   const setAccount = (id: number): void => {
@@ -131,7 +148,11 @@ const MainController = (): IMainController => {
 
       const { assets } = activeAccount;
 
-      const account = { ...networkAccount, assets };
+      const generalAssets = isBitcoinBased
+        ? { ...assets, syscoin: networkAccount.assets }
+        : assets;
+
+      const account = { ...networkAccount, assets: generalAssets };
 
       store.dispatch(setNetwork(network));
       store.dispatch(setIsPendingBalances(false));
@@ -157,7 +178,7 @@ const MainController = (): IMainController => {
 
       window.controller.dapp.dispatchEvent(DAppEvents.chainChange, network);
 
-      return networkAccount;
+      return account;
     } catch (error) {
       setActiveNetwork(activeNetwork, networkChain());
 
