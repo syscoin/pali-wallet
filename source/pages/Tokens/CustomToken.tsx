@@ -50,7 +50,10 @@ export const CustomToken = () => {
       );
 
       const balance = ethers.utils.formatEther(metadata.balance);
-      const formattedBalance = loadsh.floor(parseFloat(balance), 4);
+      const formattedBalance = loadsh.floor(
+        parseFloat(balance),
+        metadata.decimals
+      );
 
       if (metadata) {
         form.setFieldValue('symbol', metadata.tokenSymbol.toUpperCase());
