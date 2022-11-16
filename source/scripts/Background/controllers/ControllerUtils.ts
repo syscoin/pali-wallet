@@ -59,22 +59,33 @@ const ControllerUtils = (): IControllerUtils => {
           await fetch('https://api.coingecko.com/api/v3/coins/list')
         ).json();
 
-        const { id: findCoinSymbolByNetwork } = getCoinList?.find(
-          (coin) => coin.symbol === activeNetwork.currency
-        );
+        if (getCoinList.length > 0 && !getCoinList?.status?.error_code) {
+          const { id: findCoinSymbolByNetwork } = getCoinList?.find(
+            (coin) => coin.symbol === activeNetwork.currency
+          );
 
-        const coins = await (
-          await fetch(
-            `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${currency}&ids=${findCoinSymbolByNetwork}&order=market_cap_desc&per_page=100&page=1&sparkline=false`
-          )
-        ).json();
+          const coins = await (
+            await fetch(
+              `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${currency}&ids=${findCoinSymbolByNetwork}&order=market_cap_desc&per_page=100&page=1&sparkline=false`
+            )
+          ).json();
 
-        const currentNetworkCoinMarket = coins[0].current_price;
+          const currentNetworkCoinMarket = coins[0].current_price;
+
+          store.dispatch(
+            setPrices({
+              asset: currency,
+              price: currentNetworkCoinMarket ? currentNetworkCoinMarket : 0,
+            })
+          );
+
+          return;
+        }
 
         store.dispatch(
           setPrices({
             asset: currency,
-            price: currentNetworkCoinMarket ? currentNetworkCoinMarket : 0,
+            price: 0,
           })
         );
 
