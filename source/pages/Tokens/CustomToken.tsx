@@ -49,11 +49,8 @@ export const CustomToken = () => {
         web3Provider
       );
 
-      const balance = ethers.utils.formatEther(metadata.balance);
-      const formattedBalance = loadsh.floor(
-        parseFloat(balance),
-        metadata.decimals
-      );
+      const balance = `${metadata.balance / 10 ** metadata.decimals}`;
+      const formattedBalance = loadsh.floor(parseFloat(balance), 4);
 
       if (metadata) {
         form.setFieldValue('symbol', metadata.tokenSymbol.toUpperCase());
