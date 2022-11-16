@@ -33,7 +33,7 @@ const SysAccountController = (): ISysAccountController => {
   let intervalId: NodeJS.Timer;
 
   const getLatestUpdate = async (silent?: boolean) => {
-    const { activeAccount, isBitcoinBased } = store.getState().vault;
+    const { activeAccount, isBitcoinBased, accounts } = store.getState().vault;
 
     if (!activeAccount.address) return;
 
@@ -88,9 +88,17 @@ const SysAccountController = (): ISysAccountController => {
 
     store.dispatch(setActiveAccount(currentAccount));
 
+    const formattedWalletAccountsLatestUpdates = Object.assign(
+      {},
+      Object.values(walleAccountstLatestUpdate).map((account: any, index) => ({
+        ...account,
+        assets: accounts[index].assets,
+      }))
+    );
+
     store.dispatch(
       setAccounts({
-        ...walleAccountstLatestUpdate,
+        ...formattedWalletAccountsLatestUpdates,
         [currentAccount.id]: currentAccount,
       })
     );
