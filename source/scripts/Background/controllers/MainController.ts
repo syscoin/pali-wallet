@@ -164,6 +164,7 @@ const MainController = (): IMainController => {
       const account = { ...networkAccount, assets: generalAssets };
 
       store.dispatch(setNetwork(network));
+
       store.dispatch(setIsPendingBalances(false));
       store.dispatch(setActiveAccount(account));
 
@@ -206,7 +207,24 @@ const MainController = (): IMainController => {
 
       return { chainId, networkVersion };
     } catch (error) {
-      setActiveNetwork(activeNetwork, networkChain());
+      const statusCodeInError = ['401', '429', '500'];
+
+      const errorMessageValidate = statusCodeInError.some((message) =>
+        error.message.includes(message)
+      );
+
+      if (errorMessageValidate) {
+        const networkAccount = await keyringManager.setSignerNetwork(
+          activeNetwork,
+          networkChain()
+        );
+
+        store.dispatch(setNetwork(activeNetwork));
+
+        store.dispatch(setIsPendingBalances(false));
+
+        store.dispatch(setActiveAccount(networkAccount));
+      }
 
       store.dispatch(setStoreError(true));
     }
