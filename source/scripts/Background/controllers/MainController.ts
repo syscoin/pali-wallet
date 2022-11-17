@@ -131,8 +131,6 @@ const MainController = (): IMainController => {
     keyringManager.setActiveAccount(id);
     store.dispatch(setActiveAccount(accounts[id]));
 
-    walletController.account.sys.getLatestUpdate(false);
-
     window.controller.dapp.dispatchEvent(
       DAppEvents.accountsChanged,
       removeXprv(accounts[id])
@@ -158,7 +156,10 @@ const MainController = (): IMainController => {
       const { assets } = activeAccount;
 
       const generalAssets = isBitcoinBased
-        ? { ...assets, syscoin: networkAccount.assets }
+        ? {
+            ethereum: activeAccount.assets?.ethereum,
+            syscoin: networkAccount.assets,
+          }
         : assets;
 
       const account = { ...networkAccount, assets: generalAssets };
@@ -219,11 +220,22 @@ const MainController = (): IMainController => {
           networkChain()
         );
 
+        const { assets } = activeAccount;
+
+        const generalAssets = isBitcoinBased
+          ? {
+              ethereum: activeAccount.assets?.ethereum,
+              syscoin: networkAccount.assets,
+            }
+          : assets;
+
+        const account = { ...networkAccount, assets: generalAssets };
+
         store.dispatch(setNetwork(activeNetwork));
 
         store.dispatch(setIsPendingBalances(false));
 
-        store.dispatch(setActiveAccount(networkAccount));
+        store.dispatch(setActiveAccount(account));
       }
 
       store.dispatch(setStoreError(true));

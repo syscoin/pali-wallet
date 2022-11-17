@@ -39,49 +39,30 @@ const SysAccountController = (): ISysAccountController => {
 
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
-    const { accountLatestUpdate, walleAccountstLatestUpdate } =
-      await keyringManager.getLatestUpdateForAccount();
+    const {
+      accountLatestUpdate: lastestUpdateAccountInfo,
+      walleAccountstLatestUpdate,
+    } = await keyringManager.getLatestUpdateForAccount();
 
     store.dispatch(setIsPendingBalances(false));
+    const { assets, ...accountLatestUpdate } = lastestUpdateAccountInfo;
 
     const hash = isBitcoinBased ? 'txid' : 'hash';
-    const assetId = isBitcoinBased ? 'assetGuid' : 'contractAddress';
-    const label = isBitcoinBased ? 'syscoin' : 'ethereum';
 
     const transactions = [
       ...accountLatestUpdate.transactions,
       ...activeAccount.transactions,
     ];
 
-    const updatedAssets = isBitcoinBased
-      ? [...accountLatestUpdate.assets, ...activeAccount.assets.syscoin]
-      : [...accountLatestUpdate.assets, ...activeAccount.assets.ethereum];
-
     const filteredTxs = transactions.filter(
       (value, index, self) =>
         index === self.findIndex((tx) => tx[hash] === value[hash])
-    );
-
-    const assets: {
-      [k: string]: any[];
-    } = {
-      ...activeAccount.assets,
-      [label]: updatedAssets,
-    };
-
-    const filteredAssets = assets[label].filter(
-      (value, index, self) =>
-        index === self.findIndex((asset) => asset[assetId] === value[assetId])
     );
 
     const currentAccount = {
       ...activeAccount,
       ...accountLatestUpdate,
       transactions: [...activeAccount.transactions, ...filteredTxs],
-      assets: {
-        ...activeAccount.assets,
-        [label]: filteredAssets,
-      },
     };
 
     if (currentAccount === activeAccount) return;
