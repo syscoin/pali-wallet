@@ -25,7 +25,7 @@ export const EthProvider = (host: string) => {
 
     const resp = await popupPromise({
       host,
-      data: tx,
+      data: { tx, external: true },
       route: 'tx/send/ethTx',
       eventName: 'txSend',
     });

@@ -1,3 +1,4 @@
+import { Input } from 'antd';
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -6,7 +7,7 @@ import { Layout, DefaultModal, NeutralButton } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
-import { truncate, logError, ellipsis } from 'utils/index';
+import { logError, ellipsis, removeScientificNotation } from 'utils/index';
 
 export const SendTransaction = () => {
   const {
@@ -27,13 +28,21 @@ export const SendTransaction = () => {
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
   const { host, ...externalTx } = useQueryData();
-  const isExternal = Boolean(externalTx.from);
-  const datatx = isExternal ? externalTx : state.tx;
+  console.log(externalTx);
+  const isExternal = Boolean(externalTx.external);
+  const datatx = isExternal
+    ? externalTx.tx
+    : state.external
+    ? state.tx
+    : state.tx;
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [tx, setTx] = useState<any>();
   const [fee, setFee] = useState<any>();
+  const [customNonce, setCustomNonce] = useState<any>();
+
+  const canGoBack = state?.external ? !state.external : !isExternal;
 
   const handleConfirm = async () => {
     const {
@@ -48,6 +57,7 @@ export const SendTransaction = () => {
       const txs = account.eth.tx;
       setTx({
         ...tx,
+        nonce: customNonce,
         maxPriorityFeePerGas: txs.toBigNumber(
           fee.maxPriorityFeePerGas * 10 ** 18
         ),
@@ -100,11 +110,34 @@ export const SendTransaction = () => {
       };
       setFee(feeDetails);
       setTx(formTx);
+      setCustomNonce(nonce);
     };
     fetchGasAndDecodeFunction().catch(console.error);
   }, []); // TODO: add timer
+
+  useEffect(() => {
+    console.log(state?.customFee);
+    if (state?.customFee) {
+      setFee((prevState) => ({
+        ...prevState,
+        gasLimit:
+          state.customFee.gasLimit !== '0'
+            ? Number(state.customFee.gasLimit)
+            : prevState?.gasLimit,
+        maxPriorityFeePerGas:
+          state.customFee.maxPriorityFeePerGas !== '0'
+            ? Number(state.customFee.maxPriorityFeePerGas)
+            : prevState?.maxPriorityFeePerGas,
+        maxFeePerGas:
+          state.customFee.maxFee !== '0'
+            ? Number(state.customFee.maxFee)
+            : prevState?.maxFeePerGas,
+        feeByPriorityBar: state.customFee.feeByPriorityBar,
+      }));
+    }
+  }, [state]);
   return (
-    <Layout title="Transaction" canGoBack={!isExternal}>
+    <Layout title="Contract Interation" canGoBack={canGoBack}>
       <DefaultModal
         show={confirmed}
         title="Transaction successful"
@@ -122,46 +155,66 @@ export const SendTransaction = () => {
               Send
             </span>
 
-            <span>{` ${'From: '} ${ellipsis(
-              tx.from,
-              7,
-              20
-            )} ${' --> '} ${' To: '} ${ellipsis(tx.to, 7, 20)}`}</span>
+            <span>
+              {`${Number(tx.value) / 10 ** 18} ${' '} ${
+                tx.token
+                  ? tx.token.symbol
+                  : activeNetwork.currency?.toUpperCase()
+              }`}
+            </span>
           </p>
-
           <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              EstimatedGasFee
-              <span className="text-brand-royalblue text-xs">`EDIT`</span>
+              From
               <span className="text-brand-royalblue text-xs">
-                `Max Fee: ${fee.maxFeePerGas} $
-                {activeNetwork.currency?.toUpperCase()}`
-              </span>
-              <span className="text-brand-royalblue text-xs">
-                `${fee.maxFeePerGas * 0.15} USD`
+                {ellipsis(tx.from, 7, 15)}
               </span>
             </p>
 
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              Value
+              To
               <span className="text-brand-royalblue text-xs">
-                {` ${'Amount: '} ${Number(tx.value) / 10 ** 18} `}
+                {ellipsis(tx.to, 7, 15)}
               </span>
             </p>
 
-            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+            <div className="flex flex-row items-center justify-between w-full">
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                Estimated GasFee
+                <span className="text-brand-royalblue text-xs">
+                  Max Fee: {removeScientificNotation(fee.maxFeePerGas)}{' '}
+                  {activeNetwork.currency?.toUpperCase()}
+                </span>
+              </p>
+              <span
+                className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
+                onClick={() =>
+                  navigate('edit/priority', {
+                    state: { tx: datatx, external: true, fee },
+                  })
+                }
+              >
+                EDIT
+              </span>
+            </div>
+
+            <p className="flex flex-col pt-2 w-40 text-brand-white font-poppins font-thin">
               Custom Nonce
               <span className="text-brand-royalblue text-xs">
-                `${tx.nonce}`
+                <Input
+                  type="number"
+                  className="input-medium outline-0 w-10 bg-bkg-2 rounded-sm focus:outline-none focus-visible:outline-none"
+                  placeholder={tx.nonce}
+                  defaultValue={tx.nonce}
+                  onChange={(e) => setCustomNonce(Number(e.target.value))}
+                />
               </span>
             </p>
 
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              Total
+              Total (Amount + gas fee)
               <span className="text-brand-royalblue text-xs">
-                {` ${'Amount + gas fee'} ${
-                  Number(tx.value) / 10 ** 18 + fee.maxFeePerGas
-                } `}
+                {Number(tx.value) / 10 ** 18 + fee.maxFeePerGas}
               </span>
             </p>
           </div>
