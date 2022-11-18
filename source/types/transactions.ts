@@ -153,3 +153,11 @@ export interface ICustomRpcParams {
   label: string;
   url: string;
 }
+
+export interface ITransactionParams {
+  data: string;
+  from: string;
+  gas: string;
+  to: string;
+  value: number;
+}

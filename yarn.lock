@@ -6346,7 +6346,7 @@ ethereum-cryptography@^0.1.3:
     secp256k1 "^4.0.1"
     setimmediate "^1.0.5"
 
-ethereum-input-data-decoder@^0.4.1:
+ethereum-input-data-decoder@^0.4.2:
   version "0.4.2"
   resolved "https://registry.yarnpkg.com/ethereum-input-data-decoder/-/ethereum-input-data-decoder-0.4.2.tgz#d6a96f1e3233523fb31f9c47ff4659452e202373"
   integrity sha512-nzdb9YEZ/oMIywN6AxuZtwUxYoCss5/DDbHKIaDxVEll/zQLy/CxZkNCaZJGJ+QtP/8DTtrBPc46o7Y683ZZ2A==

@@ -8,24 +8,30 @@ import {
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import { unrestrictedMethods } from 'scripts/Background/controllers/message-handler/types';
 import store from 'state/store';
+import { ITransactionParams } from 'types/transactions';
+import { decodeTransactionData } from 'utils/ethUtil';
 
 export const EthProvider = (host: string) => {
-  const sendTransaction = async (params: {
-    data: string;
-    from: string;
-    gas: string;
-    to: string;
-    value: number;
-  }) => {
+  const sendTransaction = async (params: ITransactionParams) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
 
     // const from = window.controller.dapp.getAccount(host).address;
 
     const tx = params;
 
+    const decodedTx = decodeTransactionData(tx);
+
+    if (decodedTx.method === 'approve') {
+      console.log('É APPROVE GARAIO');
+
+      return;
+    }
+
+    console.log('decodeTx in provider', decodedTx);
+
     const resp = await popupPromise({
       host,
-      data: { tx, external: true },
+      data: { tx, decodedTx, external: true },
       route: 'tx/send/ethTx',
       eventName: 'txSend',
     });
