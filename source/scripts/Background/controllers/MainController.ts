@@ -187,6 +187,8 @@ const MainController = (): IMainController => {
         walletController.account.sys.setAddress();
       }
 
+      walletController.account.sys.getLatestUpdate(true);
+
       const chainId = await web3Provider.send('eth_chainId', []);
       const networkVersion = await web3Provider.send('net_version', []);
 
