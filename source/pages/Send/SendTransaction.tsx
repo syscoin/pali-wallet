@@ -12,6 +12,7 @@ import { logError, ellipsis, removeScientificNotation } from 'utils/index';
 import {
   TransactionDetailsComponent,
   TransactionDataComponent,
+  TransactionHexComponent,
 } from './components';
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
@@ -206,7 +207,10 @@ export const SendTransaction = () => {
                 ) : component.component === 'data' ? (
                   <TransactionDataComponent decodedTx={decodedTxData} />
                 ) : component.component === 'hex' ? (
-                  <p>hex</p>
+                  <TransactionHexComponent
+                    methodName={decodedTxData.method}
+                    dataHex={dataTx.data}
+                  />
                 ) : null}
               </div>
             ))}

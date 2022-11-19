@@ -5,9 +5,11 @@ export const TransactionDataComponent = (props: any) => {
 
   return (
     <div className="flex flex-col items-center justify-center w-full">
-      <p className="flex gap-1.5 items-center justify-center w-full text-base">
+      <p className="flex gap-1.5 items-center justify-start w-full text-sm">
         Method:
-        <span className="text-brand-royalblue">{decodedTx.method}</span>
+        <span className="text-brand-royalblue font-bold">
+          {decodedTx.method}
+        </span>
       </p>
       {decodedTx.method === 'Contract Interaction' ? (
         <div
