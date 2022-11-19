@@ -57,8 +57,8 @@ export const Layout: FC<ILayout> = ({
       </div>
 
       <div
-        className={`flex flex-col items-center justify-center mx-auto pt-8 px-4 w-full ${
-          isConnectPage ? '' : 'max-w-sm'
+        className={`flex flex-col items-center justify-center md:mx-auto pt-8 px-4 w-full ${
+          isConnectPage ? '' : 'md:max-w-sm'
         } text-brand-white bg-bkg-2 sm:max-w-full`}
       >
         {children}

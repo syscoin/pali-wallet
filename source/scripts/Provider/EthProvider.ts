@@ -8,7 +8,7 @@ import {
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import { unrestrictedMethods } from 'scripts/Background/controllers/message-handler/types';
 import store from 'state/store';
-import { ITransactionParams } from 'types/transactions';
+import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import { decodeTransactionData } from 'utils/ethUtil';
 
 export const EthProvider = (host: string) => {
@@ -19,7 +19,7 @@ export const EthProvider = (host: string) => {
 
     const tx = params;
 
-    const decodedTx = decodeTransactionData(tx);
+    const decodedTx = decodeTransactionData(tx) as IDecodedTx;
 
     if (decodedTx.method === 'approve') {
       console.log('É APPROVE GARAIO');

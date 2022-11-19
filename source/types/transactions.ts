@@ -161,3 +161,10 @@ export interface ITransactionParams {
   to: string;
   value: number;
 }
+
+export interface IDecodedTx {
+  inputs: any[];
+  method: string | null;
+  names: string[];
+  types: string[];
+}
