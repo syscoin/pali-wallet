@@ -30,6 +30,7 @@ const MasterController = (): IMasterController => {
     if (!activeAccount.address) return;
 
     await wallet.account.sys.getLatestUpdate(silent);
+    wallet.account.sys.watchMemPool();
     utils.setFiat();
   };
 
