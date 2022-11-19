@@ -35,23 +35,23 @@ const SysAccountController = (): ISysAccountController => {
   const getLatestUpdate = async (silent?: boolean) => {
     const { activeAccount, isBitcoinBased, accounts } = store.getState().vault;
 
-    if (!activeAccount.address) return;
+    const { id: accountId } = activeAccount;
+    if (!accounts[accountId].address) return;
 
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
-    const {
-      accountLatestUpdate: lastestUpdateAccountInfo,
-      walleAccountstLatestUpdate,
-    } = await keyringManager.getLatestUpdateForAccount();
+    const { accountLatestUpdate, walleAccountstLatestUpdate } =
+      await keyringManager.getLatestUpdateForAccount();
 
     store.dispatch(setIsPendingBalances(false));
-    const { assets, ...accountLatestUpdate } = lastestUpdateAccountInfo;
 
     const hash = isBitcoinBased ? 'txid' : 'hash';
 
+    const { address, balances, xpub, assets } = accountLatestUpdate;
+
     const transactions = [
       ...accountLatestUpdate.transactions,
-      ...activeAccount.transactions,
+      ...accounts[accountId].transactions,
     ];
 
     const filteredTxs = transactions.filter(
@@ -59,15 +59,42 @@ const SysAccountController = (): ISysAccountController => {
         index === self.findIndex((tx) => tx[hash] === value[hash])
     );
 
-    const currentAccount = {
-      ...activeAccount,
-      ...accountLatestUpdate,
-      transactions: [...activeAccount.transactions, ...filteredTxs],
-    };
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'transactions',
+        value: [...accounts[accountId].transactions, ...filteredTxs],
+      })
+    );
 
-    if (currentAccount === activeAccount) return;
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'address',
+        value: address,
+      })
+    );
 
-    store.dispatch(setActiveAccount(currentAccount));
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'balances',
+        value: balances,
+      })
+    );
+
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'xpub',
+        value: xpub,
+      })
+    );
+
+    if (isBitcoinBased) {
+      store.dispatch(
+        setActiveAccountProperty({
+          property: 'assets',
+          value: { ...accounts[accountId].assets, syscoin: assets },
+        })
+      );
+    }
 
     const formattedWalletAccountsLatestUpdates = Object.assign(
       {},
@@ -80,13 +107,12 @@ const SysAccountController = (): ISysAccountController => {
     store.dispatch(
       setAccounts({
         ...formattedWalletAccountsLatestUpdates,
-        [currentAccount.id]: currentAccount,
       })
     );
 
     window.controller.dapp.dispatchEvent(
       DAppEvents.accountUpdate,
-      removeXprv(currentAccount)
+      removeXprv(accounts[accountId])
     );
   };
 
