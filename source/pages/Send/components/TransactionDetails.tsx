@@ -116,7 +116,7 @@ export const TransactionDetailsComponent = (props: any) => {
           </span>
         </div>
 
-        <p className="flex flex-col pt-2 w-40 text-brand-white font-poppins font-thin">
+        <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
           Custom Nonce
           <span className="text-brand-royalblue text-xs">
             <Input

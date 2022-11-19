@@ -2,9 +2,7 @@ const palette = require('./palette.js');
 
 module.exports = {
   purge: false,
-  content: [
-    './source/*/.{html,js,jsx,ts,tsx}',
-  ],
+  content: ['./source/*/.{html,js,jsx,ts,tsx}'],
   darkMode: false, // or 'media' or 'class'
   theme: {
     extend: {
@@ -34,7 +32,7 @@ module.exports = {
         95: '95%',
       },
       minWidth: {
-        popup: '385px',
+        popup: '400px',
         xs: '1rem',
       },
       minHeight: {
@@ -73,7 +71,7 @@ module.exports = {
       },
       animation: {
         'spin-slow': 'spin 3s linear infinite',
-      }
+      },
     },
   },
   variants: {
