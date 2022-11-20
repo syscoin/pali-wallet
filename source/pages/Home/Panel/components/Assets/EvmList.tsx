@@ -8,14 +8,23 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 
 export const EvmAssetsList = () => {
+  const { id: accountId } = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
   const assets = useSelector(
-    (state: RootState) => state.vault.activeAccount.assets
+    (state: RootState) => state.vault.accounts[accountId].assets
+  );
+  const { chainId } = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const filteredAssets = assets.ethereum?.filter(
+    (token: any) => token.chainId === chainId
   );
   const { navigate } = useUtils();
 
   return (
     <>
-      {assets.map(({ tokenSymbol, id, balance, logo, isNft }: any) => (
+      {filteredAssets?.map(({ tokenSymbol, id, balance, logo, isNft }: any) => (
         <Fragment key={uniqueId(id)}>
           <li className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark">
             <div className="flex gap-3 items-center justify-start">

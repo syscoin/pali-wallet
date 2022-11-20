@@ -24,18 +24,14 @@ const EthAccountController = (): IEthAccountController => {
 
   const saveTokenInfo = async (token: any) => {
     try {
-      const { activeAccount } = store.getState().vault;
+      const { activeAccount, activeNetwork } = store.getState().vault;
+      const { chainId } = activeNetwork;
 
-      const tokenExists = activeAccount.assets.find(
+      const tokenExists = activeAccount.assets.ethereum?.find(
         (asset: any) => asset.contractAddress === token.contractAddress
       );
 
       if (tokenExists) throw new Error('Token already exists');
-
-      const balance = await web3Accounts.getErc20TokenBalance(
-        String(token.contractAddress),
-        activeAccount.address
-      );
 
       const { coins } = await getSearch(token.tokenSymbol);
 
@@ -43,17 +39,21 @@ const EthAccountController = (): IEthAccountController => {
 
       const web3Token = {
         ...token,
-        balance,
+        balance: token.balance,
         name,
         id: token.contractAddress,
         logo: thumb,
         isNft: false,
+        chainId,
       };
 
       store.dispatch(
         setActiveAccountProperty({
           property: 'assets',
-          value: [...activeAccount.assets, web3Token],
+          value: {
+            ...activeAccount.assets,
+            ethereum: [...activeAccount.assets.ethereum, web3Token],
+          },
         })
       );
     } catch (error) {
