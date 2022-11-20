@@ -63,6 +63,22 @@ export const EthProvider = (host: string) => {
       eventName: 'eth_signTypedData',
     });
 
+  const signTypedDataV3 = (data: TypedData) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/ethSign',
+      eventName: 'eth_signTypedData_v3',
+    });
+
+  const signTypedDataV4 = (data: TypedData) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/ethSign',
+      eventName: 'eth_signTypedData_v4',
+    });
+
   const send = async (args: any[]) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
 
@@ -84,6 +100,10 @@ export const EthProvider = (host: string) => {
         return await ethSign(params);
       case 'eth_signTypedData':
         return await signTypedData(params as any);
+      case 'eth_signTypedData_v3':
+        return await signTypedDataV3(params as any);
+      case 'eth_signTypedData_v4':
+        return await signTypedDataV4(params as any);
       case 'personal_sign':
         return await personalSign(params);
       default:
@@ -95,6 +115,8 @@ export const EthProvider = (host: string) => {
     send,
     sendTransaction,
     signTypedData,
+    signTypedDataV3,
+    signTypedDataV4,
     unrestrictedRPCMethods,
     restrictedRPCMethods,
   };

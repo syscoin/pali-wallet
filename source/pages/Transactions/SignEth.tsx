@@ -49,6 +49,16 @@ const EthSign: React.FC<ISign> = () => {
           data: data[0],
         };
         response = account.eth.tx.signTypedData(address, typedData, 'V1');
+      } else if (data.eventName === 'eth_signTypedData_v3') {
+        const typedData = {
+          data: JSON.parse(data[1]),
+        };
+        response = account.eth.tx.signTypedData(address, typedData, 'V3');
+      } else if (data.eventName === 'eth_signTypedData_v4') {
+        const typedData = {
+          data: JSON.parse(data[1]),
+        };
+        response = account.eth.tx.signTypedData(address, typedData, 'V4');
       }
       setConfirmed(true);
       setLoading(false);
@@ -106,14 +116,16 @@ const EthSign: React.FC<ISign> = () => {
           <div className="flex justify-center mb-2 w-full">
             <p className="m-0 font-poppins text-sm">You are signing:</p>
           </div>
-          {data.eventName !== 'eth_signTypedData' && (
-            <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
-              <h1 className="text-lg">Message:</h1>
-              <p className="scrollbar-styled font-poppins text-sm overflow-auto">
-                {message}
-              </p>
-            </div>
-          )}
+          {data.eventName !== 'eth_signTypedData' &&
+            data.eventName !== 'eth_signTypedData_v3' &&
+            data.eventName !== 'eth_signTypedData_v4' && (
+              <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
+                <h1 className="text-lg">Message:</h1>
+                <p className="scrollbar-styled font-poppins text-sm overflow-auto">
+                  {message}
+                </p>
+              </div>
+            )}
 
           {data.eventName === 'eth_signTypedData' &&
             data[0].map((item: any, number: number) => (
@@ -127,6 +139,16 @@ const EthSign: React.FC<ISign> = () => {
                 </p>
               </div>
             ))}
+
+          {(data.eventName === 'eth_signTypedData_v3' ||
+            data.eventName === 'eth_signTypedData_v4') && (
+            <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
+              <h1 className="text-lg">Message:</h1>
+              <div className="scrollbar-styled mt-1 px-4 w-full h-40 text-xs overflow-auto">
+                <pre>{`${JSON.stringify(JSON.parse(data[1]), null, 2)}`}</pre>
+              </div>
+            </div>
+          )}
 
           <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
             <SecondaryButton type="button" onClick={window.close}>
