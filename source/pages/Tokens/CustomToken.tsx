@@ -1,5 +1,4 @@
 import { Form, Input } from 'antd';
-import { ethers } from 'ethers';
 import loadsh from 'lodash';
 import * as React from 'react';
 import { useState } from 'react';

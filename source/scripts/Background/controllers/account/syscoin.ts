@@ -11,7 +11,6 @@ import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
 import {
   setAccounts,
-  setActiveAccount,
   setActiveAccountProperty,
   setIsPendingBalances,
 } from 'state/vault';
