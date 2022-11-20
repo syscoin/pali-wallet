@@ -23,9 +23,15 @@ const EthSign: React.FC<ISign> = () => {
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [message, setMessage] = useState<string>('');
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const { label, balances } = activeAccount;
+  const { currency } = activeNetwork;
   const onSubmit = async () => {
     const { account } = getController().wallet;
 
@@ -49,12 +55,14 @@ const EthSign: React.FC<ISign> = () => {
     }
   };
   useEffect(() => {
+    const { account } = getController().wallet;
     if (data.eventName === 'personal_sign') {
-      const { account } = getController().wallet;
       const msg = data[0] === activeAccount.address ? data[1] : data[0];
-      //TODO: add parsedMessage to the UI so users can see it as well
       const parsedMessage = account.eth.tx.parsePersonalMessage(msg);
-      console.log('Parsed Message', parsedMessage);
+      setMessage(parsedMessage);
+    }
+    if (data.eventName === 'eth_sign') {
+      setMessage(data[1]);
     }
   }, []);
   return (
@@ -78,9 +86,24 @@ const EthSign: React.FC<ISign> = () => {
 
       {!loading && (
         <div className="flex flex-col items-center justify-center w-full">
-          <ul className="scrollbar-styled mt-8 px-4 w-full h-80 text-xs overflow-auto">
-            <pre>{`${JSON.stringify(data, null, 2)}`}</pre>
-          </ul>
+          <div className="flex flex-row justify-between mb-2 w-full">
+            <p className="font-poppins text-sm">Account: {label}</p>
+            <p className="font-poppins text-sm">
+              Balance: {balances.syscoin} {currency.toUpperCase()}
+            </p>
+          </div>
+          <div className="justify-left flex flex-row mb-16 w-full">
+            <p className="font-poppins text-sm">Origin: {host}</p>
+          </div>
+          <div className="flex justify-center mb-2 w-full">
+            <p className="m-0 font-poppins text-sm">You are signing:</p>
+          </div>
+          <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
+            <h1 className="text-lg">Message:</h1>
+            <p className="scrollbar-styled font-poppins text-sm overflow-auto">
+              {message}
+            </p>
+          </div>
 
           <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
             <SecondaryButton type="button" onClick={window.close}>
