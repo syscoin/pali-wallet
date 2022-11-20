@@ -55,12 +55,12 @@ export const EthProvider = (host: string) => {
     });
     return resp;
   };
-  const signTypedDataV4 = (data: TypedData) =>
+  const signTypedData = (data: TypedData) =>
     popupPromise({
       host,
       data,
-      route: 'tx/sign',
-      eventName: 'txSign',
+      route: 'tx/ethSign',
+      eventName: 'eth_signTypedData',
     });
 
   const send = async (args: any[]) => {
@@ -82,6 +82,8 @@ export const EthProvider = (host: string) => {
         return await sendTransaction(params[0]);
       case 'eth_sign':
         return await ethSign(params);
+      case 'eth_signTypedData':
+        return await signTypedData(params as any);
       case 'personal_sign':
         return await personalSign(params);
       default:
@@ -92,7 +94,7 @@ export const EthProvider = (host: string) => {
   return {
     send,
     sendTransaction,
-    signTypedDataV4,
+    signTypedData,
     unrestrictedRPCMethods,
     restrictedRPCMethods,
   };
