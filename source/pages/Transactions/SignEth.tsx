@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useSelector } from 'react-redux';
 
 import {
   DefaultModal,
@@ -9,18 +8,13 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useQueryData } from 'hooks/index';
-import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 
 interface ISign {
   send?: boolean;
 }
-
-const Sign: React.FC<ISign> = ({ send = false }) => {
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
-
+//TODO: enhance the UI
+const EthSign: React.FC<ISign> = () => {
   const { host, ...data } = useQueryData();
 
   const [loading, setLoading] = useState(false);
@@ -29,26 +23,21 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
 
   const onSubmit = async () => {
     const { account } = getController().wallet;
-    const sign = account.sys.tx.signTransaction;
-    // : account.eth.tx.signTypedDataV4;
 
     setLoading(true);
 
     try {
-      const response = await sign(data, send);
+      const response = await account.eth.tx.ethSign(data);
 
       setConfirmed(true);
       setLoading(false);
 
-      const psbtSign = send ? 'SignAndSend' : 'Sign';
-
-      const type = isBitcoinBased ? psbtSign : 'SignTypedDataV4';
-
-      dispatchBackgroundEvent(`tx${type}.${host}`, response);
+      const type = 'eth_sign';
+      dispatchBackgroundEvent(`${type}.${host}`, response);
     } catch (error: any) {
       setErrorMsg(error.message);
 
-      setTimeout(window.close, 4000);
+      setTimeout(window.close, 40000);
     }
   };
 
@@ -97,4 +86,4 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
   );
 };
 
-export default Sign;
+export default EthSign;

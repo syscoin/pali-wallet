@@ -30,7 +30,6 @@ export const popupPromise = async ({
 
   const popup = await createPopup(route, { ...data, host, eventName });
   dapp.setHasWindow(host, true);
-
   return new Promise((resolve) => {
     window.addEventListener(
       `${eventName}.${host}`,
@@ -45,7 +44,7 @@ export const popupPromise = async ({
 
     browser.windows.onRemoved.addListener((id) => {
       if (id === popup.id) {
-        if (route === 'tx/send/ethTx') {
+        if (route === 'tx/send/ethTx' || route === 'tx/ethSign') {
           resolve({ code: 4001, message: 'Pali: User rejected transaction' });
         }
         dapp.setHasWindow(host, false);
