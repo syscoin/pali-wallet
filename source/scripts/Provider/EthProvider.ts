@@ -22,9 +22,13 @@ export const EthProvider = (host: string) => {
     const decodedTx = decodeTransactionData(tx) as IDecodedTx;
 
     if (decodedTx.method === 'approve') {
-      console.log('É APPROVE GARAIO');
-
-      return;
+      const resp = await popupPromise({
+        host,
+        data: { tx, decodedTx, external: true },
+        route: 'tx/send/approve',
+        eventName: 'txApprove',
+      });
+      return resp;
     }
 
     console.log('decodeTx in provider', decodedTx);

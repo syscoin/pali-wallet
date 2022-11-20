@@ -1,3 +1,5 @@
+import { BigNumber } from 'ethers';
+
 export interface ITransaction {
   blockTime: number;
   confirmations: number;
@@ -152,6 +154,26 @@ export interface ICustomRpcParams {
   isSyscoinRpc?: boolean;
   label: string;
   url: string;
+}
+
+export interface ITxState {
+  chainId: number;
+  data: string;
+  from: string;
+  gasLimit: BigNumber;
+  maxFeePerGas: any;
+  maxPriorityFeePerGas: any;
+  nonce: number;
+  to: string;
+  token?: any;
+  value: number;
+}
+
+export interface IFeeState {
+  baseFee: number;
+  gasLimit: number;
+  maxFeePerGas: number;
+  maxPriorityFeePerGas: number;
 }
 
 export interface ITransactionParams {

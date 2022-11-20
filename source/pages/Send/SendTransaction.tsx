@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { Layout, DefaultModal, NeutralButton } from 'components/index';
+import { Layout, DefaultModal } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IDecodedTx } from 'types/transactions';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
-import { logError, ellipsis, removeScientificNotation } from 'utils/index';
+import { IDecodedTx, IFeeState, ITxState } from 'types/transactions';
+import { getController } from 'utils/browser';
+import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 
 import {
   TransactionDetailsComponent,
@@ -17,10 +17,7 @@ import {
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
 export const SendTransaction = () => {
-  const {
-    refresh,
-    wallet: { account },
-  } = getController();
+  const { refresh } = getController();
 
   const { navigate } = useUtils();
 
@@ -48,46 +45,34 @@ export const SendTransaction = () => {
     ? state.decodedTx
     : state.decodedTx;
 
-  console.log('externalTx data', externalTx);
-
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
-  const [tx, setTx] = useState<any>();
-  const [fee, setFee] = useState<any>();
-  const [customNonce, setCustomNonce] = useState<any>();
+  const [tx, setTx] = useState<ITxState>();
+  const [fee, setFee] = useState<IFeeState>();
+  const [customNonce, setCustomNonce] = useState<number>();
   const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
 
   const canGoBack = state?.external ? !state.external : !isExternal;
 
   useEffect(() => {
-    const fetchGasAndDecodeFunction = async () => {
-      const txs = account.eth.tx;
-      const { maxFeePerGas, maxPriorityFeePerGas } =
-        await txs.getFeeDataWithDynamicMaxPriorityFeePerGas(); // this details maxFeePerGas and maxPriorityFeePerGas need to be passed as an option
-      const nonce = await txs.getRecommendedNonce(dataTx.from); // This also need possibility for customization
-      const formTx = {
-        data: dataTx.data,
-        from: dataTx.from,
-        to: dataTx.to,
-        value: dataTx?.value ? dataTx.value : 0,
-        maxPriorityFeePerGas: maxPriorityFeePerGas,
-        maxFeePerGas: maxFeePerGas,
-        nonce: nonce,
-        chainId: activeNetwork.chainId,
-        gasLimit: txs.toBigNumber(0),
-      };
-      formTx.gasLimit = await txs.getTxGasLimit(formTx);
-      const feeDetails = {
-        maxFeePerGas: maxFeePerGas.toNumber() / 10 ** 18,
-        baseFee: maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 18,
-        maxPriorityFeePerGas: maxPriorityFeePerGas.toNumber() / 10 ** 18,
-        gasLimit: formTx.gasLimit.toNumber(),
-      };
+    const abortController = new AbortController();
+
+    const getGasAndFunction = async () => {
+      const { feeDetails, formTx, nonce } = await fetchGasAndDecodeFunction(
+        dataTx,
+        activeNetwork
+      );
+
       setFee(feeDetails);
       setTx(formTx);
       setCustomNonce(nonce);
     };
-    fetchGasAndDecodeFunction().catch(console.error);
+
+    getGasAndFunction();
+
+    return () => {
+      abortController.abort();
+    };
   }, []); // TODO: add timer
 
   useEffect(() => {
