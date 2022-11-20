@@ -14,6 +14,7 @@ export const TransactionDetailsComponent = (props: any) => {
   const {
     tx,
     dataTx,
+    decodedTx,
     customNonce,
     setCustomNonce,
     loading,
@@ -108,7 +109,12 @@ export const TransactionDetailsComponent = (props: any) => {
             className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
             onClick={() =>
               navigate('edit/priority', {
-                state: { tx: dataTx, external: true, fee },
+                state: {
+                  tx: dataTx,
+                  decodedTx: decodedTx,
+                  external: true,
+                  fee,
+                },
               })
             }
           >

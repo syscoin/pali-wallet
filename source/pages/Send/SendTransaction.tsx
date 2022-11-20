@@ -143,7 +143,7 @@ export const SendTransaction = () => {
             <p className="flex flex-col text-center text-base">
               Method:
               <span className="text-brand-royalblue">
-                {decodedTxData.method}
+                {decodedTxData?.method}
               </span>
             </p>
           </p>
