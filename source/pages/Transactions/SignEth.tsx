@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import {
   DefaultModal,
@@ -8,31 +9,38 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useQueryData } from 'hooks/index';
+import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 
 interface ISign {
   send?: boolean;
 }
 //TODO: enhance the UI
+// TODO: display warning for eth_sign users show the decoded Personal Message
 const EthSign: React.FC<ISign> = () => {
   const { host, ...data } = useQueryData();
 
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
   const onSubmit = async () => {
     const { account } = getController().wallet;
 
     setLoading(true);
 
     try {
-      const response = await account.eth.tx.ethSign(data);
-
+      let response = '';
+      if (data.eventName === 'eth_sign')
+        response = await account.eth.tx.ethSign(data);
+      else if (data.eventName === 'personal_sign')
+        response = await account.eth.tx.signPersonalMessage(data);
       setConfirmed(true);
       setLoading(false);
 
-      const type = 'eth_sign';
+      const type = data.eventName;
       dispatchBackgroundEvent(`${type}.${host}`, response);
     } catch (error: any) {
       setErrorMsg(error.message);
@@ -40,7 +48,15 @@ const EthSign: React.FC<ISign> = () => {
       setTimeout(window.close, 40000);
     }
   };
-
+  useEffect(() => {
+    if (data.eventName === 'personal_sign') {
+      const { account } = getController().wallet;
+      const msg = data[0] === activeAccount.address ? data[1] : data[0];
+      //TODO: add parsedMessage to the UI so users can see it as well
+      const parsedMessage = account.eth.tx.parsePersonalMessage(msg);
+      console.log('Parsed Message', parsedMessage);
+    }
+  }, []);
   return (
     <Layout canGoBack={false} title={'SIGNATURE REQUEST'}>
       <DefaultModal

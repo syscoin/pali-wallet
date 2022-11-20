@@ -44,6 +44,17 @@ export const EthProvider = (host: string) => {
     return resp;
   };
 
+  const personalSign = async (params: string[]) => {
+    setProviderNetwork(store.getState().vault.activeNetwork);
+    const data = params;
+    const resp = await popupPromise({
+      host,
+      data,
+      route: 'tx/ethSign',
+      eventName: 'personal_sign',
+    });
+    return resp;
+  };
   const signTypedDataV4 = (data: TypedData) =>
     popupPromise({
       host,
@@ -66,12 +77,16 @@ export const EthProvider = (host: string) => {
   };
 
   const restrictedRPCMethods = async (method: string, params: any[]) => {
-    if (method === 'eth_sendTransaction') {
-      return await sendTransaction(params[0]);
-    } else if (method === 'eth_sign') {
-      return await ethSign(params);
+    switch (method) {
+      case 'eth_sendTransaction':
+        return await sendTransaction(params[0]);
+      case 'eth_sign':
+        return await ethSign(params);
+      case 'personal_sign':
+        return await personalSign(params);
+      default:
+        return await web3Provider.send(method, params);
     }
-    return await web3Provider.send(method, params);
   };
 
   return {
