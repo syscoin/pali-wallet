@@ -11,7 +11,6 @@ import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
 import {
   setAccounts,
-  setActiveAccount,
   setActiveAccountProperty,
   setIsPendingBalances,
 } from 'state/vault';
@@ -33,9 +32,10 @@ const SysAccountController = (): ISysAccountController => {
   let intervalId: NodeJS.Timer;
 
   const getLatestUpdate = async (silent?: boolean) => {
-    const { activeAccount, isBitcoinBased } = store.getState().vault;
+    const { activeAccount, isBitcoinBased, accounts } = store.getState().vault;
 
-    if (!activeAccount.address) return;
+    const { id: accountId } = activeAccount;
+    if (!accounts[accountId].address) return;
 
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
@@ -45,11 +45,12 @@ const SysAccountController = (): ISysAccountController => {
     store.dispatch(setIsPendingBalances(false));
 
     const hash = isBitcoinBased ? 'txid' : 'hash';
-    const assetId = isBitcoinBased ? 'assetGuid' : 'contractAddress';
+
+    const { address, balances, xpub, assets } = accountLatestUpdate;
 
     const transactions = [
-      ...accountLatestUpdate.assets,
-      ...store.getState().vault.activeAccount.assets,
+      ...accountLatestUpdate.transactions,
+      ...accounts[accountId].transactions,
     ];
 
     const filteredTxs = transactions.filter(
@@ -57,37 +58,60 @@ const SysAccountController = (): ISysAccountController => {
         index === self.findIndex((tx) => tx[hash] === value[hash])
     );
 
-    const assets = [
-      ...accountLatestUpdate.assets,
-      ...store.getState().vault.activeAccount.assets,
-    ];
-
-    const filteredAssets = assets.filter(
-      (value, index, self) =>
-        index === self.findIndex((asset) => asset[assetId] === value[assetId])
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'transactions',
+        value: [...accounts[accountId].transactions, ...filteredTxs],
+      })
     );
 
-    const currentAccount = {
-      ...activeAccount,
-      ...accountLatestUpdate,
-      transactions: [...activeAccount.transactions, ...filteredTxs],
-      assets: filteredAssets,
-    };
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'address',
+        value: address,
+      })
+    );
 
-    if (currentAccount === activeAccount) return;
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'balances',
+        value: balances,
+      })
+    );
 
-    store.dispatch(setActiveAccount(currentAccount));
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'xpub',
+        value: xpub,
+      })
+    );
+
+    if (isBitcoinBased) {
+      store.dispatch(
+        setActiveAccountProperty({
+          property: 'assets',
+          value: { ...accounts[accountId].assets, syscoin: assets },
+        })
+      );
+    }
+
+    const formattedWalletAccountsLatestUpdates = Object.assign(
+      {},
+      Object.values(walleAccountstLatestUpdate).map((account: any, index) => ({
+        ...account,
+        assets: accounts[index].assets,
+      }))
+    );
 
     store.dispatch(
       setAccounts({
-        ...walleAccountstLatestUpdate,
-        [currentAccount.id]: currentAccount,
+        ...formattedWalletAccountsLatestUpdates,
       })
     );
 
     window.controller.dapp.dispatchEvent(
       DAppEvents.accountUpdate,
-      removeXprv(currentAccount)
+      removeXprv(accounts[accountId])
     );
   };
 
