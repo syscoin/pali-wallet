@@ -9,14 +9,24 @@ import { RootState } from 'state/store';
 import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
 
 export const AssetsPanel = () => {
-  const activeAccount = useSelector(
+  const { assets } = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
 
-  const assets = Object.values(activeAccount.assets);
+  const { chainId } = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+
+  const ethTokensValidation =
+    assets.ethereum?.filter((token: any) => token.chainId === chainId)
+      ?.length === 0;
+
+  const filterValidation = isBitcoinBased
+    ? assets.syscoin?.length === 0
+    : assets.ethereum?.length === 0 || ethTokensValidation;
 
   const { navigate } = useUtils();
 
@@ -28,7 +38,7 @@ export const AssetsPanel = () => {
 
   return (
     <div className="pb-14 w-full">
-      {assets.length === 0 ? (
+      {filterValidation ? (
         <NoAssetsComponent />
       ) : (
         <ul className="pt-4 px-4 w-full text-center text-white text-base bg-bkg-3">

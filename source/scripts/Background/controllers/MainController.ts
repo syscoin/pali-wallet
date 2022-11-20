@@ -60,11 +60,16 @@ const MainController = (): IMainController => {
 
   const unlock = async (pwd: string): Promise<void> => {
     if (!keyringManager.checkPassword(pwd)) throw new Error('Invalid password');
-
+    const { activeAccount } = store.getState().vault;
     const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
+    const { assets: currentAssets } = activeAccount;
+
+    const { assets, ...keyringAccount } = account;
+
+    const mainAccount = { ...keyringAccount, assets: currentAssets };
 
     store.dispatch(setLastLogin());
-    store.dispatch(setActiveAccount(account));
+    store.dispatch(setActiveAccount(mainAccount));
   };
 
   const createWallet = async (password: string): Promise<void> => {
@@ -75,10 +80,18 @@ const MainController = (): IMainController => {
     const account =
       (await keyringManager.createKeyringVault()) as IKeyringAccountState;
 
-    store.dispatch(addAccountToStore(account));
+    const newAccountWithAssets = {
+      ...account,
+      assets: {
+        syscoin: account.assets,
+        ethereum: [],
+      },
+    };
+
+    store.dispatch(addAccountToStore(newAccountWithAssets));
     store.dispatch(setEncryptedMnemonic(keyringManager.getEncryptedMnemonic()));
     store.dispatch(setIsPendingBalances(false));
-    store.dispatch(setActiveAccount(account));
+    store.dispatch(setActiveAccount(newAccountWithAssets));
     store.dispatch(setLastLogin());
   };
 
@@ -93,15 +106,23 @@ const MainController = (): IMainController => {
   ): Promise<IKeyringAccountState> => {
     const newAccount = await walletController.addAccount(label);
 
-    store.dispatch(addAccountToStore(newAccount));
-    store.dispatch(setActiveAccount(newAccount));
+    const newAccountWithAssets = {
+      ...newAccount,
+      assets: {
+        syscoin: newAccount.assets,
+        ethereum: [],
+      },
+    };
+
+    store.dispatch(addAccountToStore(newAccountWithAssets));
+    store.dispatch(setActiveAccount(newAccountWithAssets));
 
     window.controller.dapp.dispatchEvent(
       DAppEvents.accountsChanged,
       removeXprv(newAccount)
     );
 
-    return newAccount;
+    return newAccountWithAssets;
   };
 
   const setAccount = (id: number): void => {
@@ -109,8 +130,6 @@ const MainController = (): IMainController => {
 
     keyringManager.setActiveAccount(id);
     store.dispatch(setActiveAccount(accounts[id]));
-
-    walletController.account.sys.getLatestUpdate(false);
 
     window.controller.dapp.dispatchEvent(
       DAppEvents.accountsChanged,
@@ -121,7 +140,7 @@ const MainController = (): IMainController => {
   const setActiveNetwork = async (network: INetwork, chain: string) => {
     store.dispatch(setIsPendingBalances(true));
 
-    const { activeNetwork } = store.getState().vault;
+    const { activeNetwork, activeAccount } = store.getState().vault;
 
     const isBitcoinBased =
       chain === 'syscoin' && (await isBitcoinBasedNetwork(network));
@@ -134,11 +153,21 @@ const MainController = (): IMainController => {
         chain
       );
 
+      const { assets } = activeAccount;
+
+      const generalAssets = isBitcoinBased
+        ? {
+            ethereum: activeAccount.assets?.ethereum,
+            syscoin: networkAccount.assets,
+          }
+        : assets;
+
+      const account = { ...networkAccount, assets: generalAssets };
+
       store.dispatch(setNetwork(network));
 
       store.dispatch(setIsPendingBalances(false));
-
-      store.dispatch(setActiveAccount(networkAccount));
+      store.dispatch(setActiveAccount(account));
 
       if (isBitcoinBased) {
         store.dispatch(
@@ -157,6 +186,8 @@ const MainController = (): IMainController => {
 
         walletController.account.sys.setAddress();
       }
+
+      walletController.account.sys.getLatestUpdate(true);
 
       const chainId = await web3Provider.send('eth_chainId', []);
       const networkVersion = await web3Provider.send('net_version', []);
@@ -191,11 +222,22 @@ const MainController = (): IMainController => {
           networkChain()
         );
 
+        const { assets } = activeAccount;
+
+        const generalAssets = isBitcoinBased
+          ? {
+              ethereum: activeAccount.assets?.ethereum,
+              syscoin: networkAccount.assets,
+            }
+          : assets;
+
+        const account = { ...networkAccount, assets: generalAssets };
+
         store.dispatch(setNetwork(activeNetwork));
 
         store.dispatch(setIsPendingBalances(false));
 
-        store.dispatch(setActiveAccount(networkAccount));
+        store.dispatch(setActiveAccount(account));
       }
 
       store.dispatch(setStoreError(true));

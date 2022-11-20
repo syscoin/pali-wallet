@@ -27,7 +27,7 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
 
   const formattedAsset = [];
 
-  assets.find((asset: any) => {
+  assets.syscoin?.find((asset: any) => {
     if (asset.assetGuid !== id) return null;
 
     for (const [key, value] of Object.entries(asset)) {
