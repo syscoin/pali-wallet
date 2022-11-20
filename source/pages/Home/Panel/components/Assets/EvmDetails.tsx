@@ -27,7 +27,7 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
 
   const formattedAsset = [];
 
-  assets.find((asset: any) => {
+  assets.ethereum?.find((asset: any) => {
     if (asset.id !== id) return null;
 
     for (const [key, value] of Object.entries(asset)) {
