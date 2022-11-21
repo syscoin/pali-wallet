@@ -22,6 +22,7 @@ import {
   UpdateToken,
   SeedConfirm,
   EditPriorityFee,
+  Decrypt,
 } from '../pages';
 import { useQuery, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
@@ -106,6 +107,10 @@ export const ExternalRoute = () => {
           <Route
             path="encryptKey"
             element={<ProtectedRoute element={<EncryptPubKey />} />}
+          />
+          <Route
+            path="decrypt"
+            element={<ProtectedRoute element={<Decrypt />} />}
           />
           <Route
             path="sign-psbt"
