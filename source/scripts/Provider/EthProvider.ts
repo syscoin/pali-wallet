@@ -106,6 +106,7 @@ export const EthProvider = (host: string) => {
         return await signTypedDataV4(params as any);
       case 'personal_sign':
         return await personalSign(params);
+
       default:
         return await web3Provider.send(method, params);
     }

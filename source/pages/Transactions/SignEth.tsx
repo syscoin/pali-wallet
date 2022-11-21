@@ -49,19 +49,13 @@ const EthSign: React.FC<ISign> = () => {
       else if (data.eventName === 'personal_sign')
         response = await account.eth.tx.signPersonalMessage(data);
       else if (data.eventName === 'eth_signTypedData') {
-        const typedData = {
-          data: data[0],
-        };
+        const typedData = data[0];
         response = account.eth.tx.signTypedData(address, typedData, 'V1');
       } else if (data.eventName === 'eth_signTypedData_v3') {
-        const typedData = {
-          data: JSON.parse(data[1]),
-        };
+        const typedData = JSON.parse(data[1]);
         response = account.eth.tx.signTypedData(address, typedData, 'V3');
       } else if (data.eventName === 'eth_signTypedData_v4') {
-        const typedData = {
-          data: JSON.parse(data[1]),
-        };
+        const typedData = JSON.parse(data[1]);
         response = account.eth.tx.signTypedData(address, typedData, 'V4');
       }
       setConfirmed(true);
