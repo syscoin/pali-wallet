@@ -44,32 +44,41 @@ const EthSign: React.FC<ISign> = () => {
 
     try {
       let response = '';
+      const type = data.eventName;
       if (data.eventName === 'eth_sign')
         response = await account.eth.tx.ethSign(data);
       else if (data.eventName === 'personal_sign')
         response = await account.eth.tx.signPersonalMessage(data);
-      else if (data.eventName === 'eth_signTypedData') {
-        const typedData = {
-          data: data[0],
-        };
-        response = account.eth.tx.signTypedData(address, typedData, 'V1');
-      } else if (data.eventName === 'eth_signTypedData_v3') {
-        const typedData = {
-          data: JSON.parse(data[1]),
-        };
-        response = account.eth.tx.signTypedData(address, typedData, 'V3');
-      } else if (data.eventName === 'eth_signTypedData_v4') {
-        const typedData = {
-          data: JSON.parse(data[1]),
-        };
-        response = account.eth.tx.signTypedData(address, typedData, 'V4');
+      else {
+        let typedData;
+        if (
+          typeof data[0] === 'string' &&
+          data[0].toLowerCase() === address.toLowerCase()
+        ) {
+          typedData = data[1];
+        } else if (
+          typeof data[1] === 'string' &&
+          data[1].toLowerCase() === address.toLowerCase()
+        ) {
+          typedData = data[0];
+        } else {
+          throw 'Signing for wrong address';
+        }
+        if (typeof typedData === 'string') typedData = JSON.parse(typedData);
+        if (data.eventName === 'eth_signTypedData') {
+          response = account.eth.tx.signTypedData(address, typedData, 'V1');
+        } else if (data.eventName === 'eth_signTypedData_v3') {
+          response = account.eth.tx.signTypedData(address, typedData, 'V3');
+        } else if (data.eventName === 'eth_signTypedData_v4') {
+          response = account.eth.tx.signTypedData(address, typedData, 'V4');
+        }
       }
       setConfirmed(true);
       setLoading(false);
 
-      const type = data.eventName;
       dispatchBackgroundEvent(`${type}.${host}`, response);
     } catch (error: any) {
+      console.log('Error', error);
       setErrorMsg(error.message);
 
       setTimeout(window.close, 40000);
