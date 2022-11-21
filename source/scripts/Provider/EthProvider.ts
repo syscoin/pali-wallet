@@ -9,6 +9,7 @@ import { popupPromise } from 'scripts/Background/controllers/message-handler/pop
 import { unrestrictedMethods } from 'scripts/Background/controllers/message-handler/types';
 import store from 'state/store';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
+import { getController } from 'utils/browser';
 import { decodeTransactionData } from 'utils/ethUtil';
 
 export const EthProvider = (host: string) => {
