@@ -42,12 +42,51 @@ export const EthProvider = (host: string) => {
     return resp;
   };
 
+  const ethSign = async (params: string[]) => {
+    setProviderNetwork(store.getState().vault.activeNetwork);
+    const data = params;
+    const resp = await popupPromise({
+      host,
+      data,
+      route: 'tx/ethSign',
+      eventName: 'eth_sign',
+    });
+    return resp;
+  };
+
+  const personalSign = async (params: string[]) => {
+    setProviderNetwork(store.getState().vault.activeNetwork);
+    const data = params;
+    const resp = await popupPromise({
+      host,
+      data,
+      route: 'tx/ethSign',
+      eventName: 'personal_sign',
+    });
+    return resp;
+  };
+  const signTypedData = (data: TypedData) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/ethSign',
+      eventName: 'eth_signTypedData',
+    });
+
+  const signTypedDataV3 = (data: TypedData) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/ethSign',
+      eventName: 'eth_signTypedData_v3',
+    });
+
   const signTypedDataV4 = (data: TypedData) =>
     popupPromise({
       host,
       data,
-      route: 'tx/sign',
-      eventName: 'txSign',
+      route: 'tx/ethSign',
+      eventName: 'eth_signTypedData_v4',
     });
 
   const send = async (args: any[]) => {
@@ -64,16 +103,35 @@ export const EthProvider = (host: string) => {
   };
 
   const restrictedRPCMethods = async (method: string, params: any[]) => {
-    if (method === 'eth_sendTransaction') {
-      // console.log('Sending transaction', params);
-      return await sendTransaction(params[0]);
+    switch (method) {
+      case 'eth_sendTransaction':
+        return await sendTransaction(params[0]);
+      case 'eth_sign':
+        return await ethSign(params);
+      case 'eth_signTypedData':
+        return await signTypedData(params as any);
+      case 'eth_signTypedData_v3':
+        return await signTypedDataV3(params as any);
+      case 'eth_signTypedData_v4':
+        return await signTypedDataV4(params as any);
+      case 'personal_sign':
+        return await personalSign(params);
+      case 'personal_ecRecover':
+        const { account } = getController().wallet;
+        console.log('Checking the params', params);
+        return await web3Provider._getAddress(
+          account.eth.tx.verifyPersonalMessage(params[0], params[1])
+        );
+      default:
+        return await web3Provider.send(method, params);
     }
-    return await web3Provider.send(method, params);
   };
 
   return {
     send,
     sendTransaction,
+    signTypedData,
+    signTypedDataV3,
     signTypedDataV4,
     unrestrictedRPCMethods,
     restrictedRPCMethods,
