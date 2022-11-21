@@ -47,11 +47,12 @@ const Decrypt: React.FC<ISign> = () => {
 
   const onSubmit = async () => {
     setLoading(true);
-    if (data.address !== address)
+    if (data[1] !== address) {
       return {
         code: 4001,
         message: 'Pali: Asking for key of non connected account',
       };
+    }
     try {
       const response = await account.eth.tx.decryptMessage(data);
       setConfirmed(true);
@@ -59,7 +60,6 @@ const Decrypt: React.FC<ISign> = () => {
       const type = data.eventName;
       dispatchBackgroundEvent(`${type}.${host}`, response);
       window.close();
-      console.log('passou aquiz');
     } catch (error) {
       setErrorMsg(error.message);
 
@@ -67,9 +67,6 @@ const Decrypt: React.FC<ISign> = () => {
     }
   };
 
-  useEffect(() => {
-    console.log({ data });
-  }, [data]);
   return (
     <Layout canGoBack={false} title={'Decrypt Request'}>
       <ErrorModal
