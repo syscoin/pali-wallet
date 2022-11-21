@@ -89,7 +89,7 @@
     "eslint-plugin-import": "^2.23.3",
     "eth-chains": "^1.0.0",
     "eth-sig-util": "^3.0.1",
-    "ethereum-input-data-decoder": "^0.4.2",
+    "ethereum-input-data-decoder": "^0.4.1",
     "ethers": "^5.6.4",
     "ethers-eip712": "^0.2.0",
     "fs-extra": "^10.0.0",
