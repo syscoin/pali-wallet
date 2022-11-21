@@ -125,7 +125,7 @@ export const EthProvider = (host: string) => {
         return await getEncryptionPubKey(params[0]);
       case 'eth_decrypt':
         //TODO: add UI to process this decryption
-        return account.eth.tx.decryptMessage(params[0], params[1]);
+        return account.eth.tx.decryptMessage(params);
       default:
         return await web3Provider.send(method, params);
     }
