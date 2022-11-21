@@ -8,6 +8,7 @@ import {
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import { unrestrictedMethods } from 'scripts/Background/controllers/message-handler/types';
 import store from 'state/store';
+import { getController } from 'utils/browser';
 
 export const EthProvider = (host: string) => {
   const sendTransaction = async (params: {
@@ -106,7 +107,12 @@ export const EthProvider = (host: string) => {
         return await signTypedDataV4(params as any);
       case 'personal_sign':
         return await personalSign(params);
-
+      case 'personal_ecRecover':
+        const { account } = getController().wallet;
+        console.log('Checking the params', params);
+        return await web3Provider._getAddress(
+          account.eth.tx.verifyPersonalMessage(params[0], params[1])
+        );
       default:
         return await web3Provider.send(method, params);
     }
