@@ -26,6 +26,14 @@ const proxy = (type, data) =>
           return;
         }
 
+
+        if(data.method === 'eth_requestAccounts' || data.method === 'eth_accounts' || data.method === 'wallet_requestPermissions'){
+          //TODO: enhance this implementation
+          let addr = event.detail.replace('[','');
+          addr = addr.replace(']','');
+          addr = addr.replaceAll('"','');
+            window.ethereum.selectedAddress = addr;
+        }
         resolve(response);
 
         return response;
@@ -137,6 +145,7 @@ window.ethereum = {
   on,
   chainId: undefined, 
   networkVersion: undefined,
+  selectedAddress: null,
   removeListener,
   isConnected: () => request({ method: 'wallet_isConnected' }),
   enable: () =>

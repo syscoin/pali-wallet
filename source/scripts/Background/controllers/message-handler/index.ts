@@ -43,7 +43,6 @@ const _messageHandler = async (host: string, message: Message) => {
  */
 export const onMessage = async (message: Message, port: Runtime.Port) => {
   const { host } = new URL(port.sender.url);
-  console.log(`[DApp] Message from ${host}`, message.type, message.data);
   if (message.type === 'CHAIN_NET_REQUEST') {
     const { activeNetwork } = store.getState().vault;
     const networkVersion = String(activeNetwork.chainId);
@@ -64,9 +63,13 @@ export const onMessage = async (message: Message, port: Runtime.Port) => {
       const response = await _messageHandler(host, message);
       if (response === undefined) return;
 
-      console.log('message received', { message, port, response });
-
-      console.log('[DApp] Response', response);
+      console.log(
+        '[DApp] Response to',
+        host,
+        message.type,
+        message.data,
+        response
+      );
       port.postMessage({ id: message.id, data: response });
     } catch (error: any) {
       console.error(error);

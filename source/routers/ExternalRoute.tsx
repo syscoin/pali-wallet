@@ -8,6 +8,7 @@ import {
   CreateNFT,
   CreatePass,
   EthSign,
+  EncryptPubKey,
   Import,
   MintNFT,
   MintToken,
@@ -108,6 +109,10 @@ export const ExternalRoute = () => {
           <Route
             path="ethSign"
             element={<ProtectedRoute element={<EthSign />} />}
+          />
+          <Route
+            path="encryptKey"
+            element={<ProtectedRoute element={<EncryptPubKey />} />}
           />
           <Route
             path="sign-psbt"
