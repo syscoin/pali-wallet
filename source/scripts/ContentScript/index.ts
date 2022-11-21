@@ -27,9 +27,11 @@ const checkForPaliRegisterEvent = (type, id) => {
   }
 
   emitter.once(id, (result) => {
-    window.dispatchEvent(
-      new CustomEvent(id, { detail: JSON.stringify(result) })
-    );
+    if (result)
+      window.dispatchEvent(
+        new CustomEvent(id, { detail: JSON.stringify(result) })
+      );
+    else window.dispatchEvent(new CustomEvent(id, { detail: null }));
   });
 };
 

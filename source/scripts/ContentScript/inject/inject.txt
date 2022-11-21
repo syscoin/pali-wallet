@@ -9,14 +9,19 @@ const proxy = (type, data) =>
       id,
       (event) => {
         console.log('[Pali] EventListener method', event.detail);
-        if (!event.detail) {
+        if (event.detail === undefined) {
           resolve(undefined);
+
+          return;
+        }
+        else if (event.detail === null) {
+          resolve(null);
 
           return;
         }
 
         const response = JSON.parse(event.detail);
-        if(response?.code === 4001){
+        if(response?.code === 4001 || response?.code === -32603){
           reject(response);
           return;
         }

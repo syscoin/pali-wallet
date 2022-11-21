@@ -37,7 +37,8 @@ export const popupPromise = async ({
         if (event.detail !== undefined && event.detail !== null) {
           resolve(event.detail);
         }
-        resolve({ success: true });
+        if (route === 'switch-EthChain' || route === 'add-EthChain')
+          resolve(null);
       },
       { once: true, passive: true }
     );
@@ -47,7 +48,9 @@ export const popupPromise = async ({
         if (
           route === 'tx/send/ethTx' ||
           route === 'tx/ethSign' ||
-          route === 'tx/encryptKey'
+          route === 'tx/encryptKey' ||
+          route === 'switch-EthChain' ||
+          route === 'add-EthChain'
         ) {
           resolve({ code: 4001, message: 'Pali: User rejected transaction' });
         }
