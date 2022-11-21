@@ -33,6 +33,10 @@ const EthSign: React.FC<ISign> = () => {
   const { isBitcoinBased } = useSelector((state: RootState) => state.vault);
   const { label, balances, address } = activeAccount;
   const { currency } = activeNetwork;
+
+  const warningMessage =
+    "Signing this message can be dangerous. This signature could potentially perform any operation on your account's behalf, including granting complete control of your account and all of its assets to the requesting site. Only sign this message if you know what you're doing or completely trust the requesting site.";
+
   const onSubmit = async () => {
     const { account } = getController().wallet;
 
@@ -113,19 +117,29 @@ const EthSign: React.FC<ISign> = () => {
           <div className="justify-left flex flex-row mb-16 w-full">
             <p className="font-poppins text-sm">Origin: {host}</p>
           </div>
-          <div className="flex justify-center mb-2 w-full">
-            <p className="m-0 font-poppins text-sm">You are signing:</p>
-          </div>
-          {data.eventName !== 'eth_signTypedData' &&
-            data.eventName !== 'eth_signTypedData_v3' &&
-            data.eventName !== 'eth_signTypedData_v4' && (
+          {data.eventName !== 'eth_sign' && (
+            <div className="flex justify-center mb-2 w-full">
+              <p className="m-0 font-poppins text-sm">You are signing:</p>
+            </div>
+          )}
+
+          {(data.eventName === 'personal_sign' ||
+            data.eventName === 'eth_sign') && (
+            <div className="flex flex-col w-full">
+              {data.eventName === 'eth_sign' && (
+                <p className="mb-3 w-full text-center text-red-600 font-poppins text-sm">
+                  {warningMessage}
+                </p>
+              )}
+
               <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
                 <h1 className="text-lg">Message:</h1>
                 <p className="scrollbar-styled font-poppins text-sm overflow-auto">
                   {message}
                 </p>
               </div>
-            )}
+            </div>
+          )}
 
           {data.eventName === 'eth_signTypedData' &&
             data[0].map((item: any, number: number) => (
