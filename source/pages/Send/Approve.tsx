@@ -8,7 +8,7 @@ import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
-import { Layout, DefaultModal, NeutralButton } from 'components/index';
+import { Layout, DefaultModal, NeutralButton, Button } from 'components/index';
 import { useQueryData } from 'hooks/useQuery';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
@@ -223,7 +223,7 @@ export const ApproveTransactionComponent = () => {
                     {tokenSymbol}
                   </span>
                 </span>
-                <span className="text-gray-500 text-sm">
+                <span className="text-brand-graylight text-sm">
                   By granting permission, you are authorizing the following
                   contract to access your funds
                 </span>
@@ -261,9 +261,17 @@ export const ApproveTransactionComponent = () => {
             </div>
 
             <div className="items-center justify-center py-4 w-full">
-              <div className="grid gap-y-2.5 grid-cols-1 auto-cols-auto">
+              <div className="grid gap-y-3 grid-cols-1 auto-cols-auto">
                 <div className="grid grid-cols-2 items-center">
-                  <p className="text-base font-bold">Transaction Fee</p>
+                  <div className="flex items-center">
+                    <Icon
+                      name="tag"
+                      className="flex items-center justify-center w-4"
+                      wrapperClassname="mr-3"
+                    />
+                    <h1 className="text-base font-bold">Transaction Fee</h1>
+                  </div>
+
                   <button
                     type="button"
                     className="justify-self-end text-blue-300 text-xs"
@@ -273,7 +281,7 @@ export const ApproveTransactionComponent = () => {
                 </div>
 
                 <div className="grid grid-cols-2 items-center">
-                  <span className="text-sm font-thin">
+                  <span className="text-brand-graylight text-xs font-thin">
                     There is a fee associated with this request.
                   </span>
 
@@ -289,7 +297,7 @@ export const ApproveTransactionComponent = () => {
               <div className="flex items-center justify-center mt-6">
                 <button
                   type="button"
-                  className="text-blue-300 text-xs"
+                  className="text-blue-300 text-sm"
                   onClick={() => setDetailsOpened(!detailsOpened)}
                 >
                   {detailsOpened ? 'Hide' : 'Show'} full transaction details
@@ -297,43 +305,120 @@ export const ApproveTransactionComponent = () => {
               </div>
             </div>
 
-            <div className={`${detailsOpened ? 'flex' : 'hidden'}`}>
-              <div className="grid gap-y-2.5 grid-cols-1 auto-cols-auto">
+            <div
+              className={`${
+                detailsOpened ? 'flex' : 'hidden'
+              } flex-col w-full  divide-bkg-3 divide-dashed divide-y`}
+            >
+              <div className="grid gap-y-4 grid-cols-1 py-4 auto-cols-auto">
                 <div className="grid grid-cols-2 items-center">
-                  <p className="text-base font-bold">Permission request</p>
+                  <div className="flex items-center">
+                    <Icon
+                      name="user"
+                      className="flex items-center justify-center w-4"
+                      wrapperClassname="mr-3"
+                    />
+                    <h2 className="text-base font-bold">Permission Request</h2>
+                  </div>
+
                   <button
                     type="button"
-                    className="justify-self-end text-blue-300 text-xs"
+                    className="self-start justify-self-end text-blue-300 text-xs"
                   >
                     Edit
                   </button>
                 </div>
-                <p>{host} can access and spend up to this maximum amount.</p>
 
-                <div className="grid grid-cols-2 items-center">
-                  <p className="text-base font-bold">Approved amount:</p>
+                <p className="text-brand-graylight text-xs font-thin">
+                  {host} can access and spend up to this maximum amount.
+                </p>
+
+                <div className="grid grid-cols-2 items-center text-sm">
+                  <p className="font-bold">Approved amount:</p>
                   <span>
                     {parseApprovedValue}
-                    {tokenSymbol}
+                    <span className="ml-1 text-brand-royalblue font-semibold">
+                      {tokenSymbol}
+                    </span>
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 items-center">
-                  <p className="text-base font-bold">Granted to:</p>
-                  <span>{dataTx.to}</span>
+                <div className="grid grid-cols-2 items-center text-sm">
+                  <p className="font-bold">Granted to:</p>
+                  <div className="flex items-center justify-between">
+                    <span>{ellipsis(dataTx.to)}</span>
+                    <IconButton onClick={() => copy(dataTx.to)}>
+                      <Icon
+                        name="copy"
+                        className="text-brand-white hover:text-fields-input-borderfocus"
+                      />
+                    </IconButton>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-y-2 grid-cols-1 py-4 auto-cols-auto">
+                <div className="grid items-center">
+                  <div className="flex items-center">
+                    <Icon
+                      name="file"
+                      className="flex items-center justify-center w-4"
+                      wrapperClassname="mr-3"
+                    />
+                    <h3 className="text-base font-bold">Data</h3>
+                  </div>
+                </div>
+
+                <p className="text-brand-graylight text-xs font-thin">
+                  Method: {decodedTx.method}
+                </p>
+
+                <div
+                  className="mb-3 p-2 w-full text-xs rounded-xl"
+                  style={{ backgroundColor: 'rgba(22, 39, 66, 1)' }}
+                >
+                  <p
+                    className="w-full"
+                    style={{
+                      overflowWrap: 'break-word',
+                      wordBreak: 'break-all',
+                    }}
+                  >
+                    {tx?.data}
+                  </p>
                 </div>
               </div>
             </div>
 
-            <div className="my-8">
-              <NeutralButton
+            <div className="flex items-center justify-around py-4 w-full">
+              <Button
+                type="button"
+                className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
+                id="send-btn"
+              >
+                <Icon
+                  name="arrow-up"
+                  className="w-4"
+                  wrapperClassname="mb-2 mr-2"
+                  rotate={45}
+                />
+                Cancel
+              </Button>
+
+              <Button
+                type="button"
+                className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
+                id="receive-btn"
                 loading={loading}
                 onClick={handleConfirmApprove}
-                type="button"
-                id="confirm-btn"
               >
-                Confirm
-              </NeutralButton>
+                <Icon
+                  name="arrow-down"
+                  className="w-4"
+                  wrapperClassname="mb-2 mr-2"
+                />
+                Receive
+              </Button>
             </div>
           </div>
         </>

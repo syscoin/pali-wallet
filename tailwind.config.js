@@ -31,6 +31,9 @@ module.exports = {
         70: '70%',
         95: '95%',
       },
+      maxHeight: {
+        popup: '620px',
+      },
       minWidth: {
         popup: '400px',
         xs: '1rem',

@@ -26,7 +26,7 @@ export const Layout: FC<ILayout> = ({
   const isConnectPage = title === 'CONNECT WITH';
 
   return (
-    <div className="relative w-full min-w-popup min-h-popup text-brand-white bg-bkg-2">
+    <div className="scrollbar-styled relative w-full min-w-popup max-h-popup min-h-popup text-brand-white bg-bkg-2 overflow-y-scroll">
       {!titleOnly && canGoBack && <Header />}
 
       <div className="relative flex items-center justify-center px-5 w-full h-20 text-brand-white bg-bkg-3">
