@@ -99,6 +99,14 @@ export const EthProvider = (host: string) => {
     });
   };
 
+  const decryptMessage = (data: string[]) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/decrypt',
+      eventName: 'eth_decrypt',
+    });
+
   const send = async (args: any[]) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
 
@@ -134,8 +142,7 @@ export const EthProvider = (host: string) => {
       case 'eth_getEncryptionPublicKey':
         return await getEncryptionPubKey(params[0]);
       case 'eth_decrypt':
-        //TODO: add UI to process this decryption
-        return account.eth.tx.decryptMessage(params);
+        return await decryptMessage(params);
       default:
         return await web3Provider.send(method, params);
     }

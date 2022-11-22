@@ -1,5 +1,7 @@
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
+import store from 'state/store';
+import { ICustomRpcParams } from 'types/transactions';
 import { networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
@@ -52,7 +54,8 @@ export const methodRequest = async (
 
   //* Wallet methods
   if (prefix === 'wallet') {
-    console.log('methodName', methodName);
+    let tryingToAdd = false;
+    const { activeNetwork, networks: chains } = store.getState().vault;
     switch (methodName) {
       case 'isLocked':
         return !wallet.isUnlocked();
@@ -95,6 +98,47 @@ export const methodRequest = async (
         response[0].parentCapability = 'eth_accounts';
 
         return response;
+      case 'addEthereumChain':
+        const customRPCData: ICustomRpcParams = {
+          url: data.params[0].rpcUrls[0],
+          chainId: Number(data.params[0].chainId),
+          label: data.params[0].chainName,
+          apiUrl: undefined,
+          isSyscoinRpc: false,
+        };
+        if (data.params[0].blockExplorerUrls) {
+          customRPCData.apiUrl = data.params[0].blockExplorerUrls;
+        }
+        if (!chains.ethereum[customRPCData.chainId]) {
+          return popupPromise({
+            host,
+            route: 'add-EthChain',
+            eventName: 'wallet_addEthereumChain',
+            data: customRPCData,
+          });
+        }
+        tryingToAdd = true;
+      case 'switchEthereumChain':
+        const chainId = tryingToAdd
+          ? customRPCData.chainId
+          : Number(data.params[0].chainId);
+
+        if (activeNetwork.chainId === chainId) return null;
+        else if (chains.ethereum[chainId]) {
+          return popupPromise({
+            host,
+            route: 'switch-EthChain',
+            eventName: 'wallet_switchEthereumChain',
+            data: { chainId: chainId },
+          });
+        }
+        return {
+          code: -32603,
+          message: `Unrecognized chain ID 0x${chainId.toString(
+            16
+          )}. Try adding the chain using wallet_addEthereumChain first.`,
+        };
+
       default:
         throw new Error('Unknown method');
     }

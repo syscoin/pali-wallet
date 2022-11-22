@@ -43,7 +43,7 @@ const EncryptPubKey: React.FC<ISign> = () => {
     <Layout canGoBack={false} title={'Encryption Public Key Request'}>
       {!loading && (
         <div className="flex flex-col items-center justify-center w-full">
-          <div className="flex flex-row justify-between mb-2 w-full">
+          <div className="flex flex-row justify-between mb-16 w-full">
             <p className="font-poppins text-sm">Account: {label}</p>
             <p className="font-poppins text-sm">
               Balance: {balances[isBitcoinBased ? 'syscoin' : 'ethereum']}{' '}
@@ -51,11 +51,10 @@ const EncryptPubKey: React.FC<ISign> = () => {
             </p>
           </div>
           <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
-            <h1 className="text-lg">{host}</h1>
-            <div className="scrollbar-styled mt-1 px-4 w-full h-40 text-xs overflow-auto">
+            <div className="scrollbar-styled mt-1 px-4 w-full h-14 text-xs overflow-auto">
               <span>
-                Would like your public encryption key. By consenting, this site
-                will be able to compose encrypted messages to you.
+                {host} would like your public encryption key. By consenting,
+                this site will be able to compose encrypted messages to you.
               </span>
             </div>
           </div>

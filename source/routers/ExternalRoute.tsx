@@ -23,6 +23,9 @@ import {
   SeedConfirm,
   EditPriorityFee,
   ApproveTransactionComponent,
+  Decrypt,
+  CustomRPCExternal,
+  SwitchChain,
 } from '../pages';
 import { useQuery, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
@@ -78,6 +81,14 @@ export const ExternalRoute = () => {
           element={<ProtectedRoute element={<ChangeAccount />} />}
         />
 
+        <Route
+          path="add-EthChain"
+          element={<ProtectedRoute element={<CustomRPCExternal />} />}
+        />
+        <Route
+          path="switch-EthChain"
+          element={<ProtectedRoute element={<SwitchChain />} />}
+        />
         {/* /tx/ */}
         <Route path="tx">
           <Route
@@ -113,6 +124,10 @@ export const ExternalRoute = () => {
           <Route
             path="encryptKey"
             element={<ProtectedRoute element={<EncryptPubKey />} />}
+          />
+          <Route
+            path="decrypt"
+            element={<ProtectedRoute element={<Decrypt />} />}
           />
           <Route
             path="sign-psbt"
