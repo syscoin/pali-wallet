@@ -34,16 +34,12 @@ export const fetchGasAndDecodeFunction = async (
     maxPriorityFeePerGas: maxPriorityFeePerGas.toNumber() / 10 ** 18,
     gasLimit: formTx.gasLimit.toNumber(),
   };
-  //Example for the max fee being paid
-  console.log('Gas Limit', feeDetails.gasLimit);
-  console.log('Max Fee', feeDetails.maxFeePerGas);
-  console.log(
-    'The fee calculated',
-    feeDetails.maxFeePerGas * feeDetails.gasLimit
-  );
+
+  const calculatedFeeValue = feeDetails.maxFeePerGas * feeDetails.gasLimit;
 
   return {
     feeDetails,
+    calculatedFeeValue,
     formTx,
     nonce,
   };

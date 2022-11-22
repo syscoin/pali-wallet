@@ -1,4 +1,4 @@
-import { BigNumber, ethers, FixedNumber } from 'ethers';
+import { ethers } from 'ethers';
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -8,7 +8,7 @@ import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
-import { Layout, DefaultModal, NeutralButton, Button } from 'components/index';
+import { Layout, DefaultModal, Button } from 'components/index';
 import { useQueryData } from 'hooks/useQuery';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
@@ -16,6 +16,7 @@ import { IDecodedTx, IFeeState, ITxState } from 'types/transactions';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { ellipsis } from 'utils/format';
+import { verifyZerosInBalanceAndFormat } from 'utils/index';
 import { logError } from 'utils/logger';
 
 export const ApproveTransactionComponent = () => {
@@ -66,10 +67,6 @@ export const ApproveTransactionComponent = () => {
 
   const parseApprovedValue = parseInt(decodedTx.inputs[1].hex, 16);
 
-  console.log('fee', fee);
-  console.log('tx', tx);
-  console.log('decodedTx', decodedTx);
-
   const openEthExplorer = () => {
     browser.windows.create({
       url: `${activeNetwork.explorer}address/${dataTx.to}`,
@@ -117,37 +114,19 @@ export const ApproveTransactionComponent = () => {
     }
   };
 
-  // const calculateGasFee = (
-  //   gasLimit: number,
-  //   maxFeePerGas: BigNumber | number
-  // ) => {
-  //   const transformMaxFeeToEth = ethers.utils.formatEther(maxFeePerGas);
-
-  //   const fixedNumber = FixedNumber.from(transformMaxFeeToEth);
-  //   const fixedGasLimit = FixedNumber.from(gasLimit);
-
-  //   const convertGas = BigNumber.from(fixedGasLimit._hex);
-  //   console.log('convertGas', convertGas);
-
-  //   const convertToBigNumber = BigNumber.from(fixedNumber._hex);
-
-  //   const multiply = convertToBigNumber.mul(convertGas);
-
-  //   console.log('multiply', multiply);
-
-  //   // const multiply = convertToBigNumber.mul(BigNumber.from(gasLimit));
-  // };
-
   useEffect(() => {
     const abortController = new AbortController();
 
     const getGasAndFunction = async () => {
-      const { feeDetails, formTx, nonce } = await fetchGasAndDecodeFunction(
-        dataTx,
-        activeNetwork
-      );
+      const { feeDetails, formTx, nonce, calculatedFeeValue } =
+        await fetchGasAndDecodeFunction(dataTx, activeNetwork);
 
-      setFee(feeDetails);
+      const fullFeeDetails = {
+        ...feeDetails,
+        calculatedFeeValue,
+      };
+
+      setFee(fullFeeDetails);
       setTx(formTx);
       setCustomNonce(nonce);
     };
@@ -173,9 +152,10 @@ export const ApproveTransactionComponent = () => {
         getProvider
       );
 
-      const tokenSymbol = await contractInstance?.callStatic?.symbol();
+      const tokenSymbolByContract =
+        await contractInstance?.callStatic?.symbol();
 
-      setTokenSymbol(tokenSymbol);
+      setTokenSymbol(tokenSymbolByContract);
     };
 
     getTokenName(dataTx.to);
@@ -224,7 +204,7 @@ export const ApproveTransactionComponent = () => {
                   </span>
                 </span>
                 <span className="text-brand-graylight text-sm">
-                  By granting permission, you are authorizing the following
+                  {/* By granting permission, you are authorizing the following */}
                   contract to access your funds
                 </span>
               </div>
@@ -242,6 +222,7 @@ export const ApproveTransactionComponent = () => {
                     <Icon
                       name="copy"
                       className="text-brand-white hover:text-fields-input-borderfocus"
+                      wrapperClassname="flex items-center justify-center"
                     />
                   </IconButton>
 
@@ -249,6 +230,7 @@ export const ApproveTransactionComponent = () => {
                     <Icon
                       name="select"
                       className="text-brand-white hover:text-fields-input-borderfocus"
+                      wrapperClassname="flex items-center justify-center"
                     />
                   </IconButton>
                 </div>
@@ -267,7 +249,7 @@ export const ApproveTransactionComponent = () => {
                     <Icon
                       name="tag"
                       className="flex items-center justify-center w-4"
-                      wrapperClassname="mr-3"
+                      wrapperClassname="flex items-center justify-center mr-2"
                     />
                     <h1 className="text-base font-bold">Transaction Fee</h1>
                   </div>
@@ -286,9 +268,12 @@ export const ApproveTransactionComponent = () => {
                   </span>
 
                   <p className="flex flex-col items-end text-brand-white text-lg font-bold">
-                    $0.00
+                    $ {fee.calculatedFeeValue.toFixed(2)}
                     <span className="text-gray-500 text-base font-medium">
-                      0.00028 SYS
+                      {verifyZerosInBalanceAndFormat(
+                        fee?.calculatedFeeValue,
+                        2
+                      )}
                     </span>
                   </p>
                 </div>
@@ -316,7 +301,7 @@ export const ApproveTransactionComponent = () => {
                     <Icon
                       name="user"
                       className="flex items-center justify-center w-4"
-                      wrapperClassname="mr-3"
+                      wrapperClassname="flex items-center justify-center mr-2"
                     />
                     <h2 className="text-base font-bold">Permission Request</h2>
                   </div>
@@ -345,12 +330,13 @@ export const ApproveTransactionComponent = () => {
 
                 <div className="grid grid-cols-2 items-center text-sm">
                   <p className="font-bold">Granted to:</p>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-start">
                     <span>{ellipsis(dataTx.to)}</span>
                     <IconButton onClick={() => copy(dataTx.to)}>
                       <Icon
                         name="copy"
                         className="text-brand-white hover:text-fields-input-borderfocus"
+                        wrapperClassname="flex items-center justify-center ml-2.5"
                       />
                     </IconButton>
                   </div>
@@ -363,7 +349,7 @@ export const ApproveTransactionComponent = () => {
                     <Icon
                       name="file"
                       className="flex items-center justify-center w-4"
-                      wrapperClassname="mr-3"
+                      wrapperClassname="flex items-center justify-center mr-2"
                     />
                     <h3 className="text-base font-bold">Data</h3>
                   </div>
