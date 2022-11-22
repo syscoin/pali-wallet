@@ -315,6 +315,7 @@ const MainController = (): IMainController => {
     setAutolockTimer,
     setActiveNetwork,
     addCustomRpc,
+    getRpc,
     editCustomRpc,
     removeKeyringNetwork,
     resolveError,

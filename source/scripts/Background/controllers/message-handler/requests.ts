@@ -1,7 +1,7 @@
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
-import { ICustomRpcParams } from 'types/transactions';
+import { getController } from 'utils/browser';
 import { networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
@@ -18,6 +18,7 @@ export const methodRequest = async (
   data: { method: string; network?: string; params?: any[] }
 ) => {
   const { dapp, wallet } = window.controller;
+  const controller = getController();
 
   const [prefix, methodName] = data.method.split('_');
 
@@ -104,9 +105,9 @@ export const methodRequest = async (
           chainId: Number(data.params[0].chainId),
           label: data.params[0].chainName,
           apiUrl: undefined,
-          symbol: data.params[0].nativeCurrency.symbol,
           isSyscoinRpc: false,
         };
+        const network = await controller.wallet.getRpc(customRPCData);
         if (data.params[0].blockExplorerUrls) {
           customRPCData.apiUrl = data.params[0].blockExplorerUrls;
         }
@@ -115,7 +116,7 @@ export const methodRequest = async (
             host,
             route: 'add-EthChain',
             eventName: 'wallet_addEthereumChain',
-            data: customRPCData,
+            data: { ...customRPCData, symbol: network?.currency },
           });
         }
         tryingToAdd = true;
