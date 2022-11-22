@@ -99,11 +99,12 @@ export const methodRequest = async (
 
         return response;
       case 'addEthereumChain':
-        const customRPCData: ICustomRpcParams = {
+        const customRPCData = {
           url: data.params[0].rpcUrls[0],
           chainId: Number(data.params[0].chainId),
           label: data.params[0].chainName,
           apiUrl: undefined,
+          symbol: data.params[0].nativeCurrency.symbol,
           isSyscoinRpc: false,
         };
         if (data.params[0].blockExplorerUrls) {
