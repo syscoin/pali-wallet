@@ -1,4 +1,4 @@
-import { ethers } from 'ethers';
+import { BigNumber, ethers, FixedNumber } from 'ethers';
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -68,6 +68,7 @@ export const ApproveTransactionComponent = () => {
 
   console.log('fee', fee);
   console.log('tx', tx);
+  console.log('decodedTx', decodedTx);
 
   const openEthExplorer = () => {
     browser.windows.create({
@@ -115,6 +116,27 @@ export const ApproveTransactionComponent = () => {
       }
     }
   };
+
+  // const calculateGasFee = (
+  //   gasLimit: number,
+  //   maxFeePerGas: BigNumber | number
+  // ) => {
+  //   const transformMaxFeeToEth = ethers.utils.formatEther(maxFeePerGas);
+
+  //   const fixedNumber = FixedNumber.from(transformMaxFeeToEth);
+  //   const fixedGasLimit = FixedNumber.from(gasLimit);
+
+  //   const convertGas = BigNumber.from(fixedGasLimit._hex);
+  //   console.log('convertGas', convertGas);
+
+  //   const convertToBigNumber = BigNumber.from(fixedNumber._hex);
+
+  //   const multiply = convertToBigNumber.mul(convertGas);
+
+  //   console.log('multiply', multiply);
+
+  //   // const multiply = convertToBigNumber.mul(BigNumber.from(gasLimit));
+  // };
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -186,8 +208,8 @@ export const ApproveTransactionComponent = () => {
       {tx?.from ? (
         <>
           <div className="flex flex-col items-center justify-center w-full divide-bkg-3 divide-dashed divide-y">
-            <div className="w-full">
-              <p className="flex flex-col gap-4 items-center justify-center w-full text-center text-brand-white font-poppins font-thin">
+            <div className="pb-4 w-full">
+              <div className="flex flex-col gap-4 items-center justify-center w-full text-center text-brand-white font-poppins font-thin">
                 <div
                   className="mb-1.5 p-3 text-xs rounded-xl"
                   style={{ backgroundColor: 'rgba(22, 39, 66, 1)' }}
@@ -205,7 +227,7 @@ export const ApproveTransactionComponent = () => {
                   By granting permission, you are authorizing the following
                   contract to access your funds
                 </span>
-              </p>
+              </div>
 
               <div className="flex flex-col gap-2 items-center justify-center mt-4 w-full">
                 <div
@@ -238,46 +260,81 @@ export const ApproveTransactionComponent = () => {
               </div>
             </div>
 
-            <div className="items-center justify-center w-full">
-              <div className="w-1/2">
-                <p>Transaction Fee</p>
-                <button type="button">Edit</button>
+            <div className="items-center justify-center py-4 w-full">
+              <div className="grid gap-y-2.5 grid-cols-1 auto-cols-auto">
+                <div className="grid grid-cols-2 items-center">
+                  <p className="text-base font-bold">Transaction Fee</p>
+                  <button
+                    type="button"
+                    className="justify-self-end text-blue-300 text-xs"
+                  >
+                    Edit
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 items-center">
+                  <span className="text-sm font-thin">
+                    There is a fee associated with this request.
+                  </span>
+
+                  <p className="flex flex-col items-end text-brand-white text-lg font-bold">
+                    $0.00
+                    <span className="text-gray-500 text-base font-medium">
+                      0.00028 SYS
+                    </span>
+                  </p>
+                </div>
               </div>
 
-              <div className="w-1/2">
-                <span>value here</span>
-                <span>There is a fee associated with this request.</span>
+              <div className="flex items-center justify-center mt-6">
+                <button
+                  type="button"
+                  className="text-blue-300 text-xs"
+                  onClick={() => setDetailsOpened(!detailsOpened)}
+                >
+                  {detailsOpened ? 'Hide' : 'Show'} full transaction details
+                </button>
               </div>
-
-              <button
-                type="button"
-                onClick={() => setDetailsOpened(!detailsOpened)}
-              >
-                {detailsOpened ? 'Hide' : 'Show'} full transaction details
-              </button>
             </div>
 
-            {detailsOpened ? (
-              <>
-                <div className="w-full">
-                  <p>Div 1</p>
+            <div className={`${detailsOpened ? 'flex' : 'hidden'}`}>
+              <div className="grid gap-y-2.5 grid-cols-1 auto-cols-auto">
+                <div className="grid grid-cols-2 items-center">
+                  <p className="text-base font-bold">Permission request</p>
+                  <button
+                    type="button"
+                    className="justify-self-end text-blue-300 text-xs"
+                  >
+                    Edit
+                  </button>
                 </div>
-                <div className="w-full">
-                  <p>Div 1</p>
-                </div>
-              </>
-            ) : null}
-          </div>
+                <p>{host} can access and spend up to this maximum amount.</p>
 
-          <div className="my-8">
-            <NeutralButton
-              loading={loading}
-              onClick={handleConfirmApprove}
-              type="button"
-              id="confirm-btn"
-            >
-              Confirm
-            </NeutralButton>
+                <div className="grid grid-cols-2 items-center">
+                  <p className="text-base font-bold">Approved amount:</p>
+                  <span>
+                    {parseApprovedValue}
+                    {tokenSymbol}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 items-center">
+                  <p className="text-base font-bold">Granted to:</p>
+                  <span>{dataTx.to}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="my-8">
+              <NeutralButton
+                loading={loading}
+                onClick={handleConfirmApprove}
+                type="button"
+                id="confirm-btn"
+              >
+                Confirm
+              </NeutralButton>
+            </div>
           </div>
         </>
       ) : null}

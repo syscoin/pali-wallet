@@ -71,6 +71,18 @@ module.exports = {
       },
       animation: {
         'spin-slow': 'spin 3s linear infinite',
+        'drop-up': 'dropFadeInUp 1.5s linear',
+        'drop-down': 'dropFadeInDown 1.5s linear',
+      },
+      keyframes: {
+        dropFadeInDown: {
+          '0%': { opacity: '0', transform: 'translateY(40px)' },
+          '100%': { opacity: '1', transform: 'none' },
+        },
+        dropFadeInUp: {
+          '0%': { opacity: '1', transform: 'translateY(-40px)' },
+          '100%': { opacity: '0', transform: 'none' },
+        },
       },
     },
   },
