@@ -35,6 +35,8 @@ export const fetchGasAndDecodeFunction = async (
     gasLimit: formTx.gasLimit.toNumber(),
   };
   //Example for the max fee being paid
+  console.log('Gas Limit', feeDetails.gasLimit);
+  console.log('Max Fee', feeDetails.maxFeePerGas);
   console.log(
     'The fee calculated',
     feeDetails.maxFeePerGas * feeDetails.gasLimit
