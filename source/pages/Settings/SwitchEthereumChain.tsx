@@ -1,3 +1,4 @@
+import { RightOutlined } from '@ant-design/icons';
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
@@ -52,21 +53,21 @@ const SwitchChain: React.FC = () => {
     <Layout canGoBack={false} title={'Switch Chain'}>
       {!loading && (
         <div className="flex flex-col items-center justify-center w-full">
-          <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
-            <h1>{activeNetwork.label}</h1>
-          </div>
-          <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
-            <h1 className="text-lg">{host}</h1>
-            <h2 className="text-lg">Allow this site to switch the network ?</h2>
-            <div className="scrollbar-styled mt-1 px-4 w-full h-40 text-xs overflow-auto">
+          <div className="relative top-20 flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
+            <h2 className="text-center text-lg">
+              Allow {host} to switch the network ?
+            </h2>
+            <div className="mt-1 px-4 w-full text-center text-xs">
               <span>
                 This will switch the selected network within Pali to a
                 previously added network
               </span>
             </div>
-            <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
-              <span>
-                Switch from {activeNetwork.label} to {network.label}
+            <div className="flex flex-col pb-4 pt-4 w-full text-center">
+              <span className="text-sm">
+                {activeNetwork.label}{' '}
+                <RightOutlined className="relative bottom-0.5 text-xl" />{' '}
+                {network.label}
               </span>
             </div>
           </div>

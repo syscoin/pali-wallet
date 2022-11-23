@@ -16,7 +16,7 @@ import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ConnectWallet = () => {
-  const { dapp } = getController();
+  const { dapp, wallet } = getController();
   const { host, chain, chainId } = useQueryData();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
 
@@ -28,6 +28,7 @@ export const ConnectWallet = () => {
   const handleConnect = () => {
     const date = Date.now();
     dapp.connect({ host, chain, chainId, accountId, date });
+    wallet.setAccount(accountId);
     window.close();
   };
 

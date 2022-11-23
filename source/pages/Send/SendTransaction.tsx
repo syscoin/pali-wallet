@@ -84,7 +84,9 @@ export const SendTransaction = () => {
         gasLimit: txs.toBigNumber(fee.gasLimit),
       });
       try {
+        // console.log('Trying to send tx', tx);
         const response = await txs.sendFormattedTransaction(tx);
+        // console.log('Tx', response);
         setConfirmed(true);
         setLoading(false);
 

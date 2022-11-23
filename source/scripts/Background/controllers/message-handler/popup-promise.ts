@@ -27,13 +27,15 @@ export const popupPromise = async ({
   if (dapp.hasWindow(host)) return;
 
   data = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
-
   const popup = await createPopup(route, { ...data, host, eventName });
   dapp.setHasWindow(host, true);
   return new Promise((resolve) => {
     window.addEventListener(
       `${eventName}.${host}`,
       (event: CustomEvent) => {
+        if (route === 'tx/send/ethTx') {
+          console.log('Verifying response', event);
+        }
         if (event.detail !== undefined && event.detail !== null) {
           resolve(event.detail);
         }
@@ -50,7 +52,9 @@ export const popupPromise = async ({
           route === 'tx/ethSign' ||
           route === 'tx/encryptKey' ||
           route === 'switch-EthChain' ||
-          route === 'add-EthChain'
+          route === 'add-EthChain' ||
+          route === 'add-EthChain' ||
+          route === 'change-account'
         ) {
           resolve({ code: 4001, message: 'Pali: User rejected transaction' });
         }

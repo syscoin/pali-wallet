@@ -1,62 +1,39 @@
-import { Switch } from '@headlessui/react';
-import { Form, Input } from 'antd';
-import { useForm } from 'antd/lib/form/Form';
 import React, { useState } from 'react';
-import { useLocation } from 'react-router-dom';
 
-import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
-
-import { Layout, NeutralButton } from 'components/index';
+import {
+  DefaultModal,
+  Layout,
+  PrimaryButton,
+  SecondaryButton,
+} from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
-import { ICustomRpcParams } from 'types/transactions';
-import { getController } from 'utils/browser';
-// TODO: This is just to sample it needs to be completely refactored
-const CustomRPCExternal = () => {
-  const { state }: { state: any } = useLocation();
+import { dispatchBackgroundEvent, getController } from 'utils/browser';
 
-  const isSyscoinSelected = state && state.chain && state.chain === 'syscoin';
+const CustomRPCExternal = () => {
   const { host, ...data } = useQueryData();
   const [loading, setLoading] = useState(false);
-  const [isUrlValid, setIsUrlValid] = useState(false);
-  const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinSelected));
+  const [confirmed, setConfirmed] = useState(false);
+  const [isSyscoinRpc] = useState(data.symbol.toLowerCase().includes('sys'));
 
-  const { alert, navigate } = useUtils();
+  const { alert } = useUtils();
   const controller = getController();
 
-  const [form] = useForm();
-
-  const populateForm = (field: string, value: number | string) => {
-    if (!form.getFieldValue(field)) form.setFieldsValue({ [field]: value });
-  };
-
-  const onSubmit = async (custom: ICustomRpcParams) => {
+  const onSubmit = async (custom: any) => {
     setLoading(true);
-
+    const { currency, ...customChain } = custom;
+    console.log(currency);
     const customRpc = {
-      ...custom,
+      ...customChain,
       isSyscoinRpc,
     };
 
     try {
-      if (!state) {
-        await controller.wallet.addCustomRpc(customRpc);
-
-        alert.success('RPC successfully added.');
-
+      await controller.wallet.addCustomRpc(customRpc).then(() => {
+        setConfirmed(true);
         setLoading(false);
-
-        navigate('/settings/networks/edit');
-
-        return;
-      }
-
-      await controller.wallet.editCustomRpc(customRpc, state.selected);
-
-      alert.success('RPC successfully edited.');
-
-      setLoading(false);
-
-      navigate('/settings/networks/edit');
+        const type = data.eventName;
+        dispatchBackgroundEvent(`${type}.${host}`, null);
+      });
     } catch (error: any) {
       alert.removeAll();
       alert.error(error.message);
@@ -65,171 +42,72 @@ const CustomRPCExternal = () => {
     }
   };
 
-  const initialValues = {
-    label: (state && state.selected && state.selected.label) ?? '',
-    url: (state && state.selected && state.selected.url) ?? '',
-    chainId: (state && state.selected && state.selected.chainId) ?? '',
-  };
-
   return (
-    <Layout title="CUSTOM RPC">
-      <Form
-        form={form}
-        validateMessages={{ default: '' }}
-        id="rpc"
-        name="rpc"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 8 }}
-        initialValues={initialValues}
-        onFinish={onSubmit}
-        autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center text-center"
-      >
-        {/* <Form.Item
-          id="network-switch"
-          name="network-switch"
-          rules={[
-            {
-              required: false,
-              message: '',
-            },
-          ]}
-        >
-          <div className="flex gap-x-2 mb-4 text-xs">
-            <p className="text-brand-royalblue text-xs">Ethereum</p>
+    <Layout canGoBack={false} title={'Add New Chain'}>
+      <DefaultModal
+        show={confirmed}
+        onClose={window.close}
+        title={'RPC successfully added.'}
+        buttonText="Got it"
+      />
 
-            <Switch
-              checked={isSyscoinRpc}
-              onChange={() => setIsSyscoinRpc(!isSyscoinRpc)}
-              className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
-            >
-              <span className="sr-only">Syscoin Network</span>
-              <span
-                className={`${
-                  isSyscoinRpc
-                    ? 'translate-x-6 bg-brand-royalblue'
-                    : 'translate-x-1 bg-brand-deepPink100'
-                } inline-block w-2 h-2 transform rounded-full`}
-              />
-            </Switch>
-
-            <p className="text-brand-deepPink100 text-xs">Syscoin</p>
+      <div className="flex flex-col items-center justify-center w-full">
+        <div className="relative top-5 flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
+          <h2 className="text-center text-lg">
+            Allow {host} to add a network ?
+          </h2>
+          <div className="flex flex-col mt-1 px-4 w-full text-center text-xs">
+            <span>This will allow this network to be used within Pali.</span>
+            <span>
+              <b>Pali does not verify custom networks.</b>
+            </span>
           </div>
-        </Form.Item> */}
+          <div className="flex flex-col items-center justify-center w-full">
+            <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                Network Name
+                <span className="text-brand-royalblue text-xs">
+                  {data.label}
+                </span>
+              </p>
 
-        <Form.Item
-          name="label"
-          className="md:w-full"
-          hasFeedback
-          rules={[
-            {
-              required: false,
-              message: '',
-            },
-          ]}
-        >
-          <Input
-            type="text"
-            placeholder="Label (optional)"
-            className="input-small relative"
-          />
-        </Form.Item>
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                Network URL
+                <span className="text-brand-royalblue text-xs">{data.url}</span>
+              </p>
 
-        <Form.Item
-          name="url"
-          className="md:w-full"
-          hasFeedback
-          rules={[
-            {
-              required: true,
-              message: '',
-            },
-            () => ({
-              async validator(_, value) {
-                if (isSyscoinRpc) {
-                  const { valid, coin } = await validateSysRpc(value);
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                Chain ID
+                <span className="text-brand-royalblue text-xs">
+                  {data.chainId}
+                </span>
+              </p>
 
-                  if (valid || !value) {
-                    populateForm('label', String(coin));
-
-                    return Promise.resolve();
-                  }
-
-                  return Promise.reject();
-                }
-
-                const { valid, details } = await validateEthRpc(value);
-
-                setIsUrlValid(valid);
-
-                if (valid || !value) {
-                  populateForm('label', String(details.name));
-                  populateForm('chainId', String(details.chainId));
-
-                  return Promise.resolve();
-                }
-
-                return Promise.reject();
-              },
-            }),
-          ]}
-        >
-          <Input
-            type="text"
-            placeholder={`${
-              isSyscoinRpc ? 'Trezor Block Explorer' : 'RPC URL'
-            }`}
-            className="input-small relative"
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="chainId"
-          hasFeedback
-          className="md:w-full"
-          rules={[
-            {
-              required: !isSyscoinRpc,
-              message: '',
-            },
-          ]}
-        >
-          <Input
-            type="text"
-            disabled={!form.getFieldValue('url') || isUrlValid}
-            placeholder="Chain ID"
-            className={`${isSyscoinRpc ? 'hidden' : 'block'} input-small`}
-          />
-        </Form.Item>
-
-        <Form.Item
-          hasFeedback
-          className="md:w-full"
-          name="apiUrl"
-          rules={[
-            {
-              required: false,
-              message: '',
-            },
-          ]}
-        >
-          <Input
-            type="text"
-            placeholder="API URL (optional)"
-            className={`${isSyscoinRpc ? 'hidden' : 'block'} input-small`}
-          />
-        </Form.Item>
-
-        <p className="px-8 py-4 text-center text-brand-royalblue font-poppins text-xs">
-          You can edit this later if you need on network settings menu.
-        </p>
-
-        <div className="absolute bottom-12 md:static">
-          <NeutralButton type="submit" loading={loading}>
-            Save
-          </NeutralButton>
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                Currency Symbol
+                <span className="text-brand-royalblue text-xs">
+                  {data.symbol}
+                </span>
+              </p>
+            </div>
+          </div>
         </div>
-      </Form>
+
+        <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
+          <SecondaryButton type="button" onClick={window.close}>
+            Cancel
+          </SecondaryButton>
+
+          <PrimaryButton
+            type="submit"
+            disabled={confirmed}
+            loading={loading}
+            onClick={() => onSubmit(data)}
+          >
+            Add Network
+          </PrimaryButton>
+        </div>
+      </div>
     </Layout>
   );
 };

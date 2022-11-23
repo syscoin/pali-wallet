@@ -27,15 +27,18 @@ const EncryptPubKey: React.FC<ISign> = () => {
   const onSubmit = async () => {
     const { account } = getController().wallet;
     setLoading(true);
-    if (data.address !== address)
-      return {
+    const type = data.eventName;
+    if (data.address !== address) {
+      const response = {
         code: 4001,
         message: 'Pali: Asking for key of non connected account',
       };
+      dispatchBackgroundEvent(`${type}.${host}`, response);
+      window.close();
+    }
     const response = await account.eth.tx.getEncryptedPubKey();
     setConfirmed(true);
     setLoading(false);
-    const type = data.eventName;
     dispatchBackgroundEvent(`${type}.${host}`, response);
     window.close();
   };

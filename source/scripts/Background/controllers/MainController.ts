@@ -23,7 +23,9 @@ import {
   removeNetwork,
   setStoreError,
   setIsBitcoinBased,
+  setChangingConnectedAccount,
 } from 'state/vault';
+import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
 import { ICustomRpcParams } from 'types/transactions';
 import { removeXprv } from 'utils/account';
@@ -117,24 +119,38 @@ const MainController = (): IMainController => {
     store.dispatch(addAccountToStore(newAccountWithAssets));
     store.dispatch(setActiveAccount(newAccountWithAssets));
 
-    window.controller.dapp.dispatchEvent(
-      DAppEvents.accountsChanged,
-      removeXprv(newAccount)
-    );
-
     return newAccountWithAssets;
   };
 
-  const setAccount = (id: number): void => {
-    const { accounts } = store.getState().vault;
+  const setAccount = (
+    id: number,
+    host?: string,
+    connectedAccount?: IOmmitedAccount
+  ): void => {
+    const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
+    if (
+      connectedAccount &&
+      connectedAccount.address === activeAccount.address
+    ) {
+      if (connectedAccount.address !== accounts[id].address) {
+        store.dispatch(
+          setChangingConnectedAccount({
+            host,
+            isChangingConnectedAccount: true,
+            newConnectedAccount: accounts[id],
+          })
+        );
+      }
+    }
 
     keyringManager.setActiveAccount(id);
     store.dispatch(setActiveAccount(accounts[id]));
-
-    window.controller.dapp.dispatchEvent(
-      DAppEvents.accountsChanged,
-      removeXprv(accounts[id])
-    );
+    if (isBitcoinBased) {
+      window.controller.dapp.dispatchEvent(
+        DAppEvents.accountsChanged,
+        removeXprv(accounts[id])
+      );
+    }
   };
 
   const setActiveNetwork = async (network: INetwork, chain: string) => {
@@ -245,6 +261,15 @@ const MainController = (): IMainController => {
   };
 
   const resolveError = () => store.dispatch(setStoreError(false));
+  const resolveAccountConflict = () => {
+    store.dispatch(
+      setChangingConnectedAccount({
+        newConnectedAccount: undefined,
+        host: undefined,
+        isChangingConnectedAccount: false,
+      })
+    );
+  };
 
   const getRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
     const { formattedNetwork } = data.isSyscoinRpc
@@ -315,8 +340,10 @@ const MainController = (): IMainController => {
     setAutolockTimer,
     setActiveNetwork,
     addCustomRpc,
+    getRpc,
     editCustomRpc,
     removeKeyringNetwork,
+    resolveAccountConflict,
     resolveError,
     getRecommendedFee,
     getNetworkData,

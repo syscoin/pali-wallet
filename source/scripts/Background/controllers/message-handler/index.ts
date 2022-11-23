@@ -62,14 +62,6 @@ export const onMessage = async (message: Message, port: Runtime.Port) => {
     try {
       const response = await _messageHandler(host, message);
       if (response === undefined) return;
-
-      console.log(
-        '[DApp] Response to',
-        host,
-        message.type,
-        message.data,
-        response
-      );
       port.postMessage({ id: message.id, data: response });
     } catch (error: any) {
       console.error(error);

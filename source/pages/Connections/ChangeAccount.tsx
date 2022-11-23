@@ -9,7 +9,7 @@ import { ellipsis } from 'utils/index';
 
 export const ChangeAccount = () => {
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const { dapp } = getController();
+  const { dapp, wallet } = getController();
   const { host, eventName } = useQueryData();
 
   const currentAccountId = dapp.get(host).accountId;
@@ -26,6 +26,7 @@ export const ChangeAccount = () => {
     if (eventName === 'requestPermissions')
       dapp.requestPermissions(host, accountId);
     else dapp.changeAccount(host, accountId);
+    wallet.setAccount(accountId);
     window.close();
   };
 

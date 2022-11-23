@@ -1,7 +1,7 @@
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
-import { ICustomRpcParams } from 'types/transactions';
+import { getController } from 'utils/browser';
 import { networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
@@ -18,7 +18,7 @@ export const methodRequest = async (
   data: { method: string; network?: string; params?: any[] }
 ) => {
   const { dapp, wallet } = window.controller;
-
+  const controller = getController();
   const [prefix, methodName] = data.method.split('_');
 
   if (prefix === 'wallet' && methodName === 'isConnected')
@@ -30,27 +30,29 @@ export const methodRequest = async (
       data.method,
       data.params
     );
-    if (resp !== false && resp !== undefined && resp !== null) {
+    if (resp !== false && resp !== undefined) {
       return resp; //Sending back to Dapp non restrictive method response
     }
   }
   const account = dapp.getAccount(host);
-
+  const { activeAccount, isBitcoinBased } = store.getState().vault;
   const isRequestAllowed = dapp.isConnected(host) && account;
-  if (prefix === 'eth' && methodName === 'requestAccounts') {
+  if (prefix === 'eth' && methodName === 'requestAccounts' && !isBitcoinBased) {
     return await enable(host, undefined, undefined);
-    // if (!acceptedRequest)
-    //   throw new Error('Restricted method. Connect before requesting');
-    // console.log('AcceptedRequest data', acceptedRequest);
-    // return acceptedRequest.connectedAccount.address;
   }
 
-  if (!isRequestAllowed)
+  if (!isRequestAllowed && methodName !== 'switchEthereumChain')
     throw new Error('Restricted method. Connect before requesting');
   const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
 
-  if (prefix === 'eth' && methodName === 'accounts')
-    return [dapp.getAccount(host).address];
+  if (prefix === 'eth' && methodName === 'accounts') {
+    return isBitcoinBased
+      ? {
+          code: -32603,
+          message: `Connected to Bitcoin based chain`,
+        }
+      : [dapp.getAccount(host).address];
+  }
 
   //* Wallet methods
   if (prefix === 'wallet') {
@@ -99,26 +101,32 @@ export const methodRequest = async (
 
         return response;
       case 'addEthereumChain':
-        const customRPCData: ICustomRpcParams = {
+        const customRPCData = {
           url: data.params[0].rpcUrls[0],
           chainId: Number(data.params[0].chainId),
           label: data.params[0].chainName,
           apiUrl: undefined,
           isSyscoinRpc: false,
         };
+        const network = await controller.wallet.getRpc(customRPCData);
         if (data.params[0].blockExplorerUrls) {
           customRPCData.apiUrl = data.params[0].blockExplorerUrls;
         }
-        if (!chains.ethereum[customRPCData.chainId]) {
+        if (!chains.ethereum[customRPCData.chainId] && !isBitcoinBased) {
           return popupPromise({
             host,
             route: 'add-EthChain',
             eventName: 'wallet_addEthereumChain',
-            data: customRPCData,
+            data: { ...customRPCData, symbol: network?.currency },
           });
         }
         tryingToAdd = true;
       case 'switchEthereumChain':
+        if (isBitcoinBased)
+          return {
+            code: -32603,
+            message: `Connected to Bitcoin based chain`,
+          };
         const chainId = tryingToAdd
           ? customRPCData.chainId
           : Number(data.params[0].chainId);
@@ -144,15 +152,40 @@ export const methodRequest = async (
     }
   }
 
+  if (
+    activeAccount.address !== dapp.getAccount(host).address &&
+    !isBitcoinBased &&
+    EthProvider(host).checkIsBlocking(data.method)
+  ) {
+    const response = await popupPromise({
+      host,
+      route: 'change-active-connected-account',
+      eventName: 'changeActiveConnected',
+      data: { connectedAccount: dapp.getAccount(host) },
+    });
+    if (!response) {
+      return {
+        code: -32603,
+        message: `Eth connected account changed, new account ${
+          dapp.getAccount(host).address
+        }`,
+      };
+    }
+    dapp.setHasWindow(host, false);
+  }
   //* Providers methods
-  if (prefix !== 'sys') {
+  if (prefix !== 'sys' && !isBitcoinBased) {
     const provider = EthProvider(host);
     const resp = await provider.restrictedRPCMethods(data.method, data.params);
 
     if (!resp) throw new Error('Failure on RPC request');
 
     return resp;
-  }
+  } else if (prefix === 'sys' && !isBitcoinBased)
+    return {
+      code: -32603,
+      message: `Connected to Bitcoin based chain`,
+    };
 
   const provider = SysProvider(host);
   const method = provider[methodName];

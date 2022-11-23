@@ -62,6 +62,9 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
 
     return;
   }
+  const { changingConnectedAccount } = store.getState().vault;
+  if (changingConnectedAccount.isChangingConnectedAccount)
+    window.controller.wallet.resolveAccountConflict();
 
   const senderUrl = port.sender.url;
 
