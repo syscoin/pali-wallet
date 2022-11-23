@@ -1,3 +1,4 @@
+import { Form, Input, Radio, RadioChangeEvent } from 'antd';
 import { ethers } from 'ethers';
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -63,9 +64,13 @@ export const ApproveTransactionComponent = () => {
     ? state.decodedTx
     : state.decodedTx;
 
+  console.log('dataTx', dataTx);
+
   const canGoBack = state?.external ? !state.external : !isExternal;
 
-  const parseApprovedValue = parseInt(decodedTx.inputs[1].hex, 16);
+  const parseApprovedValue = parseInt(decodedTx?.inputs[1]?.hex, 16);
+
+  const [formControl] = Form.useForm();
 
   const openEthExplorer = () => {
     browser.windows.create({
@@ -112,6 +117,10 @@ export const ApproveTransactionComponent = () => {
         return error;
       }
     }
+  };
+
+  const getFormValues = (data: any) => {
+    console.log('data in approve', data);
   };
 
   useEffect(() => {
@@ -163,7 +172,7 @@ export const ApproveTransactionComponent = () => {
     return () => {
       abortController.abort();
     };
-  }, [dataTx.to]);
+  }, [dataTx?.to]);
 
   useEffect(() => {
     if (!copied) return;
@@ -244,6 +253,7 @@ export const ApproveTransactionComponent = () => {
                           host,
                           approvedValue: parseApprovedValue,
                           tokenSymbol,
+                          formControl,
                           external: true,
                         },
                       });
@@ -255,195 +265,200 @@ export const ApproveTransactionComponent = () => {
               </div>
             </div>
 
-            <div className="items-center justify-center py-4 w-full">
-              <div className="grid gap-y-3 grid-cols-1 auto-cols-auto">
-                <div className="grid grid-cols-2 items-center">
-                  <div className="flex items-center">
-                    <Icon
-                      name="tag"
-                      className="flex items-center justify-center w-4"
-                      wrapperClassname="flex items-center justify-center mr-2"
-                    />
-                    <h1 className="text-base font-bold">Transaction Fee</h1>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="justify-self-end text-blue-300 text-xs"
-                    onClick={() =>
-                      navigate('../send/ethTx/edit/priority', {
-                        state: {
-                          tx: dataTx,
-                          decodedTx: decodedTx,
-                          external: true,
-                          fee,
-                        },
-                      })
-                    }
-                  >
-                    Edit
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 items-center">
-                  <span className="text-brand-graylight text-xs font-thin">
-                    There is a fee associated with this request.
-                  </span>
-
-                  <p className="flex flex-col items-end text-brand-white text-lg font-bold">
-                    $ {fee.calculatedFeeValue.toFixed(2)}
-                    <span className="text-gray-500 text-base font-medium">
-                      {verifyZerosInBalanceAndFormat(
-                        fee?.calculatedFeeValue,
-                        2
-                      )}
-                    </span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-center mt-6">
-                <button
-                  type="button"
-                  className="text-blue-300 text-sm"
-                  onClick={() => setDetailsOpened(!detailsOpened)}
-                >
-                  {detailsOpened ? 'Hide' : 'Show'} full transaction details
-                </button>
-              </div>
-            </div>
-
-            <div
-              className={`${
-                detailsOpened ? 'flex' : 'hidden'
-              } flex-col w-full  divide-bkg-3 divide-dashed divide-y`}
-            >
-              <div className="grid gap-y-4 grid-cols-1 py-4 auto-cols-auto">
-                <div className="grid grid-cols-2 items-center">
-                  <div className="flex items-center">
-                    <Icon
-                      name="user"
-                      className="flex items-center justify-center w-4"
-                      wrapperClassname="flex items-center justify-center mr-2"
-                    />
-                    <h2 className="text-base font-bold">Permission Request</h2>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="self-start justify-self-end text-blue-300 text-xs"
-                    onClick={() => {
-                      navigate('../send/approve/edit/gasFee', {
-                        state: {
-                          host,
-                          approvedValue: parseApprovedValue,
-                          tokenSymbol,
-                          external: true,
-                        },
-                      });
-                    }}
-                  >
-                    Edit
-                  </button>
-                </div>
-
-                <p className="text-brand-graylight text-xs font-thin">
-                  {host} can access and spend up to this maximum amount.
-                </p>
-
-                <div className="grid grid-cols-2 items-center text-sm">
-                  <p className="font-bold">Approved amount:</p>
-                  <span>
-                    {parseApprovedValue}
-                    <span className="ml-1 text-brand-royalblue font-semibold">
-                      {tokenSymbol}
-                    </span>
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 items-center text-sm">
-                  <p className="font-bold">Granted to:</p>
-                  <div className="flex items-center justify-start">
-                    <span>{ellipsis(dataTx.to)}</span>
-                    <IconButton onClick={() => copy(dataTx.to)}>
+            <Form form={formControl} onFinish={getFormValues}>
+              <div className="items-center justify-center py-4 w-full">
+                <div className="grid gap-y-3 grid-cols-1 auto-cols-auto">
+                  <div className="grid grid-cols-2 items-center">
+                    <div className="flex items-center">
                       <Icon
-                        name="copy"
-                        className="text-brand-white hover:text-fields-input-borderfocus"
-                        wrapperClassname="flex items-center justify-center ml-2.5"
+                        name="tag"
+                        className="flex items-center justify-center w-4"
+                        wrapperClassname="flex items-center justify-center mr-2"
                       />
-                    </IconButton>
+                      <h1 className="text-base font-bold">Transaction Fee</h1>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="justify-self-end text-blue-300 text-xs"
+                      onClick={() =>
+                        navigate('../send/ethTx/edit/priority', {
+                          state: {
+                            tx: dataTx,
+                            decodedTx: decodedTx,
+                            external: true,
+                            fee,
+                          },
+                        })
+                      }
+                    >
+                      Edit
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 items-center">
+                    <span className="text-brand-graylight text-xs font-thin">
+                      There is a fee associated with this request.
+                    </span>
+
+                    <p className="flex flex-col items-end text-brand-white text-lg font-bold">
+                      $ {fee.calculatedFeeValue.toFixed(2)}
+                      <span className="text-gray-500 text-base font-medium">
+                        {verifyZerosInBalanceAndFormat(
+                          fee?.calculatedFeeValue,
+                          2
+                        )}
+                      </span>
+                    </p>
                   </div>
                 </div>
-              </div>
 
-              <div className="grid gap-y-2 grid-cols-1 py-4 auto-cols-auto">
-                <div className="grid items-center">
-                  <div className="flex items-center">
-                    <Icon
-                      name="file"
-                      className="flex items-center justify-center w-4"
-                      wrapperClassname="flex items-center justify-center mr-2"
-                    />
-                    <h3 className="text-base font-bold">Data</h3>
-                  </div>
-                </div>
-
-                <p className="text-brand-graylight text-xs font-thin">
-                  Method: {decodedTx.method}
-                </p>
-
-                <div
-                  className="mb-3 p-2 w-full text-xs rounded-xl"
-                  style={{ backgroundColor: 'rgba(22, 39, 66, 1)' }}
-                >
-                  <p
-                    className="w-full"
-                    style={{
-                      overflowWrap: 'break-word',
-                      wordBreak: 'break-all',
-                    }}
+                <div className="flex items-center justify-center mt-6">
+                  <button
+                    type="button"
+                    className="text-blue-300 text-sm"
+                    onClick={() => setDetailsOpened(!detailsOpened)}
                   >
-                    {tx?.data}
-                  </p>
+                    {detailsOpened ? 'Hide' : 'Show'} full transaction details
+                  </button>
                 </div>
               </div>
-            </div>
 
-            <div className="flex items-center justify-around py-4 w-full">
-              <Button
-                type="button"
-                className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
-                id="send-btn"
-                onClick={() => {
-                  refresh(false);
-                  if (isExternal) window.close();
-                  else navigate('/home');
-                }}
+              <div
+                className={`${
+                  detailsOpened ? 'flex' : 'hidden'
+                } flex-col w-full  divide-bkg-3 divide-dashed divide-y`}
               >
-                <Icon
-                  name="arrow-up"
-                  className="w-4"
-                  wrapperClassname="mb-2 mr-2"
-                  rotate={45}
-                />
-                Cancel
-              </Button>
+                <div className="grid gap-y-4 grid-cols-1 py-4 auto-cols-auto">
+                  <div className="grid grid-cols-2 items-center">
+                    <div className="flex items-center">
+                      <Icon
+                        name="user"
+                        className="flex items-center justify-center w-4"
+                        wrapperClassname="flex items-center justify-center mr-2"
+                      />
+                      <h2 className="text-base font-bold">
+                        Permission Request
+                      </h2>
+                    </div>
 
-              <Button
-                type="button"
-                className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
-                id="receive-btn"
-                loading={loading}
-                onClick={handleConfirmApprove}
-              >
-                <Icon
-                  name="arrow-down"
-                  className="w-4"
-                  wrapperClassname="mb-2 mr-2"
-                />
-                Confirm
-              </Button>
-            </div>
+                    <button
+                      type="button"
+                      className="self-start justify-self-end text-blue-300 text-xs"
+                      onClick={() => {
+                        navigate('../send/approve/edit/gasFee', {
+                          state: {
+                            host,
+                            approvedValue: parseApprovedValue,
+                            tokenSymbol,
+                            formControl,
+                            external: true,
+                          },
+                        });
+                      }}
+                    >
+                      Edit
+                    </button>
+                  </div>
+
+                  <p className="text-brand-graylight text-xs font-thin">
+                    {host} can access and spend up to this maximum amount.
+                  </p>
+
+                  <div className="grid grid-cols-2 items-center text-sm">
+                    <p className="font-bold">Approved amount:</p>
+                    <span>
+                      {parseApprovedValue}
+                      <span className="ml-1 text-brand-royalblue font-semibold">
+                        {tokenSymbol}
+                      </span>
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 items-center text-sm">
+                    <p className="font-bold">Granted to:</p>
+                    <div className="flex items-center justify-start">
+                      <span>{ellipsis(dataTx.to)}</span>
+                      <IconButton onClick={() => copy(dataTx.to)}>
+                        <Icon
+                          name="copy"
+                          className="text-brand-white hover:text-fields-input-borderfocus"
+                          wrapperClassname="flex items-center justify-center ml-2.5"
+                        />
+                      </IconButton>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-y-2 grid-cols-1 py-4 auto-cols-auto">
+                  <div className="grid items-center">
+                    <div className="flex items-center">
+                      <Icon
+                        name="file"
+                        className="flex items-center justify-center w-4"
+                        wrapperClassname="flex items-center justify-center mr-2"
+                      />
+                      <h3 className="text-base font-bold">Data</h3>
+                    </div>
+                  </div>
+
+                  <p className="text-brand-graylight text-xs font-thin">
+                    Method: {decodedTx.method}
+                  </p>
+
+                  <div
+                    className="mb-3 p-2 w-full text-xs rounded-xl"
+                    style={{ backgroundColor: 'rgba(22, 39, 66, 1)' }}
+                  >
+                    <p
+                      className="w-full"
+                      style={{
+                        overflowWrap: 'break-word',
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      {tx?.data}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-around py-4 w-full">
+                <Button
+                  type="button"
+                  className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
+                  id="send-btn"
+                  onClick={() => {
+                    refresh(false);
+                    if (isExternal) window.close();
+                    else navigate('/home');
+                  }}
+                >
+                  <Icon
+                    name="arrow-up"
+                    className="w-4"
+                    wrapperClassname="mb-2 mr-2"
+                    rotate={45}
+                  />
+                  Cancel
+                </Button>
+
+                <Button
+                  type="button"
+                  className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
+                  id="receive-btn"
+                  loading={loading}
+                  onClick={handleConfirmApprove}
+                >
+                  <Icon
+                    name="arrow-down"
+                    className="w-4"
+                    wrapperClassname="mb-2 mr-2"
+                  />
+                  Confirm
+                </Button>
+              </div>
+            </Form>
           </div>
         </>
       ) : null}
