@@ -32,7 +32,7 @@ const proxy = (type, data) =>
         }
 
 
-        if(data.method === 'eth_requestAccounts' || data.method === 'eth_accounts' || data.method === 'wallet_requestPermissions'){
+        if(data.method === 'eth_requestAccounts' || data.method === 'eth_accounts'){
           //TODO: enhance this implementation
           let addr = event.detail.replace('[','');
           addr = addr.replace(']','');

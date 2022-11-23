@@ -16,6 +16,9 @@ export const GeneralMenu: React.FC = () => {
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
   );
+  const { isChangingConnectedAccount } = useSelector(
+    (state: RootState) => state.vault.changingConnectedAccount
+  );
 
   const { navigate } = useUtils();
 
@@ -58,6 +61,17 @@ export const GeneralMenu: React.FC = () => {
       isMounted = false;
     };
   }, [wallet.isUnlocked()]);
+
+  useEffect(() => {
+    if (!isChangingConnectedAccount) {
+      getTabUrl().then(async (url: string) => {
+        const host = getHost(url);
+        const isConnected = dapp.isConnected(host);
+
+        setCurrentTab({ host, isConnected });
+      });
+    }
+  }, [isChangingConnectedAccount]);
 
   return (
     <Menu

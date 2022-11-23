@@ -75,13 +75,16 @@ const DAppController = (): IDAppController => {
     response[0].parentCapability = 'eth_accounts';
 
     _dispatchEvent(host, 'requestPermissions', response);
+    _dispatchEvent(host, 'accountsChanged', [account.address]);
   };
 
   const changeAccount = (host: string, accountId: number) => {
     const date = Date.now();
+    const { accounts, isBitcoinBased } = store.getState().vault;
     store.dispatch(updateDAppAccount({ host, accountId, date }));
-
-    _dispatchEvent(host, 'accountsChanged');
+    isBitcoinBased
+      ? _dispatchEvent(host, 'accountsChanged', [accounts[accountId]])
+      : _dispatchEvent(host, 'accountsChanged', [accounts[accountId].address]);
   };
 
   const disconnect = (host: string) => {
@@ -143,12 +146,8 @@ const DAppController = (): IDAppController => {
     if (!hasListener(host, eventName)) return;
     if (!isConnected(host)) return;
 
-    console.log({ host, eventName, data, event });
-
     // post the event to the DApp
     const id = `${host}.${eventName}`;
-
-    console.log({ id });
 
     _dapps[host].port.postMessage({ id, data });
   };

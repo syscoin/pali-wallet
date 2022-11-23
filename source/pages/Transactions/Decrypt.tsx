@@ -47,17 +47,19 @@ const Decrypt: React.FC<ISign> = () => {
 
   const onSubmit = async () => {
     setLoading(true);
+    const type = data.eventName;
     if (data[1] !== address) {
-      return {
+      const response = {
         code: 4001,
         message: 'Pali: Asking for key of non connected account',
       };
+      dispatchBackgroundEvent(`${type}.${host}`, response);
+      window.close();
     }
     try {
       const response = await account.eth.tx.decryptMessage(data);
       setConfirmed(true);
       setLoading(false);
-      const type = data.eventName;
       dispatchBackgroundEvent(`${type}.${host}`, response);
       window.close();
     } catch (error) {
