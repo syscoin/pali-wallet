@@ -90,6 +90,7 @@ const DAppController = (): IDAppController => {
   const disconnect = (host: string) => {
     // after disconnecting, the event would not be sent
     _dispatchEvent(host, 'disconnect');
+    _dispatchEvent(host, 'accountsChanged', [null]);
 
     store.dispatch(removeDApp(host));
   };

@@ -8,7 +8,7 @@ const proxy = (type, data) =>
      window.addEventListener(
       id,
       (event) => {
-        console.log('[Pali] EventListener method', event.detail);
+        console.log('[Pali] EventListener method', data.method );
         if (event.detail === undefined) {
           resolve(undefined);
 
@@ -49,7 +49,6 @@ const proxy = (type, data) =>
       }
     );
     
-    console.log('[Pali] PostMessage method', id, type, data);
      window.postMessage(
       {
         id,
@@ -66,11 +65,7 @@ const proxy = (type, data) =>
  * @returns the result of the method execution
  */
 const request = async (req) => {
-  console.log('[Pali] Requesting method', req);
-
   const response = await proxy('METHOD_REQUEST', req);
-  console.log('[Pali] Response', response);
-
   return response;
 };
 

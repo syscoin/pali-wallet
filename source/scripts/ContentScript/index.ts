@@ -18,6 +18,11 @@ const backgroundPort = browser.runtime.connect(undefined, {
 const checkForPaliRegisterEvent = (type, id) => {
   if (type === 'EVENT_REG') {
     emitter.on(id, (result) => {
+      if (typeof id === 'string' && id.includes('accountsChanged')) {
+        result[0]
+          ? inject(`window.ethereum.selectedAddress = '${result[0]}'`)
+          : inject(`window.ethereum.selectedAddress = ${result[0]}`);
+      }
       window.dispatchEvent(
         new CustomEvent(id, { detail: JSON.stringify(result) })
       );
