@@ -2,83 +2,19 @@ import { Input } from 'antd';
 import React from 'react';
 import { useSelector } from 'react-redux';
 
-import { NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { ellipsis } from 'utils/format';
-import { logError } from 'utils/logger';
 import removeScientificNotation from 'utils/removeScientificNotation';
 
 export const TransactionDetailsComponent = (props: any) => {
-  const {
-    tx,
-    dataTx,
-    decodedTx,
-    customNonce,
-    setCustomNonce,
-    loading,
-    setLoading,
-    setTx,
-    fee,
-    isExternal,
-    setConfirmed,
-    host,
-  } = props;
-
-  const {
-    wallet: { account },
-  } = getController();
+  const { tx, dataTx, decodedTx, setCustomNonce, fee } = props;
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
 
-  const { alert, navigate } = useUtils();
-
-  const handleConfirm = async () => {
-    const {
-      balances: { ethereum },
-    } = activeAccount;
-
-    const balance = ethereum;
-
-    if (activeAccount && balance > 0) {
-      setLoading(true);
-
-      const txs = account.eth.tx;
-      setTx({
-        ...tx,
-        nonce: customNonce,
-        maxPriorityFeePerGas: txs.toBigNumber(
-          fee.maxPriorityFeePerGas * 10 ** 18
-        ),
-        maxFeePerGas: txs.toBigNumber(fee.maxFeePerGas * 10 ** 18),
-        gasLimit: txs.toBigNumber(fee.gasLimit),
-      });
-      try {
-        const response = await txs.sendFormattedTransaction(tx);
-        setConfirmed(true);
-        setLoading(false);
-
-        if (isExternal)
-          dispatchBackgroundEvent(`txSend.${host}`, response.hash);
-        return response.hash;
-      } catch (error: any) {
-        logError('error', 'Transaction', error);
-
-        alert.removeAll();
-        alert.error("Can't complete transaction. Try again later.");
-
-        if (isExternal) setTimeout(window.close, 4000);
-        else setLoading(false);
-        return error;
-      }
-    }
-  };
+  const { navigate } = useUtils();
 
   return (
     <>
@@ -141,17 +77,6 @@ export const TransactionDetailsComponent = (props: any) => {
             {Number(tx.value) / 10 ** 18 + fee.maxFeePerGas}
           </span>
         </p>
-      </div>
-
-      <div className="my-8">
-        <NeutralButton
-          loading={loading}
-          onClick={handleConfirm}
-          type="button"
-          id="confirm-btn"
-        >
-          Confirm
-        </NeutralButton>
       </div>
     </>
   );

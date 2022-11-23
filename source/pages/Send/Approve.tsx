@@ -235,7 +235,20 @@ export const ApproveTransactionComponent = () => {
                   </IconButton>
                 </div>
                 <div>
-                  <button type="button" className="text-blue-300 text-sm">
+                  <button
+                    type="button"
+                    className="text-blue-300 text-sm"
+                    onClick={() => {
+                      navigate('../send/approve/edit/gasFee', {
+                        state: {
+                          host,
+                          approvedValue: parseApprovedValue,
+                          tokenSymbol,
+                          external: true,
+                        },
+                      });
+                    }}
+                  >
                     Edit permission
                   </button>
                 </div>
@@ -257,6 +270,16 @@ export const ApproveTransactionComponent = () => {
                   <button
                     type="button"
                     className="justify-self-end text-blue-300 text-xs"
+                    onClick={() =>
+                      navigate('../send/ethTx/edit/priority', {
+                        state: {
+                          tx: dataTx,
+                          decodedTx: decodedTx,
+                          external: true,
+                          fee,
+                        },
+                      })
+                    }
                   >
                     Edit
                   </button>
@@ -309,6 +332,16 @@ export const ApproveTransactionComponent = () => {
                   <button
                     type="button"
                     className="self-start justify-self-end text-blue-300 text-xs"
+                    onClick={() => {
+                      navigate('../send/approve/edit/gasFee', {
+                        state: {
+                          host,
+                          approvedValue: parseApprovedValue,
+                          tokenSymbol,
+                          external: true,
+                        },
+                      });
+                    }}
                   >
                     Edit
                   </button>
@@ -381,6 +414,11 @@ export const ApproveTransactionComponent = () => {
                 type="button"
                 className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
                 id="send-btn"
+                onClick={() => {
+                  refresh(false);
+                  if (isExternal) window.close();
+                  else navigate('/home');
+                }}
               >
                 <Icon
                   name="arrow-up"
@@ -403,7 +441,7 @@ export const ApproveTransactionComponent = () => {
                   className="w-4"
                   wrapperClassname="mb-2 mr-2"
                 />
-                Receive
+                Confirm
               </Button>
             </div>
           </div>

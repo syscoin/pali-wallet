@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { Layout, DefaultModal } from 'components/index';
+import { Icon } from 'components/Icon';
+import { Layout, DefaultModal, Button } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { IDecodedTx, IFeeState, ITxState } from 'types/transactions';
-import { getController } from 'utils/browser';
+import { getController, dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
+import { logError } from 'utils/logger';
 
 import {
   TransactionDetailsComponent,
@@ -17,12 +19,19 @@ import {
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
 export const SendTransaction = () => {
-  const { refresh } = getController();
+  const {
+    refresh,
+    wallet: { account },
+  } = getController();
 
-  const { navigate } = useUtils();
+  const { navigate, alert } = useUtils();
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
+  );
+
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
   );
 
   // when using the default routing, state will have the tx data
@@ -53,6 +62,47 @@ export const SendTransaction = () => {
   const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
 
   const canGoBack = state?.external ? !state.external : !isExternal;
+
+  const handleConfirm = async () => {
+    const {
+      balances: { ethereum },
+    } = activeAccount;
+
+    const balance = ethereum;
+
+    if (activeAccount && balance > 0) {
+      setLoading(true);
+
+      const txs = account.eth.tx;
+      setTx({
+        ...tx,
+        nonce: customNonce,
+        maxPriorityFeePerGas: txs.toBigNumber(
+          fee.maxPriorityFeePerGas * 10 ** 18
+        ),
+        maxFeePerGas: txs.toBigNumber(fee.maxFeePerGas * 10 ** 18),
+        gasLimit: txs.toBigNumber(fee.gasLimit),
+      });
+      try {
+        const response = await txs.sendFormattedTransaction(tx);
+        setConfirmed(true);
+        setLoading(false);
+
+        if (isExternal)
+          dispatchBackgroundEvent(`txSend.${host}`, response.hash);
+        return response.hash;
+      } catch (error: any) {
+        logError('error', 'Transaction', error);
+
+        alert.removeAll();
+        alert.error("Can't complete transaction. Try again later.");
+
+        if (isExternal) setTimeout(window.close, 4000);
+        else setLoading(false);
+        return error;
+      }
+    }
+  };
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -177,17 +227,10 @@ export const SendTransaction = () => {
                 {component.component === 'details' ? (
                   <TransactionDetailsComponent
                     tx={tx}
-                    setTx={setTx}
                     dataTx={dataTx}
-                    isExternal={isExternal}
                     decodedTx={decodedTxData}
-                    loading={loading}
-                    setLoading={setLoading}
-                    customNonce={customNonce}
                     setCustomNonce={setCustomNonce}
                     fee={fee}
-                    setConfirmed={setConfirmed}
-                    host={host}
                   />
                 ) : component.component === 'data' ? (
                   <TransactionDataComponent decodedTx={decodedTxData} />
@@ -199,6 +242,42 @@ export const SendTransaction = () => {
                 ) : null}
               </div>
             ))}
+          </div>
+
+          <div className="flex items-center justify-around py-8 w-full">
+            <Button
+              type="button"
+              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
+              id="send-btn"
+              onClick={() => {
+                refresh(false);
+                if (isExternal) window.close();
+                else navigate('/home');
+              }}
+            >
+              <Icon
+                name="arrow-up"
+                className="w-4"
+                wrapperClassname="mb-2 mr-2"
+                rotate={45}
+              />
+              Cancel
+            </Button>
+
+            <Button
+              type="button"
+              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
+              id="receive-btn"
+              loading={loading}
+              onClick={handleConfirm}
+            >
+              <Icon
+                name="arrow-down"
+                className="w-4"
+                wrapperClassname="mb-2 mr-2"
+              />
+              Confirm
+            </Button>
           </div>
         </div>
       ) : null}

@@ -26,6 +26,7 @@ import {
   Decrypt,
   CustomRPCExternal,
   SwitchChain,
+  EditGasFee,
 } from '../pages';
 import { useQuery, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
@@ -109,6 +110,11 @@ export const ExternalRoute = () => {
               <ProtectedRoute element={<ApproveTransactionComponent />} />
             }
           />
+          <Route
+            path="send/approve/edit/gasFee"
+            element={<ProtectedRoute element={<EditGasFee />} />}
+          />
+
           <Route
             path="send/ethTx/edit/priority"
             element={<ProtectedRoute element={<EditPriorityFee />} />}
