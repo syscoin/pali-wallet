@@ -12,7 +12,7 @@ export const decodeTransactionData = (params: ITransactionParams) => {
     const { data, value } = params;
     if (data) {
       let decoderValue = erc20DataDecoder().decodeData(params.data); //First checking if method is defined on erc20ABI
-      if (decoderValue !== null) return decoderValue;
+      if (decoderValue.method !== null) return decoderValue;
       const decoderInstance = new InputDataDecoder(JSON.stringify(pegasysABI));
       decoderValue = decoderInstance.decodeData(params.data);
       if (decoderValue.method === null && (!value || value === 0)) {
