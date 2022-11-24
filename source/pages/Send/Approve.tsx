@@ -96,35 +96,28 @@ export const ApproveTransactionComponent = () => {
     });
   };
 
-  const handleFormSubmit = async () => {
-    if (customApprovedAllowanceAmount.isCustom === true) {
-      const erc20AbiInstance = new ethers.utils.Interface(getErc20Abi());
+  const validatedEncodedData = () => {
+    const erc20AbiInstance = new ethers.utils.Interface(getErc20Abi());
 
-      const encodedDataWithCustomValue = erc20AbiInstance.encodeFunctionData(
-        'approve',
-        [
-          decodedTx?.inputs[0],
-          ethers.utils.parseUnits(
-            String(customApprovedAllowanceAmount.customAllowanceValue),
-            approvedTokenInfos?.tokenDecimals
+    const encodedDataWithCustomValue = erc20AbiInstance.encodeFunctionData(
+      'approve',
+      [
+        decodedTx?.inputs[0],
+        ethers.utils.parseUnits(
+          String(
+            customApprovedAllowanceAmount.isCustom === true
+              ? customApprovedAllowanceAmount.customAllowanceValue
+              : customApprovedAllowanceAmount.defaultAllowanceValue
           ),
-        ]
-      );
+          approvedTokenInfos?.tokenDecimals
+        ),
+      ]
+    );
 
-      const newTxValue = {
-        ...tx,
-        data: encodedDataWithCustomValue,
-      };
-
-      setTx({ ...newTxValue });
-
-      return tx;
-    }
+    return encodedDataWithCustomValue;
   };
 
   const handleConfirmApprove = async () => {
-    console.log('TX INSIDE METHOD', tx);
-
     const {
       balances: { ethereum },
     } = activeAccount;
@@ -135,18 +128,22 @@ export const ApproveTransactionComponent = () => {
       setLoading(true);
 
       const txs = account.eth.tx;
-      setTx({
+
+      const newDataEncoded = validatedEncodedData();
+
+      const newTxValue = {
         ...tx,
+        data: newDataEncoded,
         nonce: customNonce,
         maxPriorityFeePerGas: txs.toBigNumber(
           fee.maxPriorityFeePerGas * 10 ** 18
         ),
         maxFeePerGas: txs.toBigNumber(fee.maxFeePerGas * 10 ** 18),
         gasLimit: txs.toBigNumber(fee.gasLimit),
-      });
-      console.log('Check tx Data', tx.data);
+      };
       try {
-        const response = await txs.sendFormattedTransaction(tx);
+        throw 'PAREI AQUI';
+        const response = await txs.sendFormattedTransaction(newTxValue);
         setConfirmedDefaultModal(true);
         setLoading(false);
         if (isExternal)
@@ -158,8 +155,8 @@ export const ApproveTransactionComponent = () => {
         alert.removeAll();
         alert.error("Can't complete approve. Try again later.");
 
-        if (isExternal) setTimeout(window.close, 4000);
-        else setLoading(false);
+        // if (isExternal) setTimeout(window.close, 4000);
+        setLoading(false);
         return error;
       }
     }
@@ -239,10 +236,6 @@ export const ApproveTransactionComponent = () => {
       customAllowanceValue: null,
     });
   }, [decodedTx]);
-
-  console.log('custom allowance', customApprovedAllowanceAmount);
-  console.log('TOKEN VALUES', approvedTokenInfos);
-  console.log('TX DATA OUTISED FUNCTION', tx);
 
   return (
     <Layout title="Approve" canGoBack={canGoBack}>
@@ -367,6 +360,8 @@ export const ApproveTransactionComponent = () => {
                           fee?.calculatedFeeValue,
                           2
                         )}
+                        &nbsp;
+                        <strong>{activeNetwork.currency.toUpperCase()}</strong>
                       </span>
                     </p>
                   </div>
@@ -499,10 +494,7 @@ export const ApproveTransactionComponent = () => {
                   className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
                   id="receive-btn"
                   loading={loading}
-                  onClick={async () => {
-                    await handleFormSubmit();
-                    await handleConfirmApprove();
-                  }}
+                  onClick={async () => await handleConfirmApprove()}
                 >
                   <Icon
                     name="arrow-down"
