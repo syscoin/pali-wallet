@@ -13,21 +13,20 @@ import { Layout, DefaultModal, Button } from 'components/index';
 import { useQueryData } from 'hooks/useQuery';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
-import { IDecodedTx, IFeeState, ITxState } from 'types/transactions';
+import {
+  ICustomApprovedAllowanceAmount,
+  IDecodedTx,
+  IFeeState,
+  ITxState,
+} from 'types/transactions';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { ellipsis } from 'utils/format';
 import { verifyZerosInBalanceAndFormat } from 'utils/index';
 import { logError } from 'utils/logger';
 
-import { EditPermissionApprovedValueModal } from './EditPermissionApprovedValueModal';
+import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 import { EditPriorityModal } from './EditPriorityModal';
-
-interface ICustomApprovedAmount {
-  customApprovedValue?: number | null;
-  defaultApprovedValue?: number;
-  isCustom: boolean;
-}
 
 export const ApproveTransactionComponent = () => {
   const {
@@ -51,11 +50,11 @@ export const ApproveTransactionComponent = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [detailsOpened, setDetailsOpened] = useState<boolean>(false);
 
-  const [customApprovedAmount, setCustomApprovedAmount] =
-    useState<ICustomApprovedAmount>({
+  const [customApprovedAllowanceAmount, setCustomApprovedAllowanceAmount] =
+    useState<ICustomApprovedAllowanceAmount>({
       isCustom: false,
-      defaultApprovedValue: 0,
-      customApprovedValue: null,
+      defaultAllowanceValue: 0,
+      customAllowanceValue: null,
     });
 
   const activeNetwork = useSelector(
@@ -136,7 +135,7 @@ export const ApproveTransactionComponent = () => {
   };
 
   const handleFormSubmit = () => {
-    if (customApprovedAmount.isCustom) {
+    if (customApprovedAllowanceAmount.isCustom) {
       const erc20AbiInstance = new ethers.utils.Interface(getErc20Abi());
 
       const encodedDataWithCustomValue = erc20AbiInstance.encodeFunctionData(
@@ -144,7 +143,7 @@ export const ApproveTransactionComponent = () => {
         [
           decodedTx?.inputs[0],
           ethers.utils.parseUnits(
-            String(customApprovedAmount.customApprovedValue),
+            String(customApprovedAllowanceAmount.customAllowanceValue),
             18
           ),
         ]
@@ -221,10 +220,10 @@ export const ApproveTransactionComponent = () => {
     if (!decodedTx) return;
     const parseApprovedValue = parseInt(decodedTx?.inputs[1]?.hex, 16);
 
-    setCustomApprovedAmount({
+    setCustomApprovedAllowanceAmount({
       isCustom: false,
-      defaultApprovedValue: parseApprovedValue,
-      customApprovedValue: null,
+      defaultAllowanceValue: parseApprovedValue,
+      customAllowanceValue: null,
     });
   }, [decodedTx]);
 
@@ -246,12 +245,12 @@ export const ApproveTransactionComponent = () => {
         setFee={setFee}
         fee={fee}
       />
-      <EditPermissionApprovedValueModal
+      <EditApprovedAllowanceValueModal
         showModal={openEditFeeModal}
         host={host}
         tokenSymbol={tokenSymbol}
-        customApprovedValue={customApprovedAmount}
-        setCustomApprovedAmount={setCustomApprovedAmount}
+        customApprovedAllowanceAmount={customApprovedAllowanceAmount}
+        setCustomApprovedAllowanceAmount={setCustomApprovedAllowanceAmount}
         setFee={setFee}
         setOpenEditFeeModal={setOpenEditFeeModal}
       />
@@ -401,9 +400,9 @@ export const ApproveTransactionComponent = () => {
                   <div className="grid grid-cols-2 items-center text-sm">
                     <p className="font-bold">Approved amount:</p>
                     <span>
-                      {!customApprovedAmount.isCustom
-                        ? customApprovedAmount.defaultApprovedValue
-                        : customApprovedAmount.customApprovedValue}
+                      {!customApprovedAllowanceAmount.isCustom
+                        ? customApprovedAllowanceAmount.defaultAllowanceValue
+                        : customApprovedAllowanceAmount.customAllowanceValue}
                       <span className="ml-1 text-brand-royalblue font-semibold">
                         {tokenSymbol}
                       </span>

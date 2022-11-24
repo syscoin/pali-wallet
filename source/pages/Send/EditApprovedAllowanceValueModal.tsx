@@ -3,14 +3,29 @@ import { Form, Input, Radio, RadioChangeEvent } from 'antd';
 import React, { useState } from 'react';
 
 import { NeutralButton, Modal } from 'components/index';
+import { ICustomApprovedAllowanceAmount, IFeeState } from 'types/transactions';
 
-export const EditPermissionApprovedValueModal = (props: any) => {
+interface isEditedAllowanceModalProps {
+  customApprovedAllowanceAmount: ICustomApprovedAllowanceAmount;
+  host: string;
+  setCustomApprovedAllowanceAmount: React.Dispatch<
+    React.SetStateAction<ICustomApprovedAllowanceAmount>
+  >;
+  setFee: React.Dispatch<React.SetStateAction<IFeeState>>;
+  setOpenEditFeeModal: React.Dispatch<React.SetStateAction<boolean>>;
+  showModal: boolean;
+  tokenSymbol: string;
+}
+
+export const EditApprovedAllowanceValueModal = (
+  props: isEditedAllowanceModalProps
+) => {
   const {
     host,
-    customApprovedValue,
+    customApprovedAllowanceAmount,
     tokenSymbol,
     showModal,
-    setCustomApprovedAmount,
+    setCustomApprovedAllowanceAmount,
     setOpenEditFeeModal,
   } = props;
 
@@ -20,14 +35,16 @@ export const EditPermissionApprovedValueModal = (props: any) => {
     useState('proposed_limit');
 
   const onSubmitForm = (data: any) => {
-    setCustomApprovedAmount({
-      ...customApprovedValue,
-      isCustom: currentRadioChecked === 'custom_limit',
-      customApprovedValue:
-        currentRadioChecked === 'custom_limit'
-          ? data.custom_limit_input_value
-          : '',
-    });
+    setCustomApprovedAllowanceAmount(
+      (prevState: ICustomApprovedAllowanceAmount) => ({
+        ...prevState,
+        isCustom: currentRadioChecked === 'custom_limit',
+        customAllowanceValue:
+          currentRadioChecked === 'custom_limit'
+            ? data.custom_limit_input_value
+            : '',
+      })
+    );
 
     setOpenEditFeeModal(false);
 
@@ -83,7 +100,7 @@ export const EditPermissionApprovedValueModal = (props: any) => {
                     <div className="flex flex-col gap-y-2 pl-5 text-left">
                       <span>Spending limit requested by {host}</span>
                       <span>
-                        {customApprovedValue.defaultApprovedValue}
+                        {customApprovedAllowanceAmount.defaultAllowanceValue}
                         <span className="ml-1 text-brand-royalblue font-semibold">
                           {tokenSymbol}
                         </span>
@@ -116,7 +133,9 @@ export const EditPermissionApprovedValueModal = (props: any) => {
                       >
                         <Input
                           type="text"
-                          placeholder={customApprovedValue.defaultApprovedValue}
+                          placeholder={String(
+                            customApprovedAllowanceAmount.defaultAllowanceValue
+                          )}
                           className={`px-4 py-2 text-brand-graylight ${
                             currentRadioChecked === 'custom_limit'
                               ? 'border bg-transparent border-slate-400'

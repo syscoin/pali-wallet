@@ -191,3 +191,9 @@ export interface IDecodedTx {
   names: string[];
   types: string[];
 }
+
+export interface ICustomApprovedAllowanceAmount {
+  customAllowanceValue?: number | null;
+  defaultAllowanceValue?: number;
+  isCustom: boolean;
+}
