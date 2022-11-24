@@ -27,7 +27,11 @@ export const fetchGasAndDecodeFunction = async (
     chainId: activeNetwork.chainId,
     gasLimit: txs.toBigNumber(0),
   };
-  formTx.gasLimit = await txs.getTxGasLimit(formTx);
+  const getTxGasLimitResult = await txs.getTxGasLimit(formTx);
+  formTx.gasLimit =
+    dataTx.gas && Number(dataTx.gas) > Number(getTxGasLimitResult)
+      ? txs.toBigNumber(dataTx.gas)
+      : getTxGasLimitResult;
   const feeDetails = {
     maxFeePerGas: maxFeePerGas.toNumber() / 10 ** 18,
     baseFee: maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 18,

@@ -180,7 +180,7 @@ export interface IFeeState {
 export interface ITransactionParams {
   data: string;
   from: string;
-  gas: string;
+  gas?: string;
   to: string;
   value: number;
 }

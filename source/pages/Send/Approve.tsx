@@ -1,6 +1,6 @@
-import { Form, Input, Radio, RadioChangeEvent } from 'antd';
+import { Form } from 'antd';
 import { ethers } from 'ethers';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import { browser } from 'webextension-polyfill-ts';
@@ -20,6 +20,14 @@ import { ellipsis } from 'utils/format';
 import { verifyZerosInBalanceAndFormat } from 'utils/index';
 import { logError } from 'utils/logger';
 
+import { EditGasFeeModal } from './EditGasFeeModal';
+
+interface ICustomApprovedAmount {
+  customApprovedValue?: number | null;
+  defaultApprovedValue?: number;
+  isCustom: boolean;
+}
+
 export const ApproveTransactionComponent = () => {
   const {
     refresh,
@@ -34,9 +42,19 @@ export const ApproveTransactionComponent = () => {
   const [fee, setFee] = useState<IFeeState>();
   const [customNonce, setCustomNonce] = useState<number>();
   const [tokenSymbol, setTokenSymbol] = useState<string>('');
-  const [confirmed, setConfirmed] = useState<boolean>(false);
+
+  const [confirmedDefaultModal, setConfirmedDefaultModal] =
+    useState<boolean>(false);
+  const [openEditFeeModal, setOpenEditFeeModal] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [detailsOpened, setDetailsOpened] = useState<boolean>(false);
+
+  const [customApprovedAmount, setCustomApprovedAmount] =
+    useState<ICustomApprovedAmount>({
+      isCustom: false,
+      defaultApprovedValue: 0,
+      customApprovedValue: null,
+    });
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -64,11 +82,7 @@ export const ApproveTransactionComponent = () => {
     ? state.decodedTx
     : state.decodedTx;
 
-  console.log('dataTx', dataTx);
-
   const canGoBack = state?.external ? !state.external : !isExternal;
-
-  const parseApprovedValue = parseInt(decodedTx?.inputs[1]?.hex, 16);
 
   const [formControl] = Form.useForm();
 
@@ -100,7 +114,7 @@ export const ApproveTransactionComponent = () => {
       });
       try {
         const response = await txs.sendFormattedTransaction(tx);
-        setConfirmed(true);
+        setConfirmedDefaultModal(true);
         setLoading(false);
 
         if (isExternal)
@@ -118,6 +132,8 @@ export const ApproveTransactionComponent = () => {
       }
     }
   };
+
+  console.log('tx', tx);
 
   const getFormValues = (data: any) => {
     console.log('data in approve', data);
@@ -181,10 +197,21 @@ export const ApproveTransactionComponent = () => {
     alert.success('Address successfully copied!');
   }, [copied]);
 
+  useMemo(() => {
+    if (!decodedTx) return;
+    const parseApprovedValue = parseInt(decodedTx?.inputs[1]?.hex, 16);
+
+    setCustomApprovedAmount({
+      isCustom: false,
+      defaultApprovedValue: parseApprovedValue,
+      customApprovedValue: null,
+    });
+  }, [decodedTx]);
+
   return (
     <Layout title="Approve" canGoBack={canGoBack}>
       <DefaultModal
-        show={confirmed}
+        show={confirmedDefaultModal}
         title="Approve successful"
         description="Your approve has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
@@ -192,6 +219,15 @@ export const ApproveTransactionComponent = () => {
           if (isExternal) window.close();
           else navigate('/home');
         }}
+      />
+      <EditGasFeeModal
+        showModal={openEditFeeModal}
+        host={host}
+        tokenSymbol={tokenSymbol}
+        customApprovedValue={customApprovedAmount}
+        setCustomApprovedAmount={setCustomApprovedAmount}
+        setFee={setFee}
+        setOpenEditFeeModal={setOpenEditFeeModal}
       />
 
       {tx?.from ? (
@@ -213,7 +249,7 @@ export const ApproveTransactionComponent = () => {
                   </span>
                 </span>
                 <span className="text-brand-graylight text-sm">
-                  {/* By granting permission, you are authorizing the following */}
+                  By granting permission, you are authorizing the following
                   contract to access your funds
                 </span>
               </div>
@@ -247,17 +283,7 @@ export const ApproveTransactionComponent = () => {
                   <button
                     type="button"
                     className="text-blue-300 text-sm"
-                    onClick={() => {
-                      navigate('../send/approve/edit/gasFee', {
-                        state: {
-                          host,
-                          approvedValue: parseApprovedValue,
-                          tokenSymbol,
-                          formControl,
-                          external: true,
-                        },
-                      });
-                    }}
+                    onClick={() => setOpenEditFeeModal(true)}
                   >
                     Edit permission
                   </button>
@@ -345,17 +371,7 @@ export const ApproveTransactionComponent = () => {
                     <button
                       type="button"
                       className="self-start justify-self-end text-blue-300 text-xs"
-                      onClick={() => {
-                        navigate('../send/approve/edit/gasFee', {
-                          state: {
-                            host,
-                            approvedValue: parseApprovedValue,
-                            tokenSymbol,
-                            formControl,
-                            external: true,
-                          },
-                        });
-                      }}
+                      onClick={() => setOpenEditFeeModal(true)}
                     >
                       Edit
                     </button>
@@ -368,7 +384,9 @@ export const ApproveTransactionComponent = () => {
                   <div className="grid grid-cols-2 items-center text-sm">
                     <p className="font-bold">Approved amount:</p>
                     <span>
-                      {parseApprovedValue}
+                      {!customApprovedAmount.isCustom
+                        ? customApprovedAmount.defaultApprovedValue
+                        : customApprovedAmount.customApprovedValue}
                       <span className="ml-1 text-brand-royalblue font-semibold">
                         {tokenSymbol}
                       </span>
