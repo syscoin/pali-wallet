@@ -21,6 +21,7 @@ import { verifyZerosInBalanceAndFormat } from 'utils/index';
 import { logError } from 'utils/logger';
 
 import { EditPermissionApprovedValueModal } from './EditPermissionApprovedValueModal';
+import { EditPriorityModal } from './EditPriorityModal';
 
 interface ICustomApprovedAmount {
   customApprovedValue?: number | null;
@@ -46,6 +47,7 @@ export const ApproveTransactionComponent = () => {
   const [confirmedDefaultModal, setConfirmedDefaultModal] =
     useState<boolean>(false);
   const [openEditFeeModal, setOpenEditFeeModal] = useState<boolean>(false);
+  const [isOpenPriority, setIsOpenPriority] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [detailsOpened, setDetailsOpened] = useState<boolean>(false);
 
@@ -220,6 +222,12 @@ export const ApproveTransactionComponent = () => {
           else navigate('/home');
         }}
       />
+      <EditPriorityModal
+        showModal={isOpenPriority}
+        setIsOpen={setIsOpenPriority}
+        setFee={setFee}
+        fee={fee}
+      />
       <EditPermissionApprovedValueModal
         showModal={openEditFeeModal}
         host={host}
@@ -307,16 +315,7 @@ export const ApproveTransactionComponent = () => {
                     <button
                       type="button"
                       className="justify-self-end text-blue-300 text-xs"
-                      onClick={() =>
-                        navigate('../send/ethTx/edit/priority', {
-                          state: {
-                            tx: dataTx,
-                            decodedTx: decodedTx,
-                            external: true,
-                            fee,
-                          },
-                        })
-                      }
+                      onClick={() => setIsOpenPriority(true)}
                     >
                       Edit
                     </button>

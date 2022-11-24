@@ -127,27 +127,6 @@ export const SendTransaction = () => {
     };
   }, []); // TODO: add timer
 
-  useEffect(() => {
-    console.log(state?.customFee);
-    if (state?.customFee) {
-      setFee((prevState) => ({
-        ...prevState,
-        gasLimit:
-          state.customFee.gasLimit !== '0'
-            ? Number(state.customFee.gasLimit)
-            : prevState?.gasLimit,
-        maxPriorityFeePerGas:
-          state.customFee.maxPriorityFeePerGas !== '0'
-            ? Number(state.customFee.maxPriorityFeePerGas)
-            : prevState?.maxPriorityFeePerGas,
-        maxFeePerGas:
-          state.customFee.maxFee !== '0'
-            ? Number(state.customFee.maxFee)
-            : prevState?.maxFeePerGas,
-        feeByPriorityBar: state.customFee.feeByPriorityBar,
-      }));
-    }
-  }, [state]);
   return (
     <Layout title="Transaction" canGoBack={canGoBack}>
       <DefaultModal
@@ -232,6 +211,7 @@ export const SendTransaction = () => {
                     dataTx={dataTx}
                     decodedTx={decodedTxData}
                     setCustomNonce={setCustomNonce}
+                    setFee={setFee}
                     fee={fee}
                   />
                 ) : component.component === 'data' ? (
