@@ -39,12 +39,8 @@ export const fetchGasAndDecodeFunction = async (
     gasLimit: formTx.gasLimit.toNumber(),
   };
 
-  const calculatedFeeValue =
-    (feeDetails.maxFeePerGas / 10 ** 9) * feeDetails.gasLimit;
-
   return {
     feeDetails,
-    calculatedFeeValue,
     formTx,
     nonce,
   };

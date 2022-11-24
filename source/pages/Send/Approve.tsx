@@ -170,15 +170,12 @@ export const ApproveTransactionComponent = () => {
     const abortController = new AbortController();
 
     const getGasAndFunction = async () => {
-      const { feeDetails, formTx, nonce, calculatedFeeValue } =
-        await fetchGasAndDecodeFunction(dataTx, activeNetwork);
+      const { feeDetails, formTx, nonce } = await fetchGasAndDecodeFunction(
+        dataTx,
+        activeNetwork
+      );
 
-      const fullFeeDetails = {
-        ...feeDetails,
-        calculatedFeeValue,
-      };
-
-      setFee(fullFeeDetails);
+      setFee(feeDetails);
       setTx(formTx);
       setCustomNonce(nonce);
     };
@@ -240,6 +237,14 @@ export const ApproveTransactionComponent = () => {
       customAllowanceValue: null,
     });
   }, [decodedTx]);
+
+  const calculatedFeeValue = useMemo(() => {
+    if (!fee?.maxFeePerGas || !fee?.gasLimit) return 0;
+
+    return (fee?.maxFeePerGas / 10 ** 9) * fee?.gasLimit;
+  }, [fee?.gasLimit, fee?.maxFeePerGas]);
+
+  console.log('fee', fee);
 
   return (
     <Layout title="Approve" canGoBack={canGoBack}>
@@ -357,12 +362,9 @@ export const ApproveTransactionComponent = () => {
                     </span>
 
                     <p className="flex flex-col items-end text-brand-white text-lg font-bold">
-                      $ {fee?.calculatedFeeValue.toFixed(2)}
+                      $ {calculatedFeeValue.toFixed(2)}
                       <span className="text-gray-500 text-base font-medium">
-                        {verifyZerosInBalanceAndFormat(
-                          fee?.calculatedFeeValue,
-                          2
-                        )}
+                        {verifyZerosInBalanceAndFormat(calculatedFeeValue, 2)}
                         &nbsp;
                         <strong>{activeNetwork.currency.toUpperCase()}</strong>
                       </span>
