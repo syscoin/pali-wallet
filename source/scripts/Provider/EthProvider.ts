@@ -33,8 +33,6 @@ export const EthProvider = (host: string) => {
       return resp;
     }
 
-    console.log('decodeTx in provider', decodedTx);
-
     const resp = await popupPromise({
       host,
       data: { tx, decodedTx, external: true },

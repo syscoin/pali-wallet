@@ -7,11 +7,15 @@ import { browser } from 'webextension-polyfill-ts';
 
 import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 
-import { Icon } from 'components/Icon';
-import { IconButton } from 'components/IconButton';
-import { Layout, DefaultModal, Button } from 'components/index';
+import {
+  Layout,
+  DefaultModal,
+  Button,
+  Icon,
+  IconButton,
+} from 'components/index';
+import { usePrice, useUtils } from 'hooks/index';
 import { useQueryData } from 'hooks/useQuery';
-import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import {
   IApprovedTokenInfos,
@@ -23,9 +27,7 @@ import {
 } from 'types/transactions';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
-import { ellipsis } from 'utils/format';
-import { verifyZerosInBalanceAndFormat } from 'utils/index';
-import { logError } from 'utils/logger';
+import { verifyZerosInBalanceAndFormat, ellipsis, logError } from 'utils/index';
 
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 import { EditPriorityModal } from './EditPriorityModal';
@@ -36,15 +38,23 @@ export const ApproveTransactionComponent = () => {
     wallet: { account },
   } = getController();
 
+  const { getFiatAmount } = usePrice();
+
   const { navigate, alert, useCopyClipboard } = useUtils();
 
   const [copied, copy] = useCopyClipboard();
 
   const [tx, setTx] = useState<ITxState>();
-  const [fee, setFee] = useState<IFeeState>();
+  const [fee, setFee] = useState<IFeeState>({
+    baseFee: 0,
+    gasLimit: 0,
+    maxFeePerGas: 0,
+    maxPriorityFeePerGas: 0,
+  });
   const [customNonce, setCustomNonce] = useState<number>();
   const [approvedTokenInfos, setApprovedTokenInfos] =
     useState<IApprovedTokenInfos>();
+  const [fiatPriceValue, setFiatPriceValue] = useState<string>('');
 
   const [confirmedDefaultModal, setConfirmedDefaultModal] =
     useState<boolean>(false);
@@ -60,12 +70,23 @@ export const ApproveTransactionComponent = () => {
       customAllowanceValue: null,
     });
 
+  const [customFee, setCustomFee] = useState({
+    isCustom: false,
+    gasLimit: 0,
+    maxPriorityFeePerGas: 0,
+    maxFeePerGas: 0,
+  });
+
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
 
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
+  );
+
+  const { asset: fiatAsset, price: fiatPrice } = useSelector(
+    (state: RootState) => state.price.fiat
   );
 
   const { state }: { state: any } = useLocation();
@@ -94,6 +115,18 @@ export const ApproveTransactionComponent = () => {
     browser.windows.create({
       url: `${activeNetwork.explorer}address/${dataTx.to}`,
     });
+  };
+
+  const setFiatPrice = () => {
+    const amount = getFiatAmount(
+      calculatedFeeValue || 0,
+      4,
+      String(fiatAsset).toUpperCase(),
+      false,
+      false
+    );
+
+    setFiatPriceValue(amount);
   };
 
   const validatedEncodedData = () => {
@@ -134,15 +167,28 @@ export const ApproveTransactionComponent = () => {
         data: newDataEncoded,
         nonce: customNonce,
         maxPriorityFeePerGas: ethers.utils.parseUnits(
-          String(fee.maxPriorityFeePerGas.toFixed(9)),
+          String(
+            Boolean(customFee.isCustom && customFee.maxPriorityFeePerGas > 0)
+              ? customFee.maxPriorityFeePerGas.toFixed(9)
+              : fee.maxPriorityFeePerGas.toFixed(9)
+          ),
           9
         ),
         maxFeePerGas: ethers.utils.parseUnits(
-          String(fee.maxFeePerGas.toFixed(9)),
+          String(
+            Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+              ? customFee.maxFeePerGas.toFixed(9)
+              : fee.maxFeePerGas.toFixed(9)
+          ),
           9
         ),
-        gasLimit: txs.toBigNumber(fee.gasLimit),
+        gasLimit: txs.toBigNumber(
+          Boolean(customFee.isCustom && customFee.gasLimit > 0)
+            ? customFee.gasLimit
+            : fee.gasLimit
+        ),
       };
+
       try {
         const response = await txs.sendFormattedTransaction(newTxValue);
         setConfirmedDefaultModal(true);
@@ -156,7 +202,7 @@ export const ApproveTransactionComponent = () => {
         alert.removeAll();
         alert.error("Can't complete approve. Try again later.");
 
-        // if (isExternal) setTimeout(window.close, 4000);
+        if (isExternal) setTimeout(window.close, 4000);
         setLoading(false);
         return error;
       }
@@ -182,7 +228,7 @@ export const ApproveTransactionComponent = () => {
     return () => {
       abortController.abort();
     };
-  }, []);
+  }, [dataTx]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -238,10 +284,27 @@ export const ApproveTransactionComponent = () => {
   const calculatedFeeValue = useMemo(() => {
     if (!fee?.maxFeePerGas || !fee?.gasLimit) return 0;
 
-    return (fee?.maxFeePerGas / 10 ** 9) * fee?.gasLimit;
-  }, [fee?.gasLimit, fee?.maxFeePerGas]);
+    if (customFee.isCustom) {
+      return (customFee.maxFeePerGas / 10 ** 9) * customFee.gasLimit > 0
+        ? customFee.gasLimit
+        : fee.gasLimit;
+    }
 
-  console.log('fee', fee);
+    return (fee.maxFeePerGas / 10 ** 9) * fee.gasLimit;
+  }, [
+    fee?.gasLimit,
+    fee?.maxFeePerGas,
+    customFee?.maxFeePerGas,
+    customFee?.maxFeePerGas,
+    customFee?.gasLimit,
+    customFee?.isCustom,
+  ]);
+
+  useEffect(() => {
+    if (!calculatedFeeValue) return;
+
+    setFiatPrice();
+  }, [fiatPrice, calculatedFeeValue]);
 
   return (
     <Layout title="Approve" canGoBack={canGoBack}>
@@ -258,7 +321,8 @@ export const ApproveTransactionComponent = () => {
       <EditPriorityModal
         showModal={isOpenPriority}
         setIsOpen={setIsOpenPriority}
-        setFee={setFee}
+        customFee={customFee}
+        setCustomFee={setCustomFee}
         fee={fee}
       />
       <EditApprovedAllowanceValueModal
@@ -359,7 +423,7 @@ export const ApproveTransactionComponent = () => {
                     </span>
 
                     <p className="flex flex-col items-end text-brand-white text-lg font-bold">
-                      $ {calculatedFeeValue.toFixed(2)}
+                      $ {parseFloat(fiatPriceValue).toFixed(2)}
                       <span className="text-gray-500 text-base font-medium">
                         {verifyZerosInBalanceAndFormat(calculatedFeeValue, 2)}
                         &nbsp;

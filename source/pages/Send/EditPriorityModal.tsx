@@ -8,38 +8,59 @@ import removeScientificNotation from 'utils/removeScientificNotation';
 import { PriorityBar } from './components';
 
 export const EditPriorityModal = (props: any) => {
-  const { showModal, setIsOpen, setFee, fee } = props;
+  const { showModal, setIsOpen, customFee, setCustomFee, fee } = props;
   const [priority, setPriority] = useState<number>(0);
-  const [customFee, setCustomFee] = useState({
-    gasLimit: 0,
-    maxPriorityFeePerGas: 0,
-    maxFeePerGas: 0,
-  });
+
   const [form] = Form.useForm();
   const maxFeePerGas = fee?.maxFeePerGas;
   const maxPriorityFeePerGas = fee?.maxPriorityFeePerGas;
 
-  const onSubmit = () => {
-    setFee((prevState: any) => {
-      const filterCustomFee = _.flow([
-        Object.entries,
-        (arr) => arr.filter(([k, value]) => value > 0),
-        Object.fromEntries,
-      ])(customFee);
-      return { ...prevState, ...filterCustomFee };
-    });
-    setIsOpen(false);
+  const changeCustomFee = () => {
+    if (priority === 0) {
+      setCustomFee((prevState) => ({
+        ...prevState,
+        isCustom: true,
+        maxPriorityFeePerGas: 0.8 * maxPriorityFeePerGas,
+        maxFeePerGas: 0.8 * maxFeePerGas,
+      }));
+    }
 
-    return;
+    if (priority === 1) {
+      setCustomFee((prevState) => ({
+        ...prevState,
+        isCustom: false,
+        maxPriorityFeePerGas: 1 * maxPriorityFeePerGas,
+        maxFeePerGas: 1 * maxFeePerGas,
+      }));
+    }
+
+    if (priority === 2) {
+      setCustomFee((prevState) => ({
+        ...prevState,
+        isCustom: true,
+        maxPriorityFeePerGas: 1.2 * maxPriorityFeePerGas,
+        maxFeePerGas: 1.2 * maxFeePerGas,
+      }));
+    }
+  };
+
+  const onSubmit = () => {
+    // setFee((prevState: any) => {
+    //   const filterCustomFee = _.flow([
+    //     Object.entries,
+    //     (arr) => arr.filter(([k, value]) => value > 0),
+    //     Object.fromEntries,
+    //   ])(customFee);
+    //   return { ...prevState, ...filterCustomFee };
+    // });
+
+    changeCustomFee();
+
+    setIsOpen(false);
   };
 
   useMemo(() => {
     if (priority === 0) {
-      setCustomFee((prevState) => ({
-        ...prevState,
-        maxPriorityFeePerGas: 0.8 * maxPriorityFeePerGas,
-        maxFeePerGas: 0.8 * maxFeePerGas,
-      }));
       form.setFieldValue(
         'maxPriorityFeePerGas',
         removeScientificNotation(0.8 * maxPriorityFeePerGas)
@@ -50,11 +71,6 @@ export const EditPriorityModal = (props: any) => {
       );
     }
     if (priority === 1) {
-      setCustomFee((prevState) => ({
-        ...prevState,
-        maxPriorityFeePerGas: 1 * maxPriorityFeePerGas,
-        maxFeePerGas: 1 * maxFeePerGas,
-      }));
       form.setFieldValue(
         'maxPriorityFeePerGas',
         removeScientificNotation(1 * maxPriorityFeePerGas)
@@ -65,11 +81,6 @@ export const EditPriorityModal = (props: any) => {
       );
     }
     if (priority === 2) {
-      setCustomFee((prevState) => ({
-        ...prevState,
-        maxPriorityFeePerGas: 1.2 * maxPriorityFeePerGas,
-        maxFeePerGas: 1.2 * maxFeePerGas,
-      }));
       form.setFieldValue(
         'maxPriorityFeePerGas',
         removeScientificNotation(1.2 * maxPriorityFeePerGas)
@@ -134,6 +145,7 @@ export const EditPriorityModal = (props: any) => {
                   onChange={(e) =>
                     setCustomFee((prevState) => ({
                       ...prevState,
+                      isCustom: true,
                       gasLimit: +e.target.value,
                     }))
                   }
@@ -170,6 +182,7 @@ export const EditPriorityModal = (props: any) => {
                   onChange={(e) =>
                     setCustomFee((prevState) => ({
                       ...prevState,
+                      isCustom: true,
                       maxPriorityFeePerGas: +e.target.value,
                     }))
                   }
@@ -207,6 +220,7 @@ export const EditPriorityModal = (props: any) => {
                   onChange={(e) =>
                     setCustomFee((prevState) => ({
                       ...prevState,
+                      isCustom: true,
                       maxFeePerGas: +e.target.value,
                     }))
                   }
