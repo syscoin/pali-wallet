@@ -59,8 +59,6 @@ export const SendTransaction = () => {
     ? state.decodedTx
     : state.decodedTx;
 
-  console.log('datTx', dataTx);
-
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [tx, setTx] = useState<ITxState>();
