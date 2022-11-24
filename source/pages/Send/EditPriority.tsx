@@ -26,7 +26,6 @@ export const EditPriorityFee = () => {
   const isExternal = state.external;
   const tx = state.tx;
   const fee = state.fee;
-  const decodedTx = state.decodedTx;
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [priority, setPriority] = useState<number>(0);

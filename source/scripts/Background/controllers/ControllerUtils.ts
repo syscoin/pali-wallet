@@ -94,8 +94,9 @@ const ControllerUtils = (): IControllerUtils => {
 
       const { chain } = await validateSysRpc(activeNetwork.url);
 
-      const price =
-        chain === 'test' ? 0 : await getFiatValueByToken(id, currency);
+      const getFiatForSys = await getFiatValueByToken(id, currency);
+
+      const price = chain === 'test' ? 0 : getFiatForSys;
 
       const currencies = await (
         await fetch(`${ASSET_PRICE_API}/currency`)
