@@ -89,7 +89,7 @@ const DAppController = (): IDAppController => {
 
   const disconnect = (host: string) => {
     // after disconnecting, the event would not be sent
-    _dispatchEvent(host, 'disconnect');
+    // _dispatchEvent(host, 'disconnect'); //Event only added when there is any rpc error
     _dispatchEvent(host, 'accountsChanged', [null]);
 
     store.dispatch(removeDApp(host));
@@ -97,7 +97,6 @@ const DAppController = (): IDAppController => {
 
   const changeNetwork = (chainId: number) => {
     const { isBitcoinBased, networks } = store.getState().vault;
-
     const network = isBitcoinBased
       ? networks.syscoin[chainId]
       : networks.ethereum[chainId];

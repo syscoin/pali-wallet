@@ -205,13 +205,9 @@ const MainController = (): IMainController => {
 
       walletController.account.sys.getLatestUpdate(true);
 
-      const chainId = await web3Provider.send('eth_chainId', []);
-      const networkVersion = await web3Provider.send('net_version', []);
-
-      window.controller.dapp.dispatchEvent(DAppEvents.chainChanged, {
-        chainId,
-        networkVersion,
-      });
+      const chainId = network.chainId.toString(16);
+      const networkVersion = network.chainId;
+      window.controller.dapp.dispatchEvent(DAppEvents.chainChanged, chainId);
 
       const tabs = await browser.tabs.query({
         windowType: 'normal',
