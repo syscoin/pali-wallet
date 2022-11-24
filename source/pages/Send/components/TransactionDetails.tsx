@@ -4,10 +4,26 @@ import { useSelector } from 'react-redux';
 
 import { EditPriorityModal } from '../EditPriorityModal';
 import { RootState } from 'state/store';
+import {
+  IDecodedTx,
+  IFeeState,
+  ITransactionParams,
+  ITxState,
+} from 'types/transactions';
 import { ellipsis } from 'utils/format';
 import removeScientificNotation from 'utils/removeScientificNotation';
 
-export const TransactionDetailsComponent = (props: any) => {
+interface ITransactionDetailsProps {
+  decodedTx: IDecodedTx;
+  fee: IFeeState;
+  setCustomNonce: React.Dispatch<React.SetStateAction<number>>;
+  setFee: React.Dispatch<React.SetStateAction<IFeeState>>;
+  tx: ITxState;
+}
+
+export const TransactionDetailsComponent = (
+  props: ITransactionDetailsProps
+) => {
   const { tx, setCustomNonce, fee, setFee } = props;
   const [isOpen, setIsOpen] = useState<boolean>(false);
 
@@ -60,7 +76,7 @@ export const TransactionDetailsComponent = (props: any) => {
             <Input
               type="number"
               className="input-medium outline-0 w-10 bg-bkg-2 rounded-sm focus:outline-none focus-visible:outline-none"
-              placeholder={tx.nonce}
+              placeholder={String(tx.nonce)}
               defaultValue={tx.nonce}
               onChange={(e) => setCustomNonce(Number(e.target.value))}
             />

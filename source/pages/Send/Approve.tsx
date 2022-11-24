@@ -17,6 +17,7 @@ import {
   ICustomApprovedAllowanceAmount,
   IDecodedTx,
   IFeeState,
+  ITransactionParams,
   ITxState,
 } from 'types/transactions';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
@@ -71,7 +72,7 @@ export const ApproveTransactionComponent = () => {
 
   const isExternal = Boolean(externalTx.external);
 
-  const dataTx = isExternal
+  const dataTx: ITransactionParams = isExternal
     ? externalTx.tx
     : state.external
     ? state.tx

@@ -5,7 +5,12 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { useUtils } from 'hooks/useUtils';
 
-export const TransactionHexComponent = (props: any) => {
+interface ITransactionHexProps {
+  dataHex: string;
+  methodName: string;
+}
+
+export const TransactionHexComponent = (props: ITransactionHexProps) => {
   const { methodName, dataHex } = props;
 
   const { useCopyClipboard, alert } = useUtils();

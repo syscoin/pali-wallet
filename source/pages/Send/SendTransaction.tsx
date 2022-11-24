@@ -6,7 +6,12 @@ import { Icon } from 'components/Icon';
 import { Layout, DefaultModal, Button } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IDecodedTx, IFeeState, ITxState } from 'types/transactions';
+import {
+  IDecodedTx,
+  IFeeState,
+  ITransactionParams,
+  ITxState,
+} from 'types/transactions';
 import { getController, dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { logError } from 'utils/logger';
@@ -42,7 +47,7 @@ export const SendTransaction = () => {
 
   const isExternal = Boolean(externalTx.external);
 
-  const dataTx = isExternal
+  const dataTx: ITransactionParams = isExternal
     ? externalTx.tx
     : state.external
     ? state.tx
@@ -53,6 +58,8 @@ export const SendTransaction = () => {
     : state.external
     ? state.decodedTx
     : state.decodedTx;
+
+  console.log('datTx', dataTx);
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -208,7 +215,6 @@ export const SendTransaction = () => {
                 {component.component === 'details' ? (
                   <TransactionDetailsComponent
                     tx={tx}
-                    dataTx={dataTx}
                     decodedTx={decodedTxData}
                     setCustomNonce={setCustomNonce}
                     setFee={setFee}

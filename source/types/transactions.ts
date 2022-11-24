@@ -182,9 +182,8 @@ export interface ITransactionParams {
   from: string;
   gas?: string;
   to: string;
-  value: number;
+  value?: number;
 }
-
 export interface IDecodedTx {
   inputs: any[];
   method: string | null;

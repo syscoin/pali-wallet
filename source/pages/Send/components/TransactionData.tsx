@@ -1,6 +1,12 @@
 import React from 'react';
 
-export const TransactionDataComponent = (props: any) => {
+import { IDecodedTx } from 'types/transactions';
+
+interface ITransactionDataProps {
+  decodedTx: IDecodedTx;
+}
+
+export const TransactionDataComponent = (props: ITransactionDataProps) => {
   const { decodedTx } = props;
 
   return (
