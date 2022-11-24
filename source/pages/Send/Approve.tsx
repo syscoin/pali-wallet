@@ -499,9 +499,9 @@ export const ApproveTransactionComponent = () => {
                   className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
                   id="receive-btn"
                   loading={loading}
-                  onClick={() => {
-                    handleFormSubmit();
-                    handleConfirmApprove();
+                  onClick={async () => {
+                    await handleFormSubmit();
+                    await handleConfirmApprove();
                   }}
                 >
                   <Icon
