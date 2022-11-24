@@ -3,9 +3,14 @@ import { Form, Input, Radio, RadioChangeEvent } from 'antd';
 import React, { useState } from 'react';
 
 import { NeutralButton, Modal } from 'components/index';
-import { ICustomApprovedAllowanceAmount, IFeeState } from 'types/transactions';
+import {
+  IApprovedTokenInfos,
+  ICustomApprovedAllowanceAmount,
+  IFeeState,
+} from 'types/transactions';
 
 interface isEditedAllowanceModalProps {
+  approvedTokenInfos: IApprovedTokenInfos;
   customApprovedAllowanceAmount: ICustomApprovedAllowanceAmount;
   host: string;
   setCustomApprovedAllowanceAmount: React.Dispatch<
@@ -14,7 +19,6 @@ interface isEditedAllowanceModalProps {
   setFee: React.Dispatch<React.SetStateAction<IFeeState>>;
   setOpenEditFeeModal: React.Dispatch<React.SetStateAction<boolean>>;
   showModal: boolean;
-  tokenSymbol: string;
 }
 
 export const EditApprovedAllowanceValueModal = (
@@ -23,7 +27,7 @@ export const EditApprovedAllowanceValueModal = (
   const {
     host,
     customApprovedAllowanceAmount,
-    tokenSymbol,
+    approvedTokenInfos,
     showModal,
     setCustomApprovedAllowanceAmount,
     setOpenEditFeeModal,
@@ -100,9 +104,9 @@ export const EditApprovedAllowanceValueModal = (
                     <div className="flex flex-col gap-y-2 pl-5 text-left">
                       <span>Spending limit requested by {host}</span>
                       <span>
-                        {customApprovedAllowanceAmount.defaultAllowanceValue}
+                        {customApprovedAllowanceAmount?.defaultAllowanceValue}
                         <span className="ml-1 text-brand-royalblue font-semibold">
-                          {tokenSymbol}
+                          {approvedTokenInfos?.tokenSymbol}
                         </span>
                       </span>
                     </div>
@@ -134,7 +138,7 @@ export const EditApprovedAllowanceValueModal = (
                         <Input
                           type="text"
                           placeholder={String(
-                            customApprovedAllowanceAmount.defaultAllowanceValue
+                            customApprovedAllowanceAmount?.defaultAllowanceValue
                           )}
                           className={`px-4 py-2 text-brand-graylight ${
                             currentRadioChecked === 'custom_limit'

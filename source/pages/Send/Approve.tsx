@@ -14,6 +14,7 @@ import { useQueryData } from 'hooks/useQuery';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import {
+  IApprovedTokenInfos,
   ICustomApprovedAllowanceAmount,
   IDecodedTx,
   IFeeState,
@@ -42,7 +43,8 @@ export const ApproveTransactionComponent = () => {
   const [tx, setTx] = useState<ITxState>();
   const [fee, setFee] = useState<IFeeState>();
   const [customNonce, setCustomNonce] = useState<number>();
-  const [tokenSymbol, setTokenSymbol] = useState<string>('');
+  const [approvedTokenInfos, setApprovedTokenInfos] =
+    useState<IApprovedTokenInfos>();
 
   const [confirmedDefaultModal, setConfirmedDefaultModal] =
     useState<boolean>(false);
@@ -94,7 +96,35 @@ export const ApproveTransactionComponent = () => {
     });
   };
 
+  const handleFormSubmit = async () => {
+    if (customApprovedAllowanceAmount.isCustom === true) {
+      const erc20AbiInstance = new ethers.utils.Interface(getErc20Abi());
+
+      const encodedDataWithCustomValue = erc20AbiInstance.encodeFunctionData(
+        'approve',
+        [
+          decodedTx?.inputs[0],
+          ethers.utils.parseUnits(
+            String(customApprovedAllowanceAmount.customAllowanceValue),
+            approvedTokenInfos?.tokenDecimals
+          ),
+        ]
+      );
+
+      const newTxValue = {
+        ...tx,
+        data: encodedDataWithCustomValue,
+      };
+
+      setTx({ ...newTxValue });
+
+      return tx;
+    }
+  };
+
   const handleConfirmApprove = async () => {
+    console.log('TX INSIDE METHOD', tx);
+
     const {
       balances: { ethereum },
     } = activeAccount;
@@ -128,63 +158,17 @@ export const ApproveTransactionComponent = () => {
         alert.removeAll();
         alert.error("Can't complete approve. Try again later.");
 
-        // if (isExternal) setTimeout(window.close, 4000);
-        // else setLoading(false);
+        if (isExternal) setTimeout(window.close, 4000);
+        else setLoading(false);
         return error;
       }
     }
-  };
-
-  const handleFormSubmit = () => {
-    console.log(
-      'Checking custom Approved',
-      customApprovedAllowanceAmount.isCustom
-    );
-    if (customApprovedAllowanceAmount.isCustom) {
-      const erc20AbiInstance = new ethers.utils.Interface(getErc20Abi());
-
-      const encodedDataWithCustomValue = erc20AbiInstance.encodeFunctionData(
-        'approve',
-        [
-          decodedTx?.inputs[0],
-          ethers.utils.parseUnits(
-            String(customApprovedAllowanceAmount.customAllowanceValue),
-            18
-          ),
-        ]
-      );
-      console.log('Check spender address', decodedTx?.inputs[0]);
-      console.log(
-        'Check allowance',
-        ethers.utils.parseUnits(
-          String(customApprovedAllowanceAmount.customAllowanceValue),
-          18
-        )
-      );
-      console.log(
-        'Check allowance 2',
-        customApprovedAllowanceAmount.customAllowanceValue
-      );
-
-      console.log(
-        'Check new encoded data with custom value',
-        encodedDataWithCustomValue
-      );
-
-      setTx((prevState) => ({
-        ...prevState,
-        data: encodedDataWithCustomValue,
-      }));
-    }
-
-    handleConfirmApprove();
   };
 
   useEffect(() => {
     const abortController = new AbortController();
 
     const getGasAndFunction = async () => {
-      console.log('Check initial dataTx params', dataTx.data);
       const { feeDetails, formTx, nonce, calculatedFeeValue } =
         await fetchGasAndDecodeFunction(dataTx, activeNetwork);
 
@@ -192,7 +176,6 @@ export const ApproveTransactionComponent = () => {
         ...feeDetails,
         calculatedFeeValue,
       };
-      console.log('Check initial formTx params', formTx.data);
 
       setFee(fullFeeDetails);
       setTx(formTx);
@@ -220,10 +203,16 @@ export const ApproveTransactionComponent = () => {
         getProvider
       );
 
-      const tokenSymbolByContract =
-        await contractInstance?.callStatic?.symbol();
+      const [tokenSymbolByContract, tokenDecimalsByContract] =
+        await Promise.all([
+          await contractInstance?.callStatic?.symbol(),
+          await contractInstance?.callStatic?.decimals(),
+        ]);
 
-      setTokenSymbol(tokenSymbolByContract);
+      setApprovedTokenInfos({
+        tokenSymbol: tokenSymbolByContract,
+        tokenDecimals: tokenDecimalsByContract,
+      });
     };
 
     getTokenName(dataTx.to);
@@ -251,6 +240,10 @@ export const ApproveTransactionComponent = () => {
     });
   }, [decodedTx]);
 
+  console.log('custom allowance', customApprovedAllowanceAmount);
+  console.log('TOKEN VALUES', approvedTokenInfos);
+  console.log('TX DATA OUTISED FUNCTION', tx);
+
   return (
     <Layout title="Approve" canGoBack={canGoBack}>
       <DefaultModal
@@ -272,7 +265,7 @@ export const ApproveTransactionComponent = () => {
       <EditApprovedAllowanceValueModal
         showModal={openEditFeeModal}
         host={host}
-        tokenSymbol={tokenSymbol}
+        approvedTokenInfos={approvedTokenInfos}
         customApprovedAllowanceAmount={customApprovedAllowanceAmount}
         setCustomApprovedAllowanceAmount={setCustomApprovedAllowanceAmount}
         setFee={setFee}
@@ -294,7 +287,7 @@ export const ApproveTransactionComponent = () => {
                 <span className="text-brand-white text-lg">
                   You grant access to your{' '}
                   <span className="text-brand-royalblue font-semibold">
-                    {tokenSymbol}
+                    {approvedTokenInfos?.tokenSymbol}
                   </span>
                 </span>
                 <span className="text-brand-graylight text-sm">
@@ -340,7 +333,7 @@ export const ApproveTransactionComponent = () => {
               </div>
             </div>
 
-            <Form form={formControl} onFinish={handleFormSubmit}>
+            <Form form={formControl}>
               <div className="items-center justify-center py-4 w-full">
                 <div className="grid gap-y-3 grid-cols-1 auto-cols-auto">
                   <div className="grid grid-cols-2 items-center">
@@ -368,7 +361,7 @@ export const ApproveTransactionComponent = () => {
                     </span>
 
                     <p className="flex flex-col items-end text-brand-white text-lg font-bold">
-                      $ {fee.calculatedFeeValue.toFixed(2)}
+                      $ {fee?.calculatedFeeValue.toFixed(2)}
                       <span className="text-gray-500 text-base font-medium">
                         {verifyZerosInBalanceAndFormat(
                           fee?.calculatedFeeValue,
@@ -424,11 +417,11 @@ export const ApproveTransactionComponent = () => {
                   <div className="grid grid-cols-2 items-center text-sm">
                     <p className="font-bold">Approved amount:</p>
                     <span>
-                      {!customApprovedAllowanceAmount.isCustom
-                        ? customApprovedAllowanceAmount.defaultAllowanceValue
-                        : customApprovedAllowanceAmount.customAllowanceValue}
+                      {!customApprovedAllowanceAmount?.isCustom
+                        ? customApprovedAllowanceAmount?.defaultAllowanceValue
+                        : customApprovedAllowanceAmount?.customAllowanceValue}
                       <span className="ml-1 text-brand-royalblue font-semibold">
-                        {tokenSymbol}
+                        {approvedTokenInfos?.tokenSymbol}
                       </span>
                     </span>
                   </div>
@@ -437,7 +430,7 @@ export const ApproveTransactionComponent = () => {
                     <p className="font-bold">Granted to:</p>
                     <div className="flex items-center justify-start">
                       <span>{ellipsis(dataTx.to)}</span>
-                      <IconButton onClick={() => copy(dataTx.to)}>
+                      <IconButton onClick={() => copy(dataTx?.to)}>
                         <Icon
                           name="copy"
                           className="text-brand-white hover:text-fields-input-borderfocus"
@@ -461,7 +454,7 @@ export const ApproveTransactionComponent = () => {
                   </div>
 
                   <p className="text-brand-graylight text-xs font-thin">
-                    Method: {decodedTx.method}
+                    Method: {decodedTx?.method}
                   </p>
 
                   <div
@@ -506,7 +499,10 @@ export const ApproveTransactionComponent = () => {
                   className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
                   id="receive-btn"
                   loading={loading}
-                  // onClick={handleConfirmApprove}
+                  onClick={() => {
+                    handleFormSubmit();
+                    handleConfirmApprove();
+                  }}
                 >
                   <Icon
                     name="arrow-down"

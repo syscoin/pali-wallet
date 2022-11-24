@@ -196,3 +196,8 @@ export interface ICustomApprovedAllowanceAmount {
   defaultAllowanceValue?: number;
   isCustom: boolean;
 }
+
+export interface IApprovedTokenInfos {
+  tokenDecimals: number;
+  tokenSymbol: string;
+}
