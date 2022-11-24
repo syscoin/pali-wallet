@@ -116,103 +116,115 @@ export const EditPriorityModal = (props: any) => {
             autoComplete="off"
             form={form}
           >
-            <Form.Item
-              name="gasLimit"
-              hasFeedback
-              rules={[
-                {
-                  required: false,
-                  message: 'Gas limit need to be greater than 1000',
-                },
-                () => ({
-                  validator(_, value) {
-                    if (value > 1000) {
-                      return Promise.resolve();
-                    }
-
-                    return Promise.reject();
+            <div className="flex flex-col items-start justify-center">
+              <span className="mb-1 ml-2.5 font-bold">Gas limit</span>
+              <Form.Item
+                name="gasLimit"
+                className="text-left"
+                hasFeedback
+                rules={[
+                  {
+                    required: false,
+                    message: 'Gas limit need to be greater than 1000',
                   },
-                }),
-              ]}
-              initialValue={fee?.gasLimit}
-            >
-              <Input
-                type="number"
-                placeholder="Gas limit"
-                className="input-extra-small relative"
-                onChange={(e) =>
-                  setCustomFee((prevState) => ({
-                    ...prevState,
-                    gasLimit: +e.target.value,
-                  }))
-                }
-              />
-            </Form.Item>
+                  () => ({
+                    validator(_, value) {
+                      if (value > 1000) {
+                        return Promise.resolve();
+                      }
 
-            <Form.Item
-              name="maxPriorityFeePerGas"
-              hasFeedback
-              rules={[
-                {
-                  required: false,
-                  message: '',
-                },
-                () => ({
-                  validator(_, value) {
-                    if (value <= 30 && value >= 1) {
-                      return Promise.resolve();
-                    }
+                      return Promise.reject();
+                    },
+                  }),
+                ]}
+                initialValue={fee?.gasLimit}
+              >
+                <Input
+                  type="number"
+                  placeholder="Gas limit"
+                  className="input-extra-small relative"
+                  onChange={(e) =>
+                    setCustomFee((prevState) => ({
+                      ...prevState,
+                      gasLimit: +e.target.value,
+                    }))
+                  }
+                />
+              </Form.Item>
+            </div>
 
-                    return Promise.reject();
+            <div className="flex flex-col items-start justify-center">
+              <span className="mb-1 ml-2.5 font-bold">Max Priority</span>
+              <Form.Item
+                name="maxPriorityFeePerGas"
+                className="text-left"
+                hasFeedback
+                rules={[
+                  {
+                    required: false,
+                    message: '',
                   },
-                }),
-              ]}
-            >
-              <Input
-                type="number"
-                placeholder="Max priority fee (GWEI)"
-                className="input-extra-small relative"
-                onChange={(e) =>
-                  setCustomFee((prevState) => ({
-                    ...prevState,
-                    maxPriorityFeePerGas: +e.target.value,
-                  }))
-                }
-              />
-            </Form.Item>
+                  () => ({
+                    validator(_, value) {
+                      if (value <= 30 && value >= 1) {
+                        return Promise.resolve();
+                      }
 
-            <Form.Item
-              name="maxFeePerGas"
-              hasFeedback
-              rules={[
-                {
-                  required: false,
-                  message: '',
-                },
-                () => ({
-                  validator(_, value) {
-                    if (value <= 30 && value >= 1) {
-                      return Promise.resolve();
-                    }
+                      return Promise.reject();
+                    },
+                  }),
+                ]}
+              >
+                <Input
+                  type="number"
+                  placeholder="Max priority fee (GWEI)"
+                  className="input-extra-small relative"
+                  onChange={(e) =>
+                    setCustomFee((prevState) => ({
+                      ...prevState,
+                      maxPriorityFeePerGas: +e.target.value,
+                    }))
+                  }
+                />
+              </Form.Item>
+            </div>
 
-                    return Promise.reject();
+            <div className="flex flex-col items-start justify-center">
+              <span className="mb-1 ml-2.5 font-bold">Max Fee</span>
+              <Form.Item
+                name="maxFeePerGas"
+                className="text-left"
+                hasFeedback
+                rules={[
+                  {
+                    required: false,
+                    message: '',
                   },
-                }),
-              ]}
-            >
-              {/* // taxa de base + taxa de prioridade */}
-              <Input
-                type="number"
-                placeholder="Max fee (GWEI)"
-                className="input-extra-small relative"
-                onChange={(e) =>
-                  setCustomFee((prevState) => ({
-                    ...prevState,
-                    maxFeePerGas: +e.target.value,
-                  }))
-                }
-              />
-            </Form.Item>
+                  () => ({
+                    validator(_, value) {
+                      if (value <= 30 && value >= 1) {
+                        return Promise.resolve();
+                      }
+
+                      return Promise.reject();
+                    },
+                  }),
+                ]}
+              >
+                {/* // taxa de base + taxa de prioridade */}
+                <Input
+                  type="number"
+                  placeholder="Max fee (GWEI)"
+                  className="input-extra-small relative"
+                  onChange={(e) =>
+                    setCustomFee((prevState) => ({
+                      ...prevState,
+                      maxFeePerGas: +e.target.value,
+                    }))
+                  }
+                />
+              </Form.Item>
+            </div>
           </Form>
 
           <div className="flex items-center justify-center mt-5">
