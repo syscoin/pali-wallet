@@ -1,23 +1,28 @@
 import { Input } from 'antd';
-import React from 'react';
+import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { useUtils } from 'hooks/useUtils';
+import { EditPriorityModal } from '../EditPriorityModal';
 import { RootState } from 'state/store';
 import { ellipsis } from 'utils/format';
 import removeScientificNotation from 'utils/removeScientificNotation';
 
 export const TransactionDetailsComponent = (props: any) => {
-  const { tx, dataTx, decodedTx, setCustomNonce, fee } = props;
+  const { tx, setCustomNonce, fee, setFee } = props;
+  const [isOpen, setIsOpen] = useState<boolean>(false);
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
 
-  const { navigate } = useUtils();
-
   return (
     <>
+      <EditPriorityModal
+        showModal={isOpen}
+        setIsOpen={setIsOpen}
+        setFee={setFee}
+        fee={fee}
+      />
       <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
         <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
           From
@@ -43,16 +48,7 @@ export const TransactionDetailsComponent = (props: any) => {
           </p>
           <span
             className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
-            onClick={() =>
-              navigate('edit/priority', {
-                state: {
-                  tx: dataTx,
-                  decodedTx: decodedTx,
-                  external: true,
-                  fee,
-                },
-              })
-            }
+            onClick={() => setIsOpen(true)}
           >
             EDIT
           </span>
