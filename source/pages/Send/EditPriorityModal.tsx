@@ -1,9 +1,9 @@
-import { Disclosure } from '@headlessui/react';
 import { Form, Input } from 'antd';
 import _ from 'lodash';
 import React, { useMemo, useState } from 'react';
 
-import { Modal, Icon, NeutralButton } from 'components/index';
+import { Modal, NeutralButton } from 'components/index';
+import removeScientificNotation from 'utils/removeScientificNotation';
 
 import { PriorityBar } from './components';
 
@@ -15,7 +15,7 @@ export const EditPriorityModal = (props: any) => {
     maxPriorityFeePerGas: 0,
     maxFeePerGas: 0,
   });
-
+  const [form] = Form.useForm();
   const maxFeePerGas = fee?.maxFeePerGas;
   const maxPriorityFeePerGas = fee?.maxPriorityFeePerGas;
 
@@ -51,6 +51,14 @@ export const EditPriorityModal = (props: any) => {
         maxPriorityFeePerGas: 0.8 * maxPriorityFeePerGas,
         maxFeePerGas: 0.8 * maxFeePerGas,
       }));
+      form.setFieldValue(
+        'maxPriorityFeePerGas',
+        removeScientificNotation(0.8 * maxPriorityFeePerGas)
+      );
+      form.setFieldValue(
+        'maxFeePerGas',
+        removeScientificNotation(0.8 * maxFeePerGas)
+      );
     }
     if (priority === 1) {
       setCustomFee((prevState) => ({
@@ -58,6 +66,14 @@ export const EditPriorityModal = (props: any) => {
         maxPriorityFeePerGas: 1 * maxPriorityFeePerGas,
         maxFeePerGas: 1 * maxFeePerGas,
       }));
+      form.setFieldValue(
+        'maxPriorityFeePerGas',
+        removeScientificNotation(1 * maxPriorityFeePerGas)
+      );
+      form.setFieldValue(
+        'maxFeePerGas',
+        removeScientificNotation(1 * maxFeePerGas)
+      );
     }
     if (priority === 2) {
       setCustomFee((prevState) => ({
@@ -65,6 +81,14 @@ export const EditPriorityModal = (props: any) => {
         maxPriorityFeePerGas: 1.2 * maxPriorityFeePerGas,
         maxFeePerGas: 1.2 * maxFeePerGas,
       }));
+      form.setFieldValue(
+        'maxPriorityFeePerGas',
+        removeScientificNotation(1.2 * maxPriorityFeePerGas)
+      );
+      form.setFieldValue(
+        'maxFeePerGas',
+        removeScientificNotation(1.2 * maxFeePerGas)
+      );
     }
   }, [priority]);
 
@@ -90,9 +114,10 @@ export const EditPriorityModal = (props: any) => {
             labelCol={{ span: 8 }}
             wrapperCol={{ span: 16 }}
             autoComplete="off"
+            form={form}
           >
             <Form.Item
-              name="gas-limit"
+              name="gasLimit"
               hasFeedback
               rules={[
                 {
@@ -109,6 +134,7 @@ export const EditPriorityModal = (props: any) => {
                   },
                 }),
               ]}
+              initialValue={fee?.gasLimit}
             >
               <Input
                 type="number"
@@ -124,7 +150,7 @@ export const EditPriorityModal = (props: any) => {
             </Form.Item>
 
             <Form.Item
-              name="max-priority-fee"
+              name="maxPriorityFeePerGas"
               hasFeedback
               rules={[
                 {
@@ -156,7 +182,7 @@ export const EditPriorityModal = (props: any) => {
             </Form.Item>
 
             <Form.Item
-              name="max-fee"
+              name="maxFeePerGas"
               hasFeedback
               rules={[
                 {
