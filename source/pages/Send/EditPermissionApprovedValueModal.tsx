@@ -99,10 +99,7 @@ export const EditPermissionApprovedValueModal = (props: any) => {
                         id="custom_limit"
                       />
 
-                      <label
-                        htmlFor="proposed_limit"
-                        className="ml-2 font-bold"
-                      >
+                      <label htmlFor="custom_limit" className="ml-2 font-bold">
                         Custom spending limit
                       </label>
                     </div>
@@ -126,19 +123,6 @@ export const EditPermissionApprovedValueModal = (props: any) => {
                               : ''
                           } rounded outline-none`}
                           disabled={currentRadioChecked !== 'custom_limit'}
-                          // onChange={(event) => {
-                          //   const value = parseFloat(event?.target?.value);
-
-                          //   const condition =
-                          //     value > 0 && value <= state.customApprovedValue;
-
-                          //   if (!condition) return;
-
-                          //   form.setFieldValue(
-                          //     'custom_limit_input_value',
-                          //     value
-                          //   );
-                          // }}
                         />
                       </Form.Item>
                     </div>

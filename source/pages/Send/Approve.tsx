@@ -135,10 +135,28 @@ export const ApproveTransactionComponent = () => {
     }
   };
 
-  console.log('tx', tx);
+  const handleFormSubmit = () => {
+    if (customApprovedAmount.isCustom) {
+      const erc20AbiInstance = new ethers.utils.Interface(getErc20Abi());
 
-  const getFormValues = (data: any) => {
-    console.log('data in approve', data);
+      const encodedDataWithCustomValue = erc20AbiInstance.encodeFunctionData(
+        'approve',
+        [
+          decodedTx?.inputs[0],
+          ethers.utils.parseUnits(
+            String(customApprovedAmount.customApprovedValue),
+            18
+          ),
+        ]
+      );
+
+      setTx((prevState) => ({
+        ...prevState,
+        data: encodedDataWithCustomValue,
+      }));
+    }
+
+    handleConfirmApprove();
   };
 
   useEffect(() => {
@@ -299,7 +317,7 @@ export const ApproveTransactionComponent = () => {
               </div>
             </div>
 
-            <Form form={formControl} onFinish={getFormValues}>
+            <Form form={formControl} onFinish={handleFormSubmit}>
               <div className="items-center justify-center py-4 w-full">
                 <div className="grid gap-y-3 grid-cols-1 auto-cols-auto">
                   <div className="grid grid-cols-2 items-center">
@@ -461,11 +479,11 @@ export const ApproveTransactionComponent = () => {
                 </Button>
 
                 <Button
-                  type="button"
+                  type="submit"
                   className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
                   id="receive-btn"
                   loading={loading}
-                  onClick={handleConfirmApprove}
+                  // onClick={handleConfirmApprove}
                 >
                   <Icon
                     name="arrow-down"
