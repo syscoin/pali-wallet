@@ -20,7 +20,7 @@ import { ellipsis } from 'utils/format';
 import { verifyZerosInBalanceAndFormat } from 'utils/index';
 import { logError } from 'utils/logger';
 
-import { EditGasFeeModal } from './EditGasFeeModal';
+import { EditPermissionApprovedValueModal } from './EditPermissionApprovedValueModal';
 
 interface ICustomApprovedAmount {
   customApprovedValue?: number | null;
@@ -220,7 +220,7 @@ export const ApproveTransactionComponent = () => {
           else navigate('/home');
         }}
       />
-      <EditGasFeeModal
+      <EditPermissionApprovedValueModal
         showModal={openEditFeeModal}
         host={host}
         tokenSymbol={tokenSymbol}

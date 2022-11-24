@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 
 import { NeutralButton, Modal } from 'components/index';
 
-export const EditGasFeeModal = (props: any) => {
+export const EditPermissionApprovedValueModal = (props: any) => {
   const {
     host,
     customApprovedValue,
