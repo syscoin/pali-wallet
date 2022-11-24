@@ -62,7 +62,15 @@ export const ExternalRoute = () => {
 
   return (
     <Routes>
-      <Route path="/" element={<Start />} />
+      <Route
+        path="/"
+        element={
+          <Start
+            isExternal={true}
+            externalRoute={`/external/${defaultRoute}`}
+          />
+        }
+      />
       <Route path="create-password" element={<CreatePass />} />
       <Route path="import" element={<Import />} />
       <Route path="phrase" element={<SeedConfirm />} />
