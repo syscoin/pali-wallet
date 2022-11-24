@@ -114,11 +114,11 @@ export const ApproveTransactionComponent = () => {
         maxFeePerGas: txs.toBigNumber(fee.maxFeePerGas * 10 ** 18),
         gasLimit: txs.toBigNumber(fee.gasLimit),
       });
+      console.log('Check tx Data', tx.data);
       try {
         const response = await txs.sendFormattedTransaction(tx);
         setConfirmedDefaultModal(true);
         setLoading(false);
-
         if (isExternal)
           dispatchBackgroundEvent(`txApprove.${host}`, response.hash);
         return response.hash;
@@ -128,14 +128,18 @@ export const ApproveTransactionComponent = () => {
         alert.removeAll();
         alert.error("Can't complete approve. Try again later.");
 
-        if (isExternal) setTimeout(window.close, 4000);
-        else setLoading(false);
+        // if (isExternal) setTimeout(window.close, 4000);
+        // else setLoading(false);
         return error;
       }
     }
   };
 
   const handleFormSubmit = () => {
+    console.log(
+      'Checking custom Approved',
+      customApprovedAllowanceAmount.isCustom
+    );
     if (customApprovedAllowanceAmount.isCustom) {
       const erc20AbiInstance = new ethers.utils.Interface(getErc20Abi());
 
@@ -148,6 +152,23 @@ export const ApproveTransactionComponent = () => {
             18
           ),
         ]
+      );
+      console.log('Check spender address', decodedTx?.inputs[0]);
+      console.log(
+        'Check allowance',
+        ethers.utils.parseUnits(
+          String(customApprovedAllowanceAmount.customAllowanceValue),
+          18
+        )
+      );
+      console.log(
+        'Check allowance 2',
+        customApprovedAllowanceAmount.customAllowanceValue
+      );
+
+      console.log(
+        'Check new encoded data with custom value',
+        encodedDataWithCustomValue
       );
 
       setTx((prevState) => ({
@@ -163,6 +184,7 @@ export const ApproveTransactionComponent = () => {
     const abortController = new AbortController();
 
     const getGasAndFunction = async () => {
+      console.log('Check initial dataTx params', dataTx.data);
       const { feeDetails, formTx, nonce, calculatedFeeValue } =
         await fetchGasAndDecodeFunction(dataTx, activeNetwork);
 
@@ -170,6 +192,7 @@ export const ApproveTransactionComponent = () => {
         ...feeDetails,
         calculatedFeeValue,
       };
+      console.log('Check initial formTx params', formTx.data);
 
       setFee(fullFeeDetails);
       setTx(formTx);
