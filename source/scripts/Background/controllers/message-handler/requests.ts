@@ -214,3 +214,9 @@ export const enable = async (host: string, chain: string, chainId: number) => {
 
   return [acceptedRequest.connectedAccount.address];
 };
+
+export const isUnlocked = () => {
+  const { wallet } = window.controller;
+  console.log('Test it', wallet.isUnlocked());
+  return wallet.isUnlocked();
+};

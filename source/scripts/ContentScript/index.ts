@@ -32,6 +32,10 @@ const checkForPaliRegisterEvent = (type, id) => {
   }
 
   emitter.once(id, (result) => {
+    if (typeof id === 'string') {
+      if (String(id).includes('isUnlocked'))
+        window.dispatchEvent(new CustomEvent(id, { detail: result }));
+    }
     if (result)
       window.dispatchEvent(
         new CustomEvent(id, { detail: JSON.stringify(result) })
