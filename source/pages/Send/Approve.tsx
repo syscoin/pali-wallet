@@ -103,14 +103,13 @@ export const ApproveTransactionComponent = () => {
       'approve',
       [
         decodedTx?.inputs[0],
-        ethers.utils.parseUnits(
-          String(
-            customApprovedAllowanceAmount.isCustom === true
-              ? customApprovedAllowanceAmount.customAllowanceValue
-              : customApprovedAllowanceAmount.defaultAllowanceValue
-          ),
-          approvedTokenInfos?.tokenDecimals
-        ),
+
+        customApprovedAllowanceAmount.isCustom === true
+          ? ethers.utils.parseUnits(
+              String(customApprovedAllowanceAmount.customAllowanceValue),
+              approvedTokenInfos.tokenDecimals
+            )
+          : customApprovedAllowanceAmount.defaultAllowanceValue,
       ]
     );
 
@@ -130,17 +129,22 @@ export const ApproveTransactionComponent = () => {
       const txs = account.eth.tx;
 
       const newDataEncoded = validatedEncodedData();
-
+      console.log('result fee', fee);
       const newTxValue = {
         ...tx,
         data: newDataEncoded,
         nonce: customNonce,
-        maxPriorityFeePerGas: txs.toBigNumber(
-          fee.maxPriorityFeePerGas * 10 ** 18
+        maxPriorityFeePerGas: ethers.utils.parseUnits(
+          String(fee.maxPriorityFeePerGas.toFixed(9)),
+          9
         ),
-        maxFeePerGas: txs.toBigNumber(fee.maxFeePerGas * 10 ** 18),
+        maxFeePerGas: ethers.utils.parseUnits(
+          String(fee.maxFeePerGas.toFixed(9)),
+          9
+        ),
         gasLimit: txs.toBigNumber(fee.gasLimit),
       };
+      console.log('result', newTxValue);
       try {
         throw 'PAREI AQUI';
         const response = await txs.sendFormattedTransaction(newTxValue);

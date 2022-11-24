@@ -1,3 +1,4 @@
+import { ethers } from 'ethers';
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -82,10 +83,14 @@ export const SendTransaction = () => {
       setTx({
         ...tx,
         nonce: customNonce,
-        maxPriorityFeePerGas: txs.toBigNumber(
-          fee.maxPriorityFeePerGas * 10 ** 18
+        maxPriorityFeePerGas: ethers.utils.parseUnits(
+          String(fee.maxPriorityFeePerGas.toFixed(9)),
+          9
         ),
-        maxFeePerGas: txs.toBigNumber(fee.maxFeePerGas * 10 ** 18),
+        maxFeePerGas: ethers.utils.parseUnits(
+          String(fee.maxPriorityFeePerGas.toFixed(9)),
+          9
+        ),
         gasLimit: txs.toBigNumber(fee.gasLimit),
       });
       try {

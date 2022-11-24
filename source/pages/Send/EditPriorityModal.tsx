@@ -33,17 +33,6 @@ export const EditPriorityModal = (props: any) => {
     return;
   };
 
-  const transactionPrediction = useMemo(() => {
-    const text =
-      priority === 0
-        ? 'Maybe in 30 seconds'
-        : priority === 1
-        ? 'Likely in 30 seconds'
-        : 'Very likely in < 15 seconds';
-
-    return text;
-  }, [priority]);
-
   useMemo(() => {
     if (priority === 0) {
       setCustomFee((prevState) => ({
@@ -98,7 +87,6 @@ export const EditPriorityModal = (props: any) => {
         <div className="flex flex-col items-center justify-center w-full">
           <p className="flex flex-col items-center justify-center text-center font-poppins text-xs">
             <span className="font-rubik text-base">Edit fee</span>
-            <span className="mt-4">{transactionPrediction}</span>
           </p>
 
           <PriorityBar
@@ -154,7 +142,7 @@ export const EditPriorityModal = (props: any) => {
             </div>
 
             <div className="flex flex-col items-start justify-center">
-              <span className="mb-1 ml-2.5 font-bold">Max Priority</span>
+              <span className="mb-1 ml-2.5 font-bold">Max Priority (GWEI)</span>
               <Form.Item
                 name="maxPriorityFeePerGas"
                 className="text-left"
@@ -190,7 +178,7 @@ export const EditPriorityModal = (props: any) => {
             </div>
 
             <div className="flex flex-col items-start justify-center">
-              <span className="mb-1 ml-2.5 font-bold">Max Fee</span>
+              <span className="mb-1 ml-2.5 font-bold">Max Fee (GWEI)</span>
               <Form.Item
                 name="maxFeePerGas"
                 className="text-left"

@@ -33,13 +33,14 @@ export const fetchGasAndDecodeFunction = async (
       ? txs.toBigNumber(dataTx.gas)
       : getTxGasLimitResult;
   const feeDetails = {
-    maxFeePerGas: maxFeePerGas.toNumber() / 10 ** 18,
-    baseFee: maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 18,
-    maxPriorityFeePerGas: maxPriorityFeePerGas.toNumber() / 10 ** 18,
+    maxFeePerGas: maxFeePerGas.toNumber() / 10 ** 9,
+    baseFee: maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 9,
+    maxPriorityFeePerGas: maxPriorityFeePerGas.toNumber() / 10 ** 9,
     gasLimit: formTx.gasLimit.toNumber(),
   };
 
-  const calculatedFeeValue = feeDetails.maxFeePerGas * feeDetails.gasLimit;
+  const calculatedFeeValue =
+    (feeDetails.maxFeePerGas / 10 ** 9) * feeDetails.gasLimit;
 
   return {
     feeDetails,
