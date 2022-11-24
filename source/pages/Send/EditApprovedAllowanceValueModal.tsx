@@ -6,7 +6,6 @@ import { NeutralButton, Modal } from 'components/index';
 import {
   IApprovedTokenInfos,
   ICustomApprovedAllowanceAmount,
-  IFeeState,
 } from 'types/transactions';
 
 interface isEditedAllowanceModalProps {
@@ -16,7 +15,6 @@ interface isEditedAllowanceModalProps {
   setCustomApprovedAllowanceAmount: React.Dispatch<
     React.SetStateAction<ICustomApprovedAllowanceAmount>
   >;
-  setFee: React.Dispatch<React.SetStateAction<IFeeState>>;
   setOpenEditFeeModal: React.Dispatch<React.SetStateAction<boolean>>;
   showModal: boolean;
 }

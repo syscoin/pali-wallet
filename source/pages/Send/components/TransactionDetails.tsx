@@ -4,12 +4,7 @@ import { useSelector } from 'react-redux';
 
 import { EditPriorityModal } from '../EditPriorityModal';
 import { RootState } from 'state/store';
-import {
-  IDecodedTx,
-  IFeeState,
-  ITransactionParams,
-  ITxState,
-} from 'types/transactions';
+import { IDecodedTx, IFeeState, ITxState } from 'types/transactions';
 import { ellipsis } from 'utils/format';
 import removeScientificNotation from 'utils/removeScientificNotation';
 

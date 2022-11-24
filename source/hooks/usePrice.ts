@@ -26,9 +26,13 @@ export const usePrice = () => {
 
     const currencySymbol = getSymbolFromCurrency(currency);
 
+    const symbol = withSymbol ? currencySymbol : '';
+
     const formattedValue = verifyZerosInBalanceAndFormat(value, precision);
 
-    const symbol = withSymbol ? currencySymbol : '';
+    if (formattedValue === undefined || formattedValue === 'undefined') {
+      return `${symbol}0  ${currency}`;
+    }
 
     return `${symbol}${formattedValue}  ${currency}`;
   };

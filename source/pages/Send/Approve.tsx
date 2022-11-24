@@ -265,7 +265,6 @@ export const ApproveTransactionComponent = () => {
         approvedTokenInfos={approvedTokenInfos}
         customApprovedAllowanceAmount={customApprovedAllowanceAmount}
         setCustomApprovedAllowanceAmount={setCustomApprovedAllowanceAmount}
-        setFee={setFee}
         setOpenEditFeeModal={setOpenEditFeeModal}
       />
 
