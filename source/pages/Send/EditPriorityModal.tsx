@@ -79,7 +79,7 @@ export const EditPriorityModal = (props: any) => {
         removeScientificNotation(1.2 * maxFeePerGas)
       );
     }
-  }, [priority]);
+  }, [priority, fee]);
 
   return (
     <Modal show={showModal} onClose={() => setIsOpen(false)}>
@@ -154,7 +154,7 @@ export const EditPriorityModal = (props: any) => {
                   },
                   () => ({
                     validator(_, value) {
-                      if (value <= 30 && value >= 1) {
+                      if (value < customFee.maxFeePerGas) {
                         return Promise.resolve();
                       }
 

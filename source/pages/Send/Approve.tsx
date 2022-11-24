@@ -129,7 +129,6 @@ export const ApproveTransactionComponent = () => {
       const txs = account.eth.tx;
 
       const newDataEncoded = validatedEncodedData();
-      console.log('result fee', fee);
       const newTxValue = {
         ...tx,
         data: newDataEncoded,
@@ -144,9 +143,7 @@ export const ApproveTransactionComponent = () => {
         ),
         gasLimit: txs.toBigNumber(fee.gasLimit),
       };
-      console.log('result', newTxValue);
       try {
-        throw 'PAREI AQUI';
         const response = await txs.sendFormattedTransaction(newTxValue);
         setConfirmedDefaultModal(true);
         setLoading(false);
