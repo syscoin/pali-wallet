@@ -9,7 +9,7 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
-export const Start = () => {
+export const Start = (props: any) => {
   const { navigate } = useUtils();
   const {
     wallet: { unlock, checkPassword },
@@ -17,6 +17,8 @@ export const Start = () => {
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
   );
+
+  const { isExternal, externalRoute } = props;
 
   const getStarted = (
     <>
@@ -36,8 +38,8 @@ export const Start = () => {
 
   const onSubmit = async ({ password }: { password: string }) => {
     await unlock(password);
-
-    navigate('/home');
+    if (!isExternal) return navigate('/home');
+    return navigate(externalRoute);
   };
 
   const unLock = (
