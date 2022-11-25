@@ -1,7 +1,10 @@
 import { EventEmitter } from 'events';
 import { browser } from 'webextension-polyfill-ts';
 
-import { DAppMethods } from 'scripts/Background/controllers/message-handler/types';
+import {
+  DAppMethods,
+  DAppEvents,
+} from 'scripts/Background/controllers/message-handler/types';
 
 import { inject as _inject } from './inject';
 
@@ -18,10 +21,15 @@ const backgroundPort = browser.runtime.connect(undefined, {
 const checkForPaliRegisterEvent = (type, id) => {
   if (type === 'EVENT_REG') {
     emitter.on(id, (result) => {
-      if (typeof id === 'string' && id.includes('accountsChanged')) {
+      if (typeof id === 'string' && id.includes(DAppEvents.accountsChanged)) {
         result[0]
           ? inject(`window.ethereum.selectedAddress = '${result[0]}'`)
-          : inject(`window.ethereum.selectedAddress = ${result[0]}`);
+          : inject(`window.ethereum.selectedAddress = ${null}`);
+      } else if (
+        typeof id === 'string' &&
+        id.includes(DAppEvents.chainChanged)
+      ) {
+        inject(`window.ethereum.chainId = '${result.chainId}'`); //TODO: needs testing
       }
       window.dispatchEvent(
         new CustomEvent(id, { detail: JSON.stringify(result) })

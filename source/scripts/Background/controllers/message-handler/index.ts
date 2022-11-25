@@ -25,7 +25,7 @@ const _messageHandler = async (host: string, message: Message) => {
     case 'EVENT_REG':
       return dapp.addListener(host, message.data.eventName);
     case 'EVENT_DEREG':
-      return dapp.removeListener(host, message.data.eventName);
+      return dapp.removeListener(host, message.data.eventName); //TODO: understand why dapps always can event UNregister
     case 'ENABLE':
       return enable(host, chain, activeNetwork.chainId);
     case 'DISABLE':

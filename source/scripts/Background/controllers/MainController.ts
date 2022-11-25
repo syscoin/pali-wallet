@@ -72,6 +72,9 @@ const MainController = (): IMainController => {
 
     store.dispatch(setLastLogin());
     store.dispatch(setActiveAccount(mainAccount));
+    window.controller.dapp.dispatchEvent(DAppEvents.accountsChanged, {
+      lockState: '2',
+    });
   };
 
   const createWallet = async (password: string): Promise<void> => {
@@ -101,6 +104,9 @@ const MainController = (): IMainController => {
     keyringManager.logout();
 
     store.dispatch(setLastLogin());
+    window.controller.dapp.dispatchEvent(DAppEvents.accountsChanged, {
+      lockState: '1',
+    });
   };
 
   const createAccount = async (
@@ -180,11 +186,6 @@ const MainController = (): IMainController => {
 
       const account = { ...networkAccount, assets: generalAssets };
 
-      store.dispatch(setNetwork(network));
-
-      store.dispatch(setIsPendingBalances(false));
-      store.dispatch(setActiveAccount(account));
-
       if (isBitcoinBased) {
         store.dispatch(
           setActiveAccountProperty({
@@ -205,13 +206,9 @@ const MainController = (): IMainController => {
 
       walletController.account.sys.getLatestUpdate(true);
 
-      const chainId = await web3Provider.send('eth_chainId', []);
-      const networkVersion = await web3Provider.send('net_version', []);
-
-      window.controller.dapp.dispatchEvent(DAppEvents.chainChanged, {
-        chainId,
-        networkVersion,
-      });
+      const chainId = network.chainId.toString(16);
+      const networkVersion = network.chainId;
+      window.controller.dapp.dispatchEvent(DAppEvents.chainChanged, chainId);
 
       const tabs = await browser.tabs.query({
         windowType: 'normal',
@@ -223,6 +220,10 @@ const MainController = (): IMainController => {
           data: { networkVersion, chainId },
         });
       }
+
+      store.dispatch(setNetwork(network));
+      store.dispatch(setIsPendingBalances(false));
+      store.dispatch(setActiveAccount(account));
 
       return { chainId, networkVersion };
     } catch (error) {

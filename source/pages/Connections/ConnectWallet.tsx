@@ -1,5 +1,5 @@
 import { Dialog } from '@headlessui/react';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import {
@@ -25,6 +25,7 @@ export const ConnectWallet = () => {
   const [accountId, setAccountId] = useState(currentAccountId);
   const [confirmUntrusted, setConfirmUntrusted] = useState(false);
 
+  const isUnlocked = wallet.isUnlocked();
   const handleConnect = () => {
     const date = Date.now();
     dapp.connect({ host, chain, chainId, accountId, date });
@@ -37,6 +38,13 @@ export const ConnectWallet = () => {
     if (isTrusted) handleConnect();
     else setConfirmUntrusted(true);
   };
+
+  useEffect(() => {
+    if (dapp.isConnected(host) && isUnlocked) {
+      dapp.connect({ host, chain, chainId, accountId, date: 0 }, true);
+      window.close();
+    }
+  }, [isUnlocked]);
 
   return (
     <Layout canGoBack={false} title="CONNECT WITH" titleOnly={true}>

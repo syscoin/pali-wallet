@@ -47,10 +47,10 @@ const DAppController = (): IDAppController => {
     port.onDisconnect.addListener(onDisconnect);
   };
 
-  const connect = (dapp: IDApp) => {
-    store.dispatch(addDApp(dapp));
+  const connect = (dapp: IDApp, isDappConnected = false) => {
+    !isDappConnected && store.dispatch(addDApp(dapp));
 
-    _dispatchEvent(dapp.host, 'connect', {
+    _dispatchEvent(dapp.host, DAppEvents.connect, {
       connectedAccount: getAccount(dapp.host),
     });
   };
@@ -75,7 +75,7 @@ const DAppController = (): IDAppController => {
     response[0].parentCapability = 'eth_accounts';
 
     _dispatchEvent(host, 'requestPermissions', response);
-    _dispatchEvent(host, 'accountsChanged', [account.address]);
+    _dispatchEvent(host, DAppEvents.accountsChanged, [account.address]);
   };
 
   const changeAccount = (host: string, accountId: number) => {
@@ -83,13 +83,15 @@ const DAppController = (): IDAppController => {
     const { accounts, isBitcoinBased } = store.getState().vault;
     store.dispatch(updateDAppAccount({ host, accountId, date }));
     isBitcoinBased
-      ? _dispatchEvent(host, 'accountsChanged', [accounts[accountId]])
-      : _dispatchEvent(host, 'accountsChanged', [accounts[accountId].address]);
+      ? _dispatchEvent(host, DAppEvents.accountsChanged, [accounts[accountId]])
+      : _dispatchEvent(host, DAppEvents.accountsChanged, [
+          accounts[accountId].address,
+        ]);
   };
 
   const disconnect = (host: string) => {
     // after disconnecting, the event would not be sent
-    _dispatchEvent(host, 'disconnect');
+    // _dispatchEvent(host, 'disconnect'); //Event only added when there is any rpc error
     _dispatchEvent(host, 'accountsChanged', [null]);
 
     store.dispatch(removeDApp(host));
@@ -97,7 +99,6 @@ const DAppController = (): IDAppController => {
 
   const changeNetwork = (chainId: number) => {
     const { isBitcoinBased, networks } = store.getState().vault;
-
     const network = isBitcoinBased
       ? networks.syscoin[chainId]
       : networks.ethereum[chainId];
@@ -129,6 +130,30 @@ const DAppController = (): IDAppController => {
     _dapps[host] && _dapps[host].listens.includes(eventName);
 
   const dispatchEvent = (event: DAppEvents, data: any) => {
+    if (data?.lockState === '2') {
+      const dapps = Object.values(store.getState().dapp.dapps);
+      for (const dapp of dapps) {
+        console.error(
+          'Checking event emision on unlock',
+          dapp.host,
+          event,
+          getAccount(dapp.host)?.address ? [getAccount(dapp.host).address] : []
+        );
+        _dispatchEvent(
+          dapp.host,
+          event,
+          getAccount(dapp.host)?.address ? [getAccount(dapp.host).address] : []
+        );
+      }
+      return;
+    } else if (data?.lockState === '1') {
+      const dapps = Object.values(store.getState().dapp.dapps);
+      for (const dapp of dapps) {
+        console.error('Checking event emision on lock', dapp.host, event, []);
+        _dispatchEvent(dapp.host, event, []);
+      }
+      return;
+    }
     const dapps = Object.values(store.getState().dapp.dapps);
     for (const dapp of dapps) {
       _dispatchEvent(dapp.host, event, data);
@@ -143,8 +168,7 @@ const DAppController = (): IDAppController => {
     // dispatch the event locally
     const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
     window.dispatchEvent(event);
-
-    if (!hasListener(host, eventName)) return;
+    if (!hasListener(host, eventName)) return; //TODO: fix event bugs
     if (!isConnected(host)) return;
 
     // post the event to the DApp

@@ -30,15 +30,13 @@ const proxy = (type, data) =>
           return;
         }
 
-        if (
-          data.method === 'eth_requestAccounts' ||
-          data.method === 'eth_accounts'
-        ) {
+
+        if(data.method === 'eth_requestAccounts' || data.method === 'eth_accounts'){
           //TODO: enhance this implementation
-          let addr = event.detail.replace('[', '');
-          addr = addr.replace(']', '');
-          addr = addr.replaceAll('"', '');
-          window.ethereum.selectedAddress = addr;
+          let addr = event.detail.replace('[','');
+          addr = addr.replace(']','');
+          addr = addr.replaceAll('"','');
+            window.ethereum.selectedAddress = addr;
         }
         resolve(response);
 
@@ -49,8 +47,7 @@ const proxy = (type, data) =>
         passive: true,
       }
     );
-
-    window.postMessage(
+     window.postMessage(
       {
         id,
         type,
@@ -68,24 +65,6 @@ const proxy = (type, data) =>
 const request = async (req) => {
   const response = await proxy('METHOD_REQUEST', req);
   return response;
-};
-
-const isUnlocked = () => {
-  let host = window.location.host;
-  const id = `${host}.isUnlocked`;
-  window.postMessage(
-    {
-      id: id,
-      type: 'IS_UNLOCKED',
-    },
-    '*'
-  );
-  return new Promise((resolve) => {
-    window.addEventListener(id, (event) => {
-      const response = JSON.parse(event.detail);
-      resolve(response);
-    });
-  });
 };
 
 /**
@@ -159,18 +138,16 @@ window.pali = Object.freeze({
 
 window.ethereum = {
   isMetaMask: true, //Provisory just for make testing easier
-  _metamask: {
-    isUnlocked: () => isUnlocked(),
-  },
   wallet: 'pali-v2',
   request,
   on,
-  chainId: undefined,
+  chainId: undefined, 
   networkVersion: undefined,
   selectedAddress: null,
   removeListener,
   isConnected: () => request({ method: 'wallet_isConnected' }),
-  enable: () => proxy('ENABLE', { chain: 'ethereum', chainId: '0x01' }),
+  enable: () =>
+    proxy('ENABLE', { chain: 'ethereum', chainId: '0x01' }),
   disable: () => proxy('DISABLE'),
   _listeners: {},
-};
+}
