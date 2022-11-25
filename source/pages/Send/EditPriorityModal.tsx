@@ -9,7 +9,7 @@ import { PriorityBar } from './components';
 
 export const EditPriorityModal = (props: any) => {
   const { showModal, setIsOpen, customFee, setCustomFee, fee } = props;
-  const [priority, setPriority] = useState<number>(0);
+  const [priority, setPriority] = useState<number>(1);
 
   const [form] = Form.useForm();
   const maxFeePerGas = fee?.maxFeePerGas;
@@ -45,15 +45,6 @@ export const EditPriorityModal = (props: any) => {
   };
 
   const onSubmit = () => {
-    // setFee((prevState: any) => {
-    //   const filterCustomFee = _.flow([
-    //     Object.entries,
-    //     (arr) => arr.filter(([k, value]) => value > 0),
-    //     Object.fromEntries,
-    //   ])(customFee);
-    //   return { ...prevState, ...filterCustomFee };
-    // });
-
     changeCustomFee();
 
     setIsOpen(false);

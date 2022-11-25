@@ -8,8 +8,8 @@ export type IGetFiatAmount = (
   amount: number,
   precision?: number,
   currency?: string,
-  withSymbol?: boolean,
-  withCurrency?: boolean
+  withCurrency?: boolean,
+  withSymbol?: boolean
 ) => string;
 
 export const usePrice = () => {
@@ -19,8 +19,8 @@ export const usePrice = () => {
     amount: number,
     precision = 4,
     currency = 'usd',
-    withSymbol?: boolean,
-    withCurrency?: boolean
+    withCurrency = true,
+    withSymbol?: boolean
   ): string => {
     const value = amount * fiat.price;
 
