@@ -51,7 +51,9 @@ export const methodRequest = async (
           code: -32603,
           message: `Connected to Bitcoin based chain`,
         }
-      : [dapp.getAccount(host).address];
+      : wallet.isUnlocked()
+      ? [dapp.getAccount(host).address]
+      : [];
   }
 
   //* Wallet methods
@@ -76,6 +78,7 @@ export const methodRequest = async (
       case 'estimateFee':
         return estimateFee();
       case 'changeAccount':
+        if (!wallet.isUnlocked()) return false;
         return popupPromise({
           host,
           route: 'change-account',
@@ -83,6 +86,7 @@ export const methodRequest = async (
           data: { network: data.network },
         });
       case 'requestPermissions':
+        if (!wallet.isUnlocked()) return false;
         return popupPromise({
           host,
           route: 'change-account',
@@ -177,7 +181,7 @@ export const methodRequest = async (
   if (prefix !== 'sys' && !isBitcoinBased) {
     const provider = EthProvider(host);
     const resp = await provider.restrictedRPCMethods(data.method, data.params);
-
+    if (!wallet.isUnlocked()) return false;
     if (!resp) throw new Error('Failure on RPC request');
 
     return resp;
@@ -197,11 +201,21 @@ export const methodRequest = async (
   return await method();
 };
 
-export const enable = async (host: string, chain: string, chainId: number) => {
-  const { dapp } = window.controller;
-
-  if (dapp.isConnected(host)) return [dapp.getAccount(host).address];
-
+export const enable = async (
+  host: string,
+  chain: string,
+  chainId: number,
+  isSyscoinDapp = false
+) => {
+  const { isBitcoinBased } = store.getState().vault;
+  if (!isSyscoinDapp && isBitcoinBased)
+    return {
+      code: -32603,
+      message: `Connected to Bitcoin based chain`,
+    };
+  const { dapp, wallet } = window.controller;
+  if (dapp.isConnected(host) && wallet.isUnlocked())
+    return [dapp.getAccount(host).address];
   const acceptedRequest: any = await popupPromise({
     host,
     route: 'connect-wallet',
