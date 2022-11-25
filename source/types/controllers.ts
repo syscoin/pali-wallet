@@ -130,7 +130,7 @@ export interface IDAppController {
    * Completes a connection with a DApp
    * @emits connect
    */
-  connect: (dapp: IDApp) => void;
+  connect: (dapp: IDApp, isDappConnected?: boolean) => void;
   /**
    * Removes a connection with a DApp
    * @emits disconnect
