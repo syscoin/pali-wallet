@@ -36,7 +36,7 @@ import { getController } from 'utils/browser';
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const Router = () => {
-  const { wallet, appRoute, refresh } = getController();
+  const { wallet, appRoute } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
 
@@ -90,10 +90,6 @@ export const Router = () => {
 
     const route = appRoute();
     if (route !== '/') navigate(route);
-  }, [isUnlocked]);
-
-  useEffect(() => {
-    if (isUnlocked) refresh(true);
   }, [isUnlocked]);
 
   useEffect(() => {

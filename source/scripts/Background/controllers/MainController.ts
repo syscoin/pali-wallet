@@ -186,11 +186,6 @@ const MainController = (): IMainController => {
 
       const account = { ...networkAccount, assets: generalAssets };
 
-      store.dispatch(setNetwork(network));
-
-      store.dispatch(setIsPendingBalances(false));
-      store.dispatch(setActiveAccount(account));
-
       if (isBitcoinBased) {
         store.dispatch(
           setActiveAccountProperty({
@@ -225,6 +220,10 @@ const MainController = (): IMainController => {
           data: { networkVersion, chainId },
         });
       }
+
+      store.dispatch(setNetwork(network));
+      store.dispatch(setIsPendingBalances(false));
+      store.dispatch(setActiveAccount(account));
 
       return { chainId, networkVersion };
     } catch (error) {
