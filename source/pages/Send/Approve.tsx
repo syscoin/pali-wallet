@@ -295,7 +295,6 @@ export const ApproveTransactionComponent = () => {
     fee?.gasLimit,
     fee?.maxFeePerGas,
     customFee?.maxFeePerGas,
-    customFee?.maxFeePerGas,
     customFee?.gasLimit,
     customFee?.isCustom,
   ]);
