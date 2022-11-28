@@ -5,6 +5,7 @@ import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 import { ITransactionParams } from 'types/transactions';
 
 import { pegasysABI } from './pegasys';
+import { wrapABI } from './wrapABI';
 export const erc20DataDecoder = () => new InputDataDecoder(getErc20Abi());
 
 export const decodeTransactionData = (params: ITransactionParams) => {
@@ -12,6 +13,9 @@ export const decodeTransactionData = (params: ITransactionParams) => {
     const { data, value } = params;
     if (data) {
       let decoderValue = erc20DataDecoder().decodeData(params.data); //First checking if method is defined on erc20ABI
+      if (decoderValue.method !== null) return decoderValue;
+      const decoderWrapInstance = new InputDataDecoder(JSON.stringify(wrapABI));
+      decoderValue = decoderWrapInstance.decodeData(params.data);
       if (decoderValue.method !== null) return decoderValue;
       const decoderInstance = new InputDataDecoder(JSON.stringify(pegasysABI));
       decoderValue = decoderInstance.decodeData(params.data);

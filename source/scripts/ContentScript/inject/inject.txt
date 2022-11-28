@@ -8,7 +8,7 @@ const proxy = (type, data) =>
     window.addEventListener(
       id,
       (event) => {
-        console.log('[Pali] EventListener method', data.method);
+        console.log('[Pali] EventListener method', data.method, event);
         if (event.detail === undefined) {
           resolve(undefined);
 

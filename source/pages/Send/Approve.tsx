@@ -285,9 +285,10 @@ export const ApproveTransactionComponent = () => {
     if (!fee?.maxFeePerGas || !fee?.gasLimit) return 0;
 
     if (customFee.isCustom) {
-      return (customFee.maxFeePerGas / 10 ** 9) * customFee.gasLimit > 0
-        ? customFee.gasLimit
-        : fee.gasLimit;
+      return (
+        (Number(customFee.maxFeePerGas.toFixed(9)) / 10 ** 9) *
+        (customFee.gasLimit > 0 ? customFee.gasLimit : fee.gasLimit)
+      );
     }
 
     return (fee.maxFeePerGas / 10 ** 9) * fee.gasLimit;
@@ -301,7 +302,6 @@ export const ApproveTransactionComponent = () => {
 
   useEffect(() => {
     if (!calculatedFeeValue) return;
-
     setFiatPrice();
   }, [fiatPrice, calculatedFeeValue]);
 
