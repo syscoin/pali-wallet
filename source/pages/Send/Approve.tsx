@@ -122,7 +122,6 @@ export const ApproveTransactionComponent = () => {
       calculatedFeeValue || 0,
       4,
       String(fiatAsset).toUpperCase(),
-      false,
       false
     );
 

@@ -66,6 +66,12 @@ export const SendTransaction = () => {
   const [fee, setFee] = useState<IFeeState>();
   const [customNonce, setCustomNonce] = useState<number>();
   const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
+  const [customFee, setCustomFee] = useState({
+    isCustom: false,
+    gasLimit: 0,
+    maxPriorityFeePerGas: 0,
+    maxFeePerGas: 0,
+  });
 
   const canGoBack = state?.external ? !state.external : !isExternal;
 
@@ -84,14 +90,26 @@ export const SendTransaction = () => {
         ...tx,
         nonce: customNonce,
         maxPriorityFeePerGas: ethers.utils.parseUnits(
-          String(fee.maxPriorityFeePerGas.toFixed(9)),
+          String(
+            Boolean(customFee.isCustom && customFee.maxPriorityFeePerGas > 0)
+              ? customFee.maxPriorityFeePerGas.toFixed(9)
+              : fee.maxPriorityFeePerGas.toFixed(9)
+          ),
           9
         ),
         maxFeePerGas: ethers.utils.parseUnits(
-          String(fee.maxPriorityFeePerGas.toFixed(9)),
+          String(
+            Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+              ? customFee.maxFeePerGas.toFixed(9)
+              : fee.maxFeePerGas.toFixed(9)
+          ),
           9
         ),
-        gasLimit: txs.toBigNumber(fee.gasLimit),
+        gasLimit: txs.toBigNumber(
+          Boolean(customFee.isCustom && customFee.gasLimit > 0)
+            ? customFee.gasLimit
+            : fee.gasLimit
+        ),
       });
       try {
         const response = await txs.sendFormattedTransaction(tx);
@@ -218,8 +236,10 @@ export const SendTransaction = () => {
                     tx={tx}
                     decodedTx={decodedTxData}
                     setCustomNonce={setCustomNonce}
+                    setCustomFee={setCustomFee}
                     setFee={setFee}
                     fee={fee}
+                    customFee={customFee}
                   />
                 ) : component.component === 'data' ? (
                   <TransactionDataComponent decodedTx={decodedTxData} />

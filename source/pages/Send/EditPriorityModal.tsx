@@ -15,41 +15,6 @@ export const EditPriorityModal = (props: any) => {
   const maxFeePerGas = fee?.maxFeePerGas;
   const maxPriorityFeePerGas = fee?.maxPriorityFeePerGas;
 
-  const changeCustomFee = () => {
-    if (priority === 0) {
-      setCustomFee((prevState) => ({
-        ...prevState,
-        isCustom: true,
-        maxPriorityFeePerGas: 0.8 * maxPriorityFeePerGas,
-        maxFeePerGas: 0.8 * maxFeePerGas,
-      }));
-    }
-
-    if (priority === 1) {
-      setCustomFee((prevState) => ({
-        ...prevState,
-        isCustom: false,
-        maxPriorityFeePerGas: 1 * maxPriorityFeePerGas,
-        maxFeePerGas: 1 * maxFeePerGas,
-      }));
-    }
-
-    if (priority === 2) {
-      setCustomFee((prevState) => ({
-        ...prevState,
-        isCustom: true,
-        maxPriorityFeePerGas: 1.2 * maxPriorityFeePerGas,
-        maxFeePerGas: 1.2 * maxFeePerGas,
-      }));
-    }
-  };
-
-  const onSubmit = () => {
-    changeCustomFee();
-
-    setIsOpen(false);
-  };
-
   useMemo(() => {
     if (priority === 0) {
       form.setFieldValue(
@@ -60,6 +25,12 @@ export const EditPriorityModal = (props: any) => {
         'maxFeePerGas',
         removeScientificNotation(0.8 * maxFeePerGas)
       );
+      setCustomFee((prevState) => ({
+        ...prevState,
+        isCustom: true,
+        maxPriorityFeePerGas: 0.8 * maxPriorityFeePerGas,
+        maxFeePerGas: 0.8 * maxFeePerGas,
+      }));
     }
     if (priority === 1) {
       form.setFieldValue(
@@ -70,6 +41,12 @@ export const EditPriorityModal = (props: any) => {
         'maxFeePerGas',
         removeScientificNotation(1 * maxFeePerGas)
       );
+      setCustomFee((prevState) => ({
+        ...prevState,
+        isCustom: false,
+        maxPriorityFeePerGas: 1 * maxPriorityFeePerGas,
+        maxFeePerGas: 1 * maxFeePerGas,
+      }));
     }
     if (priority === 2) {
       form.setFieldValue(
@@ -80,11 +57,28 @@ export const EditPriorityModal = (props: any) => {
         'maxFeePerGas',
         removeScientificNotation(1.2 * maxFeePerGas)
       );
+      setCustomFee((prevState) => ({
+        ...prevState,
+        isCustom: true,
+        maxPriorityFeePerGas: 1.2 * maxPriorityFeePerGas,
+        maxFeePerGas: 1.2 * maxFeePerGas,
+      }));
     }
   }, [priority, fee]);
 
   return (
-    <Modal show={showModal} onClose={() => setIsOpen(false)}>
+    <Modal
+      show={showModal}
+      onClose={() => {
+        setCustomFee((prevState) => ({
+          ...prevState,
+          isCustom: false,
+          maxPriorityFeePerGas: 1 * maxPriorityFeePerGas,
+          maxFeePerGas: 1 * maxFeePerGas,
+        }));
+        setIsOpen(false);
+      }}
+    >
       <div className="inline-block align-middle p-6 w-full max-w-2xl text-brand-white font-poppins bg-bkg-2 border border-brand-royalblue rounded-2xl shadow-xl overflow-hidden transform transition-all">
         <div className="flex flex-col items-center justify-center w-full">
           <p className="flex flex-col items-center justify-center text-center font-poppins text-xs">
@@ -221,7 +215,11 @@ export const EditPriorityModal = (props: any) => {
           </Form>
 
           <div className="flex items-center justify-center mt-5">
-            <NeutralButton type="submit" id="confirm_btn" onClick={onSubmit}>
+            <NeutralButton
+              type="submit"
+              id="confirm_btn"
+              onClick={() => setIsOpen(false)}
+            >
               Save
             </NeutralButton>
           </div>

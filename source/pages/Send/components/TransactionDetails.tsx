@@ -9,8 +9,22 @@ import { ellipsis } from 'utils/format';
 import removeScientificNotation from 'utils/removeScientificNotation';
 
 interface ITransactionDetailsProps {
+  customFee: {
+    gasLimit: number;
+    isCustom: boolean;
+    maxFeePerGas: number;
+    maxPriorityFeePerGas: number;
+  };
   decodedTx: IDecodedTx;
   fee: IFeeState;
+  setCustomFee: React.Dispatch<
+    React.SetStateAction<{
+      gasLimit: number;
+      isCustom: boolean;
+      maxFeePerGas: number;
+      maxPriorityFeePerGas: number;
+    }>
+  >;
   setCustomNonce: React.Dispatch<React.SetStateAction<number>>;
   setFee: React.Dispatch<React.SetStateAction<IFeeState>>;
   tx: ITxState;
@@ -19,7 +33,7 @@ interface ITransactionDetailsProps {
 export const TransactionDetailsComponent = (
   props: ITransactionDetailsProps
 ) => {
-  const { tx, setCustomNonce, fee, setFee } = props;
+  const { tx, setCustomNonce, fee, setFee, setCustomFee, customFee } = props;
   const [isOpen, setIsOpen] = useState<boolean>(false);
 
   const activeNetwork = useSelector(
@@ -32,6 +46,8 @@ export const TransactionDetailsComponent = (
         showModal={isOpen}
         setIsOpen={setIsOpen}
         setFee={setFee}
+        customFee={customFee}
+        setCustomFee={setCustomFee}
         fee={fee}
       />
       <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
@@ -53,7 +69,10 @@ export const TransactionDetailsComponent = (
           <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
             Estimated GasFee
             <span className="text-brand-royalblue text-xs">
-              Max Fee: {removeScientificNotation(fee.maxFeePerGas)}{' '}
+              Max Fee:{' '}
+              {removeScientificNotation(
+                customFee.isCustom ? customFee.maxFeePerGas : fee.maxFeePerGas
+              )}{' '}
               {activeNetwork.currency?.toUpperCase()}
             </span>
           </p>
@@ -81,7 +100,8 @@ export const TransactionDetailsComponent = (
         <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
           Total (Amount + gas fee)
           <span className="text-brand-royalblue text-xs">
-            {Number(tx.value) / 10 ** 18 + fee.maxFeePerGas}
+            {Number(tx.value) / 10 ** 18 +
+              (customFee.isCustom ? customFee.maxFeePerGas : fee.maxFeePerGas)}
           </span>
         </p>
       </div>
