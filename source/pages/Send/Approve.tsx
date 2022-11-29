@@ -270,15 +270,19 @@ export const ApproveTransactionComponent = () => {
   }, [copied]);
 
   useMemo(() => {
-    if (!decodedTx) return;
-    const parseApprovedValue = parseInt(decodedTx?.inputs[1]?.hex, 16);
+    if (!decodedTx || !approvedTokenInfos?.tokenDecimals) return;
+    const decodeHexInputValue = parseInt(decodedTx?.inputs[1]?.hex, 16);
+
+    const calculatedAllowanceValue = approvedTokenInfos?.tokenDecimals
+      ? decodeHexInputValue / 10 ** approvedTokenInfos.tokenDecimals
+      : decodeHexInputValue;
 
     setCustomApprovedAllowanceAmount({
       isCustom: false,
-      defaultAllowanceValue: parseApprovedValue,
+      defaultAllowanceValue: calculatedAllowanceValue,
       customAllowanceValue: null,
     });
-  }, [decodedTx]);
+  }, [decodedTx, approvedTokenInfos?.tokenDecimals]);
 
   const calculatedFeeValue = useMemo(() => {
     if (!fee?.maxFeePerGas || !fee?.gasLimit) return 0;
