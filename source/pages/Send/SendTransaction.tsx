@@ -66,6 +66,7 @@ export const SendTransaction = () => {
   const [fee, setFee] = useState<IFeeState>();
   const [customNonce, setCustomNonce] = useState<number>();
   const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
+  const [haveError, setHaveError] = useState<boolean>(false);
   const [customFee, setCustomFee] = useState({
     isCustom: false,
     gasLimit: 0,
@@ -112,7 +113,31 @@ export const SendTransaction = () => {
         ),
       });
       try {
-        const response = await txs.sendFormattedTransaction(tx);
+        const response = await txs.sendFormattedTransaction({
+          ...tx,
+          nonce: customNonce,
+          maxPriorityFeePerGas: ethers.utils.parseUnits(
+            String(
+              Boolean(customFee.isCustom && customFee.maxPriorityFeePerGas > 0)
+                ? customFee.maxPriorityFeePerGas.toFixed(9)
+                : fee.maxPriorityFeePerGas.toFixed(9)
+            ),
+            9
+          ),
+          maxFeePerGas: ethers.utils.parseUnits(
+            String(
+              Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                ? customFee.maxFeePerGas.toFixed(9)
+                : fee.maxFeePerGas.toFixed(9)
+            ),
+            9
+          ),
+          gasLimit: txs.toBigNumber(
+            Boolean(customFee.isCustom && customFee.gasLimit > 0)
+              ? customFee.gasLimit
+              : fee.gasLimit
+          ),
+        });
         setConfirmed(true);
         setLoading(false);
 
@@ -164,6 +189,13 @@ export const SendTransaction = () => {
           if (isExternal) window.close();
           else navigate('/home');
         }}
+      />
+
+      <DefaultModal
+        show={haveError}
+        title="Verify Fields"
+        description="Change fields values and try again."
+        onClose={() => setHaveError(false)}
       />
 
       {tx?.from ? (
@@ -237,6 +269,7 @@ export const SendTransaction = () => {
                     decodedTx={decodedTxData}
                     setCustomNonce={setCustomNonce}
                     setCustomFee={setCustomFee}
+                    setHaveError={setHaveError}
                     setFee={setFee}
                     fee={fee}
                     customFee={customFee}
