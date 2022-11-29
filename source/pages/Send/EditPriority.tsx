@@ -58,13 +58,6 @@ export const EditPriorityFee = () => {
     getFees();
   }, [getFees]);
 
-  const canSendCustomFee = [
-    customFee.feeByPriorityBar,
-    customFee.gasLimit,
-    customFee.maxFee,
-    customFee.maxPriorityFeePerGas,
-  ].some((item) => item !== '0');
-
   return (
     <Layout title="EDIT PRIORITY" canGoBack={!isExternal}>
       <DefaultModal
@@ -73,19 +66,9 @@ export const EditPriorityFee = () => {
         description="Your priority fee has been successfully set."
         onClose={() => {
           controller.refresh(false);
-          if (isExternal)
-            navigate('/external/tx/send/ethTx', {
-              state: {
-                tx,
-                priority,
-                external: true,
-                customFee: canSendCustomFee ? customFee : undefined,
-              },
-            });
-          else navigate('/send/eth', { state: { priority } });
+          navigate('/send/eth', { state: { priority } });
         }}
       />
-
       <p className="flex flex-col items-center justify-center text-center font-poppins text-xs">
         <span className="font-rubik text-base">
           {`${isExternal ? Number(tx.value) / 10 ** 18 : tx.amount} ${' '} ${

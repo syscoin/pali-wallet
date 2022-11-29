@@ -37,7 +37,7 @@ export const methodRequest = async (
   const account = dapp.getAccount(host);
   const { activeAccount, isBitcoinBased } = store.getState().vault;
   const isRequestAllowed = dapp.isConnected(host) && account;
-  if (prefix === 'eth' && methodName === 'requestAccounts' && !isBitcoinBased) {
+  if (prefix === 'eth' && methodName === 'requestAccounts') {
     return await enable(host, undefined, undefined);
   }
 
@@ -210,7 +210,7 @@ export const enable = async (
   const { isBitcoinBased } = store.getState().vault;
   if (!isSyscoinDapp && isBitcoinBased)
     return {
-      code: -32603,
+      code: 4001,
       message: `Connected to Bitcoin based chain`,
     };
   const { dapp, wallet } = window.controller;
@@ -227,4 +227,10 @@ export const enable = async (
     throw new Error('Restricted method. Connect before requesting');
 
   return [acceptedRequest.connectedAccount.address];
+};
+
+export const isUnlocked = () => {
+  const { wallet } = window.controller;
+  console.log('Test it', wallet.isUnlocked());
+  return wallet.isUnlocked();
 };

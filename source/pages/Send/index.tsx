@@ -3,4 +3,6 @@ export { SendTransaction } from './SendTransaction';
 export { SendEth } from './SendEth';
 export { SendSys } from './SendSys';
 export { EditPriorityFee } from './EditPriority';
-export { EditGasFee } from './EditGasFee';
+export { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
+export { ApproveTransactionComponent } from './Approve';
+export { EditPriorityModal } from './EditPriorityModal';

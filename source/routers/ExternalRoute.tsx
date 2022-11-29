@@ -21,7 +21,7 @@ import {
   TransferToken,
   UpdateToken,
   SeedConfirm,
-  EditPriorityFee,
+  ApproveTransactionComponent,
   Decrypt,
   CustomRPCExternal,
   SwitchChain,
@@ -117,8 +117,10 @@ export const ExternalRoute = () => {
             element={<ProtectedRoute element={<SendTransaction />} />}
           />
           <Route
-            path="send/ethTx/edit/priority"
-            element={<ProtectedRoute element={<EditPriorityFee />} />}
+            path="send/approve"
+            element={
+              <ProtectedRoute element={<ApproveTransactionComponent />} />
+            }
           />
           <Route
             path="sign"

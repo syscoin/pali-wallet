@@ -11,22 +11,31 @@ import {
   unrestrictedMethods,
 } from 'scripts/Background/controllers/message-handler/types';
 import store from 'state/store';
+import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import { getController } from 'utils/browser';
+import { decodeTransactionData } from 'utils/ethUtil';
 
 export const EthProvider = (host: string) => {
-  const sendTransaction = async (params: {
-    data: string;
-    from: string;
-    gas: string;
-    to: string;
-    value: number;
-  }) => {
+  const sendTransaction = async (params: ITransactionParams) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
 
     const tx = params;
+
+    const decodedTx = decodeTransactionData(tx) as IDecodedTx;
+
+    if (decodedTx.method === 'approve') {
+      const resp = await popupPromise({
+        host,
+        data: { tx, decodedTx, external: true },
+        route: 'tx/send/approve',
+        eventName: 'txApprove',
+      });
+      return resp;
+    }
+
     const resp = await popupPromise({
       host,
-      data: { tx, external: true },
+      data: { tx, decodedTx, external: true },
       route: 'tx/send/ethTx',
       eventName: 'txSend',
     });
@@ -139,7 +148,22 @@ export const EthProvider = (host: string) => {
       case 'eth_decrypt':
         return await decryptMessage(params);
       default:
-        return await web3Provider.send(method, params);
+        try {
+          return await web3Provider.send(method, params);
+        } catch (error) {
+          const errorMsg = {
+            code: -32603,
+            message: 'Internal JSON-RPC error',
+            data: {
+              code: error?.error?.code ? error.error.code : 'No code',
+              data: error?.error?.data ? error.error.data : 'No data',
+              message: error?.error?.message
+                ? error.error.message
+                : 'Invalid Transaction',
+            },
+          };
+          throw errorMsg;
+        }
     }
   };
 

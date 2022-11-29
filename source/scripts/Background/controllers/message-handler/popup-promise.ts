@@ -49,6 +49,7 @@ export const popupPromise = async ({
       if (id === popup.id) {
         if (
           route === 'tx/send/ethTx' ||
+          route === 'tx/send/approve' ||
           route === 'tx/ethSign' ||
           route === 'tx/encryptKey' ||
           route === 'switch-EthChain' ||

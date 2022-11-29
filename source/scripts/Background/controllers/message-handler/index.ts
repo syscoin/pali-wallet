@@ -2,7 +2,7 @@ import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import store from 'state/store';
 
-import { methodRequest, enable } from './requests';
+import { methodRequest, enable, isUnlocked } from './requests';
 import { Message } from './types';
 
 /**
@@ -21,7 +21,6 @@ const _messageHandler = async (host: string, message: Message) => {
   const chain = isBitcoinBased ? 'syscoin' : 'ethereum';
 
   const { dapp } = window.controller;
-
   switch (message.type) {
     case 'EVENT_REG':
       return dapp.addListener(host, message.data.eventName);
@@ -33,6 +32,8 @@ const _messageHandler = async (host: string, message: Message) => {
       return dapp.disconnect(host);
     case 'METHOD_REQUEST':
       return methodRequest(host, message.data);
+    case 'IS_UNLOCKED':
+      return isUnlocked();
     default:
       throw new Error('Unknown message type');
   }
@@ -65,8 +66,7 @@ export const onMessage = async (message: Message, port: Runtime.Port) => {
       port.postMessage({ id: message.id, data: response });
     } catch (error: any) {
       console.error(error);
-
-      port.postMessage({ id: message.id, data: { error: error.message } });
+      port.postMessage({ id: message.id, data: { error: error } }); //This was altered for better ethereum compability TODO: check on syscoin contentScript side
     }
   }
 };

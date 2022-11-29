@@ -1,13 +1,28 @@
-import { Input } from 'antd';
+import { ethers } from 'ethers';
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { Layout, DefaultModal, NeutralButton } from 'components/index';
+import { Icon } from 'components/Icon';
+import { Layout, DefaultModal, Button } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
-import { logError, ellipsis, removeScientificNotation } from 'utils/index';
+import {
+  IDecodedTx,
+  IFeeState,
+  ITransactionParams,
+  ITxState,
+} from 'types/transactions';
+import { getController, dispatchBackgroundEvent } from 'utils/browser';
+import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
+import { logError } from 'utils/logger';
+
+import {
+  TransactionDetailsComponent,
+  TransactionDataComponent,
+  TransactionHexComponent,
+} from './components';
+import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
 export const SendTransaction = () => {
   const {
@@ -15,11 +30,12 @@ export const SendTransaction = () => {
     wallet: { account },
   } = getController();
 
-  const { alert, navigate } = useUtils();
+  const { navigate, alert } = useUtils();
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -27,20 +43,36 @@ export const SendTransaction = () => {
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
+
   const { host, ...externalTx } = useQueryData();
-  console.log(externalTx);
+
   const isExternal = Boolean(externalTx.external);
-  const datatx = isExternal
+
+  const dataTx: ITransactionParams = isExternal
     ? externalTx.tx
     : state.external
     ? state.tx
     : state.tx;
 
+  const decodedTxData: IDecodedTx = isExternal
+    ? externalTx.decodedTx
+    : state.external
+    ? state.decodedTx
+    : state.decodedTx;
+
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
-  const [tx, setTx] = useState<any>();
-  const [fee, setFee] = useState<any>();
-  const [customNonce, setCustomNonce] = useState<any>();
+  const [tx, setTx] = useState<ITxState>();
+  const [fee, setFee] = useState<IFeeState>();
+  const [customNonce, setCustomNonce] = useState<number>();
+  const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
+  const [haveError, setHaveError] = useState<boolean>(false);
+  const [customFee, setCustomFee] = useState({
+    isCustom: false,
+    gasLimit: 0,
+    maxPriorityFeePerGas: 0,
+    maxFeePerGas: 0,
+  });
 
   const canGoBack = state?.external ? !state.external : !isExternal;
 
@@ -58,16 +90,54 @@ export const SendTransaction = () => {
       setTx({
         ...tx,
         nonce: customNonce,
-        maxPriorityFeePerGas: txs.toBigNumber(
-          fee.maxPriorityFeePerGas * 10 ** 18
+        maxPriorityFeePerGas: ethers.utils.parseUnits(
+          String(
+            Boolean(customFee.isCustom && customFee.maxPriorityFeePerGas > 0)
+              ? customFee.maxPriorityFeePerGas.toFixed(9)
+              : fee.maxPriorityFeePerGas.toFixed(9)
+          ),
+          9
         ),
-        maxFeePerGas: txs.toBigNumber(fee.maxFeePerGas * 10 ** 18),
-        gasLimit: txs.toBigNumber(fee.gasLimit),
+        maxFeePerGas: ethers.utils.parseUnits(
+          String(
+            Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+              ? customFee.maxFeePerGas.toFixed(9)
+              : fee.maxFeePerGas.toFixed(9)
+          ),
+          9
+        ),
+        gasLimit: txs.toBigNumber(
+          Boolean(customFee.isCustom && customFee.gasLimit > 0)
+            ? customFee.gasLimit
+            : fee.gasLimit
+        ),
       });
       try {
-        // console.log('Trying to send tx', tx);
-        const response = await txs.sendFormattedTransaction(tx);
-        // console.log('Tx', response);
+        const response = await txs.sendFormattedTransaction({
+          ...tx,
+          nonce: customNonce,
+          maxPriorityFeePerGas: ethers.utils.parseUnits(
+            String(
+              Boolean(customFee.isCustom && customFee.maxPriorityFeePerGas > 0)
+                ? customFee.maxPriorityFeePerGas.toFixed(9)
+                : fee.maxPriorityFeePerGas.toFixed(9)
+            ),
+            9
+          ),
+          maxFeePerGas: ethers.utils.parseUnits(
+            String(
+              Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                ? customFee.maxFeePerGas.toFixed(9)
+                : fee.maxFeePerGas.toFixed(9)
+            ),
+            9
+          ),
+          gasLimit: txs.toBigNumber(
+            Boolean(customFee.isCustom && customFee.gasLimit > 0)
+              ? customFee.gasLimit
+              : fee.gasLimit
+          ),
+        });
         setConfirmed(true);
         setLoading(false);
 
@@ -86,60 +156,30 @@ export const SendTransaction = () => {
       }
     }
   };
+
   useEffect(() => {
-    const fetchGasAndDecodeFunction = async () => {
-      const txs = account.eth.tx;
-      const { maxFeePerGas, maxPriorityFeePerGas } =
-        await txs.getFeeDataWithDynamicMaxPriorityFeePerGas(); // this details maxFeePerGas and maxPriorityFeePerGas need to be passed as an option
-      const nonce = await txs.getRecommendedNonce(datatx.from); // This also need possibility for customization
-      const formTx = {
-        data: datatx.data,
-        from: datatx.from,
-        to: datatx.to,
-        value: datatx?.value ? datatx.value : 0,
-        maxPriorityFeePerGas: maxPriorityFeePerGas,
-        maxFeePerGas: maxFeePerGas,
-        nonce: nonce,
-        chainId: activeNetwork.chainId,
-        gasLimit: txs.toBigNumber(0),
-      };
-      formTx.gasLimit = await txs.getTxGasLimit(formTx);
-      const feeDetails = {
-        maxFeePerGas: maxFeePerGas.toNumber() / 10 ** 18,
-        baseFee: maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 18,
-        maxPriorityFeePerGas: maxPriorityFeePerGas.toNumber() / 10 ** 18,
-        gasLimit: formTx.gasLimit.toNumber(),
-      };
+    const abortController = new AbortController();
+
+    const getGasAndFunction = async () => {
+      const { feeDetails, formTx, nonce } = await fetchGasAndDecodeFunction(
+        dataTx,
+        activeNetwork
+      );
+
       setFee(feeDetails);
       setTx(formTx);
       setCustomNonce(nonce);
     };
-    fetchGasAndDecodeFunction().catch(console.error);
+
+    getGasAndFunction();
+
+    return () => {
+      abortController.abort();
+    };
   }, []); // TODO: add timer
 
-  useEffect(() => {
-    console.log(state?.customFee);
-    if (state?.customFee) {
-      setFee((prevState) => ({
-        ...prevState,
-        gasLimit:
-          state.customFee.gasLimit !== '0'
-            ? Number(state.customFee.gasLimit)
-            : prevState?.gasLimit,
-        maxPriorityFeePerGas:
-          state.customFee.maxPriorityFeePerGas !== '0'
-            ? Number(state.customFee.maxPriorityFeePerGas)
-            : prevState?.maxPriorityFeePerGas,
-        maxFeePerGas:
-          state.customFee.maxFee !== '0'
-            ? Number(state.customFee.maxFee)
-            : prevState?.maxFeePerGas,
-        feeByPriorityBar: state.customFee.feeByPriorityBar,
-      }));
-    }
-  }, [state]);
   return (
-    <Layout title="Contract Interation" canGoBack={canGoBack}>
+    <Layout title="Transaction" canGoBack={canGoBack}>
       <DefaultModal
         show={confirmed}
         title="Transaction successful"
@@ -150,99 +190,139 @@ export const SendTransaction = () => {
           else navigate('/home');
         }}
       />
-      {tx?.from && (
+
+      <DefaultModal
+        show={haveError}
+        title="Verify Fields"
+        description="Change fields values and try again."
+        onClose={() => setHaveError(false)}
+      />
+
+      {tx?.from ? (
         <div className="flex flex-col items-center justify-center w-full">
-          <p className="flex flex-col items-center justify-center text-center font-rubik">
-            <span className="text-brand-royalblue font-poppins font-thin">
-              Send
-            </span>
+          <p className="flex flex-col items-center justify-center w-full text-center text-brand-white font-poppins font-thin">
+            <span className="text-sm font-medium font-thin">{host}</span>
 
-            <span>
-              {`${Number(tx.value) / 10 ** 18} ${' '} ${
-                tx.token
-                  ? tx.token.symbol
-                  : activeNetwork.currency?.toUpperCase()
-              }`}
-            </span>
+            <p className="flex flex-col my-8 text-center text-xl">
+              Send:
+              <span className="text-brand-royalblue">
+                {`${Number(tx.value) / 10 ** 18} ${' '} ${
+                  tx.token
+                    ? tx.token.symbol
+                    : activeNetwork.currency?.toUpperCase()
+                }`}
+              </span>
+            </p>
+
+            <p className="flex flex-col text-center text-base">
+              Method:
+              <span className="text-brand-royalblue">
+                {decodedTxData?.method}
+              </span>
+            </p>
           </p>
-          <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
-            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              From
-              <span className="text-brand-royalblue text-xs">
-                {ellipsis(tx.from, 7, 15)}
-              </span>
-            </p>
 
-            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              To
-              <span className="text-brand-royalblue text-xs">
-                {ellipsis(tx.to, 7, 15)}
-              </span>
-            </p>
-
-            <div className="flex flex-row items-center justify-between w-full">
-              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                Estimated GasFee
-                <span className="text-brand-royalblue text-xs">
-                  Max Fee: {removeScientificNotation(fee.maxFeePerGas)}{' '}
-                  {activeNetwork.currency?.toUpperCase()}
-                </span>
-              </p>
-              <span
-                className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
-                onClick={() =>
-                  navigate('edit/priority', {
-                    state: { tx: datatx, external: true, fee },
-                  })
-                }
-              >
-                EDIT
-              </span>
-            </div>
-
-            <p className="flex flex-col pt-2 w-40 text-brand-white font-poppins font-thin">
-              Custom Nonce
-              <span className="text-brand-royalblue text-xs">
-                <Input
-                  type="number"
-                  className="input-medium outline-0 w-10 bg-bkg-2 rounded-sm focus:outline-none focus-visible:outline-none"
-                  placeholder={tx.nonce}
-                  defaultValue={tx.nonce}
-                  onChange={(e) => setCustomNonce(Number(e.target.value))}
-                />
-              </span>
-            </p>
-
-            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              Total (Amount + gas fee)
-              <span className="text-brand-royalblue text-xs">
-                {Number(tx.value) / 10 ** 18 + fee.maxFeePerGas}
-              </span>
-            </p>
+          <div className="my-4 w-full">
+            <ul
+              className="flex flex-wrap justify-around -mb-px text-center text-brand-white text-sm font-medium"
+              id="tabExample"
+              role="tablist"
+            >
+              {tabElements.map((tab) => (
+                <li
+                  className={`${
+                    tab.id === tabSelected
+                      ? 'border-b border-brand-royalblue'
+                      : ''
+                  }`}
+                  role="presentation"
+                  key={tab.id}
+                >
+                  <button
+                    className="inline-block p-4 hover:text-gray-200 border-b-2 hover:border-brand-royalblue border-transparent rounded-t-lg"
+                    type="button"
+                    role="tab"
+                    onClick={() => setTabSelected(tab.id)}
+                  >
+                    {tab.tabName}
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
 
-          <div className="absolute bottom-12 md:static md:mt-10">
-            <NeutralButton
+          <div id="tabContentExample" className="flex flex-col w-full">
+            {tabComponents.map((component) => (
+              <div
+                key={component.id}
+                className={`${
+                  component.id !== tabSelected
+                    ? 'hidden'
+                    : 'flex flex-col w-full justify-center items-center'
+                }`}
+                id={component.id}
+                role="tabpanel"
+              >
+                {component.component === 'details' ? (
+                  <TransactionDetailsComponent
+                    tx={tx}
+                    decodedTx={decodedTxData}
+                    setCustomNonce={setCustomNonce}
+                    setCustomFee={setCustomFee}
+                    setHaveError={setHaveError}
+                    setFee={setFee}
+                    fee={fee}
+                    customFee={customFee}
+                  />
+                ) : component.component === 'data' ? (
+                  <TransactionDataComponent decodedTx={decodedTxData} />
+                ) : component.component === 'hex' ? (
+                  <TransactionHexComponent
+                    methodName={decodedTxData.method}
+                    dataHex={dataTx.data}
+                  />
+                ) : null}
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-around py-8 w-full">
+            <Button
+              type="button"
+              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
+              id="send-btn"
+              onClick={() => {
+                refresh(false);
+                if (isExternal) window.close();
+                else navigate('/home');
+              }}
+            >
+              <Icon
+                name="arrow-up"
+                className="w-4"
+                wrapperClassname="mb-2 mr-2"
+                rotate={45}
+              />
+              Cancel
+            </Button>
+
+            <Button
+              type="button"
+              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
+              id="receive-btn"
               loading={loading}
               onClick={handleConfirm}
-              type="button"
-              id="confirm-btn"
             >
+              <Icon
+                name="arrow-down"
+                className="w-4"
+                wrapperClassname="mb-2 mr-2"
+              />
               Confirm
-            </NeutralButton>
+            </Button>
           </div>
-          {/* Rejection button must be added <div className="absolute bottom-12 md:static md:mt-10">
-            <NeutralButton
-              loading={loading}
-              onClick={handleReject}
-              type="button"
-              id="confirm-btn"
-            >
-              Reject
-            </NeutralButton>
-          </div> */}
         </div>
-      )}
+      ) : null}
     </Layout>
   );
 };
