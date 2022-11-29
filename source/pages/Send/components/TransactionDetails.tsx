@@ -27,13 +27,22 @@ interface ITransactionDetailsProps {
   >;
   setCustomNonce: React.Dispatch<React.SetStateAction<number>>;
   setFee: React.Dispatch<React.SetStateAction<IFeeState>>;
+  setHaveError: React.Dispatch<React.SetStateAction<boolean>>;
   tx: ITxState;
 }
 
 export const TransactionDetailsComponent = (
   props: ITransactionDetailsProps
 ) => {
-  const { tx, setCustomNonce, fee, setFee, setCustomFee, customFee } = props;
+  const {
+    tx,
+    setCustomNonce,
+    fee,
+    setFee,
+    setCustomFee,
+    customFee,
+    setHaveError,
+  } = props;
   const [isOpen, setIsOpen] = useState<boolean>(false);
 
   const activeNetwork = useSelector(
@@ -48,6 +57,7 @@ export const TransactionDetailsComponent = (
         setFee={setFee}
         customFee={customFee}
         setCustomFee={setCustomFee}
+        setHaveError={setHaveError}
         fee={fee}
       />
       <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">

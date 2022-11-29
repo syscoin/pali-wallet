@@ -2,18 +2,38 @@ import { Form, Input } from 'antd';
 import _ from 'lodash';
 import React, { useMemo, useState } from 'react';
 
-import { Modal, NeutralButton } from 'components/index';
+import { DefaultModal, Modal, NeutralButton } from 'components/index';
 import removeScientificNotation from 'utils/removeScientificNotation';
 
 import { PriorityBar } from './components';
 
 export const EditPriorityModal = (props: any) => {
-  const { showModal, setIsOpen, customFee, setCustomFee, fee } = props;
+  const { showModal, setIsOpen, customFee, setCustomFee, fee, setHaveError } =
+    props;
   const [priority, setPriority] = useState<number>(1);
 
   const [form] = Form.useForm();
   const maxFeePerGas = fee?.maxFeePerGas;
   const maxPriorityFeePerGas = fee?.maxPriorityFeePerGas;
+
+  const handleSubmit = () => {
+    const gasLimitField = form.getFieldValue('gasLimit');
+    const maxFeePerGasField = form.getFieldValue('maxFeePerGas');
+    const maxPriorityFeePerGasField = form.getFieldValue(
+      'maxPriorityFeePerGas'
+    );
+    const validations = [
+      Number(gasLimitField) > 1000,
+      Number(maxPriorityFeePerGasField) < Number(maxFeePerGasField),
+    ];
+
+    if (validations.every((item) => item === true)) {
+      setIsOpen(false);
+      setHaveError(false);
+      return;
+    }
+    setHaveError(true);
+  };
 
   useMemo(() => {
     if (priority === 0) {
@@ -218,7 +238,7 @@ export const EditPriorityModal = (props: any) => {
             <NeutralButton
               type="submit"
               id="confirm_btn"
-              onClick={() => setIsOpen(false)}
+              onClick={handleSubmit}
             >
               Save
             </NeutralButton>

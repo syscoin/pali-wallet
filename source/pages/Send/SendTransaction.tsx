@@ -66,6 +66,7 @@ export const SendTransaction = () => {
   const [fee, setFee] = useState<IFeeState>();
   const [customNonce, setCustomNonce] = useState<number>();
   const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
+  const [haveError, setHaveError] = useState<boolean>(false);
   const [customFee, setCustomFee] = useState({
     isCustom: false,
     gasLimit: 0,
@@ -190,6 +191,13 @@ export const SendTransaction = () => {
         }}
       />
 
+      <DefaultModal
+        show={haveError}
+        title="Verify Fields"
+        description="Change fields values and try again."
+        onClose={() => setHaveError(false)}
+      />
+
       {tx?.from ? (
         <div className="flex flex-col items-center justify-center w-full">
           <p className="flex flex-col items-center justify-center w-full text-center text-brand-white font-poppins font-thin">
@@ -261,6 +269,7 @@ export const SendTransaction = () => {
                     decodedTx={decodedTxData}
                     setCustomNonce={setCustomNonce}
                     setCustomFee={setCustomFee}
+                    setHaveError={setHaveError}
                     setFee={setFee}
                     fee={fee}
                     customFee={customFee}

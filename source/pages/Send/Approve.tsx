@@ -62,6 +62,7 @@ export const ApproveTransactionComponent = () => {
   const [isOpenPriority, setIsOpenPriority] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [detailsOpened, setDetailsOpened] = useState<boolean>(false);
+  const [haveError, setHaveError] = useState<boolean>(false);
 
   const [customApprovedAllowanceAmount, setCustomApprovedAllowanceAmount] =
     useState<ICustomApprovedAllowanceAmount>({
@@ -316,11 +317,19 @@ export const ApproveTransactionComponent = () => {
           else navigate('/home');
         }}
       />
+
+      <DefaultModal
+        show={haveError}
+        title="Verify Fields"
+        description="Change fields values and try again."
+        onClose={() => setHaveError(false)}
+      />
       <EditPriorityModal
         showModal={isOpenPriority}
         setIsOpen={setIsOpenPriority}
         customFee={customFee}
         setCustomFee={setCustomFee}
+        setHaveError={setHaveError}
         fee={fee}
       />
       <EditApprovedAllowanceValueModal
