@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import {
-  DefaultModal,
   ErrorModal,
   Layout,
   PrimaryButton,
@@ -77,6 +76,7 @@ const EthSign: React.FC<ISign> = () => {
       setLoading(false);
 
       dispatchBackgroundEvent(`${type}.${host}`, response);
+      window.close();
     } catch (error: any) {
       console.log('Error', error);
       setErrorMsg(error.message);
@@ -97,14 +97,6 @@ const EthSign: React.FC<ISign> = () => {
   }, []);
   return (
     <Layout canGoBack={false} title={'SIGNATURE REQUEST'}>
-      <DefaultModal
-        show={confirmed}
-        onClose={window.close}
-        title={'Signature request successfully submitted'}
-        description="You can check your request under activity on your home screen."
-        buttonText="Got it"
-      />
-
       <ErrorModal
         show={Boolean(errorMsg)}
         onClose={window.close}

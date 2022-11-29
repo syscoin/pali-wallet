@@ -4,7 +4,6 @@
 const proxy = (type, data) =>
   new Promise((resolve, reject) => {
     const id = Date.now() + '.' + Math.random();
-
     window.addEventListener(
       id,
       (event) => {
@@ -25,7 +24,7 @@ const proxy = (type, data) =>
           return;
         }
         if (response.error) {
-          reject(new Error(response.error));
+          reject(response.error); //TODO all the errors function needs to be refactored this part should not add new Error on response rejection
 
           return;
         }

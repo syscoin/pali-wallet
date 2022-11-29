@@ -148,7 +148,22 @@ export const EthProvider = (host: string) => {
       case 'eth_decrypt':
         return await decryptMessage(params);
       default:
-        return await web3Provider.send(method, params);
+        try {
+          return await web3Provider.send(method, params);
+        } catch (error) {
+          const errorMsg = {
+            code: -32603,
+            message: 'Internal JSON-RPC error',
+            data: {
+              code: error?.error?.code ? error.error.code : 'No code',
+              data: error?.error?.data ? error.error.data : 'No data',
+              message: error?.error?.message
+                ? error.error.message
+                : 'Invalid Transaction',
+            },
+          };
+          throw errorMsg;
+        }
     }
   };
 

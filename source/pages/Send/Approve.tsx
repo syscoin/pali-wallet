@@ -131,21 +131,16 @@ export const ApproveTransactionComponent = () => {
 
   const validatedEncodedData = () => {
     const erc20AbiInstance = new ethers.utils.Interface(getErc20Abi());
-
-    const encodedDataWithCustomValue = erc20AbiInstance.encodeFunctionData(
-      'approve',
-      [
-        decodedTx?.inputs[0],
-
-        customApprovedAllowanceAmount.isCustom === true
-          ? ethers.utils.parseUnits(
+    const encodedDataWithCustomValue =
+      customApprovedAllowanceAmount.isCustom === true
+        ? erc20AbiInstance.encodeFunctionData('approve', [
+            decodedTx?.inputs[0],
+            ethers.utils.parseUnits(
               String(customApprovedAllowanceAmount.customAllowanceValue),
               approvedTokenInfos.tokenDecimals
-            )
-          : customApprovedAllowanceAmount.defaultAllowanceValue,
-      ]
-    );
-
+            ),
+          ])
+        : tx.data;
     return encodedDataWithCustomValue;
   };
 
