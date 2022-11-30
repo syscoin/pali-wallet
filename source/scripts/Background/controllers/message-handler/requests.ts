@@ -175,7 +175,7 @@ export const methodRequest = async (
         }`,
       };
     }
-    dapp.setHasWindow(host, false);
+    // dapp.setHasWindow(host, false); // TESTED CHANGING ACCOUNT SO CAN KEEP COMENTED
   }
   //* Providers methods
   if (prefix !== 'sys' && !isBitcoinBased) {
