@@ -17,14 +17,22 @@ export const popupPromise = async ({
   host,
   route,
 }: {
-  data?: object;
+  data?: object | any;
   eventName: string;
   host: string;
   route: string;
 }) => {
-  const { dapp, createPopup } = window.controller;
-  if (eventName !== 'connect' && !dapp.isConnected(host)) return;
-  if (dapp.hasWindow(host)) return;
+  const { dapp, createPopup, wallet } = window.controller;
+  const currentNetwork = wallet.getNetwork();
+  if (
+    (eventName === 'wallet_switchEthereumChain' &&
+      data.chainId === currentNetwork.chainId) ||
+    (dapp.hasWindow(host) && eventName === 'connect') ||
+    (!dapp.isConnected(host) && eventName !== 'connect') ||
+    (dapp.isConnected(host) && eventName === 'connect') ||
+    dapp.hasWindow(host)
+  )
+    return;
 
   data = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
   const popup = await createPopup(route, { ...data, host, eventName });
