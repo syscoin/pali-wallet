@@ -36,6 +36,10 @@ div[role='alert'] {
   @apply bg-brand-royalblue rounded-full transition-all duration-300;
 }
 
+.ant-form-item-explain-error {
+  display: none !important;
+}
+
 .scrollbar-styled {
   /* Firefox */
   scrollbar-color: #4ca1cf #739dce;

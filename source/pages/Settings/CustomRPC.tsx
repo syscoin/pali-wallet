@@ -197,7 +197,7 @@ const CustomRPCView = () => {
             type="text"
             disabled={!form.getFieldValue('url') || isUrlValid}
             placeholder="Chain ID"
-            className={`${isSyscoinRpc ? 'hidden' : 'block'} input-small`}
+            className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
           />
         </Form.Item>
 
@@ -215,7 +215,7 @@ const CustomRPCView = () => {
           <Input
             type="text"
             placeholder="API URL (optional)"
-            className={`${isSyscoinRpc ? 'hidden' : 'block'} input-small`}
+            className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
           />
         </Form.Item>
 
