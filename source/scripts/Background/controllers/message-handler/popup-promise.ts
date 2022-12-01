@@ -23,6 +23,8 @@ export const popupPromise = async ({
   route: string;
 }) => {
   const { dapp, createPopup } = window.controller;
+  if (eventName !== 'connect' && !dapp.isConnected(host)) return;
+  if (dapp.hasWindow(host)) return;
 
   data = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
   const popup = await createPopup(route, { ...data, host, eventName });
