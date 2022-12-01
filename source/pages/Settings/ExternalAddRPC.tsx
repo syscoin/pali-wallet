@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { browser } from 'webextension-polyfill-ts';
 
 import {
   DefaultModal,
@@ -8,31 +9,36 @@ import {
 } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
-
 const CustomRPCExternal = () => {
   const { host, ...data } = useQueryData();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const [isSyscoinRpc] = useState(data.symbol.toLowerCase().includes('sys'));
-
   const { alert } = useUtils();
   const controller = getController();
-
-  const onSubmit = async (custom: any) => {
+  const wallet = controller.wallet;
+  const onSubmit = async (customRpc: any) => {
     setLoading(true);
-    const { currency, ...customChain } = custom;
-    console.log(currency);
-    const customRpc = {
-      ...customChain,
-      isSyscoinRpc,
-    };
 
     try {
-      await controller.wallet.addCustomRpc(customRpc).then(() => {
+      await controller.wallet.addCustomRpc(customRpc).then((network) => {
         setConfirmed(true);
         setLoading(false);
         const type = data.eventName;
         dispatchBackgroundEvent(`${type}.${host}`, null);
+        wallet
+          .setActiveNetwork(network, 'ethereum')
+          .then(async ({ networkVersion, chain }: any) => {
+            const tabs = await browser.tabs.query({
+              windowType: 'normal',
+            });
+
+            for (const tab of tabs) {
+              browser.tabs.sendMessage(Number(tab.id), {
+                type: 'CHAIN_CHANGED',
+                data: { networkVersion, chain },
+              });
+            }
+          });
       });
     } catch (error: any) {
       alert.removeAll();

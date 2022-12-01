@@ -157,14 +157,19 @@ const CustomRPCView = () => {
                   return Promise.reject();
                 }
 
-                const { valid, details } = await validateEthRpc(value);
+                const { valid, details, hexChainId } = await validateEthRpc(
+                  value
+                );
 
                 setIsUrlValid(valid);
 
-                if (valid || !value) {
+                if ((valid && details) || !value) {
                   populateForm('label', String(details.name));
                   populateForm('chainId', String(details.chainId));
 
+                  return Promise.resolve();
+                } else if (valid || !value) {
+                  populateForm('chainId', String(parseInt(hexChainId, 16)));
                   return Promise.resolve();
                 }
 
@@ -198,6 +203,26 @@ const CustomRPCView = () => {
             disabled={!form.getFieldValue('url') || isUrlValid}
             placeholder="Chain ID"
             className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="symbol"
+          hasFeedback
+          className="md:w-full"
+          rules={[
+            {
+              required: !isSyscoinRpc,
+              message: '',
+            },
+          ]}
+        >
+          <Input
+            type="text"
+            placeholder="Symbol"
+            className={`${
+              isSyscoinRpc ? 'hidden' : 'block'
+            } input-small relative`}
           />
         </Form.Item>
 

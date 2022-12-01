@@ -4,7 +4,12 @@ import {
   KeyringManager,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
-import { getSysRpc, getEthRpc, web3Provider } from '@pollum-io/sysweb3-network';
+import {
+  getSysRpc,
+  getEthRpc,
+  web3Provider,
+  setActiveNetwork as _sysweb3SetActiveNetwork,
+} from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
@@ -43,6 +48,9 @@ const MainController = (): IMainController => {
   };
 
   const getNetworkData = async () => {
+    const { activeNetwork } = store.getState().vault;
+    if (web3Provider.connection.url !== activeNetwork.url)
+      _sysweb3SetActiveNetwork(activeNetwork);
     const networkVersion = await web3Provider.send('net_version', []);
     const chainId = await web3Provider.send('eth_chainId', []);
 
@@ -273,11 +281,19 @@ const MainController = (): IMainController => {
   };
 
   const getRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
-    const { formattedNetwork } = data.isSyscoinRpc
-      ? await getSysRpc(data)
-      : await getEthRpc(data);
-
-    return formattedNetwork;
+    try {
+      const { formattedNetwork } = data.isSyscoinRpc
+        ? await getSysRpc(data)
+        : await getEthRpc(data);
+      console.log('Response', formattedNetwork);
+      return formattedNetwork;
+    } catch (error) {
+      throw {
+        code: -32603,
+        message: `${data.url} failed to respond`,
+        data: error,
+      };
+    }
   };
 
   const addCustomRpc = async (data: ICustomRpcParams): Promise<INetwork> => {

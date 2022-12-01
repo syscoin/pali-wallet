@@ -1,8 +1,7 @@
 import { Input } from 'antd';
-import React, { useState } from 'react';
+import React from 'react';
 import { useSelector } from 'react-redux';
 
-import { EditPriorityModal } from '../EditPriorityModal';
 import { RootState } from 'state/store';
 import { IDecodedTx, IFeeState, ITxState } from 'types/transactions';
 import { ellipsis } from 'utils/format';
@@ -28,22 +27,14 @@ interface ITransactionDetailsProps {
   setCustomNonce: React.Dispatch<React.SetStateAction<number>>;
   setFee: React.Dispatch<React.SetStateAction<IFeeState>>;
   setHaveError: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   tx: ITxState;
 }
 
 export const TransactionDetailsComponent = (
   props: ITransactionDetailsProps
 ) => {
-  const {
-    tx,
-    setCustomNonce,
-    fee,
-    setFee,
-    setCustomFee,
-    customFee,
-    setHaveError,
-  } = props;
-  const [isOpen, setIsOpen] = useState<boolean>(false);
+  const { tx, setCustomNonce, fee, customFee, setIsOpen } = props;
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -51,15 +42,6 @@ export const TransactionDetailsComponent = (
 
   return (
     <>
-      <EditPriorityModal
-        showModal={isOpen}
-        setIsOpen={setIsOpen}
-        setFee={setFee}
-        customFee={customFee}
-        setCustomFee={setCustomFee}
-        setHaveError={setHaveError}
-        fee={fee}
-      />
       <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
         <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
           From
