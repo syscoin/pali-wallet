@@ -1,3 +1,4 @@
+import _ from 'lodash';
 import { Runtime } from 'webextension-polyfill-ts';
 
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
@@ -169,10 +170,10 @@ const DAppController = (): IDAppController => {
   ) => {
     // dispatch the event locally
     const { isBitcoinBased } = store.getState().vault;
-    const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
-    console.log('Checking event', eventName, host);
+    // const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
+    // console.log('Checking event', eventName, host);
     // window.dispatchEvent(event); // Why adding this dispatch of event by window here ?
-    // if (!hasListener(host, eventName)) return; //TODO: fix event bugs
+    if (!hasListener(host, eventName)) return; //TODO: fix event bugs
     if (!isConnected(host) && isBitcoinBased) return;
 
     // post the event to the DApp
