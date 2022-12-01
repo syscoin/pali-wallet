@@ -1,8 +1,8 @@
 import { Form, Input } from 'antd';
 import _ from 'lodash';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
-import { DefaultModal, Modal, NeutralButton } from 'components/index';
+import { Modal, NeutralButton } from 'components/index';
 import removeScientificNotation from 'utils/removeScientificNotation';
 
 import { PriorityBar } from './components';
@@ -35,56 +35,58 @@ export const EditPriorityModal = (props: any) => {
     setHaveError(true);
   };
 
-  useMemo(() => {
-    if (priority === 0) {
-      form.setFieldValue(
-        'maxPriorityFeePerGas',
-        removeScientificNotation(0.8 * maxPriorityFeePerGas)
-      );
-      form.setFieldValue(
-        'maxFeePerGas',
-        removeScientificNotation(0.8 * maxFeePerGas)
-      );
-      setCustomFee((prevState) => ({
-        ...prevState,
-        isCustom: true,
-        maxPriorityFeePerGas: 0.8 * maxPriorityFeePerGas,
-        maxFeePerGas: 0.8 * maxFeePerGas,
-      }));
+  useEffect(() => {
+    if (showModal) {
+      if (priority === 0) {
+        form.setFieldValue(
+          'maxPriorityFeePerGas',
+          removeScientificNotation(0.8 * maxPriorityFeePerGas)
+        );
+        form.setFieldValue(
+          'maxFeePerGas',
+          removeScientificNotation(0.8 * maxFeePerGas)
+        );
+        setCustomFee((prevState) => ({
+          ...prevState,
+          isCustom: true,
+          maxPriorityFeePerGas: 0.8 * maxPriorityFeePerGas,
+          maxFeePerGas: 0.8 * maxFeePerGas,
+        }));
+      }
+      if (priority === 1) {
+        form.setFieldValue(
+          'maxPriorityFeePerGas',
+          removeScientificNotation(1 * maxPriorityFeePerGas)
+        );
+        form.setFieldValue(
+          'maxFeePerGas',
+          removeScientificNotation(1 * maxFeePerGas)
+        );
+        setCustomFee((prevState) => ({
+          ...prevState,
+          isCustom: false,
+          maxPriorityFeePerGas: 1 * maxPriorityFeePerGas,
+          maxFeePerGas: 1 * maxFeePerGas,
+        }));
+      }
+      if (priority === 2) {
+        form.setFieldValue(
+          'maxPriorityFeePerGas',
+          removeScientificNotation(1.2 * maxPriorityFeePerGas)
+        );
+        form.setFieldValue(
+          'maxFeePerGas',
+          removeScientificNotation(1.2 * maxFeePerGas)
+        );
+        setCustomFee((prevState) => ({
+          ...prevState,
+          isCustom: true,
+          maxPriorityFeePerGas: 1.2 * maxPriorityFeePerGas,
+          maxFeePerGas: 1.2 * maxFeePerGas,
+        }));
+      }
     }
-    if (priority === 1) {
-      form.setFieldValue(
-        'maxPriorityFeePerGas',
-        removeScientificNotation(1 * maxPriorityFeePerGas)
-      );
-      form.setFieldValue(
-        'maxFeePerGas',
-        removeScientificNotation(1 * maxFeePerGas)
-      );
-      setCustomFee((prevState) => ({
-        ...prevState,
-        isCustom: false,
-        maxPriorityFeePerGas: 1 * maxPriorityFeePerGas,
-        maxFeePerGas: 1 * maxFeePerGas,
-      }));
-    }
-    if (priority === 2) {
-      form.setFieldValue(
-        'maxPriorityFeePerGas',
-        removeScientificNotation(1.2 * maxPriorityFeePerGas)
-      );
-      form.setFieldValue(
-        'maxFeePerGas',
-        removeScientificNotation(1.2 * maxFeePerGas)
-      );
-      setCustomFee((prevState) => ({
-        ...prevState,
-        isCustom: true,
-        maxPriorityFeePerGas: 1.2 * maxPriorityFeePerGas,
-        maxFeePerGas: 1.2 * maxFeePerGas,
-      }));
-    }
-  }, [priority, fee]);
+  }, [priority, fee, showModal]);
 
   return (
     <Modal

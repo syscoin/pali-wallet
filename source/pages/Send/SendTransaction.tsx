@@ -22,6 +22,7 @@ import {
   TransactionDataComponent,
   TransactionHexComponent,
 } from './components';
+import { EditPriorityModal } from './EditPriorityModal';
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
 export const SendTransaction = () => {
@@ -67,6 +68,7 @@ export const SendTransaction = () => {
   const [customNonce, setCustomNonce] = useState<number>();
   const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
   const [haveError, setHaveError] = useState<boolean>(false);
+  const [isOpen, setIsOpen] = useState<boolean>(false);
   const [customFee, setCustomFee] = useState({
     isCustom: false,
     gasLimit: 0,
@@ -198,9 +200,18 @@ export const SendTransaction = () => {
         onClose={() => setHaveError(false)}
       />
 
+      <EditPriorityModal
+        showModal={isOpen}
+        setIsOpen={setIsOpen}
+        customFee={customFee}
+        setCustomFee={setCustomFee}
+        setHaveError={setHaveError}
+        fee={fee}
+      />
+
       {tx?.from ? (
         <div className="flex flex-col items-center justify-center w-full">
-          <p className="flex flex-col items-center justify-center w-full text-center text-brand-white font-poppins font-thin">
+          <div className="flex flex-col items-center justify-center w-full text-center text-brand-white font-poppins font-thin">
             <span className="text-sm font-medium font-thin">{host}</span>
 
             <p className="flex flex-col my-8 text-center text-xl">
@@ -220,7 +231,7 @@ export const SendTransaction = () => {
                 {decodedTxData?.method}
               </span>
             </p>
-          </p>
+          </div>
 
           <div className="my-4 w-full">
             <ul
@@ -272,6 +283,7 @@ export const SendTransaction = () => {
                     setHaveError={setHaveError}
                     setFee={setFee}
                     fee={fee}
+                    setIsOpen={setIsOpen}
                     customFee={customFee}
                   />
                 ) : component.component === 'data' ? (
